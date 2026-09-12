@@ -74,7 +74,7 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     abstraction: "RouteFilter",
     makeExport: "makeRouteFilterContractSuite",
     runExport: "runRouteFilterContractSuite",
-    defaultPolicy: "reference-mirror",
+    defaultPolicy: "built-in",
     invocationFiles: ["engine/test/subsystems/proxy/route-filter-contract.test.ts"],
   },
   {

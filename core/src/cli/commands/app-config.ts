@@ -11,10 +11,10 @@ import type {
   LandofileLockMismatchError,
   LandofileSandboxError,
   LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
+  RouteInputError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import {
@@ -107,8 +107,8 @@ type AppConfigError =
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | LandofileWriteValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
