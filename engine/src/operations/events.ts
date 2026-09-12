@@ -1,13 +1,9 @@
-import { DateTime, Effect, FiberRef, Option } from "effect";
+import { DateTime, Effect, Option } from "effect";
 
-import {
-  LandofileEventLifecycleReentryError,
-  LandofileEventStepFailedError,
-  ToolingCompileError,
-} from "@lando/sdk/errors";
-import { MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
+import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
+import { PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { AppLifecycleEventName, AppPlan, EventStep } from "@lando/sdk/schema";
+import type { AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
@@ -16,22 +12,16 @@ import { effectiveEventsForPlan } from "../planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
+import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
 import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
-import type { ResolvedToolingCommandStepLeaf } from "../tooling/step-runner.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
+import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
 import { makeEventStepRunners } from "./event-step-runtime.ts";
-
-interface ActiveEventFrame {
-  readonly event: AppLifecycleEventName;
-  readonly command?: string;
-}
 
 interface EventRedactor {
   readonly redactString: (value: string) => string;
 }
-
-const activeEventFrames = FiberRef.unsafeMake<ReadonlyArray<ActiveEventFrame>>([]);
 
 const authoredStepKind = (step: EventStep): "cmd" | "task" | "command" => {
   if (typeof step === "string") return "cmd";
@@ -60,14 +50,11 @@ const redactionValuesForStep = (
 
 const eventError = (
   error: unknown,
-  event: AppLifecycleEventName,
+  event: LandofileEventName,
   step: EventStep,
   redactor: EventRedactor,
-): LandofileEventLifecycleReentryError | LandofileEventStepFailedError => {
-  if (
-    error instanceof LandofileEventLifecycleReentryError ||
-    error instanceof LandofileEventStepFailedError
-  ) {
+): EventRuntimeError => {
+  if (isEventRuntimeError(error)) {
     return error;
   }
   const identity =
@@ -86,64 +73,17 @@ const eventError = (
   });
 };
 
-const runCanonicalCommand = (
-  plan: AppPlan,
-  leaf: ResolvedToolingCommandStepLeaf,
-  redactionTokens: ReadonlyArray<string>,
-) =>
-  Effect.gen(function* () {
-    const executor = yield* Effect.serviceOption(EventCommandExecutor);
-    if (Option.isNone(executor)) {
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          message: `Canonical command event step ${leaf.command} is unavailable in this runtime.`,
-          tool: leaf.command,
-          remediation: "Use the app bootstrap layer that provides canonical command invocation.",
-        }),
-      );
-    }
-    const active = yield* FiberRef.get(activeEventFrames);
-    const invokingFrames = active.map((frame, index) =>
-      index === active.length - 1 ? { ...frame, command: leaf.command } : frame,
-    );
-    const result = yield* executor.value
-      .run({
-        command: leaf.command,
-        flags: leaf.flags,
-        args: leaf.args,
-        argv: leaf.raw,
-        cwd: String(plan.root),
-        silent: leaf.silent,
-        plan,
-        redactionTokens,
-      })
-      .pipe(Effect.locally(activeEventFrames, invokingFrames));
-    return { ...result, tool: leaf.command, service: ":lando" };
-  });
-
 export const runAppEvent = (
   plan: AppPlan,
-  event: AppLifecycleEventName,
+  event: LandofileEventName,
   payload?: ExpressionContext["event"],
-): Effect.Effect<void, LandofileEventLifecycleReentryError | LandofileEventStepFailedError> => {
+): Effect.Effect<void, EventRuntimeError> => {
   const steps = effectiveEventsForPlan(plan)?.[event] ?? [];
   const first = steps[0];
   if (first === undefined) return Effect.void;
-  return Effect.gen(function* () {
-    const active = yield* FiberRef.get(activeEventFrames);
-    const reentered = active.findLast((frame) => frame.event === event);
-    if (reentered !== undefined) {
-      const command = reentered.command ?? event;
-      return yield* Effect.fail(
-        new LandofileEventLifecycleReentryError({
-          message: `Command ${command} reentered lifecycle event ${event}.`,
-          event,
-          command,
-          remediation: "Remove the lifecycle command cycle or call a non-lifecycle command from this event.",
-        }),
-      );
-    }
-    return yield* Effect.gen(function* () {
+  return withinEventInvocation(
+    { app: plan.id, event, file: plan.metadata.source },
+    Effect.gen(function* () {
       const eventsOption = yield* Effect.serviceOption(EventService);
       const redactionOption = yield* Effect.serviceOption(RedactionService);
       const privateFileAccess = yield* Effect.serviceOption(PrivateFileAccessService);
@@ -239,29 +179,9 @@ export const runAppEvent = (
           runCanonical: (leaf, redactionTokens) => runCanonicalCommand(plan, leaf, redactionTokens),
         }),
       ).pipe(Effect.mapError((error) => eventError(error, event, first, redactor)));
-    }).pipe(Effect.locally(activeEventFrames, [...active, { event }]));
-  });
-};
-
-export const runPostAppEvent = (
-  plan: AppPlan,
-  event: AppLifecycleEventName,
-  payload?: ExpressionContext["event"],
-) =>
-  runAppEvent(plan, event, payload).pipe(
-    Effect.catchAll((error) =>
-      EventService.pipe(
-        Effect.flatMap((events) =>
-          events.publish(
-            MessageWarnEvent.make({
-              body: `${error.message} ${error.remediation}`,
-              timestamp: DateTime.unsafeMake(new Date().toISOString()),
-            }),
-          ),
-        ),
-      ),
-    ),
+    }),
   );
+};
 
 export const runAppInitEvents = (plan: AppPlan) =>
   Effect.gen(function* () {
@@ -272,5 +192,5 @@ export const runAppInitEvents = (plan: AppPlan) =>
     yield* runAppEvent(plan, "pre-init", pre);
     const post = PostInitEvent.make({ app, timestamp: DateTime.unsafeMake(new Date().toISOString()) });
     yield* events.publish(post);
-    yield* runPostAppEvent(plan, "post-init", post);
+    yield* runAppEvent(plan, "post-init", post);
   });

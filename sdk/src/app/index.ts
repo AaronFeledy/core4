@@ -29,6 +29,7 @@ import type {
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   LandoCommandError,
+  LandofileEventInvocationDepthError,
   LandofileEventLifecycleReentryError,
   LandofileEventStepFailedError,
   LandofileFormConflictError,
@@ -200,6 +201,7 @@ export type StartAppError =
   | ComposeKeyRejectedError
   | EventError
   | LandofileEventLifecycleReentryError
+  | LandofileEventInvocationDepthError
   | LandofileEventStepFailedError
   | ToolingCompileError
   | FileSyncDriftError
@@ -248,6 +250,7 @@ export type StopAppError =
   | AppIdReservedError
   | EventError
   | LandofileEventLifecycleReentryError
+  | LandofileEventInvocationDepthError
   | LandofileEventStepFailedError
   | ToolingCompileError
   | FileSyncDriftError
@@ -461,6 +464,9 @@ export interface ToolingResult {
 export type ToolingError =
   | ManagedFileTransactionError
   | AppIdReservedError
+  | LandofileEventLifecycleReentryError
+  | LandofileEventInvocationDepthError
+  | LandofileEventStepFailedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError

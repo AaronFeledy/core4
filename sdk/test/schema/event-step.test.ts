@@ -3,6 +3,7 @@ import { Either, Schema } from "effect";
 
 import { ToolingStepConditionError, ToolingStepSelectorUnavailableError } from "@lando/sdk/errors";
 import { AppLifecycleEventName, EventStep, LandofileEvents, PortablePath } from "@lando/sdk/schema";
+import * as schemas from "@lando/sdk/schema";
 
 const decodeOptions = [undefined, { onExcessProperty: "error" }] as const;
 
@@ -99,7 +100,7 @@ describe("EventStep", () => {
 });
 
 describe("LandofileEvents", () => {
-  test("publishes all ten lifecycle names in canonical order", () => {
+  test("publishes all twelve lifecycle names in canonical order", () => {
     // Given
     const expected: Array<(typeof AppLifecycleEventName.literals)[number]> = [
       "pre-init",
@@ -108,6 +109,8 @@ describe("LandofileEvents", () => {
       "post-start",
       "pre-stop",
       "post-stop",
+      "pre-restart",
+      "post-restart",
       "pre-rebuild",
       "post-rebuild",
       "pre-destroy",
@@ -121,6 +124,63 @@ describe("LandofileEvents", () => {
     // Then
     expect([...names]).toEqual(expected);
     expect(eventKeys).toEqual(expected);
+  });
+
+  test("preserves tooling keys including namespaced ids under strict decoding", () => {
+    // Given
+    const input = { "pre-build": ["echo x"], "post-docs:build": [{ cmd: "echo y", service: ":host" }] };
+    // When
+    const result = Schema.decodeUnknownEither(LandofileEvents)(input, { onExcessProperty: "error" });
+    // Then
+    expect(result).toEqual(Either.right(input));
+    if (Either.isRight(result)) {
+      const indexed: Record<string, readonly EventStep[] | undefined> = result.right;
+      expect(indexed["post-docs:build"]).toEqual(input["post-docs:build"]);
+    }
+  });
+
+  test("preserves malformed names for semantic validation", () => {
+    // Given
+    const input = { serve: ["echo x"] };
+    // When
+    const result = Schema.decodeUnknownEither(LandofileEvents)(input, { onExcessProperty: "error" });
+    // Then
+    expect(result).toEqual(Either.right(input));
+  });
+
+  test("decodes all twelve named event keys", () => {
+    // Given
+    const input = Object.fromEntries(
+      [
+        "pre-init",
+        "post-init",
+        "pre-start",
+        "post-start",
+        "pre-stop",
+        "post-stop",
+        "pre-restart",
+        "post-restart",
+        "pre-rebuild",
+        "post-rebuild",
+        "pre-destroy",
+        "post-destroy",
+      ].map((name) => [name, ["echo x"]]),
+    );
+    // When
+    const result = Schema.decodeUnknownEither(LandofileEvents)(input, { onExcessProperty: "error" });
+    // Then
+    expect(result).toEqual(Either.right(input));
+  });
+
+  test("accepts only prefixed Landofile event names", () => {
+    // Given / When / Then
+    expect(schemas).toHaveProperty("LandofileEventName");
+    for (const name of ["pre-start", "pre-build", "post-docs:build"]) {
+      expect(Either.isRight(Schema.decodeUnknownEither(schemas.LandofileEventName)(name))).toBe(true);
+    }
+    for (const name of ["serve", "build"]) {
+      expect(Either.isLeft(Schema.decodeUnknownEither(schemas.LandofileEventName)(name))).toBe(true);
+    }
   });
 });
 

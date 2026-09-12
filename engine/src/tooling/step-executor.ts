@@ -3,6 +3,7 @@ import { Effect, Exit } from "effect";
 import type { ToolingStepConditionError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
 import type { ToolingVarLiteral } from "@lando/sdk/schema";
+import { isEventBoundaryError } from "./event-errors.ts";
 
 import type {
   ToolingStepIteration,
@@ -89,7 +90,11 @@ const executeResolved = <E, A>(
   const presented = run.pipe(
     Effect.flatMap((result) => (leaf.silent ? Effect.void : runners.present({ leaf, context, result }))),
   );
-  return leaf.ignoreError ? presented.pipe(Effect.catchAll(() => Effect.void)) : presented;
+  return leaf.ignoreError
+    ? presented.pipe(
+        Effect.catchAll((error) => (isEventBoundaryError(error) ? Effect.fail(error) : Effect.void)),
+      )
+    : presented;
 };
 
 export const runToolingStepProgramWith = <E, A>(

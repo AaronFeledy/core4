@@ -17,6 +17,8 @@ const validNames = [
   "post-start",
   "pre-stop",
   "post-stop",
+  "pre-restart",
+  "post-restart",
   "pre-rebuild",
   "post-rebuild",
   "pre-destroy",
@@ -107,11 +109,14 @@ describe("Landofile events", () => {
     }
   });
 
-  test("an unknown event name fails closed listing the ten valid app lifecycle names", async () => {
+  test("an unknown event name fails closed listing lifecycle and tooling names", async () => {
     // Given
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-events-validation-")));
     try {
-      await writeFile(join(dir, ".lando.yml"), "name: bad-events\nevents:\n  pre-serve:\n    - echo nope\n");
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: bad-events\ntooling:\n  prepare:\n    cmd: echo ready\nevents:\n  pre-serve:\n    - echo nope\n",
+      );
 
       // When
       const proc = Bun.spawn({
@@ -130,7 +135,12 @@ describe("Landofile events", () => {
       // Then
       expect(exitCode).not.toBe(0);
       expect(output).toContain("LandofileUnknownEventError");
-      for (const name of validNames) expect(output).toContain(name);
+      for (const name of [...validNames, "pre-prepare", "post-prepare"]) expect(output).toContain(name);
+      expect(output.match(/Valid events: ([^.]+)\./)?.[1]?.split(", ")).toEqual([
+        ...validNames,
+        "post-prepare",
+        "pre-prepare",
+      ]);
       expect(output).not.toContain('pre-serve"');
     } finally {
       await rm(dir, { recursive: true, force: true });

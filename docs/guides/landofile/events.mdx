@@ -27,7 +27,7 @@ tooling:
     cmd: echo "Cache ready"
 ```
 
-`pre-*` failures stop the lifecycle operation. A `post-*` failure becomes a warning because the operation has already completed. Event output uses the normal renderer and secret redaction.
+`pre-*` failures stop the lifecycle operation before it starts. A `post-*` failure is fatal too: the operation fails with a tagged `LandofileEventStepFailedError` that carries the redacted tail of the step's output. If the operation itself fails, its `post-*` steps never run. Event output uses the normal renderer and secret redaction.
 
 A bare or plain-string step defaults to provider exec, which needs a running service. `pre-start` fires before any service exists, so a `pre-start` step must use the object form with `service: ":host"`. Use `pre-stop` for work inside a running service. `post-stop` fires after that service is gone and needs `service: ":host"` for shell work.
 
@@ -61,4 +61,6 @@ A bare or plain-string step defaults to provider exec, which needs a running ser
 
 ## Available events
 
-You can attach tasks to `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, and `post-destroy`. Steps run in declaration order.
+You can attach tasks to `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, and `post-destroy`. Steps run in declaration order. `lando restart` fires `pre-restart`, then the stop and start event trees, then `post-restart`.
+
+Every non-internal tooling task also gets `pre-<task>` and `post-<task>`. See [Run steps before and after a tooling task](../events/task-events.mdx).

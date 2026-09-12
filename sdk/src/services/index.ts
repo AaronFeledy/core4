@@ -339,7 +339,6 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | LandofileValidationError
       | LandofileSandboxError
       | LandofileTimeoutError
-      | LandofileUnknownEventError
       | LandofileFormConflictError
       | LandofileIncludeError
       | LandofileLockMismatchError
@@ -582,6 +581,7 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       | PublicationUnsupportedError
       | CommandAliasConflictError
       | ConfigExpressionError
+      | LandofileUnknownEventError
     >;
   }
 >() {}

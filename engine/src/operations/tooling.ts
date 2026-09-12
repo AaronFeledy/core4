@@ -1,22 +1,16 @@
-// allow: SIZE_OK — tooling operation and exported invocation builder share a file under the current ownership boundary.
 import { join } from "node:path";
-import { parseToolingArgv, resolveServiceRef } from "@lando/landofile/tooling-input";
-import {
-  type NormalizedToolingStep,
-  normalizeToolingTask,
-  requiresProvider,
-} from "@lando/landofile/tooling-normalize";
-import { Effect, Either, Option } from "effect";
+import { requiresProvider } from "@lando/landofile/tooling-normalize";
+import { Effect } from "effect";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import {
   type ComposeKeyRejectedError,
   type LandofileLoadExpressionError,
   ToolingCompileError,
-  ToolingDisabledError,
+  type ToolingDisabledError,
   type ToolingInputError,
 } from "@lando/sdk/errors";
-import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
+import type { LandofileShape } from "@lando/sdk/schema";
 
 import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import {
@@ -25,10 +19,7 @@ import {
   EventService,
   LandofileService,
   RuntimeProviderRegistry,
-  ShellRunner,
-  ToolingEngine,
-  type ToolingEngineResult,
-  type ToolingInvocation,
+  type ToolingEngine,
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
@@ -38,16 +29,16 @@ import {
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
 import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
-import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
-import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 
 import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { StreamFrameSink } from "./stream-frame-sink.ts";
+import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
+import { compileToolingInvocations } from "./tooling-compile.ts";
 import { beginLiveToolingTree, emitToolingOutputProgress } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
@@ -82,89 +73,6 @@ type RunToolingServices =
   | PrivateFileAccessService
   | RuntimeProviderRegistry
   | ToolingEngine;
-
-const POSITIONAL_PARAMETER = /\$(?:@|[1-9]|\{(?:@|[1-9]))/u;
-
-const shellCommand = (command: string, args: ReadonlyArray<string>): ReadonlyArray<string> => [
-  "sh",
-  "-c",
-  POSITIONAL_PARAMETER.test(command) ? command : `${command} "$@"`,
-  "lando-tooling",
-  ...args,
-];
-
-export const validateToolingArguments = (
-  name: string,
-  task: { readonly acceptsArguments: boolean },
-  args: ReadonlyArray<string>,
-): ToolingCompileError | undefined =>
-  !task.acceptsArguments && args.length > 0
-    ? new ToolingCompileError({
-        message: `Tooling command ${name} does not accept positional arguments.`,
-        tool: name,
-        remediation: `Run \`lando ${name}\` without arguments.`,
-      })
-    : undefined;
-
-type InvocationOptions = Pick<RunToolingOptions, "args" | "user" | "cwd" | "env"> & {
-  readonly agentEnvAllowlist?: ReadonlyArray<string>;
-};
-
-const stepInvocation = (
-  tool: string,
-  step: NormalizedToolingStep & { readonly resolvedService?: string },
-  options: InvocationOptions,
-): ToolingInvocation => {
-  const args = options.args ?? [];
-  const cwd = step.dir ?? options.cwd;
-  const user = options.user ?? step.user;
-  return {
-    tool,
-    ...(step.resolvedService === undefined ? {} : { service: step.resolvedService }),
-    ...(cwd === undefined ? {} : { cwd }),
-    ...(user === undefined ? {} : { user }),
-    ...(Object.keys(step.env).length === 0 && options.env === undefined
-      ? {}
-      : { env: { ...step.env, ...options.env } }),
-    ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
-    commands: [step.argv === undefined ? shellCommand(step.cmd, args) : [...step.argv, ...args]],
-    hostSteps: [
-      step.argv === undefined
-        ? { kind: "shell", source: step.cmd, argv: args }
-        : { kind: "argv", argv: [...step.argv, ...args] },
-    ],
-  };
-};
-
-export const buildToolingInvocation = (
-  name: string,
-  task: ToolingTaskShape,
-  options: InvocationOptions = {},
-): ToolingInvocation => {
-  const normalized = Either.getOrThrowWith(normalizeToolingTask(name, task), (error) => error);
-  const argv = normalized.hasInput || normalized.acceptsArguments ? (options.args ?? []) : [];
-  const values = Either.getOrThrowWith(parseToolingArgv(normalized, argv), (error) => error);
-  const invocations = normalized.steps.map((step, index) => {
-    const service = Either.getOrThrowWith(
-      resolveServiceRef(step.service, values, normalized),
-      (error) => error,
-    );
-    return stepInvocation(
-      name,
-      { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
-      {
-        ...options,
-        args: index === normalized.steps.length - 1 ? values.argv : [],
-      },
-    );
-  });
-  return {
-    tool: name,
-    ...invocations[0],
-    commands: invocations.flatMap((invocation) => invocation.commands),
-    hostSteps: invocations.flatMap((invocation) => invocation.hostSteps ?? []),
-  };
-};
 
 const withProcessCwd = <A, E, R>(
   cwd: string,
@@ -268,49 +176,19 @@ export const runTooling = (
       path: join(appRoot ?? target?.root ?? String(plan.root), LANDOFILE_NAME),
       task: toolingLookupKey,
     };
-    const normalized = yield* normalizeToolingTask(toolingLookupKey, task, source);
-    if (normalized.disabled) {
-      return yield* Effect.fail(
-        new ToolingDisabledError({
-          message: `Tooling command ${options.name} is disabled.`,
-          tool: toolingLookupKey,
-          source,
-          remediation: `Enable tooling task ${toolingLookupKey} in ${source.path} before running it.`,
-        }),
-      );
-    }
-    if (normalized.steps.length === 0) {
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          message: `Tooling command ${options.name} does not define cmd or cmds.`,
-          tool: options.name,
-        }),
-      );
-    }
-
-    if (!normalized.hasInput) {
-      const argumentFailure = validateToolingArguments(options.name, normalized, options.args ?? []);
-      if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
-    }
-    const values = yield* parseToolingArgv(normalized, options.args ?? []);
     const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-    const invocations = yield* Effect.forEach(normalized.steps, (step, index) =>
-      Effect.gen(function* () {
-        const service = yield* resolveServiceRef(step.service, values, normalized);
-        return stepInvocation(
-          options.name,
-          { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
-          {
-            ...options,
-            args: index === normalized.steps.length - 1 ? values.argv : [],
-            agentEnvAllowlist,
-          },
-        );
-      }),
-    );
-    const provider = requiresProvider(normalized)
-      ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(plan))
-      : runtimeProviderService;
+    const compiled = yield* compileToolingInvocations({
+      name: options.name,
+      lookupKey: toolingLookupKey,
+      task,
+      source,
+      ...(options.args === undefined ? {} : { args: options.args }),
+      ...(options.user === undefined ? {} : { user: options.user }),
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      ...(options.env === undefined ? {} : { env: options.env }),
+      agentEnvAllowlist,
+    });
+    const invocations = compiled.invocations;
     const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
     const redactionTokens = [
       ...new Set([
@@ -330,38 +208,13 @@ export const runTooling = (
 
     const startedAt = Date.now();
     const exit = yield* Effect.either(
-      Effect.gen(function* () {
-        let combined: ToolingEngineResult = {
-          tool: options.name,
-          service: "",
-          exitCode: 0,
-          stdout: "",
-          stderr: "",
-        };
-        for (const invocation of invocations) {
-          const result = yield* invocation.service === ":host"
-            ? Effect.gen(function* () {
-                const shell = yield* Effect.serviceOption(ShellRunner);
-                if (Option.isNone(shell))
-                  return yield* Effect.fail(
-                    new ToolingCompileError({
-                      message: `ShellRunner is unavailable for tooling command ${options.name}.`,
-                      tool: options.name,
-                    }),
-                  );
-                return yield* runHostToolingWith(shell.value, invocation, plan, provider);
-              })
-            : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, provider));
-          combined = {
-            ...result,
-            stdout: combined.stdout + result.stdout,
-            stderr: combined.stderr + result.stderr,
-          };
-          // A non-zero command exit is the task's result, not a Lando failure: keep the accumulated
-          // streams and stop before the remaining steps run.
-          if (result.exitCode !== 0) break;
-        }
-        return combined;
+      runBracketedInvocations({
+        plan,
+        tool: options.name,
+        lookupKey: toolingLookupKey,
+        invocations,
+        requiresProvider: requiresProvider(compiled.normalized),
+        redactionTokens,
       }),
     );
     const durationMs = Date.now() - startedAt;

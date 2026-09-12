@@ -26,7 +26,7 @@ import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -156,7 +156,7 @@ export const destroyAppForTarget = (
       timestamp: now(),
     });
     yield* events.publish(postDestroy);
-    yield* runPostAppEvent(plan, "post-destroy", postDestroy);
+    yield* runAppEvent(plan, "post-destroy", postDestroy);
 
     return {
       app: plan.name,

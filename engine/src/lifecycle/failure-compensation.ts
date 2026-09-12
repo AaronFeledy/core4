@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
 export const runAllAndMergeFailures = <E, R>(
   effects: ReadonlyArray<Effect.Effect<void, E, R>>,
@@ -14,15 +14,27 @@ export const runAllAndMergeFailures = <E, R>(
     yield* Effect.failCause(causes.slice(1).reduce(Cause.parallel, first));
   });
 
+export const compensateFailureUnless = <A, E, R, CleanupError, CleanupServices>(
+  effect: Effect.Effect<A, E, R>,
+  cleanup: Effect.Effect<void, CleanupError, CleanupServices>,
+  skip: (error: E) => boolean,
+): Effect.Effect<A, E | CleanupError, R | CleanupServices> =>
+  Effect.matchCauseEffect(effect, {
+    onSuccess: Effect.succeed,
+    onFailure: (failureCause) => {
+      const failed = Cause.failureOption(failureCause);
+      if (Option.isSome(failed) && skip(failed.value)) {
+        return Effect.failCause(failureCause);
+      }
+      return Effect.matchCauseEffect(cleanup, {
+        onSuccess: () => Effect.failCause(failureCause),
+        onFailure: (cleanupCause) => Effect.failCause(Cause.parallel(failureCause, cleanupCause)),
+      });
+    },
+  });
+
 export const compensateFailure = <A, E, R, CleanupError, CleanupServices>(
   effect: Effect.Effect<A, E, R>,
   cleanup: Effect.Effect<void, CleanupError, CleanupServices>,
 ): Effect.Effect<A, E | CleanupError, R | CleanupServices> =>
-  Effect.matchCauseEffect(effect, {
-    onSuccess: Effect.succeed,
-    onFailure: (failureCause) =>
-      Effect.matchCauseEffect(cleanup, {
-        onSuccess: () => Effect.failCause(failureCause),
-        onFailure: (cleanupCause) => Effect.failCause(Cause.parallel(failureCause, cleanupCause)),
-      }),
-  });
+  compensateFailureUnless(effect, cleanup, () => false);

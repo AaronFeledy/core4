@@ -20,6 +20,9 @@ export type PublicSchemaContractFixture = {
 };
 
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
+  LandofileShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PreRestartEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PostRestartEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   AuthoringExpression: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   AuthoringExpressionExpectedType: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileAuthoringShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -139,7 +142,6 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   IsolateMode: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProviderCapabilities: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   CommandAliasesShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
-  LandofileShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfigInput: "sdk/test/schema/service-config-compose-spellings.test.ts",
   LogSource: "sdk/test/schema/log-source.test.ts",

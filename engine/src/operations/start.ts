@@ -37,7 +37,7 @@ import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
@@ -145,7 +145,7 @@ export const startAppForTarget = (
       yield* withGlobalStartProgress({ events, plan, serviceIds: neededGlobalServices, work: ensureGlobals });
     }
 
-    return yield* withStartedHostProxy(plan, ref, provider.capabilities, {
+    const startedApp = yield* withStartedHostProxy(plan, ref, provider.capabilities, {
       platform: provider.platform,
       ...(managed === undefined ? {} : { managed }),
       use: (applyPlan) =>
@@ -231,15 +231,6 @@ export const startAppForTarget = (
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
-          const postStart = PostStartEvent.make({
-            _tag: "post-start",
-            scope: "app",
-            app: ref,
-            plan,
-            timestamp: now(),
-          });
-          yield* events.publish(postStart);
-          yield* runPostAppEvent(plan, "post-start", postStart);
 
           return { app: plan.name, servicesStarted };
         }),
@@ -254,6 +245,16 @@ export const startAppForTarget = (
         ),
       ),
     );
+    const postStart = PostStartEvent.make({
+      _tag: "post-start",
+      scope: "app",
+      app: ref,
+      plan,
+      timestamp: now(),
+    });
+    yield* events.publish(postStart);
+    yield* runAppEvent(plan, "post-start", postStart);
+    return startedApp;
   });
 
 export const startApp = (
