@@ -970,5 +970,71 @@
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
     "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.additionalProperties",
+    "justification": "ServicePlan additively gains optional service-type provenance; every previously accepted service remains valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.services.anyOf",
+    "justification": "ServiceConfig additively gains optional packageRoot while every previously accepted service remains valid."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted dataset context remains valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.services.anyOf",
+    "justification": "ServiceConfig additively gains optional packageRoot while every previously accepted authoring document remains valid."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted tunnel request remains valid."
   }
 ]
