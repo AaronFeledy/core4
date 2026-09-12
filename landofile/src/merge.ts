@@ -61,8 +61,14 @@ const mergeArrays = (
         continue;
       }
       const existing = merged[existingIndex];
-      if (existing !== undefined)
-        merged[existingIndex] = mergeValues(existing, item) as Record<string, unknown>;
+      if (existing !== undefined) {
+        const existingType = existing.type;
+        const overlayType = item.type;
+        merged[existingIndex] =
+          typeof existingType === "string" && typeof overlayType === "string" && existingType !== overlayType
+            ? { ...item }
+            : (mergeValues(existing, item) as Record<string, unknown>);
+      }
     }
     return merged;
   }

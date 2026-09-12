@@ -101,6 +101,17 @@ describe("mergeLandofiles", () => {
     });
   });
 
+  test("replaces a named filter when overlay changes its type", () => {
+    const result = mergeLandofiles<Record<string, unknown>>([
+      { filters: [{ name: "transform", type: "stripPrefix", prefix: "/api" }] },
+      { filters: [{ name: "transform", type: "requestHeader", header: "X-Lando", value: "v4" }] },
+    ]);
+
+    expect(result).toEqual({
+      filters: [{ name: "transform", type: "requestHeader", header: "X-Lando", value: "v4" }],
+    });
+  });
+
   test("does not collapse mount entries by type", () => {
     const result = mergeLandofiles<Record<string, unknown>>([
       {
