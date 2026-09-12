@@ -250,7 +250,12 @@ const runBoundedDecompressProcess = async (
   });
   const stdout = collectBoundedOutput(proc.stdout, input.maxDecompressedBytes, true);
   const stderr = collectBoundedOutput(proc.stderr, MAX_DECOMPRESSION_STDERR_BYTES, false);
-  const inputWrite = writeProcessInput(proc.stdin, input.stdin);
+  const inputWrite = writeProcessInput(proc.stdin, input.stdin).catch(async (cause: unknown) => {
+    // An intentional early failure can close stdin before the buffered write finishes.
+    if (cause instanceof Error && "code" in cause && cause.code === "EPIPE" && (await proc.exited) !== 0)
+      return;
+    throw cause;
+  });
   void inputWrite.catch(() => undefined);
   const exit = proc.exited;
   let timer: ReturnType<typeof setTimeout> | undefined;
