@@ -39,7 +39,7 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("compileEffectiveTooling", () => {
-  test("returns normalized effective tasks when tooling is attached to a plan", () => {
+  test("returns attached effective tasks when tooling is attached to a plan", () => {
     // Given
     const plan = eventPlan();
     const tooling = compileEffectiveTooling({
@@ -50,39 +50,9 @@ describe("compileEffectiveTooling", () => {
     });
     toolingForPlan.attachEffectiveTooling(plan, tooling);
     // When
-    const normalized = toolingForPlan.normalizedToolingForPlan(plan);
+    const attached = toolingForPlan.effectiveToolingForPlan(plan);
     // Then
-    expect(normalized?.get("inspect")).toMatchObject({
-      name: "inspect",
-      service: { kind: "service", name: "web" },
-      env: { COUNT: "2" },
-      hasInput: true,
-      disabled: false,
-      flags: [{ name: "loud", boolean: true, required: false }],
-    });
-    expect(toolingForPlan.normalizedToolingForPlan(plan)).toBe(normalized);
-    expect(toolingForPlan.effectiveToolingForPlan(plan)).toEqual(tooling);
-  });
-
-  test("returns undefined when no tooling was attached to this plan", () => {
-    // Given
-    const plan = eventPlan();
-    toolingForPlan.attachEffectiveTooling({ ...plan }, { inspect: { cmd: "inspect" } });
-    // When
-    const normalized = toolingForPlan.normalizedToolingForPlan(plan);
-    // Then
-    expect(normalized).toBeUndefined();
-  });
-
-  test("invalidates normalized tasks when effective tooling is reattached", () => {
-    // Given
-    const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), { first: { cmd: "first" } });
-    toolingForPlan.normalizedToolingForPlan(plan);
-    toolingForPlan.attachEffectiveTooling(plan, { second: { cmd: "second" } });
-    // When
-    const normalized = toolingForPlan.normalizedToolingForPlan(plan);
-    // Then
-    expect([...(normalized?.keys() ?? [])]).toEqual(["second"]);
+    expect(attached).toEqual(tooling);
   });
 
   test("authored tasks win wholesale over service-type tasks", () => {
