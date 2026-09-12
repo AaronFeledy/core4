@@ -1,0 +1,30 @@
+# IR gaps progress
+
+## Codebase Patterns
+- Tooling metadata normalizes ONCE via `normalizeToolingTask` in `@lando/landofile/tooling-normalize`; every consumer (command cache, CLI help, machine index, MCP, execution) reads that IR instead of re-deriving from the authored `ToolingTaskShape`. Argv validation lives beside it in `@lando/landofile/tooling-input` so CLI and MCP share one validation path and emit identical error tags.
+- Adding a publicly registered schema needs THREE edits, not one: the schema itself, `JSON_SCHEMA_REGISTRY` in `sdk/src/schema/json-schema.ts`, and a fixture row in `sdk/test/schema/public-schema-contracts.ts`. Missing the third fails `codegen:schema-snapshot` with "Public schema contract fixture list does not match JSON_SCHEMA_NAMES".
+- Widening a Landofile value type ripples into expression resolution: `engine/src/tooling/step-runner.ts` walks the same shape and must handle every new union member, and `Effect.forEach` over a heterogeneous union needs an explicit callback return annotation under `exactOptionalPropertyTypes`.
+- `check:guide-coverage` only scans PRDs listed in `docs/guides/prd-sources.json`. A PRD outside that list needs no `docs/guides/INDEX.md` row, so do not add one speculatively.
+- Guide fixtures resolve from `docs/guides/<frontmatter-id>/fixtures/<name>/`, never from the MDX's own subdirectory.
+
+## 2026-09-11 - US-613 (in progress, not complete)
+
+Landed the normalization spine and most of its consumers.
+
+- Landofile tooling authoring now accepts task `user`/`disabled`, flag `alias`/`choices`/`boolean`/`default`/`required`, arg `choices`/`order`, and `cmds` entries that are either a string or an object step carrying `cmd` plus per-step `service`/`dir`/`user`/`env`. The retired flag `type` spelling was replaced outright rather than kept alongside `boolean`.
+- A pure normalizer produces one `NormalizedToolingTask` IR (ordered steps, resolved service references, sorted positional args) and a companion validator parses argv against it. Declaring input is opt-in: a task with no `flags`/`args` keeps raw argv passthrough, which is what preserves every pre-existing tooling behavior.
+- Execution resolves the task, rejects disabled tasks, validates argv, and resolves `:<flag>` service references all BEFORE provider selection. A task whose every step is `:host` never initializes a provider at all; mixed tasks select once and run steps in authored order with step-level `user`/`dir` overriding task-level values independently.
+- The app command index carries normalized flag/arg metadata (schema version 3; version-2 blobs read as a cache miss, never an exception), CLI help renders FLAGS/ARGUMENTS sections from it, and MCP projects the same metadata into tool input schemas, serializing back to canonical argv so both surfaces run one validator.
+- New tagged errors `ToolingInputError` and `ToolingDisabledError` carry source path, key path, and remediation.
+
+Verification: typecheck, lint, and check:boundaries passed; 359 targeted tests passed across sdk/landofile/engine/core tooling suites; codegen:schema-snapshot regenerated cleanly.
+
+**Two defects found in manual CLI QA remain open, so the story is NOT marked passing:**
+1. `lando <task> --help` on a task that declares flags is consumed by the input parser and fails with `ToolingInputError` instead of printing help. Help must be intercepted before tooling input parsing.
+2. A disabled task on a FRESH cache reports the cache-miss `ToolingCompileError` rather than `ToolingDisabledError`, because disabled tasks are excluded from the command index entirely so the router never matches them. Only the stale-cache path reaches the authoritative check. Keep disabled tasks in the index marked hidden plus disabled, and reject them by tag at the router.
+
+- **Learnings for future iterations:**
+  - Manual CLI QA caught both defects; the 359 green tests did not. Always run the real binary from a fixture app directory (`bun core/bin/lando.ts <task>` with isolated `LANDO_USER_*` roots), not just the suites.
+  - Excluding a task from the command index and relying on a downstream authoritative check gives the wrong error tag on the fresh-cache path. Model "known but refused" distinctly from "unknown".
+  - `bun core/src/cli/index.ts` exits 0 silently; only `core/bin/lando.ts` is a faithful manual-verification entry.
+---
