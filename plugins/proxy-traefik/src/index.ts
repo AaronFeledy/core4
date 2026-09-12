@@ -13,6 +13,7 @@ import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 
 import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
+import diagnosticsGlobalService from "./global-services/diagnostics.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 import { preferredHostPortsCheck } from "./preferred-host-ports.ts";
@@ -30,6 +31,7 @@ export const routerServices = new Map([["traefik", proxy]]);
 
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
   ["traefik", traefikGlobalService],
+  ["traefik-diagnostics", diagnosticsGlobalService],
 ]);
 
 export const manifest = Schema.decodeSync(PluginManifest)({
@@ -54,6 +56,13 @@ export const manifest = Schema.decodeSync(PluginManifest)({
         enabledByDefault: true,
         requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
         summary: "Global Traefik router",
+      },
+      {
+        id: "traefik-diagnostics",
+        module: "./src/global-services/diagnostics.ts",
+        enabledByDefault: true,
+        requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
+        summary: "Unmatched route diagnostics",
       },
     ],
   },

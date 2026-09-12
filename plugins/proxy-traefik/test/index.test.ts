@@ -14,17 +14,24 @@ describe("@lando/proxy-traefik plugin exports", () => {
     expect(Layer.isLayer(proxy)).toBe(true);
   });
 
-  test("manifest declares the traefik globalServices contribution", () => {
+  test("manifest declares the Traefik and diagnostic globalServices contributions", () => {
     expect(String(manifest.name)).toBe("@lando/proxy-traefik");
     expect(manifest.api).toBe(4);
     const contributions = manifest.contributes?.globalServices ?? [];
-    expect(contributions).toHaveLength(1);
+    expect(contributions).toHaveLength(2);
     const traefik = contributions[0];
     expect(traefik?.id).toBe("traefik");
     expect(traefik?.module).toBe("./src/global-services/traefik.ts");
     expect(traefik?.enabledByDefault).toBe(true);
     expect(traefik?.requires?.providerCapabilities).toEqual(["sharedCrossAppNetwork"]);
     expect(traefik?.summary).toBe("Global Traefik router");
+    expect(contributions[1]).toEqual({
+      id: "traefik-diagnostics",
+      module: "./src/global-services/diagnostics.ts",
+      enabledByDefault: true,
+      requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
+      summary: "Unmatched route diagnostics",
+    });
   });
 
   test("manifest declares the traefik routerServices contribution", () => {
@@ -38,7 +45,7 @@ describe("@lando/proxy-traefik plugin exports", () => {
     expect(routerServices.get("traefik")).toBe(proxy);
   });
 
-  test("globalServices map yields the traefik ServiceConfig effect", async () => {
+  test("globalServices map yields the Traefik and diagnostic ServiceConfig effects", async () => {
     expect(globalServices).toBeInstanceOf(Map);
     const traefikEffect = globalServices.get("traefik");
     expect(traefikEffect).toBeDefined();
@@ -47,5 +54,26 @@ describe("@lando/proxy-traefik plugin exports", () => {
     const config = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(traefikEffect));
     expect(config.type).toBe("compose");
     expect(config.image).toBe("traefik:v3.3");
+
+    const diagnosticsEffect = globalServices.get("traefik-diagnostics");
+    expect(diagnosticsEffect).toBeDefined();
+    if (diagnosticsEffect === undefined) throw new Error("diagnostics effect missing");
+    const diagnostics = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(diagnosticsEffect));
+    expect(diagnostics).toMatchObject({
+      type: "compose",
+      image: "nginx:1.26-alpine",
+      appMount: false,
+      command: ["nginx", "-c", "/etc/lando/diagnostics/nginx.conf", "-g", "daemon off;"],
+      hostnames: ["traefik-diagnostics.global.internal"],
+      endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }],
+    });
+    expect(diagnostics.mounts).toEqual([
+      {
+        type: "bind",
+        source: "./proxy-traefik/diagnostic",
+        target: "/etc/lando/diagnostics",
+        readOnly: true,
+      },
+    ]);
   });
 });
