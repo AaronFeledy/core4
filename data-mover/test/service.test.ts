@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer, Queue, Schema, type Scope, Stream } from "effect";
+import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, type Scope, Stream } from "effect";
 
 import { providerImages } from "@lando/data-mover/provider-images";
 import {
@@ -659,6 +659,93 @@ describe("DataMoverLive", () => {
       expect(chunkSizes.length).toBeGreaterThan(1);
       expect(Math.max(...chunkSizes)).toBeLessThanOrEqual(1024 * 1024);
       expect(chunkSizes.reduce((total, size) => total + size, 0)).toBe(payload.byteLength);
+    });
+  });
+
+  test("streams large host files to volume helpers in bounded chunks", async () => {
+    await withTempDir(async (dir) => {
+      // Given: a host payload larger than the runtime file-stream chunk size.
+      const source = join(dir, "large-volume.sql");
+      const payload = new Uint8Array(5 * 1024 * 1024);
+      payload.fill(98);
+      await writeFile(source, payload);
+      const chunkSizes: number[] = [];
+
+      // When: the payload is imported through the generic volume helper.
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "hostPath", path: absolute(source) },
+              to: { _tag: "volume", app, store: "bounded-volume" },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              run: (command) =>
+                Effect.promise(async () => {
+                  for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      // Then: backpressure reaches the helper as bounded file-stream chunks.
+      expect(chunkSizes.length).toBeGreaterThan(1);
+      expect(Math.max(...chunkSizes)).toBeLessThanOrEqual(1024 * 1024);
+      expect(chunkSizes.reduce((total, size) => total + size, 0)).toBe(payload.byteLength);
+    });
+  });
+
+  test("removes a staged volume payload when the helper is interrupted", async () => {
+    await withTempDir(async (dir) => {
+      // Given: a verified payload staged in the configured scratch directory.
+      const source = join(dir, "interrupt-volume.sql");
+      const scratchDir = join(dir, "scratch");
+      await writeFile(source, "interrupt-volume-payload");
+      const helperStarted = await Effect.runPromise(Deferred.make<void>());
+      const paths = { ...makeLandoPaths(), scratchDir };
+      const transfer = Effect.scoped(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "volume", app, store: "interrupt-volume" },
+            overwrite: true,
+          });
+        }),
+      ).pipe(
+        Effect.provide(DataMoverLive),
+        Effect.provide(
+          Layer.mergeAll(
+            StateStoreLive,
+            Layer.succeed(PathsService, paths),
+            Layer.succeed(RuntimeProvider, {
+              ...TestRuntimeProvider,
+              pullArtifact: verifyingPullArtifact,
+              run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+            }),
+            captureEvents().layer,
+            redactionLayer,
+          ),
+        ),
+      );
+
+      // When: the transfer is interrupted after the provider helper starts.
+      const fiber = Effect.runFork(transfer);
+      await Effect.runPromise(Deferred.await(helperStarted));
+      expect((await readdir(scratchDir)).some((name) => name.startsWith(".lando-stage-volume-"))).toBe(true);
+      await Effect.runPromise(Fiber.interrupt(fiber));
+
+      // Then: scoped cleanup removes both staged and in-progress files.
+      expect((await readdir(scratchDir)).filter((name) => name.includes("lando-stage-volume"))).toEqual([]);
     });
   });
 

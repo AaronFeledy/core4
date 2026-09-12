@@ -51,6 +51,7 @@ import {
 } from "@lando/sdk/verified-stream";
 import { execStdoutStream } from "./exec-stream.ts";
 import { providerImages } from "./generated/provider-images.ts";
+import { stageVerifiedStream } from "./staged-stream.ts";
 
 interface DataMoverEvents {
   readonly redactText: (text: string) => string;
@@ -918,12 +919,6 @@ const collectByteStream = <E, R>(stream: Stream.Stream<Uint8Array, E, R>): Effec
     }),
   );
 
-const asyncIterableFromBytes = (payload: Uint8Array): AsyncIterable<Uint8Array> => ({
-  async *[Symbol.asyncIterator]() {
-    yield payload;
-  },
-});
-
 const streamFromEndpoint = (
   provider: Context.Tag.Service<typeof RuntimeProvider>,
   endpoint: DataEndpoint,
@@ -1043,6 +1038,7 @@ const writeStreamToEndpoint = (
     ArchiveFormatError | DataTransferError | DataEndpointUnsupportedError,
     Scope.Scope
   >,
+  scratchDir: string,
 ): Effect.Effect<DataTransferResult, DataMoverTransferError, Scope.Scope> => {
   const target = spec.to;
   switch (target._tag) {
@@ -1127,18 +1123,23 @@ const writeStreamToEndpoint = (
             );
           }
         }
-        const payload = yield* collectByteStream(body);
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        const staged = yield* stageVerifiedStream({
+          body,
+          scratchDir,
+          prefix: "volume",
+          ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
         const helperImage = yield* resolveDataHelperImage(provider);
         const result = yield* provider
           .run({
             image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ store: target.store, target: helperTarget, readOnly: false }],
-            stdinStream: asyncIterableFromBytes(payload),
+            stdinStream: Bun.file(staged.path).stream(),
             remove: true,
           })
           .pipe(Effect.mapError((cause) => providerFailure("run", cause)));
@@ -1151,7 +1152,11 @@ const writeStreamToEndpoint = (
             }),
           );
         }
-        return { accelerated: false, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
+        return {
+          accelerated: false,
+          sizeBytes: staged.verified.sizeBytes,
+          digest: staged.verified.sha256,
+        };
       });
     case "artifact":
       if (!provider.capabilities.artifactImport)
@@ -1169,18 +1174,17 @@ const writeStreamToEndpoint = (
       });
     case "serviceCmd":
       return Effect.gen(function* () {
-        const stagedPath = `${process.cwd()}/.tmp-data-mover-command-${randomUUID()}`;
-        yield* Effect.addFinalizer(() => Effect.promise(() => unlink(stagedPath).catch(() => undefined)));
-        const verified = yield* persistVerifiedStream({
+        const staged = yield* stageVerifiedStream({
           body,
-          destinationPath: stagedPath,
-          expectedSha256: spec.expectedDigest,
+          scratchDir,
+          prefix: "command",
+          ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
         }).pipe(
           Effect.mapError((error) =>
             error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
           ),
         );
-        const stdinStream = Bun.file(stagedPath).stream();
+        const stdinStream = Bun.file(staged.path).stream();
         const result = yield* provider
           .exec(
             { app: target.app, service: target.service },
@@ -1193,7 +1197,11 @@ const writeStreamToEndpoint = (
         if (result.exitCode !== 0) {
           return yield* Effect.fail(serviceCommandFailure("exec", result));
         }
-        return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
+        return {
+          accelerated: true,
+          sizeBytes: staged.verified.sizeBytes,
+          digest: staged.verified.sha256,
+        };
       });
     case "stream":
       return failUnsupported(
@@ -1255,7 +1263,7 @@ export const makeDataMoverService = (
           (spec.from._tag === "servicePath" &&
             (spec.to._tag === "hostPath" || spec.to._tag === "hostArchive")));
       const body = streamFromEndpoint(provider, spec.from);
-      const result = yield* writeStreamToEndpoint(provider, spec, body);
+      const result = yield* writeStreamToEndpoint(provider, spec, body, persistence.paths.scratchDir);
       const adjusted = nativeServiceCopy ? { ...result, accelerated: true } : result;
       const progress: DataTransferProgress = {
         phase: "completed",
@@ -1363,6 +1371,7 @@ export const makeDataMoverService = (
                 overwrite: true,
               },
               streamFromEndpoint(provider, { _tag: "volume", app: store.app, store: store.store }),
+              persistence.paths.scratchDir,
             )
           : undefined;
       const nativeDigest = native === undefined ? undefined : hashText(JSON.stringify(native));
@@ -1462,6 +1471,7 @@ export const makeDataMoverService = (
                   path: absolutePath(snapshotArchivePath(persistence, info)),
                   format: info.format ?? "tar",
                 }),
+                persistence.paths.scratchDir,
               ).pipe(Effect.asVoid)
             : provider
                 .restoreVolume({ snapshot: info.native, target: store, overwrite: true })
