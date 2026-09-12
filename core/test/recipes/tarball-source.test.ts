@@ -170,9 +170,18 @@ describe("resolveTarballRecipeSource", () => {
       // Then: extraction fails, the sentinel is unchanged, and no cache or staging tree is published.
       expect(caught).toBeInstanceOf(RecipeSourceError);
       expect(await readFile(marker, "utf8")).toBe("unchanged");
-      expect(await Bun.file(join(dir, "escape")).exists()).toBe(false);
-      expect(await Bun.file(join(dir, "gnu-longname-escape")).exists()).toBe(false);
-      expect(await readdir(join(userDataRoot, "recipe-cache", "tarball")).catch(() => [])).toEqual([]);
+      const cacheRoot = join(userDataRoot, "recipe-cache", "tarball");
+      expect(await Bun.file(join(cacheRoot, "escape")).exists()).toBe(false);
+      expect(await Bun.file(join(cacheRoot, "gnu-longname-escape")).exists()).toBe(false);
+      expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+        [
+          "data",
+          join("data", "recipe-cache"),
+          join("data", "recipe-cache", "tarball"),
+          "sentinel",
+          join("sentinel", "marker"),
+        ].sort(),
+      );
     });
   });
 
@@ -204,6 +213,19 @@ describe("resolveTarballRecipeSource", () => {
       expect(await Bun.file(join(result.root ?? "", "templates", "hard")).exists()).toBe(false);
       expect(await Bun.file(join(result.root ?? "", "templates", "fifo")).exists()).toBe(false);
       expect(await Bun.file(join(result.root ?? "", "templates", "device")).exists()).toBe(false);
+      const published = join("data", "recipe-cache", "tarball", sha256(bytes));
+      expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+        [
+          "data",
+          join("data", "recipe-cache"),
+          join("data", "recipe-cache", "tarball"),
+          published,
+          join(published, "recipe.yml"),
+          join(published, "templates"),
+          join(published, "templates", "payload"),
+          join(published, "templates", "sibling"),
+        ].sort(),
+      );
     });
   });
 
@@ -229,6 +251,21 @@ describe("resolveTarballRecipeSource", () => {
       expect(await readFile(join(root, "absolute.txt"), "utf8")).toBe("absolute");
       expect(await readFile(join(root, "C:", "drive.txt"), "utf8")).toBe("drive");
       expect(await readFile(join(root, "server", "share.txt"), "utf8")).toBe("unc");
+      const published = join("data", "recipe-cache", "tarball", sha256(bytes));
+      expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+        [
+          "data",
+          join("data", "recipe-cache"),
+          join("data", "recipe-cache", "tarball"),
+          published,
+          join(published, "recipe.yml"),
+          join(published, "absolute.txt"),
+          join(published, "C:"),
+          join(published, "C:", "drive.txt"),
+          join(published, "server"),
+          join(published, "server", "share.txt"),
+        ].sort(),
+      );
     });
   });
 
@@ -250,6 +287,18 @@ describe("resolveTarballRecipeSource", () => {
 
       // Then: the normalized destination contains the final regular member bytes.
       expect(await readFile(join(result.root ?? "", "templates", "payload"), "utf8")).toBe("second");
+      const published = join("data", "recipe-cache", "tarball", sha256(bytes));
+      expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+        [
+          "data",
+          join("data", "recipe-cache"),
+          join("data", "recipe-cache", "tarball"),
+          published,
+          join(published, "recipe.yml"),
+          join(published, "templates"),
+          join(published, "templates", "payload"),
+        ].sort(),
+      );
     });
   });
 
