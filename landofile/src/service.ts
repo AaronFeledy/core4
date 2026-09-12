@@ -11,7 +11,6 @@ import {
   LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   type ManagedFileTransactionError,
   NotImplementedError,
@@ -31,7 +30,6 @@ import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { decodeOrFail } from "./decode.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
-import { VALID_APP_LIFECYCLE_EVENTS, unknownAppLifecycleEvent } from "./events.ts";
 import {
   getLandofileIncludeSources,
   getLocalIncludePaths,
@@ -80,23 +78,6 @@ const SERVICE_CONFIG_KEYS = new Set([
   "env_file",
   "depends_on",
 ]);
-
-const rejectUnknownEventNames = (
-  filePath: string,
-  parsed: unknown,
-): Effect.Effect<unknown, LandofileUnknownEventError> => {
-  const unknown = unknownAppLifecycleEvent(parsed);
-  if (unknown === undefined) return Effect.succeed(parsed);
-  return Effect.fail(
-    new LandofileUnknownEventError({
-      message: `Unknown app lifecycle event ${unknown}. Valid events: ${VALID_APP_LIFECYCLE_EVENTS.join(", ")}.`,
-      event: unknown,
-      validEvents: [...VALID_APP_LIFECYCLE_EVENTS],
-      file: filePath,
-      remediation: `Use one of: ${VALID_APP_LIFECYCLE_EVENTS.join(", ")}.`,
-    }),
-  );
-};
 
 const CONFIG_EXPRESSION_PATTERN = /\$\{[A-Za-z_]/;
 const TEMPLATE_EXPRESSION_PATTERN = /\{\{/;
@@ -294,7 +275,6 @@ type LandofileLoadError =
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
-  | LandofileUnknownEventError
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileFormConflictError
@@ -430,10 +410,7 @@ const readFileContent = (filePath: string): Effect.Effect<string, LandofileParse
 const loadYamlLandofile = (
   filePath: string,
   inputs: LandofileRuntimeInputs | undefined,
-): Effect.Effect<
-  unknown,
-  ComposeKeyRejectedError | LandofileParseError | LandofileUnknownEventError | NotImplementedError
-> =>
+): Effect.Effect<unknown, ComposeKeyRejectedError | LandofileParseError | NotImplementedError> =>
   readFileContent(filePath).pipe(
     Effect.flatMap((content) =>
       renderLandofileTemplate({
@@ -446,7 +423,6 @@ const loadYamlLandofile = (
     Effect.flatMap((content) => scanContentForUnsupportedExpressions(filePath, content)),
     Effect.flatMap((content) => rejectComposeTags(filePath, content)),
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
-    Effect.flatMap((parsed) => rejectUnknownEventNames(filePath, parsed)),
     Effect.flatMap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.flatMap((parsed) => rejectComposeKeys(filePath, parsed)),
   );
@@ -459,12 +435,10 @@ const loadTsLandofile = (
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileUnknownEventError
   | NotImplementedError
 > =>
   readFileContent(filePath).pipe(
     Effect.flatMap((content) => loadLandofileTs({ filePath, appRoot: dirname(filePath), content })),
-    Effect.flatMap((parsed) => rejectUnknownEventNames(filePath, parsed)),
     Effect.flatMap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
     Effect.flatMap((parsed) => rejectComposeKeys(filePath, parsed)),
   );
