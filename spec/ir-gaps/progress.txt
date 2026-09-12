@@ -112,3 +112,37 @@ Remaining for the next pass: `pre-<task>`/`post-<task>` brackets around top-leve
   - Tagged errors leak into unions far from where they are raised. Moving `LandofileUnknownEventError` from discovery to planning touched the SDK service signatures, the frozen mvp-surface fixture, six global CLI commands, and doctor. Follow the compiler outward rather than guessing the blast radius.
   - Pass-through `instanceof` lists are a trap: a new boundary error added to only one of them gets silently rewrapped as a generic step failure. They are now one shared predicate.
 ---
+## 2026-09-12 05:36 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-614 (expected passes: true)
+---
+## 2026-09-12 05:36 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-12 05:36 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-614 (expected passes: true)
+---
+## 2026-09-12 05:36 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-614 (expected passes: true)
+---
+## 2026-09-12 05:36 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-614 (expected passes: true)
+---
+
+## 2026-09-12 06:55 - US-614 (complete)
+
+Closed the story by giving top-level tooling runs their event brackets and shipping the guide.
+
+- A tooling task now runs between `pre-<task>` and `post-<task>`. The seam is a shared pair of operations rather than a hook bolted onto one caller: one compiler turns an authored task into one invocation per normalized step, and one executor runs those invocations in authored order. Both top-level entries (the CLI/library `runTooling` path and the event `command: app:<task>` path) compile, then bracket, then execute. An event `task:` step is an inline invocation and calls the executor directly, so it never re-fires the brackets it is already inside.
+- Order follows command semantics. A failing pre bracket prevents the body. A body that exits non-zero keeps its exit code as the task result and skips the post bracket, because a non-zero tool exit is a result rather than a Lando failure. A failing post bracket fails the whole run with the tagged step error and its redacted output tail.
+- Bracket failures reach callers intact. `ToolingError` now carries the three event runtime errors instead of remapping them, so a bracket failure keeps its event name, step index, exit code, and redacted tail all the way out to the CLI, MCP, and library surfaces. No service requirement widened: the event runtime is read through optional services, and an event with no steps returns before it is consulted, so an unbracketed task needs no event runtime at all. A bracket that IS configured while that runtime is missing fails loudly rather than being silently skipped.
+- Retired the invocation builder that collapsed every step of a task into a single invocation. It was reachable from event `task:` steps with arbitrary multi-step tasks, which erased per-step service, dir, and user targeting and defeated stop-at-first-failure. Two event tests that had pinned the collapsed shape now assert one invocation per step, each carrying its own resolved target.
+- Provider selection stayed lazy through the move. A task whose steps all target `:host`, brackets included, still initializes no provider.
+
+Verification: typecheck, lint, check:boundaries, check:guide-coverage, check:schema-compatibility, and lint:guides pass; 89 targeted tests pass across tooling, compile, event runtime, init/restart event, progress, planner event-name, and SDK error suites; 150 core CLI tooling/router/event/restart/start scenario tests pass; the new `task-events` guide runs 4/4 scenarios. Manual CLI QA on the real binary with isolated user roots confirmed `before build` and `after build` bracketing a two-step host task at exit 0.
+
+- **Learnings for future iterations:**
+  - `events.ts` imports the event step runtime, so anything the step runtime imports cannot import `events.ts` back. Putting the compiler and executor in one module and the bracket wrapper in a second keeps the cycle from forming; the inline event path takes the first module only.
+  - The renderer does not echo tooling body stdout in the live progress tree, for bracketed and unbracketed tasks alike. A guide that wants to prove step ordering must write ordered markers to a file and verify the file, not scrape stdout.
+  - `ToolingDisabledError` requires `source`, so the shared compiler takes a required source and the event command path synthesizes one from the plan root. Do not make it optional to accommodate a caller that simply has not built one.
+  - Deferred and still open, carried from the prior story's review: `toolingArgv` in `core/src/cli/event-command-target.ts` still orders positionals by authored object key instead of the normalized argument `order`. Any test for it must decode the task through the schema first, because `Schema.Struct` rebuilds objects in field-declaration order and a decode-free fixture is a false green.
+---
