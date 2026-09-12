@@ -229,45 +229,49 @@ describe("resolveTarballRecipeSource", () => {
     });
   });
 
-  test("normalizes rooted member names inside the publication tree", async () => {
-    // Given: absolute, drive-rooted, and UNC-like member names accepted by the normalization contract.
-    await withTempRoot(async (dir) => {
-      const bytes = makeTarballEntries([
-        { name: "recipe.yml", bytes: Buffer.from(VALID_RECIPE) },
-        { name: "/absolute.txt", bytes: Buffer.from("absolute") },
-        { name: "C:\\drive.txt", bytes: Buffer.from("drive") },
-        { name: "\\\\server\\share.txt", bytes: Buffer.from("unc") },
-      ]);
+  // The drive-name fixture creates a literal C: directory, which Windows filesystems cannot represent.
+  test.skipIf(process.platform === "win32")(
+    "normalizes rooted member names inside the publication tree",
+    async () => {
+      // Given: absolute, drive-rooted, and UNC-like member names accepted by the normalization contract.
+      await withTempRoot(async (dir) => {
+        const bytes = makeTarballEntries([
+          { name: "recipe.yml", bytes: Buffer.from(VALID_RECIPE) },
+          { name: "/absolute.txt", bytes: Buffer.from("absolute") },
+          { name: "C:\\drive.txt", bytes: Buffer.from("drive") },
+          { name: "\\\\server\\share.txt", bytes: Buffer.from("unc") },
+        ]);
 
-      // When: the archive is published.
-      const result = await resolveTarballRecipeSource({
-        url: "https://example.test/rooted.tar.gz",
-        userDataRoot: join(dir, "data"),
-        fetcher: fetcherFor(bytes),
+        // When: the archive is published.
+        const result = await resolveTarballRecipeSource({
+          url: "https://example.test/rooted.tar.gz",
+          userDataRoot: join(dir, "data"),
+          fetcher: fetcherFor(bytes),
+        });
+
+        // Then: each name resolves beneath the cache root rather than to a host-rooted path.
+        const root = result.root ?? "";
+        expect(await readFile(join(root, "absolute.txt"), "utf8")).toBe("absolute");
+        expect(await readFile(join(root, "C:", "drive.txt"), "utf8")).toBe("drive");
+        expect(await readFile(join(root, "server", "share.txt"), "utf8")).toBe("unc");
+        const published = join("data", "recipe-cache", "tarball", sha256(bytes));
+        expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+          [
+            "data",
+            join("data", "recipe-cache"),
+            join("data", "recipe-cache", "tarball"),
+            published,
+            join(published, "recipe.yml"),
+            join(published, "absolute.txt"),
+            join(published, "C:"),
+            join(published, "C:", "drive.txt"),
+            join(published, "server"),
+            join(published, "server", "share.txt"),
+          ].sort(),
+        );
       });
-
-      // Then: each name resolves beneath the cache root rather than to a host-rooted path.
-      const root = result.root ?? "";
-      expect(await readFile(join(root, "absolute.txt"), "utf8")).toBe("absolute");
-      expect(await readFile(join(root, "C:", "drive.txt"), "utf8")).toBe("drive");
-      expect(await readFile(join(root, "server", "share.txt"), "utf8")).toBe("unc");
-      const published = join("data", "recipe-cache", "tarball", sha256(bytes));
-      expect((await readdir(dir, { recursive: true })).sort()).toEqual(
-        [
-          "data",
-          join("data", "recipe-cache"),
-          join("data", "recipe-cache", "tarball"),
-          published,
-          join(published, "recipe.yml"),
-          join(published, "absolute.txt"),
-          join(published, "C:"),
-          join(published, "C:", "drive.txt"),
-          join(published, "server"),
-          join(published, "server", "share.txt"),
-        ].sort(),
-      );
-    });
-  });
+    },
+  );
 
   test("normalizes duplicate path aliases to one last-member-wins file", async () => {
     // Given: two regular members whose slash and dot aliases normalize to the same path.
