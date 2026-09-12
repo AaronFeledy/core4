@@ -22,7 +22,12 @@ import { memcachedServiceType } from "./services/memcached.ts";
 import { minioServiceType } from "./services/minio.ts";
 import { mongodbServiceType } from "./services/mongodb.ts";
 import { mssql2019ServiceType, mssql2022ServiceType, mssqlServiceType } from "./services/mssql.ts";
-import { mysqlServiceType } from "./services/mysql.ts";
+import {
+  mysql80ServiceType,
+  mysql84ServiceType,
+  mysql97ServiceType,
+  mysqlServiceType,
+} from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "./services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "./services/opensearch.ts";
@@ -82,6 +87,9 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["mssql:2019", mssql2019ServiceType],
   ["mssql:2022", mssql2022ServiceType],
   ["mysql", mysqlServiceType],
+  ["mysql:8.0", mysql80ServiceType],
+  ["mysql:8.4", mysql84ServiceType],
+  ["mysql:9.7", mysql97ServiceType],
   ["nginx", nginxServiceType],
   ["node:lts", nodeLtsServiceType],
   ["node:22", node22ServiceType],
@@ -183,6 +191,9 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "mssql:2019",
       "mssql:2022",
       "mysql",
+      "mysql:8.0",
+      "mysql:8.4",
+      "mysql:9.7",
       "nginx",
       "node:lts",
       "node:22",
