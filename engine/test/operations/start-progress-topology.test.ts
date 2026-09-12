@@ -21,6 +21,37 @@ import {
 } from "./start-progress-topology-support.ts";
 
 describe("start progress topology", () => {
+  test("passes resolved service secrets only through transient provider options", async () => {
+    // Given
+    const secretPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: { ...web, environment: { TOKEN: "${secret:API_TOKEN}" } },
+      },
+    };
+    let applied: { readonly plan: AppPlan; readonly environment: unknown } | undefined;
+    const harness = makeHarness({
+      plannedApp: secretPlan,
+      secretStore: {
+        id: "test",
+        get: () => Effect.succeed("resolved-canary"),
+        has: () => Effect.succeed(true),
+        list: Effect.succeed(["API_TOKEN"]),
+      },
+      onApply: (appliedPlan, options) => {
+        applied = { plan: appliedPlan, environment: options.serviceEnvironment };
+      },
+    });
+
+    // When
+    await runStart(harness, secretPlan);
+
+    // Then
+    expect(applied?.environment).toEqual({ web: { TOKEN: "resolved-canary" } });
+    expect(applied?.plan.services[web.name]?.environment).toEqual({ TOKEN: "${secret:API_TOKEN}" });
+    expect(JSON.stringify(applied?.plan)).not.toContain("resolved-canary");
+  });
+
   test("skips start-owned trees when global, host-proxy, file-sync, and routes are inapplicable", async () => {
     const harness = makeHarness();
     await runStart(harness);
