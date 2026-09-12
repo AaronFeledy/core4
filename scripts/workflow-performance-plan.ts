@@ -26,6 +26,7 @@ export type WorkflowPerformanceLanePlan = {
   readonly preparation: readonly string[];
   readonly measuredSteps: readonly string[];
   readonly fixtureFamily?: WorkflowPerformanceFixtureFamily;
+  readonly requiresNativeBindMounts?: boolean;
 };
 
 export type WorkflowPerformancePlan = {
@@ -62,6 +63,7 @@ const lane = (
   sampleCount,
   preparation,
   measuredSteps,
+  ...(id === "drupal-journey" || id === "rails-journey" ? { requiresNativeBindMounts: true } : {}),
   ...(fixtureFamily === undefined ? {} : { fixtureFamily }),
 });
 

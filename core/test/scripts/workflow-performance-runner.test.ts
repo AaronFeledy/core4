@@ -37,6 +37,86 @@ const options = () => ({
 });
 
 describe("workflow performance runner", () => {
+  test.each([
+    "deferred until first accelerated app:start",
+    "installed",
+    "unavailable (userDataRoot is not configured)",
+  ])("skips lanes requiring native bind mounts when setup reports %s", async (readiness) => {
+    // Given a successful setup with an unmet native-bind-mount requirement.
+    const commands: WorkflowPerformanceCommand[] = [];
+    const report = await runWorkflowPerformance({
+      ...options(),
+      heavySampleCount: 3,
+      runCommand: async (command) => {
+        commands.push(command);
+        return {
+          id: command.id,
+          durationMs: 12,
+          exitCode: 0,
+          stdout: `file-sync: ${readiness}`,
+          stderr: "",
+        };
+      },
+    });
+
+    // Then no preparation, measurement, or timing samples exist for either journey.
+    for (const id of ["drupal-journey", "rails-journey"] as const) {
+      const lane = report.lanes.find((candidate) => candidate.id === id);
+      expect(lane).toMatchObject({
+        outcome: "skipped",
+        samples: [],
+        skipReason: `Requires native bind mounts; provider readiness reported file-sync: ${readiness}`,
+      });
+      expect(lane?.statistics).toBeUndefined();
+      expect(commands.filter((command) => command.cwd.includes(id)).map((command) => command.id)).toEqual([
+        "prepare:setup",
+        "cleanup:poweroff",
+      ]);
+    }
+    expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(0);
+  });
+
+  test("treats a missing readiness report as a failure rather than a capability skip", async () => {
+    const report = await runWorkflowPerformance({
+      ...options(),
+      runCommand: async (command) => ({
+        id: command.id,
+        durationMs: 12,
+        exitCode: 0,
+        stdout: "http://app.test",
+        stderr: "",
+      }),
+    });
+    const lane = report.lanes.find((candidate) => candidate.id === "drupal-journey");
+    expect(lane?.outcome).toBe("failed");
+    expect(lane?.skipReason).toBeUndefined();
+    expect(lane?.statistics).toBeUndefined();
+    expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(1);
+  });
+
+  test.each(["prepare:setup", "cleanup:poweroff"])(
+    "retains %s failure even when readiness would skip the lane",
+    async (failureId) => {
+      const report = await runWorkflowPerformance({
+        ...options(),
+        runCommand: async (command) => ({
+          id: command.id,
+          durationMs: 12,
+          exitCode: command.id === failureId ? 9 : 0,
+          stdout: "file-sync: unavailable (userDataRoot is not configured)",
+          stderr: command.id === failureId ? "command failed" : "",
+        }),
+      });
+      const lane = report.lanes.find((candidate) => candidate.id === "drupal-journey");
+      expect(lane?.outcome).toBe("failed");
+      expect(lane?.samples[0]?.steps).toContainEqual(
+        expect.objectContaining({ id: failureId, exitCode: 9, stderr: "command failed" }),
+      );
+      expect(lane?.statistics).toBeUndefined();
+      expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(1);
+    },
+  );
+
   test("retains cleanup failures and excludes the sample from successful timings", async () => {
     const commands: string[] = [];
     const report = await runWorkflowPerformance({
@@ -100,6 +180,10 @@ describe("workflow performance runner", () => {
       eligible: true,
       reason: "Provider readiness reported native bind mounts.",
     });
+    const supportedJourney = report.lanes.find((lane) => lane.id === "drupal-journey");
+    expect(supportedJourney?.outcome).toBe("passed");
+    expect(supportedJourney?.skipReason).toBeUndefined();
+    expect(supportedJourney?.statistics?.successfulSamples).toBe(1);
     expect(
       report.lanes.find((lane) => lane.id === "drupal-journey")?.samples[0]?.steps.map((step) => step.id),
     ).toEqual([
@@ -152,7 +236,10 @@ describe("workflow performance runner", () => {
           id: command.id,
           durationMs: 1,
           exitCode: 0,
-          stdout: command.id === "prepare:setup" ? "file-sync: unavailable" : "completed without a route",
+          stdout:
+            command.id === "prepare:setup"
+              ? "file-sync: already satisfied (native bind mounts)"
+              : "completed without a route",
           stderr: "",
         }),
     });

@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type {
   WorkflowPerformanceCommand,
@@ -35,6 +35,7 @@ type PreparedSample = {
   readonly appRoot: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly failure?: WorkflowPerformanceCommandResult;
+  readonly skipReason?: string;
   readonly fileSyncEvidence: string;
 };
 
@@ -91,6 +92,22 @@ const prepareSample = async (input: RunSampleInput): Promise<PreparedSample> => 
     ),
   );
   if (setup.exitCode !== 0) return { appRoot, env, failure: setup, fileSyncEvidence: setup.stderr };
+  if (lane.requiresNativeBindMounts && !setup.stdout.includes("already satisfied (native bind mounts)")) {
+    const readiness = setup.stdout.match(/file-sync: (?:deferred|installed|unavailable)\b[^\r\n]*/u)?.[0];
+    return readiness === undefined
+      ? {
+          appRoot,
+          env,
+          failure: { ...setup, exitCode: 1, stderr: "Setup did not report native bind mount readiness." },
+          fileSyncEvidence: setup.stdout,
+        }
+      : {
+          appRoot,
+          env,
+          skipReason: `Requires native bind mounts; provider readiness reported ${readiness}`,
+          fileSyncEvidence: setup.stdout,
+        };
+  }
   const socket = join(dataRoot, "runtime/run/podman.sock");
   const podman = join(dataRoot, "runtime/bin/podman");
   for (const image of imagesFor(lane.id)) {
@@ -130,8 +147,37 @@ const prepareSample = async (input: RunSampleInput): Promise<PreparedSample> => 
 
 export const runWorkflowPerformanceSample = async (
   input: RunSampleInput,
-): Promise<{ readonly sample: WorkflowPerformanceSample; readonly fileSyncEvidence: string }> => {
+): Promise<
+  { readonly fileSyncEvidence: string } & (
+    | { readonly sample: WorkflowPerformanceSample }
+    | { readonly skipReason: string }
+  )
+> => {
   const prepared = await prepareSample(input);
+  if (prepared.skipReason !== undefined) {
+    const poweredOff = await input.runCommand(
+      performanceCommand(
+        "cleanup:poweroff",
+        [input.binary, "poweroff"],
+        dirname(prepared.appRoot),
+        prepared.env,
+      ),
+    );
+    return {
+      fileSyncEvidence: prepared.fileSyncEvidence,
+      ...(poweredOff.exitCode === 0
+        ? { skipReason: prepared.skipReason }
+        : {
+            sample: {
+              index: input.index,
+              key: input.key,
+              outcome: "failed",
+              resetCondition: "setup only; lane requirement unmet; runtime cleanup failed",
+              steps: [poweredOff],
+            },
+          }),
+    };
+  }
   const commands = buildMeasuredCommands({
     lane: input.lane,
     binary: input.binary,

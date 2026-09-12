@@ -42,8 +42,12 @@ export type RunWorkflowPerformanceOptions = {
 const laneReport = (
   lane: WorkflowPerformanceLanePlan,
   samples: readonly WorkflowPerformanceSample[],
+  skipReason?: string,
 ): WorkflowPerformanceLaneReport => {
   const outcome = samples.some((sample) => sample.outcome === "failed") ? "failed" : "passed";
+  if (outcome === "passed" && skipReason !== undefined) {
+    return { id: lane.id, class: lane.class, outcome: "skipped", samples: [], skipReason };
+  }
   const statistics = statisticsForSamples(samples);
   return {
     id: lane.id,
@@ -51,6 +55,7 @@ const laneReport = (
     outcome,
     samples,
     ...(statistics === undefined ? {} : { statistics }),
+    ...(skipReason === undefined ? {} : { skipReason }),
   };
 };
 
@@ -78,6 +83,7 @@ export const runWorkflowPerformance = async (
   const fileSyncEvidence: string[] = [];
   for (const lane of plan.lanes) {
     const samples: WorkflowPerformanceSample[] = [];
+    let skipReason: string | undefined;
     for (let index = 0; index < lane.sampleCount; index += 1) {
       const key = workflowPerformanceSampleKey(options.runId, lane.id, index);
       const fixturePath =
@@ -95,10 +101,14 @@ export const runWorkflowPerformance = async (
         ...(fixturePath === undefined ? {} : { fixturePath }),
         runCommand,
       });
-      samples.push(result.sample);
       fileSyncEvidence.push(result.fileSyncEvidence);
+      if ("skipReason" in result) {
+        skipReason = result.skipReason;
+        break;
+      }
+      samples.push(result.sample);
     }
-    lanes.push(laneReport(lane, samples));
+    lanes.push(laneReport(lane, samples, skipReason));
   }
   const nativeFileSync = fileSyncEvidence.some((evidence) =>
     evidence.includes("already satisfied (native bind mounts)"),
