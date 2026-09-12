@@ -12,9 +12,9 @@ import {
 } from "@lando/sdk/schema";
 
 const providerId = ProviderId.make("docker");
-const appId = AppId.make("ref-privilege-build-app");
+const appId = AppId.make("ref-user-build-app");
 const serviceName = ServiceName.make("web");
-const tag = "lando-build-docker-web-privilege-key";
+const tag = "lando-build-docker-web-user-key";
 const baseTag = `${tag}-base`;
 const runtimeUser = "runtime-only";
 const metadata = {
@@ -57,9 +57,9 @@ const plan = (withRootStep: boolean): AppPlan => {
   };
   return {
     id: appId,
-    name: "Ref Privilege Build App",
-    slug: "ref-privilege-build-app",
-    root: AbsolutePath.make("/tmp/ref-privilege-build-app"),
+    name: "Ref User Build App",
+    slug: "ref-user-build-app",
+    root: AbsolutePath.make("/tmp/ref-user-build-app"),
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
@@ -99,7 +99,7 @@ const run = async (withRootStep: boolean, inheritedUser = "app:staff") => {
   };
   await Effect.runPromise(
     buildContainerArtifact(
-      { app: appId, service: serviceName, plan: plan(withRootStep), buildKey: "privilege-key" },
+      { app: appId, service: serviceName, plan: plan(withRootStep), buildKey: "user-key" },
       { providerId, api: { request } },
     ),
   );

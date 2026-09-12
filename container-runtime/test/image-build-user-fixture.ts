@@ -42,7 +42,7 @@ export const runBuild = (input: {
     {
       app: appId,
       service: serviceName,
-      buildKey: "privilege-key",
+      buildKey: "user-key",
       plan: {
         id: appId,
         name: "User Build App",
