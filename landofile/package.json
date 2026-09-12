@@ -42,6 +42,7 @@
     "./parser": "./src/parser.ts",
     "./ports": "./src/ports.ts",
     "./schema": "./src/schema.ts",
+    "./secret-reference": "./src/secret-reference.ts",
     "./serializer": "./src/serializer.ts",
     "./service": "./src/service.ts",
     "./template-render": "./src/template-render.ts",
