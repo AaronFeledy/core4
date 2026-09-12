@@ -96,7 +96,16 @@ describe("family command builders", () => {
   });
 
   test("mysql dump uses mysqldump and the user without -p", () => {
-    expect(dumpCommand("mysql", creds)).toEqual(["mysqldump", "-u", "alice", "appdb"]);
+    expect(dumpCommand("mysql", creds)).toEqual([
+      "mysqldump",
+      "-u",
+      "alice",
+      "--single-transaction",
+      "--quick",
+      "--set-gtid-purged=OFF",
+      "--no-tablespaces",
+      "appdb",
+    ]);
   });
 
   test("postgres dump uses pg_dump -U and -d", () => {
