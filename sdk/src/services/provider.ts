@@ -193,6 +193,7 @@ export interface ServiceRuntimeInfo {
   readonly health?: "healthy" | "starting" | "unhealthy";
   readonly state?: string;
   readonly containerId?: string;
+  readonly imageIdentity?: string;
   readonly endpoints?: ReadonlyArray<EndpointInfo>;
   readonly lastStartedAt?: Date;
 }
