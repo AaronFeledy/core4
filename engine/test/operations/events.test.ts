@@ -514,7 +514,8 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(invocations.map(({ commands }) => commands.map((argv) => argv[2] ?? argv[0]).join("|"))).toEqual([
       'body "$@"',
-      'named-one "$@"|named-two "$@"',
+      'named-one "$@"',
+      'named-two "$@"',
       'cleanup-second "$@"',
       'cleanup-first "$@"',
     ]);
@@ -587,10 +588,13 @@ describe("runAppEvent tooling-step kernel", () => {
         service: "svc-17",
         cwd: "/tmp/17",
         env: { VALUE: "17" },
-        commands: [
-          ["sh", "-c", 'first-17 "$@"', "lando-tooling"],
-          ["sh", "-c", 'second-17 "$@"', "lando-tooling"],
-        ],
+        commands: [["sh", "-c", 'first-17 "$@"', "lando-tooling"]],
+      },
+      {
+        service: "svc-17",
+        cwd: "/tmp/17",
+        env: { VALUE: "17" },
+        commands: [["sh", "-c", 'second-17 "$@"', "lando-tooling"]],
       },
     ]);
   });

@@ -464,6 +464,9 @@ export interface ToolingResult {
 export type ToolingError =
   | ManagedFileTransactionError
   | AppIdReservedError
+  | LandofileEventLifecycleReentryError
+  | LandofileEventInvocationDepthError
+  | LandofileEventStepFailedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError

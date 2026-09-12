@@ -1,0 +1,19 @@
+name: task-events-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+tooling:
+  build:
+    description: Two host steps wrapped by pre-build and post-build
+    service: ":host"
+    cmds:
+      - cmd: echo "build step one" >> markers.txt
+      - cmd: echo "build step two" >> markers.txt
+events:
+  pre-build:
+    - cmd: echo "before build" >> markers.txt
+      service: ":host"
+  post-build:
+    - cmd: echo "after build" >> markers.txt
+      service: ":host"

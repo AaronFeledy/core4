@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- The type-only `ToolingError` union additively includes `LandofileEventStepFailedError`, `LandofileEventLifecycleReentryError`, and `LandofileEventInvocationDepthError`. Top-level tooling runs now bracket `pre-<task>` and `post-<task>` events, so a bracket failure reaches tooling callers with its event identity and redacted output tail instead of being remapped to `ToolingExecError`. The three error schemas already existed, so no JSON Schema list changes.
+
 - US-614 moves `LandofileUnknownEventError` from `LandofileService.discover` to `AppPlanner.plan`: event names are validated against resolved effective tooling, not individual source files. Provider-free config lint uses resolved layered/included tooling through the same validator. The frozen service signatures are updated.
 
 - `ToolingFlagShape.boolean` replaces the unreleased `type` field without an alias. Flags add optional `alias`, `choices`, and `required`; arguments add optional `choices` and non-negative integer `order`. `ToolingTaskShape` adds optional `user` and `disabled`, and `cmds` accepts strings or `ToolingStepShape` command objects. `ToolingCompileError` adds optional `{ path, task }` source metadata. The new `ToolingInputError` and `ToolingDisabledError` exports carry tooling identity, source metadata, and remediation.

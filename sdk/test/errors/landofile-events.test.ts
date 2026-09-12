@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Either, Schema } from "effect";
 
+import type { ToolingError } from "@lando/sdk/app";
 import * as errors from "@lando/sdk/errors";
 
 test("depth failures expose the invocation chain and limit", () => {
@@ -56,4 +57,40 @@ test("lifecycle reentry decoding rejects a missing invocation chain", () => {
   const result = Schema.decodeUnknownEither(errors.LandofileEventLifecycleReentryError)(input);
   // Then
   expect(Either.isLeft(result)).toBe(true);
+});
+
+test("tooling failures carry event runtime errors so bracket failures keep their identity", () => {
+  // Given a top-level tooling run that brackets pre/post task events
+  const stepFailure = new errors.LandofileEventStepFailedError({
+    message: "Event post-build step 1 failed.",
+    event: "post-build",
+    index: 0,
+    kind: "cmd",
+    exitCode: 5,
+    outputTail: "boom",
+    remediation: "Fix post-build step 1, then rerun the lifecycle command.",
+  });
+  const reentry = new errors.LandofileEventLifecycleReentryError({
+    message: "Command app:build reentered event pre-build.",
+    event: "pre-build",
+    command: "app:build",
+    chain: ["pre-build", "app:build", "pre-build"],
+    remediation: "Remove the lifecycle command cycle.",
+  });
+  const depth = new errors.LandofileEventInvocationDepthError({
+    message: "Event pre-build exceeded the invocation depth limit.",
+    event: "pre-build",
+    chain: ["pre-build"],
+    depth: 17,
+    limit: 16,
+    remediation: "Reduce nested event commands.",
+  });
+  // When the failures are surfaced through the published tooling error channel
+  const surfaced: ReadonlyArray<ToolingError> = [stepFailure, reentry, depth];
+  // Then each keeps its own tag rather than collapsing into a generic exec failure
+  expect(surfaced.map((error) => error._tag)).toEqual([
+    "LandofileEventStepFailedError",
+    "LandofileEventLifecycleReentryError",
+    "LandofileEventInvocationDepthError",
+  ]);
 });

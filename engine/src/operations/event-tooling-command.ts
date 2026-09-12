@@ -1,39 +1,30 @@
-import { Effect, Option } from "effect";
+import { join } from "node:path";
 
-import { ToolingCompileError } from "@lando/sdk/errors";
+import { LANDOFILE_NAME } from "@lando/landofile/discovery";
 import type { AppPlan, ToolingTaskShape } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, ShellRunner, ToolingEngine } from "@lando/sdk/services";
 
-import { runHostToolingWith } from "../services/host-tooling-engine.ts";
-import { buildToolingInvocation } from "./tooling.ts";
+import { runBracketedTooling } from "./tooling-bracket.ts";
 
+/**
+ * Runs a canonical `app:<task>` command reached from an event `command:` step.
+ *
+ * This is a second top-level tooling entry point, so it brackets `pre-<task>`/`post-<task>`
+ * exactly like a direct CLI run. Re-entering the event that invoked it is rejected by the
+ * active-frame guard rather than recursing. The authored `arguments` declaration is kept so
+ * a task that refuses positionals still refuses them here.
+ */
 export const runEventToolingCommand = (
   plan: AppPlan,
   name: string,
   task: ToolingTaskShape,
   raw: ReadonlyArray<string>,
 ) =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const engine = yield* ToolingEngine;
-    const provider = yield* registry.select(plan);
-    const invocation = buildToolingInvocation(
-      name,
-      { ...task, arguments: undefined },
-      {
-        args: raw,
-        cwd: String(plan.root),
-      },
-    );
-    if (invocation.service !== ":host") return yield* engine.run(invocation, plan, provider);
-    const shell = yield* Effect.serviceOption(ShellRunner);
-    if (Option.isNone(shell)) {
-      return yield* Effect.fail(
-        new ToolingCompileError({
-          message: `ShellRunner is unavailable for tooling command ${name}.`,
-          tool: name,
-        }),
-      );
-    }
-    return yield* runHostToolingWith(shell.value, invocation, plan, provider);
+  runBracketedTooling({
+    plan,
+    name,
+    lookupKey: name,
+    task,
+    args: raw,
+    cwd: String(plan.root),
+    source: { path: join(String(plan.root), LANDOFILE_NAME), task: name },
   });

@@ -1,3 +1,7 @@
+import { join } from "node:path";
+
+import { LANDOFILE_NAME } from "@lando/landofile/discovery";
+import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { type Context, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
@@ -6,15 +10,13 @@ import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/s
 import {
   type EventService,
   RuntimeProviderRegistry,
-  type ShellRunner,
+  ShellRunner,
   ToolingEngine,
   type ToolingEngineResult,
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
-import { runHostToolingWith } from "../services/host-tooling-engine.ts";
-import { withShellRedactionTokens } from "../services/shell-runner.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import type { ToolingStepLeaf } from "../tooling/step-program.ts";
 import type {
@@ -26,8 +28,8 @@ import type {
 } from "../tooling/step-runner.ts";
 import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
+import { compileToolingInvocations, executeToolingInvocations } from "./tooling-compile.ts";
 import { emitToolingOutputProgress } from "./tooling-progress.ts";
-import { buildToolingInvocation } from "./tooling.ts";
 
 const OUTPUT_TAIL_LENGTH = 4_000;
 
@@ -147,23 +149,41 @@ const runInvocation = (
 ) =>
   Effect.gen(function* () {
     const runtime = yield* toolingRuntime(tool);
-    const provider = yield* runtime.registry.select(options.plan);
-    const invocation = buildToolingInvocation(tool, task, invocationOptions);
-    if (invocation.service === ":host") {
-      if (options.hostRunner === undefined) {
-        return yield* Effect.fail(
-          new ToolingCompileError({
-            message: "ShellRunner is unavailable for host event execution.",
-            tool,
-          }),
-        );
-      }
-      return yield* withShellRedactionTokens(
-        invocationOptions.redactionTokens ?? [],
-        runHostToolingWith(options.hostRunner, invocation, options.plan, provider),
+    const compiled = yield* compileToolingInvocations({
+      name: tool,
+      lookupKey: tool,
+      task,
+      source: { path: join(String(options.plan.root), LANDOFILE_NAME), task: tool },
+      ...(invocationOptions.user === undefined ? {} : { user: invocationOptions.user }),
+    });
+    if (
+      options.hostRunner === undefined &&
+      compiled.invocations.some((invocation) => invocation.service === ":host")
+    ) {
+      return yield* Effect.fail(
+        new ToolingCompileError({
+          message: "ShellRunner is unavailable for host event execution.",
+          tool,
+        }),
       );
     }
-    return yield* runtime.engine.run(invocation, options.plan, provider);
+    // An event step is an inline invocation of an already-running lifecycle, so it executes
+    // the compiled steps directly and never re-fires the task's own pre/post brackets.
+    const execution = executeToolingInvocations({
+      plan: options.plan,
+      tool,
+      invocations: compiled.invocations,
+      requiresProvider: requiresProvider(compiled.normalized),
+      ...(invocationOptions.redactionTokens === undefined
+        ? {}
+        : { redactionTokens: invocationOptions.redactionTokens }),
+    }).pipe(
+      Effect.provideService(ToolingEngine, runtime.engine),
+      Effect.provideService(RuntimeProviderRegistry, runtime.registry),
+    );
+    return yield* options.hostRunner === undefined
+      ? execution
+      : execution.pipe(Effect.provideService(ShellRunner, options.hostRunner));
   });
 
 const runCmd = (options: EventRuntimeOptions, leaf: ResolvedToolingCmdStepLeaf) =>
