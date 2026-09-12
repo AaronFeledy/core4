@@ -67,6 +67,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
+  type ApplyOptions,
   type CommandSpec,
   type ExecChunk,
   type ExecResult,
@@ -734,7 +735,11 @@ const hostConfig = (plan: AppPlan, service: ServicePlan) =>
     },
   });
 
-const createContainerBody = (plan: AppPlan, service: ServicePlan) =>
+const createContainerBody = (
+  plan: AppPlan,
+  service: ServicePlan,
+  environment?: Readonly<Record<string, string>>,
+) =>
   containerCreateBodyFragment(plan, service, {
     labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
     hostConfig: hostConfig(plan, service),
@@ -744,6 +749,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) =>
         artifact,
       });
     },
+    ...(environment === undefined ? {} : { environment }),
   });
 
 export const renderCompose = (plan: AppPlan): string => {
@@ -898,13 +904,19 @@ const ensureImagePresent = (api: DockerApiClient, imageRef: string) =>
     );
   });
 
-const createContainer = (api: DockerApiClient, plan: AppPlan, service: ServicePlan, name: string) =>
+const createContainer = (
+  api: DockerApiClient,
+  plan: AppPlan,
+  service: ServicePlan,
+  name: string,
+  environment?: Readonly<Record<string, string>>,
+) =>
   Effect.gen(function* () {
     if (service.artifact?.kind === "ref") {
       yield* ensureImagePresent(api, service.artifact.ref);
     }
     const body = yield* Effect.try({
-      try: () => createContainerBody(plan, service),
+      try: () => createContainerBody(plan, service, environment),
       catch: (cause) =>
         cause instanceof ServiceStartError
           ? cause
@@ -1121,7 +1133,11 @@ const rollbackPartialApply = (
     yield* removeNetworkSilent(api, plan);
   });
 
-const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
+const bringUp = (
+  plan: AppPlan,
+  api: DockerApiClient,
+  options: Pick<ApplyOptions, "signal" | "serviceEnvironment">,
+) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
     yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
@@ -1130,7 +1146,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
     const schedule = yield* runServiceStartSchedule(plan, {
       startService: (service) =>
         Effect.gen(function* () {
-          if (signal?.aborted === true) {
+          if (options.signal?.aborted === true) {
             return yield* Effect.interrupt;
           }
           const name = containerName(plan, service);
@@ -1142,7 +1158,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
           });
           let serviceChanged = false;
           if (!inspected.exists) {
-            yield* createContainer(api, plan, service, name);
+            yield* createContainer(api, plan, service, name, options.serviceEnvironment?.[service.name]);
             serviceChanged = true;
           }
           if (sharedNetwork !== undefined) {
@@ -1154,7 +1170,9 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
           }
           return { changed: serviceChanged };
         }).pipe(
-          Effect.catchAll((error) => (signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
+          Effect.catchAll((error) =>
+            options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error),
+          ),
         ),
       cleanupOptionalStartFailure: (service) =>
         Effect.gen(function* () {
@@ -1169,7 +1187,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
         exec(
           plan,
           { app: plan.id, service: service.name },
-          { command, ...(signal === undefined ? {} : { signal }) },
+          { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
           api,
         ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
       waitForExit: (service) =>
@@ -1180,7 +1198,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
             api,
             ctx: DOCKER_CTX,
             dialect: dockerWaitDialect,
-            ...(signal === undefined ? {} : { signal }),
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
           },
         ),
     }).pipe(
@@ -1743,7 +1761,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           ),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
-          bringUp(plan, dockerApi, applyOptions.signal).pipe(Effect.tap(() => rememberPlan(plan))),
+          bringUp(plan, dockerApi, applyOptions).pipe(Effect.tap(() => rememberPlan(plan))),
         ...resolvedOps,
         destroy: (target, destroyOptions) =>
           resolvePlan(target).pipe(

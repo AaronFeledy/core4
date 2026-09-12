@@ -915,6 +915,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             startFailureRemediation: landoStartFailureRemediation,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+            ...(applyOptions.serviceEnvironment === undefined
+              ? {}
+              : { serviceEnvironment: applyOptions.serviceEnvironment }),
           });
           yield* rememberPlan(plan);
           return result;
