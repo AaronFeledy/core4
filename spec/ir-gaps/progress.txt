@@ -75,3 +75,11 @@ Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-covera
 - Verification: typecheck and lint passed; 149 focused tests passed across normalize/input/tooling/compiler/MCP/command-registry suites.
 - **Learnings for future iterations:** Schema.Struct rebuilds decoded objects in field-declaration order, so Object.keys authored-order tests that skip decode are false greens. MCP→argv must insert `--` before positionals or leading-hyphen values become flags in the shared parser.
 ---
+## 2026-09-12 01:50 - US-613 Drift Audit
+- Trigger: 3 cycles, ~2952 changed lines, 20 commits
+- Contract: disabled tasks were documented as unlisted while the index keeps them hidden
+- Scar tissue: argv rejection still accepted authored `arguments` after normalize
+- Fixed: listing contract text; argv check reads only normalized `acceptsArguments`
+- Split/excise decisions: none; event mixed-step collapse stays US-614
+- Verification: typecheck pass, lint pass, 257 targeted tests pass
+---
