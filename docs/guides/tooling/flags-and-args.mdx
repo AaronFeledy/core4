@@ -125,6 +125,10 @@ Delete the key when you no longer want the reminder.
     <Step name="compile-tooling">
       <Run command="lando app:cache:refresh" />
     </Step>
+    <Step name="greet-help">
+      <Verify command="lando greet --help" expect={{ stdout: { regex: "--name" } }} />
+      <Verify command="lando greet --help" expect={{ stdout: { regex: "target" } }} />
+    </Step>
     <Step name="run-greet">
       <Verify command="lando greet dev -n team --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"greet\"[\\s\\S]*\"service\":\\s*\"web\"" } }} />
     </Step>
@@ -176,6 +180,10 @@ Delete the key when you no longer want the reminder.
     </Step>
     <Step name="run-legacy">
       <Run command="lando legacy --format=json" expectExit={1} />
+      <Verify errorTag="ToolingDisabledError" expect={{ regex: "legacy" }} />
+    </Step>
+    <Step name="run-legacy-help">
+      <Run command="lando legacy --help --format=json" expectExit={1} />
       <Verify errorTag="ToolingDisabledError" expect={{ regex: "legacy" }} />
     </Step>
     <Step name="cleanup">
