@@ -1086,22 +1086,23 @@ describe("appConfigTranslate", () => {
     expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe(concurrent);
   });
 
-  // Unsupported tooling is checked on merged frontend output, never foreign input.
-  test("rejects unsupported tooling flag metadata after translation", async () => {
+  // Tooling metadata is checked on merged frontend output, never on foreign input.
+  test("rejects invalid tooling metadata emitted by translation before writing", async () => {
     const cwd = await makeAppDir("name: demo\n");
     const translators = withEncoder([
       makeTranslator("v3", {
         name: "demo",
         runtime: 4,
-        tooling: { echo: { cmd: "echo hi", flags: { verbose: { boolean: true } } } },
+        tooling: { echo: { cmd: "echo hi", args: { target: { order: -1 } } } },
       }),
     ]);
 
-    const exit = await runExit(appConfigTranslate({ cwd, translators }));
+    const exit = await runExit(appConfigTranslate({ cwd, write: true, translators }));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(failureTag(exit)).toBe("NotImplementedError");
-    expect(failureValue(exit)?.message ?? "").toContain('Tooling flags field "type"');
+    expect(failureTag(exit)).toBe("ConfigTranslateError");
+    expect(failureValue(exit)?.message ?? "").toContain("invalid authoring fragment");
+    expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe("name: demo\n");
   });
 
   test("fails with LandofileNotFoundError when there is no Landofile", async () => {
