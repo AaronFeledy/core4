@@ -1,9 +1,12 @@
 import { join } from "node:path";
 
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
+import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import type { AppPlan, ToolingTaskShape } from "@lando/sdk/schema";
+import { Effect } from "effect";
 
-import { runBracketedTooling } from "./tooling-bracket.ts";
+import { runBracketedInvocations } from "./tooling-bracket.ts";
+import { compileToolingInvocations } from "./tooling-compile.ts";
 
 /**
  * Runs a canonical `app:<task>` command reached from an event `command:` step.
@@ -19,12 +22,21 @@ export const runEventToolingCommand = (
   task: ToolingTaskShape,
   raw: ReadonlyArray<string>,
 ) =>
-  runBracketedTooling({
-    plan,
+  compileToolingInvocations({
     name,
     lookupKey: name,
     task,
     args: raw,
     cwd: String(plan.root),
     source: { path: join(String(plan.root), LANDOFILE_NAME), task: name },
-  });
+  }).pipe(
+    Effect.flatMap((compiled) =>
+      runBracketedInvocations({
+        plan,
+        tool: name,
+        lookupKey: name,
+        invocations: compiled.invocations,
+        requiresProvider: requiresProvider(compiled.normalized),
+      }),
+    ),
+  );

@@ -18,7 +18,6 @@ import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
 import { runToolingStepProgram } from "../tooling/step-runner.ts";
 import { runCanonicalCommand, withinEventInvocation } from "./event-invocation.ts";
 import { makeEventStepRunners } from "./event-step-runtime.ts";
-export { MAX_EVENT_INVOCATION_DEPTH } from "./event-invocation.ts";
 
 interface EventRedactor {
   readonly redactString: (value: string) => string;

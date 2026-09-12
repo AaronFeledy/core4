@@ -1,25 +1,15 @@
-import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { Effect } from "effect";
 
-import type { ToolingDisabledError, ToolingInputError } from "@lando/sdk/errors";
 import type { LandofileEventName } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry, ToolingEngine, ToolingEngineResult } from "@lando/sdk/services";
 
 import type { EventRuntimeError } from "../tooling/event-errors.ts";
 import { runAppEvent } from "./events.ts";
 import {
-  type CompileToolingInput,
   type ExecuteToolingInput,
   type ToolingExecutionError,
-  compileToolingInvocations,
   executeToolingInvocations,
 } from "./tooling-compile.ts";
-
-export type BracketedToolingError =
-  | ToolingExecutionError
-  | ToolingDisabledError
-  | ToolingInputError
-  | EventRuntimeError;
 
 const bracket = (lookupKey: string, position: "pre" | "post"): LandofileEventName =>
   `${position}-${lookupKey}` as LandofileEventName;
@@ -49,25 +39,4 @@ export const runBracketedInvocations = (
     const result = yield* executeToolingInvocations(input);
     if (result.exitCode === 0) yield* runAppEvent(input.plan, bracket(input.lookupKey, "post"));
     return result;
-  });
-
-export interface BracketedToolingInput extends CompileToolingInput {
-  readonly plan: ExecuteToolingInput["plan"];
-  readonly redactionTokens?: ReadonlyArray<string>;
-}
-
-/** Compiles an authored task and runs it bracketed. Use for top-level entry points. */
-export const runBracketedTooling = (
-  input: BracketedToolingInput,
-): Effect.Effect<ToolingEngineResult, BracketedToolingError, ToolingEngine | RuntimeProviderRegistry> =>
-  Effect.gen(function* () {
-    const compiled = yield* compileToolingInvocations(input);
-    return yield* runBracketedInvocations({
-      plan: input.plan,
-      tool: input.name,
-      lookupKey: input.lookupKey,
-      invocations: compiled.invocations,
-      requiresProvider: requiresProvider(compiled.normalized),
-      ...(input.redactionTokens === undefined ? {} : { redactionTokens: input.redactionTokens }),
-    });
   });

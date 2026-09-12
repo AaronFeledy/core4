@@ -37,9 +37,8 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import { StreamFrameSink } from "./stream-frame-sink.ts";
 import { runBracketedInvocations } from "./tooling-bracket.ts";
-import { compileToolingInvocations } from "./tooling-compile.ts";
-export { validateToolingArguments } from "./tooling-compile.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
+import { compileToolingInvocations } from "./tooling-compile.ts";
 import { beginLiveToolingTree, emitToolingOutputProgress } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
