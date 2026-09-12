@@ -357,21 +357,25 @@ $2" "$3"
     },
   );
 
-  test("kills and reaps a Python child after its streamed output exceeds the cap", async () => {
-    // Given: a decompressor that fills stderr before streaming stdout forever.
-    await withFakeDecompressCommands("oversize", async (pidFile) => {
-      // When: bounded xz decompression exceeds its stdout allowance.
-      await expectRejectedMessage(
-        () => decompressXz(Buffer.from("input"), { maxDecompressedBytes: 1024, timeoutMs: 2_000 }),
-        "decompressed-size cap",
-      );
+  // PATH-selected shell executables and POSIX signal probes are unavailable on Windows.
+  test.skipIf(process.platform === "win32")(
+    "kills and reaps a Python child after its streamed output exceeds the cap",
+    async () => {
+      // Given: a decompressor that fills stderr before streaming stdout forever.
+      await withFakeDecompressCommands("oversize", async (pidFile) => {
+        // When: bounded xz decompression exceeds its stdout allowance.
+        await expectRejectedMessage(
+          () => decompressXz(Buffer.from("input"), { maxDecompressedBytes: 1024, timeoutMs: 2_000 }),
+          "decompressed-size cap",
+        );
 
-      // Then: completion is bounded and the child has been reaped without pipe deadlock.
-      await expectReaped(pidFile);
-    });
-  });
+        // Then: completion is bounded and the child has been reaped without pipe deadlock.
+        await expectReaped(pidFile);
+      });
+    },
+  );
 
-  test("bounds the xz fallback output and reaps the child", async () => {
+  test.skipIf(process.platform === "win32")("bounds the xz fallback output and reaps the child", async () => {
     // Given: an unavailable Python route and an xz fallback that streams output forever.
     await withFakeDecompressCommands("xz-oversize", async (pidFile) => {
       // When: fallback decompression exceeds its stdout allowance.
@@ -385,7 +389,7 @@ $2" "$3"
     });
   });
 
-  test("kills and reaps a stalled xz child on timeout", async () => {
+  test.skipIf(process.platform === "win32")("kills and reaps a stalled xz child on timeout", async () => {
     // Given: a decompressor that neither reads stdin nor produces output.
     await withFakeDecompressCommands("stall", async (pidFile) => {
       // When: the decompression deadline expires while stdin is pipe-blocked.
@@ -403,27 +407,30 @@ $2" "$3"
     });
   });
 
-  test("kills and reaps a full-pipe xz child on cancellation", async () => {
-    // Given: a child blocked without reading a large stdin payload and a caller cancellation signal.
-    await withFakeDecompressCommands("stall", async (pidFile) => {
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 50);
+  test.skipIf(process.platform === "win32")(
+    "kills and reaps a full-pipe xz child on cancellation",
+    async () => {
+      // Given: a child blocked without reading a large stdin payload and a caller cancellation signal.
+      await withFakeDecompressCommands("stall", async (pidFile) => {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 50);
 
-      // When: the caller cancels decompression while the input pipe is full.
-      await expectRejectedMessage(
-        () =>
-          decompressXz(Buffer.alloc(8 * 1024 * 1024), {
-            maxDecompressedBytes: 1024,
-            timeoutMs: 2_000,
-            signal: controller.signal,
-          }),
-        "cancelled",
-      );
+        // When: the caller cancels decompression while the input pipe is full.
+        await expectRejectedMessage(
+          () =>
+            decompressXz(Buffer.alloc(8 * 1024 * 1024), {
+              maxDecompressedBytes: 1024,
+              timeoutMs: 2_000,
+              signal: controller.signal,
+            }),
+          "cancelled",
+        );
 
-      // Then: the blocked child is killed and reaped.
-      await expectReaped(pidFile);
-    });
-  });
+        // Then: the blocked child is killed and reaped.
+        await expectReaped(pidFile);
+      });
+    },
+  );
 });
 
 describe("bundled loader deps", () => {
