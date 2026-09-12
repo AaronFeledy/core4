@@ -8,7 +8,10 @@ import {
   type DataTransferSpec,
   PortablePath,
   ServiceName,
+  type SnapshotFilter,
   type SnapshotHandle,
+  type SnapshotInfo,
+  type SnapshotMetadata,
   type SnapshotOptions,
   type VolumeRef,
 } from "@lando/sdk/schema";
@@ -36,9 +39,10 @@ export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
   readonly restore: (id: string, store: VolumeRef) => Effect.Effect<void, unknown>;
+  readonly listSnapshots: (filter: SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>, unknown>;
 };
 
-const requireVolume = (
+export const requireVolume = (
   plan: SqlPlan,
   service: SqlPlanService,
   name: string,
@@ -134,6 +138,7 @@ export const runImport = (
     readonly env: Readonly<Record<string, string>>;
     readonly file: string;
     readonly gzip: boolean;
+    readonly expectedDigest?: string;
   },
 ) => {
   const app = AppId.make(input.plan.id);
@@ -143,7 +148,7 @@ export const runImport = (
     const bak = mssqlBackupServicePath(input.creds.database);
     return Effect.gen(function* () {
       const transfer = yield* mover.transfer({
-        from: { _tag: "hostPath", path },
+        from: { _tag: "hostPath", path, trusted: true },
         to: {
           _tag: "servicePath",
           app,
@@ -151,6 +156,7 @@ export const runImport = (
           path: PortablePath.make(input.gzip ? `${bak}.gz` : bak),
         },
         overwrite: true,
+        ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
       });
       if (input.gzip) {
         const gunzip = ["gunzip", "-f", `${bak}.gz`] as const;
@@ -162,7 +168,7 @@ export const runImport = (
     });
   }
   return mover.transfer({
-    from: { _tag: "hostPath", path },
+    from: { _tag: "hostPath", path, trusted: true },
     to: {
       _tag: "serviceCmd",
       app,
@@ -171,6 +177,7 @@ export const runImport = (
       env: input.env,
     },
     overwrite: true,
+    ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
   });
 };
 
@@ -193,10 +200,16 @@ export const runSnapshot = (
   service: SqlPlanService,
   name: string,
   label?: string,
+  metadata?: SnapshotMetadata,
+  format: "tar" | "tar.gz" | "tar.zst" = "tar.gz",
 ) =>
   Effect.gen(function* () {
     const store = yield* requireVolume(plan, service, name);
-    return yield* mover.snapshot(store, { format: "tar.gz", ...(label === undefined ? {} : { label }) });
+    return yield* mover.snapshot(store, {
+      format,
+      ...(label === undefined ? {} : { label }),
+      ...(metadata === undefined ? {} : { metadata }),
+    });
   });
 
 export const runRestore = (
@@ -207,12 +220,12 @@ export const runRestore = (
   snapshotId: string,
   start: (service: string) => Effect.Effect<void, unknown>,
   stop: (service: string) => Effect.Effect<void, unknown>,
+  inspect: (service: string) => Effect.Effect<{ readonly running: boolean }, unknown>,
 ) =>
   Effect.gen(function* () {
     const store = yield* requireVolume(plan, service, name);
-    yield* stop(name);
-    const restored = yield* mover.restore(snapshotId, store).pipe(Effect.exit);
-    const started = yield* start(name).pipe(Effect.either);
-    if (restored._tag === "Failure") return yield* Effect.failCause(restored.cause);
-    if (started._tag === "Left") return yield* Effect.fail(started.left);
+    const prior = yield* inspect(name);
+    if (prior.running) yield* stop(name);
+    yield* mover.restore(snapshotId, store);
+    if (prior.running) yield* start(name);
   });

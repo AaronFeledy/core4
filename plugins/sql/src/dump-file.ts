@@ -36,7 +36,7 @@ const dumpNotFound = (path: string, appRoot: string, kind: DumpMiss): SqlDumpNot
 export const ensureReadableDump = (
   path: string,
   appRoot: string,
-): Effect.Effect<void, SqlDumpNotFoundError> =>
+): Effect.Effect<string, SqlDumpNotFoundError> =>
   Effect.tryPromise({
     try: async () => {
       const info = await stat(path);
@@ -45,6 +45,9 @@ export const ensureReadableDump = (
       // permission explicitly so import fails here, before the count probe and
       // overwrite confirmation, instead of inside DataMover.
       await access(path, constants.R_OK);
+      const hash = new Bun.CryptoHasher("sha256");
+      for await (const chunk of Bun.file(path).stream()) hash.update(chunk);
+      return hash.digest("hex");
     },
     catch: (cause) =>
       cause instanceof SqlDumpNotFoundError ? cause : dumpNotFound(path, appRoot, dumpMissKind(cause)),

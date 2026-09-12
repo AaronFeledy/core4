@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Effect, Exit } from "effect";
 
@@ -7,12 +7,17 @@ import {
   SqlCommandFailedError,
   SqlConfirmRequiredError,
   SqlDumpNotFoundError,
+  SqlRecoveryOperationError,
+  SqlRecoveryUnavailableError,
+  SqlSeedSourceError,
+  SqlSeedStateError,
   SqlServiceAmbiguousError,
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
+import { AppId } from "@lando/sdk/schema";
 
 import { wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
-import { executeDbCommand } from "../src/run.ts";
+import { dbInputFromCommand, executeDbCommand } from "../src/run.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 const SECRET = "s3cret-pass";
@@ -25,6 +30,47 @@ const run = (
 ) => Effect.runPromiseExit(Effect.scoped(executeDbCommand(deps, input)));
 
 describe("executeDbCommand", () => {
+  test("maps the db:seed snapshot flag to its physical source", () => {
+    const input = dbInputFromCommand("seed", {
+      argv: [],
+      parsedArgv: [],
+      flags: { snapshot: "snapshot-id" },
+      args: {},
+    });
+
+    expect(input.snapshotId).toBe("snapshot-id");
+  });
+
+  test("maps explicit snapshot source selectors", () => {
+    // Given: snapshot listing flags naming a sibling app and its canonical root.
+    const input = dbInputFromCommand("snapshots", {
+      argv: [],
+      parsedArgv: [],
+      flags: { "from-app": "sibling", "from-path": "/workspace/sibling" },
+      args: {},
+    });
+
+    // When: the command boundary parses those selectors.
+    const fromApp = Reflect.get(input, "fromApp");
+    const fromPath = Reflect.get(input, "fromPath");
+
+    // Then: both typed selectors survive into SQL execution input.
+    expect({ fromApp, fromPath }).toEqual({ fromApp: "sibling", fromPath: "/workspace/sibling" });
+  });
+
+  test("lists only snapshots owned by the current canonical app root by default", async () => {
+    // Given: snapshots stored under an app id shared by more than one worktree.
+    const harness = makeSqlTestDeps({ password: SECRET });
+
+    // When: the user lists snapshots without an explicit source selector.
+    await run(harness.deps, { action: "snapshots", yes: false });
+
+    // Then: the query is constrained by planner-owned app identity.
+    expect(harness.snapshotFilters()).toEqual([
+      { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
+    ]);
+  });
+
   test("exports a single mysql service without --service via serviceCmd to hostPath", async () => {
     const harness = makeSqlTestDeps({ password: SECRET });
 
@@ -126,7 +172,7 @@ describe("executeDbCommand", () => {
       countStdout: "0",
     });
 
-    const exit = await run(harness.deps, { action: "import", file: "dump.bak", yes: false });
+    const exit = await run(harness.deps, { action: "import", file: "dump.bak", yes: true });
 
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isFailure(exit)) throw new Error("expected success");
@@ -221,7 +267,7 @@ describe("executeDbCommand", () => {
     const exit = await run(harness.deps, {
       action: "import",
       file: "nested.sql.gz",
-      yes: false,
+      yes: true,
       hostCwd: nested,
     });
 
@@ -230,13 +276,29 @@ describe("executeDbCommand", () => {
     expect(exit.value.file).toBe(join(nested, "nested.sql.gz"));
   });
 
-  test("imports an empty database without confirmation", async () => {
+  test("marks an explicitly selected external import file as trusted after hashing it", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+    const external = join(harness.root, "..", `external-${Date.now()}.sql`);
+    writeFileSync(external, "SELECT 1;");
+    try {
+      const exit = await run(harness.deps, { action: "import", file: external, yes: true });
+
+      expect(Exit.isSuccess(exit)).toBe(true);
+      const transfer = harness.transfers()[0];
+      expect(transfer?.from._tag).toBe("hostPath");
+      if (transfer?.from._tag === "hostPath") expect(transfer.from.trusted).toBe(true);
+    } finally {
+      rmSync(external, { force: true });
+    }
+  });
+
+  test("requires confirmation before importing into an empty database", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
 
     const exit = await run(harness.deps, { action: "import", file: "dump.sql.gz", yes: false });
 
-    expect(Exit.isSuccess(exit)).toBe(true);
-    expect(harness.transfers()).toHaveLength(1);
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(harness.transfers()).toHaveLength(0);
   });
 
   test("imports with --yes even when the database is non-empty", async () => {
@@ -251,6 +313,7 @@ describe("executeDbCommand", () => {
     if (transfer?.to._tag === "serviceCmd") {
       expect(transfer.to.command).toEqual(wrapImportCommand(["mysql", "-u", "lando", "sql-app"], true));
     }
+    expect(transfer?.expectedDigest).toMatch(/^[a-f0-9]{64}$/u);
   });
 
   test("treats a failed count probe as non-empty and requires confirmation", async () => {
@@ -273,6 +336,8 @@ describe("executeDbCommand", () => {
 
     const allowed = await run(harness.deps, { action: "reset", yes: true });
     expect(Exit.isSuccess(allowed)).toBe(true);
+    expect(harness.snapshots()).toHaveLength(1);
+    expect(harness.snapshots()[0]?.metadata?.recoveryReason).toBe("reset");
     const exec = harness.execs()[0];
     expect(exec?.command[0]).toBe("mysql");
     expect(exec?.env?.MYSQL_PWD).toBe(SECRET);
@@ -296,7 +361,12 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlCommandFailedError);
+    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    expect(error).toBeInstanceOf(SqlRecoveryOperationError);
+    if (error instanceof SqlRecoveryOperationError) {
+      expect(error.cause).toBeInstanceOf(SqlCommandFailedError);
+      expect(error.recoverySnapshotId).toMatch(/^snap-/u);
+    }
   });
 
   test("fails closed when an mssql backup exec returns a non-zero exit", async () => {
@@ -317,9 +387,39 @@ describe("executeDbCommand", () => {
 
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isFailure(exit)) throw new Error("expected success");
-    expect(exit.value.snapshotId).toBe("before-change");
+    expect(exit.value.snapshotId).not.toBe("before-change");
     expect(harness.snapshots()[0]?.store).toBe("sql-app_database_data");
     expect(harness.snapshots()[0]?.format).toBe("tar.gz");
+    const metadata = harness.snapshots()[0]?.metadata;
+    expect(String(metadata?.sourceRoot)).toBe(harness.root);
+    expect(String(metadata?.service)).toBe("database");
+    expect(metadata?.volumeInstanceId).toBe("volume-instance:sql-app_database_data");
+    expect(metadata?.family).toBe("mysql");
+    expect(metadata?.version).toBe("8.0");
+    expect(metadata?.imageIdentity).toBe("sha256:mysql-runtime");
+    expect(metadata?.recoveryReason).toBe("manual");
+  });
+
+  test("uses the effective artifact version when the service type is unversioned", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, type: "mysql", version: "8.0" });
+
+    const exit = await run(harness.deps, { action: "snapshot", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.snapshots()[0]?.metadata?.version).toBe("8.0");
+  });
+
+  test("creates zstd snapshots when explicitly requested", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET });
+
+    const exit = await run(harness.deps, {
+      action: "snapshot",
+      compression: "zstd",
+      yes: false,
+    });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.snapshots()[0]?.format).toBe("tar.zst");
   });
 
   test("fails restore when the service has no data volume", async () => {
@@ -336,31 +436,101 @@ describe("executeDbCommand", () => {
   test("restores a snapshot by stopping, restoring, then starting the service", async () => {
     const harness = makeSqlTestDeps({ password: SECRET });
 
-    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: false });
+    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(harness.lifecycle()).toEqual(["stop", "restore", "start"]);
+    expect(harness.lifecycle()).toEqual(["lock", "stop", "snapshot", "restore", "start"]);
   });
 
-  test("starts the service after a failed restore", async () => {
+  test("leaves the service stopped after a failed restore", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, restoreFails: true });
 
-    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: false });
+    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(FakeRestoreError);
-    expect(harness.lifecycle()).toEqual(["stop", "restore", "start"]);
+    const error = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+    expect(error).toBeInstanceOf(SqlRecoveryOperationError);
+    if (error instanceof SqlRecoveryOperationError) {
+      expect(error.cause).toBeInstanceOf(FakeRestoreError);
+      expect(error.recoverySnapshotId).toMatch(/^snap-/u);
+    }
+    expect(harness.lifecycle()).toEqual(["lock", "stop", "snapshot", "restore"]);
   });
 
-  test("starts the service after a failed restore even when start then fails", async () => {
-    const harness = makeSqlTestDeps({ password: SECRET, restoreFails: true, startFails: true });
+  test("does not start a previously stopped service after successful restore", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, initiallyRunning: false });
 
-    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: false });
+    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.lifecycle()).toEqual(["lock", "snapshot", "restore"]);
+  });
+
+  test("fails closed before restoring a snapshot from another database version", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, snapshotVersion: "5.7" });
+
+    const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(FakeRestoreError);
-    expect(harness.lifecycle()).toEqual(["stop", "restore", "start"]);
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(
+      SqlRecoveryUnavailableError,
+    );
+    expect(harness.lifecycle()).toEqual(["lock"]);
+  });
+
+  test("fails closed before mutating when a snapshot belongs to another physical volume", async () => {
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      snapshotVolumeInstance: "volume-instance:foreign",
+    });
+
+    const exit = await run(harness.deps, { action: "restore", snapshotId: "foreign", yes: true });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(harness.lifecycle()).toEqual(["lock"]);
+  });
+
+  test("seeds a provenance-confirmed fresh empty volume from a logical dump", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+
+    const exit = await run(harness.deps, { action: "seed", file: "dump.sql.gz", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isFailure(exit)) throw new Error("expected success");
+    expect(exit.value.seedStatus).toBe("seeded");
+    expect(harness.transfers()).toHaveLength(1);
+    expect(harness.snapshots()).toHaveLength(0);
+  });
+
+  test("seeds a provenance-confirmed fresh volume from a compatible physical snapshot", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+
+    const exit = await run(harness.deps, { action: "seed", snapshotId: "seed-source", yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.lifecycle()).toEqual(["lock", "restore"]);
+  });
+
+  test("quarantines an interrupted seed instead of trusting an empty database", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0", seedStatus: "in-progress" });
+
+    const exit = await run(harness.deps, { action: "seed", file: "dump.sql.gz", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlSeedStateError);
+    expect(harness.transfers()).toHaveLength(0);
+  });
+
+  test("requires exactly one seed source", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+
+    const exit = await run(harness.deps, { action: "seed", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(SqlSeedSourceError);
   });
 });

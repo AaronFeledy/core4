@@ -2,9 +2,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
-import type { DataTransferResult, DataTransferSpec, SnapshotHandle } from "@lando/sdk/schema";
+import type {
+  DataTransferResult,
+  DataTransferSpec,
+  SnapshotFilter,
+  SnapshotHandle,
+  SnapshotMetadata,
+  VolumeInfo,
+} from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
 
 import type { SqlCommandDeps } from "../../src/run.ts";
 import type { SqlLandofile, SqlPlan } from "../../src/views.ts";
@@ -17,14 +25,19 @@ export type ExtraSqlService = {
 export type SqlTestOptions = {
   readonly password: string;
   readonly type?: string;
+  readonly version?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly countStdout?: string;
   readonly countFails?: boolean;
   readonly execFails?: boolean;
   readonly restoreFails?: boolean;
   readonly startFails?: boolean;
+  readonly initiallyRunning?: boolean;
   readonly extraServices?: ReadonlyArray<ExtraSqlService>;
   readonly storage?: ReadonlyArray<{ readonly store: string }>;
+  readonly seedStatus?: "fresh" | "in-progress" | "seeded" | "failed";
+  readonly snapshotVersion?: string;
+  readonly snapshotVolumeInstance?: string;
 };
 
 export type RecordedExec = {
@@ -36,9 +49,10 @@ export type RecordedSnapshot = {
   readonly store: string;
   readonly format?: string;
   readonly label?: string;
+  readonly metadata?: SnapshotMetadata;
 };
 
-export type SqlLifecycleStep = "stop" | "restore" | "start";
+export type SqlLifecycleStep = "lock" | "snapshot" | "stop" | "restore" | "start";
 
 export class FakeRestoreError extends Error {
   readonly _tag = "FakeRestoreError";
@@ -64,6 +78,7 @@ export type SqlTestHarness = {
   readonly execs: () => ReadonlyArray<RecordedExec>;
   readonly published: () => ReadonlyArray<string>;
   readonly lifecycle: () => ReadonlyArray<SqlLifecycleStep>;
+  readonly snapshotFilters: () => ReadonlyArray<SnapshotFilter>;
   readonly dispose: () => void;
 };
 
@@ -75,11 +90,14 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const execs: RecordedExec[] = [];
   const published: string[] = [];
   const lifecycle: SqlLifecycleStep[] = [];
+  const snapshotFilters: SnapshotFilter[] = [];
+  let seedStatus = options.seedStatus ?? "fresh";
   const storage = options.storage ?? [{ store: "sql-app_database_data" }];
   const services: Record<string, SqlPlan["services"][string]> = {
     database: {
       name: "database",
       type: options.type ?? "mysql:8.0",
+      ...(options.version === undefined ? {} : { version: options.version }),
       environment: options.environment ?? {
         MYSQL_USER: "lando",
         MYSQL_PASSWORD: options.password,
@@ -109,6 +127,11 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     id: "sql-app",
     name: "sql-app",
     root,
+    identity: {
+      appRoot: root,
+      ownerKey: "owner:sql-app",
+      repoGroupKey: "repository:sql-app",
+    },
     services,
   };
 
@@ -130,13 +153,40 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
           store: store.store,
           ...(opts?.format === undefined ? {} : { format: opts.format }),
           ...(opts?.label === undefined ? {} : { label: opts.label }),
+          ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
         });
-        return { id: opts?.label ?? `snap-${store.store}`, store };
+        lifecycle.push("snapshot");
+        return { id: `snap-${store.store}-${snapshots.length}`, store };
       }),
     restore: () => {
       lifecycle.push("restore");
       return options.restoreFails === true ? Effect.fail(new FakeRestoreError()) : Effect.void;
     },
+    listSnapshots: (filter) =>
+      Effect.sync(() => {
+        snapshotFilters.push(filter);
+        return filter.id === undefined
+          ? []
+          : [
+              SnapshotInfo.make({
+                id: filter.id,
+                store: { app: AppId.make("sql-app"), store: storage[0]?.store ?? "" },
+                digest: "sha256:test",
+                sizeBytes: 12,
+                createdAt: DateTime.unsafeMake("2026-09-11T00:00:00Z"),
+                metadata: {
+                  sourceRoot: AbsolutePath.make(root),
+                  service: ServiceName.make("database"),
+                  volumeInstanceId:
+                    options.snapshotVolumeInstance ?? `volume-instance:${storage[0]?.store ?? ""}`,
+                  family: (options.type ?? "mysql:8.0").startsWith("postgres") ? "postgres" : "mysql",
+                  version: options.snapshotVersion ?? (options.type ?? "mysql:8.0").split(":")[1] ?? "8.0",
+                  imageIdentity: "sha256:mysql-runtime",
+                  recoveryReason: "manual",
+                },
+              }),
+            ];
+      }),
     exec: (_service, command, env) => {
       const joined = command.join(" ");
       const isCount = joined.includes("information_schema") || joined.includes("COUNT(*)");
@@ -159,6 +209,26 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       Effect.sync(() => {
         lifecycle.push("stop");
       }),
+    inspect: () =>
+      Effect.succeed({
+        running: options.initiallyRunning !== false,
+        imageIdentity: "sha256:mysql-runtime",
+      }),
+    inspectVolume: (_service, store) =>
+      Effect.succeed({
+        ref: { app: AppId.make("sql-app"), store },
+        instanceId: `volume-instance:${store}`,
+        provenance: "known",
+      } satisfies VolumeInfo),
+    withVolumeLock: (_instanceId, body) =>
+      Effect.sync(() => {
+        lifecycle.push("lock");
+      }).pipe(Effect.zipRight(body)),
+    getSeedStatus: () => Effect.succeed(seedStatus),
+    setSeedStatus: (_instanceId, status) =>
+      Effect.sync(() => {
+        seedStatus = status;
+      }),
     publish: (event) =>
       Effect.sync(() => {
         published.push(String(event._tag));
@@ -173,6 +243,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     execs: () => execs,
     published: () => published,
     lifecycle: () => lifecycle,
+    snapshotFilters: () => snapshotFilters,
     dispose: () => {
       rmSync(root, { recursive: true, force: true });
     },
