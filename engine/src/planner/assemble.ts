@@ -2,6 +2,7 @@ import { type Context, DateTime, Effect, Either, ParseResult, Schema } from "eff
 
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import {
   getVersionConstraintEntries,
@@ -199,6 +200,7 @@ export const planApp = (
     const sourceFingerprint = yield* readAppPlanSourceFingerprint(
       appRoot,
       getLandofileReferencedFiles(landofile),
+      getLandofileIncludeSources(landofile),
     ).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
     const registeredServiceTypeIds = manifests.flatMap((manifest) =>
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),

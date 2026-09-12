@@ -14,6 +14,7 @@ import {
 } from "@lando/sdk/schema";
 import { CacheService } from "@lando/sdk/services";
 
+import type { LandofileIncludeSource } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
 import {
@@ -29,7 +30,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 15n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 16n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -58,6 +59,7 @@ export interface AppPlanSourceFingerprint {
   readonly includeLockfileHash: string | null;
   readonly includedFragmentShas: ReadonlyArray<string>;
   readonly referencedFiles: ReadonlyArray<LandofileReferencedFile>;
+  readonly includeSources?: ReadonlyArray<LandofileIncludeSource>;
 }
 
 const sha256 = (payload: Uint8Array | string): Buffer => createHash("sha256").update(payload).digest();
@@ -111,6 +113,7 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
   referencedFiles: ReadonlyArray<LandofileReferencedFile> = [],
+  includeSources: ReadonlyArray<LandofileIncludeSource> = [],
 ): Effect.Effect<AppPlanSourceFingerprint, CacheError> =>
   Effect.tryPromise({
     try: async () => {
@@ -126,6 +129,7 @@ export const readAppPlanSourceFingerprint = (
         includeLockfileHash: await readOptionalHash(includeLockfilePath),
         includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
         referencedFiles,
+        includeSources,
       };
     },
     catch: (cause) =>
@@ -172,6 +176,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
               referencedFiles: input.sourceFingerprint.referencedFiles
                 .map(({ absolutePath, size, sha256 }) => ({ absolutePath, size, sha256 }))
                 .sort((left, right) => left.absolutePath.localeCompare(right.absolutePath)),
+              includeSources: input.sourceFingerprint.includeSources ?? [],
             },
       includedFragmentShas: [
         ...(input.sourceFingerprint?.includedFragmentShas ?? []),
