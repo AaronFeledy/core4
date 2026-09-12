@@ -12,3 +12,6 @@ export const isEventBoundaryError = (error: unknown): error is EventBoundaryErro
 
 export const isEventRuntimeError = (error: unknown): error is EventRuntimeError =>
   isEventBoundaryError(error) || error instanceof LandofileEventStepFailedError;
+
+export const isPostStartStepError = (error: unknown): error is LandofileEventStepFailedError =>
+  error instanceof LandofileEventStepFailedError && error.event === "post-start";

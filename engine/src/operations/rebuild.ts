@@ -28,7 +28,8 @@ import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import type { AppRef } from "@lando/sdk/schema";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
-import { compensateFailure } from "../lifecycle/failure-compensation.ts";
+import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
+import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
@@ -86,7 +87,7 @@ export const rebuildApp = (
     yield* runAppEvent(plan, "pre-rebuild", preRebuild);
     yield* stopAppWithPlan({}, resolvedTarget);
     yield* managed?.onStopped ?? Effect.void;
-    const start = yield* compensateFailure(
+    const start = yield* compensateFailureUnless(
       startApp(
         {
           reconcile: true,
@@ -97,6 +98,7 @@ export const rebuildApp = (
         { forceAppBuild: true },
       ),
       proxy.removeRoutes(plan.id),
+      isPostStartStepError,
     );
     const postRebuild = PostRebuildEvent.make({ _tag: "post-rebuild", app: ref, timestamp: timestamp() });
     yield* events.publish(postRebuild);

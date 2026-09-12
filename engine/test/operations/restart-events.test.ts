@@ -142,6 +142,18 @@ describe("restart lifecycle brackets", () => {
     expect(harness.executed.at(-1)).toBe("post-restart");
     expect(harness.routeRemovals).toEqual([]);
   });
+
+  test("post-start failure during restart does not remove started app routes", async () => {
+    // Given
+    const harness = restartHarness("post-start");
+    // When
+    const error = await Effect.runPromise(Effect.flip(harness.operation));
+    // Then
+    expect(error).toBeInstanceOf(LandofileEventStepFailedError);
+    expect(harness.executed.at(-1)).toBe("post-start");
+    expect(byTag(harness.events, "post-restart")).toEqual([]);
+    expect(harness.routeRemovals).toEqual([]);
+  });
 });
 
 describe("start post-start", () => {

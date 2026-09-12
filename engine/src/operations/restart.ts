@@ -22,7 +22,8 @@ import { RouterService } from "@lando/sdk/services";
 import type { RedactionService } from "@lando/redaction/service";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
-import { compensateFailure } from "../lifecycle/failure-compensation.ts";
+import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
+import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
@@ -84,7 +85,7 @@ export const restartApp = (
     yield* runAppEvent(plan, "pre-restart", preRestart);
     yield* stopAppWithPlan({}, resolvedTarget);
     yield* managed?.onStopped ?? Effect.void;
-    const result = yield* compensateFailure(
+    const result = yield* compensateFailureUnless(
       startApp(
         {
           reconcile: options.reconcile ?? false,
@@ -94,6 +95,7 @@ export const restartApp = (
         managed,
       ),
       proxy.removeRoutes(plan.id),
+      isPostStartStepError,
     );
     const postRestart = PostRestartEvent.make({
       _tag: "post-restart",
