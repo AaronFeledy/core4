@@ -7,6 +7,7 @@ import {
   FileSystem,
   PathsService,
   PluginRegistry,
+  RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { planApp } from "../planner/assemble.ts";
@@ -16,6 +17,7 @@ import {
   applyAuthoredHealthcheck,
 } from "../planner/authored.ts";
 import { FILE_SYNC_DEFAULT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
+import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 
@@ -33,6 +35,7 @@ export const AppPlannerLive = Layer.effect(
   AppPlanner,
   Effect.gen(function* () {
     const pluginRegistry = yield* PluginRegistry;
+    const providerRegistry = yield* Effect.serviceOption(RuntimeProviderRegistry);
     const cacheService = yield* Effect.serviceOption(CacheService);
     const configService = yield* Effect.serviceOption(ConfigService);
     const fileSystem = yield* Effect.serviceOption(FileSystem);
@@ -49,6 +52,9 @@ export const AppPlannerLive = Layer.effect(
           Option.getOrUndefined(certificateAuthorityResolver),
           landofile,
           providerCapabilities,
+        ).pipe(
+          // Resolve live storage after cache retrieval; never cache the adoption decision.
+          Effect.flatMap((plan) => adoptMysqlVolume(plan, Option.getOrUndefined(providerRegistry))),
         ),
     } satisfies Context.Tag.Service<typeof AppPlanner>;
   }),
