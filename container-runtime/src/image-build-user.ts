@@ -1,6 +1,7 @@
 import { Effect, Either, Schema } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { CONTAINER_USER_PATTERN, isContainerUser } from "@lando/sdk/schema";
 
 import type { ContainerBuildHttpApi } from "./image-build-http.ts";
 
@@ -14,7 +15,22 @@ const ImageInspect = Schema.Struct({
   Config: Schema.Struct({ User: Schema.optional(Schema.String) }),
 });
 
-const unsafeInheritedUserPattern = /[\p{White_Space}\p{Cc}\\]/u;
+export const validateDockerfileUser = (
+  value: unknown,
+  field: string,
+  providerId: string,
+): Effect.Effect<string, ProviderInternalError> =>
+  typeof value === "string" && isContainerUser(value)
+    ? Effect.succeed(value)
+    : Effect.fail(
+        new ProviderInternalError({
+          providerId,
+          operation: "buildArtifact",
+          message: `Invalid ${field}: expected a Docker USER token matching ${CONTAINER_USER_PATTERN}; whitespace, control characters, and backslashes are not allowed.`,
+          remediation:
+            "Use a non-empty user or user:group identity containing only letters, digits, underscores, dots, and hyphens, starting each part with a letter, digit, or underscore.",
+        }),
+      );
 
 const inspectionRemediation = (input: InspectInheritedImageUserInput): string =>
   `Verify that ${input.baseRef} is available and returns valid image configuration through the container API.`;
@@ -34,7 +50,7 @@ const inspectionError = (
 
 export const inspectInheritedImageUser = (
   input: InspectInheritedImageUserInput,
-): Effect.Effect<string | undefined, ProviderUnavailableError | ProviderInternalError> =>
+): Effect.Effect<string, ProviderUnavailableError | ProviderInternalError> =>
   input.request({ method: "GET", path: `/images/${encodeURIComponent(input.baseRef)}/json` }).pipe(
     Effect.mapError((cause) =>
       cause instanceof ProviderUnavailableError
@@ -73,17 +89,10 @@ export const inspectInheritedImageUser = (
           );
     }),
     Effect.flatMap((user) =>
-      user !== undefined && user !== "" && unsafeInheritedUserPattern.test(user)
-        ? Effect.fail(
-            inspectionError(
-              input,
-              "Invalid inherited image user: whitespace, control characters, and backslashes are not allowed.",
-            ),
-          )
-        : Effect.succeed(user),
+      validateDockerfileUser(
+        user === undefined || user === "" ? "root" : user,
+        "inherited image user",
+        input.providerId,
+      ),
     ),
-    Effect.map((user) => {
-      const identity = user?.split(":", 1)[0];
-      return user === undefined || user === "" || identity === "root" || identity === "0" ? undefined : user;
-    }),
   );

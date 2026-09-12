@@ -39,6 +39,7 @@ interface ExecSession {
   readonly api: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
   readonly service: ServicePlan;
+  readonly user?: string;
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan) =>
@@ -111,6 +112,7 @@ const createExec = (
         ...(command.env === undefined
           ? {}
           : { Env: Object.entries(command.env).map(([key, value]) => `${key}=${value}`) }),
+        ...(session.user === undefined ? {} : { User: session.user }),
       },
     });
 
@@ -208,7 +210,12 @@ export const execStream = (
     return Stream.fail(apiRequired(ctx));
   }
 
-  const session: ExecSession = { api: options.api, ctx, service };
+  const session: ExecSession = {
+    api: options.api,
+    ctx,
+    service,
+    ...(target.user === undefined ? {} : { user: target.user }),
+  };
 
   return Stream.fromEffect(createExec(session, plan, command)).pipe(
     Stream.flatMap((execId) => {

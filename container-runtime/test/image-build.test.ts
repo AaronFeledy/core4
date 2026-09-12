@@ -224,8 +224,8 @@ test("buildContainerArtifact renders an authored build step over a referenced ar
   const api = {
     request: (request: ContainerBuildHttpRequest) =>
       Effect.promise(async () => {
-        bodies.push(new TextDecoder().decode(await collect(request.stdin)));
-        return { status: 200, body: "" };
+        if (request.method === "POST") bodies.push(new TextDecoder().decode(await collect(request.stdin)));
+        return { status: 200, body: '{"Config":{"User":"app:staff"}}' };
       }),
   };
   const authored = service({
@@ -237,6 +237,7 @@ test("buildContainerArtifact renders an authored build step over a referenced ar
             id: "authored-artifact:1",
             phase: "build",
             command: ["sh", "-lc", "install-dependencies"],
+            user: "1000:1000",
           },
         ],
       },
@@ -252,7 +253,7 @@ test("buildContainerArtifact renders an authored build step over a referenced ar
   );
 
   // Then
-  expect(bodies[0]).toContain('RUN ["sh","-lc","install-dependencies"]');
+  expect(bodies[1]).toContain('USER 1000:1000\nRUN ["sh","-lc","install-dependencies"]\nUSER app:staff\n');
 });
 
 test("buildContainerArtifact pins a resolved base digest in derived Dockerfiles", async () => {

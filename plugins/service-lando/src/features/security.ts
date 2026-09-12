@@ -71,6 +71,7 @@ const applyCaIntent = (ctx: ServiceFeatureContext, config: LandoSecurityFeatureC
     id: "lando.security:trust-store",
     phase: "build",
     command: TRUST_STORE_COMMAND,
+    user: "root",
     buildKeyInputs: { caDigests: config.cas.map((ca) => ca.digest).sort() },
     caFiles: config.cas.map((ca) => ({
       path: ca.path,

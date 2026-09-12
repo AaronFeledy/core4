@@ -13,11 +13,9 @@ export interface RedirectLogSourceBuildStepsInput {
   readonly base: "l337" | "lando";
 }
 
-/** The redirected fd a stream classification maps to. */
 const redirectTarget = (stream: LogSource["stream"]): string =>
   stream === "stdout" ? "/dev/stdout" : "/dev/stderr";
 
-/** The stable build-step id for a redirected source. */
 const redirectStepId = (source: LogSource): string => `lando-log-redirect:${String(source.id)}`;
 
 /**
@@ -26,7 +24,9 @@ const redirectStepId = (source: LogSource): string => `lando-log-redirect:${Stri
  * For each redirect source on a Lando-built service the daemon's log parent is
  * created before its path is symlinked to `/dev/stdout` (`stream: "stdout"`) or
  * `/dev/stderr` (`stream: "stderr"`). Separate argv commands keep both steps
- * shell-free and idempotent across rebuilds.
+ * shell-free and idempotent across rebuilds. Both steps declare `user: "root"`
+ * so a non-root service user cannot starve directory creation or linking under
+ * system log paths.
  *
  * A non-Lando base has no build phase to redirect through (redirect sources on
  * such a service are already rejected during {@link mergeLogSources}), so this
@@ -45,11 +45,13 @@ export const redirectLogSourceBuildSteps = (
         id: `lando-log-redirect-mkdir:${String(source.id)}`,
         phase: "build" as const,
         command: ["mkdir", "-p", posix.dirname(String(source.path))],
+        user: "root",
       },
       {
         id: redirectStepId(source),
         phase: "build" as const,
         command: ["ln", "-sf", redirectTarget(source.stream), String(source.path)],
+        user: "root",
       },
     ]);
 };

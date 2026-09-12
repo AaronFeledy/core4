@@ -52,7 +52,7 @@ const buildWithInspection = (
             id: "lando.boot",
             phase: "build",
             command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
-            privileged: true,
+            user: "root",
           },
         ],
       },
@@ -118,21 +118,28 @@ const dockerfileFor = async (user: string | undefined): Promise<string> => {
 };
 
 describe("inherited image user inspection through artifact builds", () => {
-  test.each(["app", "app:staff", "1001:1002", "_www", "app.user-name:staff.group-name"])(
-    "accepts a safe inherited user token through the privileged build path: %s",
-    async (user) => {
-      // Given / When
-      const dockerfile = await dockerfileFor(user);
+  test.each([
+    "app",
+    "app:staff",
+    "1001:1002",
+    "1000:1000",
+    "_www",
+    "app.user-name:staff.group-name",
+    "root:wheel",
+    "0",
+    "0:staff",
+  ])("preserves an exact inherited user token through the user-switching build path: %s", async (user) => {
+    // Given / When
+    const dockerfile = await dockerfileFor(user);
 
-      // Then
-      expect(dockerfile).toBe(
-        `FROM ${baseTag}\nUSER root\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nUSER ${user}\n`,
-      );
-    },
-  );
+    // Then
+    expect(dockerfile).toBe(
+      `FROM ${baseTag}\nUSER root\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nUSER ${user}\n`,
+    );
+  });
 
-  test.each([undefined, "", "root", "root:wheel", "0", "0:staff"])(
-    "accepts an absent, empty, or exact root identity without an unsafe switch: %s",
+  test.each([undefined, "", "root"])(
+    "accepts an absent, empty, or bare root identity without a switch: %s",
     async (user) => {
       // Given / When
       const dockerfile = await dockerfileFor(user);
@@ -149,6 +156,8 @@ describe("inherited image user inspection through artifact builds", () => {
     ["root with trailing space", "root "],
     ["trailing backslash", "app\\"],
     ["embedded backslash", "app\\staff"],
+    ["leading hyphen", "-root"],
+    ["shell punctuation", "root;id"],
   ])("rejects a user token containing %s", async (_case, user) => {
     // Given / When
     const failure = await Effect.runPromise(Effect.flip(inspectionEffect(user)));

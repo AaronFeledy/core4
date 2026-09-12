@@ -1,0 +1,134 @@
+---
+id: build-steps
+provider: test
+timeout: 60000
+tags: [beta, docs, service, build]
+---
+
+# Run build steps as root or as your app user
+
+A build step is a shell command Lando runs while it builds or starts a service. Give a step a `user:` when it needs a different identity than the rest of the service. Most of the time that means `user: root` for a package install, with everything else running as the app user.
+
+```yaml
+name: build-steps-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    user: node
+    build:
+      artifact:
+        - run: apt-get update -y && apt-get install -y --no-install-recommends jq
+          user: root
+        - npm config set fund false
+      app:
+        - npm ci
+        - run: chown -R node:node /app/node_modules
+          user: root
+```
+
+Lint it, then start:
+
+```sh
+lando app:config:lint
+lando start
+```
+
+## Two phases
+
+| Key | When it runs | Where | Good for |
+| --- | --- | --- | --- |
+| `build.artifact` | While the image is produced | Inside the image build, no app mount | System packages, global tools, anything that belongs in the image |
+| `build.app` | After the container starts | Inside the running container with your app mounted | `npm ci`, `composer install`, permission fixes on mounted code |
+
+Each key takes one entry or an ordered array. Lando runs the list top to bottom and keeps the order you wrote.
+
+## Step forms
+
+An entry is either a plain string or an object:
+
+| Form | Example | Runs as |
+| --- | --- | --- |
+| String | `npm config set fund false` | The service's planned user |
+| Object | `{ run: "apt-get install -y jq", user: root }` | The `user` you named |
+
+A step with no `user` runs as the service's planned user, which is what `services.<name>.user` sets. Leave `services.<name>.user` out and an artifact step runs as the base image's own user, while an app step runs as the container's configured user.
+
+Mixing root and non-root steps in one list is fine. The order is preserved, so `apt-get` as root followed by `npm config` as `node` does exactly that, in that sequence.
+
+## Identity format
+
+`user` is `<name|uid>` or `<name|uid>:<group|gid>`. Letters, digits, underscores, dots, and hyphens, and each part starts with a letter, digit, or underscore.
+
+| Value | Result |
+| --- | --- |
+| `root` | Accepted |
+| `node` | Accepted |
+| `1000` | Accepted |
+| `1000:1000` | Accepted |
+| `root wheel` | Rejected, whitespace |
+| `-root` | Rejected, leading hyphen |
+| `root;id` | Rejected, shell metacharacter |
+
+`lando app:config:lint` rejects a bad identity before anything builds. The report says `valid: false` and points at the field, `services.app.build.artifact.0.user` for the first artifact step above, so you fix the Landofile rather than reading a build log.
+
+## What changes when you change `user`
+
+The step's user is part of its build key. Change an app step's user and only that step re-runs on the next `lando start`, the same as changing the command text. Change an artifact step's user and the whole image rebuilds, because those steps share one image key.
+
+For the image phase, Lando resolves every step's user during planning and only emits a `USER` switch when a step's user differs from the one currently active. After the last artifact step it restores the service's final user: `services.<name>.user` when you set it, otherwise the base image's own user. Two root steps in a row cost one switch, not two.
+
+## Check what the planner sees
+
+`lando app:config` prints the merged Landofile with your steps exactly as authored: strings stay strings, objects keep their `run` and `user`. `lando app:cache:refresh` rebuilds the plan and fails if any step cannot be resolved.
+
+```sh
+lando app:config --format=json
+lando app:cache:refresh
+```
+
+<Guide>
+  <Scenario id="per-step-users" render>
+    <Step name="scaffold">
+      <UseFixture name="build-steps-demo" />
+    </Step>
+    <Step name="lint-build-steps">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect-steps">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"node\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"apt-get update -y && apt-get install -y --no-install-recommends jq\",\\s*\"user\":\\s*\"root\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm config set fund false\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm ci\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"run\":\\s*\"chown -R node:node /app/node_modules\",\\s*\"user\":\\s*\"root\"" } }} />
+    </Step>
+    <Step name="resolve-plan">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="invalid-user-rejected" render={false} reason="Regression coverage: a build step user with whitespace fails lint and the report names the offending entry">
+    <Step name="scaffold-invalid">
+      <UseFixture name="build-steps-invalid-user" />
+    </Step>
+    <Step name="lint-invalid-user">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"services\\.app\\.build\\.artifact\\.0\\.user\"" } }} />
+    </Step>
+    <Step name="cleanup-invalid">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- What the bundled scaffold step adds to every `lando` service: [See what lando.boot adds](./lando-boot-scaffold.mdx)
+- Refreshing a stale plan: [App plan cache refresh](../cli/cache-refresh.mdx)

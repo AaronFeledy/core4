@@ -52,8 +52,7 @@ const aptPackageArguments = Object.entries(PHP_APT_PACKAGE_PINS).map(
 );
 
 // Exact direct-package pins and the resolved dpkg manifest bound cold builds within Debian's
-// retention window. The upstream php image and transitive apt closure remain mutable until the
-// follow-up switches runtime plans to digest-pinned Lando PHP base images.
+// retention window. The upstream php image and transitive apt closure remain mutable.
 export const PHP_PREREQUISITES_COMMAND = [
   "set -eux",
   "apt-get update",
@@ -125,6 +124,7 @@ export const phpPrerequisiteBuildSteps = (
     id: "service-lando.php:prerequisites",
     phase: "build",
     command: PHP_PREREQUISITES_COMMAND,
+    user: "root",
     buildKeyInputs: {
       aptPackages: PHP_APT_PACKAGE_PINS,
       extensions: PHP_COMMON_EXTENSIONS,
@@ -138,6 +138,7 @@ export const phpPrerequisiteBuildSteps = (
       id: "service-lando.php:composer",
       phase: "build",
       command: composerCommandFor(release),
+      user: "root",
       buildKeyInputs: { composer: release },
     },
   ];

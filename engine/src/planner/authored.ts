@@ -207,12 +207,14 @@ export const planServiceDrafts = (input: {
                     ...artifactScripts.map((script, index) => ({
                       id: `authored-artifact:${index + 1}`,
                       phase: "build" as const,
-                      command: ["sh", "-lc", script],
+                      command: ["sh", "-lc", script.run],
+                      ...(script.user === undefined ? {} : { user: script.user }),
                     })),
                     ...appScripts.map((script, index) => ({
                       id: `authored-app:${index + 1}`,
                       phase: "app" as const,
-                      command: { command: ["sh", "-lc", script] },
+                      command: { command: ["sh", "-lc", script.run] },
+                      ...(script.user === undefined ? {} : { user: script.user }),
                     })),
                   ],
                 },

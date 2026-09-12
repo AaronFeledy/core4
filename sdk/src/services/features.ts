@@ -65,8 +65,12 @@ export interface ServiceBuildStepIntent {
   readonly phase: string;
   /** The command(s) to run for this step. */
   readonly command: CommandSpec;
-  /** Run this artifact step with build-time privileges, restoring the inherited image user afterward. */
-  readonly privileged?: boolean;
+  /**
+   * Container identity this step runs as. Planning fills an omitted value with
+   * the service's planned user when that user exists. Artifact realization still
+   * treats a still-omitted value as the final service or inherited image identity.
+   */
+  readonly user?: string;
   /** Resolved immutable artifact identities included in the image build key but not rendered as commands. */
   readonly buildKeyInputs?: Readonly<Record<string, unknown>>;
   /** Verified host CA files copied into the derived build context for this step. */

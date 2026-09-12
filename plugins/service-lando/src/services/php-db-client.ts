@@ -220,6 +220,7 @@ export const phpDbClientBuildSteps = (
       id: `service-lando.php:db-client:${install.family}`,
       phase: "build",
       command: source.command,
+      user: "root",
       dependsOn: ["service-lando.php:prerequisites"],
       buildKeyInputs: {
         dbClient: {
