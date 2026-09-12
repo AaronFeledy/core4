@@ -188,8 +188,10 @@ export const runReset = (
   creds: SqlCreds,
   env: Readonly<Record<string, string>>,
 ) => {
-  const command = resetCommand(family, creds);
-  return exec(service, command, env).pipe(
+  const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
+  const command = resetCommand(family, usesMysqlRoot ? { user: "root", database: creds.database } : creds);
+  const resetEnv = usesMysqlRoot ? { ...env, MYSQL_PWD: creds.rootPassword } : env;
+  return exec(service, command, resetEnv).pipe(
     Effect.flatMap((result) => requireExecOk(result, service, command)),
   );
 };

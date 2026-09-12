@@ -45,6 +45,7 @@ type SqlPhysicalOperation<A, E> = {
   readonly family: SqlFamily;
   readonly label?: string;
   readonly format?: "tar" | "tar.gz" | "tar.zst";
+  readonly stoppedImageIdentity?: string;
   readonly reason: Exclude<SnapshotMetadata["recoveryReason"], "seed">;
   readonly resumeAfterSnapshot: boolean;
   readonly preflight?: (context: SqlRecoveryContext) => Effect.Effect<void, unknown>;
@@ -57,12 +58,13 @@ const resolvePhysicalContext = (input: SqlPhysicalContextInput) =>
     const volume =
       storeName === undefined ? undefined : yield* input.deps.inspectVolume(input.serviceName, storeName);
     const runtime = yield* input.deps.inspect(input.serviceName);
+    const imageIdentity = runtime.imageIdentity ?? (runtime.running ? undefined : input.stoppedImageIdentity);
     const separator = input.service.type.indexOf(":");
     const version = input.service.version ?? (separator < 0 ? "" : input.service.type.slice(separator + 1));
     if (
       volume?.provenance !== "known" ||
       volume.instanceId === undefined ||
-      runtime.imageIdentity === undefined ||
+      imageIdentity === undefined ||
       version.length === 0
     ) {
       return yield* Effect.fail(
@@ -86,7 +88,7 @@ const resolvePhysicalContext = (input: SqlPhysicalContextInput) =>
         volumeInstanceId: volume.instanceId,
         family: input.family,
         version,
-        imageIdentity: runtime.imageIdentity,
+        imageIdentity,
         recoveryReason: "manual",
       } satisfies SnapshotMetadata,
     };
@@ -99,7 +101,24 @@ export const withPhysicalVolumeLock = <A, E>(
 ) =>
   resolvePhysicalContext(input).pipe(
     Effect.flatMap((context) =>
-      input.deps.withVolumeLock(context.metadata.volumeInstanceId, input.body(context)),
+      input.deps.withVolumeLock(
+        context.metadata.volumeInstanceId,
+        resolvePhysicalContext(input).pipe(
+          Effect.flatMap(
+            (lockedContext): Effect.Effect<A, E | SqlRecoveryUnavailableError> =>
+              lockedContext.metadata.volumeInstanceId === context.metadata.volumeInstanceId
+                ? Effect.suspend(() => input.body(lockedContext))
+                : Effect.fail(
+                    new SqlRecoveryUnavailableError({
+                      message: `The physical volume for ${input.serviceName} changed while acquiring its lock.`,
+                      service: input.serviceName,
+                      reason: "The acquired lock belongs to a different volume instance.",
+                      remediation: "Retry after the concurrent lifecycle operation completes.",
+                    }),
+                  ),
+          ),
+        ),
+      ),
     ),
   );
 
@@ -111,6 +130,7 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
     serviceName: input.serviceName,
     family: input.family,
     ...(input.label === undefined ? {} : { label: input.label }),
+    ...(input.stoppedImageIdentity === undefined ? {} : { stoppedImageIdentity: input.stoppedImageIdentity }),
     body: (context) =>
       Effect.gen(function* () {
         if (input.preflight !== undefined) yield* input.preflight(context);

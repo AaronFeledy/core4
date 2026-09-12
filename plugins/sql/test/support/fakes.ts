@@ -25,15 +25,18 @@ export type ExtraSqlService = {
 
 export type SqlTestOptions = {
   readonly password: string;
+  readonly rootPassword?: string;
   readonly type?: string;
   readonly version?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly countStdout?: string;
   readonly countFails?: boolean;
+  readonly countFailuresBeforeSuccess?: number;
   readonly execFails?: boolean;
   readonly restoreFails?: boolean;
   readonly startFails?: boolean;
   readonly initiallyRunning?: boolean;
+  readonly omitImageIdentity?: boolean;
   readonly extraServices?: ReadonlyArray<ExtraSqlService>;
   readonly storage?: ReadonlyArray<{ readonly store: string }>;
   readonly seedStatus?: "fresh" | "in-progress" | "seeded" | "failed";
@@ -80,6 +83,7 @@ export type SqlTestHarness = {
   readonly published: () => ReadonlyArray<string>;
   readonly lifecycle: () => ReadonlyArray<SqlLifecycleStep>;
   readonly snapshotFilters: () => ReadonlyArray<SnapshotFilter>;
+  readonly countAttempts: () => number;
   readonly dispose: () => void;
 };
 
@@ -92,6 +96,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const published: string[] = [];
   const lifecycle: SqlLifecycleStep[] = [];
   const snapshotFilters: SnapshotFilter[] = [];
+  let countAttempts = 0;
   let seedStatus = options.seedStatus ?? "fresh";
   const storage = options.storage ?? [{ store: "sql-app_database_data" }];
   const services: Record<string, SqlPlan["services"][string]> = {
@@ -103,6 +108,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         MYSQL_USER: "lando",
         MYSQL_PASSWORD: options.password,
         MYSQL_DATABASE: "sql-app",
+        ...(options.rootPassword === undefined ? {} : { MYSQL_ROOT_PASSWORD: options.rootPassword }),
       },
       storage,
     },
@@ -119,7 +125,15 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const landofile: SqlLandofile = {
     name: "sql-app",
     services: Object.fromEntries(
-      Object.values(services).map((service) => [service.name, { type: service.type }]),
+      Object.values(services).map((service) => [
+        service.name,
+        {
+          type: service.type,
+          ...(options.rootPassword === undefined
+            ? {}
+            : { creds: { password: options.password, rootPassword: options.rootPassword } }),
+        },
+      ]),
     ),
   };
 
@@ -177,6 +191,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
                 createdAt: DateTime.unsafeMake("2026-09-11T00:00:00Z"),
                 metadata: {
                   sourceRoot: AbsolutePath.make(root),
+                  ownerKey: plan.identity?.ownerKey ?? "owner:sql-app",
                   service: ServiceName.make("database"),
                   volumeInstanceId:
                     options.snapshotVolumeInstance ?? `volume-instance:${storage[0]?.store ?? ""}`,
@@ -203,8 +218,13 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       const joined = command.join(" ");
       const isCount = joined.includes("information_schema") || joined.includes("COUNT(*)");
       if (isCount) {
-        if (options.countFails === true) return Effect.succeed({ ok: false, stdout: "" });
-        return Effect.succeed({ ok: true, stdout: options.countStdout ?? "0" });
+        return Effect.sync(() => {
+          countAttempts += 1;
+          if (options.countFails === true || countAttempts <= (options.countFailuresBeforeSuccess ?? 0)) {
+            return { ok: false, stdout: "" };
+          }
+          return { ok: true, stdout: options.countStdout ?? "0" };
+        });
       }
       execs.push({ command, ...(env === undefined ? {} : { env }) });
       return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
@@ -224,7 +244,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     inspect: () =>
       Effect.succeed({
         running: options.initiallyRunning !== false,
-        imageIdentity: "sha256:mysql-runtime",
+        ...(options.omitImageIdentity === true ? {} : { imageIdentity: "sha256:mysql-runtime" }),
       }),
     inspectVolume: (_service, store) =>
       Effect.succeed({
@@ -256,6 +276,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     published: () => published,
     lifecycle: () => lifecycle,
     snapshotFilters: () => snapshotFilters,
+    countAttempts: () => countAttempts,
     dispose: () => {
       rmSync(root, { recursive: true, force: true });
     },

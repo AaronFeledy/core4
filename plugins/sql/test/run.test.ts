@@ -411,7 +411,8 @@ describe("executeDbCommand", () => {
   });
 
   test("resets only after --yes and never puts the password on argv", async () => {
-    const harness = makeSqlTestDeps({ password: SECRET });
+    const rootPassword = "root-reset-secret";
+    const harness = makeSqlTestDeps({ password: SECRET, rootPassword });
 
     const denied = await run(harness.deps, { action: "reset", yes: false });
     expect(denied._tag).toBe("Failure");
@@ -423,8 +424,10 @@ describe("executeDbCommand", () => {
     expect(harness.snapshots()[0]?.metadata?.recoveryReason).toBe("reset");
     const exec = harness.execs()[0];
     expect(exec?.command[0]).toBe("mysql");
-    expect(exec?.env?.MYSQL_PWD).toBe(SECRET);
+    expect(exec?.command.slice(0, 3)).toEqual(["mysql", "-u", "root"]);
+    expect(exec?.env?.MYSQL_PWD).toBe(rootPassword);
     expect(exec?.command.join(" ")).not.toContain(SECRET);
+    expect(exec?.command.join(" ")).not.toContain(rootPassword);
   });
 
   test("does not start the task tree before a denied reset", async () => {
@@ -450,6 +453,15 @@ describe("executeDbCommand", () => {
       expect(error.cause).toBeInstanceOf(SqlCommandFailedError);
       expect(error.recoverySnapshotId).toMatch(/^snap-/u);
     }
+  });
+
+  test("waits for the restarted database before running reset", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countFailuresBeforeSuccess: 1 });
+
+    const exit = await run(harness.deps, { action: "reset", yes: true });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.countAttempts()).toBe(2);
   });
 
   test("fails closed when an mssql backup exec returns a non-zero exit", async () => {
@@ -517,12 +529,13 @@ describe("executeDbCommand", () => {
   });
 
   test("restores a snapshot by stopping, restoring, then starting the service", async () => {
-    const harness = makeSqlTestDeps({ password: SECRET });
+    const harness = makeSqlTestDeps({ password: SECRET, countFailuresBeforeSuccess: 1 });
 
     const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
 
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(harness.lifecycle()).toEqual(["lock", "stop", "snapshot", "restore", "start"]);
+    expect(harness.countAttempts()).toBe(2);
   });
 
   test("leaves the service stopped after a failed restore", async () => {
@@ -542,7 +555,11 @@ describe("executeDbCommand", () => {
   });
 
   test("does not start a previously stopped service after successful restore", async () => {
-    const harness = makeSqlTestDeps({ password: SECRET, initiallyRunning: false });
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      initiallyRunning: false,
+      omitImageIdentity: true,
+    });
 
     const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
 
@@ -593,7 +610,7 @@ describe("executeDbCommand", () => {
     const exit = await run(harness.deps, { action: "seed", snapshotId: "seed-source", yes: false });
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(harness.lifecycle()).toEqual(["lock", "restore"]);
+    expect(harness.lifecycle()).toEqual(["lock", "stop", "restore", "start"]);
   });
 
   test("quarantines an interrupted seed instead of trusting an empty database", async () => {

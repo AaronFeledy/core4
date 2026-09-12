@@ -1,117 +1,32 @@
-import { isAbsolute, join, relative, resolve } from "node:path";
-
 import { Effect } from "effect";
 
-import {
-  SqlRecoveryUnavailableError,
-  SqlSeedSourceError,
-  SqlSeedStateError,
-  SqlServiceNotFoundError,
-} from "@lando/sdk/errors";
-import type { ExecutableCommandInput } from "@lando/sdk/plugins";
-import { type AbsolutePath, AppId, type DataTransferResult, type SnapshotInfo } from "@lando/sdk/schema";
+// allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
-import { type SqlExec, type SqlMover, requireVolume, runExport, runImport, runReset } from "./actions.ts";
+import { SqlRecoveryUnavailableError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
+import { AppId, type DataTransferResult, type SnapshotInfo } from "@lando/sdk/schema";
+
+import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
+import { hostFile, parseCount, secretTokens } from "./command-input.ts";
+import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { credsEnv, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
 import { countCommand } from "./families.ts";
 import { isGzipPath } from "./gzip.ts";
-import { type SqlPublisher, confirmOrFail, publishTree } from "./progress.ts";
-import { type SqlRecoveryDeps, runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
+import { confirmOrFail, publishTree } from "./progress.ts";
+import { waitForSqlDatabase } from "./readiness.ts";
+import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
 import type { DbCommandStep } from "./schemas.ts";
+import { executeSeed } from "./seed.ts";
+import { requireCompatibleSnapshot } from "./snapshot-compatibility.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
-import type { SqlLandofile, SqlPlan } from "./views.ts";
-
-export type DbAction = "import" | "export" | "snapshot" | "snapshots" | "restore" | "reset" | "seed";
-
-export type DbCommandInput = {
-  readonly action: DbAction;
-  readonly yes: boolean;
-  readonly service?: string;
-  readonly file?: string;
-  readonly snapshotId?: string;
-  readonly label?: string;
-  readonly compression?: "gzip" | "zstd" | "none";
-  readonly fromApp?: string;
-  readonly fromPath?: string;
-  readonly hostCwd?: string;
-};
-
-export type SqlCommandDeps = SqlMover &
-  SqlRecoveryDeps & {
-    readonly landofile: SqlLandofile;
-    readonly plan: SqlPlan;
-    readonly exec: SqlExec;
-    readonly canonicalizeSourcePath: (
-      path: string,
-    ) => Effect.Effect<AbsolutePath, SqlRecoveryUnavailableError>;
-    readonly confirm: (message: string) => Effect.Effect<boolean, unknown>;
-    readonly publish: SqlPublisher;
-  };
+export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 
 const assertNever = (value: never): never => {
   throw new Error(`unexpected db action: ${String(value)}`);
 };
 
-const isInsideAppRoot = (hostCwd: string, appRoot: string): boolean => {
-  const rel = relative(resolve(appRoot), resolve(hostCwd));
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-};
-
-const hostFile = (
-  plan: SqlPlan,
-  service: string,
-  file = `${service}.sql.gz`,
-  hostCwd = process.cwd(),
-): string => {
-  if (isAbsolute(file)) return file;
-  const base = isInsideAppRoot(hostCwd, plan.root) ? hostCwd : plan.root;
-  return join(base, file);
-};
-
-const parseCount = (stdout: string): number | undefined => {
-  const match = stdout.trim().match(/\d+/u);
-  if (match === null) return undefined;
-  const value = Number(match[0]);
-  return Number.isFinite(value) ? value : undefined;
-};
-
-const requireCompatibleSnapshot = (
-  source: SnapshotInfo | undefined,
-  sourceId: string,
-  context: { readonly metadata: NonNullable<SnapshotInfo["metadata"]> },
-  service: string,
-  appRoot: string,
-) => {
-  const metadata = source?.metadata;
-  return metadata !== undefined &&
-    metadata.family === context.metadata.family &&
-    metadata.version === context.metadata.version &&
-    metadata.imageIdentity === context.metadata.imageIdentity &&
-    metadata.volumeInstanceId === context.metadata.volumeInstanceId &&
-    metadata.sourceRoot === appRoot
-    ? Effect.void
-    : Effect.fail(
-        new SqlRecoveryUnavailableError({
-          message: `Snapshot ${sourceId} is not physically compatible with ${service}.`,
-          service,
-          reason: "Snapshot ownership, family, version, image, or physical volume identity does not match.",
-          remediation: "Use a matching physical snapshot or move data with logical export and import.",
-        }),
-      );
-};
-
-const secretTokens = (creds: { readonly password?: string; readonly rootPassword?: string }): string[] =>
-  [creds.password, creds.rootPassword].flatMap((token) =>
-    token === undefined || token.length === 0 ? [] : [token],
-  );
-
-export const dbCommandRedactionTokens = (result: unknown): ReadonlyArray<string> => {
-  if (typeof result !== "object" || result === null || !("redactionTokens" in result)) return [];
-  const tokens = result.redactionTokens;
-  return Array.isArray(tokens) ? tokens.filter((token): token is string => typeof token === "string") : [];
-};
+export { dbCommandRedactionTokens, dbInputFromCommand } from "./command-input.ts";
 
 export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
   Effect.gen(function* () {
@@ -139,6 +54,13 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
     });
     const tokens = secretTokens(creds);
     const env = credsEnv(target.family, creds);
+    const waitForDatabase = waitForSqlDatabase(deps.exec, {
+      service: target.name,
+      command: countCommand(target.family, creds),
+      env,
+    });
+    const startDatabase = (serviceName: string) =>
+      deps.start(serviceName).pipe(Effect.zipRight(waitForDatabase));
     if (input.action === "seed" && (input.file === undefined) === (input.snapshotId === undefined)) {
       return yield* Effect.fail(
         new SqlSeedSourceError({
@@ -148,8 +70,10 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         }),
       );
     }
-    const file = hostFile(deps.plan, target.name, input.file, input.hostCwd ?? process.cwd());
+    const file = hostFile(deps.plan, { ...input, service: target.name });
     const action = input.action;
+    let restoreSource: SnapshotInfo | undefined;
+    let stoppedImageIdentity: string | undefined;
     const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
     const expectedDigest =
       action === "import" || (action === "seed" && input.snapshotId === undefined)
@@ -210,6 +134,8 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
           }),
         );
       }
+      restoreSource = source;
+      stoppedImageIdentity = source.metadata?.imageIdentity;
     }
 
     const progress = yield* publishTree(deps.publish, `db:${action}`, steps);
@@ -235,7 +161,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       preflight?: Parameters<typeof runPhysicalOperation<A, E>>[0]["preflight"],
     ) =>
       runPhysicalOperation({
-        deps,
+        deps: { ...deps, start: startDatabase },
         plan: deps.plan,
         service,
         serviceName: target.name,
@@ -249,6 +175,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
             }),
         reason,
         resumeAfterSnapshot,
+        ...(stoppedImageIdentity === undefined ? {} : { stoppedImageIdentity }),
         ...(preflight === undefined ? {} : { preflight }),
         body,
       });
@@ -291,9 +218,6 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       case "restore":
         snapshotId = input.snapshotId ?? "";
         {
-          const source = (yield* deps.listSnapshots({ id: snapshotId })).find(
-            (candidate) => candidate.id === snapshotId,
-          );
           yield* runPhysical(
             "restore",
             (context) =>
@@ -302,11 +226,10 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
                   app: AppId.make(deps.plan.id),
                   store: store?.store ?? "",
                 });
-                if (context.running) yield* deps.start(target.name);
+                if (context.running) yield* startDatabase(target.name);
               }),
             false,
-            (context) =>
-              requireCompatibleSnapshot(source, snapshotId ?? "", context, target.name, deps.plan.root),
+            (context) => requireCompatibleSnapshot(restoreSource, context),
           );
         }
         break;
@@ -318,44 +241,10 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
           serviceName: target.name,
           family: target.family,
           body: (context) =>
-            Effect.gen(function* () {
-              const status = yield* deps.getSeedStatus(context.metadata.volumeInstanceId);
-              const counted = yield* deps.exec(target.name, countCommand(target.family, creds), env);
-              const count = counted.ok ? parseCount(counted.stdout) : undefined;
-              if (status !== "fresh" || count !== 0) {
-                return yield* Effect.fail(
-                  new SqlSeedStateError({
-                    message: `Cannot seed ${target.name} from state ${status}.`,
-                    service: target.name,
-                    status,
-                    remediation:
-                      "Create a fresh database volume or explicitly import into the existing database.",
-                  }),
-                );
-              }
-              yield* deps.setSeedStatus(context.metadata.volumeInstanceId, "in-progress");
-              if (input.snapshotId !== undefined) {
-                const source = (yield* deps.listSnapshots({ id: input.snapshotId })).find(
-                  (candidate) => candidate.id === input.snapshotId,
-                );
-                yield* requireCompatibleSnapshot(
-                  source,
-                  input.snapshotId,
-                  context,
-                  target.name,
-                  deps.plan.root,
-                );
-              }
-              const seeded = (
-                input.snapshotId === undefined
-                  ? runImport(deps, deps.exec, io)
-                  : deps
-                      .restore(input.snapshotId, store ?? { app: AppId.make(deps.plan.id), store: "" })
-                      .pipe(Effect.as(undefined))
-              ).pipe(Effect.tapError(() => deps.setSeedStatus(context.metadata.volumeInstanceId, "failed")));
-              const result = yield* seeded;
-              yield* deps.setSeedStatus(context.metadata.volumeInstanceId, "seeded");
-              return result;
+            executeSeed({ ...deps, start: startDatabase }, context, {
+              ...io,
+              store: store ?? { app: AppId.make(deps.plan.id), store: "" },
+              ...(input.snapshotId === undefined ? {} : { snapshotId: input.snapshotId }),
             }),
         });
         seedStatus = "seeded";
@@ -378,24 +267,3 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       ...(transfer?.sizeBytes === undefined ? {} : { sizeBytes: transfer.sizeBytes }),
     };
   });
-
-export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInput): DbCommandInput => ({
-  action,
-  yes: input.flags.yes === true,
-  hostCwd: process.cwd(),
-  ...(typeof input.flags.service === "string" ? { service: input.flags.service } : {}),
-  ...(typeof input.args.file === "string" ? { file: input.args.file } : {}),
-  ...(typeof input.args.snapshot === "string"
-    ? { snapshotId: input.args.snapshot }
-    : typeof input.flags.snapshot === "string"
-      ? { snapshotId: input.flags.snapshot }
-      : {}),
-  ...(typeof input.flags.label === "string" ? { label: input.flags.label } : {}),
-  ...(typeof input.flags["from-app"] === "string" ? { fromApp: input.flags["from-app"] } : {}),
-  ...(typeof input.flags["from-path"] === "string" ? { fromPath: input.flags["from-path"] } : {}),
-  ...(input.flags.compression === "gzip" ||
-  input.flags.compression === "zstd" ||
-  input.flags.compression === "none"
-    ? { compression: input.flags.compression }
-    : {}),
-});
