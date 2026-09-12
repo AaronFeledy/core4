@@ -8,6 +8,26 @@ import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 afterEach(cleanupSqlTestDeps);
 
+test("rejects restore when a stopped target has no observed image identity", async () => {
+  // Given: snapshot metadata exists but the target runtime cannot prove its image.
+  const harness = makeSqlTestDeps({
+    password: "test-password",
+    initiallyRunning: false,
+    omitImageIdentity: true,
+  });
+  // When: the user confirms restore.
+  const result = await Effect.runPromiseExit(
+    executeDbCommand(harness.deps, {
+      action: "restore",
+      snapshotId: "recovery",
+      yes: true,
+    }),
+  );
+  // Then: source metadata cannot substitute for target observation before mutation.
+  expect(Exit.isFailure(result)).toBe(true);
+  expect(harness.lifecycle()).toEqual([]);
+});
+
 test("rejects a replaced volume when replacement occurs while waiting for its lock", async () => {
   // Given: another writer replaces the observed volume before the lock is acquired.
   const harness = makeSqlTestDeps({ password: "test-password" });

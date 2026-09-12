@@ -73,7 +73,6 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
     const file = hostFile(deps.plan, { ...input, service: target.name });
     const action = input.action;
     let restoreSource: SnapshotInfo | undefined;
-    let stoppedImageIdentity: string | undefined;
     const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
     const expectedDigest =
       action === "import" || (action === "seed" && input.snapshotId === undefined)
@@ -135,7 +134,6 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         );
       }
       restoreSource = source;
-      stoppedImageIdentity = source.metadata?.imageIdentity;
     }
 
     const progress = yield* publishTree(deps.publish, `db:${action}`, steps);
@@ -175,7 +173,6 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
             }),
         reason,
         resumeAfterSnapshot,
-        ...(stoppedImageIdentity === undefined ? {} : { stoppedImageIdentity }),
         ...(preflight === undefined ? {} : { preflight }),
         body,
       });

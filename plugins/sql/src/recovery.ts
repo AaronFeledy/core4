@@ -45,7 +45,6 @@ type SqlPhysicalOperation<A, E> = {
   readonly family: SqlFamily;
   readonly label?: string;
   readonly format?: "tar" | "tar.gz" | "tar.zst";
-  readonly stoppedImageIdentity?: string;
   readonly reason: Exclude<SnapshotMetadata["recoveryReason"], "seed">;
   readonly resumeAfterSnapshot: boolean;
   readonly preflight?: (context: SqlRecoveryContext) => Effect.Effect<void, unknown>;
@@ -58,7 +57,7 @@ const resolvePhysicalContext = (input: SqlPhysicalContextInput) =>
     const volume =
       storeName === undefined ? undefined : yield* input.deps.inspectVolume(input.serviceName, storeName);
     const runtime = yield* input.deps.inspect(input.serviceName);
-    const imageIdentity = runtime.imageIdentity ?? (runtime.running ? undefined : input.stoppedImageIdentity);
+    const imageIdentity = runtime.imageIdentity;
     const separator = input.service.type.indexOf(":");
     const version = input.service.version ?? (separator < 0 ? "" : input.service.type.slice(separator + 1));
     if (
@@ -130,7 +129,6 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
     serviceName: input.serviceName,
     family: input.family,
     ...(input.label === undefined ? {} : { label: input.label }),
-    ...(input.stoppedImageIdentity === undefined ? {} : { stoppedImageIdentity: input.stoppedImageIdentity }),
     body: (context) =>
       Effect.gen(function* () {
         if (input.preflight !== undefined) yield* input.preflight(context);

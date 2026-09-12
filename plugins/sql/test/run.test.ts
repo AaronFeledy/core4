@@ -572,7 +572,6 @@ describe("executeDbCommand", () => {
     const harness = makeSqlTestDeps({
       password: SECRET,
       initiallyRunning: false,
-      omitImageIdentity: true,
     });
 
     const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
