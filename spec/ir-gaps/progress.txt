@@ -197,3 +197,10 @@ Verification: typecheck, lint, boundaries, schema snapshot codegen, schema compa
   - The live provider socket resolver finds a managed socket left on the host from earlier runs, so a `*.integration.test.ts` gated on it will actually try to start containers locally instead of skipping. Those files are excluded from the unit shards; run them only in the sandbox.
   - Guide fixtures key off the frontmatter `id`, not the MDX directory, so a guide at `proxy/route-shorthand.mdx` reads fixtures from `docs/guides/route-shorthand/fixtures/`.
 ---
+
+## 2026-09-12 - US-615 Review
+- Fixed wildcard HostRegexp authorities so proxy status and TLS doctor still see them; named overlays that change filter type now replace instead of keeping stale fields; planner RouteInputError no longer fabricates `.lando.yml`.
+- Review notes (deferred/rejected): same-host pathPrefix collapse in `pushRoute` is pre-existing; Traefik HostRegexp vs Host() priority is out of AC; full layered-file provenance is not required because the AC names the authored key path; lint keeps `ConfigLintViolation` rather than returning `RouteInputError`; shorthand route arrays replacing on merge is the existing scalar-array law (converting at merge would break round-trip); extra §10.2 filters stay out of this story; header CRLF and Traefik backtick injection were security PASS / defense-in-depth only.
+- Verification: typecheck, lint passed; focused merge/normalize/routing/planner tests passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed.
+- **Learnings for future iterations:** persisted YAML parsers must track renderer grammar changes (`Host` vs `HostRegexp`); discriminated-union merge cannot deep-merge when `type` changes.
+---
