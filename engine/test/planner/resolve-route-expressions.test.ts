@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Option } from "effect";
 
 import { ConfigExpressionError, LandofileValidationError } from "@lando/sdk/errors";
-import { AppId, ProviderId, type RouteInput, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { AppId, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 
 import { finalizeServices, resolveRoute } from "../../src/planner/endpoints.ts";
 import type { PlannedServiceDraft } from "../../src/planner/service-types.ts";
@@ -36,7 +38,7 @@ const requireConfigExpressionError = (failure: unknown): ConfigExpressionError =
   return failure;
 };
 
-const phpishDraft = (routes: ReadonlyArray<RouteInput>): PlannedServiceDraft => ({
+const phpishDraft = (routes: ReadonlyArray<NormalizedRoute>): PlannedServiceDraft => ({
   name: "appserver",
   hostnames: [],
   authoredArtifact: undefined,
@@ -73,7 +75,7 @@ const metadata: ServicePlan["metadata"] = {
 describe("resolveRoute hostname expressions", () => {
   test("evaluates an authored php hostname template to app.lndo.site", async () => {
     // Given
-    const route: RouteInput = { hostname: hostnameTemplate };
+    const route: NormalizedRoute = { hostname: hostnameTemplate, filters: [] };
 
     // When
     const planned = await Effect.runPromise(
@@ -86,7 +88,7 @@ describe("resolveRoute hostname expressions", () => {
 
   test("maps an unknown scope to ConfigExpressionError with the YAML path", async () => {
     // Given
-    const route: RouteInput = { hostname: "{{ env.HOME }}" };
+    const route: NormalizedRoute = { hostname: "{{ env.HOME }}", filters: [] };
 
     // When
     const exit = await Effect.runPromiseExit(
@@ -107,7 +109,7 @@ describe("resolveRoute hostname expressions", () => {
 
   test("surfaces expression failure before endpoint mismatch", async () => {
     // Given
-    const route: RouteInput = { hostname: "{{ env.HOME }}", endpoint: 9999 };
+    const route: NormalizedRoute = { hostname: "{{ env.HOME }}", endpoint: 9999, filters: [] };
 
     // When
     const exit = await Effect.runPromiseExit(

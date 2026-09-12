@@ -2,13 +2,14 @@ import * as os from "node:os";
 
 import { type Context, Effect } from "effect";
 
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import {
   LandofileValidationError,
   type PluginLoadError,
   type PluginManifestError,
   ServiceTypeCollisionError,
 } from "@lando/sdk/errors";
-import type { LogSource, RouteInput, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
+import type { LogSource, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
 import type {
   PluginRegistry,
   ServiceType,
@@ -142,6 +143,7 @@ export const appFeatureError = (appRoot: string, cause: unknown) =>
   });
 
 export interface ResolvedService {
+  readonly routes: ReadonlyArray<NormalizedRoute>;
   readonly name: string;
   readonly service: ServiceConfig;
   readonly authored: {
@@ -174,7 +176,7 @@ export type PlannedServiceDraft = {
   readonly authored: ResolvedService["authored"];
   readonly draft: AppFeatureServiceDraft;
   readonly logSources: ReadonlyArray<LogSource>;
-  readonly routes: ReadonlyArray<RouteInput>;
+  readonly routes: ReadonlyArray<NormalizedRoute>;
   readonly extensions: ServicePlan["extensions"];
 };
 

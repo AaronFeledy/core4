@@ -3,7 +3,9 @@ import type { AppId, ProxyAuthority, RoutePlan } from "@lando/sdk/schema";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "./ports.ts";
 
 const routeRule = (route: RoutePlan): string => {
-  const host = `Host(\`${route.hostname}\`)`;
+  const host = route.hostname.includes("*")
+    ? `HostRegexp(\`^${route.hostname.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, (character) => (character === "*" ? "[a-z0-9-]+" : `\\${character}`))}$\`)`
+    : `Host(\`${route.hostname}\`)`;
   return route.pathPrefix === undefined ? host : `${host} && PathPrefix(\`${route.pathPrefix}\`)`;
 };
 
@@ -89,6 +91,15 @@ export const renderTraefikDynamicConfig = (
       `      entryPoints: [${scheme === "https" ? "websecure" : "web"}]`,
       `      service: route-${namespace}-${index}`,
       ...(scheme === "https" ? ["      tls: {}"] : []),
+      ...((route.filters?.length ?? 0) === 0
+        ? []
+        : [
+            "      middlewares:",
+            ...(route.filters ?? []).map(
+              (filter, filterIndex) =>
+                `        - ${JSON.stringify(`route-${namespace}-${index}-f${filterIndex}-${filter.type}`)}`,
+            ),
+          ]),
     ]),
   );
   const services = routes.flatMap((route, index) => [
@@ -97,6 +108,43 @@ export const renderTraefikDynamicConfig = (
     "        servers:",
     `          - url: ${route.backend.protocol}://${route.backend.host ?? `${String(route.backend.service)}.${String(app)}.internal`}:${route.backend.port}`,
   ]);
+  const middlewares = routes.flatMap((route, index) =>
+    (route.filters ?? []).flatMap((filter, filterIndex) => {
+      const name = `    ${JSON.stringify(`route-${namespace}-${index}-f${filterIndex}-${filter.type}`)}:`;
+      switch (filter.type) {
+        case "stripPrefix":
+          return [name, "      stripPrefix:", `        prefixes: [${JSON.stringify(filter.prefix)}]`];
+        case "addPrefix":
+          return [name, "      addPrefix:", `        prefix: ${JSON.stringify(filter.prefix)}`];
+        case "requestHeader":
+          return [
+            name,
+            "      headers:",
+            "        customRequestHeaders:",
+            `          ${JSON.stringify(filter.header)}: ${JSON.stringify(filter.value)}`,
+          ];
+        case "responseHeader":
+          return [
+            name,
+            "      headers:",
+            "        customResponseHeaders:",
+            `          ${JSON.stringify(filter.header)}: ${JSON.stringify(filter.value)}`,
+          ];
+        case "redirect":
+          return [
+            name,
+            "      redirectRegex:",
+            `        regex: ${JSON.stringify("^.*$")}`,
+            `        replacement: ${JSON.stringify(filter.to)}`,
+            ...(filter.permanent === undefined
+              ? []
+              : [`        permanent: ${JSON.stringify(filter.permanent)}`]),
+          ];
+        default:
+          throw new TypeError(`Unsupported route filter: ${JSON.stringify(filter satisfies never)}`);
+      }
+    }),
+  );
   const tls =
     tlsFiles === undefined
       ? []
@@ -106,7 +154,16 @@ export const renderTraefikDynamicConfig = (
           `    - certFile: ${tlsFiles.certFile}`,
           `      keyFile: ${tlsFiles.keyFile}`,
         ];
-  return ["http:", "  routers:", ...routers, "  services:", ...services, ...tls, ""].join("\n");
+  return [
+    "http:",
+    "  routers:",
+    ...routers,
+    "  services:",
+    ...services,
+    ...(middlewares.length === 0 ? [] : ["  middlewares:", ...middlewares]),
+    ...tls,
+    "",
+  ].join("\n");
 };
 
 export const renderTraefikDefaultTlsConfig = (files: TraefikTlsFiles): string =>

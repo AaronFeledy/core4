@@ -1,52 +1,45 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
+import { attachRouteFilter } from "@lando/landofile/route-filters";
+import { RouteFilter, RouteFilterType } from "@lando/sdk/schema";
 import { type RouteFilterContractHarness, runRouteFilterContractSuite } from "@lando/sdk/test";
-
-import { RouteFilterId } from "../../../src/subsystems/proxy/filter.ts";
 
 /**
  * RouteFilter built-in invocation.
  *
- * The `RouteFilter` abstraction is schema-only in core today
- * (`core/src/subsystems/proxy/filter.ts` declares the `RouteFilterId` id enum and
- * a provider-neutral `RouteFilter` struct; a proxy plugin translates each filter
- * into its native middleware). The six documented built-ins —
- * `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`,
- * `addPrefix` — therefore have no concrete `apply` class in core. This file runs
- * the published RouteFilter contract suite over documented reference transforms
- * for those six built-ins, so the layer-coverage gate has a real built-in
- * invocation and the contract guarantees (pure/deterministic/idempotent transform,
- * schema-validated options, stable ordering) are exercised against the shipped id
- * set rather than an arbitrary mock.
+ * The five shipped authorable filters — `stripPrefix`, `addPrefix`,
+ * `requestHeader`, `responseHeader`, `redirect` — attach through
+ * `attachRouteFilter` onto the route's `filters` array. `rewritePath` remains
+ * a contract-only reference transform; core does not ship it as an authorable
+ * filter type.
  */
 
-const BUILT_IN_FILTER_IDS = [
-  "requestHeader",
-  "responseHeader",
-  "redirect",
-  "rewritePath",
-  "stripPrefix",
-  "addPrefix",
-] as const;
+const SHIPPED_FILTER_IDS = RouteFilterType.literals;
+const REFERENCE_FILTER_IDS = ["rewritePath"] as const;
 
-interface RoutePlanFixture {
+const [stripPrefixSchema, addPrefixSchema, requestHeaderSchema, responseHeaderSchema, redirectSchema] =
+  RouteFilter.members;
+
+type Route = {
   readonly hostname: string;
   readonly scheme: "http" | "https" | "both";
   readonly service: string;
   readonly pathPrefix?: string;
-  readonly requestHeaders?: Record<string, string>;
-  readonly responseHeaders?: Record<string, string>;
-  readonly redirect?: { readonly to: string; readonly permanent: boolean };
-}
+  readonly filters?: ReadonlyArray<unknown>;
+};
 
-const baseRoute: RoutePlanFixture = { hostname: "app.lndo.site", scheme: "https", service: "appserver" };
+type Filter<Options> = RouteFilterContractHarness<Route, Options>;
 
-const stripLeading = (prefix: string, path: string): string =>
-  path.startsWith(prefix) ? path.slice(prefix.length) || "/" : path;
+const baseRoute: Route = { hostname: "app.lndo.site", scheme: "https", service: "appserver" };
 
-type Filter<Options> = RouteFilterContractHarness<RoutePlanFixture, Options>;
+const applyShipped = (route: Route, filter: unknown): Effect.Effect<Route> =>
+  Effect.succeed(attachRouteFilter(route, filter));
 
+/**
+ * Contract-only reference transform. Core does not ship `rewritePath` as an
+ * authorable filter type.
+ */
 const rewritePath: Filter<{ to: string }> = {
   id: "rewritePath",
   schema: Schema.Struct({ to: Schema.String }),
@@ -55,69 +48,70 @@ const rewritePath: Filter<{ to: string }> = {
   input: { ...baseRoute, pathPrefix: "/old" },
   apply: (route, options) => Effect.succeed({ ...route, pathPrefix: options.to }),
   expected: { ...baseRoute, pathPrefix: "/api" },
+  applySequence: [
+    { ...baseRoute, pathPrefix: "/a" },
+    { ...baseRoute, pathPrefix: "/b" },
+  ],
 };
 
-const stripPrefix: Filter<{ prefix: string }> = {
+const stripPrefixFilter = { type: "stripPrefix", prefix: "/api" } as const;
+const stripPrefix: Filter<typeof stripPrefixFilter> = {
   id: "stripPrefix",
-  schema: Schema.Struct({ prefix: Schema.String }),
-  validOptions: { prefix: "/api" },
-  invalidOptions: { prefix: false },
-  input: { ...baseRoute, pathPrefix: "/api/v1" },
-  apply: (route, options) =>
-    Effect.succeed({ ...route, pathPrefix: stripLeading(options.prefix, route.pathPrefix ?? "/") }),
-  expected: { ...baseRoute, pathPrefix: "/v1" },
+  schema: stripPrefixSchema,
+  validOptions: stripPrefixFilter,
+  invalidOptions: { type: "stripPrefix", prefix: false },
+  input: baseRoute,
+  apply: applyShipped,
+  expected: { ...baseRoute, filters: [stripPrefixFilter] },
+  applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
-const addPrefix: Filter<{ prefix: string }> = {
+const addPrefixFilter = { type: "addPrefix", prefix: "/api" } as const;
+const addPrefix: Filter<typeof addPrefixFilter> = {
   id: "addPrefix",
-  schema: Schema.Struct({ prefix: Schema.String }),
-  validOptions: { prefix: "/api" },
+  schema: addPrefixSchema,
+  validOptions: addPrefixFilter,
   invalidOptions: {},
-  input: { ...baseRoute, pathPrefix: "/api" },
-  // Idempotent: only adds the prefix when it is not already present.
-  apply: (route, options) =>
-    Effect.succeed(
-      (route.pathPrefix ?? "/").startsWith(options.prefix)
-        ? route
-        : { ...route, pathPrefix: `${options.prefix}${route.pathPrefix ?? ""}` },
-    ),
-  expected: { ...baseRoute, pathPrefix: "/api" },
+  input: baseRoute,
+  apply: applyShipped,
+  expected: { ...baseRoute, filters: [addPrefixFilter] },
+  applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
-const requestHeader: Filter<{ name: string; value: string }> = {
+const requestHeaderFilter = { type: "requestHeader", header: "X-Lando", value: "1" } as const;
+const requestHeader: Filter<typeof requestHeaderFilter> = {
   id: "requestHeader",
-  schema: Schema.Struct({ name: Schema.String, value: Schema.String }),
-  validOptions: { name: "X-Lando", value: "1" },
-  invalidOptions: { name: "X-Lando" },
-  input: { ...baseRoute, requestHeaders: { "X-Lando": "1" } },
-  apply: (route, options) =>
-    Effect.succeed({ ...route, requestHeaders: { ...route.requestHeaders, [options.name]: options.value } }),
-  expected: { ...baseRoute, requestHeaders: { "X-Lando": "1" } },
+  schema: requestHeaderSchema,
+  validOptions: requestHeaderFilter,
+  invalidOptions: { type: "requestHeader", header: "X-Lando" },
+  input: baseRoute,
+  apply: applyShipped,
+  expected: { ...baseRoute, filters: [requestHeaderFilter] },
+  applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
-const responseHeader: Filter<{ name: string; value: string }> = {
+const responseHeaderFilter = { type: "responseHeader", header: "X-Frame-Options", value: "DENY" } as const;
+const responseHeader: Filter<typeof responseHeaderFilter> = {
   id: "responseHeader",
-  schema: Schema.Struct({ name: Schema.String, value: Schema.String }),
-  validOptions: { name: "X-Frame-Options", value: "DENY" },
-  invalidOptions: { value: 0 },
-  input: { ...baseRoute, responseHeaders: { "X-Frame-Options": "DENY" } },
-  apply: (route, options) =>
-    Effect.succeed({
-      ...route,
-      responseHeaders: { ...route.responseHeaders, [options.name]: options.value },
-    }),
-  expected: { ...baseRoute, responseHeaders: { "X-Frame-Options": "DENY" } },
+  schema: responseHeaderSchema,
+  validOptions: responseHeaderFilter,
+  invalidOptions: { type: "responseHeader", value: 0 },
+  input: baseRoute,
+  apply: applyShipped,
+  expected: { ...baseRoute, filters: [responseHeaderFilter] },
+  applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
-const redirect: Filter<{ to: string; permanent: boolean }> = {
+const redirectFilter = { type: "redirect", to: "https://app.example.test", permanent: true } as const;
+const redirect: Filter<typeof redirectFilter> = {
   id: "redirect",
-  schema: Schema.Struct({ to: Schema.String, permanent: Schema.Boolean }),
-  validOptions: { to: "https://app.example.test", permanent: true },
-  invalidOptions: { to: "https://app.example.test", permanent: "yes" },
-  input: { ...baseRoute, redirect: { to: "https://app.example.test", permanent: true } },
-  apply: (route, options) =>
-    Effect.succeed({ ...route, redirect: { to: options.to, permanent: options.permanent } }),
-  expected: { ...baseRoute, redirect: { to: "https://app.example.test", permanent: true } },
+  schema: redirectSchema,
+  validOptions: redirectFilter,
+  invalidOptions: { type: "redirect", to: "https://app.example.test", permanent: "yes" },
+  input: baseRoute,
+  apply: applyShipped,
+  expected: { ...baseRoute, filters: [redirectFilter] },
+  applySequence: [baseRoute, { ...baseRoute, hostname: "other.lndo.site" }],
 };
 
 const builtInFilters = [
@@ -130,16 +124,19 @@ const builtInFilters = [
 ] as const;
 
 describe("RouteFilter contract — built-in filters", () => {
-  test("the shipped RouteFilterId enum declares every documented built-in", () => {
-    const ids = RouteFilterId.literals as ReadonlyArray<string>;
-    for (const id of BUILT_IN_FILTER_IDS) {
-      expect(ids).toContain(id);
-    }
+  test("the shipped RouteFilterType declares every documented built-in", () => {
+    expect([...SHIPPED_FILTER_IDS]).toEqual([
+      "stripPrefix",
+      "addPrefix",
+      "requestHeader",
+      "responseHeader",
+      "redirect",
+    ]);
   });
 
   test("every built-in filter id has a reference transform under test", () => {
     const coveredIds = new Set(builtInFilters.map((filter) => filter.id));
-    for (const id of BUILT_IN_FILTER_IDS) {
+    for (const id of [...SHIPPED_FILTER_IDS, ...REFERENCE_FILTER_IDS]) {
       expect(coveredIds.has(id)).toBe(true);
     }
   });

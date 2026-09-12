@@ -1,14 +1,15 @@
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Either } from "effect";
 
-import type { LandofileValidationError } from "@lando/sdk/errors";
+import { type NormalizedRoute, normalizeRoutes } from "@lando/landofile/route-normalize";
+import type { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
 import {
   PortablePath,
   type ProviderId,
-  type RouteInput,
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import type { LandofileShape } from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
@@ -94,6 +95,25 @@ export const applyAuthoredDependencies = (servicePlan: ServicePlan, service: Ser
   };
 };
 
+export const normalizeAuthoredRoutes = (input: {
+  readonly name: string;
+  readonly appRoot: string;
+  readonly service: ServiceConfig;
+  readonly landofile: LandofileShape;
+}): Effect.Effect<ReadonlyArray<NormalizedRoute>, RouteInputError> => {
+  const serviceRoutes = normalizeRoutes(input.service.routes ?? [], {
+    keyPath: `services.${input.name}.routes`,
+    file: `${input.appRoot}/.lando.yml`,
+  });
+  if (Either.isLeft(serviceRoutes)) return Effect.fail(serviceRoutes.left);
+  const proxyRoutes = normalizeRoutes(input.landofile.proxy?.[ServiceName.make(input.name)] ?? [], {
+    keyPath: `proxy.${input.name}`,
+    file: `${input.appRoot}/.lando.yml`,
+  });
+  if (Either.isLeft(proxyRoutes)) return Effect.fail(proxyRoutes.left);
+  return Effect.succeed([...serviceRoutes.right, ...proxyRoutes.right]);
+};
+
 export const planServiceDrafts = (input: {
   readonly pluginRegistry: Context.Tag.Service<typeof PluginRegistry>;
   readonly resolvedServices: ReadonlyArray<ResolvedService>;
@@ -101,7 +121,6 @@ export const planServiceDrafts = (input: {
   readonly appName: string;
   readonly appRoot: string;
   readonly host: ServiceTypeHostFacts | undefined;
-  readonly landofileProxy: Readonly<Record<string, ReadonlyArray<RouteInput>>> | undefined;
 }): Effect.Effect<ReadonlyArray<PlannedServiceDraft>, LandofileValidationError> =>
   Effect.gen(function* () {
     const plannedServiceDrafts: PlannedServiceDraft[] = [];
@@ -114,6 +133,7 @@ export const planServiceDrafts = (input: {
       logSources,
       baseDefaultIds,
       featureRefs,
+      routes,
     } of input.resolvedServices) {
       const rawPlan = yield* Effect.gen(function* () {
         const configuredFeatureRefs = featureRefs.filter(
@@ -208,7 +228,7 @@ export const planServiceDrafts = (input: {
         authored,
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,
-        routes: [...(service.routes ?? []), ...(input.landofileProxy?.[ServiceName.make(name)] ?? [])],
+        routes,
         extensions: servicePlan.extensions,
       });
     }

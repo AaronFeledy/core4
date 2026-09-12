@@ -11,13 +11,14 @@ import { resolve } from "node:path";
 
 import { type Context, Effect } from "effect";
 
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import {
   type AmbiguousCertificateAuthoritiesError,
   LandofileValidationError,
   type NoCertificateAuthorityError,
   type PluginLoadError,
 } from "@lando/sdk/errors";
-import type { RouteInput, ServiceConfig } from "@lando/sdk/schema";
+import type { ServiceConfig } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 
 import { assertUnderRoot } from "@lando/landofile/include-guard";
@@ -41,7 +42,7 @@ interface ResolveCertsFeatureInput {
   readonly serviceName: string;
   readonly certs: ServiceConfig["certs"];
   readonly hostnames: ReadonlyArray<string>;
-  readonly routes: ReadonlyArray<RouteInput>;
+  readonly routes: ReadonlyArray<NormalizedRoute>;
   readonly defaultRouteHostname?: string | undefined;
   readonly resolveCertificateAuthority?:
     | Effect.Effect<
