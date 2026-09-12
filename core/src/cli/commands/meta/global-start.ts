@@ -3,6 +3,7 @@ import { DateTime, Effect, Schema } from "effect";
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
+import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
   CapabilityError,
   CommandAliasConflictError,
@@ -20,6 +21,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  SecretNotFoundError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
@@ -89,6 +91,7 @@ export type GlobalStartError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
+  | SecretNotFoundError
   | ToolingExecError;
 
 export type GlobalStartServices =
@@ -195,11 +198,13 @@ export const globalStart = (
 
     const builds = yield* BuildOrchestrator;
     const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
     yield* Effect.scoped(
       provider.apply(builtPlan, {
         reconcile: false,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
+        serviceEnvironment,
       }),
     );
 
