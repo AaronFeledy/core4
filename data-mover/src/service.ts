@@ -46,7 +46,6 @@ import {
 import {
   DataMover,
   EventService,
-  type ExecChunk,
   PathsService,
   RuntimeProvider,
   StateStore,
@@ -57,6 +56,7 @@ import {
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
 import { providerImages } from "./generated/provider-images.ts";
+import { execStdoutStream } from "./exec-stream.ts";
 
 interface DataMoverEvents {
   readonly redactText: (text: string) => string;
@@ -930,39 +930,6 @@ const asyncIterableFromBytes = (payload: Uint8Array): AsyncIterable<Uint8Array> 
   },
 });
 
-const collectExecStdout = <E, R>(
-  stream: Stream.Stream<ExecChunk, E, R>,
-): Effect.Effect<Uint8Array, E | DataTransferError, R> =>
-  stream.pipe(
-    Stream.runCollect,
-    Effect.flatMap((chunks) => {
-      const collected = Array.from(chunks);
-      const exit = collected.find((chunk): chunk is { readonly exitCode: number } => "exitCode" in chunk);
-      if (exit !== undefined && exit.exitCode !== 0) {
-        return Effect.fail(
-          new DataTransferError({
-            message: "Generic helper-container data transfer failed.",
-            operation: "runStream",
-            cause: exit,
-            remediation: "Inspect provider logs and retry after the provider runtime is healthy.",
-          }),
-        );
-      }
-      const total = collected.reduce(
-        (size, chunk) => size + ("kind" in chunk && chunk.kind === "stdout" ? chunk.chunk.byteLength : 0),
-        0,
-      );
-      const out = new Uint8Array(total);
-      let offset = 0;
-      for (const chunk of collected) {
-        if (!("kind" in chunk) || chunk.kind !== "stdout") continue;
-        out.set(chunk.chunk, offset);
-        offset += chunk.chunk.byteLength;
-      }
-      return Effect.succeed(out);
-    }),
-  );
-
 const streamFromEndpoint = (
   provider: Context.Tag.Service<typeof RuntimeProvider>,
   endpoint: DataEndpoint,
@@ -1003,20 +970,37 @@ const streamFromEndpoint = (
       }
       return Stream.unwrap(
         resolveDataHelperImage(provider).pipe(
-          Effect.flatMap((image) =>
-            collectExecStdout(
+          Effect.map((image) =>
+            execStdoutStream(
               provider.runStream({
                 image,
                 command: ["sh", "-c", `cat ${helperPayload}`],
                 mounts: [{ store: endpoint.store, target: helperTarget, readOnly: true }],
                 remove: true,
               }),
+              (exitCode) =>
+                new DataTransferError({
+                  message: "Generic helper-container data transfer failed.",
+                  operation: "runStream",
+                  cause: { exitCode },
+                  remediation: "Inspect provider logs and retry after the provider runtime is healthy.",
+                }),
+            ).pipe(
+              Stream.mapError((cause) =>
+                cause instanceof DataTransferError
+                  ? cause
+                  : new DataTransferError({
+                      message: "Generic helper-container data transfer failed.",
+                      operation: "runStream",
+                      cause,
+                      remediation: "Inspect provider logs and retry after the provider runtime is healthy.",
+                    }),
+              ),
             ),
           ),
           Effect.mapError((cause) =>
             cause instanceof DataTransferError ? cause : providerFailure("runStream", cause),
           ),
-          Effect.map((payload) => Stream.make(payload)),
         ),
       );
     case "artifact":
@@ -1034,19 +1018,14 @@ const streamFromEndpoint = (
         .exportArtifact({ providerId: providerId(provider.id), ref: endpoint.ref })
         .pipe(Stream.mapError((cause) => providerFailure("exportArtifact", cause)));
     case "serviceCmd":
-      return Stream.unwrap(
-        collectExecStdout(
-          provider.execStream(
+      return execStdoutStream(
+        provider
+          .execStream(
             { app: endpoint.app, service: endpoint.service },
             providerCommandSpec(endpoint.command, endpoint.env),
           ),
-        ).pipe(
-          Effect.mapError((cause) =>
-            cause instanceof DataTransferError ? cause : serviceCommandFailure("execStream", cause),
-          ),
-          Effect.map((payload) => Stream.make(payload)),
-        ),
-      );
+        (exitCode) => serviceCommandFailure("execStream", { exitCode }),
+      ).pipe(Stream.mapError((cause) => (cause instanceof DataTransferError ? cause : serviceCommandFailure("execStream", cause))));
     case "stream":
       return Stream.fail(
         new DataEndpointUnsupportedError({
