@@ -110,13 +110,16 @@ const harness = (input: {
     Layer.succeed(ToolingEngine, {
       id: "recording",
       run: (invocation) =>
-        Effect.sync(() => ({
-          tool: invocation.tool,
-          service: invocation.service ?? String(service.name),
-          exitCode: record(executedLabel(invocation.commands[0] ?? [], invocation.tool)),
-          stdout: "",
-          stderr: "",
-        })),
+        Effect.sync(() => {
+          const exitCode = record(executedLabel(invocation.commands[0] ?? [], invocation.tool));
+          return {
+            tool: invocation.tool,
+            service: invocation.service ?? String(service.name),
+            exitCode,
+            stdout: exitCode === 0 ? "" : Object.values(invocation.env ?? {}).join(""),
+            stderr: "",
+          };
+        }),
     }),
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
@@ -220,21 +223,28 @@ test("a failing pre bracket prevents the task body", async () => {
 });
 
 test("a failing post bracket is fatal and carries the redacted output tail", async () => {
-  // Given a failing post bracket over a successful body
+  // Given a failing post bracket whose stdout includes a secret env value
+  const secret = "post-bracket-secret";
   const h = harness({
     tooling: { build: { service: "web", cmd: "echo body" } },
-    events: { "post-build": [{ cmd: "echo after", service: "web" }] },
+    events: { "post-build": [{ cmd: "echo after", service: "web", env: { SECRET: secret } }] },
     failOn: "echo after",
   });
   // When the task runs
   const result = await h.run("build");
   // Then the whole run fails rather than reporting the body's success
   expect(h.executed).toEqual(["echo body", "echo after"]);
-  expect(result).toMatchObject({
-    _tag: "Left",
-    left: { _tag: "LandofileEventStepFailedError", event: "post-build", exitCode: 7 },
+  expect(result._tag).toBe("Left");
+  if (result._tag !== "Left") throw new Error("expected post-build failure");
+  if (result.left._tag !== "LandofileEventStepFailedError") {
+    throw new Error(`expected LandofileEventStepFailedError, got ${result.left._tag}`);
+  }
+  expect(result.left).toMatchObject({
+    event: "post-build",
+    exitCode: 7,
   });
-  expect(result).toHaveProperty("left.outputTail");
+  expect(result.left.outputTail).toContain("[redacted]");
+  expect(result.left.outputTail).not.toContain(secret);
 });
 
 test("runs an unbracketed task without requiring the event runtime", async () => {
