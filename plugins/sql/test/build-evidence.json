@@ -1,0 +1,70 @@
+{
+  "issue": 950,
+  "branch": "issue-950-sql-recovery",
+  "date": "2026-09-12",
+  "status": "blocked-source-and-live-acceptance",
+  "preservedBase": "f032196a",
+  "hostChecks": {
+    "typecheck": "passed",
+    "lint": "passed",
+    "check:boundaries": "passed",
+    "codegen:check": "passed",
+    "lint:guides": "passed",
+    "check:guide-coverage": "passed",
+    "sqlLspDiagnostics": 0,
+    "linuxX64Compilation": "passed; core/dist/lando; binary not executed",
+    "check:schema-compatibility": {
+      "base": "origin/main",
+      "result": "failed",
+      "breaking": 39,
+      "unknown": 22,
+      "examples": [
+        "PreRestartEvent and PostRestartEvent removed",
+        "LandofileEvents restart properties removed",
+        "ToolingArgShape and ToolingFlagShape properties removed"
+      ]
+    }
+  },
+  "focusedTests": [
+    { "path": "plugins/sql/test/families.test.ts", "passed": 27, "failed": 0 },
+    { "path": "plugins/sql/test/run.test.ts", "passed": 39, "failed": 0 },
+    { "path": "plugins/sql/test/recovery-safety.test.ts", "passed": 3, "failed": 0 }
+  ],
+  "regressionEvidence": "All three new recovery-safety tests failed before the fixes: replacement during lock acquisition, mismatched snapshot owner, mismatched snapshot service. All pass after the fixes.",
+  "sourceBlockers": [
+    {
+      "area": "legacy adoption",
+      "location": "container-runtime/src/data-plane.ts; plugins/sql/src/recovery.ts",
+      "detail": "Unlabeled volumes expose no durable physical-instance identity. Name-based lookup is not ownership. Backup still fails closed; witnessed adoption is not implemented. A StateStore adoption record needs independently observed physical identity and canonical ownership, without asserting creation freshness. Backend creation timestamp alone must not authorize restore after same-name recreation."
+    },
+    {
+      "area": "creation freshness",
+      "location": "plugins/sql/src/seed-state.ts; plugins/sql/src/command-runtime.ts",
+      "detail": "Missing seed state still defaults to fresh for a known instance. Creation-time freshness evidence is not persisted by the creator. This does not satisfy the acceptance criterion; the fake's explicit fresh status is not live creation evidence."
+    },
+    {
+      "area": "observed runtime compatibility",
+      "location": "plugins/sql/src/recovery.ts; plugins/sql/src/command-runtime.ts",
+      "detail": "Snapshot version is derived from the current plan, not an observed database version. Restart still calls the provider with the current plan. Exact inspected-runtime resumption under edited configuration remains unproved."
+    },
+    {
+      "area": "physical ownership and lifecycle coordination",
+      "location": "container-runtime/src/podman/bring-up.ts; engine/src/operations/destroy.ts",
+      "detail": "Volume creation labels do not bind the planner canonical owner key. SQL now rechecks instance identity inside its lock, but this does not establish ownership of unknown name collisions or prove that every lifecycle/removal writer shares the lock."
+    },
+    {
+      "area": "consistent export",
+      "location": "plugins/sql/src/families.ts",
+      "detail": "MySQL/MariaDB dump commands still lack consistent-read flags. PR966 was inspected read-only and overlaps this file plus families.test.ts and run.test.ts. Its flags were not applied here; the PR was not modified."
+    }
+  ],
+  "unavailableCoverage": [
+    "No sandbox lease was held or acquired; no sandbox commands were issued.",
+    "No Lando invocation, executable guide, container runtime test, full bun test, or test:unit ran on the host.",
+    "Inherited MySQL live roundtrips were reported by the prior worker, not reproduced or independently verified in this pass.",
+    "All-family serial live roundtrips, concurrent-write consistent export, edited-plan runtime safety, legacy adoption, collisions, interruption/cancellation, and destroy-surviving recovery remain acceptance work.",
+    "The committed greater-than-2-GiB streaming coverage was preserved, not rerun in this pass.",
+    "Executable-guide execution, guide drift and public-transcript verification were not claimed as passing."
+  ],
+  "nextPhase": "Resolve source blockers before claiming ready-for-lease; then obtain the sandbox lease and run serial live acceptance against the compiled artifact. No push or PR was performed."
+}
