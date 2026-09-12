@@ -7,11 +7,7 @@ import { dirname } from "node:path";
 
 import { Effect, Either, ParseResult, Schema } from "effect";
 
-import {
-  LandofileFormConflictError,
-  LandofileNotFoundError,
-  LandofileUnknownEventError,
-} from "@lando/sdk/errors";
+import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
@@ -26,7 +22,6 @@ import {
   composeTagRejection,
 } from "./compose/rejections.ts";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
-import { VALID_APP_LIFECYCLE_EVENTS, unknownAppLifecycleEvent } from "./events.ts";
 import { presentLandofileLayers } from "./layers.ts";
 import { mergeValues } from "./merge.ts";
 import { detectLandofileTags, parseLandofile } from "./parser.ts";
@@ -168,11 +163,7 @@ const singleViolationResult = (
  */
 export const lintLandofile = (
   options: LintLandofileOptions = {},
-): Effect.Effect<
-  ConfigLintResult,
-  LandofileNotFoundError | LandofileFormConflictError | LandofileUnknownEventError,
-  never
-> =>
+): Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError, never> =>
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
     const discovery = yield* Effect.tryPromise({
@@ -272,18 +263,6 @@ export const lintLandofile = (
     }
 
     const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
-    const unknownEvent = unknownAppLifecycleEvent(parsed);
-    if (unknownEvent !== undefined) {
-      return yield* Effect.fail(
-        new LandofileUnknownEventError({
-          message: `Unknown app lifecycle event ${unknownEvent}. Valid events: ${VALID_APP_LIFECYCLE_EVENTS.join(", ")}.`,
-          event: unknownEvent,
-          validEvents: [...VALID_APP_LIFECYCLE_EVENTS],
-          file: filePath,
-          remediation: `Use one of: ${VALID_APP_LIFECYCLE_EVENTS.join(", ")}.`,
-        }),
-      );
-    }
     const rejections = layerRejections.flat();
     const rejectionViolations = rejections.map(rejectionViolation);
     const mergedViolations = violationsFor(parsed, rejections);

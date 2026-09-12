@@ -2,6 +2,7 @@ import { type Context, DateTime, Effect, Either, ParseResult, Schema } from "eff
 
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { findLandofilePath } from "@lando/landofile/discovery";
 import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import {
   getVersionConstraintEntries,
@@ -11,6 +12,7 @@ import {
   CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type LandofileUnknownEventError,
   LandofileValidationError,
   type NotImplementedError,
   type PublicationUnsupportedError,
@@ -80,6 +82,7 @@ import {
 } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
+import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
 import {
@@ -136,6 +139,7 @@ export const planApp = (
   | PublicationUnsupportedError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | LandofileUnknownEventError
 > => {
   const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
   const landofilePath = `${appRoot}/.lando.yml`;
@@ -395,6 +399,20 @@ export const planApp = (
     });
     if (reservedToolingConflict !== undefined) yield* Effect.fail(reservedToolingConflict);
     const effectiveEvents = compileEffectiveEvents({ landofile });
+    const validEvents = validEventNames(effectiveTooling);
+    const unknownEvent = unknownEventName(landofile.events, validEvents);
+    if (unknownEvent !== undefined) {
+      const canonicalPath = yield* Effect.tryPromise({
+        try: () => findLandofilePath(appRoot),
+        catch: (cause) =>
+          new LandofileValidationError({
+            message: cause instanceof Error ? cause.message : "Cannot locate the canonical Landofile.",
+            file: landofilePath,
+            issues: ["events"],
+          }),
+      });
+      return yield* Effect.fail(unknownEventError(unknownEvent, validEvents, canonicalPath ?? landofilePath));
+    }
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },

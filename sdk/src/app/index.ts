@@ -29,6 +29,7 @@ import type {
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   LandoCommandError,
+  LandofileEventInvocationDepthError,
   LandofileEventLifecycleReentryError,
   LandofileEventStepFailedError,
   LandofileFormConflictError,
@@ -63,8 +64,10 @@ import type {
   ShellScriptOutsideRootError,
   StateStoreError,
   ToolingCompileError,
+  ToolingDisabledError,
   ToolingExecError,
   ToolingIncludeCycleError,
+  ToolingInputError,
   TunnelProviderUnavailableError,
 } from "../errors/index.ts";
 
@@ -198,6 +201,7 @@ export type StartAppError =
   | ComposeKeyRejectedError
   | EventError
   | LandofileEventLifecycleReentryError
+  | LandofileEventInvocationDepthError
   | LandofileEventStepFailedError
   | ToolingCompileError
   | FileSyncDriftError
@@ -246,6 +250,7 @@ export type StopAppError =
   | AppIdReservedError
   | EventError
   | LandofileEventLifecycleReentryError
+  | LandofileEventInvocationDepthError
   | LandofileEventStepFailedError
   | ToolingCompileError
   | FileSyncDriftError
@@ -461,6 +466,9 @@ export interface ToolingResult {
 export type ToolingError =
   | ManagedFileTransactionError
   | AppIdReservedError
+  | LandofileEventLifecycleReentryError
+  | LandofileEventInvocationDepthError
+  | LandofileEventStepFailedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError
@@ -488,6 +496,8 @@ export type ToolingError =
   | CommandAliasConflictError
   | ConfigExpressionError
   | ToolingCompileError
+  | ToolingDisabledError
+  | ToolingInputError
   | ToolingExecError;
 
 export interface LogsAppOptions {

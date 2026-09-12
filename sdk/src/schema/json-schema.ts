@@ -78,6 +78,7 @@ import {
   PostPullEvent,
   PostPushEvent,
   PostRebuildEvent,
+  PostRestartEvent,
   PostServiceStartEvent,
   PostServiceStopEvent,
   PostStartEvent,
@@ -108,6 +109,7 @@ import {
   PrePullEvent,
   PrePushEvent,
   PreRebuildEvent,
+  PreRestartEvent,
   PreServiceStartEvent,
   PreServiceStopEvent,
   PreStartEvent,
@@ -228,6 +230,7 @@ import {
   ToolingDefaultsShape,
   ToolingFlagShape,
   ToolingIncludeShape,
+  ToolingStepShape,
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
@@ -504,7 +507,6 @@ const basePublicSchemaRegistry = {
   IsolateMode,
   ProviderCapabilities,
   CommandAliasesShape,
-  LandofileShape,
   ServiceConfig,
   ServiceConfigInput,
   LogSource,
@@ -519,6 +521,7 @@ const basePublicSchemaRegistry = {
   ToolingFlagShape,
   ToolingArgShape,
   ToolingDefaultsShape,
+  ToolingStepShape,
   ToolingTaskShape,
   ToolingIncludeShape,
   IncludeEntry,
@@ -754,6 +757,9 @@ const basePublicSchemaRegistry = {
 
 const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
   typeof ConfigTranslateSchemas & {
+    readonly PreRestartEvent: typeof PreRestartEvent;
+    readonly PostRestartEvent: typeof PostRestartEvent;
+    readonly LandofileShape: typeof LandofileShape;
     readonly AuthoringExpression: typeof AuthoringExpression;
     readonly AuthoringExpressionExpectedType: typeof AuthoringExpressionExpectedType;
     readonly LandofileAuthoringShape: typeof LandofileAuthoringShape;
@@ -777,6 +783,9 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
     readonly RecipeDecomposeInput: typeof RecipeDecomposeInput;
     readonly RecipeDecomposeResult: typeof RecipeDecomposeResult;
   } = {
+  LandofileShape,
+  PreRestartEvent,
+  PostRestartEvent,
   AuthoringExpression,
   AuthoringExpressionExpectedType,
   LandofileAuthoringShape,
@@ -940,6 +949,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingFlagShape: "Public Lando schema contract for Tooling Flag Shape.",
   ToolingArgShape: "Public Lando schema contract for Tooling Arg Shape.",
   ToolingDefaultsShape: "App-wide defaults inherited by Landofile tooling tasks.",
+  ToolingStepShape: "Shell command step with tooling task execution overrides.",
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
   ToolingIncludeShape: "Public Lando schema contract for Tooling Include Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
@@ -1063,6 +1073,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PreInitEvent: "Public Lando schema contract for Pre Init Event.",
   PostInitEvent: "Public Lando schema contract for Post Init Event.",
   PreStartEvent: "Public Lando schema contract for Pre Start Event.",
+  PreRestartEvent: "Public Lando schema contract for Pre Restart Event.",
+  PostRestartEvent: "Public Lando schema contract for Post Restart Event.",
   PostStartEvent: "Public Lando schema contract for Post Start Event.",
   PreStopEvent: "Public Lando schema contract for Pre Stop Event.",
   PostStopEvent: "Public Lando schema contract for Post Stop Event.",
@@ -2096,6 +2108,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PostServiceStopEvent.serviceName",
   "PostServiceStopEvent.timestamp",
   "PostStartEvent._tag",
+  "PostRestartEvent._tag",
   "PostStartEvent.app",
   "PostStartEvent.plan",
   "PostStartEvent.scope",
@@ -2235,6 +2248,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PreServiceStopEvent.serviceName",
   "PreServiceStopEvent.timestamp",
   "PreStartEvent._tag",
+  "PreRestartEvent._tag",
   "PreStartEvent.app",
   "PreStartEvent.plan",
   "PreStartEvent.scope",
@@ -2500,7 +2514,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ToolingFlagShape.default",
   "ToolingFlagShape.deprecated",
   "ToolingFlagShape.description",
-  "ToolingFlagShape.type",
   "ToolingTaskShape.args",
   "ToolingTaskShape.cmd",
   "ToolingTaskShape.cmds",
@@ -2645,20 +2658,13 @@ export const validatePublicSchemaAnnotations = (
       const fieldPath = `${schemaName}.${name}`;
       issues.push(...validateExamples(schemaName, fieldPath, schemaFromAst(property.type)));
       if (
-        !hasOwnUsefulDescription(property.annotations) &&
-        !hasOwnUsefulDescription(property.type.annotations) &&
-        !hasOptionalMemberUsefulDescription(property.type) &&
+        !hasUsefulFieldDescription(property) &&
         !inheritsLandofileFieldDescription(schemaName, property.name) &&
         !(
           AST.isUnion(schema.ast) &&
           schema.ast.types.every((member) => {
             const field = AST.getPropertySignatures(member).find((entry) => entry.name === property.name);
-            return (
-              field !== undefined &&
-              (hasOwnUsefulDescription(field.annotations) ||
-                hasOwnUsefulDescription(field.type.annotations) ||
-                hasOptionalMemberUsefulDescription(field.type))
-            );
+            return field !== undefined && hasUsefulFieldDescription(field);
           })
         ) &&
         !(exemptions.fields?.has(fieldPath) ?? false) &&
