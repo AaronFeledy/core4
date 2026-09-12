@@ -35,6 +35,7 @@ import {
   runProviderContractMatrix,
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
@@ -913,6 +914,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const appliedPlanState = makePluginStateStore(
       makeTestStateStore().service,
       AbsolutePath.make("/tmp/provider-docker-copy-state"),
+      ownerOnlyFileAccess,
     );
     await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
     const provider = await Effect.runPromise(
@@ -962,6 +964,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const appliedPlanState = makePluginStateStore(
       makeTestStateStore().service,
       AbsolutePath.make("/tmp/provider-docker-data-plane-contract-state"),
+      ownerOnlyFileAccess,
     );
     await Effect.runPromise(persistAppliedPlan(appliedPlanState, makePlan()));
     await Effect.runPromise(
@@ -990,6 +993,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const appliedPlanState = makePluginStateStore(
       makeTestStateStore().service,
       AbsolutePath.make("/tmp/provider-docker-copy-failure-state"),
+      ownerOnlyFileAccess,
     );
     await Effect.runPromise(persistAppliedPlan(appliedPlanState, makePlan()));
     const provider = await Effect.runPromise(

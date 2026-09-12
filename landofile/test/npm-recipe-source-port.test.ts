@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { ServiceName } from "@lando/sdk/schema";
 
 import { resolveLandofileIncludes } from "../src/includes.ts";
-import { makeTestPublicationPort } from "./support.ts";
+import { makeTestLandofileStateStore, makeTestPublicationPort } from "./support.ts";
 
 describe("npm include recipe-source port", () => {
   const roots: string[] = [];
@@ -30,6 +30,7 @@ describe("npm include recipe-source port", () => {
         landofile: { includes: ["npm:@acme/fragments/fragments/web.yml@next"] },
         appRoot,
         cacheRoot,
+        stateStore: makeTestLandofileStateStore(),
         ports: {
           resolveUserCacheRoot: () => cacheRoot,
           npmRecipeSource: {

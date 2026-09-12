@@ -1,5 +1,5 @@
-import type { LandofileService, ManagedFileTransactionGuard } from "@lando/sdk/services";
-import { Layer } from "effect";
+import { type LandofileService, type ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
+import { Effect, Layer } from "effect";
 
 import {
   type ResolveLandofileIncludesOptions,
@@ -38,26 +38,62 @@ export const lintLandofile = (options: LintLandofileOptions = {}) =>
   lintLandofilePackage({ ...options, templates: options.templates ?? landofileRuntimeInputs().templates });
 
 export const resolveLandofileIncludes = (options: ResolveLandofileIncludesOptions) =>
-  resolveLandofileIncludesPackage({ ...options, ports: options.ports ?? landofileRuntimeInputs().ports });
+  Effect.flatMap(
+    options.stateStore === undefined ? StateStore : Effect.succeed(options.stateStore),
+    (stateStore) =>
+      resolveLandofileIncludesPackage({
+        ...options,
+        ports: options.ports ?? landofileRuntimeInputs().ports,
+        stateStore,
+      }),
+  );
 
 export const updateLandofileIncludes = (options: UpdateLandofileIncludesOptions) =>
-  updateLandofileIncludesPackage({ ...options, ports: options.ports ?? landofileRuntimeInputs().ports });
+  Effect.flatMap(
+    options.stateStore === undefined ? StateStore : Effect.succeed(options.stateStore),
+    (stateStore) =>
+      updateLandofileIncludesPackage({
+        ...options,
+        ports: options.ports ?? landofileRuntimeInputs().ports,
+        stateStore,
+      }),
+  );
 
 export const verifyLandofileIncludes = (options: VerifyLandofileIncludesOptions) =>
-  verifyLandofileIncludesPackage({ ...options, ports: options.ports ?? landofileRuntimeInputs().ports });
+  Effect.flatMap(
+    options.stateStore === undefined ? StateStore : Effect.succeed(options.stateStore),
+    (stateStore) =>
+      verifyLandofileIncludesPackage({
+        ...options,
+        ports: options.ports ?? landofileRuntimeInputs().ports,
+        stateStore,
+      }),
+  );
 
 export { findDiscoveredLandofilePath };
 
 export const loadLandofileFile = (
   filePath: string,
   context?: Parameters<typeof loadLandofileFilePackage>[1],
-) => loadLandofileFilePackage(filePath, context, landofileRuntimeInputs());
+) =>
+  Effect.flatMap(StateStore, (stateStore) =>
+    loadLandofileFilePackage(filePath, context, {
+      ...landofileRuntimeInputs(),
+      stateStore,
+    }),
+  );
 
 export const loadLandofileLayers = (appRoot: string, canonicalPath: string) =>
-  loadLandofileLayersPackage(appRoot, canonicalPath, landofileRuntimeInputs());
+  Effect.flatMap(StateStore, (stateStore) =>
+    loadLandofileLayersPackage(appRoot, canonicalPath, {
+      ...landofileRuntimeInputs(),
+      stateStore,
+    }),
+  );
 
 export const makeEngineLandofileServiceLive = (
   inputs: LandofileRuntimeInputs,
-): Layer.Layer<LandofileService, never, ManagedFileTransactionGuard> => makeLandofileServiceLive(inputs);
+): Layer.Layer<LandofileService, never, ManagedFileTransactionGuard | StateStore> =>
+  makeLandofileServiceLive(inputs);
 
 export const LandofileServiceLive = Layer.suspend(() => makeLandofileServiceLive(landofileRuntimeInputs()));

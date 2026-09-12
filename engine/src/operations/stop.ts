@@ -18,6 +18,7 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 
@@ -33,7 +34,13 @@ export const StopAppResultSchema = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String),
 });
 
-type StopAppServices = AppPlanner | EventService | LandofileService | PathsService | RuntimeProviderRegistry;
+type StopAppServices =
+  | AppPlanner
+  | EventService
+  | LandofileService
+  | PathsService
+  | PrivateFileAccessService
+  | RuntimeProviderRegistry;
 type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());

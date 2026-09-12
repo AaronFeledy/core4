@@ -10,6 +10,7 @@ import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/cor
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import {
+  AbsolutePath,
   CommandResultEnvelope,
   type DeprecationNotice,
   type DeprecationSurfaceKind,
@@ -23,6 +24,7 @@ import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
+import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
 import {
   type DoctorReport,
   DoctorReportSchema,
@@ -135,6 +137,58 @@ const useDeprecation = (kind: DeprecationSurfaceKind, id: string, notice = depre
   });
 
 describe("meta:doctor combined report", () => {
+  test.each([
+    { range: ">=0", skip: "0", status: "pass", severity: "info" },
+    { range: ">=99", skip: "1", status: "warn", severity: "warn" },
+    { range: ">=99", skip: "0", status: "fail", severity: "error" },
+  ] as const)(
+    "collector retains $status version checks when no runtime StateStore is provided",
+    async (input) => {
+      // Given: a local Landofile and inert provider-dependent sections, with no StateStore in the context.
+      const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-collector-version-")));
+      const previousCwd = process.cwd();
+      const previousSkip = process.env.LANDO_SKIP_VERSION_CONSTRAINT;
+      try {
+        await writeFile(join(dir, ".lando.yml"), `name: doctor-app\nlando: '${input.range}'\n`);
+        process.chdir(dir);
+        process.env.LANDO_SKIP_VERSION_CONSTRAINT = input.skip;
+
+        // When: collect the ordinary --app report without bootstrapping a host provider.
+        const report = await Effect.runPromise(
+          collectDoctorReport({
+            options: { app: true, env: {} },
+            provider: Effect.succeed({ checks: [] }),
+            deprecations: Effect.succeed({ entries: [] }),
+            certs: Effect.succeed(UNRESOLVED_CERTS_STATUS),
+            subsystems: () => Effect.succeed({ checks: [] }),
+          }).pipe(
+            Effect.provideService(
+              ConfigService,
+              buildConfigService({ userDataRoot: AbsolutePath.make(dir) }),
+            ),
+          ),
+        );
+
+        // Then: the version verdict is retained, rather than omitted or replaced by a section failure.
+        expect(report.appVersionConstraints?.checks).toHaveLength(1);
+        expect(report.appVersionConstraints?.checks[0]).toMatchObject({
+          name: "app-version-constraint",
+          status: input.status,
+          severity: input.severity,
+          context: { skipped: String(input.skip === "1") },
+        });
+        expect(
+          report.self?.checks.filter((check) => check.section === "app-version-constraints") ?? [],
+        ).toEqual([]);
+      } finally {
+        process.chdir(previousCwd);
+        if (previousSkip === undefined) Reflect.deleteProperty(process.env, "LANDO_SKIP_VERSION_CONSTRAINT");
+        else process.env.LANDO_SKIP_VERSION_CONSTRAINT = previousSkip;
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("aggregates the selected provider checks, every subsystem check, and the global-app check", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);

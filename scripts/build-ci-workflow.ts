@@ -91,7 +91,7 @@ ${setupBunSteps}
         run: bun run codegen:check
 
       - name: Native Windows private-file ACL tests
-        if: matrix.platform == 'windows-x64'
+        if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
 
       - name: Lint

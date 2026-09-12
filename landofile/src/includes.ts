@@ -14,9 +14,7 @@ import {
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
-import type { StateBucket, StateRoot } from "@lando/sdk/services";
-import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
-import { makeStateStore } from "@lando/state-store/service";
+import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
 
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
@@ -91,6 +89,7 @@ export interface ResolveLandofileIncludesOptions {
   readonly resolveTooling?: boolean;
   readonly loadPolicy?: LandofileLoadPolicy;
   readonly ports?: LandofileRuntimePorts;
+  readonly stateStore?: StateStoreShape;
   readonly onRelaxedRead?: (read: LandofileRelaxedRead) => Effect.Effect<void>;
 }
 
@@ -120,6 +119,7 @@ interface ResolveContext {
   readonly noNetwork: boolean;
   readonly loadPolicy: LandofileLoadPolicy;
   readonly ports?: LandofileRuntimePorts;
+  readonly stateStore: StateStoreShape | undefined;
   readonly onRelaxedRead?: ResolveLandofileIncludesOptions["onRelaxedRead"];
 }
 
@@ -856,7 +856,6 @@ const LockEntrySchema = Schema.Struct({
 });
 const LockEntriesSchema = Schema.Array(LockEntrySchema);
 
-const lockfileStore = makeStateStore({ privateFileAccess: makeOwnerOnlyFileAccess() });
 const lockTextDecoder = new TextDecoder();
 
 /**
@@ -879,11 +878,13 @@ const lockfileRoot = (
 };
 
 const openLockfileBucket = (
+  stateStore: StateStoreShape | undefined,
   appRoot: string,
   lockfilePath: string,
-): Effect.Effect<StateBucket<readonly LockEntry[]>, LandofileParseError> => {
+): Effect.Effect<StateBucket<readonly LockEntry[]>, LandofileParseError | LandofileIncludeError> => {
+  if (stateStore === undefined) return Effect.fail(missingRuntimeInput("StateStore"));
   const { root, key } = lockfileRoot(appRoot, lockfilePath);
-  return lockfileStore
+  return stateStore
     .open({
       root,
       key,
@@ -912,10 +913,11 @@ const openLockfileBucket = (
 };
 
 const parseLockEntries = (
+  stateStore: StateStoreShape | undefined,
   appRoot: string,
   path: string,
-): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError> =>
-  openLockfileBucket(appRoot, path).pipe(
+): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError | LandofileIncludeError> =>
+  openLockfileBucket(stateStore, appRoot, path).pipe(
     Effect.flatMap((bucket) =>
       bucket.get.pipe(
         Effect.mapError(
@@ -938,11 +940,12 @@ const parseLockEntries = (
   );
 
 const writeLockEntries = (
+  stateStore: StateStoreShape | undefined,
   appRoot: string,
   lockfilePath: string,
   entries: ReadonlyArray<LockEntry>,
 ): Effect.Effect<void, LandofileIncludeError> =>
-  openLockfileBucket(appRoot, lockfilePath).pipe(
+  openLockfileBucket(stateStore, appRoot, lockfilePath).pipe(
     Effect.flatMap((bucket) => bucket.set(entries)),
     Effect.mapError(() =>
       includeError({
@@ -957,7 +960,7 @@ const writeLockfileIfNeeded = (ctx: ResolveContext): Effect.Effect<void, Landofi
   if (ctx.stagedLocks.size === 0) return Effect.void;
   const merged = new Map(ctx.lockEntries);
   for (const [source, entry] of ctx.stagedLocks) merged.set(source, entry);
-  return writeLockEntries(ctx.appRoot, ctx.lockfilePath, [...merged.values()]);
+  return writeLockEntries(ctx.stateStore, ctx.appRoot, ctx.lockfilePath, [...merged.values()]);
 };
 
 const authoredVersionConstraintEntries = (
@@ -996,11 +999,12 @@ export const resolveLandofileIncludes = (
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,
       mode: "pin",
-      lockEntries: yield* parseLockEntries(options.appRoot, lockfilePath),
+      lockEntries: yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath),
       stagedLocks: new Map(),
       noNetwork: false,
       loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
       ...(options.ports === undefined ? {} : { ports: options.ports }),
+      stateStore: options.stateStore,
       ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
     };
     const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
@@ -1085,6 +1089,7 @@ export interface UpdateLandofileIncludesOptions {
   readonly sources?: ReadonlyArray<string>;
   readonly noNetwork?: boolean;
   readonly ports?: LandofileRuntimePorts;
+  readonly stateStore?: StateStoreShape;
 }
 
 const byCodepointString = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
@@ -1098,7 +1103,7 @@ export const updateLandofileIncludes = (
     const noNetwork = options.noNetwork === true;
     const requestedSources = options.sources ?? [];
     const scoped = requestedSources.length > 0;
-    const existing = yield* parseLockEntries(options.appRoot, lockfilePath);
+    const existing = yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath);
     const allIncludes = authoredIncludeEntries(options.landofile);
 
     if (scoped) {
@@ -1140,6 +1145,7 @@ export const updateLandofileIncludes = (
       noNetwork,
       loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
       ...(options.ports === undefined ? {} : { ports: options.ports }),
+      stateStore: options.stateStore,
     };
 
     if (includes.length > 0) {
@@ -1176,7 +1182,7 @@ export const updateLandofileIncludes = (
       const finalEntries = scoped
         ? [...new Map([...existing, ...ctx.stagedLocks]).values()]
         : [...ctx.stagedLocks.values()];
-      yield* writeLockEntries(options.appRoot, lockfilePath, finalEntries);
+      yield* writeLockEntries(options.stateStore, options.appRoot, lockfilePath, finalEntries);
       wrote = true;
     }
 
@@ -1217,6 +1223,7 @@ export interface VerifyLandofileIncludesOptions {
   readonly deps?: LandofileIncludeDeps;
   readonly maxDepth?: number;
   readonly ports?: LandofileRuntimePorts;
+  readonly stateStore?: StateStoreShape;
 }
 
 const MISSING_LOCK_VALUE = "<missing>";
@@ -1243,7 +1250,7 @@ export const verifyLandofileIncludes = (
 ): Effect.Effect<IncludeVerifyReport, ResolveIncludesError, never> =>
   Effect.gen(function* () {
     const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
-    const existing = yield* parseLockEntries(options.appRoot, lockfilePath);
+    const existing = yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath);
     const includes = authoredIncludeEntries(options.landofile);
 
     const ctx: ResolveContext = {
@@ -1259,6 +1266,7 @@ export const verifyLandofileIncludes = (
       noNetwork: false,
       loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
       ...(options.ports === undefined ? {} : { ports: options.ports }),
+      stateStore: options.stateStore,
     };
 
     if (includes.length > 0) {

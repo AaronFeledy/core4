@@ -17,7 +17,6 @@ import {
   stripHostProxyRunLando,
 } from "@lando/core/testing";
 import { makePluginStateStore } from "@lando/core/testing";
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -32,6 +31,7 @@ import {
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("crossprocessapp");
@@ -326,6 +326,7 @@ const appliedPlanState = (stateDir: string) =>
   makePluginStateStore(
     makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
     AbsolutePath.make(stateDir),
+    ownerOnlyFileAccess,
   );
 
 describe("provider-lando cross-process state", () => {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, type Context, DateTime, Effect, Exit } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
 
 import {
   AbsolutePath,
@@ -21,14 +21,21 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import {
   HostToolingEngineLive,
-  evaluateHostVar,
+  evaluateHostVar as evaluateHostVarEffect,
   resolveScriptPath,
-  runHostScript,
+  runHostScript as runHostScriptEffect,
   runHostToolingWith,
 } from "../../src/services/host-tooling-engine";
+
+const hostToolingEngineLive = HostToolingEngineLive.pipe(Layer.provide(PrivateFileAccessLive));
+const runHostScript = (...args: Parameters<typeof runHostScriptEffect>) =>
+  runHostScriptEffect(...args).pipe(Effect.provide(PrivateFileAccessLive));
+const evaluateHostVar = (...args: Parameters<typeof evaluateHostVarEffect>) =>
+  evaluateHostVarEffect(...args).pipe(Effect.provide(PrivateFileAccessLive));
 
 const providerId = ProviderId.make("lando");
 
@@ -135,7 +142,7 @@ const stubProvider: RuntimeProviderShape = {
 
 const runEngine = (invocation: ToolingInvocation, plan: AppPlan) =>
   Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, stubProvider)).pipe(
-    Effect.provide(HostToolingEngineLive),
+    Effect.provide(hostToolingEngineLive),
   );
 
 type ShellExecCall = {
@@ -163,7 +170,7 @@ const makeRecordingShell = (): {
 
 describe("HostToolingEngineLive", () => {
   test("layer registers engine id 'host'", async () => {
-    const engine = await Effect.runPromise(ToolingEngine.pipe(Effect.provide(HostToolingEngineLive)));
+    const engine = await Effect.runPromise(ToolingEngine.pipe(Effect.provide(hostToolingEngineLive)));
     expect(engine.id).toBe("host");
   });
 

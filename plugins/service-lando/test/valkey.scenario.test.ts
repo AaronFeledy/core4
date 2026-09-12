@@ -17,6 +17,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import {
   AppPlannerLive,
@@ -144,6 +145,7 @@ const makeToolingLayer = (options: {
     select: () => Effect.succeed(options.provider),
   });
   return Layer.mergeAll(
+    PrivateFileAccessLive,
     landofileLayer,
     plannerLayer,
     registryLayer,

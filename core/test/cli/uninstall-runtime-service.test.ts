@@ -7,8 +7,12 @@ import { Effect, Layer } from "effect";
 
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 
-import { uninstall } from "@lando/engine/operations/uninstall";
+import { uninstall as uninstallEffect } from "@lando/engine/operations/uninstall";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+
+const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
+  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-runtime-service-test-"));

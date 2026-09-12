@@ -18,6 +18,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec } from "@lando/sdk/services";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("exec-stdin-app");
@@ -93,6 +94,7 @@ const runExec = async (api: DockerApiClient, command: CommandSpec) => {
   const appliedPlanState = makePluginStateStore(
     makeTestStateStore().service,
     AbsolutePath.make("/tmp/provider-docker-exec-stdin-state"),
+    ownerOnlyFileAccess,
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
   const provider = await Effect.runPromise(

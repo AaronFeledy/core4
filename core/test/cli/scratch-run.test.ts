@@ -40,8 +40,11 @@ import { makeLandoPaths } from "@lando/paths";
 import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { makeJsonRendererServiceLive } from "@lando/renderer/runtime";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
-const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+const StateStoreLive = StateStoreUnprovided.pipe(
+  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessLive)),
+);
 import { appsScratchRunSpec } from "../../src/cli/command-specs/apps/scratch/run.ts";
 import {
   type ScratchRunResult,
@@ -59,6 +62,7 @@ import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
@@ -243,6 +247,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
+    PrivateFileAccessLive,
     landofileServiceLive,
     plannerLive,
     registryLive,
@@ -274,7 +279,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       Layer.provide(Layer.mergeAll(scratchDeps, buildOrchestratorLive)),
     ),
     options.configLayer ?? ConfigServiceLive,
-  );
+  ).pipe(Layer.provide(PrivateFileAccessLive));
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
@@ -823,7 +828,7 @@ describe("scratch run cleanup and warm repeats", () => {
 
       // Losing the registry entry (a wiped cache) turns the kept scratch into an
       // orphan whose cache dir and provider resources gc --prune then reaps.
-      await Effect.runPromise(makeScratchRegistry().remove(result.scratchId));
+      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).remove(result.scratchId));
       const gc = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
           Effect.provide(layer),

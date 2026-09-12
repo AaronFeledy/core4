@@ -14,13 +14,22 @@ import {
   type RecipeInitPipelineRequest,
   RecipeInitPostInitError,
   previewRecipeLandofile,
-  runRecipeInitPipeline,
+  runRecipeInitPipeline as runRecipeInitPipelineWithAccess,
 } from "../../src/recipes/init-pipeline.ts";
 import { secretReference } from "../../src/recipes/init-pipeline/secrets.ts";
 import { makeRecipeTranslatorModule } from "../../src/recipes/translator-module.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { isolatedInitDecomposer, isolatedInitManifest } from "./fixtures/isolated-init-recipe/index.ts";
 
 const roots: string[] = [];
+type TestRecipeInitPipelineRequest = Omit<RecipeInitPipelineRequest, "privateFileAccess"> & {
+  readonly privateFileAccess?: RecipeInitPipelineRequest["privateFileAccess"];
+};
+const runRecipeInitPipeline = (request: TestRecipeInitPipelineRequest) =>
+  runRecipeInitPipelineWithAccess({
+    ...request,
+    privateFileAccess: request.privateFileAccess ?? ownerOnlyFileAccess,
+  });
 const diagnostic = (kind: ConfigTranslateDiagnostic["kind"], message: string): ConfigTranslateDiagnostic => ({
   kind,
   message,
@@ -47,7 +56,7 @@ const fixture = async () => {
   const calls: string[] = [];
   const landofile = join(appRoot, ".lando.yml");
   const auxiliary = join(appRoot, "config/isolated.conf");
-  const request: RecipeInitPipelineRequest = {
+  const request: TestRecipeInitPipelineRequest = {
     appRoot,
     sourceRoot,
     journalRoot: () => journalRoot,
@@ -79,7 +88,7 @@ const fixture = async () => {
   };
   return { request, calls, landofile, auxiliary };
 };
-const failure = async (request: RecipeInitPipelineRequest) => {
+const failure = async (request: TestRecipeInitPipelineRequest) => {
   const result = await Effect.runPromise(Effect.either(runRecipeInitPipeline(request)));
   if (Either.isRight(result)) throw new Error("Expected pipeline failure");
   return result.left;
@@ -111,7 +120,7 @@ test("preview encodes the committed Landofile without writing anything", async (
 test("blocks unauthorized post-init actions before writing any scaffold", async () => {
   // Given a direct pipeline caller that bypasses manifest-service validation
   const { request, calls, landofile, auxiliary } = await fixture();
-  const unauthorized: RecipeInitPipelineRequest = {
+  const unauthorized: TestRecipeInitPipelineRequest = {
     ...request,
     manifest: {
       ...request.manifest,
@@ -131,7 +140,7 @@ test("blocks unauthorized post-init actions before writing any scaffold", async 
 test("blocks app:start without a declared opt-in prompt before writing any scaffold", async () => {
   // Given a direct pipeline caller with an app:start guard that names no declared prompt
   const { request, calls, landofile, auxiliary } = await fixture();
-  const unauthorized: RecipeInitPipelineRequest = {
+  const unauthorized: TestRecipeInitPipelineRequest = {
     ...request,
     manifest: {
       ...request.manifest,

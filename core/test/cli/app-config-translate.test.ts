@@ -28,9 +28,9 @@ import { parseLandofile } from "@lando/landofile/parser";
 import {
   type AppConfigTranslateResult,
   AppConfigTranslateResultSchema,
-  appConfigTranslate,
   renderConfigTranslateResult,
 } from "../../src/cli/commands/app-config-translate.ts";
+import { appConfigTranslateWithOwnerOnlyFileAccess as appConfigTranslate } from "../_support/private-file-access.ts";
 
 const dirs: Array<string> = [];
 const originalDataRoot = process.env.LANDO_USER_DATA_ROOT;

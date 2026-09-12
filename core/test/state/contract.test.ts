@@ -8,9 +8,9 @@ import { Effect, Schema } from "effect";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { type StateStoreContractHarness, runStateStoreContract } from "@lando/sdk/test";
 
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 let root: AbsolutePathType;
 

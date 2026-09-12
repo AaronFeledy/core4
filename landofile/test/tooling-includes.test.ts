@@ -10,7 +10,7 @@ import type { LandofileShape } from "@lando/sdk/schema";
 import { getLocalIncludePaths } from "../src/include-provenance.ts";
 import { resolveLandofileIncludes } from "../src/includes.ts";
 import { getInternalToolingTasks } from "../src/tooling-include-provenance.ts";
-import { makeTestLandofilePorts } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
   Effect.runPromise(
@@ -19,6 +19,7 @@ const resolve = (landofile: LandofileShape, appRoot: string) =>
       appRoot,
       cacheRoot: join(appRoot, ".cache"),
       ports: makeTestLandofilePorts(join(appRoot, ".cache")),
+      stateStore: makeTestLandofileStateStore(),
     }),
   );
 
@@ -30,6 +31,7 @@ const failure = (landofile: LandofileShape, appRoot: string) =>
         appRoot,
         cacheRoot: join(appRoot, ".cache"),
         ports: makeTestLandofilePorts(join(appRoot, ".cache")),
+        stateStore: makeTestLandofileStateStore(),
       }),
     ),
   );
@@ -468,6 +470,7 @@ describe("tooling includes — failure modes", () => {
         resolveLandofileIncludes({
           landofile: { toolingIncludes: { out: { file: outside, optional: true } } },
           appRoot,
+          stateStore: makeTestLandofileStateStore(),
           cacheRoot: join(appRoot, ".cache"),
         }),
       ),

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, Effect, Exit, Layer, Stream } from "effect";
 
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   bringDown,
   bringUp,
@@ -190,7 +191,9 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     const landofilePath = join(appRoot, ".lando.yml");
     await writeFile(landofilePath, makeRunnableLandofile(`compose-fixture-${fixture.id}`, fixtureSource));
 
-    const landofile = await Effect.runPromise(loadLandofileFile(landofilePath));
+    const landofile = await Effect.runPromise(
+      loadLandofileFile(landofilePath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
     const capabilities = await Effect.runPromise(introspectProviderCapabilities(api, "linux"));
     plan = await Effect.runPromise(
       AppPlanner.pipe(
@@ -309,7 +312,9 @@ const rejectFixtureBeforeProviderCall = async (fixture: RejectedFixtureCase): Pr
     const fixtureSource = await Bun.file(join(fixturesRoot, fixture.file)).text();
     const landofilePath = join(appRoot, ".lando.yml");
     await writeFile(landofilePath, makeRunnableLandofile(`compose-fixture-${fixture.id}`, fixtureSource));
-    const landofile = await Effect.runPromise(loadLandofileFile(landofilePath));
+    const landofile = await Effect.runPromise(
+      loadLandofileFile(landofilePath).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
     const api = makePodmanApiClient(liveSocketPath);
     const guardedApi = {
       ...api,

@@ -19,6 +19,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
@@ -42,6 +43,7 @@ type DestroyAppServices =
   | EventService
   | LandofileService
   | PathsService
+  | PrivateFileAccessService
   | RuntimeProviderRegistry;
 type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
@@ -122,7 +124,10 @@ export const destroyAppForTarget = (
               Effect.tap(() => tree.completeTask("routes")),
               Effect.tapError(() => tree.failTask("routes")),
             );
-            yield* runAllAndMergeFailures<SdkDestroyAppError, never>([providerDestroy, removeRoutes]);
+            yield* runAllAndMergeFailures<SdkDestroyAppError, PrivateFileAccessService>([
+              providerDestroy,
+              removeRoutes,
+            ]);
           } else {
             yield* events.publish(
               MessageWarnEvent.make({

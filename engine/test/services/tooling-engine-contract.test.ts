@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -20,6 +20,7 @@ import {
   type ToolingEngineContractHarness,
   runToolingEngineContractSuite,
 } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { HostToolingEngineLive } from "../../src/services/host-tooling-engine";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine";
@@ -166,6 +167,7 @@ const inertProvider: RuntimeProviderShape = {
 
 const runEngineLayer = (live: typeof ProviderExecToolingEngineLive) =>
   Effect.runPromise(ToolingEngine.pipe(Effect.provide(live)));
+const hostToolingEngineLive = HostToolingEngineLive.pipe(Layer.provide(PrivateFileAccessLive));
 
 describe("ToolingEngine contract — built-in engines", () => {
   test("the built-in providerExec engine passes the contract", async () => {
@@ -232,7 +234,7 @@ describe("ToolingEngine contract — built-in engines", () => {
   });
 
   test("the built-in host engine passes the contract (host-safe shell commands)", async () => {
-    const engine = await runEngineLayer(HostToolingEngineLive);
+    const engine = await runEngineLayer(hostToolingEngineLive);
     // The host engine runs real shell commands on the host, so the recording
     // provider is inert (the engine ignores it) and the assertions use the host
     // shell's own output. `expectedCommands` is empty because the host engine

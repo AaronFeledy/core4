@@ -7,9 +7,12 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { updateLandofileIncludes } from "../src/includes.ts";
+import { updateLandofileIncludes as updateLandofileIncludesPackage } from "../src/includes.ts";
 import type { GitIncludeCloner } from "../src/includes.ts";
-import { makeTestLandofilePorts, makeTestPublicationPort } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore, makeTestPublicationPort } from "./support.ts";
+
+const updateLandofileIncludes = (options: Parameters<typeof updateLandofileIncludesPackage>[0]) =>
+  updateLandofileIncludesPackage({ ...options, stateStore: makeTestLandofileStateStore() });
 
 const lockfile = (source: string, resolved: string, checksum: string) =>
   [

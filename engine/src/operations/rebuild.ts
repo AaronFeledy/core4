@@ -26,6 +26,7 @@ import {
 import type { RedactionService } from "@lando/redaction/service";
 import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import type { AppRef } from "@lando/sdk/schema";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
 import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
@@ -50,6 +51,7 @@ type RebuildAppServices =
   | LandofileService
   | ManagedFileTransactionGuard
   | PathsService
+  | PrivateFileAccessService
   | PluginRegistry
   | RouterService
   | RedactionService

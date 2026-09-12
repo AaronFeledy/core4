@@ -41,6 +41,7 @@ import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/servi
 const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -252,7 +253,7 @@ const makeScratchForkLayer = (
   });
   const scratchRegistryLive = (() => {
     if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLive;
-    const registry = makeScratchRegistry();
+    const registry = makeScratchRegistry(ownerOnlyFileAccess);
     let upsertCount = 0;
     return Layer.succeed(ScratchRegistry, {
       ...registry,

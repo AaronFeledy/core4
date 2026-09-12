@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { metaUninstallSpec } from "../../src/cli/command-specs/meta/uninstall.ts";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
 
@@ -29,20 +30,22 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
       const teardownRoots: string[] = [];
 
       const result = await Effect.runPromise(
-        metaUninstallSpec.run({
-          flags: { yes: true, "keep-data": true },
-          _userDataRoot: userDataRoot,
-          _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
-          _cgroupsDelegatePath: join(root, "delegate.conf"),
-          _shellProfilePath: join(root, ".profile"),
-          _exists: () => false,
-          _remove: async () => {},
-          _teardownProviderMachines: async (rootPath: string) => {
-            teardownRoots.push(rootPath);
-            return { removed: true, name: "lando" };
-          },
-        }),
+        metaUninstallSpec
+          .run({
+            flags: { yes: true, "keep-data": true },
+            _userDataRoot: userDataRoot,
+            _userCacheRoot: userCacheRoot,
+            _execPath: join(root, "lando"),
+            _cgroupsDelegatePath: join(root, "delegate.conf"),
+            _shellProfilePath: join(root, ".profile"),
+            _exists: () => false,
+            _remove: async () => {},
+            _teardownProviderMachines: async (rootPath: string) => {
+              teardownRoots.push(rootPath);
+              return { removed: true, name: "lando" };
+            },
+          })
+          .pipe(Effect.provide(PrivateFileAccessLive)),
       );
 
       const step = result.steps.find((s) => s.id === "managed-provider-machines");
@@ -63,20 +66,22 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
       let teardownCalled = false;
 
       const result = await Effect.runPromise(
-        metaUninstallSpec.run({
-          flags: { yes: true, "keep-data": true },
-          _userDataRoot: userDataRoot,
-          _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
-          _cgroupsDelegatePath: join(root, "delegate.conf"),
-          _shellProfilePath: join(root, ".profile"),
-          _exists: () => false,
-          _remove: async () => {},
-          _teardownProviderMachines: async () => {
-            teardownCalled = true;
-            return { removed: false };
-          },
-        }),
+        metaUninstallSpec
+          .run({
+            flags: { yes: true, "keep-data": true },
+            _userDataRoot: userDataRoot,
+            _userCacheRoot: userCacheRoot,
+            _execPath: join(root, "lando"),
+            _cgroupsDelegatePath: join(root, "delegate.conf"),
+            _shellProfilePath: join(root, ".profile"),
+            _exists: () => false,
+            _remove: async () => {},
+            _teardownProviderMachines: async () => {
+              teardownCalled = true;
+              return { removed: false };
+            },
+          })
+          .pipe(Effect.provide(PrivateFileAccessLive)),
       );
 
       expect(result.steps.find((s) => s.id === "managed-provider-machines")).toMatchObject({
@@ -96,19 +101,21 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
       seedSetupState(userDataRoot, { name: "lando", createdByLando: true });
 
       const result = await Effect.runPromise(
-        metaUninstallSpec.run({
-          flags: { yes: true, "keep-data": true },
-          _userDataRoot: userDataRoot,
-          _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
-          _cgroupsDelegatePath: join(root, "delegate.conf"),
-          _shellProfilePath: join(root, ".profile"),
-          _exists: () => false,
-          _remove: async () => {},
-          _teardownProviderMachines: async () => {
-            throw new Error("Run 'podman machine rm --force lando' manually. (exit 1: boom)");
-          },
-        }),
+        metaUninstallSpec
+          .run({
+            flags: { yes: true, "keep-data": true },
+            _userDataRoot: userDataRoot,
+            _userCacheRoot: userCacheRoot,
+            _execPath: join(root, "lando"),
+            _cgroupsDelegatePath: join(root, "delegate.conf"),
+            _shellProfilePath: join(root, ".profile"),
+            _exists: () => false,
+            _remove: async () => {},
+            _teardownProviderMachines: async () => {
+              throw new Error("Run 'podman machine rm --force lando' manually. (exit 1: boom)");
+            },
+          })
+          .pipe(Effect.provide(PrivateFileAccessLive)),
       );
 
       expect(result.failed).toBe(true);

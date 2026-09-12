@@ -5,8 +5,12 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
-import { makePluginStateStore } from "@lando/core/testing";
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
+import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/core/testing";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
+const makePluginStateStore = (
+  store: Parameters<typeof makePluginStateStoreWithAccess>[0],
+  root: Parameters<typeof makePluginStateStoreWithAccess>[1],
+) => makePluginStateStoreWithAccess(store, root, ownerOnlyFileAccess);
 import {
   appliedPlanPath,
   listAppliedPlans,

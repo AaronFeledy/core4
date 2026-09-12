@@ -31,6 +31,7 @@ import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 
 import { findAppRoot } from "@lando/landofile/discovery";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { StreamFrameSink } from "./stream-frame-sink.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
@@ -60,6 +61,7 @@ type RunToolingServices =
   | AppPlanner
   | ConfigService
   | LandofileService
+  | PrivateFileAccessService
   | RuntimeProviderRegistry
   | ToolingEngine;
 

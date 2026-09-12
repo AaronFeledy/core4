@@ -277,15 +277,20 @@ export const appConfigTranslate = (
       diagnostics,
       deletions,
     };
-    return options.write === true
-      ? yield* writeTranslateTargets({
-          appRoot,
-          preview,
-          shape,
-          documents,
-          ...(options.privateFileAccess === undefined
-            ? {}
-            : { privateFileAccess: options.privateFileAccess }),
-        })
-      : preview;
+    if (options.write !== true) return preview;
+    if (options.privateFileAccess === undefined) {
+      return yield* Effect.fail(
+        new ConfigTranslateError({
+          message: "Private file access is unavailable for translated configuration writes.",
+          remediation: "Run the translation through the Lando runtime.",
+        }),
+      );
+    }
+    return yield* writeTranslateTargets({
+      appRoot,
+      preview,
+      shape,
+      documents,
+      privateFileAccess: options.privateFileAccess,
+    });
   });

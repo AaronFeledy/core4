@@ -5,10 +5,10 @@ import { join, resolve } from "node:path";
 
 import { type Context, Effect, Option, Schema } from "effect";
 
-import { PrivilegeService, ProcessRunner } from "@lando/sdk/services";
+import { PrivilegeService } from "@lando/sdk/services";
 
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
-import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
 import { resolveUserDataRoot } from "../config/roots";
@@ -255,13 +255,11 @@ const defaultTeardownHostProxySessions = async (
   userDataRoot: string,
   privateFileAccess?: PrivateFileAccess,
 ): Promise<void> => {
+  if (privateFileAccess === undefined) {
+    throw new TypeError("Private file access is required to tear down host-proxy sessions.");
+  }
   const { terminateOwnedHostProxyWorkersInRoot } = await import("../subsystems/host-proxy/worker");
-  await Effect.runPromise(
-    terminateOwnedHostProxyWorkersInRoot(
-      userDataRoot,
-      privateFileAccess === undefined ? {} : { privateFileAccess },
-    ),
-  );
+  await Effect.runPromise(terminateOwnedHostProxyWorkersInRoot(userDataRoot, { privateFileAccess }));
 };
 
 const defaultTeardownRuntimeService = (
@@ -812,11 +810,13 @@ const executeUninstall = async (
   };
 };
 
-export const uninstall = (options: UninstallOptions = {}): Effect.Effect<UninstallResult> =>
+export const uninstall = (
+  options: UninstallOptions = {},
+): Effect.Effect<UninstallResult, never, PrivateFileAccessService> =>
   Effect.gen(function* () {
     const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
     const privilege = yield* Effect.serviceOption(PrivilegeService);
-    const processRunner = yield* Effect.serviceOption(ProcessRunner);
+    const privateFileAccess = yield* PrivateFileAccessService;
     const elevate =
       options.elevate ??
       (privilege._tag === "Some"
@@ -824,13 +824,7 @@ export const uninstall = (options: UninstallOptions = {}): Effect.Effect<Uninsta
         : undefined);
     const teardownHostProxySessions =
       options.teardownHostProxySessions ??
-      ((userDataRoot: string) =>
-        defaultTeardownHostProxySessions(
-          userDataRoot,
-          processRunner._tag === "Some"
-            ? makeOwnerOnlyFileAccess({ processRunner: processRunner.value })
-            : undefined,
-        ));
+      ((userDataRoot: string) => defaultTeardownHostProxySessions(userDataRoot, privateFileAccess));
     const resolvedOptions = {
       ...options,
       ...(elevate === undefined ? {} : { elevate }),

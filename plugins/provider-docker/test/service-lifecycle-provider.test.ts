@@ -18,6 +18,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-app");
@@ -84,6 +85,7 @@ const makeProvider = async (api: DockerApiClient, appliedPlan?: AppPlan) => {
   const appliedPlanState = makePluginStateStore(
     makeTestStateStore().service,
     AbsolutePath.make("/tmp/provider-docker-service-lifecycle-state"),
+    ownerOnlyFileAccess,
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, appliedPlan));
   return Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }));

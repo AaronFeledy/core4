@@ -22,6 +22,7 @@ import { makeLandoRuntime } from "../runtime/layer";
 
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import type { RendererIO } from "@lando/renderer/io";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { landoSpecForId } from "./compiled-argv";
 import {
   type CompiledCommandInput,
@@ -201,6 +202,11 @@ export const scratchRunRuntimeLayer = () =>
   makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
   ) as Layer.Layer<
-    ScratchAppService | ConfigService | FileSystem | ProcessRunner | RuntimeProviderRegistry,
+    | ScratchAppService
+    | ConfigService
+    | FileSystem
+    | PrivateFileAccessService
+    | ProcessRunner
+    | RuntimeProviderRegistry,
     ConfigError | LandoRuntimeBootstrapError
   >;

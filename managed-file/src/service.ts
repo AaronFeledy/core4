@@ -39,14 +39,17 @@ import {
   type ManagedFileApplyOptions,
   type ManagedFileSelector,
   ManagedFileService,
-  ProcessRunner,
 } from "@lando/sdk/services";
 
 import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
-import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import {
+  type PrivateFileAccess,
+  PrivateFileAccessLive,
+  PrivateFileAccessService,
+} from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { type ManagedFileOperation, encode as encodeFormat } from "./codecs.ts";
 import {
@@ -990,9 +993,11 @@ const makeManagedFileServiceLive = (privateFileAccess: PrivateFileAccess): Layer
     }),
   );
 
-export const ManagedFileServiceLive: Layer.Layer<ManagedFileService, never, ProcessRunner> =
-  Layer.unwrapEffect(
-    Effect.map(ProcessRunner, (processRunner) =>
-      makeManagedFileServiceLive(makeOwnerOnlyFileAccess({ processRunner })),
-    ),
-  );
+export const ManagedFileServiceWithPrivateFileAccessLive: Layer.Layer<
+  ManagedFileService,
+  never,
+  PrivateFileAccessService
+> = Layer.unwrapEffect(Effect.map(PrivateFileAccessService, makeManagedFileServiceLive));
+
+export const ManagedFileServiceLive: Layer.Layer<ManagedFileService> =
+  ManagedFileServiceWithPrivateFileAccessLive.pipe(Layer.provide(PrivateFileAccessLive));

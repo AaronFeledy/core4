@@ -18,18 +18,20 @@ import {
   ManagedFileService,
   PathsService,
   PluginRegistry,
-  ProcessRunner,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
-import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import {
+  type PrivateFileAccess,
+  PrivateFileAccessLive,
+  PrivateFileAccessService,
+} from "@lando/state-store/private-file-access";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
-import { ownerOnlyFileAccess } from "../services/private-file-access.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -81,7 +83,7 @@ const toProviderUnavailableFromCapability = (
 
 export const makeRuntimeProviderRegistry = (
   modules: ReadonlyArray<LandoPluginModule>,
-  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
+  privateFileAccess: PrivateFileAccess,
 ) => {
   const capabilityIndex = makePluginCapabilityIndex(modules);
 
@@ -205,15 +207,17 @@ export const makeRuntimeProviderRegistry = (
   );
 };
 
-export const makeRuntimeProviderRegistryWithProcessRunner = (modules: ReadonlyArray<LandoPluginModule>) =>
+export const makeRuntimeProviderRegistryWithPrivateFileAccess = (modules: ReadonlyArray<LandoPluginModule>) =>
   Layer.unwrapEffect(
-    Effect.map(ProcessRunner, (processRunner) =>
-      makeRuntimeProviderRegistry(modules, makeOwnerOnlyFileAccess({ processRunner })),
+    Effect.map(PrivateFileAccessService, (privateFileAccess) =>
+      makeRuntimeProviderRegistry(modules, privateFileAccess),
     ),
   );
 
 export { RuntimeProviderRegistry };
 
 export const RuntimeProviderRegistryLive = Layer.suspend(() =>
-  makeRuntimeProviderRegistry(bundledPluginModules(), ownerOnlyFileAccess),
+  makeRuntimeProviderRegistryWithPrivateFileAccess(bundledPluginModules()).pipe(
+    Layer.provide(PrivateFileAccessLive),
+  ),
 );

@@ -12,6 +12,7 @@ import {
   makeScratchRegistry,
   scratchRegistryPaths,
 } from "../../src/scratch-app/registry.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-cache-")));
@@ -44,7 +45,7 @@ const entry = (id: string): ScratchRegistryEntry => ({
 describe("scratch registry", () => {
   test("upsert, list, and get roundtrip through registry.bin", async () => {
     await withTempCache(async () => {
-      const registry = makeScratchRegistry();
+      const registry = makeScratchRegistry(ownerOnlyFileAccess);
       const first = entry("scratch-one-000001");
       const second = entry("scratch-two-000002");
 
@@ -64,7 +65,7 @@ describe("scratch registry", () => {
       await mkdir(paths.base, { recursive: true });
       await writeFile(paths.registry, "not-json");
 
-      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([]);
+      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([]);
 
       const files = await readdir(paths.base);
       expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(true);
@@ -87,7 +88,9 @@ describe("scratch registry", () => {
         `${JSON.stringify({ version: 1, entries: [first] })}\n`,
       );
 
-      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first]);
+      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([
+        first,
+      ]);
 
       const raw = JSON.parse(await readFile(paths.registry, "utf8")) as unknown;
       expect(raw).toEqual({ version: 1, data: [first] });
@@ -116,7 +119,7 @@ describe("scratch registry", () => {
         `${JSON.stringify({ version: 1, entries: [legacyFirst, legacySecond] })}\n`,
       );
 
-      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([
+      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([
         { ...first, isolate: "cwd" },
         { ...second, isolate: "baked" },
       ]);
@@ -151,7 +154,7 @@ describe("scratch registry", () => {
         })}\n`,
       );
 
-      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([
+      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([
         { ...fork, isolate: "cwd" },
         { ...recipe, isolate: "baked" },
       ]);
@@ -175,7 +178,9 @@ describe("scratch registry", () => {
       const currentFrame = `${JSON.stringify({ version: 1, data: [first] }, null, 2)}\n`;
       await writeFile(paths.registry, currentFrame);
 
-      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([first]);
+      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([
+        first,
+      ]);
 
       expect(await readFile(paths.registry, "utf8")).toBe(currentFrame);
     });
@@ -184,7 +189,7 @@ describe("scratch registry", () => {
   test("lock release removes only the matching token", async () => {
     await withTempCache(async () => {
       const paths = scratchRegistryPaths();
-      const lock = await Effect.runPromise(acquireScratchRegistryLock(paths));
+      const lock = await Effect.runPromise(acquireScratchRegistryLock(ownerOnlyFileAccess, paths));
       await writeFile(
         paths.lock,
         JSON.stringify({ pid: process.pid, token: "other", createdAt: Date.now() }),
@@ -210,7 +215,7 @@ describe("scratch registry", () => {
         }),
       );
 
-      const lock = await Effect.runPromise(acquireScratchRegistryLock(paths));
+      const lock = await Effect.runPromise(acquireScratchRegistryLock(ownerOnlyFileAccess, paths));
 
       const current = JSON.parse(await readFile(paths.lock, "utf8")) as { readonly token: string };
       expect(current.token).toBe(lock.token);
