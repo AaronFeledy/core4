@@ -61,7 +61,7 @@ test("detached helper persists an abort which the next real invocation surfaces 
     LANDO_USER_CONF_ROOT: join(root, "conf"),
   };
   const cli = resolve("core/bin/lando.ts");
-  const helper = Bun.spawn([process.execPath, cli, "--lando-update-replacement", requestPath], {
+  const helper = Bun.spawn([process.execPath, cli, "--lando-update-replacement", requestPath, token], {
     env,
     stdout: "ignore",
     stderr: "pipe",
@@ -141,5 +141,46 @@ test.each(["json", "yaml", "ndjson"])(
       coreFailure: { tag: "UpdatePermissionError" },
     });
     expect(await Bun.file(join(cache, "update-handoff", `${token}.json`)).exists()).toBe(false);
+  },
+);
+
+test.each(["missing", "malformed", "invalid-schema"])(
+  "helper request %s failure finalizes the pending receipt",
+  async (failure) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-deferred-early-failure-"));
+    roots.push(root);
+    const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+    const handoff = makeUpdateHandoff({ open: (spec) => live.open({ ...spec, root: { path: cache } }) });
+    const token = await Effect.runPromise(
+      handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["completed"] }),
+    );
+    const binary = join(root, "lando.exe");
+    await writeFile(binary, "old");
+    const requestPath = join(root, "request.json");
+    if (failure !== "missing") await writeFile(requestPath, failure === "malformed" ? "{" : "{}");
+    const child = Bun.spawn(
+      [process.execPath, resolve("core/bin/lando.ts"), "--lando-update-replacement", requestPath, token],
+      {
+        env: {
+          ...process.env,
+          LANDO_USER_CACHE_ROOT: cache,
+          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_CONF_ROOT: join(root, "conf"),
+        },
+        stdout: "ignore",
+        stderr: "pipe",
+      },
+    );
+    await new Response(child.stderr).text();
+    expect(await child.exited).not.toBe(0);
+    const receipt = await Effect.runPromise(handoff.consumeDeferred(token));
+    expect(receipt).toMatchObject({
+      updatedCore: false,
+      hasFailures: true,
+      updatedPlugins: ["completed"],
+      coreFailure: { tag: "UpdatePermissionError" },
+    });
+    expect(await Bun.file(binary).text()).toBe("old");
   },
 );

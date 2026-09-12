@@ -43,11 +43,14 @@ export const windowsManualFallback = ({
 export const windowsPermissionRemediation = (executablePath: string): string =>
   `Lando will not request UAC automatically. If this install path is correct, open PowerShell as Administrator and replace ${executablePath} manually with the downloaded Lando binary, or reinstall Lando into a user-writable directory.`;
 
-export const buildWindowsReplacementScript = (input: UpdateWindowsReplacementInput): string => {
+export const buildWindowsReplacementScript = (
+  input: UpdateWindowsReplacementInput,
+  token: string,
+): string => {
   return [
     "@echo off",
     "setlocal DisableDelayedExpansion",
-    `"${windowsBatchValue(join(dirname(input.stagedBinaryPath), "lando-update-helper.exe"))}" --lando-update-replacement "${windowsBatchValue(join(dirname(input.stagedBinaryPath), "replacement.json"))}"`,
+    `"${windowsBatchValue(join(dirname(input.stagedBinaryPath), "lando-update-helper.exe"))}" --lando-update-replacement "${windowsBatchValue(join(dirname(input.stagedBinaryPath), "replacement.json"))}" "${windowsBatchValue(token)}"`,
     "if errorlevel 1 exit /b 1",
     'rmdir /S /Q "%~dp0" >nul 2>nul',
     "endlocal",
@@ -92,7 +95,7 @@ export const scheduleWindowsReplacement = (
           }),
           { mode: 0o600 },
         );
-        await writeFile(scriptPath, buildWindowsReplacementScript(input));
+        await writeFile(scriptPath, buildWindowsReplacementScript(input, token));
         spawner({
           cmd: ["cmd.exe", "/d", "/s", "/c", scriptPath],
           cwd: dirname(input.stagedBinaryPath),

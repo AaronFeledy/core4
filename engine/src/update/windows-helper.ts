@@ -68,35 +68,50 @@ export const runWindowsReplacement = (
     return failure === undefined;
   });
 
-export const runWindowsReplacementProcess = (requestPath: string) =>
+export const runWindowsReplacementProcess = (requestPath: string, token: string) =>
   Effect.gen(function* () {
-    const request = yield* Effect.tryPromise(() => readFile(requestPath, "utf8")).pipe(
-      Effect.flatMap(Schema.decodeUnknown(Schema.parseJson(RequestSchema))),
-    );
+    yield* Schema.decodeUnknown(Schema.UUID)(token);
     const handoff = makeUpdateHandoff(yield* StateStore);
-    const parentExited = yield* runProbe(
-      {
-        id: "update-parent-exit",
-        policy: { maxAttempts: 150, delay: Duration.millis(100), timeout: Duration.seconds(15) },
-        classify: { success: (dead) => (dead === true ? "green" : "yellow"), failure: () => "red" },
-      },
-      Effect.sync(() => {
-        try {
-          process.kill(request.parentPid, 0);
-          return false;
-        } catch (cause) {
-          return cause instanceof Error && "code" in cause && cause.code === "ESRCH";
-        }
-      }),
+    return yield* Effect.gen(function* () {
+      const request = yield* Effect.tryPromise(() => readFile(requestPath, "utf8")).pipe(
+        Effect.flatMap(Schema.decodeUnknown(Schema.parseJson(RequestSchema))),
+      );
+      if (request.token !== token) return yield* Effect.fail(swapError());
+      const parentExited = yield* runProbe(
+        {
+          id: "update-parent-exit",
+          policy: { maxAttempts: 150, delay: Duration.millis(100), timeout: Duration.seconds(15) },
+          classify: { success: (dead) => (dead === true ? "green" : "yellow"), failure: () => "red" },
+        },
+        Effect.sync(() => {
+          try {
+            process.kill(request.parentPid, 0);
+            return false;
+          } catch (cause) {
+            return cause instanceof Error && "code" in cause && cause.code === "ESRCH";
+          }
+        }),
+      );
+      if (parentExited.outcome !== "green") {
+        yield* handoff.finishDeferred(request.token, {
+          tag: "UpdatePermissionError",
+          message: "Windows replacement aborted while waiting for the originating process to exit.",
+          remediation:
+            "Close other Lando processes and re-run lando update; completed plugin updates remain active.",
+        });
+        return false;
+      }
+      return yield* runWindowsReplacement(request, handoff);
+    }).pipe(
+      Effect.catchAll(() =>
+        handoff
+          .finishDeferred(token, {
+            tag: "UpdatePermissionError",
+            message: "Windows replacement aborted because its request could not be processed.",
+            remediation:
+              "Check the installed core version and re-run lando update; completed plugin updates remain active.",
+          })
+          .pipe(Effect.as(false)),
+      ),
     );
-    if (parentExited.outcome !== "green") {
-      yield* handoff.finishDeferred(request.token, {
-        tag: "UpdatePermissionError",
-        message: "Windows replacement aborted while waiting for the originating process to exit.",
-        remediation:
-          "Close other Lando processes and re-run lando update; completed plugin updates remain active.",
-      });
-      return false;
-    }
-    return yield* runWindowsReplacement(request, handoff);
   }).pipe(Effect.provide(StateStoreLive));

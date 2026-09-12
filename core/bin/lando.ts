@@ -64,10 +64,15 @@ const hasAppContext = async (cwd: string): Promise<boolean> => {
 };
 
 const main = async (): Promise<void> => {
-  if (argv[0] === "--lando-update-replacement" && argv.length === 2 && argv[1] !== undefined) {
+  if (
+    argv[0] === "--lando-update-replacement" &&
+    argv.length === 3 &&
+    argv[1] !== undefined &&
+    argv[2] !== undefined
+  ) {
     const { runWindowsReplacementProcess } = await import("@lando/engine/operations/update");
     const { Effect } = await import("effect");
-    process.exitCode = (await Effect.runPromise(runWindowsReplacementProcess(argv[1]))) ? 0 : 1;
+    process.exitCode = (await Effect.runPromise(runWindowsReplacementProcess(argv[1], argv[2]))) ? 0 : 1;
     return;
   }
   if (existsSync(join(resolveLandoRoots().userCacheRoot, "update-handoff"))) {

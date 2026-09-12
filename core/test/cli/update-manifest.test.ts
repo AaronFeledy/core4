@@ -812,15 +812,19 @@ describe("update signed manifest", () => {
   });
 
   test("Windows batch delegates every replacement to the locked helper and honors failure", () => {
-    const script = buildWindowsReplacementScript({
-      executablePath: "C:\\Lando\\lando.exe",
-      stagedBinaryPath: "C:\\Lando\\.lando-update-abc\\lando.exe",
-      backupPath: "C:\\Lando\\lando.exe.bak",
-      attemptedVersion: "4.4.0",
-      manualFallback: "fallback",
-    });
+    const script = buildWindowsReplacementScript(
+      {
+        executablePath: "C:\\Lando\\lando.exe",
+        stagedBinaryPath: "C:\\Lando\\.lando-update-abc\\lando.exe",
+        backupPath: "C:\\Lando\\lando.exe.bak",
+        attemptedVersion: "4.4.0",
+        manualFallback: "fallback",
+      },
+      "12345678-1234-4234-8234-123456789012",
+    );
 
     expect(script).toContain("--lando-update-replacement");
+    expect(script).toContain('"12345678-1234-4234-8234-123456789012"');
     expect(script).toContain("if errorlevel 1 exit /b 1");
     expect(script).not.toContain("move /Y");
     expect(script).not.toContain("goto wait");
