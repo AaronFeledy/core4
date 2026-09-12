@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
 
@@ -149,6 +150,7 @@ export interface EmitComposeResult {
 
 interface ContainerInspect {
   readonly Id?: string;
+  readonly Image?: string;
   readonly State?: {
     readonly Running?: boolean;
     readonly Status?: string;
@@ -832,6 +834,7 @@ const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly
   "dev.lando.app": plan.id,
   "dev.lando.store": store.name,
   "dev.lando.scope": store.scope,
+  "dev.lando.volume-instance": randomUUID(),
   ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
 });
 
@@ -1330,6 +1333,9 @@ const inspectService = (
       status,
       state: status,
       ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
+      ...(typeof decoded.Image === "string" && decoded.Image.length > 0
+        ? { imageIdentity: decoded.Image }
+        : {}),
       endpoints: materialized.length > 0 ? materialized : service.endpoints,
       ...(startedAt === undefined || Number.isNaN(startedAt.getTime()) ? {} : { lastStartedAt: startedAt }),
     };

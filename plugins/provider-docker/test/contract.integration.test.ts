@@ -1353,7 +1353,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
 
     const volumeCreate = fake.calls.find((call) => call.method === "POST" && call.path === "/volumes/create");
-    expect(volumeCreate?.body).toEqual({
+    expect(volumeCreate?.body).toMatchObject({
       Name: "lando-cache-npm",
       Labels: {
         "dev.lando.app": appId,
@@ -1362,6 +1362,11 @@ describe("provider-docker RuntimeProvider contract", () => {
         "dev.lando.store": "lando-cache-npm",
       },
     });
+    expect(
+      (volumeCreate?.body as { Labels?: Readonly<Record<string, string>> } | undefined)?.Labels?.[
+        "dev.lando.volume-instance"
+      ],
+    ).toMatch(/^[0-9a-f-]{36}$/u);
     const containerCreate = fake.calls.find(
       (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
     );
