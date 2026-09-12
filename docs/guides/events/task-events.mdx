@@ -1,0 +1,146 @@
+---
+id: task-events
+provider: test
+timeout: 60000
+tags: [beta, docs, landofile, events, tooling]
+---
+
+# Run steps before and after a tooling task
+
+Every tooling task you declare gets two event names for free: `pre-<task>` and `post-<task>`. Hook them under `events:` and Lando runs your steps around the task body every time someone calls `lando <task>`.
+
+```yaml
+name: task-events-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+tooling:
+  build:
+    service: ":host"
+    cmds:
+      - cmd: echo "build step one"
+      - cmd: echo "build step two"
+events:
+  pre-build:
+    - cmd: echo "before build"
+      service: ":host"
+  post-build:
+    - cmd: echo "after build"
+      service: ":host"
+```
+
+Refresh the command cache after you add a task, then call it:
+
+```sh
+lando app:cache:refresh
+lando build
+```
+
+The order is fixed: `pre-build`, then the task's own steps in the order you wrote them, then `post-build`. No config knob reorders that.
+
+Only tasks that show up in `lando --help` get brackets. Tasks pulled in with `internal: true` from a tooling include stay callable but do not grow `pre-` or `post-` names.
+
+## What happens on failure
+
+Three rules, no exceptions:
+
+| Failure | Result |
+| --- | --- |
+| A `pre-<task>` step exits non-zero | The task body never starts. The run fails. |
+| The task body exits non-zero | `post-<task>` is skipped. The body's exit code is the command's exit code. |
+| A `post-<task>` step exits non-zero | The run fails with `LandofileEventStepFailedError`. |
+
+That last row is worth a second look. A `post-` failure is not a warning. The body already ran, but the operation still fails with a tagged error that carries the redacted tail of the step's output. Treat `post-<task>` steps as part of the task, because from the caller's point of view they are.
+
+## Reuse a task inside an event
+
+Two step forms call another task. They are not interchangeable.
+
+```yaml
+events:
+  pre-build:
+    - task: lint
+    - command: app:lint
+```
+
+`task: lint` is an inline invocation. Lando runs `lint`'s steps right there and does not fire `pre-lint` or `post-lint`.
+
+`command: app:lint` re-enters the top-level command path, exactly as if you had typed `lando lint`. That fires `pre-lint` and `post-lint` too.
+
+Because `command:` re-enters, a `pre-build` step that runs `command: app:build` is a loop. Lando rejects it with `LandofileEventLifecycleReentryError` before anything runs. Nesting is also capped at 16 active event frames; blow past that and you get `LandofileEventInvocationDepthError`. When you want one task to reuse another from inside an event, write `task:` and move on.
+
+## Restart is bracketed too
+
+`lando restart` fires `pre-restart`, then the full `stop` and `start` event trees exactly as they run on their own, then `post-restart`. Hook `pre-restart` for work that should happen once per restart instead of once per stop and once per start.
+
+## Unknown event names
+
+Lando checks every key under `events:` against the full valid set: the twelve lifecycle names (`pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy`) plus `pre-<task>` and `post-<task>` for each non-internal tooling task. A key outside that set fails with `LandofileUnknownEventError`, and the error lists every name you could have used.
+
+```sh
+lando app:config:lint
+```
+
+Typo'd `pre-buidl`? The error tells you `pre-build` exists. Read the list, fix the key, lint again.
+
+<Guide>
+  <Scenario id="bracketed-run" render>
+    <Step name="scaffold">
+      <UseFixture name="bracketed-build" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-build">
+      <Run command="lando build" />
+      <Verify file="bracketed-build/markers.txt" expect={{ regex: "before build[\\s\\S]*build step one[\\s\\S]*build step two[\\s\\S]*after build" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="post-failure-is-fatal" render={false} reason="Regression coverage: a failing post-task step fails the run with a tagged error">
+    <Step name="scaffold-post-failure">
+      <UseFixture name="post-build-fails" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-build-with-failing-post">
+      <Run command="lando build --format=json" expectExit={1} />
+      <Verify errorTag="LandofileEventStepFailedError" expect={{ regex: "post-build" }} />
+    </Step>
+    <Step name="cleanup-post-failure">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="failed-body-skips-post" render={false} reason="Regression coverage: a non-zero task body keeps its exit code and skips post-task steps">
+    <Step name="scaffold-body-failure">
+      <UseFixture name="build-body-fails" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-failing-build">
+      <Run command="lando build" expectExit={3} />
+      <Verify file="build-body-fails/markers.txt" expect={{ regex: "before[\\s\\S]*body" }} />
+      <Verify file="build-body-fails/markers.txt" expect={{ not: { regex: "after" } }} />
+    </Step>
+    <Step name="cleanup-body-failure">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="unknown-event-lists-valid-set" render={false} reason="Regression coverage: an unknown event key is rejected and the error names the valid set">
+    <Step name="lint-unknown-event">
+      <UseFixture name="unknown-event" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify errorTag="LandofileUnknownEventError" expect={{ regex: "pre-build" }} />
+    </Step>
+    <Step name="cleanup-unknown-event">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- Lifecycle events for `start`, `stop`, and friends: [Run tasks at app lifecycle events](../landofile/events.mdx)
+- Declaring the task itself: [Declare flags and args on a tooling task](../tooling/flags-and-args.mdx)

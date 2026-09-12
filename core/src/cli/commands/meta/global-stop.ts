@@ -7,12 +7,14 @@ import type {
   EventError,
   GlobalAppError,
   LandofileParseError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
 } from "@lando/sdk/errors";
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -54,7 +56,9 @@ export type GlobalStopError =
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError

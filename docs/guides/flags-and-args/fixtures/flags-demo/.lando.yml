@@ -1,0 +1,42 @@
+name: flags-and-args-demo
+runtime: 4
+services:
+  web:
+    type: node:lts
+    primary: true
+  worker:
+    type: node:lts
+tooling:
+  greet:
+    description: Greet a target environment
+    service: web
+    flags:
+      name:
+        alias: n
+        description: Who to greet
+        default: world
+      loud:
+        boolean: true
+        description: Shout the greeting
+    args:
+      target:
+        order: 0
+        required: true
+        choices: [dev, prod]
+        description: Environment to greet
+    cmd: echo greeting
+  deploy:
+    description: Run against a chosen service
+    flags:
+      service:
+        alias: s
+        description: Service to run in
+        choices: [web, worker]
+        default: web
+    service: ":service"
+    cmd: echo deploying
+  legacy:
+    description: Retired task
+    disabled: true
+    service: web
+    cmd: echo legacy
