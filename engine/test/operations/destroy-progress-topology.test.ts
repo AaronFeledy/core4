@@ -3,10 +3,11 @@ import { Effect, Exit, Fiber, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { FileSyncSessionRef } from "@lando/sdk/schema";
-import type { FileSyncEngineShape } from "@lando/sdk/services";
+import { type FileSyncEngineShape, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import {
   byTag,
   destroyTreeId,
@@ -116,7 +117,7 @@ describe("destroy progress topology", () => {
     expect(byTag(harness.events, "message.warn")[0]?.body).toContain("without route cleanup");
   });
 
-  test("declares snapshots only when volumes is true", async () => {
+  test("preserves snapshots when destroying volumes", async () => {
     // Given
     const defaultHarness = makeHarness();
     const purgeHarness = makeHarness();
@@ -132,8 +133,54 @@ describe("destroy progress topology", () => {
     const snapshotId = startChildTaskId(parentId, "snapshots");
     expect(byTag(defaultHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
     expect(byTag(purgeHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
-    expect(byTag(volumesHarness.events, "task.tree.start")[0]?.children).toContain(snapshotId);
-    expect(byTag(volumesHarness.events, "task.complete").map((event) => event.taskId)).toContain(snapshotId);
+    expect(byTag(volumesHarness.events, "task.tree.start")[0]?.children).not.toContain(snapshotId);
+    expect(byTag(volumesHarness.events, "task.complete").map((event) => event.taskId)).not.toContain(
+      snapshotId,
+    );
+  });
+
+  test("holds the physical-volume lock while destroying volumes", async () => {
+    // Given: a provider volume with durable physical identity.
+    const baseStateStore = makeTestStateStore().service;
+    const lockKeys: string[] = [];
+    let lockHeld = false;
+    const stateStore: StateStoreShape = {
+      ...baseStateStore,
+      withLock: (key, body) =>
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            lockKeys.push(key);
+            lockHeld = true;
+          }),
+          () => body,
+          () =>
+            Effect.sync(() => {
+              lockHeld = false;
+            }),
+        ),
+    };
+    let destroyObservedLock = false;
+    const harness = makeHarness({
+      stateStore,
+      volumes: [
+        {
+          ref: { app: plan.id, store: "database", scope: "service" },
+          instanceId: "volume-instance-1",
+          provenance: "known",
+        },
+      ],
+      destroyEffect: Effect.sync(() => {
+        destroyObservedLock = lockHeld;
+      }),
+    });
+
+    // When: destroy removes persistent volumes.
+    await runDestroyTarget(harness, { volumes: true });
+
+    // Then: provider mutation occurs while holding the shared physical-volume lock.
+    expect(destroyObservedLock).toBe(true);
+    expect(lockKeys).toEqual([physicalVolumeLockKey("volume-instance-1")]);
+    expect(lockHeld).toBe(false);
   });
 
   test("fails the provider task and still runs routes", async () => {
