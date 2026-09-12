@@ -207,6 +207,9 @@ describe("Traefik RouterService", () => {
     expect(acceptsHtml.test("POST:text/html")).toBe(false);
     expect(config).toContain('default_type "text/plain; charset=utf-8";');
     expect(config).toContain('return 404 "404 page not found\\n";');
+    // mime.types maps the .txt/.html internal URIs, so only a server-level charset
+    // keeps both fallback responses labelled utf-8 like Traefik's own 404.
+    expect(config).toMatch(/^\s*charset utf-8;$/m);
   });
 
   test("diagnostic page is private and offers actionable recovery commands", async () => {
