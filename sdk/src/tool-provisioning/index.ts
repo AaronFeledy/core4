@@ -189,8 +189,10 @@ const extractTarMember = (tar: Uint8Array, member: string): Uint8Array | undefin
       .toString("ascii")
       .replace(/[^0-7]/gu, "");
     const size = sizeOctal.length > 0 ? Number.parseInt(sizeOctal, 8) : 0;
+    const typeflag = header[156];
     pos += BLOCK;
-    if (entryName === member || basename(entryName) === member) {
+    const isRegular = typeflag === 0 || typeflag === 48;
+    if (isRegular && (entryName === member || basename(entryName) === member)) {
       return tar.subarray(pos, pos + size);
     }
     pos += Math.ceil(size / BLOCK) * BLOCK;
@@ -223,6 +225,7 @@ interface ZipCentralEntry {
   readonly compression: number;
   readonly compressedSize: number;
   readonly uncompressedSize: number;
+  readonly mode: number;
 }
 
 const readZipCentralDirectory = (archive: Uint8Array): Map<number, ZipCentralEntry> => {
@@ -242,8 +245,14 @@ const readZipCentralDirectory = (archive: Uint8Array): Map<number, ZipCentralEnt
       const filenameLen = view.getUint16(cd + 28, true);
       const extraLen = view.getUint16(cd + 30, true);
       const commentLen = view.getUint16(cd + 32, true);
+      const externalAttributes = view.getUint32(cd + 38, true);
       const localOffset = view.getUint32(cd + 42, true);
-      entries.set(localOffset, { compression, compressedSize, uncompressedSize });
+      entries.set(localOffset, {
+        compression,
+        compressedSize,
+        uncompressedSize,
+        mode: (externalAttributes >>> 16) & 0xffff,
+      });
       cd += 46 + filenameLen + extraLen + commentLen;
     }
     return entries;
@@ -274,11 +283,14 @@ const extractZipMember = (
     const compression = indexed?.compression ?? headerCompression;
     const compressedSize = indexed?.compressedSize ?? headerCompressedSize;
     const uncompressedSize = indexed?.uncompressedSize ?? headerUncompressedSize;
+    const mode = indexed?.mode ?? 0;
+    const fileType = mode & 0xf000;
+    const isRegular = !filename.endsWith("/") && (fileType === 0 || fileType === 0x8000);
     const remaining = maxDecompressedBytes - decompressedBytes;
     if (remaining <= 0 || uncompressedSize > remaining) {
       throw new DecompressedSizeCapExceeded(decompressedSizeCapMessage());
     }
-    if (filename === member || basename(filename) === member) {
+    if (isRegular && (filename === member || basename(filename) === member)) {
       decompressedBytes += uncompressedSize;
       if (compression === 0) return archive.subarray(dataOffset, dataOffset + uncompressedSize);
       if (compression === 8) {
@@ -541,6 +553,16 @@ export const provisionTool = (
         );
       }
       binaryBytes = extracted.bytes;
+      if (binaryBytes.byteLength === 0) {
+        return yield* Effect.fail(
+          new ToolExtractError({
+            message: `Member "${member}" is empty.`,
+            toolId: input.toolId,
+            member,
+            remediation: "Verify the pinned manifest member path against the upstream archive layout.",
+          }),
+        );
+      }
     }
 
     yield* installBytes(input, installPath, binaryBytes, mode);
