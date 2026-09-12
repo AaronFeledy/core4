@@ -190,10 +190,12 @@ describe("Traefik RouterService", () => {
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
 
     const config = harness.files.get("/lando/global/proxy-traefik/diagnostic/nginx.conf") ?? "";
-    const pattern = config.match(/^\s*~\*(.+)\s+\/_lando\/404\.html;$/m)?.[1];
+    // Require a complete quoted nginx token: regex semicolons must not end the directive.
+    const pattern = config.match(/^\s*"~\*((?:[^"\\]|\\[\\"])*)"\s+\/_lando\/404\.html;$/m)?.[1];
     expect(pattern).toBeDefined();
     if (pattern === undefined) throw new Error("diagnostic Accept pattern missing");
-    const acceptsHtml = new RegExp(pattern, "i");
+    expect(pattern).toContain(String.raw`\\s`);
+    const acceptsHtml = new RegExp(pattern.replace(/\\([\\"])/g, "$1"), "i");
 
     expect(acceptsHtml.test("GET:text/html")).toBe(true);
     expect(acceptsHtml.test("HEAD:text/html; charset=utf-8")).toBe(true);

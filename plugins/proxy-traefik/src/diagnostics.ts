@@ -50,7 +50,7 @@ export const renderTraefikDiagnosticNginxConfig = (): string =>
     "  include /etc/nginx/mime.types;",
     '  map "$request_method:$http_accept" $lando_error_uri {',
     "    default /_lando/404.txt;",
-    `    ~*${HTML_ACCEPT_PATTERN} /_lando/404.html;`,
+    `    "~*${HTML_ACCEPT_PATTERN.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}" /_lando/404.html;`,
     "  }",
     "  server {",
     `    listen ${TRAEFIK_DIAGNOSTICS_PORT} default_server;`,
