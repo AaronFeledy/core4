@@ -32,7 +32,12 @@ import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { decodeOrFail } from "./decode.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { VALID_APP_LIFECYCLE_EVENTS, unknownAppLifecycleEvent } from "./events.ts";
-import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
+import {
+  getLandofileIncludeSources,
+  getLocalIncludePaths,
+  rememberLandofileIncludeSources,
+  rememberLocalIncludePaths,
+} from "./include-provenance.ts";
 import { type LandofileRelaxedRead, resolveLandofileIncludes } from "./includes.ts";
 import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
@@ -52,6 +57,7 @@ import {
   hostExpressionEnvironment,
   materializeLoadScopeExpressions,
 } from "./recipe-expressions.ts";
+import { withoutSecretReferences } from "./secret-reference.ts";
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
 import { composeToolingIncludeEntries } from "./tooling-include-entries.ts";
 import { UNSUPPORTED_REMEDIATION, rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
@@ -110,7 +116,7 @@ const scanForConfigExpression = (content: string): { description: string } | und
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s*#.*$/, "").replace(/\s+#.*$/, ""))
     .join("\n");
-  if (CONFIG_EXPRESSION_PATTERN.test(withoutComments)) {
+  if (CONFIG_EXPRESSION_PATTERN.test(withoutSecretReferences(withoutComments))) {
     return { description: "Configuration expressions (${...})" };
   }
   if (!TEMPLATE_EXPRESSION_PATTERN.test(withoutComments)) return undefined;
@@ -534,14 +540,17 @@ export const loadLandofileLayers = (
             Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
             Effect.map((landofile) =>
               rememberLandofileAppRoot(
-                rememberLocalIncludePaths(
-                  rememberVersionConstraintEntries(
-                    landofile,
-                    loaded.flatMap(({ landofile, layer }) =>
-                      getVersionConstraintEntries(landofile, layer.filePath),
+                rememberLandofileIncludeSources(
+                  rememberLocalIncludePaths(
+                    rememberVersionConstraintEntries(
+                      landofile,
+                      loaded.flatMap(({ landofile, layer }) =>
+                        getVersionConstraintEntries(landofile, layer.filePath),
+                      ),
                     ),
+                    loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
                   ),
-                  loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
+                  loaded.flatMap(({ landofile }) => getLandofileIncludeSources(landofile)),
                 ),
                 appRoot,
               ),
