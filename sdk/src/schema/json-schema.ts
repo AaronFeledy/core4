@@ -2500,7 +2500,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ToolingFlagShape.default",
   "ToolingFlagShape.deprecated",
   "ToolingFlagShape.description",
-  "ToolingFlagShape.type",
   "ToolingTaskShape.args",
   "ToolingTaskShape.cmd",
   "ToolingTaskShape.cmds",

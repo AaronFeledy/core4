@@ -472,7 +472,7 @@ describe("LandofileShape (MVP)", () => {
       deprecated: notice,
       flags: {
         legacy: {
-          type: "boolean",
+          boolean: true,
           description: "Legacy flag",
           deprecated: notice,
         },
