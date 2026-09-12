@@ -17,13 +17,13 @@ const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
 });
 
 describe("compileToolingCommands", () => {
-  test("omits disabled tasks when compiling app commands", () => {
+  test("indexes disabled tasks as hidden so the router can refuse them", () => {
     // Given
-    const source = landofile({ hidden: { cmd: "echo hidden", disabled: true } });
+    const source = landofile({ retired: { cmd: "echo retired", disabled: true } });
     // When
     const entries = compileAppCommands(source, []);
     // Then
-    expect(entries).toEqual([]);
+    expect(entries).toEqual([{ id: "app:retired", summary: "", hidden: true }]);
   });
 
   test("preserves normalized flag metadata and ordered args when input is declared", () => {

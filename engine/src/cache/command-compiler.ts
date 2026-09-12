@@ -22,7 +22,6 @@ export const compileToolingCommands = (
     .flatMap(([name, authored]) => {
       // Preserve the synchronous API by throwing the tagged error into callers' Effect boundaries.
       const task = Either.getOrThrowWith(normalizeToolingTask(name, authored), (error) => error);
-      if (task.disabled) return [];
       let service: string | undefined;
       switch (task.service?.kind) {
         case "service":
@@ -39,7 +38,7 @@ export const compileToolingCommands = (
         {
           id: `app:${name}`,
           summary: task.summary ?? "",
-          hidden: internal.has(name),
+          hidden: internal.has(name) || task.disabled,
           ...(service === undefined ? {} : { service }),
           ...(task.hasInput ? { input: { flags: task.flags, args: task.args } } : {}),
         },
