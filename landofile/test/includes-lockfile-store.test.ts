@@ -44,6 +44,7 @@ const makeRecordingStore = (onOpen: () => void): StateStoreShape => {
     },
   });
   return {
+    withLock: store.withLock,
     open: (spec) => {
       onOpen();
       return store.open(spec);
