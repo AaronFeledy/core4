@@ -157,7 +157,7 @@ export const runWorkflowPerformanceSample = async (
     resetCondition: "fresh Lando config, data, cache, app, and owned volume identities; images pre-pulled",
     steps,
   };
-  await input.runCommand(
+  const destroyed = await input.runCommand(
     performanceCommand(
       "cleanup:destroy",
       [input.binary, "destroy", "-y", "--purge"],
@@ -165,8 +165,15 @@ export const runWorkflowPerformanceSample = async (
       prepared.env,
     ),
   );
-  await input.runCommand(
+  const poweredOff = await input.runCommand(
     performanceCommand("cleanup:poweroff", [input.binary, "poweroff"], prepared.appRoot, prepared.env),
   );
-  return { sample, fileSyncEvidence: prepared.fileSyncEvidence };
+  const cleanupFailures = [destroyed, poweredOff].filter((result) => result.exitCode !== 0);
+  return {
+    sample:
+      cleanupFailures.length === 0
+        ? sample
+        : { ...sample, outcome: "failed", steps: [...sample.steps, ...cleanupFailures] },
+    fileSyncEvidence: prepared.fileSyncEvidence,
+  };
 };

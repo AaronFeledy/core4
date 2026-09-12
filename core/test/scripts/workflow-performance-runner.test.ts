@@ -37,6 +37,32 @@ const options = () => ({
 });
 
 describe("workflow performance runner", () => {
+  test("retains cleanup failures and excludes the sample from successful timings", async () => {
+    const commands: string[] = [];
+    const report = await runWorkflowPerformance({
+      ...options(),
+      runCommand: async (command) => {
+        commands.push(command.id);
+        return {
+          id: command.id,
+          durationMs: 12,
+          exitCode: command.id === "cleanup:destroy" ? 9 : 0,
+          stdout: "http://app.test",
+          stderr: command.id === "cleanup:destroy" ? "cleanup failed" : "",
+        };
+      },
+    });
+
+    expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(1);
+    expect(report.lanes[0]?.statistics).toBeUndefined();
+    expect(report.lanes[0]?.samples[0]?.steps.at(-1)).toMatchObject({
+      id: "cleanup:destroy",
+      exitCode: 9,
+      stderr: "cleanup failed",
+    });
+    expect(commands.filter((id) => id === "cleanup:poweroff")).toHaveLength(report.lanes.length);
+  });
+
   test("uses independent roots, pre-pulls images, and records journey step timings", async () => {
     const commands: WorkflowPerformanceCommand[] = [];
     const report = await runWorkflowPerformance({
