@@ -15,7 +15,10 @@ export type ArchiveFormat = typeof ArchiveFormat.Type;
  * two of these, or a snapshot/restore over a `volume`.
  */
 export const DataEndpoint = Schema.Union(
-  Schema.TaggedStruct("hostPath", { path: AbsolutePath }),
+  Schema.TaggedStruct("hostPath", {
+    path: AbsolutePath,
+    trusted: Schema.optional(Schema.Boolean),
+  }),
   Schema.TaggedStruct("hostArchive", { path: AbsolutePath, format: ArchiveFormat }),
   Schema.TaggedStruct("stream", {}),
   Schema.TaggedStruct("volume", { app: AppId, store: Schema.String }),
@@ -57,6 +60,12 @@ export type VolumeRef = typeof VolumeRef.Type;
  */
 export const VolumeInfo = Schema.Struct({
   ref: VolumeRef,
+  instanceId: Schema.optional(Schema.String).annotations({
+    description: "Provider-observed identity for this physical volume creation.",
+  }),
+  provenance: Schema.optional(Schema.Literal("known", "legacy")).annotations({
+    description: "Whether the provider can prove this volume creation's identity.",
+  }),
   createdAt: Schema.optional(Schema.DateTimeUtc),
   sizeBytes: Schema.optional(Schema.Number),
   labels: Schema.optional(LabelMap),
@@ -157,6 +166,27 @@ export const DataTransferProgress = Schema.Struct({
 });
 export type DataTransferProgress = typeof DataTransferProgress.Type;
 
+export const SnapshotMetadata = Schema.Struct({
+  sourceRoot: AbsolutePath.annotations({ description: "Canonical app root that owns the snapshot." }),
+  ownerKey: Schema.optional(Schema.String).annotations({
+    description: "Stable owner identity derived from the canonical app root.",
+  }),
+  repoGroupKey: Schema.optional(Schema.String).annotations({
+    description: "Stable identity shared by snapshots from sibling Git worktrees.",
+  }),
+  service: ServiceName.annotations({ description: "Database service captured by the snapshot." }),
+  volumeInstanceId: Schema.String.annotations({
+    description: "Physical source volume creation identity.",
+  }),
+  family: Schema.String.annotations({ description: "Observed database family." }),
+  version: Schema.String.annotations({ description: "Observed database version." }),
+  imageIdentity: Schema.String.annotations({ description: "Observed immutable runtime image identity." }),
+  recoveryReason: Schema.Literal("manual", "reset", "restore", "import", "seed").annotations({
+    description: "Reason this durable recovery point was created.",
+  }),
+});
+export type SnapshotMetadata = typeof SnapshotMetadata.Type;
+
 /**
  * Options for taking a volume snapshot.
  */
@@ -165,6 +195,9 @@ export const SnapshotOptions = Schema.Struct({
   volumeSnapshot: Schema.optional(Schema.Literal("copy", "native")),
   label: Schema.optional(Schema.String),
   labels: Schema.optional(LabelMap),
+  metadata: Schema.optional(SnapshotMetadata).annotations({
+    description: "Physical ownership and database compatibility metadata supplied by the caller.",
+  }),
 });
 export type SnapshotOptions = typeof SnapshotOptions.Type;
 
@@ -190,6 +223,9 @@ export const SnapshotInfo = Schema.Struct({
   label: Schema.optional(Schema.String),
   labels: Schema.optional(LabelMap),
   native: Schema.optional(VolumeSnapshotRef),
+  metadata: Schema.optional(SnapshotMetadata).annotations({
+    description: "Physical ownership and database compatibility metadata recorded at creation.",
+  }),
 });
 export type SnapshotInfo = typeof SnapshotInfo.Type;
 
@@ -200,6 +236,14 @@ export const SnapshotFilter = Schema.Struct({
   id: Schema.optional(SnapshotId),
   app: Schema.optional(AppId),
   store: Schema.optional(Schema.String),
+  sourceRoot: Schema.optional(AbsolutePath).annotations({ description: "Canonical source app root." }),
+  ownerKey: Schema.optional(Schema.String).annotations({ description: "Canonical source owner identity." }),
+  repoGroupKey: Schema.optional(Schema.String).annotations({
+    description: "Git worktree group identity shared by eligible sources.",
+  }),
+  service: Schema.optional(ServiceName).annotations({
+    description: "Database service captured by the snapshot.",
+  }),
   scope: Schema.optional(StorageScope),
   label: Schema.optional(Schema.String),
   labels: Schema.optional(LabelMap),

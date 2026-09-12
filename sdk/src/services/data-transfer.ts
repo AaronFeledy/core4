@@ -9,6 +9,7 @@ import type {
   DataTransferError,
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
+  SnapshotOwnershipError,
   VolumeNotFoundError,
 } from "../errors/index.ts";
 import type {
@@ -32,6 +33,7 @@ export type DataMoverError =
   | DataTargetExistsError
   | SnapshotAmbiguousError
   | SnapshotNotFoundError
+  | SnapshotOwnershipError
   | VolumeNotFoundError
   | ArchiveFormatError;
 
