@@ -17,6 +17,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  SecretNotFoundError,
   ToolingExecError,
 } from "@lando/sdk/errors";
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
@@ -36,6 +37,7 @@ import {
 
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { publishedEndpointUrls } from "./authority-url.ts";
 
 import { globalInstall } from "./global-install.ts";
@@ -81,6 +83,7 @@ export type EnsureGlobalServicesError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
+  | SecretNotFoundError
   | ToolingExecError;
 
 export type EnsureGlobalServicesServices =
@@ -158,11 +161,13 @@ export const ensureGlobalServicesRunning = (
     const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const builds = yield* BuildOrchestrator;
     const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
     yield* Effect.scoped(
       provider.apply(builtPlan, {
         reconcile: false,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
+        serviceEnvironment,
       }),
     );
 
