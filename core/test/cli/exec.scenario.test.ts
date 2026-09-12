@@ -377,6 +377,48 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(calls[0]?.stdin).toBeUndefined();
   });
 
+  test("forwards attached terminal facts without synthesizing TERM", async () => {
+    // Given
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    // When
+    await Effect.runPromise(
+      execApp({
+        service: "appserver",
+        command: ["htop"],
+        tty: true,
+        hostTerminal: { term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 },
+      }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+    );
+
+    // Then
+    expect(calls[0]?.env).toMatchObject({
+      COLUMNS: "132",
+      LINES: "43",
+      TERM: "dumb",
+      COLORTERM: "truecolor",
+    });
+  });
+
+  test("forced PTY without attachment gets dimensions but no invented terminal identity", async () => {
+    // Given
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    // When
+    await Effect.runPromise(
+      execApp({ service: "appserver", command: ["htop"], tty: true }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    // Then
+    expect(calls[0]?.env).toMatchObject({ COLUMNS: "80", LINES: "24" });
+    expect(calls[0]?.env).not.toHaveProperty("TERM");
+    expect(calls[0]?.env).not.toHaveProperty("COLORTERM");
+  });
+
   test("attaches stdin only when interactive and a stdin stream are provided", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);

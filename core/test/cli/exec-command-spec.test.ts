@@ -6,6 +6,7 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lan
 import { AppPlanner, type RuntimeProviderShape } from "@lando/sdk/services";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
+import { sshSpec } from "../../src/cli/command-specs/app/ssh.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 
 const providerId = ProviderId.make("test");
@@ -51,6 +52,65 @@ const plan: AppPlan = {
 };
 
 describe("exec command spec", () => {
+  test("ssh preserves PTY intent on piped output without borrowing terminal identity", async () => {
+    // Given
+    const commands: Array<{ readonly tty?: boolean; readonly env?: Readonly<Record<string, string>> }> = [];
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      execStream: (_target, command) => {
+        commands.push(command);
+        return Stream.fromIterable([{ exitCode: 0 }]);
+      },
+    };
+    const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
+    const entry: BuiltInCommandEntry = { spec: sshSpec, status: { kind: "implemented" } };
+    const stdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    const savedTerm = process.env.TERM;
+    const savedColorterm = process.env.COLORTERM;
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: false });
+    process.env.TERM = "xterm-host";
+    process.env.COLORTERM = "truecolor";
+
+    try {
+      // When
+      await Effect.runPromise(
+        Effect.scoped(
+          Layer.build(runtime.layer).pipe(
+            Effect.map((context) =>
+              Context.add(
+                Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) }),
+                runtimeTag,
+                {},
+              ),
+            ),
+            Effect.flatMap((context) =>
+              makeEventCommandExecutor(context, [entry]).run({
+                command: sshSpec.id,
+                flags: {},
+                args: {},
+                argv: [],
+                cwd: process.cwd(),
+              }),
+            ),
+          ),
+        ),
+      );
+    } finally {
+      if (stdoutIsTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
+      else Object.defineProperty(process.stdout, "isTTY", stdoutIsTTY);
+      if (savedTerm === undefined) Reflect.deleteProperty(process.env, "TERM");
+      else process.env.TERM = savedTerm;
+      if (savedColorterm === undefined) Reflect.deleteProperty(process.env, "COLORTERM");
+      else process.env.COLORTERM = savedColorterm;
+    }
+
+    // Then
+    expect(commands[0]?.tty).toBe(true);
+    expect(commands[0]?.env).toMatchObject({ COLUMNS: "80", LINES: "24" });
+    expect(commands[0]?.env).not.toHaveProperty("TERM");
+    expect(commands[0]?.env).not.toHaveProperty("COLORTERM");
+  });
+
   test("does not attach stdin for non-interactive execution", async () => {
     const stdinModes: Array<"inherit" | "ignore" | undefined> = [];
     const provider: RuntimeProviderShape = {
