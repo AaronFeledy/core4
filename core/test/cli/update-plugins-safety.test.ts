@@ -98,6 +98,7 @@ test("core-only validation never resolves or upgrades plugin candidates", async 
   expect(result.rows).toEqual([]);
   expect(result.updatedPlugins).toEqual([]);
   expect(result.blockCore).toBe(true);
+  expect(result.hasFailures).toBe(true);
   expect((await readInstalledPluginRegistry(f.pluginsRoot))[name]?.version).toBe("1.0.0");
 });
 

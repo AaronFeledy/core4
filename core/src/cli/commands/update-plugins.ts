@@ -227,7 +227,7 @@ export const makePluginUpdateRunner = (
           rows,
           updatedPlugins,
           blockCore,
-          hasFailures: plan.hasFailures || rows.some((row) => row.status === "failed"),
+          hasFailures: blockCore || plan.hasFailures || rows.some((row) => row.status === "failed"),
           guardCoreReplacement,
         };
       });
