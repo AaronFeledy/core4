@@ -350,7 +350,7 @@ describe("PHP db_client option", () => {
     expect(phpDbClientFeature.activatedBy).toEqual({ services: { hasFeature: PHP_FEATURE_ID } });
     expect(phpDbClientFeature.selectors).toEqual({
       hasFeature: [PHP_FEATURE_ID],
-      types: ["mariadb", "mongodb", "mysql", "postgres"],
+      types: ["mariadb", "mongodb", "mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "postgres"],
     });
   });
 });
