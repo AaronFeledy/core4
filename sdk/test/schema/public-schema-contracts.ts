@@ -391,6 +391,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   MailpitServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   MinIOServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   MssqlServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  MysqlServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   PhpMyAdminServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   PhpServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   RabbitMQServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
