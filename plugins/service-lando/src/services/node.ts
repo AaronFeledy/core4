@@ -79,13 +79,13 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
       exactVersion: normalized,
     };
   }
-  if (minor !== null) {
+  if (minor !== null && valid(`${NODE_MAJOR}.${minor[1]}.0`) !== null) {
     const normalized = `${NODE_MAJOR}.${minor[1]}`;
     return {
       artifact: `node:${normalized}`,
       normalizedConstraint: normalized,
       sourcePath: input.path,
-      range: `>=${normalized}.0 <${NODE_MAJOR}.${Number(minor[1]) + 1}.0`,
+      range: normalized,
       exactVersion: undefined,
     };
   }
@@ -98,7 +98,7 @@ const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: tru
       artifact: `node:${NODE_MAJOR}`,
       normalizedConstraint: String(NODE_MAJOR),
       sourcePath: input.path,
-      range: `>=${NODE_MAJOR}.0.0 <${NODE_MAJOR + 1}.0.0`,
+      range: String(NODE_MAJOR),
       exactVersion: undefined,
     };
   }
@@ -170,10 +170,8 @@ const compatibleWithEngine = (selection: ParsedNvmrc, engine: string): boolean =
 export const resolveNodeInference = (
   inputs: ReadonlyArray<ServiceTypeProjectFileInput>,
 ): NodeInferenceSelection => {
-  const nvmrc = inputs.find((input) => input.path.endsWith("/.nvmrc") || input.path === ".nvmrc");
-  const packageJson = inputs.find(
-    (input) => input.path.endsWith("/package.json") || input.path === "package.json",
-  );
+  const nvmrc = inputs.find((input) => /(?:^|[/\\])\.nvmrc$/u.test(input.path));
+  const packageJson = inputs.find((input) => /(?:^|[/\\])package\.json$/u.test(input.path));
   const engine = packageJson?.present === true ? packageEngine(packageJson) : undefined;
 
   if (nvmrc?.present === true) {
@@ -187,7 +185,7 @@ export const resolveNodeInference = (
     return selection;
   }
   if (engine !== undefined) {
-    const supportedRange = `>=${NODE_MAJOR}.0.0 <${NODE_MAJOR + 1}.0.0`;
+    const supportedRange = String(NODE_MAJOR);
     if (subset(supportedRange, engine)) {
       return {
         artifact: `node:${NODE_MAJOR}`,

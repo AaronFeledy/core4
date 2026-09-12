@@ -42,7 +42,10 @@ describe("bare node version inference", () => {
 
   test.each([
     ["22", ">=22.0.0 <23.0.0", "node:22"],
+    ["22", "22", "node:22"],
+    ["22", "^22.0.0", "node:22"],
     ["22.11", ">=22.11.0 <22.12.0", "node:22.11"],
+    ["22.11", "~22.11.0", "node:22.11"],
     ["22.11.0", "22.11.0", "node:22.11.0"],
   ] satisfies ReadonlyArray<readonly [string, string, string]>)(
     "accepts compatible package engines for %s",
@@ -61,6 +64,13 @@ describe("bare node version inference", () => {
 
   test.each([
     ["18", undefined, /unsupported Node version/i],
+    ["22.011", undefined, /unsupported Node version/i],
+    ["22.9007199254740992", undefined, /unsupported Node version/i],
+    ["22", JSON.stringify({ engines: { node: ">=22.0.0 <22.12.0" } }), /conflicts with package\.json/i],
+    ["22.11", JSON.stringify({ engines: { node: ">=22.11.0 <22.11.5" } }), /conflicts with package\.json/i],
+    ["lts/*", JSON.stringify({ engines: { node: "22" } }), /conflicts with package\.json/i],
+    ["22.11.0", "{", /valid JSON/i],
+    ["18", JSON.stringify({ engines: { node: "22" } }), /unsupported Node version/i],
     ["22.11", JSON.stringify({ engines: { node: ">=22.12.0" } }), /conflicts with package\.json/i],
     [undefined, JSON.stringify({ engines: { node: ">=22.11.0 <23" } }), /exact pin in \.nvmrc/i],
     [undefined, JSON.stringify({ engines: { node: 22 } }), /engines\.node must be a string/i],
@@ -80,6 +90,23 @@ describe("bare node version inference", () => {
       { path: "apps/web/.nvmrc", maxBytes: 1_048_576 },
       { path: "apps/web/package.json", maxBytes: 1_048_576 },
     ]);
+  });
+
+  test.each(["apps/web", "apps\\web"])("preserves nested pins with %s paths", (root) => {
+    const separator = root.includes("\\") ? "\\" : "/";
+    const path = `${root}${separator}.nvmrc`;
+    const inputs = [
+      projectFile(path, "22.11.0"),
+      projectFile(`${root}${separator}package.json`, JSON.stringify({ engines: { node: "22" } })),
+    ];
+
+    expect(resolveNodeInference(inputs)).toMatchObject({ artifact: "node:22.11.0", sourcePath: path });
+  });
+
+  test("accepts floating LTS only with unrestricted engines", () => {
+    expect(resolve("lts/*", JSON.stringify({ engines: { node: "*" } }))).toMatchObject({
+      artifact: "node:lts",
+    });
   });
 
   test("returns file-only provenance without package contents", async () => {
