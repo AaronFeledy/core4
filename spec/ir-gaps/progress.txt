@@ -249,3 +249,14 @@ Verification: typecheck, lint, check:boundaries, check:schema-compatibility, che
 - Verification: typecheck, lint passed; 192 focused tests passed across redirect, planner, build-key, image-user, boot/security, and the build-steps guide (2/2).
 - **Learnings for future iterations:** System-mutating build steps include generated log redirects, not only bundled feature producers. After replacing `privileged` with inherited planned users, grep every `addBuildStep` / build-step factory for a missing `user: "root"`.
 ---
+## 2026-09-12 12:20 - US-616 Drift Audit
+- Trigger: 2 cycles, 1509/499 changed lines, 5 commits
+- Scar tissue: intent comment claimed consumers never re-resolve omitted users; artifact realization still maps omitted to the final/inherited identity (two-layer semantics, comment aligned)
+- Ceremony: leftover privilege-key names in new build-user tests renamed
+- Weakened proofs: none; privilege→user assertions were inverted/expanded; guide stays CLI/schema-only as already documented
+- Collateral: none; only this story's `passes` flip
+- Deferred work re-examined: image-default omit, feature-intent string typing, and artifact users on extensions rather than public BuildPlan rows still hold
+- Fixed: contract comment; privilege leftover test names
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 326 then 51 focused tests pass
+---
