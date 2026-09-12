@@ -57,7 +57,17 @@ const readPriorCandidates = async (
     const [runId, createdAt, conclusion] = line.split("\t");
     if (runId === undefined || createdAt === undefined || conclusion === undefined) continue;
     const path = join(options.artifactRoot, runId, "report.json");
-    const report = (await Bun.file(path).exists()) ? JSON.parse(await readFile(path, "utf8")) : undefined;
+    let report: unknown;
+    if (await Bun.file(path).exists()) {
+      const contents = await readFile(path, "utf8");
+      try {
+        report = JSON.parse(contents);
+      } catch (cause) {
+        if (!(cause instanceof SyntaxError)) throw cause;
+        // Present but unreadable reports remain visible as incompatible history.
+        report = null;
+      }
+    }
     candidates.push({ runId, createdAt, conclusion, ...(report === undefined ? {} : { report }) });
   }
   return candidates;
