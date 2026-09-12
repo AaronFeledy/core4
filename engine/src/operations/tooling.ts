@@ -142,12 +142,13 @@ export const buildToolingInvocation = (
   options: InvocationOptions = {},
 ): ToolingInvocation => {
   const normalized = Either.getOrThrowWith(normalizeToolingTask(name, task), (error) => error);
-  const values = Either.getOrThrowWith(
-    parseToolingArgv(normalized, normalized.acceptsArguments ? (options.args ?? []) : []),
-    (error) => error,
-  );
+  const argv = normalized.hasInput || normalized.acceptsArguments ? (options.args ?? []) : [];
+  const values = Either.getOrThrowWith(parseToolingArgv(normalized, argv), (error) => error);
   const invocations = normalized.steps.map((step, index) => {
-    const service = Either.getOrThrowWith(resolveServiceRef(step.service, values), (error) => error);
+    const service = Either.getOrThrowWith(
+      resolveServiceRef(step.service, values, normalized),
+      (error) => error,
+    );
     return stepInvocation(
       name,
       { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
@@ -287,13 +288,15 @@ export const runTooling = (
       );
     }
 
-    const argumentFailure = validateToolingArguments(options.name, normalized, options.args ?? []);
-    if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
+    if (!normalized.hasInput) {
+      const argumentFailure = validateToolingArguments(options.name, normalized, options.args ?? []);
+      if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
+    }
     const values = yield* parseToolingArgv(normalized, options.args ?? []);
     const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
     const invocations = yield* Effect.forEach(normalized.steps, (step, index) =>
       Effect.gen(function* () {
-        const service = yield* resolveServiceRef(step.service, values);
+        const service = yield* resolveServiceRef(step.service, values, normalized);
         return stepInvocation(
           options.name,
           { ...step, ...(service === undefined ? {} : { resolvedService: service }) },

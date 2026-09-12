@@ -273,3 +273,18 @@ test("preserves arguments false rejection", async () => {
   expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingCompileError" } });
   expect(f.selections).toHaveLength(0);
 });
+
+test("accepts declared flags when arguments is false", async () => {
+  // Given declared flags on a task that rejects leftover positionals
+  const f = fixture({
+    cmd: "echo",
+    arguments: false,
+    flags: { verbose: { boolean: true } },
+    service: ":host",
+  });
+  // When a declared flag is supplied
+  const result = await f.run({ args: ["--verbose"] });
+  // Then the flag is parsed instead of treated as a forbidden positional
+  expect(result).toMatchObject({ _tag: "Right" });
+  expect(f.selections).toHaveLength(0);
+});
