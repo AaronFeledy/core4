@@ -80,6 +80,14 @@ export interface PluginAddOptions {
   readonly prompter?: PluginAddPrompter;
   readonly interaction?: InteractionPrompter;
   readonly trustStore?: PluginTrustStore;
+  readonly requestedSelector?: string;
+  readonly expectedManifest?: {
+    readonly name: string;
+    readonly version: string;
+    readonly requires?: Readonly<Record<string, string>>;
+  };
+  readonly expectedCurrentVersion?: string;
+  readonly mutationLockHeld?: boolean;
 }
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*(@[^/\s]+)?$/i;
@@ -220,7 +228,9 @@ const installFromNpm = async (
   }
 
   const packageDir = installTargetFor(pluginsRoot, parsed.name, resolvedVersion, options.spec);
-  if (await fileExists(packageDir)) return { created: false, packageDir };
+  if (options.expectedCurrentVersion === undefined && (await fileExists(packageDir))) {
+    return { created: false, packageDir };
+  }
 
   let archiveBytes: Uint8Array;
   try {
@@ -237,6 +247,9 @@ const installFromNpm = async (
     await (options.extractor ?? defaultTarballRecipeExtractor).extract(archiveBytes, stagingRoot);
     const extractedPackageDir = join(stagingRoot, "package");
     await validatePluginManifest(extractedPackageDir);
+    if (options.expectedCurrentVersion !== undefined) {
+      await rm(packageDir, { recursive: true, force: true });
+    }
     await publish(extractedPackageDir, packageDir);
   } catch (cause) {
     await rm(stagingRoot, { recursive: true, force: true });
@@ -249,6 +262,15 @@ const installFromNpm = async (
 
 const defaultInteractionPrompter = (): InteractionPrompter =>
   makePromiseInteractionPrompter(makeInteractionService());
+
+const equalRequirements = (
+  left: Readonly<Record<string, string>> | undefined,
+  right: Readonly<Record<string, string>> | undefined,
+): boolean => {
+  const leftEntries = Object.entries(left ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  const rightEntries = Object.entries(right ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
+};
 
 const trustPrompterFromInteraction = (interaction: InteractionPrompter): PluginAddPrompter => ({
   confirmTrust: ({ pluginName }) =>
@@ -344,6 +366,8 @@ export const pluginAdd = (
     yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
 
     const packageName = parsePackageName(options.spec);
+    const requestedSelector =
+      options.requestedSelector ?? parseNpmPackageSpec(options.spec).version ?? "latest";
     let createdPackageDir: string | undefined;
     const packageDir = yield* Effect.tryPromise({
       try: async () => {
@@ -378,6 +402,24 @@ export const pluginAdd = (
               issues: [String(cause)],
             }),
     });
+    if (
+      options.expectedManifest !== undefined &&
+      (manifest.name !== options.expectedManifest.name ||
+        manifest.version !== options.expectedManifest.version ||
+        !equalRequirements(manifest.requires, options.expectedManifest.requires))
+    ) {
+      const mismatchedPackageDir = createdPackageDir;
+      if (mismatchedPackageDir !== undefined) {
+        yield* Effect.promise(() => rm(mismatchedPackageDir, { recursive: true, force: true }));
+      }
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message: `Extracted plugin manifest for ${manifest.name}@${manifest.version} does not match advertised npm metadata.`,
+          pluginName: manifest.name,
+          issues: ["name, version, and requires must match the registry packument"],
+        }),
+      );
+    }
 
     const hasPostinstall = yield* Effect.promise(() => packageDeclaresPostinstall(packageDir));
     const persistentStoreOption = yield* Effect.serviceOption(PersistentPluginTrustStore);
@@ -437,27 +479,29 @@ export const pluginAdd = (
       }
     }
 
-    yield* Effect.promise(async () => {
-      try {
-        await Effect.runPromise(
-          finalizePluginInstall({
-            pluginsRoot,
-            entry: {
-              name: manifest.name,
-              version: manifest.version,
-              path: packageDir,
-            },
-            ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-          }),
-        );
-      } catch (cause) {
-        if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
-        if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
-          trustStoreForRollback.delete(trustName);
-        }
-        throw cause;
-      }
-    });
+    yield* finalizePluginInstall({
+      pluginsRoot,
+      entry: {
+        name: manifest.name,
+        version: manifest.version,
+        path: packageDir,
+        requestedSelector,
+      },
+      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+      ...(options.expectedCurrentVersion === undefined
+        ? {}
+        : { expectedCurrentVersion: options.expectedCurrentVersion }),
+      ...(options.mutationLockHeld === true ? { mutationLockHeld: true } : {}),
+    }).pipe(
+      Effect.tapErrorCause(() =>
+        Effect.promise(async () => {
+          if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
+          if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
+            trustStoreForRollback.delete(trustName);
+          }
+        }),
+      ),
+    );
 
     return {
       pluginName: manifest.name,

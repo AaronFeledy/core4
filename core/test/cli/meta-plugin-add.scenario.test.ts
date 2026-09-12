@@ -310,6 +310,7 @@ describe("meta:plugin:add command", () => {
     expect(registry["@lando/plugin-node"].version).toBe("2.0.0");
     expect(registry["@lando/plugin-extra"].extra).toBe("preserve me");
     expect(registry["@lando/plugin-php"].version).toBe("1.2.3");
+    expect(registry["@lando/plugin-php"].requestedSelector).toBe("latest");
   });
 
   test("installs postinstall plugins as untrusted/inert without requiring interactive trust", async () => {
