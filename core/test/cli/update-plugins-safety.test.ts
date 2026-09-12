@@ -82,6 +82,78 @@ async function fixture() {
 
 const input = { currentCoreVersion: "4.1.0", targetCoreVersion: "4.2.0", combined: true, dryRun: false };
 
+test("core closure includes incompatible plugins added after inventory", async () => {
+  // Given: an incompatible pinned plugin appears during resolution.
+  const f = await fixture();
+  const addedPath = join(f.pluginsRoot, "added", "1.0.0");
+  const runner = await f.runner({
+    fetchPackument: async () => {
+      await mkdir(addedPath, { recursive: true });
+      await writeFile(
+        join(addedPath, "package.json"),
+        JSON.stringify({
+          landoPlugin: {
+            name: "added",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            requires: { "@lando/core": "<4.2" },
+          },
+        }),
+      );
+      await writeFile(join(addedPath, "index.js"), "export {};\n");
+      await recordInstalledPlugin(f.pluginsRoot, {
+        name: "added",
+        version: "1.0.0",
+        path: addedPath,
+        requestedSelector: "1.0.0",
+      });
+      return f.packument;
+    },
+  });
+  // When: application computes compatibility closure.
+  const result = await Effect.runPromise(runner(input));
+  // Then: the new active entry blocks core replacement.
+  expect(result.blockCore).toBe(true);
+});
+
+test("core replacement revalidates changes made after the plugin receipt", async () => {
+  // Given: planning and plugin activation finished successfully.
+  const f = await fixture();
+  const runner = await f.runner({ fetchPackument: async () => f.packument });
+  const result = await Effect.runPromise(runner(input));
+  expect(result.blockCore).toBe(false);
+  const active = (await readInstalledPluginRegistry(f.pluginsRoot))[name];
+  if (active === undefined || result.guardCoreReplacement === undefined)
+    throw new Error("missing activation guard");
+  await writeFile(
+    join(active.path, "package.json"),
+    JSON.stringify({
+      landoPlugin: {
+        name,
+        version: "1.1.0",
+        api: 4,
+        entry: "index.js",
+        requires: { "@lando/core": "<4.2" },
+      },
+    }),
+  );
+  let replaced = false;
+  // When: replacement enters the shared activation boundary.
+  const exit = await Effect.runPromise(
+    Effect.exit(
+      result.guardCoreReplacement(
+        Effect.sync(() => {
+          replaced = true;
+        }),
+      ),
+    ),
+  );
+  // Then: fresh compatibility validation prevents replacement.
+  expect(exit._tag).toBe("Failure");
+  expect(replaced).toBe(false);
+});
+
 test.each(["source", "path", "selector"])("same-version %s drift is not overwritten", async (field) => {
   // Given: a writer changes activation metadata during planning.
   const f = await fixture();

@@ -6,17 +6,18 @@ import { NotImplementedError, StateStoreError } from "@lando/sdk/errors";
 import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { PrivateFileAccessLive, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-export const withPluginMutationLock = <A, E>(
+export const withPluginMutationLock = <A, E, R>(
   pluginsRoot: string,
   operation: string,
-  body: Effect.Effect<A, E>,
-): Effect.Effect<A, E | NotImplementedError> =>
+  body: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | NotImplementedError, R> =>
   Effect.gen(function* () {
     const privateFileAccess = yield* PrivateFileAccessService;
+    const context = yield* Effect.context<R>();
     return yield* withAdvisoryLockUsing(privateFileAccess)(
       join(pluginsRoot, ".lando-plugin-mutation"),
       operation,
-      body,
+      Effect.provide(body, context),
     );
   }).pipe(
     Effect.mapError((cause) =>

@@ -105,6 +105,9 @@ export interface PluginUpdateRunResult {
   readonly updatedPlugins: ReadonlyArray<string>;
   readonly blockCore: boolean;
   readonly hasFailures: boolean;
+  readonly guardCoreReplacement?: <A, E, R>(
+    body: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | UpdateError, R>;
 }
 
 export type PluginUpdateRunner = (
@@ -206,12 +209,14 @@ const applyPosixSelfUpdate = ({
   binaryBytes,
   executablePath,
   selfUpdate,
+  guardCoreReplacement = (body) => body,
 }: {
   readonly attemptedVersion: string;
   readonly binaryBytes: Uint8Array;
   readonly executablePath: string;
   readonly selfUpdate: ResolvedSelfUpdateOptions;
-}): Effect.Effect<void, UpdateLaunchProbeError | UpdatePermissionError, ProcessRunner> =>
+  readonly guardCoreReplacement?: PluginUpdateRunResult["guardCoreReplacement"];
+}): Effect.Effect<void, UpdateError, ProcessRunner> =>
   Effect.acquireUseRelease(
     Effect.tryPromise({
       try: () => mkdtemp(join(dirname(executablePath), ".lando-update-")),
@@ -230,30 +235,34 @@ const applyPosixSelfUpdate = ({
         const platformId = updatePlatformId(selfUpdate);
         yield* writeDownloadedBinary(tempBinaryPath, binaryBytes, executablePath);
         yield* runLaunchProbe(tempBinaryPath, attemptedVersion, platformId);
-        yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath, executablePath);
-        yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath, executablePath).pipe(
-          Effect.catchAll((error) =>
-            renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
-              Effect.catchAll(() => Effect.void),
-              Effect.flatMap(() => Effect.fail(error)),
-            ),
-          ),
-        );
-        yield* runLaunchProbe(executablePath, attemptedVersion, platformId).pipe(
-          Effect.catchAll((error) =>
-            Effect.tryPromise({
-              try: () => selfUpdate.rename(backupPath, executablePath),
-              catch: (rollbackFailure) =>
-                isPermissionCause(rollbackFailure)
-                  ? new UpdatePermissionError({
-                      message: `Failed to restore backup ${backupPath} to ${executablePath}.`,
-                      path: executablePath,
-                      remediation: posixPermissionRemediation(executablePath),
-                      cause: rollbackFailure,
-                    })
-                  : withRollbackFailure(error, rollbackFailure),
-            }).pipe(Effect.flatMap(() => Effect.fail(error))),
-          ),
+        yield* guardCoreReplacement(
+          Effect.gen(function* () {
+            yield* renameForUpdate(selfUpdate.rename, executablePath, backupPath, executablePath);
+            yield* renameForUpdate(selfUpdate.rename, tempBinaryPath, executablePath, executablePath).pipe(
+              Effect.catchAll((error) =>
+                renameForUpdate(selfUpdate.rename, backupPath, executablePath, executablePath).pipe(
+                  Effect.catchAll(() => Effect.void),
+                  Effect.flatMap(() => Effect.fail(error)),
+                ),
+              ),
+            );
+            yield* runLaunchProbe(executablePath, attemptedVersion, platformId).pipe(
+              Effect.catchAll((error) =>
+                Effect.tryPromise({
+                  try: () => selfUpdate.rename(backupPath, executablePath),
+                  catch: (rollbackFailure) =>
+                    isPermissionCause(rollbackFailure)
+                      ? new UpdatePermissionError({
+                          message: `Failed to restore backup ${backupPath} to ${executablePath}.`,
+                          path: executablePath,
+                          remediation: posixPermissionRemediation(executablePath),
+                          cause: rollbackFailure,
+                        })
+                      : withRollbackFailure(error, rollbackFailure),
+                }).pipe(Effect.flatMap(() => Effect.fail(error))),
+              ),
+            );
+          }),
         );
         // The candidate has been renamed into place, so the temp dir is empty. Remove
         // it now because a successful execve replaces the process before the finalizer runs.
@@ -289,12 +298,14 @@ const applyWindowsSelfUpdate = ({
   binaryBytes,
   executablePath,
   selfUpdate,
+  guardCoreReplacement = (body) => body,
 }: {
   readonly attemptedVersion: string;
   readonly binaryBytes: Uint8Array;
   readonly executablePath: string;
   readonly selfUpdate: ResolvedSelfUpdateOptions;
-}): Effect.Effect<void, UpdateLaunchProbeError | UpdatePermissionError, ProcessRunner> =>
+  readonly guardCoreReplacement?: PluginUpdateRunResult["guardCoreReplacement"];
+}): Effect.Effect<void, UpdateError, ProcessRunner> =>
   Effect.gen(function* () {
     const tempDir = yield* Effect.tryPromise({
       try: () => mkdtemp(join(dirname(executablePath), ".lando-update-")),
@@ -323,18 +334,19 @@ const applyWindowsSelfUpdate = ({
     yield* runLaunchProbe(stagedBinaryPath, attemptedVersion, updatePlatformId(selfUpdate)).pipe(
       Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
     );
-    yield* selfUpdate.replaceWindows(replacementInput).pipe(
-      Effect.mapError(
-        (cause) =>
-          new UpdatePermissionError({
-            message: `Failed to schedule Windows Lando replacement for ${executablePath}.`,
-            path: executablePath,
-            remediation: manualFallback,
-            cause,
-          }),
+    yield* guardCoreReplacement(
+      selfUpdate.replaceWindows(replacementInput).pipe(
+        Effect.mapError(
+          (cause) =>
+            new UpdatePermissionError({
+              message: `Failed to schedule Windows Lando replacement for ${executablePath}.`,
+              path: executablePath,
+              remediation: manualFallback,
+              cause,
+            }),
+        ),
       ),
-      Effect.tapError(() => cleanupUpdateTempDir(tempDir)),
-    );
+    ).pipe(Effect.tapError(() => cleanupUpdateTempDir(tempDir)));
   });
 
 const applySelfUpdate = ({
@@ -342,15 +354,29 @@ const applySelfUpdate = ({
   binaryBytes,
   executablePath,
   selfUpdate,
+  guardCoreReplacement,
 }: {
   readonly attemptedVersion: string;
   readonly binaryBytes: Uint8Array;
   readonly executablePath: string;
   readonly selfUpdate: ResolvedSelfUpdateOptions;
-}): Effect.Effect<void, UpdateLaunchProbeError | UpdatePermissionError, ProcessRunner> =>
+  readonly guardCoreReplacement?: PluginUpdateRunResult["guardCoreReplacement"];
+}): Effect.Effect<void, UpdateError, ProcessRunner> =>
   selfUpdate.platform === "win32"
-    ? applyWindowsSelfUpdate({ attemptedVersion, binaryBytes, executablePath, selfUpdate })
-    : applyPosixSelfUpdate({ attemptedVersion, binaryBytes, executablePath, selfUpdate });
+    ? applyWindowsSelfUpdate({
+        attemptedVersion,
+        binaryBytes,
+        executablePath,
+        selfUpdate,
+        guardCoreReplacement,
+      })
+    : applyPosixSelfUpdate({
+        attemptedVersion,
+        binaryBytes,
+        executablePath,
+        selfUpdate,
+        guardCoreReplacement,
+      });
 
 interface DefaultUpdateSuccess {
   readonly manifest: UpdateManifest;
@@ -482,6 +508,7 @@ const defaultUpdate = (
         binaryBytes,
         executablePath: selfUpdate.executablePath,
         selfUpdate,
+        guardCoreReplacement: pluginExecution?.guardCoreReplacement,
       }).pipe(
         Effect.tapError((error) =>
           writeUpdateFailureState({

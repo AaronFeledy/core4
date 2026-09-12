@@ -5,7 +5,9 @@ import {
   type PluginUpdateInventoryItem,
   type PluginUpdateMetadata,
   type PluginUpdatePlanRow,
+  type PluginUpdateRunResult,
   type PluginUpdateRunner,
+  UpdatePermissionError,
   planUpdates,
 } from "@lando/engine/operations/update";
 import {
@@ -14,7 +16,7 @@ import {
 } from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { makeLandoPaths } from "@lando/paths";
-import type { ConfigError, NotImplementedError } from "@lando/sdk/errors";
+import { type ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 import {
@@ -60,6 +62,7 @@ const inventoryFor = (
   pluginsRoot: string,
   trustStore: typeof PluginTrustStore.Service,
   registryClient: NpmRegistryClient,
+  resolveMetadata = true,
 ): Effect.Effect<
   ReadonlyArray<PluginUpdateInventoryItem & { readonly activation: InstalledPluginRegistryEntry }>
 > =>
@@ -74,6 +77,7 @@ const inventoryFor = (
             .isPluginTrusted(entry.name)
             .pipe(Effect.catchAll(() => Effect.succeed(false)));
           const mayResolve =
+            resolveMetadata &&
             entry.requestedSelector !== undefined &&
             entry.source !== "linked" &&
             manifest?.bundled !== true &&
@@ -177,36 +181,49 @@ export const makePluginUpdateRunner = (
             rows.push({ ...row, status: "failed", reason: "apply-failed" });
           }
         }
-        const appliedNames = new Set(updatedPlugins);
-        const resultingInventory = inventory.map((item): PluginUpdateInventoryItem => {
-          if (!appliedNames.has(item.name)) return { ...item, requestedSelector: item.currentVersion };
-          const appliedRow = rows.find((row) => row.name === item.name);
-          const targetVersion = appliedRow?.targetVersion;
-          const advertised = targetVersion === undefined ? undefined : item.metadata?.versions[targetVersion];
-          if (targetVersion === undefined || advertised === undefined) {
-            return { ...item, requestedSelector: item.currentVersion };
-          }
-          const { currentRequires: _currentRequires, ...rest } = item;
-          return {
-            ...rest,
-            currentVersion: targetVersion,
-            requestedSelector: targetVersion,
-            ...(advertised.requires === undefined ? {} : { currentRequires: advertised.requires }),
-          };
-        });
-        const blockCore = input.combined
-          ? planUpdates({
-              currentCoreVersion: input.currentCoreVersion,
-              targetCoreVersion: input.targetCoreVersion,
-              selection: "all",
-              plugins: resultingInventory,
-            }).rows.some((row) => row.kind === "core" && row.status === "blocked")
-          : false;
+        const checkCore = inventoryFor(pluginsRoot, trustStore, registryClient, false).pipe(
+          Effect.map(
+            (active) =>
+              input.combined &&
+              planUpdates({
+                currentCoreVersion: input.currentCoreVersion,
+                targetCoreVersion: input.targetCoreVersion,
+                selection: "all",
+                plugins: active.map((item) => ({ ...item, requestedSelector: item.currentVersion })),
+              }).rows.some((row) => row.kind === "core" && row.status === "blocked"),
+          ),
+        );
+        const guardCoreReplacement: NonNullable<PluginUpdateRunResult["guardCoreReplacement"]> = (body) =>
+          withPluginMutationLock(
+            pluginsRoot,
+            "meta:update",
+            Effect.gen(function* () {
+              if (yield* checkCore)
+                return yield* Effect.fail(
+                  new UpdatePermissionError({
+                    message: "The active plugin set is incompatible with the target core version.",
+                    remediation: "Resolve plugin compatibility and run lando update again.",
+                  }),
+                );
+              return yield* body;
+            }),
+          ).pipe(
+            Effect.mapError((error) =>
+              error instanceof NotImplementedError
+                ? new UpdatePermissionError({
+                    message: error.message,
+                    remediation: error.remediation,
+                  })
+                : error,
+            ),
+          );
+        const blockCore = yield* checkCore;
         return {
           rows,
           updatedPlugins,
           blockCore,
           hasFailures: plan.hasFailures || rows.some((row) => row.status === "failed"),
+          guardCoreReplacement,
         };
       });
   });
