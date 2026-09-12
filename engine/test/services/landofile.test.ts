@@ -965,7 +965,7 @@ describe("LandofileServiceLive — tooling: unsupported-field rejection (US-017)
     ]);
   });
 
-  test("rejects runtime tooling `flags:` metadata other than deprecation notices", async () => {
+  test("rejects unsupported runtime tooling flag type metadata", async () => {
     await assertRejectsLandofile([
       "name: myapp",
       "tooling:",
@@ -978,7 +978,7 @@ describe("LandofileServiceLive — tooling: unsupported-field rejection (US-017)
     ]);
   });
 
-  test("rejects runtime tooling `args:` metadata other than deprecation notices", async () => {
+  test("rejects unsupported runtime tooling arg type metadata", async () => {
     await assertRejectsLandofile([
       "name: myapp",
       "tooling:",
@@ -986,7 +986,7 @@ describe("LandofileServiceLive — tooling: unsupported-field rejection (US-017)
       "    cmd: echo hi",
       "    args:",
       "      target:",
-      "        description: Deployment target",
+      "        type: string",
       "",
     ]);
   });
