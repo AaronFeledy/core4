@@ -20,6 +20,7 @@ import {
   finalizePluginInstall,
   validatePluginManifest,
 } from "@lando/engine/operations/plugin-install";
+import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
 import { makeLandoPaths } from "@lando/paths";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeInteractionService } from "../../interaction/service";
@@ -85,7 +86,7 @@ export interface PluginAddOptions {
     readonly version: string;
     readonly requires?: Readonly<Record<string, string>>;
   };
-  readonly expectedCurrentVersion?: string;
+  readonly expectedActivation?: InstalledPluginRegistryEntry;
   readonly mutationLockHeld?: boolean;
 }
 
@@ -229,7 +230,7 @@ const installFromNpm = async (
   }
 
   const packageDir = installTargetFor(pluginsRoot, parsed.name, resolvedVersion, options.spec);
-  if (options.expectedCurrentVersion === undefined && (await fileExists(packageDir))) {
+  if (options.expectedActivation === undefined && (await fileExists(packageDir))) {
     return { created: false, packageDir };
   }
 
@@ -433,7 +434,7 @@ export const pluginAdd = (
     const hadTrustBefore = trustStoreForRollback.has(trustName);
     const trustSource = yield* Effect.tryPromise({
       try: async () => {
-        if (hasPostinstall && options.trust !== true && options.expectedCurrentVersion === undefined) {
+        if (hasPostinstall && options.trust !== true && options.expectedActivation === undefined) {
           if (trustStoreForRollback.has(trustName)) return "session";
           if (
             persistentStore !== undefined &&
@@ -495,9 +496,7 @@ export const pluginAdd = (
         requestedSelector,
       },
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-      ...(options.expectedCurrentVersion === undefined
-        ? {}
-        : { expectedCurrentVersion: options.expectedCurrentVersion }),
+      ...(options.expectedActivation === undefined ? {} : { expectedActivation: options.expectedActivation }),
       ...(options.mutationLockHeld === true ? { mutationLockHeld: true } : {}),
       ...(targetDir === undefined ? {} : { stagedPath: packageDir }),
     }).pipe(

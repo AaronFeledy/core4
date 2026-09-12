@@ -99,7 +99,7 @@ export interface FinalizePluginInstallOptions {
   readonly pluginsRoot: string;
   readonly entry: InstalledPluginRegistryEntry;
   readonly cacheRoot?: string;
-  readonly expectedCurrentVersion?: string;
+  readonly expectedActivation?: InstalledPluginRegistryEntry;
   readonly mutationLockHeld?: boolean;
   readonly stagedPath?: string;
 }
@@ -108,9 +108,19 @@ export const finalizePluginInstall = (
   options: FinalizePluginInstallOptions,
 ): Effect.Effect<void, NotImplementedError> => {
   const finalize = Effect.gen(function* () {
-    if (options.expectedCurrentVersion !== undefined) {
+    if (options.expectedActivation !== undefined) {
       const registry = yield* Effect.promise(() => readInstalledPluginRegistry(options.pluginsRoot));
-      if (registry[options.entry.name]?.version !== options.expectedCurrentVersion) {
+      const current = registry[options.entry.name];
+      const expected = options.expectedActivation;
+      if (
+        current === undefined ||
+        current.version !== expected.version ||
+        current.source !== expected.source ||
+        current.path !== expected.path ||
+        current.requestedSelector !== expected.requestedSelector ||
+        current.linkedPath !== expected.linkedPath ||
+        current.name !== expected.name
+      ) {
         return yield* Effect.fail(
           new NotImplementedError({
             message: `Plugin ${options.entry.name} changed after update planning; refusing an implicit re-plan.`,

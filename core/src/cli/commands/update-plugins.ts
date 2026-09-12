@@ -8,7 +8,10 @@ import {
   type PluginUpdateRunner,
   planUpdates,
 } from "@lando/engine/operations/update";
-import { readInstalledPluginRegistry } from "@lando/engine/plugins/installed-registry";
+import {
+  type InstalledPluginRegistryEntry,
+  readInstalledPluginRegistry,
+} from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { makeLandoPaths } from "@lando/paths";
 import type { ConfigError, NotImplementedError } from "@lando/sdk/errors";
@@ -57,7 +60,9 @@ const inventoryFor = (
   pluginsRoot: string,
   trustStore: typeof PluginTrustStore.Service,
   registryClient: NpmRegistryClient,
-): Effect.Effect<ReadonlyArray<PluginUpdateInventoryItem>> =>
+): Effect.Effect<
+  ReadonlyArray<PluginUpdateInventoryItem & { readonly activation: InstalledPluginRegistryEntry }>
+> =>
   Effect.gen(function* () {
     const registry = yield* Effect.promise(() => readInstalledPluginRegistry(pluginsRoot));
     return yield* Effect.forEach(
@@ -79,6 +84,7 @@ const inventoryFor = (
               )
             : undefined;
           return {
+            activation: entry,
             name: entry.name,
             currentVersion: entry.version,
             ...(manifest?.requires === undefined ? {} : { currentRequires: manifest.requires }),
@@ -87,7 +93,7 @@ const inventoryFor = (
             ...(manifest?.bundled === undefined ? {} : { bundled: manifest.bundled }),
             trusted,
             ...(packument === undefined ? {} : { metadata: advertisedMetadata(packument) }),
-          } satisfies PluginUpdateInventoryItem;
+          };
         }),
       { concurrency: "unbounded" },
     );
@@ -155,7 +161,7 @@ export const makePluginUpdateRunner = (
                 trustStore: new Set(),
                 requestedSelector: row.selector,
                 expectedManifest: advertised,
-                expectedCurrentVersion: row.currentVersion,
+                expectedActivation: item.activation,
                 mutationLockHeld: true,
                 nonInteractive: true,
               }).pipe(

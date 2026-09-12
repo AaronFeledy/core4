@@ -82,6 +82,29 @@ async function fixture() {
 
 const input = { currentCoreVersion: "4.1.0", targetCoreVersion: "4.2.0", combined: true, dryRun: false };
 
+test.each(["source", "path", "selector"])("same-version %s drift is not overwritten", async (field) => {
+  // Given: a writer changes activation metadata during planning.
+  const f = await fixture();
+  const changed = {
+    name,
+    version: "1.0.0",
+    path: field === "path" ? `${f.current}-other` : f.current,
+    requestedSelector: field === "selector" ? "1.0.0" : "latest",
+    ...(field === "source" ? { source: "linked" as const, linkedPath: f.current } : {}),
+  };
+  const runner = await f.runner({
+    fetchPackument: async () => {
+      await recordInstalledPlugin(f.pluginsRoot, changed);
+      return f.packument;
+    },
+  });
+  // When: the stale plan applies.
+  const result = await Effect.runPromise(runner(input));
+  // Then: the entire concurrent activation is retained.
+  expect(result.updatedPlugins).toEqual([]);
+  expect((await readInstalledPluginRegistry(f.pluginsRoot))[name]).toEqual(changed);
+});
+
 test("a stale updater retains the version activated by another updater", async () => {
   // Given: a second updater wins while the first resolves metadata.
   const f = await fixture();
