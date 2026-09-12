@@ -28,3 +28,15 @@ Verification: typecheck, lint, and check:boundaries passed; 359 targeted tests p
   - Excluding a task from the command index and relying on a downstream authoritative check gives the wrong error tag on the fresh-cache path. Model "known but refused" distinctly from "unknown".
   - `bun core/src/cli/index.ts` exits 0 silently; only `core/bin/lando.ts` is a faithful manual-verification entry.
 ---
+## 2026-09-11 23:28 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-613 (expected passes: true)
+---
+## 2026-09-11 23:50 - US-613 Drift Audit
+- Trigger: 1 cycle, ~2560 changed lines, 2 commits
+- Weakened proofs: the command-index suite blessed omitting disabled tasks, so a fresh cache could never emit `ToolingDisabledError`
+- Ceremony: unused plan-normalized IR cache existed only for its own tests
+- Contract: `lando <task> --help` with declared flags is still unproven and left to Build; story stays `passes: false`
+- Fixed: disabled tasks stay in the index as hidden; unused plan cache deleted; retired flag `type` leftover fixture and exemption removed
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 87 targeted tests pass
+---
