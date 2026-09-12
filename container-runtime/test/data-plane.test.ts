@@ -472,7 +472,12 @@ describe("provider data plane", () => {
               { Name: "unrelated" },
               {
                 Name: "app-data",
-                Labels: { "dev.lando.app": "app", "dev.lando.scope": "app", "dev.lando.store": "data" },
+                Labels: {
+                  "dev.lando.app": "app",
+                  "dev.lando.scope": "app",
+                  "dev.lando.store": "data",
+                  "dev.lando.volume-instance": "volume-instance-1",
+                },
               },
               {
                 Name: "other-data",
@@ -492,6 +497,39 @@ describe("provider data plane", () => {
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
 
     expect(volumes.map((volume) => volume.ref.store)).toEqual(["data"]);
+    expect(volumes[0]?.instanceId).toBe("volume-instance-1");
+    expect(volumes[0]?.provenance).toBe("known");
+  });
+
+  test("reads Podman bare-array volume listings", async () => {
+    const api: DataPlaneApiClient = {
+      request: () =>
+        Effect.succeed({
+          status: 200,
+          body: JSON.stringify([
+            {
+              Name: "app-data",
+              Labels: {
+                "dev.lando.app": "app",
+                "dev.lando.scope": "app",
+                "dev.lando.store": "data",
+                "dev.lando.volume-instance": "volume-instance-1",
+              },
+            },
+          ]),
+        }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app") }));
+
+    expect(volumes[0]?.instanceId).toBe("volume-instance-1");
+    expect(volumes[0]?.provenance).toBe("known");
   });
 
   test("includes legacy unlabeled volumes for exact app and store lookups", async () => {
@@ -513,7 +551,7 @@ describe("provider data plane", () => {
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app"), store: "data" }));
 
-    expect(volumes).toEqual([{ ref: { app: AppId.make("app"), store: "data" } }]);
+    expect(volumes).toEqual([{ ref: { app: AppId.make("app"), store: "data" }, provenance: "legacy" }]);
   });
 
   test("fails service copy when the applied plan is unavailable", async () => {

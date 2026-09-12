@@ -11,6 +11,7 @@ import {
   ProviderId,
   type ServiceName,
   type StorageScope,
+  type VolumeInfo,
 } from "@lando/sdk/schema";
 import type {
   ArtifactRef,
@@ -322,12 +323,14 @@ const requireServiceContainerName = (
 interface EngineVolume {
   readonly Name?: string;
   readonly Labels?: Readonly<Record<string, string>>;
+  readonly CreatedAt?: string;
 }
 
 const landoVolumeLabels = {
   app: "dev.lando.app",
   store: "dev.lando.store",
   scope: "dev.lando.scope",
+  instance: "dev.lando.volume-instance",
 } as const;
 
 const storageScopeFromLabel = (value: string | undefined): StorageScope | undefined =>
@@ -342,11 +345,12 @@ const labelsMatch = (
 const volumeInfoFromEngineVolume = (
   volume: EngineVolume,
   filter: Parameters<RuntimeProviderShape["listVolumes"]>[0],
-) => {
+): VolumeInfo | undefined => {
   const labels = volume.Labels ?? {};
   const labelApp = labels[landoVolumeLabels.app];
   const labelStore = labels[landoVolumeLabels.store];
   const labelScope = storageScopeFromLabel(labels[landoVolumeLabels.scope]);
+  const instanceId = labels[landoVolumeLabels.instance];
   if (labelApp === undefined || labelStore === undefined) return undefined;
   const store = labelStore;
   if (filter.app !== undefined && labelApp !== String(filter.app)) return undefined;
@@ -363,6 +367,12 @@ const volumeInfoFromEngineVolume = (
           : { scope: filter.scope }
         : { scope: labelScope }),
     },
+    ...(instanceId === undefined
+      ? { provenance: "legacy" as const }
+      : {
+          instanceId,
+          provenance: "known" as const,
+        }),
     ...(volume.Labels === undefined ? {} : { labels: volume.Labels }),
   };
 };
@@ -370,7 +380,7 @@ const volumeInfoFromEngineVolume = (
 const legacyVolumeInfoFromEngineVolume = (
   volume: EngineVolume,
   filter: Parameters<RuntimeProviderShape["listVolumes"]>[0],
-) => {
+): VolumeInfo | undefined => {
   const labels = volume.Labels ?? {};
   if (labels[landoVolumeLabels.app] !== undefined || labels[landoVolumeLabels.store] !== undefined) {
     return undefined;
@@ -383,6 +393,7 @@ const legacyVolumeInfoFromEngineVolume = (
       store: filter.store,
       ...(filter.scope === undefined ? {} : { scope: filter.scope }),
     },
+    provenance: "legacy",
     ...(volume.Labels === undefined ? {} : { labels: volume.Labels }),
   };
 };
@@ -755,10 +766,11 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           const parsed =
             response.body.length === 0
               ? { Volumes: [] }
-              : (JSON.parse(response.body) as {
-                  Volumes?: ReadonlyArray<EngineVolume>;
-                });
-          return (parsed.Volumes ?? [])
+              : (JSON.parse(response.body) as
+                  | EngineVolume[]
+                  | { readonly Volumes?: ReadonlyArray<EngineVolume> });
+          const volumes = Array.isArray(parsed) ? parsed : (parsed.Volumes ?? []);
+          return volumes
             .map(
               (volume) =>
                 volumeInfoFromEngineVolume(volume, filter) ??
