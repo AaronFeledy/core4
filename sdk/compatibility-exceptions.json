@@ -1,5 +1,275 @@
 [
   {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.proxy.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.services.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.proxy.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.services.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:RendererPanelContext",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:RouteInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:RoutePlan",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
     "surface": "service:LandofileService",
     "changeKind": "signature-changed",
     "path": "$.discover",

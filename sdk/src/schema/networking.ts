@@ -6,6 +6,7 @@ import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabil
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { AbsolutePath, CommandSpec, PortNumber, ServiceName } from "./primitives.ts";
+import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 
 const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/u;
@@ -44,6 +45,9 @@ export const RoutePlan = Schema.Struct({
   endpoint: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   /** Optional path prefix (e.g., `/api`). */
   pathPrefix: Schema.optional(Schema.String),
+  filters: Schema.optional(Schema.Array(RouteFilter)).annotations({
+    description: "Ordered provider-neutral filters applied to this route.",
+  }),
   /** Planner-resolved service endpoint; proxy implementations never infer it. */
   backend: Schema.propertySignature(
     Schema.Struct({

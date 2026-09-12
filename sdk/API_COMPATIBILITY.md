@@ -4,6 +4,10 @@
 
 ## Compatibility notes
 
+- `RouteInput` accepts non-empty shorthand strings or `RouteObjectInput` objects. Objects and `RoutePlan` accept ordered `RouteFilter` arrays; `name` is layer-merge identity, while header filters use `header`. `LandofileService.discover` adds `RouteInputError` to its error channel with an authored key path and remediation.
+
+- `AppPlanner.plan` additively includes `RouteInputError` in its error channel: authored routes are normalized (shorthand parsed, filters attached) before planning, and an invalid route fails the plan with its authored key path and remediation. The frozen service signature is updated.
+
 - The type-only `ToolingError` union additively includes `LandofileEventStepFailedError`, `LandofileEventLifecycleReentryError`, and `LandofileEventInvocationDepthError`. Top-level tooling runs now bracket `pre-<task>` and `post-<task>` events, so a bracket failure reaches tooling callers with its event identity and redacted output tail instead of being remapped to `ToolingExecError`. The three error schemas already existed, so no JSON Schema list changes.
 
 - US-614 moves `LandofileUnknownEventError` from `LandofileService.discover` to `AppPlanner.plan`: event names are validated against resolved effective tooling, not individual source files. Provider-free config lint uses resolved layered/included tooling through the same validator. The frozen service signatures are updated.
@@ -458,6 +462,9 @@
 - `RecipeRequires`
 - `RecipeVersion`
 - `RouteInput`
+- `RouteObjectInput`
+- `RouteFilter`
+- `RouteFilterType`
 - `RoutePlan`
 - `RouteRef`
 - `RunProps`
@@ -740,6 +747,8 @@
 - `PreBootstrapToolingEvent`
 
 ## Additive Alpha errors
+
+- `RouteInputError`
 
 - `PluginDescriptorMismatchError`
 - `NoCertificateAuthorityError`

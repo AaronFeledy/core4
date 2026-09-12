@@ -1,5 +1,12 @@
 import { Schema } from "effect";
 
+export class RouteInputError extends Schema.TaggedError<RouteInputError>()("RouteInputError", {
+  message: Schema.String.annotations({ description: "Human-readable route input failure." }),
+  key: Schema.String.annotations({ description: "Authored route key path, including its array index." }),
+  file: Schema.optional(Schema.String).annotations({ description: "File containing the authored route." }),
+  remediation: Schema.String.annotations({ description: "Action required to correct the route input." }),
+}) {}
+
 export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFoundError>()(
   "LandofileNotFoundError",
   {

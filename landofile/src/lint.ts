@@ -26,6 +26,7 @@ import { presentLandofileLayers } from "./layers.ts";
 import { mergeValues } from "./merge.ts";
 import { detectLandofileTags, parseLandofile } from "./parser.ts";
 import type { TemplateEngineInputs } from "./ports.ts";
+import { normalizeRoutes } from "./route-normalize.ts";
 import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
@@ -120,7 +121,19 @@ const violationsFor = (
 ): ReadonlyArray<ConfigLintViolation> => {
   const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
   return Either.isRight(decoded)
-    ? []
+    ? [
+        ...Object.entries(decoded.right.services ?? {}).map(([name, service]) =>
+          normalizeRoutes(service.routes ?? [], { keyPath: `services.${name}.routes` }),
+        ),
+        ...Object.entries(decoded.right.proxy ?? {}).map(([name, routes]) =>
+          normalizeRoutes(routes, { keyPath: `proxy.${name}` }),
+        ),
+      ].flatMap((result) =>
+        Either.match(result, {
+          onLeft: (error) => [{ path: error.key, message: error.message, suggestedFix: error.remediation }],
+          onRight: () => [],
+        }),
+      )
     : ParseResult.ArrayFormatter.formatErrorSync(decoded.left)
         .map(violationFromIssue)
         .filter(
