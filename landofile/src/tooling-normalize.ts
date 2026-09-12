@@ -157,38 +157,36 @@ export const normalizeToolingTask = (
   const service = serviceRef(task.service);
   if (Either.isLeft(service)) return Either.left(service.left);
   const env = Object.fromEntries(Object.entries(task.env ?? {}).map(([key, value]) => [key, String(value)]));
+  if (task.cmd !== undefined && task.cmds !== undefined) return fail("Use cmd or cmds, not both.");
   const steps: NormalizedToolingStep[] = [];
-  for (const key of Object.keys(task)) {
-    if (key === "cmd" && task.cmd !== undefined) {
-      steps.push({
-        cmd: typeof task.cmd === "string" ? task.cmd : task.cmd.join(" "),
-        ...(typeof task.cmd === "string" ? {} : { argv: [...task.cmd] }),
-        ...(service.right === undefined ? {} : { service: service.right }),
-        ...(task.dir === undefined ? {} : { dir: task.dir }),
-        ...(task.user === undefined ? {} : { user: task.user }),
-        env: { ...env },
-      });
-    }
-    if (key === "cmds")
-      for (const entry of task.cmds ?? []) {
-        const step = typeof entry === "string" ? { cmd: entry } : entry;
-        if (typeof step.cmd !== "string" || step.cmd.trim().length === 0)
-          return fail("Each command step needs a non-empty cmd.");
-        const target = serviceRef(step.service ?? task.service);
-        if (Either.isLeft(target)) return Either.left(target.left);
-        const dir = step.dir ?? task.dir;
-        const user = step.user ?? task.user;
-        steps.push({
-          cmd: step.cmd,
-          ...(target.right === undefined ? {} : { service: target.right }),
-          ...(dir === undefined ? {} : { dir }),
-          ...(user === undefined ? {} : { user }),
-          env: {
-            ...env,
-            ...Object.fromEntries(Object.entries(step.env ?? {}).map(([key, value]) => [key, String(value)])),
-          },
-        });
-      }
+  if (task.cmd !== undefined) {
+    steps.push({
+      cmd: typeof task.cmd === "string" ? task.cmd : task.cmd.join(" "),
+      ...(typeof task.cmd === "string" ? {} : { argv: [...task.cmd] }),
+      ...(service.right === undefined ? {} : { service: service.right }),
+      ...(task.dir === undefined ? {} : { dir: task.dir }),
+      ...(task.user === undefined ? {} : { user: task.user }),
+      env: { ...env },
+    });
+  }
+  for (const entry of task.cmds ?? []) {
+    const step = typeof entry === "string" ? { cmd: entry } : entry;
+    if (typeof step.cmd !== "string" || step.cmd.trim().length === 0)
+      return fail("Each command step needs a non-empty cmd.");
+    const target = serviceRef(step.service ?? task.service);
+    if (Either.isLeft(target)) return Either.left(target.left);
+    const dir = step.dir ?? task.dir;
+    const user = step.user ?? task.user;
+    steps.push({
+      cmd: step.cmd,
+      ...(target.right === undefined ? {} : { service: target.right }),
+      ...(dir === undefined ? {} : { dir }),
+      ...(user === undefined ? {} : { user }),
+      env: {
+        ...env,
+        ...Object.fromEntries(Object.entries(step.env ?? {}).map(([key, value]) => [key, String(value)])),
+      },
+    });
   }
   const summary = task.description ?? task.summary;
   return Either.right({

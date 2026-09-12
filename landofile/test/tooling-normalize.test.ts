@@ -45,16 +45,13 @@ describe("normalizeToolingTask", () => {
     ]);
   });
 
-  test("preserves argv boundaries and command-field authored order", () => {
+  test("preserves argv boundaries for array cmd", () => {
     // Given
-    const task: ToolingTaskShape = { cmds: ["first"], cmd: ["echo", "two words"] };
+    const task: ToolingTaskShape = { cmd: ["echo", "two words"] };
     // When
     const result = Either.getOrThrow(normalizeToolingTask("run", task));
     // Then
-    expect(result.steps).toEqual([
-      { cmd: "first", env: {} },
-      { cmd: "echo two words", argv: ["echo", "two words"], env: {} },
-    ]);
+    expect(result.steps).toEqual([{ cmd: "echo two words", argv: ["echo", "two words"], env: {} }]);
   });
 
   test.each([
@@ -83,6 +80,7 @@ describe("normalizeToolingTask", () => {
     ["arg default outside choices", { args: { a: { default: 1, choices: ["2"] } } }],
     ["required arg after optional", { args: { a: {}, b: { required: true } } }],
     ["empty object command", { cmds: [{ cmd: " " }] }],
+    ["cmd and cmds together", { cmd: "a", cmds: ["b"] }],
   ];
   test.each(invalid)("rejects %s", (_label, task) => {
     // Given / When
