@@ -1,5 +1,6 @@
 import { type Context, Effect, Layer, Option } from "effect";
 
+import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import {
   AppPlanner,
   CacheService,
@@ -7,8 +8,10 @@ import {
   FileSystem,
   PathsService,
   PluginRegistry,
+  ProcessRunner,
 } from "@lando/sdk/services";
 
+import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { planApp } from "../planner/assemble.ts";
 import {
   applyAuthoredAppMount,
@@ -37,18 +40,26 @@ export const AppPlannerLive = Layer.effect(
     const configService = yield* Effect.serviceOption(ConfigService);
     const fileSystem = yield* Effect.serviceOption(FileSystem);
     const pathsService = yield* Effect.serviceOption(PathsService);
+    const processRunner = yield* Effect.serviceOption(ProcessRunner);
     const certificateAuthorityResolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
     return {
       plan: (landofile, providerCapabilities) =>
-        planApp(
-          pluginRegistry,
-          Option.getOrUndefined(cacheService),
-          Option.getOrUndefined(configService),
-          Option.getOrUndefined(fileSystem),
-          Option.getOrUndefined(pathsService),
-          Option.getOrUndefined(certificateAuthorityResolver),
-          landofile,
-          providerCapabilities,
+        resolveAppIdentity(
+          getLandofileAppRoot(landofile) ?? process.cwd(),
+          Option.getOrUndefined(processRunner),
+        ).pipe(
+          Effect.flatMap((identity) =>
+            planApp(
+              pluginRegistry,
+              Option.getOrUndefined(cacheService),
+              Option.getOrUndefined(configService),
+              Option.getOrUndefined(fileSystem),
+              Option.getOrUndefined(pathsService),
+              Option.getOrUndefined(certificateAuthorityResolver),
+              landofile,
+              providerCapabilities,
+            ).pipe(Effect.map((plan) => ({ ...plan, identity }))),
+          ),
         ),
     } satisfies Context.Tag.Service<typeof AppPlanner>;
   }),
