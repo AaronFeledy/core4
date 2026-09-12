@@ -55,6 +55,7 @@ test("detached helper persists an abort which the next real invocation surfaces 
   );
   const env = {
     ...process.env,
+    LANDO_UPDATE_HANDOFF_TOKEN: token,
     LANDO_USER_CACHE_ROOT: cache,
     LANDO_USER_DATA_ROOT: join(root, "data"),
     LANDO_USER_CONF_ROOT: join(root, "conf"),
@@ -69,8 +70,8 @@ test("detached helper persists an abort which the next real invocation surfaces 
   expect(await helper.exited).toBe(1);
   expect(helperError).toBe("");
   expect(await Bun.file(executablePath).text()).toBe("old");
-  const invoke = async () => {
-    const child = Bun.spawn([process.execPath, cli, "--version"], { env, stdout: "pipe", stderr: "pipe" });
+  const invoke = async (argv: string[] = ["--version"]) => {
+    const child = Bun.spawn([process.execPath, cli, ...argv], { env, stdout: "pipe", stderr: "pipe" });
     const [stdout, stderr, exit] = await Promise.all([
       new Response(child.stdout).text(),
       new Response(child.stderr).text(),
@@ -78,11 +79,67 @@ test("detached helper persists an abort which the next real invocation surfaces 
     ]);
     return { stdout, stderr, exit };
   };
+  const receiptPath = join(cache, "update-handoff", `${token}.json`);
+  const before = await Bun.file(receiptPath).text();
+  const dryRun = await invoke(["update", "--only=plugins", "--dry-run", "--format=json"]);
+  expect(dryRun.exit).toBe(0);
+  expect(await Bun.file(receiptPath).text()).toBe(before);
   const next = await invoke();
-  expect(next.exit).toBe(0);
-  expect(next.stdout.trim()).not.toBe("");
-  expect(next.stderr).toContain("core: failed");
-  expect(next.stderr).toContain("re-run lando update");
-  expect(next.stderr).toContain("completed-plugin");
-  expect((await invoke()).stderr).toBe("");
+  expect(next.exit).toBe(1);
+  expect(next.stdout).toContain("core: failed");
+  expect(next.stdout).toContain("re-run lando update");
+  expect(next.stdout).toContain("completed-plugin");
+  const following = await invoke();
+  expect(following.exit).toBe(0);
+  expect(following.stderr).toBe("");
+  expect(following.stdout).not.toContain("completed-plugin");
 });
+
+test.each(["json", "yaml", "ndjson"])(
+  "deferred failures have a structured %s result and nonzero exit",
+  async (format) => {
+    const root = await mkdtemp(join(tmpdir(), "lando-deferred-format-"));
+    roots.push(root);
+    const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+    const handoff = makeUpdateHandoff({ open: (spec) => live.open({ ...spec, root: { path: cache } }) });
+    const token = await Effect.runPromise(
+      handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["completed"] }),
+    );
+    await Effect.runPromise(
+      handoff.finishDeferred(token, {
+        tag: "UpdatePermissionError",
+        message: "Replacement aborted",
+        remediation: "Retry update",
+      }),
+    );
+    const child = Bun.spawn(
+      [process.execPath, resolve("core/bin/lando.ts"), "meta:version", `--format=${format}`],
+      {
+        env: {
+          ...process.env,
+          LANDO_USER_CACHE_ROOT: cache,
+          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_CONF_ROOT: join(root, "conf"),
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [stdout, stderr, exit] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    expect(exit).toBe(1);
+    expect(stderr).toBe("");
+    const result = format === "yaml" ? Bun.YAML.parse(stdout) : JSON.parse(stdout).result;
+    expect(result).toMatchObject({
+      updatedCore: false,
+      hasFailures: true,
+      updatedPlugins: ["completed"],
+      coreFailure: { tag: "UpdatePermissionError" },
+    });
+    expect(await Bun.file(join(cache, "update-handoff", `${token}.json`)).exists()).toBe(false);
+  },
+);

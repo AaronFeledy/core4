@@ -72,7 +72,7 @@ const main = async (): Promise<void> => {
   }
   if (existsSync(join(resolveLandoRoots().userCacheRoot, "update-handoff"))) {
     const { surfaceDeferredUpdateReceipts } = await import("../src/cli/update-receipts.ts");
-    await surfaceDeferredUpdateReceipts();
+    if (await surfaceDeferredUpdateReceipts(argv)) return;
   }
   // Only single-token forms can be remapped by commandAliases; multi-token
   // registered paths such as `recipes list` stay on the cold path in-app.

@@ -614,7 +614,7 @@ export const update = (
   Effect.gen(function* () {
     const telemetry = yield* Telemetry;
     const required = resolvedOptions(options);
-    if (options.handoff?.token !== undefined) {
+    if (!required.dryRun && options.handoff?.token !== undefined) {
       const receipt = yield* options.handoff.consume(options.handoff.token);
       if (receipt !== undefined) {
         const consumed: UpdateResult = {
