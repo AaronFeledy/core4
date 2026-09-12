@@ -475,7 +475,10 @@ describe("meta:plugin:add command", () => {
     expect(result.trustSource).toBe("flag");
     expect(spawns).toHaveLength(1);
     expect(spawns[0]?.cmd.slice(1)).toEqual(["install"]);
-    expect(spawns[0]?.cwd).toBe(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3"));
+    expect(spawns[0]?.cwd).toStartWith(join(pluginsRoot, "@lando/plugin-postinstall", ".staging-"));
+    expect(spawns[0]?.cwd).toEndWith("/package");
+    expect(await exists(spawns[0]?.cwd ?? "")).toBe(false);
+    expect(await exists(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3"))).toBe(true);
     expect(spawns[0]?.env.LANDO_DISALLOW_BUN_BE_BUN_REENTRY).toBe("1");
     expect(events.map((event) => event._tag)).toEqual(["pre-bun-self-exec", "post-bun-self-exec"]);
     expect(events).toContainEqual(

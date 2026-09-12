@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath, rename } from "node:fs/promises";
+import { lstat, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 import { Effect, Either, Schema } from "effect";
@@ -153,7 +153,13 @@ export const finalizePluginInstall = (
           }),
       });
     }
-    yield* Effect.promise(() => recordInstalledPlugin(options.pluginsRoot, options.entry));
+    yield* Effect.promise(() => recordInstalledPlugin(options.pluginsRoot, options.entry)).pipe(
+      Effect.onError(() =>
+        options.stagedPath === undefined
+          ? Effect.void
+          : Effect.promise(() => rm(options.entry.path, { recursive: true, force: true })),
+      ),
+    );
   }).pipe(
     Effect.zipRight(
       invalidatePluginCommandCache({
