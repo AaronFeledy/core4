@@ -970,5 +970,47 @@
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
     "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:ToolingFlagShape",
+    "changeKind": "property-removed",
+    "path": "$.type",
+    "justification": "The unreleased `type` spelling is replaced outright by an explicit `boolean` switch rather than carried as an alias; the Landofile parser rejects `type` with tagged remediation instead of silently accepting two spellings."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.flags.additionalProperties",
+    "justification": "Flag entries intentionally replace the unreleased `type` spelling with `boolean` and add optional `alias`, `choices`, and `required` so one normalized declaration drives native options, CLI help, and MCP input schemas."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.args.additionalProperties",
+    "justification": "Argument entries intentionally add optional `choices` and non-negative integer `order` while preserving every previously accepted field."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.cmds.items.anyOf",
+    "justification": "Step lists intentionally accept an ordered command object beside the previously accepted string form; every previously accepted string entry remains valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShape.tooling.anyOf",
+    "justification": "The authoring tooling projection intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.tooling.anyOf",
+    "justification": "The authoring tooling wire projection intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.tooling.anyOf",
+    "justification": "Encoder tooling context intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
   }
 ]
