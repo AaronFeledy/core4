@@ -187,6 +187,15 @@
               "providerCapabilities": ["sharedCrossAppNetwork"]
             },
             "summary": "Global Traefik router"
+          },
+          {
+            "enabledByDefault": true,
+            "id": "traefik-diagnostics",
+            "module": "./src/global-services/diagnostics.ts",
+            "requires": {
+              "providerCapabilities": ["sharedCrossAppNetwork"]
+            },
+            "summary": "Unmatched route diagnostics"
           }
         ],
         "routerServices": [
