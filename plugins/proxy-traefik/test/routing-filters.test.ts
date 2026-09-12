@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AppId, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 
-import { renderTraefikDynamicConfig } from "../src/routing.ts";
+import { DEFAULT_AUTHORITY_PORTS, persistedAuthorities, renderTraefikDynamicConfig } from "../src/routing.ts";
 
 const app = AppId.make("demo");
 const base: RoutePlan = {
@@ -134,6 +134,19 @@ describe("Traefik route filter YAML", () => {
         services,
       },
     });
+  });
+
+  test("recovers Host and HostRegexp authorities from persisted Traefik YAML", () => {
+    // Given
+    const literal = { ...base, hostname: "API.demo.lndo.site", pathPrefix: "/v1" };
+    const wildcard = { ...base, hostname: "*.API.*.SITE", scheme: "https" as const };
+    // When
+    const yaml = renderTraefikDynamicConfig([literal, wildcard], app);
+    // Then
+    expect(persistedAuthorities(yaml, DEFAULT_AUTHORITY_PORTS)).toEqual([
+      { scheme: "http", hostname: "API.demo.lndo.site", port: DEFAULT_AUTHORITY_PORTS.http },
+      { scheme: "https", hostname: "*.api.*.site", port: DEFAULT_AUTHORITY_PORTS.https },
+    ]);
   });
 
   test.each([undefined, false, true])("preserves authored redirect permanence (%s)", (permanent) => {

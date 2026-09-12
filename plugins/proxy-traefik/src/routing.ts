@@ -57,13 +57,31 @@ export const authoritiesFor = (
     })),
   );
 
+const hostnameFromRuleLine = (line: string): string | undefined => {
+  const quoted = /rule:\s+("(?:\\.|[^"\\])*")/.exec(line)?.[1];
+  if (quoted === undefined) return undefined;
+  let rule: unknown;
+  try {
+    rule = JSON.parse(quoted);
+  } catch {
+    return undefined;
+  }
+  if (typeof rule !== "string") return undefined;
+  const hostPart = rule.split(" && ")[0] ?? rule;
+  const literal = /^Host\(`([^`]+)`\)$/.exec(hostPart)?.[1];
+  if (literal !== undefined) return literal;
+  const pattern = /^HostRegexp\(`\^(.+)\$`\)$/.exec(hostPart)?.[1];
+  if (pattern === undefined) return undefined;
+  return pattern.replaceAll("[a-z0-9-]+", "*").replace(/\\(.)/g, "$1");
+};
+
 export const persistedAuthorities = (
   content: string,
   ports: AuthorityPorts,
 ): ReadonlyArray<ProxyAuthority> => {
   const lines = content.split("\n");
   return lines.flatMap((line, index) => {
-    const hostname = line.match(/Host\(`([^`]+)`\)/)?.[1];
+    const hostname = hostnameFromRuleLine(line);
     if (hostname === undefined) return [];
     const entryPoint = lines
       .slice(index + 1, index + 5)
