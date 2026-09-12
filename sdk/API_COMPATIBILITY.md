@@ -654,6 +654,8 @@
 - `LandoPaths.managedFileLedger`
 - `LandoPaths.shellHistoryFile`
 - `LandoPaths.systemPluginsDir`
+- `LandoPaths.userIncludesDir`
+- `ApplyOptions.serviceEnvironment`
 
 ## Additive Beta schema fields
 
