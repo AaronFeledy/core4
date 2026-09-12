@@ -1,12 +1,8 @@
 import { type Context, Effect, Option } from "effect";
 
-import {
-  LandofileEventLifecycleReentryError,
-  LandofileEventStepFailedError,
-  ToolingCompileError,
-} from "@lando/sdk/errors";
+import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { AppLifecycleEventName, AppPlan, ToolingTaskShape } from "@lando/sdk/schema";
+import type { AppPlan, LandofileEventName, ToolingTaskShape } from "@lando/sdk/schema";
 import {
   type EventService,
   RuntimeProviderRegistry,
@@ -19,6 +15,7 @@ import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-s
 import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
+import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import type { ToolingStepLeaf } from "../tooling/step-program.ts";
 import type {
   ResolvedToolingCmdStepLeaf,
@@ -45,7 +42,7 @@ interface EventRedactionScope {
 
 interface EventRuntimeOptions {
   readonly plan: AppPlan;
-  readonly event: AppLifecycleEventName;
+  readonly event: LandofileEventName;
   readonly events: Context.Tag.Service<typeof EventService>;
   readonly privateFileAccess: PrivateFileAccess;
   readonly hostRunner?: Context.Tag.Service<typeof ShellRunner>;
@@ -67,7 +64,7 @@ interface EventLeafResult {
   readonly redactor: Redactor;
 }
 
-type EventLeafError = LandofileEventLifecycleReentryError | LandofileEventStepFailedError;
+type EventLeafError = EventRuntimeError;
 
 const outputTail = (stdout: string, stderr: string): string =>
   `${stdout}${stdout.length > 0 && stderr.length > 0 ? "\n" : ""}${stderr}`.slice(-OUTPUT_TAIL_LENGTH);
@@ -255,9 +252,7 @@ export const makeEventStepRunners = (
   ): Effect.Effect<EventLeafResult, EventLeafError> =>
     effect.pipe(
       Effect.catchAll((error) =>
-        error instanceof LandofileEventLifecycleReentryError || error instanceof LandofileEventStepFailedError
-          ? Effect.fail(error)
-          : Effect.fail(stepFailure(options, leaf, error)),
+        isEventRuntimeError(error) ? Effect.fail(error) : Effect.fail(stepFailure(options, leaf, error)),
       ),
       Effect.flatMap((execution) => finish(options, execution)),
     );
@@ -273,9 +268,7 @@ export const makeEventStepRunners = (
             Effect.flatMap(({ redactor, redactionTokens }) =>
               options.runCanonical(leaf, redactionTokens).pipe(
                 Effect.mapError((error) =>
-                  error instanceof LandofileEventLifecycleReentryError
-                    ? error
-                    : stepFailure({ ...options, redactor }, leaf, error),
+                  isEventRuntimeError(error) ? error : stepFailure({ ...options, redactor }, leaf, error),
                 ),
                 Effect.map((result) => ({ leaf, result, startedAt, redactor })),
               ),
@@ -284,9 +277,6 @@ export const makeEventStepRunners = (
         }),
       ),
     present: (execution) => publish(options, execution.result),
-    mapLeafError: (leaf, error) =>
-      error instanceof LandofileEventLifecycleReentryError || error instanceof LandofileEventStepFailedError
-        ? error
-        : stepFailure(options, leaf, error),
+    mapLeafError: (leaf, error) => (isEventRuntimeError(error) ? error : stepFailure(options, leaf, error)),
   };
 };

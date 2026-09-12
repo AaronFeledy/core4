@@ -6,6 +6,7 @@ import {
   type ConfigExpressionError,
   GlobalAppError,
   type LandofileParseError,
+  type LandofileUnknownEventError,
   LandofileValidationError,
   type NoProviderInstalledError,
   type NotImplementedError,
@@ -49,6 +50,7 @@ export type LoadGlobalPlanError =
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError

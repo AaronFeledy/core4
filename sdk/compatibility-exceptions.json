@@ -1,5 +1,17 @@
 [
   {
+    "surface": "service:LandofileService",
+    "changeKind": "signature-changed",
+    "path": "$.discover",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "service:AppPlanner",
+    "changeKind": "signature-changed",
+    "path": "$.plan",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
     "surface": "schema:LandofileEventLifecycleReentryError",
     "changeKind": "property-added",
     "path": "$.chain",

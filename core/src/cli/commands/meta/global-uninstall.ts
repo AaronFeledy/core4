@@ -7,6 +7,7 @@ import {
   GlobalAppError,
   type GlobalDistConflictError,
   type LandofileParseError,
+  type LandofileUnknownEventError,
   type LandofileValidationError,
   type NoProviderInstalledError,
   type NotImplementedError,
@@ -62,6 +63,7 @@ type GlobalUninstallError =
   | GlobalAppError
   | GlobalDistConflictError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError

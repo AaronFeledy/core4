@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, DateTime, Effect, Layer } from "effect";
+import { Cause, type Context, DateTime, Effect, Layer } from "effect";
 
 import {
   LandofileEventLifecycleReentryError,
@@ -118,6 +118,7 @@ describe("runAppEvent lifecycle reentry", () => {
     if (error._tag !== "LandofileEventLifecycleReentryError") throw error;
     expect(error.command).toBe("start");
     expect(error.event).toBe("pre-start");
+    expect(error.chain).toEqual(["pre-start", "start", "pre-start"]);
   });
 
   test("allows a canonical command step to enter a different lifecycle event", async () => {
@@ -185,6 +186,126 @@ const hostShellRunnerLive = makeShellRunnerLive(() => {
 });
 
 describe("runAppEvent tooling-step kernel", () => {
+  test("bounds nested command events at the attempted seventeenth event", async () => {
+    // Given
+    const plan = attachEffectiveEvents(
+      eventPlan(),
+      Object.fromEntries(
+        Array.from({ length: 20 }, (_, index) => [
+          `pre-t${index + 1}`,
+          [{ command: `app:t${index + 2}`, ignoreError: true }],
+        ]),
+      ),
+    );
+    // When
+    const exit = await Effect.runPromiseExit(
+      runAppEvent(plan, "pre-t1").pipe(
+        Effect.provideService(EventCommandExecutor, {
+          run: (input) =>
+            runAppEvent(plan, `pre-${input.command.slice(4)}`).pipe(
+              Effect.as({ exitCode: 0, stdout: "", stderr: "" }),
+            ),
+        }),
+        Effect.provide(eventRuntime([])),
+      ),
+    );
+    // Then
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") throw new Error("Expected depth failure");
+    expect(Cause.failureOption(exit.cause)).toMatchObject({
+      _tag: "Some",
+      value: {
+        _tag: "LandofileEventInvocationDepthError",
+        limit: 16,
+        depth: 17,
+        chain: [
+          ...Array.from({ length: 16 }, (_, index) => [`pre-t${index + 1}`, `app:t${index + 2}`]).flat(),
+          "pre-t17",
+        ],
+      },
+    });
+  });
+
+  test("blames the immediately preceding edge of a multi-event cycle", async () => {
+    // Given
+    const plan = attachEffectiveEvents(eventPlan(), {
+      "pre-start": [{ command: "app:build" }],
+      "pre-build": [{ command: "app:start" }],
+    });
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        runAppEvent(plan, "pre-start").pipe(
+          Effect.provideService(EventCommandExecutor, {
+            run: (input) =>
+              runAppEvent(plan, input.command === "app:build" ? "pre-build" : "pre-start").pipe(
+                Effect.as({ exitCode: 0, stdout: "", stderr: "" }),
+              ),
+          }),
+          Effect.provide(eventRuntime([])),
+        ),
+      ),
+    );
+    // Then
+    expect(error).toMatchObject({
+      _tag: "LandofileEventLifecycleReentryError",
+      command: "app:start",
+      chain: ["pre-start", "app:build", "pre-build", "app:start", "pre-start"],
+    });
+  });
+
+  test("does not ignore a nested cycle when ignoreError is authored", async () => {
+    // Given
+    const plan = attachEffectiveEvents(eventPlan(), {
+      "pre-start": [{ command: "start", ignoreError: true }],
+    });
+    // When
+    const exit = await Effect.runPromiseExit(runWithFakes(plan, "pre-start", "pre-start", { count: 0 }));
+    // Then
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") throw new Error("Expected cycle failure");
+    expect(Cause.failureOption(exit.cause)).toMatchObject({
+      _tag: "Some",
+      value: { _tag: "LandofileEventLifecycleReentryError" },
+    });
+  });
+
+  test("allows the same command under different simultaneously active events", async () => {
+    // Given
+    const plan = attachEffectiveEvents(eventPlan(), {
+      "pre-start": [{ command: "app:info" }],
+      "pre-build": [{ command: "app:info" }],
+    });
+    const commands: string[] = [];
+    // When
+    await Effect.runPromise(
+      runAppEvent(plan, "pre-start").pipe(
+        Effect.provideService(EventCommandExecutor, {
+          run: (input) =>
+            Effect.gen(function* () {
+              commands.push(input.command);
+              if (commands.length === 1) yield* runAppEvent(plan, "pre-build");
+              return { exitCode: 0, stdout: "", stderr: "" };
+            }),
+        }),
+        Effect.provide(eventRuntime([])),
+      ),
+    );
+    // Then
+    expect(commands).toEqual(["app:info", "app:info"]);
+  });
+
+  test("runs steps attached to a dynamic tooling event name", async () => {
+    // Given
+    const invocations: ToolingInvocation[] = [];
+    const plan = attachEffectiveEvents(eventPlan(), { "pre-build": ["echo build"] });
+    // When
+    await Effect.runPromise(runAppEvent(plan, "pre-build").pipe(Effect.provide(eventRuntime(invocations))));
+    // Then
+    expect(invocations).toHaveLength(1);
+    expect(invocations[0]?.commands[0]?.[2]).toBe('echo build "$@"');
+  });
+
   test("preserves the resolved user and working directory on direct command event steps", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];

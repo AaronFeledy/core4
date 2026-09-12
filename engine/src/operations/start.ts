@@ -37,7 +37,7 @@ import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
@@ -239,7 +239,7 @@ export const startAppForTarget = (
             timestamp: now(),
           });
           yield* events.publish(postStart);
-          yield* runPostAppEvent(plan, "post-start", postStart);
+          yield* runAppEvent(plan, "post-start", postStart);
 
           return { app: plan.name, servicesStarted };
         }),

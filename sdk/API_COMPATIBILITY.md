@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- US-614 moves `LandofileUnknownEventError` from `LandofileService.discover` to `AppPlanner.plan`: event names are validated against resolved effective tooling, not individual source files. Provider-free config lint uses resolved layered/included tooling through the same validator. The frozen service signatures are updated.
+
 - `ToolingFlagShape.boolean` replaces the unreleased `type` field without an alias. Flags add optional `alias`, `choices`, and `required`; arguments add optional `choices` and non-negative integer `order`. `ToolingTaskShape` adds optional `user` and `disabled`, and `cmds` accepts strings or `ToolingStepShape` command objects. `ToolingCompileError` adds optional `{ path, task }` source metadata. The new `ToolingInputError` and `ToolingDisabledError` exports carry tooling identity, source metadata, and remediation.
 
 - `ConfigTranslateSecretReference` is narrowed before first release to three mutually exclusive shapes: `secret-store` carries one canonical `${secret:...}` reference, `postInit.stdin` carries only its disposition, and `postInit.secretEnv` carries its disposition and environment variable name. Raw secret strings and generic reference payloads are not accepted. This contract applies to `ConfigTranslateRecipeRequestInput.secretAnswers` and `RecipeDecomposeInput.secrets`; init-only secret bytes remain outside translation and are delivered only to their declared post-init sink.
@@ -242,11 +244,9 @@
 - `BuildStepSkipEvent`
 - `BuildStep`
 - `BunShellScriptFrontMatter`
-- `AppLifecycleEventName` (twelve names, including `pre-restart` and `post-restart`)
+- `AppLifecycleEventName` (twelve names, including pre-restart and post-restart)
 - `ToolingEventName`
 - `LandofileEventName`
-- `PreRestartEvent`
-- `PostRestartEvent`
 - `EventCmdStep`
 - `EventCommandStep`
 - `EventCommandInputValue`
@@ -255,7 +255,7 @@
 - `EventForStep`
 - `EventStep`
 - `EventTaskStep`
-- `LandofileEvents` (named lifecycle fields plus a string index signature for `pre-<task>` and `post-<task>`; name validation follows tooling resolution)
+- `LandofileEvents` (named lifecycle fields plus a string index signature for pre-task and post-task brackets; name validation follows tooling resolution)
 - `CertificatePlan`
 - `CommandResultEnvelope`
 - `CommandResultFormat`

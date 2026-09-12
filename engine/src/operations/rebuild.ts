@@ -29,7 +29,7 @@ import type { AppRef } from "@lando/sdk/schema";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
@@ -100,7 +100,7 @@ export const rebuildApp = (
     );
     const postRebuild = PostRebuildEvent.make({ _tag: "post-rebuild", app: ref, timestamp: timestamp() });
     yield* events.publish(postRebuild);
-    yield* runPostAppEvent(plan, "post-rebuild", postRebuild);
+    yield* runAppEvent(plan, "post-rebuild", postRebuild);
     return {
       app: start.app,
       servicesRebuilt: start.servicesStarted.map((service) => service.name),

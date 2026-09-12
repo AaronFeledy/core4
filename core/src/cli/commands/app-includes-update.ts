@@ -9,7 +9,6 @@ import {
   LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
-  type LandofileUnknownEventError,
   type LandofileValidationError,
   type NotImplementedError,
 } from "@lando/sdk/errors";
@@ -69,7 +68,6 @@ export type AppIncludesUpdateError =
   | LandofileValidationError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileUnknownEventError
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError

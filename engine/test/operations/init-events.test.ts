@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
+import { Cause, DateTime, Effect, Layer } from "effect";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
@@ -114,28 +114,34 @@ describe("app initialization lifecycle events", () => {
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
   });
 
-  test("warns and completes when a post-init step fails", async () => {
+  test("fails with redacted output and no warning when a post-init step fails", async () => {
     // Given
     const executed: string[] = [];
     const published: string[] = [];
-    let completed = false;
-    const plan = attachEffectiveEvents(eventPlan(), { "post-init": ["fail-post-init"] });
+    const secret = "post-init-secret";
+    const plan = attachEffectiveEvents(eventPlan(), {
+      "post-init": [{ cmd: secret, env: { EVENT_SECRET: secret } }],
+    });
 
     // When
-    await Effect.runPromise(
-      runAppInitEvents(plan).pipe(
-        Effect.tap(() =>
-          Effect.sync(() => {
-            completed = true;
-          }),
-        ),
-        Effect.provide(eventRuntime(executed, published, new Set(["fail-post-init"]))),
-      ),
+    const exit = await Effect.runPromiseExit(
+      runAppInitEvents(plan).pipe(Effect.provide(eventRuntime(executed, published, new Set([secret])))),
     );
 
     // Then
-    expect(completed).toBe(true);
-    expect(published).toContain("message.warn");
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") throw new Error("Expected post-init failure");
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure).toMatchObject({
+      _tag: "Some",
+      value: {
+        _tag: "LandofileEventStepFailedError",
+        event: "post-init",
+        outputTail: "[redacted]",
+      },
+    });
+    expect(JSON.stringify(failure)).not.toContain(secret);
+    expect(published).not.toContain("message.warn");
   });
 
   test("publishes typed init events and exposes each exact payload to its event steps", async () => {

@@ -7,6 +7,7 @@ import {
   type GlobalAppError,
   GlobalDestroyConfirmationError,
   type LandofileParseError,
+  type LandofileUnknownEventError,
   type LandofileValidationError,
   type NoProviderInstalledError,
   type NotImplementedError,
@@ -54,6 +55,7 @@ type GlobalDestroyError =
   | GlobalAppError
   | GlobalDestroyConfirmationError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError
