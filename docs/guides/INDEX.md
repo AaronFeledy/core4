@@ -199,6 +199,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Landofile intro: services, tooling, and proxy | `docs/guides/landofile/your-landofile.mdx` | Shipped |
 | — | — | everyday CLI loop map | `docs/guides/cli/everyday-commands.mdx` | Shipped |
 | — | — | import a SQL dump with exec plus client | `docs/guides/tooling/import-a-database.mdx` | Shipped |
+| — | — | develop against PlanetScale with local MySQL and DATABASE_URL | `docs/guides/tooling/planetscale.mdx` | Shipped |
 | — | — | `lando ssh` service shell and host keys | `docs/guides/cli/ssh.mdx` | Shipped |
 | — | — | `lando apps:poweroff` stop every running app | `docs/guides/cli/poweroff.mdx` | Shipped |
 | — | — | `lando exec` one-off commands in a service | `docs/guides/cli/exec.mdx` | Shipped |
