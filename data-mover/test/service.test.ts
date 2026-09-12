@@ -1902,6 +1902,29 @@ describe("DataMover helpers", () => {
     expect(text(bytes("payload"))).toBe("payload");
     expect(String(portable("/data/payload"))).toBe("/data/payload");
   });
+
+  test("verifies a synthetic stream larger than two GiB without retaining its payload", async () => {
+    // Given: 2,049 references to one reusable one-MiB chunk.
+    const chunk = new Uint8Array(1024 * 1024);
+    chunk.fill(99);
+    const chunkCount = 2049;
+    const expectedSize = chunk.byteLength * chunkCount;
+    const body = Stream.fromIterable(Array.from({ length: chunkCount })).pipe(Stream.map(() => chunk));
+
+    // When: the same incremental verifier used by staged DataMover targets consumes the source.
+    const verified = await Effect.runPromise(
+      collectVerifiedStream({
+        body,
+        expectedSha256: "a93bfd141a88143cf07a5e26c3bea7f09b11129fb5584d5319a58e5ca5168ad4",
+        expectedSizeBytes: expectedSize,
+      }),
+    );
+
+    // Then: byte counts exceed the signed 32-bit boundary and the digest is exact.
+    expect(verified.sizeBytes).toBe(expectedSize);
+    expect(verified.sizeBytes).toBeGreaterThan(2 * 1024 * 1024 * 1024);
+    expect(verified.sha256).toBe("a93bfd141a88143cf07a5e26c3bea7f09b11129fb5584d5319a58e5ca5168ad4");
+  });
 });
 
 describe("DataMoverLive hostPath -> hostPath directory transfers", () => {
