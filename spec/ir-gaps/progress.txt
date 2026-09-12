@@ -242,3 +242,10 @@ Verification: typecheck, lint, check:boundaries, check:schema-compatibility, che
   - `Array.isArray` does not narrow a `readonly` array out of a union of object-or-array; discriminate with `"run" in value` and let the array fall through.
   - `provider: test` cannot prove planner-resolved users, because no command prints the resolved plan's build steps. The guide proves schema round-trip, lint rejection, and a successful plan refresh, and leaves USER emission to the container-runtime suites.
 ---
+
+## 2026-09-12 - US-616 Review
+- Kept generated log-redirect mkdir/ln steps as root so a non-root service user cannot starve system log-path mutations; formatted the IR-gap PRD index so lint is green.
+- Review notes (deferred/rejected): omitting `user` when neither the step nor the service names one is the intended image-default path, not a planning hole; public BuildPlan materialization is a pre-existing orchestrator shape, not this story's surface; feature-intent ContainerUser decoding is defense-in-depth after Landofile schema validation (security PASS); full-suite uninstall failures are unrelated and out of host-safe scope.
+- Verification: typecheck, lint passed; 192 focused tests passed across redirect, planner, build-key, image-user, boot/security, and the build-steps guide (2/2).
+- **Learnings for future iterations:** System-mutating build steps include generated log redirects, not only bundled feature producers. After replacing `privileged` with inherited planned users, grep every `addBuildStep` / build-step factory for a missing `user: "root"`.
+---
