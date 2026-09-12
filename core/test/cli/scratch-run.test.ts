@@ -11,6 +11,7 @@ import {
   StreamFrame,
 } from "@lando/core/schema";
 import {
+  type ApplyOptions,
   type ConfigService,
   type EventService,
   PathsService,
@@ -70,6 +71,7 @@ const providerId = ProviderId.make("lando");
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
+    resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
       resolve: (packageSpec) =>
         Promise.resolve({
@@ -144,6 +146,7 @@ interface Recorded {
 }
 
 interface HarnessOptions {
+  readonly applyOptions?: ApplyOptions[];
   readonly buildCalls?: string[];
   readonly artifactBuild?: boolean;
   readonly artifactPull?: boolean;
@@ -185,9 +188,10 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
         return { providerId, ref: spec.ref, digest: "sha256:source" };
       }),
     removeArtifact: () => Effect.void,
-    apply: (plan) =>
+    apply: (plan, applyOptions) =>
       Effect.sync(() => {
         recorded.appliedPlans.push(plan);
+        options.applyOptions?.push(applyOptions);
         return { changed: true };
       }),
     start: () => die("start"),
@@ -279,6 +283,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
       Layer.provide(Layer.mergeAll(scratchDeps, buildOrchestratorLive)),
     ),
     options.configLayer ?? ConfigServiceLive,
+    SecretStoreLive,
   ).pipe(Layer.provide(PrivateFileAccessLive));
 };
 
@@ -461,6 +466,52 @@ describe("parseScratchRunArgv", () => {
 });
 
 describe("scratchRun", () => {
+  test("resolves exact service environment secrets only in transient provider options", async () => {
+    await withTempProject(async (dir) => {
+      const previous = process.env.LANDO_SECRET_SCRATCH_TOKEN;
+      process.env.LANDO_SECRET_SCRATCH_TOKEN = "resolved-scratch-token";
+      try {
+        await writeFile(
+          join(dir, ".lando.yml"),
+          [
+            "name: scratch-secret",
+            "services:",
+            "  web:",
+            "    type: compose",
+            "    primary: true",
+            "    image: alpine:latest",
+            "    environment:",
+            "      TOKEN: '${secret:SCRATCH_TOKEN}'",
+            "",
+          ].join("\n"),
+        );
+        const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+        const applyOptions: ApplyOptions[] = [];
+
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.flatMap(ScratchAppService, (scratch) =>
+              scratch.acquire({ source: { kind: "fork" }, detached: false, isolate: "cwd" }),
+            ),
+          ).pipe(
+            Effect.provide(makeHarnessLayer(recorded, { applyOptions })),
+            Effect.provide(testSupportLayer()),
+          ),
+        );
+
+        expect(applyOptions[0]?.serviceEnvironment?.[ServiceName.make("web")]).toEqual({
+          TOKEN: "resolved-scratch-token",
+        });
+        expect(recorded.appliedPlans[0]?.services[ServiceName.make("web")]?.environment).toEqual({
+          TOKEN: "${secret:SCRATCH_TOKEN}",
+        });
+      } finally {
+        if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_SECRET_SCRATCH_TOKEN");
+        else process.env.LANDO_SECRET_SCRATCH_TOKEN = previous;
+      }
+    });
+  });
+
   test("runs the command in the toolbox scratch and destroys it on scope close", async () => {
     await withTempProject(async (dir) => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };

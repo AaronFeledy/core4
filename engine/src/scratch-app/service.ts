@@ -55,6 +55,7 @@ import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -694,7 +695,16 @@ const makeScratchAppService = (
             ),
           ),
       });
-      yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false })).pipe(
+      const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan).pipe(
+        Effect.mapError((cause) =>
+          scratchAppError(
+            "start",
+            `Unable to resolve service environment for scratch app ${scratchId}.`,
+            cause,
+          ),
+        ),
+      );
+      yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false, serviceEnvironment })).pipe(
         // A failed start can leave a materialized dir and partial provider state; the scope
         // finalizer only covers a successful start, so reclaim on the failure path too.
         Effect.tapError(() => destroyScratchResources),
