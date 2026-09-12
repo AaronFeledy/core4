@@ -66,8 +66,9 @@ export interface ServiceBuildStepIntent {
   /** The command(s) to run for this step. */
   readonly command: CommandSpec;
   /**
-   * Container identity this step runs as. Planning resolves an omitted value to
-   * the service's planned user, so a consumer never re-resolves it.
+   * Container identity this step runs as. Planning fills an omitted value with
+   * the service's planned user when that user exists. Artifact realization still
+   * treats a still-omitted value as the final service or inherited image identity.
    */
   readonly user?: string;
   /** Resolved immutable artifact identities included in the image build key but not rendered as commands. */
