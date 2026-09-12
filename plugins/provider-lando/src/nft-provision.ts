@@ -305,10 +305,29 @@ export const decompressXz = async (
   try {
     const python = await runBoundedDecompressProcess({
       command: "python3",
-      args: ["-c", "import lzma,sys; sys.stdout.buffer.write(lzma.decompress(sys.stdin.buffer.read()))"],
+      args: [
+        "-c",
+        `import lzma,sys
+remaining = int(sys.argv[1])
+with lzma.LZMAFile(sys.stdin.buffer) as source:
+    while True:
+        chunk = source.read(min(65536, remaining + 1))
+        if len(chunk) > remaining:
+            sys.exit(3)
+        if not chunk:
+            break
+        sys.stdout.buffer.write(chunk)
+        remaining -= len(chunk)`,
+        String(resolved.maxDecompressedBytes),
+      ],
       stdin: bytes,
       ...resolved,
     });
+    if (python.exitCode === 3) {
+      throw new NftDecompressionCapError(
+        `The nft package exceeded the decompressed-size cap of ${resolved.maxDecompressedBytes} bytes.`,
+      );
+    }
     if (python.exitCode === 0 && python.stdout.length > 0) return python.stdout;
   } catch (cause) {
     if (

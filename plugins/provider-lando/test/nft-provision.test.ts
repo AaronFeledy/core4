@@ -304,6 +304,59 @@ describe("deb extraction", () => {
     ).toEqual(payload);
   });
 
+  test.skipIf(process.platform !== "linux" || Bun.which("python3") === null)(
+    "real Python aborts over-cap expansion within a smaller address-space limit",
+    async () => {
+      // Given: 128 MiB of expansion, but only 64 MiB of child address space and a 1 KiB output cap.
+      const python = Bun.which("python3");
+      if (python === null) throw new Error("python3 unavailable");
+      const fixture = Bun.spawnSync([
+        python,
+        "-c",
+        `import lzma,sys
+c = lzma.LZMACompressor()
+for _ in range(128):
+    sys.stdout.buffer.write(c.compress(b'a' * (1024 * 1024)))
+sys.stdout.buffer.write(c.flush())`,
+      ]);
+      expect(fixture.exitCode).toBe(0);
+      const root = await mkdtemp(join(tmpdir(), "lando-nft-real-python-"));
+      const previousPath = process.env.PATH;
+      try {
+        // Execute the production -c program in real Python; no xz fallback is available.
+        await writeFile(
+          join(root, "python3"),
+          `#!/bin/sh
+exec '${python}' -c "import resource
+resource.setrlimit(resource.RLIMIT_AS, (64 * 1024**2, 64 * 1024**2))
+$2" "$3"
+`,
+          { mode: 0o755 },
+        );
+        process.env.PATH = root;
+
+        // When/Then: Python reports the cap, not MemoryError or fallback failure.
+        await expectRejectedMessage(
+          () => decompressXz(fixture.stdout, { maxDecompressedBytes: 1024 }),
+          "decompressed-size cap",
+        );
+        const small = Bun.spawnSync([
+          python,
+          "-c",
+          "import lzma,sys; sys.stdout.buffer.write(lzma.compress(b'a' * 1024))",
+        ]);
+        expect(small.exitCode).toBe(0);
+        expect(await decompressXz(small.stdout, { maxDecompressedBytes: 1024 })).toEqual(
+          Buffer.alloc(1024, 0x61),
+        );
+      } finally {
+        if (previousPath === undefined) Reflect.deleteProperty(process.env, "PATH");
+        else process.env.PATH = previousPath;
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   test("kills and reaps a Python child after its streamed output exceeds the cap", async () => {
     // Given: a decompressor that fills stderr before streaming stdout forever.
     await withFakeDecompressCommands("oversize", async (pidFile) => {
@@ -594,6 +647,8 @@ describe("NFT_MANIFEST", () => {
 
   test("default decompression budget accommodates a conservative expansion of the largest pinned package", async () => {
     // Given: a synthetic payload sized from the largest pinned artifact with a 32x expansion allowance.
+    // This checks synthetic gzip budget headroom, not actual pinned-package expansion or extraction
+    // compatibility without dpkg-deb; the real pinned assets are not downloaded by this test.
     const largestPinnedBytes = Math.max(
       ...Object.values(NFT_MANIFEST.packages).flatMap((packages) => packages.map((pkg) => pkg.sizeBytes)),
     );
