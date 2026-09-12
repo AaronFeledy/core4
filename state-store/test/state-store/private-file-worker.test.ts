@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Effect, Either } from "effect";
+import { acquireAdvisoryLockAt } from "../../src/lock.ts";
 import { makePrivateFileAccessWorker } from "../../src/private-file-worker.ts";
 import { makeRecordingWorkerSpawn } from "../private-file-worker.ts";
 
@@ -19,6 +24,82 @@ const settlesAsRejected = async (operation: Promise<void>): Promise<boolean> =>
   );
 
 describe("private-file ACL worker lifecycle", () => {
+  test.each(["write", "flush"] as const)("bounds a stalled stdin %s", async (method) => {
+    const spawn = makeRecordingWorkerSpawn();
+    const worker = makePrivateFileAccessWorker({
+      systemRoot: "D:\\Windows",
+      env: {},
+      timeoutMs: 25,
+      spawn: (command, options) => {
+        const child = spawn.spawn(command, options);
+        return { ...child, stdin: { ...child.stdin, [method]: () => new Promise<number>(() => undefined) } };
+      },
+    });
+    try {
+      const outcome = await Promise.race([
+        worker.enforce("D:\\tmp\\lock").then(
+          () => "accepted",
+          () => "rejected",
+        ),
+        Bun.sleep(1000).then(() => "stalled"),
+      ]);
+      expect(outcome).toBe("rejected");
+      expect(spawn.killCount()).toBe(1);
+    } finally {
+      await worker.close();
+    }
+  });
+  test.each(["enforce", "verify"] as const)(
+    "bounds a stalled %s during lock acquisition",
+    async (operation) => {
+      const root = await mkdtemp(join(tmpdir(), "lando-stalled-acl-"));
+      const lockPath = join(root, "mutation.lock");
+      const binary = join(root, "lando");
+      const candidate = join(root, "candidate");
+      await writeFile(binary, "old");
+      await writeFile(candidate, "new");
+      if (operation === "verify")
+        await writeFile(
+          lockPath,
+          JSON.stringify({ pid: process.pid, token: "other", createdAt: Date.now() }),
+          { mode: 0o600 },
+        );
+      const spawn = makeRecordingWorkerSpawn(() => new Promise(() => undefined));
+      const worker = makePrivateFileAccessWorker({
+        systemRoot: "D:\\Windows",
+        env: {},
+        spawn: spawn.spawn,
+        timeoutMs: 25,
+      });
+      try {
+        const acquisition = Effect.runPromise(
+          Effect.either(
+            Effect.acquireUseRelease(
+              acquireAdvisoryLockAt(lockPath, "replacement", {
+                privateFileAccess: worker,
+                expireLiveOwner: false,
+              }),
+              () => Effect.tryPromise(() => rename(candidate, binary)),
+              (lock) => lock.release,
+            ),
+          ),
+        );
+        const outcome = await Promise.race([acquisition, Bun.sleep(1000).then(() => "stalled" as const)]);
+        expect(outcome).not.toBe("stalled");
+        if (outcome === "stalled") return;
+        expect(Either.isLeft(outcome) && outcome.left._tag).toBe("StateStoreError");
+        expect(spawn.requests[0]?.operation).toBe(operation);
+        expect(spawn.killCount()).toBe(1);
+        expect(await Bun.file(binary).text()).toBe("old");
+        expect(await Bun.file(candidate).text()).toBe("new");
+        expect(await Bun.file(lockPath).exists()).toBe(operation === "verify");
+      } finally {
+        await worker.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   test.each(["enforce", "verify"] as const)(
     "sends ASCII-only %s frames for Unicode paths",
     async (operation) => {
