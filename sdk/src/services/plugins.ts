@@ -45,6 +45,25 @@ export interface ServiceTypeHostFacts {
   readonly arch: string;
 }
 
+/** One bounded app-root-relative file a service type asks the planner to read. */
+export interface ServiceTypeProjectFileDeclaration {
+  readonly path: string;
+  readonly maxBytes: number;
+}
+
+/** Planner-supplied file state. Missing files are retained so cache keys track creation and deletion. */
+export type ServiceTypeProjectFileInput =
+  | {
+      readonly path: string;
+      readonly present: false;
+    }
+  | {
+      readonly path: string;
+      readonly present: true;
+      readonly text: string;
+      readonly sha256: string;
+    };
+
 /** Input handed to {@link ServiceType.resolve} for one service in the resolved Landofile. */
 export interface ServiceTypeInput {
   readonly name: string;
@@ -56,6 +75,7 @@ export interface ServiceTypeInput {
   readonly metadata: typeof PlanMetadata.Encoded;
   readonly host?: ServiceTypeHostFacts | undefined;
   readonly capabilities?: ProviderCapabilities;
+  readonly projectFiles?: ReadonlyArray<ServiceTypeProjectFileInput>;
   readonly parentResolution?: ServiceTypeResolution | undefined;
 }
 
@@ -101,6 +121,7 @@ export interface ServiceType {
   readonly versions?: ReadonlyArray<string>;
   readonly extends?: string;
   readonly artifacts?: Readonly<Record<string, string>>;
+  readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
   readonly schema: Schema.Schema.AnyNoContext;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }
