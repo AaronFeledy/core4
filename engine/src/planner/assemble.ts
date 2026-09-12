@@ -82,6 +82,7 @@ import { finalizeServices } from "./endpoints.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
+import { loadServiceTypeProjectFiles } from "./project-files.ts";
 import {
   type ResolvedService,
   appFeatureError,
@@ -284,6 +285,31 @@ export const planApp = (
         resolvedArtifactTag === undefined
           ? serviceWithEnvironment
           : { ...serviceWithEnvironment, image: resolvedArtifactTag };
+      if (pinnedService.packageRoot !== undefined && serviceType.id !== "node") {
+        yield* Effect.fail(
+          new LandofileValidationError({
+            message: `Service ${name} may use packageRoot only with bare type: node. Remove packageRoot or set type to node.`,
+            file: landofilePath,
+            issues: [`services.${name}.packageRoot`],
+          }),
+        );
+      }
+      if (serviceType.id === "node" && pinnedService.image !== undefined) {
+        yield* Effect.fail(
+          new LandofileValidationError({
+            message: `Service ${name} cannot combine bare type: node inference with image. Remove image or use an explicit Node type.`,
+            file: landofilePath,
+            issues: [`services.${name}.image`],
+          }),
+        );
+      }
+      const projectFiles = yield* loadServiceTypeProjectFiles({
+        appRoot,
+        serviceName: name,
+        packageRoot: pinnedService.packageRoot ?? ".",
+        declarations: serviceType.projectFiles?.(pinnedService) ?? [],
+        fileSystem,
+      });
       const resolution = yield* serviceType
         .resolve({
           name,
@@ -295,6 +321,7 @@ export const planApp = (
           metadata: encodedMetadata,
           host,
           capabilities: providerCapabilities,
+          projectFiles,
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       const resolvedAuthored = authoredStorageScopes(appRoot, name, resolution.normalizedConfig);
@@ -376,6 +403,7 @@ export const planApp = (
         featureRefs,
         resolvedArtifactTag,
         envFileInputs: loadedEnvFiles.inputs,
+        projectFiles,
       });
     }
 
@@ -416,6 +444,12 @@ export const planApp = (
             logSources: entry.logSources,
             featureRefs: entry.featureRefs,
             envFileInputs: entry.envFileInputs,
+            projectFiles: entry.projectFiles.map((file) => ({
+              path: file.path,
+              present: file.present,
+              ...(file.present ? { sha256: file.sha256 } : {}),
+            })),
+            metadata: entry.resolution.metadata ?? {},
             ...(entry.resolvedArtifactTag === undefined
               ? {}
               : { resolvedArtifactTag: entry.resolvedArtifactTag }),

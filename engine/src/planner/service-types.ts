@@ -13,6 +13,7 @@ import type {
   PluginRegistry,
   ServiceType,
   ServiceTypeHostFacts,
+  ServiceTypeProjectFileInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 
@@ -159,6 +160,7 @@ export interface ResolvedService {
   }>;
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
+  readonly projectFiles: ReadonlyArray<ServiceTypeProjectFileInput>;
 }
 
 export type AuthoredStorageInfo = {

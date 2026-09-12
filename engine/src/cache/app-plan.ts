@@ -29,7 +29,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 15n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 16n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
