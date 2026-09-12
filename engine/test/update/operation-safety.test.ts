@@ -27,6 +27,48 @@ const run = (options: UpdateOptions) =>
       }),
     ),
   );
+
+test.each([
+  { result: { hasFailures: true }, outcome: "network_failure" },
+  { result: { coreBlocked: true }, outcome: "permission_failure" },
+  {
+    result: {
+      coreFailure: {
+        tag: "UpdateChecksumVerificationError",
+        message: "verification failed",
+        remediation: "retry",
+      },
+    },
+    outcome: "signature_failure",
+  },
+  {
+    result: { coreFailure: { tag: "UpdatePermissionError", message: "exec failed", remediation: "retry" } },
+    outcome: "permission_failure",
+  },
+])("reports $outcome for returned update failures", async ({ result, outcome }) => {
+  const records: Readonly<Record<string, unknown>>[] = [];
+  await Effect.runPromise(
+    update({
+      runUpdate: () => Effect.succeed({ updatedCore: false, updatedPlugins: [], ...result }),
+    }).pipe(
+      Effect.provideService(Telemetry, {
+        enabled: true,
+        record: (_, data) =>
+          Effect.sync(() => {
+            records.push(data);
+          }),
+      }),
+      Effect.provideService(ProcessRunner, {
+        run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+        stream: () => {
+          throw new Error("unused");
+        },
+      }),
+    ),
+  );
+  expect(records).toHaveLength(1);
+  expect(records[0]?.outcome).toBe(outcome);
+});
 const fixture = async (): Promise<UpdateOptions> => {
   const root = await mkdtemp(join(tmpdir(), "lando-core-safety-"));
   roots.push(root);

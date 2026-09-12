@@ -669,13 +669,20 @@ export const update = (
           : options.runUpdate();
 
     return yield* operation.pipe(
-      Effect.tap(() =>
+      Effect.tap((result) =>
         recordUpdateOutcomeTelemetry(telemetry, {
           version: CORE_VERSION,
           targetVersion,
           channel: required.channel,
           platform: platform(),
-          outcome: "success",
+          outcome:
+            result.coreFailure !== undefined
+              ? updateOutcomeFromError({ _tag: result.coreFailure.tag })
+              : result.coreBlocked === true
+                ? "permission_failure"
+                : result.hasFailures === true
+                  ? updateOutcomeFromError(undefined)
+                  : "success",
         }),
       ),
       Effect.tapError((error) =>
