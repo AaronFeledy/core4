@@ -430,7 +430,7 @@ export const pluginAdd = (
     const hadTrustBefore = trustStoreForRollback.has(trustName);
     const trustSource = yield* Effect.tryPromise({
       try: async () => {
-        if (hasPostinstall && options.trust !== true) {
+        if (hasPostinstall && options.trust !== true && options.expectedCurrentVersion === undefined) {
           if (trustStoreForRollback.has(trustName)) return "session";
           if (
             persistentStore !== undefined &&

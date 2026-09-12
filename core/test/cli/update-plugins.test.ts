@@ -15,10 +15,11 @@ import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
 let root: string;
 let pluginsRoot: string;
 
-const pluginManifest = (name: string, version: string): string =>
+const pluginManifest = (name: string, version: string, postinstall = false): string =>
   JSON.stringify({
     name,
     version,
+    ...(postinstall ? { scripts: { postinstall: "exit 0" } } : {}),
     landoPlugin: {
       name,
       version,
@@ -28,13 +29,13 @@ const pluginManifest = (name: string, version: string): string =>
     },
   });
 
-const makeTarball = async (name: string, version: string): Promise<Uint8Array> => {
+const makeTarball = async (name: string, version: string, postinstall = false): Promise<Uint8Array> => {
   const stage = await mkdtemp(join(tmpdir(), "lando-update-plugin-tar-"));
   const pkg = join(stage, "package");
   const archive = join(stage, "archive.tgz");
   try {
     await mkdir(pkg, { recursive: true });
-    await writeFile(join(pkg, "package.json"), pluginManifest(name, version));
+    await writeFile(join(pkg, "package.json"), pluginManifest(name, version, postinstall));
     await writeFile(join(pkg, "index.js"), "export {};\n");
     const proc = Bun.spawn({
       cmd: ["tar", "-czf", archive, "-C", stage, "package"],
@@ -240,41 +241,47 @@ describe("registry plugin update adapter", () => {
     await expect(Bun.file(join(pluginsRoot, name, "1.1.0", "package.json")).exists()).resolves.toBe(false);
   });
 
-  test("does not apply after persistent trust is revoked during planning", async () => {
-    // Given
-    const name = "@lando/plugin-php";
-    const currentPath = join(pluginsRoot, name, "1.0.0");
-    await mkdir(currentPath, { recursive: true });
-    await writeFile(join(currentPath, "package.json"), pluginManifest(name, "1.0.0"));
-    await writeFile(join(currentPath, "index.js"), "export {};\n");
-    await writeFile(
-      join(pluginsRoot, "registry.json"),
-      `${JSON.stringify({ [name]: { name, version: "1.0.0", path: currentPath, requestedSelector: "latest" } })}\n`,
-    );
-    const trustStore = makePluginTrustStore(join(root, "trust.yml"));
-    await Effect.runPromise(trustStore.trustPlugin(name));
-    const bytes = await makeTarball(name, "1.1.0");
-    const registryClient: NpmRegistryClient = {
-      fetchPackument: async () => {
-        await Effect.runPromise(trustStore.untrustPlugin(name));
-        return packumentFor(name, bytes);
-      },
-    };
-    const runner = await Effect.runPromise(
-      makePluginUpdateRunner({ pluginsRoot, registryClient, fetcher: { fetch: async () => bytes } }).pipe(
-        Effect.provide(layerFor(trustStore)),
-      ),
-    );
+  test.each([false, true])(
+    "does not apply after persistent trust is revoked during planning (postinstall=%s)",
+    async (postinstall) => {
+      // Given
+      const name = "@lando/plugin-php";
+      const currentPath = join(pluginsRoot, name, "1.0.0");
+      await mkdir(currentPath, { recursive: true });
+      await writeFile(join(currentPath, "package.json"), pluginManifest(name, "1.0.0"));
+      await writeFile(join(currentPath, "index.js"), "export {};\n");
+      await writeFile(
+        join(pluginsRoot, "registry.json"),
+        `${JSON.stringify({ [name]: { name, version: "1.0.0", path: currentPath, requestedSelector: "latest" } })}\n`,
+      );
+      const trustStore = makePluginTrustStore(join(root, "trust.yml"));
+      await Effect.runPromise(trustStore.trustPlugin(name));
+      const bytes = await makeTarball(name, "1.1.0", postinstall);
+      const registryClient: NpmRegistryClient = {
+        fetchPackument: async () => {
+          await Effect.runPromise(trustStore.untrustPlugin(name));
+          return packumentFor(name, bytes);
+        },
+      };
+      const runner = await Effect.runPromise(
+        makePluginUpdateRunner({ pluginsRoot, registryClient, fetcher: { fetch: async () => bytes } }).pipe(
+          Effect.provide(layerFor(trustStore)),
+        ),
+      );
 
-    // When
-    const result = await Effect.runPromise(
-      runner({ currentCoreVersion: "4.1.0", targetCoreVersion: "4.1.0", combined: false, dryRun: false }),
-    );
+      // When
+      const result = await Effect.runPromise(
+        runner({ currentCoreVersion: "4.1.0", targetCoreVersion: "4.1.0", combined: false, dryRun: false }),
+      );
 
-    // Then
-    expect(result.rows).toMatchObject([{ name, status: "failed", reason: "apply-failed" }]);
-    expect(result.updatedPlugins).toEqual([]);
-  });
+      // Then
+      expect(result.rows).toMatchObject([{ name, status: "failed", reason: "apply-failed" }]);
+      expect(result.updatedPlugins).toEqual([]);
+      const registry = JSON.parse(await readFile(join(pluginsRoot, "registry.json"), "utf8"));
+      expect(registry[name]).toMatchObject({ version: "1.0.0", path: currentPath });
+      expect(await Effect.runPromise(trustStore.isPluginTrusted(name))).toBe(false);
+    },
+  );
 
   test("replaces an existing target directory from a freshly verified tarball", async () => {
     // Given
