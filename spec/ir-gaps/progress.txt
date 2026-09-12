@@ -6,6 +6,8 @@
 - Widening a Landofile value type ripples into expression resolution: `engine/src/tooling/step-runner.ts` walks the same shape and must handle every new union member, and `Effect.forEach` over a heterogeneous union needs an explicit callback return annotation under `exactOptionalPropertyTypes`.
 - `check:guide-coverage` only scans PRDs listed in `docs/guides/prd-sources.json`. A PRD outside that list needs no `docs/guides/INDEX.md` row, so do not add one speculatively.
 - Guide fixtures resolve from `docs/guides/<frontmatter-id>/fixtures/<name>/`, never from the MDX's own subdirectory.
+- A non-zero exit from a tooling command is a RESULT, not an Effect failure: `runTooling` stops at the first non-zero step and returns the accumulated streams carrying that exit code, and the CLI maps it through `successExitCode`. Reserve tagged failures for compile, input, and disabled errors so CLI, MCP, and library surfaces stay uniform.
+- Removing or widening a public schema property needs an entry in `sdk/compatibility-exceptions.json` keyed by surface + changeKind + path with a justification. `check:schema-compatibility` is its own gate; typecheck, lint, and the test suites all stay green while it fails.
 
 ## 2026-09-11 - US-613 (in progress, not complete)
 
@@ -39,4 +41,31 @@ Verification: typecheck, lint, and check:boundaries passed; 359 targeted tests p
 - Fixed: disabled tasks stay in the index as hidden; unused plan cache deleted; retired flag `type` leftover fixture and exemption removed
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 87 targeted tests pass
+---
+## 2026-09-11 23:41 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-613 (expected passes: true)
+---
+## 2026-09-11 23:41 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-613 (expected passes: true)
+---
+## 2026-09-11 23:41 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-613 (expected passes: true)
+---
+
+## 2026-09-12 00:45 - US-613 (complete)
+
+Closed the two defects that held the story open, plus branch-local breakage that only CI would have caught.
+
+- `lando <task> --help` now renders the declared FLAGS/ARGUMENTS help before the task's argv is parsed. The decision reads the normalized flag/arg metadata the command index already carries, so a task with declared input gets Lando's help while a raw-passthrough task still hands `--help` to the tool it wraps. A hidden or disabled task keeps its own tagged refusal, and a task that declares its own `help` flag (or `h` alias) keeps ownership of both spellings.
+- Restored the tooling result contract the step-execution rewrite had changed: a non-zero command exit is the task's result, carrying the verbatim exit code, accumulated stdout/stderr, redaction tokens, and progress events, while a multi-step task still stops at the first failing step. Tagged failures stay reserved for compile, input, and disabled errors, which keeps the CLI, MCP, and library surfaces identical for a failing developer tool. Reviewed against the published `ToolingEngine` contract; lifecycle events are unaffected because they abort through their own event-step failure.
+- Recorded the story's public schema movement (retired flag spelling, widened flag/arg/step projections) as compatibility acceptances so the schema gate passes on intent rather than silence.
+- Repaired the translated-tooling rejection check, whose fixture had been switched to supported metadata while it still asserted a rejection; it now proves invalid tooling metadata from a translator is refused before anything is written.
+
+Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-coverage, check:public-transcripts, check:schema-compatibility, check:telemetry-inventory, and codegen:check pass; 677 targeted tests pass across 34 tooling, help, alias, MCP, cache, and schema suites; the flags-and-args guide plus three adjacent tooling guides pass. Manual CLI QA on the real binary with isolated user roots: help renders for bare name, canonical id, and custom alias; `-h` behaves the same; passthrough and author-declared help flags are byte-identical to the pre-change baseline; a disabled task still fails `ToolingDisabledError` on a fresh cache; a failing single-step task returns exit 7 with its streams; a failing first step stops the chain.
+
+- **Learnings for future iterations:**
+  - Story breakage hides OUTSIDE the story's own suites. Three pre-existing CLI contract tests and the schema-compatibility gate had been red for two iterations because only the new suites were run. Sweep by grepping `*.test.ts` for every symbol whose behavior changed, and run the semantic gates (`check:schema-compatibility` above all) whenever `sdk/src/schema/**` moves.
+  - Pass the canonical command id (`app:<task>`) into help dispatch, never the typed token: a task named `app`, `global`, or `recipes` would otherwise be captured by the help-topic branch.
+  - Route dispatch decisions off cache metadata instead of argv shape. The command index already knows whether a task declared input, so the help gate needs no Landofile load and no provider.
+  - Once the unsupported-tooling allowlists matched the schema exactly, no tooling key is both schema-valid and scan-rejected, so translator output carrying bad tooling metadata now surfaces as `ConfigTranslateError` before any write rather than `NotImplementedError`.
 ---
