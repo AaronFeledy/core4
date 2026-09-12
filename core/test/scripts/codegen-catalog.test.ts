@@ -126,6 +126,7 @@ const expectedCatalogRows = [
   ["platform-readiness-workflow", "committed-workflow", "build-platform-readiness-workflow.ts", "repo"],
   ["drupal-journey-workflow", "committed-workflow", "build-drupal-journey-workflow.ts", "repo"],
   ["rails-journey-workflow", "committed-workflow", "build-rails-journey-workflow.ts", "repo"],
+  ["workflow-performance-workflow", "committed-workflow", "build-workflow-performance-workflow.ts", "repo"],
 ] as const;
 
 describe("codegen catalog", () => {
@@ -243,6 +244,7 @@ describe("codegen catalog", () => {
       "platform-readiness-workflow",
       "drupal-journey-workflow",
       "rails-journey-workflow",
+      "workflow-performance-workflow",
     ];
 
     // When
@@ -254,12 +256,12 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(27);
+    expect(catalog).toHaveLength(28);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(1);
-    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(10);
+    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(11);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(16);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
