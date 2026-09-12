@@ -146,3 +146,10 @@ Verification: typecheck, lint, check:boundaries, check:guide-coverage, check:sch
   - `ToolingDisabledError` requires `source`, so the shared compiler takes a required source and the event command path synthesizes one from the plan root. Do not make it optional to accommodate a caller that simply has not built one.
   - Deferred and still open, carried from the prior story's review: `toolingArgv` in `core/src/cli/event-command-target.ts` still orders positionals by authored object key instead of the normalized argument `order`. Any test for it must decode the task through the schema first, because `Schema.Struct` rebuilds objects in field-declaration order and a decode-free fixture is a false green.
 ---
+
+## 2026-09-12 - US-614 Review
+- Kept fatal `post-start` outside host-proxy acquisition so a failing post hook cannot close a session the start body already retained, matching `post-restart` no-rollback.
+- Review notes (deferred/rejected): lint/doctor event names stay provider-free layered/included tooling (service-type contributions remain planner-only, as the lint comment documents); QA FAIL was a detached worktree missing generated bundled plugins, not a product bug; `ignoreError` on command steps still ignores target failures by contract while cycle/depth stay unignorable; `toolingArgv` positional order stays deferred from US-613.
+- Verification: typecheck and lint passed; restart-events 4/4 including the new post-start no-rollback case.
+- **Learnings for future iterations:** Making a previously warn-only post hook fatal changes `acquireUseRelease` keep/drop semantics. Run the post hook after the body has already marked resources retained.
+---
