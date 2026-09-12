@@ -1,5 +1,41 @@
 [
   {
+    "surface": "command:app:pull",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "command:app:push",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataEndpoint",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataTransferSpec",
+    "changeKind": "unsupported-construct",
+    "path": "$.from.anyOf",
+    "justification": "Host-path source endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataTransferSpec",
+    "changeKind": "unsupported-construct",
+    "path": "$.to.anyOf",
+    "justification": "Host-path target endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:SyncResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
     "surface": "command:app:config",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
