@@ -29,7 +29,10 @@ import { PluginUpdatePlanRowSchema } from "./plugin-plan.ts";
 
 export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
 
+import { CoreUpdateFailureSchema } from "./errors.ts";
+
 export const UpdateResultSchema = Schema.Struct({
+  coreFailure: Schema.optional(CoreUpdateFailureSchema),
   updatedCore: Schema.Boolean,
   updatedPlugins: Schema.Array(Schema.String),
   pluginResults: Schema.optional(Schema.Array(PluginUpdatePlanRowSchema)),

@@ -39,14 +39,26 @@ export const runUpdateCommand = (input: unknown) =>
   });
 
 export const renderUpdateResult = (result: UpdateResult): string => {
-  const coreStatus = result.coreBlocked
-    ? "blocked"
-    : result.updatedCore
-      ? "updated"
-      : result.coreUpdateAvailable
-        ? "available"
-        : "unchanged";
-  const core = `core: ${coreStatus}`;
+  const coreStatus =
+    result.coreFailure !== undefined
+      ? "failed"
+      : result.coreBlocked
+        ? "blocked"
+        : result.updatedCore
+          ? "updated"
+          : result.coreUpdateAvailable
+            ? "available"
+            : "unchanged";
+  const core = [
+    `core: ${coreStatus}`,
+    ...(result.coreFailure === undefined
+      ? []
+      : [
+          `error: ${result.coreFailure.tag}`,
+          result.coreFailure.message,
+          `remediation: ${result.coreFailure.remediation}`,
+        ]),
+  ].join("\n");
   const plugins = (result.pluginResults ?? []).map((row) =>
     [
       `plugin: ${row.name}`,

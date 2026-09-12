@@ -10,6 +10,7 @@ import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/tel
 import { scrubTelemetryValue } from "@lando/telemetry/redaction";
 import { CORE_VERSION } from "../version";
 import {
+  type CoreUpdateFailureSchema,
   type UpdateError,
   UpdateLaunchProbeError,
   UpdateNetworkError,
@@ -85,6 +86,7 @@ export interface UpdateOptions {
 }
 
 export interface UpdateResult {
+  readonly coreFailure?: typeof CoreUpdateFailureSchema.Type;
   readonly updatedCore: boolean;
   readonly updatedPlugins: ReadonlyArray<string>;
   readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow> | undefined;
@@ -464,77 +466,106 @@ const defaultUpdate = (
             coreBlocked: pluginExecution.blockCore,
           }),
     };
-    if (
-      !options.dryRun &&
-      selfUpdate !== undefined &&
-      selfUpdate.platform !== "win32" &&
-      hasNewCoreVersion &&
-      pluginExecution?.blockCore !== true &&
-      options.handoff !== undefined
-    ) {
-      const token = yield* options.handoff.save(pendingResult);
-      selfUpdate = {
-        ...selfUpdate,
-        env: { ...selfUpdate.env, LANDO_UPDATE_HANDOFF_TOKEN: token },
+    let handoffToken: string | undefined;
+    return yield* Effect.gen(function* () {
+      if (
+        !options.dryRun &&
+        selfUpdate !== undefined &&
+        selfUpdate.platform !== "win32" &&
+        hasNewCoreVersion &&
+        pluginExecution?.blockCore !== true &&
+        options.handoff !== undefined
+      ) {
+        const token = yield* options.handoff.save(pendingResult);
+        handoffToken = token;
+        selfUpdate = {
+          ...selfUpdate,
+          env: { ...selfUpdate.env, LANDO_UPDATE_HANDOFF_TOKEN: token },
+        };
+      }
+      if (
+        !options.dryRun &&
+        selfUpdate !== undefined &&
+        hasNewCoreVersion &&
+        pluginExecution?.blockCore !== true
+      ) {
+        const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
+          yield* Effect.all([
+            fetchBytes(options.fetchManifestBytes, binaryUrl),
+            fetchBytes(options.fetchManifestBytes, checksumsUrl),
+            fetchBytes(options.fetchManifestBytes, checksumSignatureUrl),
+            fetchBytes(options.fetchManifestBytes, checksumCertificateUrl),
+          ]);
+        yield* verifyChecksumSignature(options.verifyChecksumSignature, {
+          checksumsUrl,
+          checksumsBytes,
+          signatureUrl: checksumSignatureUrl,
+          signatureBytes: checksumSignatureBytes,
+          certificateUrl: checksumCertificateUrl,
+          certificateBytes: checksumCertificateBytes,
+        });
+        yield* verifyBinaryChecksum({
+          artifact: artifactNameFromUrl(binaryUrl),
+          binaryBytes,
+          checksumsBytes,
+          manifestSha256: binary.sha256,
+        });
+        yield* applySelfUpdate({
+          attemptedVersion: manifest.latest,
+          binaryBytes,
+          executablePath: selfUpdate.executablePath,
+          selfUpdate,
+          guardCoreReplacement: pluginExecution?.guardCoreReplacement,
+        }).pipe(
+          Effect.tapError((error) =>
+            writeUpdateFailureState({
+              path: options.updateStatePath,
+              channel: options.channel,
+              category: failureOutcomeFromError(error),
+              targetVersion: manifest.latest,
+              platform: platform(),
+            }),
+          ),
+        );
+      }
+      if (!options.dryRun) {
+        const state = yield* readUpdateManifestState(options.updateStatePath);
+        const cached = state[manifest.channel];
+        yield* writeUpdateManifestState(options.updateStatePath, {
+          ...state,
+          [manifest.channel]: { ...cached, latest: manifest.latest },
+        });
+      }
+      return {
+        manifest,
+        result: pendingResult,
       };
-    }
-    if (
-      !options.dryRun &&
-      selfUpdate !== undefined &&
-      hasNewCoreVersion &&
-      pluginExecution?.blockCore !== true
-    ) {
-      const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
-        yield* Effect.all([
-          fetchBytes(options.fetchManifestBytes, binaryUrl),
-          fetchBytes(options.fetchManifestBytes, checksumsUrl),
-          fetchBytes(options.fetchManifestBytes, checksumSignatureUrl),
-          fetchBytes(options.fetchManifestBytes, checksumCertificateUrl),
-        ]);
-      yield* verifyChecksumSignature(options.verifyChecksumSignature, {
-        checksumsUrl,
-        checksumsBytes,
-        signatureUrl: checksumSignatureUrl,
-        signatureBytes: checksumSignatureBytes,
-        certificateUrl: checksumCertificateUrl,
-        certificateBytes: checksumCertificateBytes,
-      });
-      yield* verifyBinaryChecksum({
-        artifact: artifactNameFromUrl(binaryUrl),
-        binaryBytes,
-        checksumsBytes,
-        manifestSha256: binary.sha256,
-      });
-      yield* applySelfUpdate({
-        attemptedVersion: manifest.latest,
-        binaryBytes,
-        executablePath: selfUpdate.executablePath,
-        selfUpdate,
-        guardCoreReplacement: pluginExecution?.guardCoreReplacement,
-      }).pipe(
-        Effect.tapError((error) =>
-          writeUpdateFailureState({
-            path: options.updateStatePath,
-            channel: options.channel,
-            category: failureOutcomeFromError(error),
-            targetVersion: manifest.latest,
-            platform: platform(),
-          }),
-        ),
-      );
-    }
-    if (!options.dryRun) {
-      const state = yield* readUpdateManifestState(options.updateStatePath);
-      const cached = state[manifest.channel];
-      yield* writeUpdateManifestState(options.updateStatePath, {
-        ...state,
-        [manifest.channel]: { ...cached, latest: manifest.latest },
-      });
-    }
-    return {
-      manifest,
-      result: pendingResult,
-    };
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(function* () {
+          if (handoffToken !== undefined && options.handoff !== undefined) {
+            yield* options.handoff.consume(handoffToken).pipe(Effect.catchAll(() => Effect.void));
+          }
+          if (pluginExecution === undefined) return yield* Effect.fail(error);
+          return {
+            manifest,
+            result: {
+              ...pendingResult,
+              updatedCore: false,
+              hasFailures: true,
+              coreFailure: {
+                tag: error._tag,
+                message: scrubTelemetryValue(error.message),
+                remediation:
+                  "remediation" in error && typeof error.remediation === "string"
+                    ? scrubTelemetryValue(error.remediation)
+                    : "Resolve the core update failure and retry; completed plugin updates remain active.",
+              },
+            },
+          };
+        }),
+      ),
+    );
   });
 
 interface RequiredUpdateOptions {
