@@ -23,7 +23,6 @@ import {
 import { makeLandoPaths } from "@lando/paths";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeInteractionService } from "../../interaction/service";
-import { publish } from "../../recipes/git-source";
 import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner";
 
 import {
@@ -162,6 +161,8 @@ const packageDeclaresPostinstall = async (packageDir: string): Promise<boolean> 
 interface InstalledPluginPackage {
   readonly created: boolean;
   readonly packageDir: string;
+  readonly targetDir?: string;
+  readonly stagingRoot?: string;
 }
 
 const npmInstallFailure = (message: string, spec: string): NotImplementedError =>
@@ -247,17 +248,11 @@ const installFromNpm = async (
     await (options.extractor ?? defaultTarballRecipeExtractor).extract(archiveBytes, stagingRoot);
     const extractedPackageDir = join(stagingRoot, "package");
     await validatePluginManifest(extractedPackageDir);
-    if (options.expectedCurrentVersion !== undefined) {
-      await rm(packageDir, { recursive: true, force: true });
-    }
-    await publish(extractedPackageDir, packageDir);
+    return { created: true, packageDir: extractedPackageDir, targetDir: packageDir, stagingRoot };
   } catch (cause) {
     await rm(stagingRoot, { recursive: true, force: true });
-    await rm(packageDir, { recursive: true, force: true });
     throw cause;
   }
-  await rm(stagingRoot, { recursive: true, force: true });
-  return { created: true, packageDir };
 };
 
 const defaultInteractionPrompter = (): InteractionPrompter =>
@@ -369,28 +364,36 @@ export const pluginAdd = (
     const requestedSelector =
       options.requestedSelector ?? parseNpmPackageSpec(options.spec).version ?? "latest";
     let createdPackageDir: string | undefined;
-    const packageDir = yield* Effect.tryPromise({
-      try: async () => {
-        if (options.spawner !== undefined) {
-          const installed = await options.spawner.install({ spec: options.spec, cwd: pluginsRoot });
-          if (installed.exitCode !== 0) throw installFailure(options.spec, installed.stderr);
-          return installed.packageRoot ?? join(pluginsRoot, "node_modules", packageName);
-        }
-        const installed = await installFromNpm(options, pluginsRoot);
-        if (installed.created) createdPackageDir = installed.packageDir;
-        return installed.packageDir;
-      },
-      catch: (cause) =>
-        cause instanceof RecipeSourceError
-          ? npmInstallFailure(cause.message, options.spec)
-          : cause instanceof NotImplementedError || cause instanceof PluginManifestError
-            ? cause
-            : new NotImplementedError({
-                message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
-                commandId: "meta:plugin:add",
-                remediation: "Check the plugin package and retry.",
-              }),
-    });
+    let targetDir: string | undefined;
+    const packageDir = yield* Effect.acquireRelease(
+      Effect.tryPromise({
+        try: async () => {
+          if (options.spawner !== undefined) {
+            const installed = await options.spawner.install({ spec: options.spec, cwd: pluginsRoot });
+            if (installed.exitCode !== 0) throw installFailure(options.spec, installed.stderr);
+            return installed.packageRoot ?? join(pluginsRoot, "node_modules", packageName);
+          }
+          const installed = await installFromNpm(options, pluginsRoot);
+          if (installed.created) createdPackageDir = installed.stagingRoot;
+          targetDir = installed.targetDir;
+          return installed.packageDir;
+        },
+        catch: (cause) =>
+          cause instanceof RecipeSourceError
+            ? npmInstallFailure(cause.message, options.spec)
+            : cause instanceof NotImplementedError || cause instanceof PluginManifestError
+              ? cause
+              : new NotImplementedError({
+                  message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
+                  commandId: "meta:plugin:add",
+                  remediation: "Check the plugin package and retry.",
+                }),
+      }),
+      () =>
+        Effect.promise(async () => {
+          if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
+        }),
+    );
 
     const { manifest } = yield* Effect.tryPromise({
       try: () => validatePluginManifest(packageDir),
@@ -453,7 +456,11 @@ export const pluginAdd = (
             }),
     });
 
-    if (hasPostinstall && trustSource !== "untrusted") {
+    if (
+      hasPostinstall &&
+      trustSource !== "untrusted" &&
+      (createdPackageDir !== undefined || options.spawner !== undefined)
+    ) {
       const postinstallExit = yield* bunSelfInstall({
         cwd: packageDir,
         spawner: options.bunSelfSpawner ?? defaultBunSelfSpawner,
@@ -484,7 +491,7 @@ export const pluginAdd = (
       entry: {
         name: manifest.name,
         version: manifest.version,
-        path: packageDir,
+        path: targetDir ?? packageDir,
         requestedSelector,
       },
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
@@ -492,6 +499,7 @@ export const pluginAdd = (
         ? {}
         : { expectedCurrentVersion: options.expectedCurrentVersion }),
       ...(options.mutationLockHeld === true ? { mutationLockHeld: true } : {}),
+      ...(targetDir === undefined ? {} : { stagedPath: packageDir }),
     }).pipe(
       Effect.tapErrorCause(() =>
         Effect.promise(async () => {
@@ -508,11 +516,11 @@ export const pluginAdd = (
       pluginVersion: manifest.version,
       trustName,
       pluginsRoot,
-      entry: packageDir,
+      entry: targetDir ?? packageDir,
       trusted: trustSource !== "untrusted",
       trustSource,
     };
-  });
+  }).pipe(Effect.scoped);
 
 export const renderPluginAddResult = (result: PluginAddResult): string =>
   `installed: ${result.pluginName}@${result.pluginVersion}\ntrusted: ${result.trustSource}\nplugins-root: ${result.pluginsRoot}${

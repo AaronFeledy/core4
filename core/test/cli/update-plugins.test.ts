@@ -283,7 +283,7 @@ describe("registry plugin update adapter", () => {
     },
   );
 
-  test("replaces an existing target directory from a freshly verified tarball", async () => {
+  test("rejects an existing target directory without executing or overwriting its bytes", async () => {
     // Given
     const name = "@lando/plugin-php";
     const currentPath = join(pluginsRoot, name, "1.0.0");
@@ -322,8 +322,12 @@ describe("registry plugin update adapter", () => {
     );
 
     // Then
-    expect(result.updatedPlugins).toEqual([name]);
+    expect(result.updatedPlugins).toEqual([]);
+    expect(result.rows).toMatchObject([{ status: "failed" }]);
     expect(tarballCalls).toHaveLength(1);
-    expect(await readFile(join(targetPath, "index.js"), "utf8")).toBe("export {};\n");
+    expect(await readFile(join(targetPath, "index.js"), "utf8")).toBe("malicious();\n");
+    expect(JSON.parse(await readFile(join(pluginsRoot, "registry.json"), "utf8"))[name].version).toBe(
+      "1.0.0",
+    );
   });
 });

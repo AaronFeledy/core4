@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath, rename } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 import { Effect, Either, Schema } from "effect";
@@ -101,6 +101,7 @@ export interface FinalizePluginInstallOptions {
   readonly cacheRoot?: string;
   readonly expectedCurrentVersion?: string;
   readonly mutationLockHeld?: boolean;
+  readonly stagedPath?: string;
 }
 
 export const finalizePluginInstall = (
@@ -118,6 +119,29 @@ export const finalizePluginInstall = (
           }),
         );
       }
+    }
+    if (options.stagedPath !== undefined) {
+      const stagedPath = options.stagedPath;
+      yield* Effect.tryPromise({
+        try: async () => {
+          const exists = await lstat(options.entry.path).then(
+            () => true,
+            (cause: unknown) => {
+              if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return false;
+              throw cause;
+            },
+          );
+          if (exists) throw new Error("Published plugin version directories are immutable.");
+          await rename(stagedPath, options.entry.path);
+        },
+        catch: (cause) =>
+          new NotImplementedError({
+            message: `Could not publish plugin ${options.entry.name}: ${String(cause)}`,
+            commandId: "meta:plugin:add",
+            remediation:
+              "Keep the existing version directory intact and inspect the installed plugin state before retrying.",
+          }),
+      });
     }
     yield* Effect.promise(() => recordInstalledPlugin(options.pluginsRoot, options.entry));
   }).pipe(
