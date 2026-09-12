@@ -34,12 +34,13 @@ Xdebug is not a `build.artifact` PECL one-off. Set `xdebug: true` (or a mode str
 
 ## Install a database client
 
-`db_client: auto` is the default. At plan time Lando looks at the other services in your app (MySQL, MariaDB, Postgres, MongoDB) and installs the matching client CLI into the PHP container. You can force one with
-`db_client: "mariadb:11.4"`, or skip clients entirely with `db_client: false`.
+`db_client: auto` is the default. At plan time Lando looks at the other services in your app (MySQL, MariaDB, Postgres, MongoDB) and installs the matching client CLI into the PHP container. Managed MySQL services select 8.0, 8.4, or 9.7 to match their declared series. You can force one with `db_client: "mysql:9.7"` or `db_client: "mariadb:11.4"`, or skip clients entirely with `db_client: false`.
 Detection is deterministic from the resolved plan; it never probes the
 provider. Changing `db_client` changes the build key, so a running app needs
 `lando rebuild -y`. A custom `image:` still validates the option but skips
 the install steps.
+
+Oracle's Bookworm client repository publishes these MySQL clients for amd64 only. On arm64, the generated build step stops with an unsupported-architecture message instead of substituting MariaDB or another MySQL series. Automatic selection also stops when a custom MySQL image has unknown compatibility or when one app declares mixed MySQL series. Set an explicit `db_client` only after verifying that client against your server, or set `db_client: false`.
 
 ```yaml
 services:
