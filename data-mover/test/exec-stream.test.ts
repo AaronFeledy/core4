@@ -13,10 +13,15 @@ const failedExit = (exitCode: number) =>
 describe("execStdoutStream", () => {
   test("emits stdout before a later upstream failure", async () => {
     // Given: a command stream with output followed by a failure.
-    const source = Stream.concat(Stream.make({ kind: "stdout" as const, chunk: bytes("first") }), Stream.fail("later"));
+    const source = Stream.concat(
+      Stream.make({ kind: "stdout" as const, chunk: bytes("first") }),
+      Stream.fail("later"),
+    );
 
     // When: one output chunk is consumed.
-    const output = await Effect.runPromise(execStdoutStream(source, failedExit).pipe(Stream.take(1), Stream.runCollect));
+    const output = await Effect.runPromise(
+      execStdoutStream(source, failedExit).pipe(Stream.take(1), Stream.runCollect),
+    );
 
     // Then: the first chunk is available without collecting the remaining stream.
     expect(Array.from(output).map(text)).toEqual(["first"]);

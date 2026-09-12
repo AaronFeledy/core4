@@ -43,20 +43,14 @@ import {
   type VolumeRef,
   type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
-import {
-  DataMover,
-  EventService,
-  PathsService,
-  RuntimeProvider,
-  StateStore,
-} from "@lando/sdk/services";
+import { DataMover, EventService, PathsService, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import {
   VerifiedStreamError,
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
-import { providerImages } from "./generated/provider-images.ts";
 import { execStdoutStream } from "./exec-stream.ts";
+import { providerImages } from "./generated/provider-images.ts";
 
 interface DataMoverEvents {
   readonly redactText: (text: string) => string;
@@ -1019,13 +1013,16 @@ const streamFromEndpoint = (
         .pipe(Stream.mapError((cause) => providerFailure("exportArtifact", cause)));
     case "serviceCmd":
       return execStdoutStream(
-        provider
-          .execStream(
-            { app: endpoint.app, service: endpoint.service },
-            providerCommandSpec(endpoint.command, endpoint.env),
-          ),
+        provider.execStream(
+          { app: endpoint.app, service: endpoint.service },
+          providerCommandSpec(endpoint.command, endpoint.env),
+        ),
         (exitCode) => serviceCommandFailure("execStream", { exitCode }),
-      ).pipe(Stream.mapError((cause) => (cause instanceof DataTransferError ? cause : serviceCommandFailure("execStream", cause))));
+      ).pipe(
+        Stream.mapError((cause) =>
+          cause instanceof DataTransferError ? cause : serviceCommandFailure("execStream", cause),
+        ),
+      );
     case "stream":
       return Stream.fail(
         new DataEndpointUnsupportedError({
