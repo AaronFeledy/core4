@@ -1,5 +1,6 @@
 import { type Context, DateTime, Effect, Stream } from "effect";
 
+import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
 import { TaskCompleteEvent, TaskDetailEvent, TaskFailEvent, TaskStartEvent } from "@lando/sdk/events";
 import { makeLineFramer } from "@lando/sdk/log-follow";
 import type { AbsolutePath, AppPlan, BuildStep } from "@lando/sdk/schema";
@@ -55,6 +56,9 @@ export const runAppBuildStep = (input: AppBuildInput, appStep: AppStep, transcri
     const started = performance.now();
     let exitCode = 0;
     const framers = { stdout: makeLineFramer(), stderr: makeLineFramer() };
+    const containsSecretReferences = Object.values(input.plan.services).some((service) =>
+      Object.values(service.environment).some((value) => exactSecretReferenceId(value) !== undefined),
+    );
     yield* Effect.scoped(
       Effect.gen(function* () {
         const transcript = yield* openBuildTranscript(
@@ -71,28 +75,30 @@ export const runAppBuildStep = (input: AppBuildInput, appStep: AppStep, transcri
                 exitCode = chunk.exitCode;
                 return Effect.void;
               }
-              return transcript.append(chunk.chunk).pipe(
-                Effect.zipRight(
-                  publishDetailLines(
-                    input,
-                    step,
-                    chunk.kind,
-                    framers[chunk.kind].feed(chunk.chunk).map((line) => line.text),
-                  ),
-                ),
-              );
+              const lines = framers[chunk.kind].feed(chunk.chunk).map((line) => line.text);
+              // Explicit secret references opt out of raw transcripts. Frame before redacting so
+              // a provider chunk boundary cannot split a resolved value around the redactor.
+              const persisted = containsSecretReferences
+                ? new TextEncoder().encode(
+                    lines.map((line) => `${input.redactor.redactString(line)}\n`).join(""),
+                  )
+                : chunk.chunk;
+              return transcript
+                .append(persisted)
+                .pipe(Effect.zipRight(publishDetailLines(input, step, chunk.kind, lines)));
             }),
           );
+        for (const stream of ["stdout", "stderr"] as const) {
+          const lines = framers[stream].flush().map((line) => line.text);
+          if (containsSecretReferences) {
+            yield* transcript.append(
+              new TextEncoder().encode(lines.map((line) => input.redactor.redactString(line)).join("\n")),
+            );
+          }
+          yield* publishDetailLines(input, step, stream, lines);
+        }
       }),
     );
-    for (const stream of ["stdout", "stderr"] as const) {
-      yield* publishDetailLines(
-        input,
-        step,
-        stream,
-        framers[stream].flush().map((line) => line.text),
-      );
-    }
     const durationMs = performance.now() - started;
     if (exitCode === 0) {
       yield* input.events.publish(
