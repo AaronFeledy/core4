@@ -30,7 +30,8 @@
     "@lando/sdk": "workspace:*"
   },
   "dependencies": {
-    "effect": "^3.21.2"
+    "effect": "^3.21.2",
+    "semver": "^7.8.5"
   },
   "scripts": {
     "build": "tsc -b",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@lando/core": "workspace:*",
     "@lando/provider-docker": "workspace:*",
-    "@lando/provider-lando": "workspace:*"
+    "@lando/provider-lando": "workspace:*",
+    "@types/semver": "^7.7.1"
   }
 }
