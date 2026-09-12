@@ -31,6 +31,7 @@ If you only memorize four of these, make them `start`, `info`, `exec`, and `dest
 | `lando doctor` | Report setup, provider, proxy, and cert health. Alias of `meta:doctor`. |
 | `lando poweroff -y` | Stop every Lando app on this host. Alias of `apps:poweroff`. |
 | `lando list` | List apps on this host. Alias of `apps:list`. |
+| `lando share` | Start a public tunnel. Use `--target` for a non-primary service or extra port. Alias of `app:share`. |
 
 ## Work inside a service
 
@@ -82,4 +83,4 @@ Run doctor after `lando setup`. The default provider is `lando` (managed Podman)
 
 ## Next
 
-Walk the same loop as a tutorial: [Start, inspect, and tear down an app](../tutorial/app-lifecycle.mdx). Refresh the plan without starting services: [Refresh a stale app cache](./cache-refresh.mdx). For renderer modes, `--debug`, and `--log-level`, see [See more CLI output](./verbosity-and-debug.mdx).
+Walk the same loop as a tutorial: [Start, inspect, and tear down an app](../tutorial/app-lifecycle.mdx). Refresh the plan without starting services: [Refresh a stale app cache](./cache-refresh.mdx). For renderer modes, `--debug`, and `--log-level`, see [See more CLI output](./verbosity-and-debug.mdx). Point a tunnel at Storybook or Vite: [Share a service or extra port](./share-target.mdx).

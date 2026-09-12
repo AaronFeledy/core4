@@ -1,0 +1,119 @@
+---
+id: share-target
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, cli, share]
+---
+
+# Share a service or extra port
+
+Install a TunnelService plugin before you share. Bundled tunnel connectors ship in Lando 4.1.
+
+```sh
+lando plugin:add <tunnel-service-plugin>
+```
+
+Or `lando setup --provider=<provider-with-tunnels>`. Without a plugin, `share`, `share:list`, and `share:stop` fail with `TunnelProviderUnavailableError`.
+
+`lando share` opens a public tunnel to the current app. Omit `--target` and Lando uses the first route from the app plan.
+
+```sh
+lando share
+```
+
+Storybook is not the homepage. Point `--target` at it.
+
+## Point `--target` at a service port
+
+```yaml
+name: share-target-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+  storybook:
+    type: "node:22"
+```
+
+```sh
+lando share --target storybook:6006
+```
+
+`--target` takes `service[:port]`, a route id, or a loopback URL. Vite on the primary service is the same move: `lando share --target app:5173`.
+
+## Point `--target` at a route or loopback URL
+
+```sh
+lando share --target storybook.share-target-demo.lndo.site
+lando share --target http://127.0.0.1:5173
+```
+
+`http://` or `https://` means a loopback URL. `storybook:6006` is a service and port. Anything else is a route id, usually the hostname `lando info` prints. Drop the port and `lando share --target storybook` is a route id, not a service.
+
+## See what will be shared
+
+```sh
+lando start
+lando info
+lando share --help
+```
+
+`info` prints services and URLs. The default share target is the first of those routes. `--help` restates the three `--target` forms.
+
+## List and stop tunnels
+
+```sh
+lando share:list
+lando share:stop <session>
+```
+
+`lando share list` and `lando share stop <session>` are the same commands. `--session` is the flag form of the session id. `--force` asks the provider to force-stop when it supports that.
+
+`--detach` records a tunnel as a detached session. `--provider` selects a TunnelService plugin id. `--yes` answers confirmation prompts.
+
+<Guide>
+  <Scenario id="share-help" render>
+    <Step name="help">
+      <Run command="lando share --help" />
+      <Verify command="lando share --help" expect={{ stdout: { regex: "--target" } }} />
+      <Verify command="lando share --help" expect={{ stdout: { regex: "service\\[:port\\]" } }} />
+      <Verify command="lando share:list --help" expect={{ stdout: { regex: "List public tunnel sessions" } }} />
+      <Verify command="lando share:stop --help" expect={{ stdout: { regex: "--session" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="share-needs-plugin" render>
+    <Step name="scaffold">
+      <UseFixture name="share-target-demo" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"share-target-demo\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"storybook\"" } }} />
+    </Step>
+    <Step name="share-default">
+      <Run command="lando share --format=json" expectExit={1} />
+      <Verify errorTag="TunnelProviderUnavailableError" expect={{ regex: "No TunnelService is installed" }} />
+    </Step>
+    <Step name="share-service-port">
+      <Run command="lando share --target storybook:6006 --format=json" expectExit={1} />
+      <Verify errorTag="TunnelProviderUnavailableError" expect={{ regex: "Bundled tunnel connectors ship in Lando 4\\.1" }} />
+    </Step>
+    <Step name="share-list">
+      <Run command="lando share:list --format=json" expectExit={1} />
+      <Verify errorTag="TunnelProviderUnavailableError" />
+    </Step>
+    <Step name="share-stop">
+      <Run command="lando share:stop sess --format=json" expectExit={1} />
+      <Verify errorTag="TunnelProviderUnavailableError" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+Back to the loop: [Everyday commands](./everyday-commands.mdx). LAN reach is a bind, not a tunnel: [Reach an app from another device](../subsystems/external-access.mdx).
