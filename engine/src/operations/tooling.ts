@@ -14,7 +14,6 @@ import {
   type LandofileLoadExpressionError,
   ToolingCompileError,
   ToolingDisabledError,
-  ToolingExecError,
   type ToolingInputError,
 } from "@lando/sdk/errors";
 import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
@@ -350,19 +349,14 @@ export const runTooling = (
                 return yield* runHostToolingWith(shell.value, invocation, plan, provider);
               })
             : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, provider));
-          if (result.exitCode !== 0)
-            return yield* Effect.fail(
-              new ToolingExecError({
-                message: `Tooling command ${options.name} failed with exit code ${result.exitCode}.`,
-                tool: options.name,
-                exitCode: result.exitCode,
-              }),
-            );
           combined = {
             ...result,
             stdout: combined.stdout + result.stdout,
             stderr: combined.stderr + result.stderr,
           };
+          // A non-zero command exit is the task's result, not a Lando failure: keep the accumulated
+          // streams and stop before the remaining steps run.
+          if (result.exitCode !== 0) break;
         }
         return combined;
       }),

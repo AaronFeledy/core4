@@ -259,8 +259,8 @@ test.each(["worker", ":host"])("stops at the first nonzero step on %s", async (s
   );
   // When invoked
   const result = await f.run();
-  // Then execution stops and preserves the exit code
-  expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ToolingExecError", exitCode: 17 } });
+  // Then execution stops and the failing step's exit code is the task result
+  expect(result).toMatchObject({ _tag: "Right", right: { exitCode: 17 } });
   expect(f.calls).toHaveLength(1);
 });
 
