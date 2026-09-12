@@ -19,8 +19,10 @@ const successInputs: ReadonlyArray<{ readonly command: string; readonly input: D
   { command: "db:export", input: { action: "export", yes: false } },
   { command: "db:import", input: { action: "import", file: "dump.sql.gz", yes: true } },
   { command: "db:snapshot", input: { action: "snapshot", label: "before-change", yes: false } },
-  { command: "db:restore", input: { action: "restore", snapshotId: "before-change", yes: false } },
+  { command: "db:snapshots", input: { action: "snapshots", yes: false } },
+  { command: "db:restore", input: { action: "restore", snapshotId: "before-change", yes: true } },
   { command: "db:reset", input: { action: "reset", yes: true } },
+  { command: "db:seed", input: { action: "seed", file: "dump.sql.gz", yes: false } },
 ];
 
 describe("db command machine output", () => {
