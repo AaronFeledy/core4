@@ -29,6 +29,7 @@ import {
   LandofileImportRefMisuseError,
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
+  RouteInputError,
   SubscriberLevelMismatchError,
 } from "../errors/index.ts";
 import { KeymapConflictError } from "../errors/keymap.ts";
@@ -223,6 +224,7 @@ import {
   IncludeEntry,
   LandofileShape,
   RouteInput,
+  RouteObjectInput,
   ServiceConfig,
   ServiceConfigInput,
   ToolingArgShape,
@@ -347,6 +349,7 @@ import {
   StyledSpan,
   StyledSpanTone,
 } from "./renderer-panel.ts";
+import { RouteFilter, RouteFilterType } from "./route-filter.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo } from "./service-info.ts";
 import {
@@ -488,6 +491,9 @@ const basePublicSchemaRegistry = {
   RouteRef,
   RoutePlan,
   ProxyCapabilities,
+  RouteFilterType,
+  RouteFilter,
+  RouteInputError,
   ProxyConfig,
   RouterConfig,
   ProxyAuthority,
@@ -515,6 +521,7 @@ const basePublicSchemaRegistry = {
   EndpointInput,
   RouteInput,
   HealthcheckInput,
+  RouteObjectInput,
   ToolingVar,
   ToolingFlagShape,
   ToolingArgShape,
@@ -912,6 +919,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EndpointPlan: "Public Lando schema contract for Endpoint Plan.",
   RouteRef: "Public Lando schema contract for Route Ref.",
   RoutePlan: "Public Lando schema contract for Route Plan.",
+  RouteFilterType: "Supported provider-neutral route filter types.",
+  RouteFilter: "Provider-neutral route filter options discriminated by type.",
+  RouteInputError: "Invalid authored route with its key path and remediation.",
+  RouteObjectInput: "Expanded authored route with optional ordered filters.",
   ProxyCapabilities: "Proxy route features truthfully supported by an implementation.",
   ProxyConfig: "Proxy setup configuration supplied by core.",
   RouterConfig: "Shared host-router bind address and port policy.",
@@ -2329,11 +2340,8 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "RecipeRegistryResolution.url",
   "RecipeRegistryResponse.id",
   "RecipeRegistryResponse.resolution",
-  "RouteInput.endpoint",
-  "RouteInput.hostname",
-  "RouteInput.pathPrefix",
-  "RouteInput.scheme",
   "RoutePlan.endpoint",
+  "RouteInputError._tag",
   "RoutePlan.hostname",
   "RoutePlan.pathPrefix",
   "RoutePlan.scheme",

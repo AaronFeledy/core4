@@ -29,6 +29,33 @@ describe("lintLandofile", () => {
 
   const write = async (content: string) => writeFile(join(dir, ".lando.yml"), content, "utf8");
 
+  test("reports invalid route shorthand with the authored key path", async () => {
+    // Given
+    await write(
+      'name: routes\nservices:\n  web:\n    routes:\n      - "http://app.lndo.site"\nproxy:\n  api:\n    - "api.lndo.site"\n    - "api:65536"\n',
+    );
+    // When
+    const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
+    // Then
+    expect(result.valid).toBe(false);
+    expect(result.violations).toEqual([
+      { path: "services.web.routes[0]", message: expect.any(String), suggestedFix: expect.any(String) },
+      { path: "proxy.api[1]", message: expect.any(String), suggestedFix: expect.any(String) },
+    ]);
+  });
+
+  test("accepts filters on object routes", async () => {
+    // Given
+    await write(
+      "name: routes\nservices:\n  web:\n    routes:\n      - hostname: app.lndo.site\n        filters:\n          - type: requestHeader\n            name: identity\n            header: X-Test\n            value: yes\nproxy:\n  api:\n    - hostname: api.lndo.site\n      filters:\n        - type: stripPrefix\n          prefix: /api\n",
+    );
+    // When
+    const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
+    // Then
+    expect(result.valid).toBe(true);
+    expect(result.violations).toEqual([]);
+  });
+
   test("a valid Landofile lints clean", async () => {
     await write("name: myapp\nrecipe: lamp\n");
     const exit = await lint(dir);

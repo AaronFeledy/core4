@@ -54,7 +54,10 @@ describe("mailpit global service ServiceConfig", () => {
     const config = await decodeConfig();
     expect(MAILPIT_DASHBOARD_HOSTNAME).toBe("mailpit.lndo.site");
     const routes = config.routes ?? [];
-    const webRoute = routes.find((route) => route.hostname === MAILPIT_DASHBOARD_HOSTNAME);
+    const webRoute = routes.find(
+      (route): route is Exclude<(typeof routes)[number], string> =>
+        typeof route !== "string" && route.hostname === MAILPIT_DASHBOARD_HOSTNAME,
+    );
     expect(webRoute).toBeDefined();
     expect(webRoute?.endpoint).toBe(MAILPIT_WEB_PORT);
   });

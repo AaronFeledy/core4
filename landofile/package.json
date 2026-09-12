@@ -41,6 +41,8 @@
     "./merge": "./src/merge.ts",
     "./parser": "./src/parser.ts",
     "./ports": "./src/ports.ts",
+    "./route-filters": "./src/route-filters.ts",
+    "./route-normalize": "./src/route-normalize.ts",
     "./schema": "./src/schema.ts",
     "./serializer": "./src/serializer.ts",
     "./service": "./src/service.ts",

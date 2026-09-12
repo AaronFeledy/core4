@@ -1,0 +1,252 @@
+---
+id: route-shorthand
+provider: test
+timeout: 60000
+tags: [beta, docs, proxy, landofile, routes]
+---
+
+# Write routes as shorthand strings and add filters
+
+A route is a string in the form `hostname[:port][/path]`. Put one under `routes:` on a service and Lando's proxy sends that hostname to the service. Reach for the object form only when you need a scheme, a named endpoint, or filters.
+
+```yaml
+name: route-shorthand-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    routes:
+      - app.lndo.site
+      - "*.app.lndo.site"
+      - "*-app.lndo.site"
+      - "wild.*.app.lndo.site"
+      - "lets.combine.*.lndo.site:8080/everything/for-real"
+```
+
+Lint it before you start anything:
+
+```sh
+lando app:config:lint
+```
+
+## Shorthand grammar
+
+`hostname[:port][/path]`. Three pieces, only the hostname is required.
+
+| Piece | Rule | Example |
+| --- | --- | --- |
+| `hostname` | Dot-separated labels. Letters, digits, hyphens, and `*`. No leading or trailing hyphen on a label | `app.lndo.site` |
+| `:port` | Numeric, 1 through 65535. Becomes the route's `endpoint` | `app.lndo.site:8080` |
+| `/path` | Starts with `/`. Becomes the route's `pathPrefix` | `app.lndo.site/admin` |
+
+Wildcards go anywhere inside a label, and you can mix all three pieces:
+
+| Shorthand | Matches |
+| --- | --- |
+| `*.app.lndo.site` | Any single subdomain of `app.lndo.site` |
+| `*-app.lndo.site` | `foo-app.lndo.site`, `bar-app.lndo.site` |
+| `wild.*.app.lndo.site` | A wildcard in the middle label |
+| `lets.combine.*.lndo.site:8080/everything/for-real` | Wildcard host, port 8080, path prefix `/everything/for-real` |
+
+Quote any string that contains `*` so YAML does not read it as an alias.
+
+Three things a shorthand cannot say. Write an object route for those.
+
+- A scheme. `https://app.lndo.site` is rejected; the grammar has no scheme slot.
+- A query string or fragment. `?` and `#` are rejected.
+- Filters. A string is host, port, path, and nothing else.
+
+## Object form
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    primary: true
+    routes:
+      - hostname: api.lndo.site
+        scheme: https
+        endpoint: 8080
+        pathPrefix: /v1
+        filters:
+          - type: stripPrefix
+            prefix: /v1
+```
+
+| Key | Meaning | Default |
+| --- | --- | --- |
+| `hostname` | Host pattern, same rules as shorthand | required |
+| `scheme` | `http`, `https`, or `both` | proxy default |
+| `endpoint` | Port number or named endpoint on the service | primary endpoint |
+| `pathPrefix` | Only requests under this path match | every path |
+| `filters` | Ordered list of request and response tweaks | none |
+
+Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
+
+## Filters
+
+Five filter types ship. Each has a `type`, an optional `name`, and its own fields.
+
+| `type` | Fields | What it does |
+| --- | --- | --- |
+| `stripPrefix` | `prefix` | Removes `prefix` from the request path before it reaches the service |
+| `addPrefix` | `prefix` | Prepends `prefix` to the request path |
+| `requestHeader` | `header`, `value` | Sets a header on the request going to the service |
+| `responseHeader` | `header`, `value` | Sets a header on the response coming back |
+| `redirect` | `to`, `permanent` (optional) | Redirects the request to `to`. `permanent: true` sends 301 instead of 302 |
+
+`prefix` must start with `/`. `header` is letters, digits, and hyphens only. `to` must not be empty.
+
+All five on one route:
+
+```yaml
+routes:
+  - hostname: api.lndo.site
+    scheme: https
+    endpoint: 8080
+    pathPrefix: /v1
+    filters:
+      - name: strip-v1
+        type: stripPrefix
+        prefix: /v1
+      - type: addPrefix
+        prefix: /internal
+      - name: trace-id
+        type: requestHeader
+        header: X-Request-Source
+        value: lando
+      - type: responseHeader
+        header: X-Served-By
+        value: lando-proxy
+      - type: redirect
+        to: https://api.lndo.site/v1/docs
+        permanent: false
+```
+
+### Filters run in authored order
+
+The list is the pipeline. Above, `/v1/users` becomes `/users`, then `/internal/users`, then gets its request header. Swap the first two filters and the path is `/internal/v1/users` after `addPrefix` and still `/internal/v1/users` after `stripPrefix`, because `/v1` is no longer at the front. Order the list the way you want the request rewritten.
+
+### `pathPrefix` does not strip
+
+A `pathPrefix` route matches the path and forwards it unchanged. Your service sees `/v1/users`, not `/users`. When the service expects the bare path, add `stripPrefix` yourself. Lando never strips implicitly, so a route with `pathPrefix: /v1` and no filters forwards `/v1/...` as-is.
+
+### `name` is the merge identity
+
+`name` on a filter is not an HTTP header name. It is how Lando matches filters across Landofile layers (`.lando.yml`, `.lando.local.yml`, and friends) when it merges them.
+
+- A named filter in an overlay replaces the base filter with the same `name`. Nothing is duplicated.
+- An unnamed filter matches an unnamed base filter with the same `type`.
+- Named and unnamed filters never match each other.
+- Filters that match nothing are appended.
+
+So this base:
+
+```yaml
+# .lando.yml
+routes:
+  - hostname: api.lndo.site
+    pathPrefix: /v1
+    filters:
+      - name: strip-v1
+        type: stripPrefix
+        prefix: /v1
+      - type: responseHeader
+        header: X-Served-By
+        value: base
+```
+
+with this overlay:
+
+```yaml
+# .lando.local.yml
+routes:
+  - hostname: api.lndo.site
+    filters:
+      - name: strip-v1
+        type: stripPrefix
+        prefix: /v2
+      - type: responseHeader
+        header: X-Served-By
+        value: local
+```
+
+merges to exactly two filters: `strip-v1` with `prefix: /v2` and one `responseHeader` with `value: local`. Give a filter a `name` whenever two filters share a `type` on the same route; otherwise an overlay can only replace the first unnamed one.
+
+## Check what merged
+
+`lando app:config` prints the merged Landofile, shorthand strings verbatim and object routes with their filters. `lando app:config:lint` rejects a malformed shorthand and names the exact list entry:
+
+```sh
+lando app:config --format=json
+lando app:config:lint --format=json
+```
+
+A route like `api..lndo.site:99999` fails lint with `valid: false`, a `path` of `services.app.routes[0]`, and a `suggestedFix` that repeats the grammar. Fix the entry, lint again, then `lando start`.
+
+<Guide>
+  <Scenario id="shorthand-and-filters" render>
+    <Step name="scaffold">
+      <UseFixture name="route-shorthand-demo" />
+    </Step>
+    <Step name="lint-routes">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="inspect-shorthand">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"lets\\.combine\\.\\*\\.lndo\\.site:8080/everything/for-real\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wild\\.\\*\\.app\\.lndo\\.site\"" } }} />
+    </Step>
+    <Step name="inspect-filters">
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pathPrefix\":\\s*\"/v1\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"stripPrefix\",\\s*\"name\":\\s*\"strip-v1\",\\s*\"prefix\":\\s*\"/v1\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"addPrefix\",\\s*\"prefix\":\\s*\"/internal\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"requestHeader\",\\s*\"name\":\\s*\"trace-id\",\\s*\"header\":\\s*\"X-Request-Source\",\\s*\"value\":\\s*\"lando\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"responseHeader\",\\s*\"header\":\\s*\"X-Served-By\",\\s*\"value\":\\s*\"lando-proxy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"redirect\",\\s*\"to\":\\s*\"https://api\\.lndo\\.site/v1/docs\",\\s*\"permanent\":\\s*false" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="invalid-shorthand-rejected" render>
+    <Step name="scaffold-invalid">
+      <UseFixture name="route-shorthand-invalid" />
+    </Step>
+    <Step name="lint-invalid-route">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"services\\.app\\.routes\\[0\\]\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "hostname\\[:port\\]\\[/pathPrefix\\]" } }} />
+    </Step>
+    <Step name="cleanup-invalid">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="filter-layer-merge" render={false} reason="Regression coverage: an overlay filter replaces its named base filter and an unnamed filter merges by type without duplication">
+    <Step name="scaffold-layered">
+      <UseFixture name="route-shorthand-layered" />
+    </Step>
+    <Step name="inspect-merged-filters">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"strip-v1\",\\s*\"prefix\":\\s*\"/v2\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"prefix\":\\s*\"/v1\"" } } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"header\":\\s*\"X-Served-By\",\\s*\"value\":\\s*\"local\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"value\":\\s*\"base\"" } } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "strip-v1[\\s\\S]*strip-v1" } } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "X-Served-By[\\s\\S]*X-Served-By" } } }} />
+    </Step>
+    <Step name="cleanup-layered">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- How the proxy itself is wired: [ProxyService and Traefik](../subsystems/proxy-traefik.mdx)
+- Where `lndo.site` hostnames resolve: [Host proxy](../subsystems/host-proxy.mdx)

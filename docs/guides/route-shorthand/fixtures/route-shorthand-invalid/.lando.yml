@@ -1,0 +1,7 @@
+name: route-shorthand-invalid
+services:
+  app:
+    type: "node:22"
+    primary: true
+    routes:
+      - "api..lndo.site:99999"
