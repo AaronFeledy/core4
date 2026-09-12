@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
+import { rememberLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { type PluginManifest, ServiceName } from "@lando/sdk/schema";
 
 import { decodePluginCommandIndex } from "@lando/engine/cache/command-index";
@@ -41,6 +42,43 @@ const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Pro
 };
 
 describe("writePluginCommandCacheStrict modules default", () => {
+  test("invalidates a fresh app command cache when a resolved user include changes", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const appRoot = join(cacheRoot, "user-include-app");
+      const includesRoot = join(cacheRoot, "user-includes");
+      const includePath = join(includesRoot, "corp.yml");
+      await mkdir(appRoot, { recursive: true });
+      await mkdir(includesRoot, { recursive: true });
+      await writeFile(join(appRoot, ".lando.yml"), "name: user-include-app\nincludes:\n  - user:corp.yml\n");
+      await writeFile(includePath, "tooling:\n  test:\n    service: app\n");
+      const landofile = rememberLocalIncludePaths(
+        {
+          name: "user-include-app",
+          services: { [ServiceName.make("app")]: { type: "node" } },
+        },
+        [includePath],
+      );
+      await Effect.runPromise(
+        writeAppCommandCacheStrict({
+          landofile,
+          entries: [{ id: "app:test", summary: "Test", hidden: false, service: "app" }],
+          cwd: appRoot,
+          cacheRoot,
+        }),
+      );
+
+      // When
+      const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot }));
+      await writeFile(includePath, "tooling:\n  changed:\n    service: app\n");
+      const stale = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: appRoot, cacheRoot }));
+
+      // Then
+      expect(fresh).not.toBeNull();
+      expect(stale).toBeNull();
+    });
+  });
+
   test("derives manifests from injected modules when manifests is omitted", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       const modules = [
