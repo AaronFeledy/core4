@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
+import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type {
   DataTransferResult,
   DataTransferSpec,
@@ -186,6 +187,17 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
                 },
               }),
             ];
+      }),
+    canonicalizeSourcePath: (path) =>
+      Effect.try({
+        try: () => AbsolutePath.make(realpathSync(path)),
+        catch: () =>
+          new SqlRecoveryUnavailableError({
+            message: `Cannot resolve snapshot source path ${path}.`,
+            service: "database",
+            reason: "The selected source path does not exist or is not accessible.",
+            remediation: "Pass an existing app root with --from-path.",
+          }),
       }),
     exec: (_service, command, env) => {
       const joined = command.join(" ");

@@ -9,13 +9,7 @@ import {
   SqlServiceNotFoundError,
 } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
-import {
-  AbsolutePath,
-  AppId,
-  type DataTransferResult,
-  ServiceName,
-  type SnapshotInfo,
-} from "@lando/sdk/schema";
+import { type AbsolutePath, AppId, type DataTransferResult, type SnapshotInfo } from "@lando/sdk/schema";
 
 import { type SqlExec, type SqlMover, requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import { credsEnv, resolveSqlCreds } from "./creds.ts";
@@ -25,6 +19,7 @@ import { isGzipPath } from "./gzip.ts";
 import { type SqlPublisher, confirmOrFail, publishTree } from "./progress.ts";
 import { type SqlRecoveryDeps, runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
 import type { DbCommandStep } from "./schemas.ts";
+import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
 import type { SqlLandofile, SqlPlan } from "./views.ts";
 
@@ -48,6 +43,9 @@ export type SqlCommandDeps = SqlMover &
     readonly landofile: SqlLandofile;
     readonly plan: SqlPlan;
     readonly exec: SqlExec;
+    readonly canonicalizeSourcePath: (
+      path: string,
+    ) => Effect.Effect<AbsolutePath, SqlRecoveryUnavailableError>;
     readonly confirm: (message: string) => Effect.Effect<boolean, unknown>;
     readonly publish: SqlPublisher;
   };
@@ -273,40 +271,23 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         snapshotId = handle.id;
         break;
       }
-      case "snapshots":
-        if (input.fromApp !== undefined && input.fromPath !== undefined) {
-          return yield* Effect.fail(
-            new SqlRecoveryUnavailableError({
-              message: "Snapshot listing accepts only one explicit source selector.",
-              service: target.name,
-              reason: "Both --from-app and --from-path were provided.",
-              remediation: "Pass either --from-app or --from-path, not both.",
-            }),
-          );
-        }
-        listedSnapshots = yield* deps.listSnapshots(
-          input.fromPath !== undefined
-            ? {
-                sourceRoot: AbsolutePath.make(resolve(input.hostCwd ?? process.cwd(), input.fromPath)),
-                service: ServiceName.make(target.name),
-              }
-            : input.fromApp !== undefined
-              ? {
-                  app: AppId.make(input.fromApp),
-                  service: ServiceName.make(target.name),
-                  ...(deps.plan.identity?.repoGroupKey === undefined
-                    ? {}
-                    : { repoGroupKey: deps.plan.identity.repoGroupKey }),
-                }
-              : {
-                  app: AppId.make(deps.plan.id),
-                  ...(store === undefined ? {} : { store: store.store }),
-                  ...(deps.plan.identity?.ownerKey === undefined
-                    ? {}
-                    : { ownerKey: deps.plan.identity.ownerKey }),
-                },
-        );
+      case "snapshots": {
+        const filter = yield* resolveSnapshotSource({
+          app: deps.plan.id,
+          ...(store === undefined ? {} : { store: store.store }),
+          ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
+          ...(deps.plan.identity?.repoGroupKey === undefined
+            ? {}
+            : { repoGroupKey: deps.plan.identity.repoGroupKey }),
+          service: target.name,
+          ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
+          ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),
+          hostCwd: input.hostCwd ?? process.cwd(),
+          canonicalizePath: deps.canonicalizeSourcePath,
+        });
+        listedSnapshots = yield* deps.listSnapshots(filter);
         break;
+      }
       case "restore":
         snapshotId = input.snapshotId ?? "";
         {

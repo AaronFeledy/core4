@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Effect, Exit } from "effect";
 
@@ -14,7 +14,7 @@ import {
   SqlServiceAmbiguousError,
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
-import { AppId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 
 import { wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
 import { dbInputFromCommand, executeDbCommand } from "../src/run.ts";
@@ -69,6 +69,89 @@ describe("executeDbCommand", () => {
     expect(harness.snapshotFilters()).toEqual([
       { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
     ]);
+  });
+
+  test("constrains an explicit app source to sibling worktrees in the same repository", async () => {
+    // Given: an app with a proven Git repository group.
+    const harness = makeSqlTestDeps({ password: SECRET });
+
+    // When: a sibling app name is selected explicitly.
+    const exit = await run(harness.deps, { action: "snapshots", fromApp: "sibling", yes: false });
+
+    // Then: both the logical app and repository group constrain the query.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.snapshotFilters()).toEqual([
+      {
+        app: AppId.make("sibling"),
+        service: ServiceName.make("database"),
+        repoGroupKey: "repository:sql-app",
+      },
+    ]);
+  });
+
+  test("fails closed for an app source when repository grouping is unavailable", async () => {
+    // Given: an app planned outside a Git repository.
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const deps = {
+      ...harness.deps,
+      plan: {
+        id: harness.deps.plan.id,
+        name: harness.deps.plan.name,
+        root: harness.deps.plan.root,
+        services: harness.deps.plan.services,
+      },
+    };
+
+    // When: a logical app source is selected without repository proof.
+    const exit = await run(deps, { action: "snapshots", fromApp: "sibling", yes: false });
+
+    // Then: listing fails before querying snapshots from an unrelated project.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(harness.snapshotFilters()).toEqual([]);
+  });
+
+  test("canonicalizes an explicit path source before listing snapshots", async () => {
+    // Given: a relative source path that traverses a symbolic link.
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const sibling = join(harness.root, "sibling");
+    const alias = join(harness.root, "sibling-link");
+    mkdirSync(sibling);
+    symlinkSync(sibling, alias, "dir");
+
+    // When: the linked path is selected explicitly.
+    const exit = await run(harness.deps, {
+      action: "snapshots",
+      fromPath: "sibling-link",
+      hostCwd: harness.root,
+      yes: false,
+    });
+
+    // Then: the query uses the canonical physical source root.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(harness.snapshotFilters()).toEqual([
+      { sourceRoot: AbsolutePath.make(sibling), service: ServiceName.make("database") },
+    ]);
+  });
+
+  test("fails closed when an explicit snapshot source path cannot be resolved", async () => {
+    // Given: a path selector that does not identify an existing app root.
+    const harness = makeSqlTestDeps({ password: SECRET });
+
+    // When: snapshots are listed from the missing path.
+    const exit = await run(harness.deps, {
+      action: "snapshots",
+      fromPath: "missing-app",
+      hostCwd: harness.root,
+      yes: false,
+    });
+
+    // Then: the typed recovery failure prevents an unconstrained snapshot query.
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(
+      SqlRecoveryUnavailableError,
+    );
+    expect(harness.snapshotFilters()).toEqual([]);
   });
 
   test("exports a single mysql service without --service via serviceCmd to hostPath", async () => {

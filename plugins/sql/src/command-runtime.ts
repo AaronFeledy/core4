@@ -1,6 +1,9 @@
+import { realpath } from "node:fs/promises";
+
 import { Effect } from "effect";
 
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
   DataMover,
@@ -45,6 +48,17 @@ export const runDbCommand = (input: DbCommandInput) =>
           snapshot: (store, opts) => Effect.scoped(mover.snapshot(store, opts)),
           restore: (id, store) => Effect.scoped(mover.restore(id, store)),
           listSnapshots: (filter) => mover.listSnapshots(filter),
+          canonicalizeSourcePath: (path) =>
+            Effect.tryPromise({
+              try: () => realpath(path),
+              catch: () =>
+                new SqlRecoveryUnavailableError({
+                  message: `Cannot resolve snapshot source path ${path}.`,
+                  service: earlyTarget.right.name,
+                  reason: "The selected source path does not exist or is not accessible.",
+                  remediation: "Pass an existing app root with --from-path.",
+                }),
+            }).pipe(Effect.map(AbsolutePath.make)),
           exec: (service, command, env) =>
             provider
               .exec(
