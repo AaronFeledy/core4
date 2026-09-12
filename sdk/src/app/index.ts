@@ -308,7 +308,7 @@ export interface DestroyAppResult {
   readonly volumesRemoved: boolean;
 }
 
-export type DestroyAppError = StopAppError | ProxyError;
+export type DestroyAppError = StopAppError | ProxyError | StateStoreError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
