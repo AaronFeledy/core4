@@ -13,11 +13,9 @@ export interface RedirectLogSourceBuildStepsInput {
   readonly base: "l337" | "lando";
 }
 
-/** The redirected fd a stream classification maps to. */
 const redirectTarget = (stream: LogSource["stream"]): string =>
   stream === "stdout" ? "/dev/stdout" : "/dev/stderr";
 
-/** The stable build-step id for a redirected source. */
 const redirectStepId = (source: LogSource): string => `lando-log-redirect:${String(source.id)}`;
 
 /**
