@@ -95,8 +95,27 @@ describe("family command builders", () => {
     }
   });
 
-  test("mysql dump uses mysqldump and the user without -p", () => {
-    expect(dumpCommand("mysql", creds)).toEqual(["mysqldump", "-u", "alice", "appdb"]);
+  test("mysql dump uses restore-oriented mysqldump flags without -p", () => {
+    expect(dumpCommand("mysql", creds)).toEqual([
+      "mysqldump",
+      "-u",
+      "alice",
+      "--single-transaction",
+      "--set-gtid-purged=OFF",
+      "--no-tablespaces",
+      "appdb",
+    ]);
+  });
+
+  test("mariadb dump uses restore-oriented mariadb-dump flags without GTID", () => {
+    expect(dumpCommand("mariadb", creds)).toEqual([
+      "mariadb-dump",
+      "-u",
+      "alice",
+      "--single-transaction",
+      "--no-tablespaces",
+      "appdb",
+    ]);
   });
 
   test("postgres dump uses pg_dump -U and -d", () => {

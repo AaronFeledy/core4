@@ -88,8 +88,24 @@ export const dumpCommand = (
 ): ReadonlyArray<string> => {
   switch (family) {
     case "mysql":
+      return [
+        mysqlFamilyBinaries(family).dump,
+        "-u",
+        creds.user,
+        "--single-transaction",
+        "--set-gtid-purged=OFF",
+        "--no-tablespaces",
+        creds.database,
+      ];
     case "mariadb":
-      return [mysqlFamilyBinaries(family).dump, "-u", creds.user, creds.database];
+      return [
+        mysqlFamilyBinaries(family).dump,
+        "-u",
+        creds.user,
+        "--single-transaction",
+        "--no-tablespaces",
+        creds.database,
+      ];
     case "postgres":
       return ["pg_dump", "-U", creds.user, "-d", creds.database];
     case "mongodb":
