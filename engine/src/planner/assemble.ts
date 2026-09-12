@@ -16,6 +16,7 @@ import {
   LandofileValidationError,
   type NotImplementedError,
   type PublicationUnsupportedError,
+  type RouteInputError,
   ServiceTypeCollisionError,
 } from "@lando/sdk/errors";
 import {
@@ -27,7 +28,6 @@ import {
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServiceConfig,
-  ServiceName,
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
@@ -64,7 +64,7 @@ import {
   hostProxyExtensionForCapabilities,
 } from "../subsystems/host-proxy/plan-extension.ts";
 import { CORE_VERSION } from "../version.ts";
-import { planServiceDrafts } from "./authored.ts";
+import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
   assertComposeKnobsSupported,
@@ -135,6 +135,7 @@ export const planApp = (
 ): Effect.Effect<
   AppPlan,
   | LandofileValidationError
+  | RouteInputError
   | CapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
@@ -246,6 +247,7 @@ export const planApp = (
     });
     const resolvedServices: ResolvedService[] = [];
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
+      const routes = yield* normalizeAuthoredRoutes({ name, service, landofile });
       const loadedEnvFiles = yield* loadServiceEnvFiles({ appRoot, serviceName: name, service, fileSystem });
       const hasEnvFiles = topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0;
       const serviceWithEnvironment: ServiceConfig = !hasEnvFiles
@@ -365,10 +367,6 @@ export const planApp = (
               paths: pathsService,
             })
           : undefined;
-      const authoredRoutes = [
-        ...(pinnedService.routes ?? []),
-        ...(landofile.proxy?.[ServiceName.make(name)] ?? []),
-      ];
       const certsFeature =
         resolution.base === "lando"
           ? yield* resolveCertsFeature({
@@ -377,9 +375,9 @@ export const planApp = (
               serviceName: name,
               certs: resolution.normalizedConfig.certs ?? pinnedService.certs,
               hostnames: pinnedService.hostnames ?? [],
-              routes: authoredRoutes,
+              routes,
               defaultRouteHostname:
-                authoredRoutes.length === 0 ? `${name}.${appSlug}.${DEFAULT_PROXY_DOMAIN}` : undefined,
+                routes.length === 0 ? `${name}.${appSlug}.${DEFAULT_PROXY_DOMAIN}` : undefined,
               resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
               fileSystem,
             })
@@ -397,6 +395,7 @@ export const planApp = (
         (featureRef) => plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef,
       );
       resolvedServices.push({
+        routes,
         name,
         service: pinnedService,
         authored: storageAuthored,
@@ -507,7 +506,6 @@ export const planApp = (
       appName,
       appRoot,
       host,
-      landofileProxy: landofile.proxy,
     });
     const appFeatureResult = yield* composeAppFeatures({
       appName,

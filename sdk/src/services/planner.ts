@@ -13,6 +13,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
 } from "../errors/index.ts";
 import type { AppPlan, LandofileShape, ProviderCapabilities } from "../schema/index.ts";
 import type { ProviderError } from "./provider.ts";
@@ -31,6 +32,7 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     ) => Effect.Effect<
       AppPlan,
       | LandofileValidationError
+      | RouteInputError
       | CapabilityError
       | NotImplementedError
       | PublicationUnsupportedError

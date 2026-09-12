@@ -121,6 +121,7 @@ import type {
   RecipeManifestParseError,
   RecipeManifestValidationError,
   RecipeSourceError,
+  RouteInputError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
   ScratchAppError,
@@ -337,6 +338,7 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | LandofileNotFoundError
       | LandofileParseError
       | LandofileValidationError
+      | RouteInputError
       | LandofileSandboxError
       | LandofileTimeoutError
       | LandofileFormConflictError
@@ -576,6 +578,7 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     ) => Effect.Effect<
       AppPlan,
       | LandofileValidationError
+      | RouteInputError
       | CapabilityError
       | NotImplementedError
       | PublicationUnsupportedError
