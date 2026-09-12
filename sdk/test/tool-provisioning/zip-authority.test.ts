@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deflateRawSync } from "node:zlib";
 import { ToolExtractError } from "@lando/sdk/errors";
 import { provisionTool } from "@lando/sdk/tool-provisioning";
 import { Effect, Either } from "effect";
@@ -50,7 +51,111 @@ const directoryZip = (mode: number, suffix: string, sibling: boolean): Uint8Arra
   return bytes;
 };
 
+const payloadZip = (compression: number, declaredSize: number, descriptorSize = 0): Buffer => {
+  const payload = compression === 8 ? deflateRawSync(regular.bytes) : regular.bytes;
+  const bytes = Buffer.from(makeZip([{ name: "tool", bytes: payload }]));
+  const central = bytes.readUInt32LE(bytes.length - 6);
+  bytes.writeUInt16LE(compression, 8);
+  bytes.writeUInt16LE(compression, central + 10);
+  bytes.writeUInt32LE(declaredSize, 22);
+  bytes.writeUInt32LE(declaredSize, central + 24);
+  if (descriptorSize === 0) return bytes;
+  bytes.writeUInt16LE(8, 6);
+  bytes.writeUInt16LE(8, central + 8);
+  bytes.writeUInt32LE(0, 18);
+  bytes.writeUInt32LE(0, 22);
+  const descriptor = Buffer.alloc(16);
+  descriptor.writeUInt32LE(0x08074b50);
+  descriptor.writeUInt32LE(bytes.readUInt32LE(central + 16), 4);
+  descriptor.writeUInt32LE(payload.length, 8);
+  descriptor.writeUInt32LE(declaredSize, 12);
+  const result = Buffer.concat([
+    bytes.subarray(0, central),
+    descriptor.subarray(descriptorSize === 12 ? 4 : 0, descriptorSize === 12 ? 16 : descriptorSize),
+    bytes.subarray(central),
+  ]);
+  result.writeUInt32LE(central + descriptorSize, result.length - 6);
+  return result;
+};
+
+const boundsCases = [
+  ...[0, 1, regular.bytes.length - 1, regular.bytes.length + 1].flatMap((size) =>
+    [0, 8].map((method) => ({
+      name: `method ${method} wrong declared size ${size}`,
+      bytes: payloadZip(method, size),
+      accepts: false,
+    })),
+  ),
+  ...[0, 8].flatMap((method) =>
+    [0, 12, 16].map((descriptor) => ({
+      name: `method ${method} exact size with descriptor ${descriptor}`,
+      bytes: payloadZip(method, regular.bytes.length, descriptor),
+      accepts: true,
+    })),
+  ),
+  ...[1, 4, 8, 15].map((size) => ({
+    name: `descriptor truncated to ${size} bytes before central directory`,
+    bytes: payloadZip(0, regular.bytes.length, size),
+    accepts: false,
+  })),
+  ...[
+    "empty stored forgery",
+    "empty stored",
+    "payload overlap",
+    "extra overlap",
+    "filename overflow",
+    "size overflow",
+    "truncated deflate",
+    "invalid deflate",
+    "missing descriptor",
+    "wrong descriptor size",
+  ].map((name) => {
+    const bytes = name.startsWith("empty stored")
+      ? Buffer.from(makeZip([{ name: "tool", bytes: Buffer.alloc(0) }]))
+      : payloadZip(
+          name.endsWith("deflate") ? 8 : 0,
+          regular.bytes.length,
+          name === "wrong descriptor size" ? 16 : 0,
+        );
+    const central = bytes.readUInt32LE(bytes.length - 6);
+    switch (name) {
+      case "empty stored forgery":
+        bytes.writeUInt32LE(1, 22);
+        bytes.writeUInt32LE(1, central + 24);
+        break;
+      case "payload overlap":
+      case "size overflow": {
+        const size = name === "size overflow" ? 0xffffffff : regular.bytes.length + 1;
+        for (const offset of [18, 22, central + 20, central + 24]) bytes.writeUInt32LE(size, offset);
+        break;
+      }
+      case "extra overlap":
+        bytes.writeUInt16LE(regular.bytes.length + 1, 28);
+        break;
+      case "filename overflow":
+        bytes.writeUInt16LE(0xffff, 26);
+        break;
+      case "truncated deflate":
+        bytes.writeUInt32LE(1, 18);
+        bytes.writeUInt32LE(1, central + 20);
+        break;
+      case "invalid deflate":
+        bytes[34] = 0xff;
+        break;
+      case "missing descriptor":
+        bytes.writeUInt16LE(8, 6);
+        bytes.writeUInt16LE(8, central + 8);
+        break;
+      case "wrong descriptor size":
+        bytes.writeUInt32LE(1, central - 4);
+        break;
+    }
+    return { name, bytes, accepts: false };
+  }),
+];
+
 const cases = [
+  ...boundsCases,
   ...[
     "missing EOCD",
     "orphan local record",
