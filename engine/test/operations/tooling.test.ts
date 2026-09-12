@@ -159,6 +159,11 @@ const invalidInputs: readonly {
   { task: { cmd: "echo", flags: { verbose: { boolean: true } } }, args: ["--bogus"], field: "bogus" },
   { task: { cmd: "echo", args: { mode: { choices: ["safe"] } } }, args: ["unsafe"], field: "mode" },
   { task: { cmd: "echo", service: ":svc", flags: { svc: { alias: "s" } } }, args: [], field: "svc" },
+  ...[":host", ":other", ":"].map((value) => ({
+    task: { cmd: "echo", service: ":svc", flags: { svc: {} } },
+    args: [`--svc=${value}`],
+    field: "svc",
+  })),
 ];
 test.each([...invalidInputs])(
   "rejects invalid input before selecting a provider: $field",
