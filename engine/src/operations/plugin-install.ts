@@ -3,11 +3,16 @@ import { join, relative, resolve } from "node:path";
 
 import { Effect, Either, Schema } from "effect";
 
-import { PluginManifestError } from "@lando/sdk/errors";
+import { NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest, type PluginManifest as PluginManifestShape } from "@lando/sdk/schema";
 
 import { invalidatePluginCommandCache } from "../cache/command-index-writer";
-import { type InstalledPluginRegistryEntry, recordInstalledPlugin } from "../plugins/installed-registry";
+import {
+  type InstalledPluginRegistryEntry,
+  readInstalledPluginRegistry,
+  recordInstalledPlugin,
+} from "../plugins/installed-registry";
+import { withPluginMutationLock } from "../plugins/mutation-lock.ts";
 
 export interface PluginAddResult {
   readonly pluginName: string;
@@ -94,13 +99,35 @@ export interface FinalizePluginInstallOptions {
   readonly pluginsRoot: string;
   readonly entry: InstalledPluginRegistryEntry;
   readonly cacheRoot?: string;
+  readonly expectedCurrentVersion?: string;
+  readonly mutationLockHeld?: boolean;
 }
 
-export const finalizePluginInstall = (options: FinalizePluginInstallOptions): Effect.Effect<void, never> =>
-  Effect.promise(() => recordInstalledPlugin(options.pluginsRoot, options.entry)).pipe(
+export const finalizePluginInstall = (
+  options: FinalizePluginInstallOptions,
+): Effect.Effect<void, NotImplementedError> => {
+  const finalize = Effect.gen(function* () {
+    if (options.expectedCurrentVersion !== undefined) {
+      const registry = yield* Effect.promise(() => readInstalledPluginRegistry(options.pluginsRoot));
+      if (registry[options.entry.name]?.version !== options.expectedCurrentVersion) {
+        return yield* Effect.fail(
+          new NotImplementedError({
+            message: `Plugin ${options.entry.name} changed after update planning; refusing an implicit re-plan.`,
+            commandId: "meta:update",
+            remediation: "Run lando update again against the current installed plugin state.",
+          }),
+        );
+      }
+    }
+    yield* Effect.promise(() => recordInstalledPlugin(options.pluginsRoot, options.entry));
+  }).pipe(
     Effect.zipRight(
       invalidatePluginCommandCache({
         ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
       }),
     ),
   );
+  return options.mutationLockHeld === true
+    ? finalize
+    : withPluginMutationLock(options.pluginsRoot, "meta:plugin:add", finalize);
+};
