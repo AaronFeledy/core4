@@ -49,6 +49,9 @@ const containedPath = (
   return Effect.succeed(absolute);
 };
 
+// Reject symlink components for static-tree containment; realpath adds no protection
+// and shares the check/read race. Concurrent mutation of the user's own working
+// tree is outside the threat model: its writer can already edit inference inputs.
 const assertNoSymlinkComponents = (
   input: ProjectFileRequest & { readonly fileSystem: Context.Tag.Service<typeof FileSystem> },
   absolute: string,
