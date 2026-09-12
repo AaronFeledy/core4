@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ToolingFlagShape.boolean` replaces the unreleased `type` field without an alias. Flags add optional `alias`, `choices`, and `required`; arguments add optional `choices` and non-negative integer `order`. `ToolingTaskShape` adds optional `user` and `disabled`, and `cmds` accepts strings or `ToolingStepShape` command objects. `ToolingCompileError` adds optional `{ path, task }` source metadata. The new `ToolingInputError` and `ToolingDisabledError` exports carry tooling identity, source metadata, and remediation.
+
 - `ConfigTranslateSecretReference` is narrowed before first release to three mutually exclusive shapes: `secret-store` carries one canonical `${secret:...}` reference, `postInit.stdin` carries only its disposition, and `postInit.secretEnv` carries its disposition and environment variable name. Raw secret strings and generic reference payloads are not accepted. This contract applies to `ConfigTranslateRecipeRequestInput.secretAnswers` and `RecipeDecomposeInput.secrets`; init-only secret bytes remain outside translation and are delivered only to their declared post-init sink.
 
 - `LandofileService.discover` additively exposes `ManagedFileTransactionError` without adding an Effect context requirement. The frozen service-surface fixture matches the expanded error union. `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` preserve the same failure through app operations; restart, rebuild, and destroy inherit it. The additive `ManagedFileTransactionGuard` service provides `ensureConsistent(appRoot)` and `pending(appRoot)` and is included in `LandoRuntimeServices`.
@@ -475,6 +477,7 @@
 - `ToolingDefaultsShape`
 - `ToolingFlagShape`
 - `ToolingIncludeShape`
+- `ToolingStepShape`
 - `ToolingTaskShape`
 - `ToolingVar`
 - `ToolingVarDefault`
@@ -745,6 +748,8 @@
 - `CommandAliasTargetError`
 - `CommandInputValidationError`
 - `ToolingCommandLookupError`
+- `ToolingInputError`
+- `ToolingDisabledError`
 - `DataChecksumMismatchError`
 - `DataEndpointUnsupportedError`
 - `DataSourceOutsideRootError`

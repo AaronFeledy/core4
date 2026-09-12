@@ -12,6 +12,7 @@ import type { McpCommandEntry } from "@lando/mcp/registry";
 import { BuiltInCommandCatalog } from "../../../../src/cli/built-in-command-catalog-service.ts";
 import { builtInCommandEntries } from "../../../../src/cli/built-in-command-registry.ts";
 import { metaMcpSpec } from "../../../../src/cli/command-specs/meta/mcp.ts";
+import * as mcpCommands from "../../../../src/cli/commands/meta/mcp.ts";
 import {
   type McpCommandRegistry,
   classifyMcpServeStartup,
@@ -196,6 +197,84 @@ describe("mcpRegistryFromBuiltIns", () => {
 });
 
 describe("mcpRegistryWithToolingEntries", () => {
+  const command = {
+    id: "app:greet",
+    summary: "Greet",
+    hidden: false,
+    input: {
+      flags: [
+        { name: "name", boolean: false, required: true, default: "world", description: "Recipient" },
+        { name: "loud", boolean: true, required: false },
+        { name: "mode", boolean: false, required: true, choices: ["dev", "prod"] },
+      ],
+      args: [
+        { name: "target", order: 0, required: true, choices: ["dev", "prod"] },
+        { name: "greeting", order: 1, required: true, default: "hello" },
+      ],
+    },
+  };
+
+  test("projects typed flags when tooling declares input", () => {
+    // Given / When
+    const projected = mcpRegistryWithToolingEntries(registry, [command]).toolingEntries?.[0]?.spec;
+    // Then
+    expect(projected?.flags).toEqual({
+      name: { type: "string", required: false, description: "Recipient [default: world]" },
+      loud: { type: "boolean", required: false },
+      mode: { type: "string", required: true, description: "(one of: dev, prod)" },
+    });
+  });
+
+  test("projects string args in declared order when tooling declares args", () => {
+    // Given / When
+    const projected = mcpRegistryWithToolingEntries(registry, [command]).toolingEntries?.[0]?.spec;
+    // Then
+    expect(Object.keys(projected?.args ?? {})).toEqual(["target", "greeting"]);
+    expect(projected?.args).toEqual({
+      target: { type: "string", required: true, description: "(one of: dev, prod)" },
+      greeting: { type: "string", required: false, description: "[default: hello]" },
+    });
+  });
+
+  test("preserves the exact passthrough member when tooling has no input", () => {
+    // Given
+    const { input: _input, ...passthrough } = command;
+    // When
+    const projected = mcpRegistryWithToolingEntries(registry, [passthrough]).toolingEntries?.[0]?.spec;
+    // Then
+    expect(projected?.flags).toBeUndefined();
+    expect(projected?.args).toEqual({
+      args: { type: "string", multiple: true, description: "Arguments passed to the tooling task." },
+    });
+  });
+
+  test("serializes canonical argv when MCP supplies declared values", () => {
+    // Given
+    const input = { flags: { loud: true, name: "Lando" }, args: { target: "dev" } };
+    // When
+    const argv = mcpCommands.toolingArgvFromInput(command.input, input);
+    // Then
+    expect(argv).toEqual(["--name=Lando", "--loud", "--", "dev"]);
+  });
+
+  test("delimits leading-hyphen positionals so MCP matches CLI argv parsing", () => {
+    // Given a declared positional whose value looks like a flag
+    const input = { args: { target: "--literal" } };
+    // When MCP serializes it
+    const argv = mcpCommands.toolingArgvFromInput(command.input, input);
+    // Then the shared parser keeps the positional identity
+    expect(argv).toEqual(["--", "--literal"]);
+  });
+
+  test("omits false and absent flags without injecting defaults", () => {
+    // Given
+    const input = { flags: { loud: false, name: "" }, args: { target: "prod", greeting: "hi there" } };
+    // When
+    const argv = mcpCommands.toolingArgvFromInput(command.input, input);
+    // Then
+    expect(argv).toEqual(["--name=", "--", "prod", "hi there"]);
+  });
+
   test("projects visible registered tooling commands into MCP tooling entries", () => {
     const base = { commandEntries: [entry("app:info", "Show app info")] };
     const registry = mcpRegistryWithToolingEntries(base, [

@@ -227,6 +227,7 @@ import {
   ToolingDefaultsShape,
   ToolingFlagShape,
   ToolingIncludeShape,
+  ToolingStepShape,
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
@@ -517,6 +518,7 @@ const basePublicSchemaRegistry = {
   ToolingFlagShape,
   ToolingArgShape,
   ToolingDefaultsShape,
+  ToolingStepShape,
   ToolingTaskShape,
   ToolingIncludeShape,
   IncludeEntry,
@@ -937,6 +939,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingFlagShape: "Public Lando schema contract for Tooling Flag Shape.",
   ToolingArgShape: "Public Lando schema contract for Tooling Arg Shape.",
   ToolingDefaultsShape: "App-wide defaults inherited by Landofile tooling tasks.",
+  ToolingStepShape: "Shell command step with tooling task execution overrides.",
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
   ToolingIncludeShape: "Public Lando schema contract for Tooling Include Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
@@ -2497,7 +2500,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ToolingFlagShape.default",
   "ToolingFlagShape.deprecated",
   "ToolingFlagShape.description",
-  "ToolingFlagShape.type",
   "ToolingTaskShape.args",
   "ToolingTaskShape.cmd",
   "ToolingTaskShape.cmds",
@@ -2642,20 +2644,13 @@ export const validatePublicSchemaAnnotations = (
       const fieldPath = `${schemaName}.${name}`;
       issues.push(...validateExamples(schemaName, fieldPath, schemaFromAst(property.type)));
       if (
-        !hasOwnUsefulDescription(property.annotations) &&
-        !hasOwnUsefulDescription(property.type.annotations) &&
-        !hasOptionalMemberUsefulDescription(property.type) &&
+        !hasUsefulFieldDescription(property) &&
         !inheritsLandofileFieldDescription(schemaName, property.name) &&
         !(
           AST.isUnion(schema.ast) &&
           schema.ast.types.every((member) => {
             const field = AST.getPropertySignatures(member).find((entry) => entry.name === property.name);
-            return (
-              field !== undefined &&
-              (hasOwnUsefulDescription(field.annotations) ||
-                hasOwnUsefulDescription(field.type.annotations) ||
-                hasOptionalMemberUsefulDescription(field.type))
-            );
+            return field !== undefined && hasUsefulFieldDescription(field);
           })
         ) &&
         !(exemptions.fields?.has(fieldPath) ?? false) &&

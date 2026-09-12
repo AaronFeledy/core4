@@ -5,7 +5,7 @@ import { McpToolInputError } from "@lando/sdk/errors";
 
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
-import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
+import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
 const spec = (id: string, extra: Partial<LandoCommandSpec> = {}): LandoCommandSpec => ({
@@ -148,6 +148,41 @@ describe("computeEffectiveAllowlist", () => {
 });
 
 describe("buildCatalog", () => {
+  test("exposes declared tooling flag and arg names in the derived input schema", () => {
+    // Given
+    const projected = mcpRegistryWithToolingEntries({ commandEntries: [] }, [
+      {
+        id: "app:greet",
+        summary: "Greet",
+        hidden: false,
+        input: {
+          flags: [{ name: "loud", boolean: true, required: false }],
+          args: [{ name: "target", order: 0, required: true }],
+        },
+      },
+    ]);
+    // When
+    const catalog = buildCatalog({
+      ...projected,
+      effective: computeEffectiveAllowlist({ defaults: [], allow: ["app:greet"] }),
+      options: { tooling: true },
+    });
+    // Then
+    expect(catalog.tools[0]?.inputSchema).toEqual({
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        flags: { type: "object", additionalProperties: false, properties: { loud: { type: "boolean" } } },
+        args: {
+          type: "object",
+          additionalProperties: false,
+          properties: { target: { type: "string" } },
+          required: ["target"],
+        },
+      },
+    });
+  });
+
   const commandEntries = [entry("app:info"), entry("app:logs"), entry("meta:version")];
 
   test("emits one sorted tool per effective-allowlist command", () => {

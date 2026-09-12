@@ -748,7 +748,18 @@ const ToolingEnvironment = Schema.Record({ key: Schema.String, value: ToolingVar
 });
 
 export const ToolingFlagShape = Schema.Struct({
-  type: Schema.optional(Schema.Literal("boolean", "option")),
+  alias: Schema.optional(Schema.String).annotations({
+    description: "Optional single-token alias for this flag.",
+  }),
+  choices: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Allowed values for this flag.",
+  }),
+  boolean: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether this flag is a boolean switch instead of a value-taking option.",
+  }),
+  required: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether this flag must be supplied.",
+  }),
   description: Schema.optional(Schema.String),
   default: Schema.optional(ToolingVarLiteral),
   deprecated: Schema.optional(DeprecationNotice),
@@ -756,12 +767,35 @@ export const ToolingFlagShape = Schema.Struct({
 export type ToolingFlagShape = typeof ToolingFlagShape.Type;
 
 export const ToolingArgShape = Schema.Struct({
+  choices: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Allowed values for this argument.",
+  }),
+  order: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.nonNegative())).annotations({
+    description: "Positional order of this argument within the task.",
+  }),
   description: Schema.optional(Schema.String),
   required: Schema.optional(Schema.Boolean),
   default: Schema.optional(ToolingVarLiteral),
   deprecated: Schema.optional(DeprecationNotice),
 });
 export type ToolingArgShape = typeof ToolingArgShape.Type;
+
+export const ToolingStepShape = Schema.Struct({
+  cmd: Schema.String.annotations({ description: "Shell command executed for this step." }),
+  service: Schema.optional(Schema.String).annotations({
+    description: "Service this step runs in; overrides the task service.",
+  }),
+  dir: Schema.optional(PortablePath).annotations({
+    description: "Working directory for this step; overrides the task directory.",
+  }),
+  user: Schema.optional(Schema.String).annotations({
+    description: "User this step runs as; overrides the task user.",
+  }),
+  env: Schema.optional(ToolingEnvironment).annotations({
+    description: "Environment overlaid on the task environment for this step.",
+  }),
+});
+export type ToolingStepShape = typeof ToolingStepShape.Type;
 
 export const AppLifecycleEventName = Schema.Literal(
   "pre-init",
@@ -1056,7 +1090,7 @@ export type LandofileEvents = typeof LandofileEvents.Type;
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
  * - `description:` / `summary:` — short help text.
  * - `cmd:` — single command (string or string array).
- * - `cmds:` — sequential command list (strings only in this schema).
+ * - `cmds:` — sequential shell commands or command steps with execution overrides.
  * - `arguments: false` — reject caller-supplied positional arguments.
  * - `dir:` — task working directory.
  * - `env:` — task environment overrides.
@@ -1066,21 +1100,29 @@ export type LandofileEvents = typeof LandofileEvents.Type;
  * `deprecated:`, `flags.<name>.deprecated:`, and `args.<name>.deprecated:`.
  *
  * Unsupported fields rejected by `LandofileService` with remediation:
- * `deps:`, step-objects in `cmds:` (`task:`, `command:`, `defer:`,
- * `for:`, `cmd:` step overrides), `engine:`, `bootstrap:`, `dotenv:`,
- * `user:`, `appMount:`, `stdio:`, `interactive:`,
+ * `deps:`, non-command step-objects in `cmds:` (`task:`, `command:`, `defer:`,
+ * `for:`), `engine:`, `bootstrap:`, `dotenv:`,
+ * `appMount:`, `stdio:`, `interactive:`,
  * `passThrough:`, `sources:`, `generates:`, `method:`, `status:`,
  * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
- * `silent:`, `output:`, `failFast:`, `disabled:`, `aliases:`,
+ * `silent:`, `output:`, `failFast:`, `aliases:`,
  * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
  * `examples:`, `usage:`.
  */
 export const ToolingTaskShape = Schema.Struct({
+  user: Schema.optional(Schema.String).annotations({
+    description: "User that the task's commands run as inside the target service.",
+  }),
+  disabled: Schema.optional(Schema.Boolean).annotations({
+    description: "Disables the task so it is hidden from listings and refused at execution.",
+  }),
   service: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
   summary: Schema.optional(Schema.String),
   cmd: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
-  cmds: Schema.optional(Schema.Array(Schema.String)),
+  cmds: Schema.optional(Schema.Array(Schema.Union(Schema.String, ToolingStepShape))).annotations({
+    description: "Ordered shell commands or command steps with task-local execution overrides.",
+  }),
   arguments: Schema.optional(Schema.Literal(false)).annotations({
     description: "Set to false to reject caller-supplied positional arguments for this task.",
   }),
@@ -1154,7 +1196,7 @@ export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
  * The map key is the include namespace; the entry names a local tooling
  * fragment carrying only `tooling:` and `toolingIncludes:`.
  *
- * Deliberately omitted: `dir:` (task-level `dir:` is rejected) and
+ * Deliberately omitted: `dir:` (set it on individual tasks instead) and
  * `checksum:` (tooling fragments are local-file only, so there is no remote
  * source to pin).
  */

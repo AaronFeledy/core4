@@ -1,12 +1,27 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { serialize } from "node:v8";
 import { Effect } from "effect";
 
+import {
+  APP_COMMAND_MAGIC,
+  COMMAND_INDEX_HEADER_BYTES,
+  COMMAND_INDEX_SCHEMA_VERSION,
+  type CommandIndexEntry,
+} from "@lando/engine/cache/command-index";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
+import type { LandofileShape } from "@lando/sdk/schema";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
-import { resolveToolingRoute, toolingName, toolingRouteError } from "../../src/cli/tooling-router.ts";
+import {
+  type ToolingRoute,
+  resolveToolingRoute,
+  toolingHelpRequested,
+  toolingName,
+  toolingRouteError,
+} from "../../src/cli/tooling-router.ts";
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-tooling-router-unit-"));
@@ -23,19 +38,101 @@ const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>):
 const writeFreshCache = async (
   root: string,
   cacheRoot: string,
+  entries: ReadonlyArray<CommandIndexEntry>,
+  source: { readonly yaml: string; readonly landofile: LandofileShape } = {
+    yaml: "name: router-test\n",
+    landofile: { name: "router-test" },
+  },
+): Promise<void> => {
+  await writeFile(join(root, ".lando.yml"), source.yaml);
+  await Effect.runPromise(
+    writeAppCommandCacheStrict({
+      landofile: source.landofile,
+      entries,
+      cwd: root,
+      cacheRoot,
+      now: () => 100,
+    }),
+  );
+};
+
+/** Prior-generation app-command index (schema v2). Must never decode as a usable hit. */
+const writeSchemaV2CacheBlob = async (
+  root: string,
+  cacheRoot: string,
   entries: ReadonlyArray<{
     readonly id: string;
     readonly summary: string;
     readonly hidden: boolean;
-    readonly source?: "bun-script";
   }>,
 ): Promise<void> => {
-  const landofile = { name: "router-test" };
-  await writeFile(join(root, ".lando.yml"), "name: router-test\n");
-  await Effect.runPromise(
-    writeAppCommandCacheStrict({ landofile, entries, cwd: root, cacheRoot, now: () => 100 }),
-  );
+  const sourceFile = join(root, ".lando.yml");
+  await writeFile(sourceFile, "name: router-test\n");
+  const schemaVersion = 2;
+  const payload = {
+    schemaVersion,
+    landoVersion: "0.0.0",
+    appName: "router-test",
+    sourceFile,
+    sourceMtimeMs: 0,
+    sourceSize: 0,
+    sourceLocalIncludePaths: [] as const,
+    sourceReferencedFiles: [] as const,
+    versionConstraints: [] as const,
+    generatedAtMs: 100,
+    entries,
+  };
+  const header = new Uint8Array(COMMAND_INDEX_HEADER_BYTES);
+  header.set(APP_COMMAND_MAGIC, 0);
+  new DataView(header.buffer).setBigUint64(4, BigInt(schemaVersion), true);
+  const body = new Uint8Array(serialize(payload));
+  const bytes = new Uint8Array(header.byteLength + body.byteLength);
+  bytes.set(header, 0);
+  bytes.set(body, header.byteLength);
+  const cachePath = appToolingCompilationCachePath(cacheRoot, root);
+  await mkdir(dirname(cachePath), { recursive: true });
+  await writeFile(cachePath, bytes);
 };
+
+/** Shape `routeResolvedTooling` switches on before calling `runDynamicTooling`. */
+const assertDynamicToolingRoute = (
+  route: ToolingRoute,
+  name: string,
+  extra: { readonly input?: CommandIndexEntry["input"] } = {},
+): void => {
+  expect(route).toEqual({
+    _tag: "tooling",
+    commandId: `app:${name}`,
+    name,
+    hidden: false,
+    ...extra,
+  });
+};
+
+const declaredInput: NonNullable<CommandIndexEntry["input"]> = {
+  flags: [
+    {
+      name: "name",
+      alias: "n",
+      boolean: false,
+      required: false,
+      default: "world",
+      description: "Who to greet",
+    },
+  ],
+  args: [{ name: "target", order: 0, required: true, choices: ["dev", "prod"], description: "Environment" }],
+};
+
+const declaredInputRoute = (
+  overrides: Partial<Extract<ToolingRoute, { readonly _tag: "tooling" }>> = {},
+): ToolingRoute => ({
+  _tag: "tooling",
+  commandId: "app:greet",
+  name: "greet",
+  hidden: false,
+  input: declaredInput,
+  ...overrides,
+});
 
 test("Given leading-hyphen global options, when deriving a tooling name, then they are not tooling", () => {
   // Given
@@ -105,13 +202,48 @@ test("Given a fresh cached app task, when resolving its bare name, then it route
     // When
     const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
-    // Then
+    // Then — `_tag: "tooling"` is the branch `routeResolvedTooling` takes into `runDynamicTooling` → `runTooling`
+    assertDynamicToolingRoute(route, "quality");
+    expect(argv.slice(1)).toEqual(["--fix"]);
+  });
+});
+
+test("Given a schema-version-2 cache blob, when resolving a listed task, then it is a cache-miss not an exception", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given — prior index generation still lists the task; current schema is newer
+    expect(Number(COMMAND_INDEX_SCHEMA_VERSION)).toBeGreaterThan(2);
+    await writeSchemaV2CacheBlob(root, cacheRoot, [
+      { id: "app:quality", summary: "Run quality checks", hidden: false },
+    ]);
+
+    // When
+    const route = await Effect.runPromise(resolveToolingRoute("quality", { cwd: root, cacheRoot }));
+
+    // Then — mismatch is a clean miss (never a thrown decode error, never a usable hit)
     expect(route).toEqual({
-      _tag: "tooling",
+      _tag: "cache-miss",
       commandId: "app:quality",
       name: "quality",
+      remediation: expect.stringContaining("lando app:cache:refresh"),
     });
-    expect(argv.slice(1)).toEqual(["--fix"]);
+  });
+});
+
+test("Given a fresh cache that does not list a token, when resolving it, then it is unknown-tooling", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given
+    await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
+
+    // When
+    const route = await Effect.runPromise(resolveToolingRoute("disabled-now", { cwd: root, cacheRoot }));
+
+    // Then
+    expect(route).toEqual({
+      _tag: "unknown-tooling",
+      commandId: "app:disabled-now",
+      name: "disabled-now",
+      remediation: expect.stringContaining("lando app:cache:refresh"),
+    });
   });
 });
 
@@ -147,11 +279,7 @@ test("Given a fresh cached app task, when resolving its canonical id, then it ro
     const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
     // Then
-    expect(route).toEqual({
-      _tag: "tooling",
-      commandId: "app:quality",
-      name: "quality",
-    });
+    assertDynamicToolingRoute(route, "quality");
     expect(argv.slice(1)).toEqual(["--fix"]);
   });
 });
@@ -324,4 +452,145 @@ test("Given a cache-miss remediation, when extracting backticked lando commands,
     }
     expect(tokens).toContain("app:cache:refresh");
   });
+});
+
+test("Given a cached task that declares input, when resolving any of its spellings, then each route carries the declared metadata", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given — one declared-input task reachable by bare name, canonical id, and a custom alias
+    await writeFreshCache(
+      root,
+      cacheRoot,
+      [{ id: "app:greet", summary: "Greet a target", hidden: false, input: declaredInput }],
+      {
+        yaml: ["name: router-test", "commandAliases:", "  custom:", "    hi: app:greet", ""].join("\n"),
+        landofile: { name: "router-test", commandAliases: { custom: { hi: "app:greet" } } },
+      },
+    );
+
+    // When
+    const [bare, canonical, aliased] = await Promise.all([
+      Effect.runPromise(resolveToolingRoute("greet", { cwd: root, cacheRoot })),
+      Effect.runPromise(resolveToolingRoute("app:greet", { cwd: root, cacheRoot })),
+      Effect.runPromise(resolveToolingRoute("hi", { cwd: root, cacheRoot })),
+    ]);
+
+    // Then — help interception reads this metadata, so every route site must carry it
+    assertDynamicToolingRoute(bare, "greet", { input: declaredInput });
+    assertDynamicToolingRoute(canonical, "greet", { input: declaredInput });
+    assertDynamicToolingRoute(aliased, "greet", { input: declaredInput });
+  });
+});
+
+test("Given a cached task the index hides, when resolving it, then the route reports it hidden", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given — a disabled task stays indexed as hidden so the authoritative check can refuse it
+    await writeFreshCache(root, cacheRoot, [
+      { id: "app:legacy", summary: "Retired task", hidden: true, input: declaredInput },
+    ]);
+
+    // When
+    const route = await Effect.runPromise(resolveToolingRoute("legacy", { cwd: root, cacheRoot }));
+
+    // Then
+    expect(route).toEqual({
+      _tag: "tooling",
+      commandId: "app:legacy",
+      name: "legacy",
+      hidden: true,
+      input: declaredInput,
+    });
+  });
+});
+
+test("Given a declared-input task, when its argv asks for help, then help is requested", () => {
+  // Given
+  const route = declaredInputRoute();
+
+  // When
+  const requests = [["--help"], ["-h"], ["dev", "--help"], ["--name=team", "-h"]].map((argv) =>
+    toolingHelpRequested(route, argv),
+  );
+
+  // Then
+  expect(requests).toEqual([true, true, true, true]);
+});
+
+test("Given a declared-input task, when argv has no help option, then help is not requested", () => {
+  // Given
+  const route = declaredInputRoute();
+
+  // When
+  const requests = [[], ["dev"], ["--name=team"], ["--helpless"]].map((argv) =>
+    toolingHelpRequested(route, argv),
+  );
+
+  // Then
+  expect(requests).toEqual([false, false, false, false]);
+});
+
+test("Given a declared-input task, when help follows the argument terminator, then it belongs to the task", () => {
+  // Given
+  const route = declaredInputRoute();
+
+  // When
+  const requests = [
+    ["--", "--help"],
+    ["dev", "--", "-h"],
+  ].map((argv) => toolingHelpRequested(route, argv));
+
+  // Then
+  expect(requests).toEqual([false, false]);
+});
+
+test("Given a task with no declared input, when argv asks for help, then the option passes through to the command", () => {
+  // Given — raw argv passthrough is what lets `lando composer --help` show the tool's own help
+  const route = declaredInputRoute({ input: undefined });
+
+  // When
+  const requested = toolingHelpRequested(route, ["--help"]);
+
+  // Then
+  expect(requested).toBe(false);
+});
+
+test("Given a hidden declared-input task, when argv asks for help, then the task keeps its own refusal", () => {
+  // Given — a disabled task is indexed hidden and must still fail with its tagged error
+  const route = declaredInputRoute({ hidden: true });
+
+  // When
+  const requested = toolingHelpRequested(route, ["--help"]);
+
+  // Then
+  expect(requested).toBe(false);
+});
+
+test("Given a task that declares its own help flag, when argv asks for help, then the declared flag wins", () => {
+  // Given
+  const byName = declaredInputRoute({
+    input: { flags: [{ name: "help", boolean: true, required: false }], args: [] },
+  });
+  const byAlias = declaredInputRoute({
+    input: { flags: [{ name: "hint", alias: "h", boolean: true, required: false }], args: [] },
+  });
+
+  // When
+  const requests = [toolingHelpRequested(byName, ["--help"]), toolingHelpRequested(byAlias, ["-h"])];
+
+  // Then
+  expect(requests).toEqual([false, false]);
+});
+
+test("Given a route that is not a normalized tooling task, when argv asks for help, then no help is requested", () => {
+  // Given
+  const routes: ReadonlyArray<ToolingRoute> = [
+    { _tag: "not-tooling" },
+    { _tag: "bun-script", commandId: "app:quality", name: "quality", appRoot: "/tmp" },
+    { _tag: "unknown-tooling", commandId: "app:nope", name: "nope", remediation: "refresh" },
+  ];
+
+  // When
+  const requests = routes.map((route) => toolingHelpRequested(route, ["--help"]));
+
+  // Then
+  expect(requests).toEqual([false, false, false]);
 });

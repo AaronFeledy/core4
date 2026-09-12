@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
 
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
+import type { NormalizedToolingArg, NormalizedToolingFlag } from "@lando/landofile/tooling-normalize";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
 import {
@@ -9,7 +10,7 @@ import {
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 2n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 3n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -24,6 +25,10 @@ export interface CommandIndexEntry {
   readonly hidden: boolean;
   readonly service?: string;
   readonly source?: "bun-script";
+  readonly input?: {
+    readonly flags: readonly NormalizedToolingFlag[];
+    readonly args: readonly NormalizedToolingArg[];
+  };
 }
 
 interface CommandAliasPolicy {

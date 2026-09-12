@@ -12,12 +12,12 @@
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Predicate, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { McpToolInputError, type McpTransportError } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
-import { CommandRegistry, ConfigService } from "@lando/sdk/services";
+import { CommandRegistry, ConfigService, type RegisteredCommand } from "@lando/sdk/services";
 
 import {
   type RunToolingResult,
@@ -43,7 +43,6 @@ import type { LandoCommandSpec } from "../../spec/command-base";
 import { renderRunToolingResult } from "../tooling";
 import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
 
-/** Flag inputs parsed from `lando mcp` (`--allow`/`--deny` repeatable, `--tooling`, `--list`). */
 export interface McpCommandFlags {
   readonly allow?: ReadonlyArray<string> | undefined;
   readonly deny?: ReadonlyArray<string> | undefined;
@@ -61,17 +60,45 @@ export interface ResolvedMcpOptions {
 
 export { classifyMcpServeStartup } from "@lando/mcp/stdio-limits";
 
-/** The injected command registry the catalog + dispatch project from. */
 export interface McpCommandRegistry {
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
 }
 
-interface RegisteredToolingCommand {
-  readonly id: string;
-  readonly summary: string;
-  readonly hidden: boolean;
-}
+type RegisteredToolingCommand = RegisteredCommand;
+type ToolingInput = NonNullable<RegisteredToolingCommand["input"]>;
+
+const toolingMemberMetadata = (member: ToolingInput["flags"][number] | ToolingInput["args"][number]) => {
+  const description = [
+    member.description,
+    ...(member.choices === undefined ? [] : [`(one of: ${member.choices.join(", ")})`]),
+    ...(member.default === undefined ? [] : [`[default: ${member.default}]`]),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    required: member.required && member.default === undefined,
+    ...(description === "" ? {} : { description }),
+  };
+};
+
+export const toolingArgvFromInput = (declaration: ToolingInput, input: unknown): ReadonlyArray<string> => {
+  if (!Predicate.isRecord(input)) return [];
+  const flags = Predicate.isRecord(input.flags) ? input.flags : {};
+  const args = Predicate.isRecord(input.args) ? input.args : {};
+  const positionals = declaration.args.flatMap((arg) => {
+    const value = args[arg.name];
+    return typeof value === "string" ? [value] : [];
+  });
+  return [
+    ...declaration.flags.flatMap((flag) => {
+      const value = flags[flag.name];
+      if (flag.boolean) return value === true ? [`--${flag.name}`] : [];
+      return typeof value === "string" ? [`--${flag.name}=${value}`] : [];
+    }),
+    ...(positionals.length === 0 ? [] : ["--", ...positionals]),
+  ];
+};
 
 const ToolingMcpResultSchema = Schema.Struct({
   tool: Schema.String,
@@ -100,15 +127,46 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
     namespace,
     bootstrap: "app",
     hidden: command.hidden,
-    args: {
-      args: {
-        type: "string",
-        multiple: true,
-        description: "Arguments passed to the tooling task.",
-      },
-    },
+    ...(command.input === undefined
+      ? {
+          args: {
+            args: {
+              type: "string" as const,
+              multiple: true,
+              description: "Arguments passed to the tooling task.",
+            },
+          },
+        }
+      : {
+          flags: Object.fromEntries(
+            command.input.flags.map((flag) => [
+              flag.name,
+              {
+                type: flag.boolean ? ("boolean" as const) : ("string" as const),
+                ...toolingMemberMetadata(flag),
+              },
+            ]),
+          ),
+          args: Object.fromEntries(
+            command.input.args.map((arg) => [
+              arg.name,
+              {
+                type: "string" as const,
+                ...toolingMemberMetadata(arg),
+              },
+            ]),
+          ),
+        }),
     resultSchema: ToolingMcpResultSchema,
-    run: (input) => runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true }),
+    run: (input) =>
+      runTooling({
+        name: command.id,
+        args:
+          command.input === undefined
+            ? toolingArgsFromInput(input)
+            : toolingArgvFromInput(command.input, input),
+        renderProgress: true,
+      }),
     redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
     render: (result) => renderRunToolingResult(result as RunToolingResult),
   };
@@ -244,7 +302,6 @@ const resolveOptions = (
     return options;
   });
 
-/** Build the retained-runtime config seam from the injected registry + runtime layer. */
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
   runtimeLayer: Layer.Layer<unknown>,
@@ -255,10 +312,6 @@ export const buildMcpRuntimeConfig = (
   runtimeLayer,
 });
 
-/**
- * The `--list` result: the effective tool catalog projected as an audit shape
- * (id, summary, source of allowance). A normal machine-output command result.
- */
 export const mcpListResult = (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
@@ -352,7 +405,7 @@ export const dispatchMcpCommand = async (params: {
       command: "meta:mcp",
       invocation: params.invocation,
       resultSchema: McpListResultSchema,
-      render: (value, ctx) => renderMcpListResult(value, ctx),
+      render: renderMcpListResult,
       formatError: params.formatError,
     });
   }

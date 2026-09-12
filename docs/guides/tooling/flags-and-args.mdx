@@ -1,0 +1,198 @@
+---
+id: flags-and-args
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, flags]
+---
+
+# Declare flags and args on a tooling task
+
+Add `flags:` and `args:` to a task when you want Lando to validate input before the command runs. Declared input shows up in `lando <task> --help`, gets checked against choices and requiredness, and is available to the task by name.
+
+```yaml
+tooling:
+  greet:
+    description: Greet a target environment
+    service: web
+    flags:
+      name:
+        alias: n
+        description: Who to greet
+        default: world
+      loud:
+        boolean: true
+        description: Shout the greeting
+    args:
+      target:
+        order: 0
+        required: true
+        choices: [dev, prod]
+        description: Environment to greet
+    cmd: echo greeting
+```
+
+With that in place:
+
+```sh
+lando greet dev -n team
+lando greet prod --loud
+```
+
+## Flags
+
+Each key under `flags:` is one `--flag`. Every option is optional; an empty object still declares the flag.
+
+| Key | What it does |
+| --- | --- |
+| `alias` | Short form, so `-n` means `--name` |
+| `default` | Value used when the flag isn't passed |
+| `choices` | Allowed values; anything else is rejected |
+| `required` | Fails the run when the flag is missing and there's no default |
+| `boolean` | Switch with no value: present means `true` |
+| `description` | Help text for `lando <task> --help` |
+
+A `boolean` flag can't take `choices` or a string `default`. Give it `default: true` if you want it on unless the user says otherwise.
+
+## Args
+
+Positional input goes under `args:`. `order` fixes the position, starting at `0`, and Lando reads positionals in that order no matter how you list the keys in YAML.
+
+```yaml
+args:
+  target:
+    order: 0
+    required: true
+    choices: [dev, prod]
+  label:
+    order: 1
+    default: latest
+```
+
+`choices`, `default`, `required`, and `description` behave the same as they do for flags. A required arg with a lower `order` than an optional one is the only sane layout; Lando rejects gaps in the sequence.
+
+## Tasks without declared input
+
+Declaring input is opt-in. A task with no `flags:` or `args:` forwards everything you type straight to the command, unparsed:
+
+```yaml
+tooling:
+  npm:
+    service: web
+    cmd: npm
+```
+
+`lando npm install --save-dev vitest` hands `install --save-dev vitest` to `npm` untouched. Add `flags:` only when you want Lando to check the input first.
+
+## Pick the service from a flag
+
+Set `service: ":<flag-name>"` and the task runs in whichever service the flag names. Lando resolves the target from the validated value, so `choices` and `default` apply before anything runs.
+
+```yaml
+tooling:
+  deploy:
+    description: Run against a chosen service
+    flags:
+      service:
+        alias: s
+        choices: [web, worker]
+        default: web
+    service: ":service"
+    cmd: echo deploying
+```
+
+`lando deploy -s worker` runs in `worker`. Plain `lando deploy` falls back to `web`. Leave out `default` and skip the flag, or name a service that isn't in the app, and the run fails before any command starts.
+
+## Turn a task off
+
+Set `disabled: true` to keep a task in the Landofile but refuse to run it. It disappears from `lando --help`, and calling it directly fails with a tagged error, even when a stale command cache still lists it.
+
+```yaml
+tooling:
+  legacy:
+    description: Retired task
+    disabled: true
+    service: web
+    cmd: echo legacy
+```
+
+Delete the key when you no longer want the reminder.
+
+<Guide>
+  <Scenario id="run-with-flag-alias-and-positional" render>
+    <Step name="scaffold">
+      <UseFixture name="flags-demo" />
+    </Step>
+    <Step name="compile-tooling">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="greet-help">
+      <Verify command="lando greet --help" expect={{ stdout: { regex: "--name" } }} />
+      <Verify command="lando greet --help" expect={{ stdout: { regex: "target" } }} />
+    </Step>
+    <Step name="run-greet">
+      <Verify command="lando greet dev -n team --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"greet\"[\\s\\S]*\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="reject-invalid-arg-choice" render>
+    <Step name="scaffold">
+      <UseFixture name="flags-demo" />
+    </Step>
+    <Step name="compile-tooling">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-greet-with-bad-target">
+      <Run command="lando greet staging --format=json" expectExit={1} />
+      <Verify errorTag="ToolingInputError" expect={{ regex: "staging" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="select-service-from-flag" render>
+    <Step name="scaffold">
+      <UseFixture name="flags-demo" />
+    </Step>
+    <Step name="compile-tooling">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-deploy-in-worker">
+      <Verify command="lando deploy -s worker --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"deploy\"[\\s\\S]*\"service\":\\s*\"worker\"" } }} />
+    </Step>
+    <Step name="run-deploy-with-default">
+      <Verify command="lando deploy --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"deploy\"[\\s\\S]*\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="refuse-disabled-task" render>
+    <Step name="scaffold">
+      <UseFixture name="flags-demo" />
+    </Step>
+    <Step name="compile-tooling">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-legacy">
+      <Run command="lando legacy --format=json" expectExit={1} />
+      <Verify errorTag="ToolingDisabledError" expect={{ regex: "legacy" }} />
+    </Step>
+    <Step name="run-legacy-help">
+      <Run command="lando legacy --help --format=json" expectExit={1} />
+      <Verify errorTag="ToolingDisabledError" expect={{ regex: "legacy" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Set tooling defaults and command aliases](./defaults-and-aliases.mdx)
+- [Include tooling fragments](./tooling-includes.mdx)

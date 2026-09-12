@@ -17,6 +17,7 @@ import {
   compileEffectiveEvents,
   effectiveEventsForPlan,
 } from "../../src/planner/effective-events.ts";
+import * as toolingForPlan from "../../src/planner/effective-tooling.ts";
 import {
   compileEffectiveTooling,
   validateServiceTypeReservedToolingNames,
@@ -38,6 +39,22 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("compileEffectiveTooling", () => {
+  test("returns attached effective tasks when tooling is attached to a plan", () => {
+    // Given
+    const plan = eventPlan();
+    const tooling = compileEffectiveTooling({
+      landofile: { toolingDefaults: { env: { COUNT: "2" } } },
+      services: [
+        { name: "web", tooling: { inspect: { cmd: "inspect", flags: { loud: { boolean: true } } } } },
+      ],
+    });
+    toolingForPlan.attachEffectiveTooling(plan, tooling);
+    // When
+    const attached = toolingForPlan.effectiveToolingForPlan(plan);
+    // Then
+    expect(attached).toEqual(tooling);
+  });
+
   test("authored tasks win wholesale over service-type tasks", () => {
     // Given
     const landofile: LandofileShape = {

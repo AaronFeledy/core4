@@ -1,0 +1,85 @@
+# IR gaps progress
+
+## Codebase Patterns
+- Tooling metadata normalizes ONCE via `normalizeToolingTask` in `@lando/landofile/tooling-normalize`; every consumer (command cache, CLI help, machine index, MCP, execution) reads that IR instead of re-deriving from the authored `ToolingTaskShape`. Argv validation lives beside it in `@lando/landofile/tooling-input` so CLI and MCP share one validation path and emit identical error tags.
+- Adding a publicly registered schema needs THREE edits, not one: the schema itself, `JSON_SCHEMA_REGISTRY` in `sdk/src/schema/json-schema.ts`, and a fixture row in `sdk/test/schema/public-schema-contracts.ts`. Missing the third fails `codegen:schema-snapshot` with "Public schema contract fixture list does not match JSON_SCHEMA_NAMES".
+- Widening a Landofile value type ripples into expression resolution: `engine/src/tooling/step-runner.ts` walks the same shape and must handle every new union member, and `Effect.forEach` over a heterogeneous union needs an explicit callback return annotation under `exactOptionalPropertyTypes`.
+- `check:guide-coverage` only scans PRDs listed in `docs/guides/prd-sources.json`. A PRD outside that list needs no `docs/guides/INDEX.md` row, so do not add one speculatively.
+- Guide fixtures resolve from `docs/guides/<frontmatter-id>/fixtures/<name>/`, never from the MDX's own subdirectory.
+- A non-zero exit from a tooling command is a RESULT, not an Effect failure: `runTooling` stops at the first non-zero step and returns the accumulated streams carrying that exit code, and the CLI maps it through `successExitCode`. Reserve tagged failures for compile, input, and disabled errors so CLI, MCP, and library surfaces stay uniform.
+- Removing or widening a public schema property needs an entry in `sdk/compatibility-exceptions.json` keyed by surface + changeKind + path with a justification. `check:schema-compatibility` is its own gate; typecheck, lint, and the test suites all stay green while it fails.
+
+## 2026-09-11 - US-613 (in progress, not complete)
+
+Landed the normalization spine and most of its consumers.
+
+- Landofile tooling authoring now accepts task `user`/`disabled`, flag `alias`/`choices`/`boolean`/`default`/`required`, arg `choices`/`order`, and `cmds` entries that are either a string or an object step carrying `cmd` plus per-step `service`/`dir`/`user`/`env`. The retired flag `type` spelling was replaced outright rather than kept alongside `boolean`.
+- A pure normalizer produces one `NormalizedToolingTask` IR (ordered steps, resolved service references, sorted positional args) and a companion validator parses argv against it. Declaring input is opt-in: a task with no `flags`/`args` keeps raw argv passthrough, which is what preserves every pre-existing tooling behavior.
+- Execution resolves the task, rejects disabled tasks, validates argv, and resolves `:<flag>` service references all BEFORE provider selection. A task whose every step is `:host` never initializes a provider at all; mixed tasks select once and run steps in authored order with step-level `user`/`dir` overriding task-level values independently.
+- The app command index carries normalized flag/arg metadata (schema version 3; version-2 blobs read as a cache miss, never an exception), CLI help renders FLAGS/ARGUMENTS sections from it, and MCP projects the same metadata into tool input schemas, serializing back to canonical argv so both surfaces run one validator.
+- New tagged errors `ToolingInputError` and `ToolingDisabledError` carry source path, key path, and remediation.
+
+Verification: typecheck, lint, and check:boundaries passed; 359 targeted tests passed across sdk/landofile/engine/core tooling suites; codegen:schema-snapshot regenerated cleanly.
+
+**Two defects found in manual CLI QA remain open, so the story is NOT marked passing:**
+1. `lando <task> --help` on a task that declares flags is consumed by the input parser and fails with `ToolingInputError` instead of printing help. Help must be intercepted before tooling input parsing.
+2. A disabled task on a FRESH cache reports the cache-miss `ToolingCompileError` rather than `ToolingDisabledError`, because disabled tasks are excluded from the command index entirely so the router never matches them. Only the stale-cache path reaches the authoritative check. Keep disabled tasks in the index marked hidden plus disabled, and reject them by tag at the router.
+
+- **Learnings for future iterations:**
+  - Manual CLI QA caught both defects; the 359 green tests did not. Always run the real binary from a fixture app directory (`bun core/bin/lando.ts <task>` with isolated `LANDO_USER_*` roots), not just the suites.
+  - Excluding a task from the command index and relying on a downstream authoritative check gives the wrong error tag on the fresh-cache path. Model "known but refused" distinctly from "unknown".
+  - `bun core/src/cli/index.ts` exits 0 silently; only `core/bin/lando.ts` is a faithful manual-verification entry.
+---
+## 2026-09-11 23:28 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-613 (expected passes: true)
+---
+## 2026-09-11 23:50 - US-613 Drift Audit
+- Trigger: 1 cycle, ~2560 changed lines, 2 commits
+- Weakened proofs: the command-index suite blessed omitting disabled tasks, so a fresh cache could never emit `ToolingDisabledError`
+- Ceremony: unused plan-normalized IR cache existed only for its own tests
+- Contract: `lando <task> --help` with declared flags is still unproven and left to Build; story stays `passes: false`
+- Fixed: disabled tasks stay in the index as hidden; unused plan cache deleted; retired flag `type` leftover fixture and exemption removed
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 87 targeted tests pass
+---
+## 2026-09-11 23:41 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-613 (expected passes: true)
+---
+## 2026-09-11 23:41 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-613 (expected passes: true)
+---
+## 2026-09-11 23:41 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-613 (expected passes: true)
+---
+
+## 2026-09-12 00:45 - US-613 (complete)
+
+Closed the two defects that held the story open, plus branch-local breakage that only CI would have caught.
+
+- `lando <task> --help` now renders the declared FLAGS/ARGUMENTS help before the task's argv is parsed. The decision reads the normalized flag/arg metadata the command index already carries, so a task with declared input gets Lando's help while a raw-passthrough task still hands `--help` to the tool it wraps. A hidden or disabled task keeps its own tagged refusal, and a task that declares its own `help` flag (or `h` alias) keeps ownership of both spellings.
+- Restored the tooling result contract the step-execution rewrite had changed: a non-zero command exit is the task's result, carrying the verbatim exit code, accumulated stdout/stderr, redaction tokens, and progress events, while a multi-step task still stops at the first failing step. Tagged failures stay reserved for compile, input, and disabled errors, which keeps the CLI, MCP, and library surfaces identical for a failing developer tool. Reviewed against the published `ToolingEngine` contract; lifecycle events are unaffected because they abort through their own event-step failure.
+- Recorded the story's public schema movement (retired flag spelling, widened flag/arg/step projections) as compatibility acceptances so the schema gate passes on intent rather than silence.
+- Repaired the translated-tooling rejection check, whose fixture had been switched to supported metadata while it still asserted a rejection; it now proves invalid tooling metadata from a translator is refused before anything is written.
+
+Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-coverage, check:public-transcripts, check:schema-compatibility, check:telemetry-inventory, and codegen:check pass; 677 targeted tests pass across 34 tooling, help, alias, MCP, cache, and schema suites; the flags-and-args guide plus three adjacent tooling guides pass. Manual CLI QA on the real binary with isolated user roots: help renders for bare name, canonical id, and custom alias; `-h` behaves the same; passthrough and author-declared help flags are byte-identical to the pre-change baseline; a disabled task still fails `ToolingDisabledError` on a fresh cache; a failing single-step task returns exit 7 with its streams; a failing first step stops the chain.
+
+- **Learnings for future iterations:**
+  - Story breakage hides OUTSIDE the story's own suites. Three pre-existing CLI contract tests and the schema-compatibility gate had been red for two iterations because only the new suites were run. Sweep by grepping `*.test.ts` for every symbol whose behavior changed, and run the semantic gates (`check:schema-compatibility` above all) whenever `sdk/src/schema/**` moves.
+  - Pass the canonical command id (`app:<task>`) into help dispatch, never the typed token: a task named `app`, `global`, or `recipes` would otherwise be captured by the help-topic branch.
+  - Route dispatch decisions off cache metadata instead of argv shape. The command index already knows whether a task declared input, so the help gate needs no Landofile load and no provider.
+  - Once the unsupported-tooling allowlists matched the schema exactly, no tooling key is both schema-valid and scan-rejected, so translator output carrying bad tooling metadata now surfaces as `ConfigTranslateError` before any write rather than `NotImplementedError`.
+---
+## 2026-09-12 - US-613 Review
+- Fixed in-scope review blockers: cmd/cmds mutual exclusion after schema decode, source-aware missing service-flag errors, declared flags with `arguments: false`, MCP `--` delimiters for hyphen positionals, tagged compile failures from cache refresh, and the plugin-index schema-version assertion.
+- Review notes (deferred/rejected): event-command argv order, mixed-step collapse, and host provider selection stay US-614; CommandRegistry swallow-on-discovery is the existing listing contract; Object.keys cmd/cmds walk was replaced by rejecting both rather than inventing a key-order policy; security lane aborted with no confirmed HIGH/CRITICAL issue.
+- Verification: typecheck and lint passed; 149 focused tests passed across normalize/input/tooling/compiler/MCP/command-registry suites.
+- **Learnings for future iterations:** Schema.Struct rebuilds decoded objects in field-declaration order, so Object.keys authored-order tests that skip decode are false greens. MCP→argv must insert `--` before positionals or leading-hyphen values become flags in the shared parser.
+---
+## 2026-09-12 01:50 - US-613 Drift Audit
+- Trigger: 3 cycles, ~2952 changed lines, 20 commits
+- Contract: disabled tasks were documented as unlisted while the index keeps them hidden
+- Scar tissue: argv rejection still accepted authored `arguments` after normalize
+- Fixed: listing contract text; argv check reads only normalized `acceptsArguments`
+- Split/excise decisions: none; event mixed-step collapse stays US-614
+- Verification: typecheck pass, lint pass, 257 targeted tests pass
+---

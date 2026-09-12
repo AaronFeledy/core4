@@ -30,6 +30,7 @@ import type {
   PublicationUnsupportedError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
+import { ToolingCompileError } from "@lando/sdk/errors";
 import {
   AppPlanner,
   LandofileService,
@@ -82,6 +83,7 @@ type AppCacheRefreshError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingCompileError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
@@ -128,7 +130,13 @@ export const refreshAppCache = (
 
     const cwd = options.cwd ?? process.cwd();
     const scripts = yield* discoverScripts(cwd);
-    const entries = compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan));
+    const entries = yield* Effect.try({
+      try: () => compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan)),
+      catch: (cause) => {
+        if (cause instanceof ToolingCompileError) return cause;
+        throw cause;
+      },
+    });
     const aliasError = commandAliasRegistrationError(
       landofile.commandAliases,
       entries.map((entry) => entry.id),

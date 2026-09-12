@@ -14,6 +14,30 @@ import {
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
+  test("uses version three when encoding normalized command input", () => {
+    // Given / When / Then
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(3n);
+  });
+
+  test.each([2n, 3n])("returns a cache miss for a v2 payload with header %s", (headerVersion) => {
+    // Given
+    const bytes = encodeAppCommandIndex({
+      schemaVersion: 2,
+      landoVersion: "0.0.0",
+      appName: "old",
+      sourceFile: "/app/.lando.yml",
+      sourceMtimeMs: 0,
+      sourceSize: 0,
+      generatedAtMs: 0,
+      entries: [],
+    });
+    new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, headerVersion, true);
+    // When
+    const decoded = decodeAppCommandIndex(bytes);
+    // Then
+    expect(decoded).toBeNull();
+  });
+
   test("roundtrips an app command index payload", () => {
     const payload = {
       schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
@@ -26,7 +50,15 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
       generatedAtMs: 1_700_000_100_000,
       entries: [
         { id: "app:composer", summary: "Run Composer", hidden: false, service: "appserver" },
-        { id: "app:test", summary: "Run tests", hidden: false },
+        {
+          id: "app:test",
+          summary: "Run tests",
+          hidden: false,
+          input: {
+            flags: [{ name: "name", alias: "n", boolean: false, default: "world", required: false }],
+            args: [{ name: "target", order: 0, choices: ["dev", "prod"], required: true }],
+          },
+        },
       ],
     };
 

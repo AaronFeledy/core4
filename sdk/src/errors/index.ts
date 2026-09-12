@@ -1,4 +1,3 @@
-/** Tagged error exports for the SDK. */
 export * from "./app.ts";
 export * from "./build.ts";
 export * from "./command.ts";
@@ -35,6 +34,13 @@ export * from "./host-proxy.ts";
 export * from "./ssh.ts";
 export * from "./state-store.ts";
 export * from "./tool.ts";
-export * from "./tooling.ts";
+export {
+  ToolingCommandLookupError,
+  ToolingCompileError,
+  ToolingDisabledError,
+  ToolingExecError,
+  ToolingIncludeCycleError,
+  ToolingInputError,
+} from "./tooling.ts";
 export * from "./tooling-step.ts";
 export * from "./tunnel.ts";
