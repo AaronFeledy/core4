@@ -268,3 +268,28 @@ Verification: typecheck, lint, check:boundaries, check:schema-compatibility, che
 - Drift check: clean
 - Merge: merged (squash)
 ---
+
+## 2026-09-12 14:05 - US-617A (in progress, not complete)
+
+Landed the mechanism for planned-user home persistence and host reachability. The story is NOT marked passing: the fail-closed default is live and the fixtures it now refuses have not been updated yet.
+
+- A service accepts `home: false | { path? }`, enabled when omitted. A new `AbsoluteContainerPath` primitive validates the authored path the same pattern-only way `ContainerUser` does, so it stays a plain string at every call site.
+- A service type now declares the identities inside the image it ships: `ServiceType.identity` is `{ defaultUser, homes }`, where `homes` maps a user principal (the part before any `:group`) to that user's home directory. Every bundled catalog type declares one; `compose` and `lando` deliberately do not, because their image comes from the Landofile.
+- Planning resolves the home once, in `finalizeServices`, which is the first point where the composed planned user, the final artifact, the complete storage list, and the provider capabilities all exist. `home.path` wins outright; otherwise the planned user (or the identity's default user) selects the path. An authored storage entry already covering that destination keeps its own store name, scope, and ownership, and nothing is generated on top of it; a trailing slash does not make two destinations different.
+- A service whose image is supplied by the Landofile has no trustworthy identity, so it refuses with the new `HomePathCapabilityError` before any provider action, naming the service and both ways out. That error is threaded through every plan-carrying error union up to the public `AppPlanner.plan` signature.
+- Host reachability is realized only from declared capability: when a provider reports `hostReachability` other than `none`, each service gets the `host.lando.internal` alias pointing at the runtime-resolved `host-gateway` sentinel plus `LANDO_HOST_IP` naming that alias. When the provider cannot reach the host, neither exists and planning does not fail for it. `ServicePlan.hostAliases` was a dead field; the shared container host-config fragment now projects it into `ExtraHosts`, so both the Podman bring-up path and the Docker provider realize it.
+- Build keys already excluded storage; that is now pinned by regression coverage rather than left implicit.
+
+Verification: typecheck and lint pass. 78 focused tests pass across home resolution, host reachability, extends identity merge, catalog identity coverage, container host config, compose-knob ExtraHosts merge, and build-key storage.
+
+**Remaining before this story can pass:**
+1. Landofile fixtures that author `image:` on a catalog type, or use `type: compose`, now refuse by design. `engine/test/services/app-planner.test.ts` has 97 such failures, all `HomePathCapabilityError`. They need `home: false`, and the same sweep covers `core/test`, `plugins/*/test`, and `docs/guides/**/fixtures`.
+2. `plugins/proxy-traefik/src/global-services/traefik.ts` and `plugins/service-lando/src/global-services/mailpit.ts` are production global services declared as `type: compose`; both need `home: false` or the router itself will not plan.
+3. The `docs/guides/services/home-and-host.mdx` executable guide, its fixtures under `docs/guides/home-and-host/fixtures/`, and the `docs/guides/INDEX.md` row.
+4. `check:schema-compatibility` and `codegen:schema-snapshot` for the added `home` property, plus `check:boundaries` and real-runtime evidence.
+
+- **Learnings for future iterations:**
+  - Adding one member to a planner error channel is a repo-wide edit, not a local one. `HomePathCapabilityError` had to join sixteen separate unions across `sdk/src/app`, `sdk/src/services`, `engine/src/operations`, and seven `core/src/cli/commands` files before the tree typechecked. Grep `| CommandAliasConflictError` to find every plan-carrying union at once.
+  - `engine` typechecks against `sdk/dist`, not `sdk/src`. After changing an SDK type, run `bun run --filter='@lando/sdk' build` or the engine reports "Two different types with this name exist, but they are unrelated" and sends you hunting for a phantom mismatch.
+  - Pattern-validated schemas like `ContainerUser` are NOT branded, so their `.Type` is plain `string`. Following that precedent for `AbsoluteContainerPath` kept roughly thirty catalog declaration sites free of `.make()` noise.
+  - A fail-closed default lands its blast radius in fixtures, not in source. Measure it before implementing: `type: compose` alone appears in 40 files here, including two production global services, so budget the sweep as part of the story rather than discovering it at the end.
