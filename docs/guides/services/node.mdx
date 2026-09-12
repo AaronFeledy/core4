@@ -34,6 +34,22 @@ selector resolves to `node:lts`. If `package.json` also declares
 anything.
 
 <Guide>
+  <Scenario id="infer-exact-version" render>
+    <Step name="start-from-project-pin">
+      <UseFixture name="node-inference" />
+      <Verify file="node-inference/.nvmrc" expect={{ regex: "^22[.]11[.]0\\s*$" }} />
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+The explicit-version example below keeps the version in the Landofile with
+`type: "node:22"`, without consulting project files.
+
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="node-demo" />
