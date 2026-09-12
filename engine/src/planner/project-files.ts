@@ -32,16 +32,21 @@ const validationError = (input: ProjectFileRequest, message: string) =>
     issues: [`services.${input.serviceName}.packageRoot`],
   });
 
-const containedPath = (input: ProjectFileRequest, authoredPath: string): string => {
+const containedPath = (
+  input: ProjectFileRequest,
+  authoredPath: string,
+): Effect.Effect<string, LandofileValidationError> => {
   const absolute = resolve(input.appRoot, authoredPath);
   const rel = relative(input.appRoot, absolute);
   if (isAbsolute(authoredPath) || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-    throw validationError(
-      input,
-      `Service ${input.serviceName} project path ${authoredPath} escapes the app root. Use an app-root-relative packageRoot.`,
+    return Effect.fail(
+      validationError(
+        input,
+        `Service ${input.serviceName} project path ${authoredPath} escapes the app root. Use an app-root-relative packageRoot.`,
+      ),
     );
   }
-  return absolute;
+  return Effect.succeed(absolute);
 };
 
 const assertNoSymlinkComponents = (
@@ -87,7 +92,7 @@ const readTextBounded = (
   input: ProjectFileRequest & { readonly fileSystem: Context.Tag.Service<typeof FileSystem> },
   absolute: string,
   limit: number,
-): Effect.Effect<string, LandofileValidationError> =>
+): Effect.Effect<{ readonly text: string; readonly sha256: string }, LandofileValidationError> =>
   Stream.runFoldEffect(
     input.fileSystem.read(absolute),
     { chunks: [], bytes: 0 } as BoundedRead,
@@ -111,7 +116,10 @@ const readTextBounded = (
         content.set(chunk, offset);
         offset += chunk.byteLength;
       }
-      return new TextDecoder().decode(content);
+      return {
+        text: new TextDecoder().decode(content),
+        sha256: createHash("sha256").update(content).digest("hex"),
+      };
     }),
     Effect.mapError((cause) =>
       cause instanceof LandofileValidationError
@@ -137,7 +145,7 @@ export const loadServiceTypeProjectFiles = (
       );
     }
     const request = { ...input, fileSystem: input.fileSystem };
-    const packageRoot = containedPath(input, input.packageRoot);
+    const packageRoot = yield* containedPath(input, input.packageRoot);
     yield* assertNoSymlinkComponents(request, packageRoot, false);
     const packageRootStat = yield* input.fileSystem
       .lstat(packageRoot)
@@ -157,7 +165,7 @@ export const loadServiceTypeProjectFiles = (
 
     const files: ServiceTypeProjectFileInput[] = [];
     for (const declaration of input.declarations) {
-      const absolute = containedPath(input, declaration.path);
+      const absolute = yield* containedPath(input, declaration.path);
       const present = yield* assertNoSymlinkComponents(request, absolute, true);
       const path = relative(input.appRoot, absolute);
       if (!present) {
@@ -185,8 +193,8 @@ export const loadServiceTypeProjectFiles = (
           ),
         );
       }
-      const text = yield* readTextBounded(request, absolute, limit);
-      files.push({ path, present: true, text, sha256: createHash("sha256").update(text).digest("hex") });
+      const content = yield* readTextBounded(request, absolute, limit);
+      files.push({ path, present: true, ...content });
     }
     return files;
   });
