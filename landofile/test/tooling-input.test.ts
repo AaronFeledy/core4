@@ -119,6 +119,9 @@ describe("resolveServiceRef", () => {
     {},
     { target: "" },
     { target: true },
+    { target: ":host" },
+    { target: ":other" },
+    { target: ":" },
   ];
   test.each([...invalidFlags])("rejects missing or invalid validated flag %j", (flags) => {
     // Given / When

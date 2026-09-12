@@ -98,14 +98,14 @@ export const resolveServiceRef = (
       return Either.right(ref.name);
     case "flag": {
       const value = Object.hasOwn(values.flags, ref.flag) ? values.flags[ref.flag] : undefined;
-      return typeof value === "string" && value.length > 0
+      return typeof value === "string" && value.length > 0 && !value.startsWith(":")
         ? Either.right(value)
         : Either.left(
             new ToolingInputError({
               tool: task?.name ?? ref.flag,
               field: ref.flag,
-              message: `Service flag ${ref.flag} needs a non-empty string value.`,
-              remediation: `Supply --${ref.flag}=<service>.`,
+              message: `Service flag ${ref.flag} needs a non-empty service name without a leading colon.`,
+              remediation: `Supply --${ref.flag}=<service> using an app service name, not a colon-prefixed target.`,
               ...(task?.source === undefined ? {} : { source: task.source }),
             }),
           );
