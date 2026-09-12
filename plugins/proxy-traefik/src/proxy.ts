@@ -15,12 +15,8 @@ import {
   type RouterServiceShape,
 } from "@lando/sdk/services";
 
-import {
-  TRAEFIK_DIAGNOSTICS_ID,
-  renderTraefikDiagnosticHtml,
-  renderTraefikDiagnosticNginxConfig,
-  renderTraefikFallbackConfig,
-} from "./diagnostics.ts";
+import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
+import { prepareTraefikDiagnostics } from "./global-services/diagnostics.ts";
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
 import {
   ROUTE_FILE_PREFIX,
@@ -28,7 +24,6 @@ import {
   acquisitionStateFile,
   defaultTlsFile,
   diagnosticConfigFile,
-  diagnosticDir,
   diagnosticHtmlFile,
   dynamicConfigDir,
   fallbackConfigFile,
@@ -137,7 +132,6 @@ export const makeTraefikRouterService = (
       Effect.gen(function* () {
         defaultDomain = normalizeDefaultDomain(config.defaultDomain);
         yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
-        yield* dependencies.fileSystem.mkdir(diagnosticDir(dependencies.paths));
         const socketProxy = yield* resolveSocketProxy(dependencies);
         const decision = yield* persistPortAcquisition({
           ...dependencies,
@@ -150,14 +144,7 @@ export const makeTraefikRouterService = (
         if (decision.notices.length > 0) {
           yield* publishFallbackWarn(dependencies, decision);
         }
-        yield* dependencies.fileSystem.writeAtomic(
-          diagnosticHtmlFile(dependencies.paths),
-          renderTraefikDiagnosticHtml(),
-        );
-        yield* dependencies.fileSystem.writeAtomic(
-          diagnosticConfigFile(dependencies.paths),
-          renderTraefikDiagnosticNginxConfig(),
-        );
+        yield* prepareTraefikDiagnostics(dependencies);
         yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
         yield* assertAdvertisedForward(dependencies, advertised);
         yield* dependencies.fileSystem.writeAtomic(

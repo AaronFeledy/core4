@@ -6,10 +6,10 @@
  * importing the manifest `module:` path (which cannot resolve in a
  * `bun build --compile` binary).
  */
-import { type Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { definePlugin } from "@lando/sdk/plugins";
-import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
+import { type GlobalServiceContributionEffect, definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 
 import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
@@ -29,7 +29,7 @@ export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
 export const routerServices = new Map([["traefik", proxy]]);
 
-export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
+export const globalServices: ReadonlyMap<string, GlobalServiceContributionEffect> = new Map([
   ["traefik", traefikGlobalService],
   ["traefik-diagnostics", diagnosticsGlobalService],
 ]);

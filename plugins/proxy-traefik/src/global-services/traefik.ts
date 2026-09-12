@@ -12,6 +12,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 
+import { TRAEFIK_DIAGNOSTICS_ID } from "../diagnostics.ts";
 import { AcquisitionState } from "../port-acquisition-state.ts";
 import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../ports.ts";
 import { acquisitionStateFile } from "../proxy-paths.ts";
@@ -96,6 +97,7 @@ export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceCo
     type: "compose",
     image: TRAEFIK_IMAGE,
     appMount: false,
+    dependsOn: [{ service: TRAEFIK_DIAGNOSTICS_ID, condition: "service_healthy", required: true }],
     command: ["sh", "-c", TRAEFIK_START_SCRIPT],
     mounts: [
       {

@@ -143,6 +143,12 @@ export const ensureGlobalServicesRunning = (
     }
 
     const requestedSet = new Set(requested);
+    const byName = new Map(planServices.map((service) => [String(service.name), service]));
+    for (const name of requestedSet) {
+      for (const dependency of byName.get(name)?.dependsOn ?? []) {
+        if (availableSet.has(String(dependency.service))) requestedSet.add(String(dependency.service));
+      }
+    }
     const selected = planServices.filter((service) => requestedSet.has(String(service.name)));
     const planToApply =
       selected.length === planServices.length

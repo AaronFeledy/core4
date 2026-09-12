@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
@@ -46,34 +49,43 @@ describe("@lando/proxy-traefik plugin exports", () => {
   });
 
   test("globalServices map yields the Traefik and diagnostic ServiceConfig effects", async () => {
-    expect(globalServices).toBeInstanceOf(Map);
-    const traefikEffect = globalServices.get("traefik");
-    expect(traefikEffect).toBeDefined();
-    if (traefikEffect === undefined) throw new Error("traefik effect missing");
-    expect(Effect.isEffect(traefikEffect)).toBe(true);
-    const config = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(traefikEffect));
-    expect(config.type).toBe("compose");
-    expect(config.image).toBe("traefik:v3.3");
+    const root = await mkdtemp(join(tmpdir(), "lando-diagnostic-contribution-"));
+    const previous = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_DATA_ROOT = root;
+    try {
+      expect(globalServices).toBeInstanceOf(Map);
+      const traefikEffect = globalServices.get("traefik");
+      expect(traefikEffect).toBeDefined();
+      if (traefikEffect === undefined) throw new Error("traefik effect missing");
+      expect(Effect.isEffect(traefikEffect)).toBe(true);
+      const config = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(traefikEffect));
+      expect(config.type).toBe("compose");
+      expect(config.image).toBe("traefik:v3.3");
 
-    const diagnosticsEffect = globalServices.get("traefik-diagnostics");
-    expect(diagnosticsEffect).toBeDefined();
-    if (diagnosticsEffect === undefined) throw new Error("diagnostics effect missing");
-    const diagnostics = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(diagnosticsEffect));
-    expect(diagnostics).toMatchObject({
-      type: "compose",
-      image: "nginx:1.26-alpine",
-      appMount: false,
-      command: ["nginx", "-c", "/etc/lando/diagnostics/nginx.conf", "-g", "daemon off;"],
-      hostnames: ["traefik-diagnostics.global.internal"],
-      endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }],
-    });
-    expect(diagnostics.mounts).toEqual([
-      {
-        type: "bind",
-        source: "./proxy-traefik/diagnostic",
-        target: "/etc/lando/diagnostics",
-        readOnly: true,
-      },
-    ]);
+      const diagnosticsEffect = globalServices.get("traefik-diagnostics");
+      expect(diagnosticsEffect).toBeDefined();
+      if (diagnosticsEffect === undefined) throw new Error("diagnostics effect missing");
+      const diagnostics = Schema.decodeUnknownSync(ServiceConfig)(await Effect.runPromise(diagnosticsEffect));
+      expect(diagnostics).toMatchObject({
+        type: "compose",
+        image: "nginx:1.26-alpine",
+        appMount: false,
+        command: ["nginx", "-c", "/etc/lando/diagnostics/nginx.conf", "-g", "daemon off;"],
+        hostnames: ["traefik-diagnostics.global.internal"],
+        endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }],
+      });
+      expect(diagnostics.mounts).toEqual([
+        {
+          type: "bind",
+          source: "./proxy-traefik/diagnostic",
+          target: "/etc/lando/diagnostics",
+          readOnly: true,
+        },
+      ]);
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previous;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
