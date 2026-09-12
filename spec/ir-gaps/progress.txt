@@ -153,3 +153,12 @@ Verification: typecheck, lint, check:boundaries, check:guide-coverage, check:sch
 - Verification: typecheck and lint passed; restart-events 5/5 including start and restart post-start no-rollback cases.
 - **Learnings for future iterations:** Making a previously warn-only post hook fatal changes `acquireUseRelease` keep/drop semantics and any outer `compensateFailure` wrapping `startApp`. Run the post hook after the body has already marked resources retained, and skip compensation for that retained post-start failure.
 ---
+## 2026-09-12 07:00 - US-614 Drift Audit
+- Trigger: 3 cycles, ~2363 changed lines, 9 commits
+- Ceremony: unused argument-validator and depth-constant re-exports; stacked compile-then-bracket facade
+- Weakened proofs: post-task failure claimed a redacted tail but only asserted the field existed
+- Deferred work re-examined: toolingArgv positional order stays a US-613 leftover in an untouched file; lint/doctor valid-set stays provider-free layered/included tooling by review contract
+- Fixed: deleted the unused re-exports; collapsed the extra bracket compile wrapper; restored secret redaction on post-task failure
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 65 then 8 focused tests pass
+---
