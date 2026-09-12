@@ -409,6 +409,7 @@ describe("AppPlannerLive", () => {
                 readonly id: string;
                 readonly phase: string;
                 readonly command: unknown;
+                readonly user?: string;
               }>;
             }
           | undefined
@@ -425,21 +426,25 @@ describe("AppPlannerLive", () => {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
           command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+          user: "root",
         },
         {
           id: "lando-log-redirect:access",
           phase: "build",
           command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
+          user: "root",
         },
         {
           id: "lando-log-redirect-mkdir:error",
           phase: "build",
           command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+          user: "root",
         },
         {
           id: "lando-log-redirect:error",
           phase: "build",
           command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
+          user: "root",
         },
       ]);
     });
@@ -468,21 +473,25 @@ describe("AppPlannerLive", () => {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
           command: ["mkdir", "-p", "/var/log/php-fpm"],
+          user: "root",
         },
         {
           id: "lando-log-redirect:access",
           phase: "build",
           command: ["ln", "-sf", "/dev/stdout", "/var/log/php-fpm/access.log"],
+          user: "root",
         },
         {
           id: "lando-log-redirect-mkdir:error",
           phase: "build",
           command: ["mkdir", "-p", "/var/log/php-fpm"],
+          user: "root",
         },
         {
           id: "lando-log-redirect:error",
           phase: "build",
           command: ["ln", "-sf", "/dev/stderr", "/var/log/php-fpm/error.log"],
+          user: "root",
         },
       ]);
     });
@@ -875,6 +884,33 @@ describe("AppPlannerLive", () => {
           { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "echo ready"] } },
         ],
       });
+    });
+  });
+
+  test("log redirect steps stay root when the service user is not root", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "logs-app",
+          runtime: 4,
+          services: { web: { type: "apache", user: "www-data" } },
+        }),
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      const buildSteps = (
+        web?.extensions["@lando/core/service-features"] as
+          | {
+              readonly buildSteps?: ReadonlyArray<{
+                readonly id: string;
+                readonly user?: string;
+              }>;
+            }
+          | undefined
+      )?.buildSteps;
+      const redirects = buildSteps?.filter((step) => step.id.startsWith("lando-log-redirect")) ?? [];
+      expect(web?.user).toBe("www-data");
+      expect(redirects.length).toBeGreaterThan(0);
+      expect(redirects.every((step) => step.user === "root")).toBe(true);
     });
   });
 

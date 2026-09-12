@@ -40,11 +40,13 @@ describe("redirectLogSourceBuildSteps", () => {
         id: "lando-log-redirect-mkdir:access",
         phase: "build",
         command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+        user: "root",
       },
       {
         id: "lando-log-redirect:access",
         phase: "build",
         command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
+        user: "root",
       },
     ]);
   });
@@ -67,13 +69,31 @@ describe("redirectLogSourceBuildSteps", () => {
         id: "lando-log-redirect-mkdir:error",
         phase: "build",
         command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+        user: "root",
       },
       {
         id: "lando-log-redirect:error",
         phase: "build",
         command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
+        user: "root",
       },
     ]);
+  });
+
+  test("declares root so a non-root service user cannot starve mkdir and ln", () => {
+    const steps = redirectLogSourceBuildSteps({
+      base: "lando",
+      logSources: [
+        source({
+          id: "access",
+          path: "/var/log/php-fpm/access.log",
+          strategy: "redirect",
+          stream: "stdout",
+        }),
+      ],
+    });
+
+    expect(steps.every((step) => step.user === "root")).toBe(true);
   });
 
   test("emits no step for a follow source", () => {
