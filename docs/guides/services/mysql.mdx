@@ -74,13 +74,14 @@ Import a dump with `lando db:import`. See [Import and export app databases](../t
 
 ## Pin a version
 
-Set `image:` when `mysql:8.0` isn't the version you want:
+Choose a managed series in `type:`. Lando supports MySQL 8.0, 8.4 LTS, and 9.7 LTS. An unversioned `mysql` service stays on 8.0.
 
 ```yaml
 services:
   db:
-    type: mysql
-    image: mysql:8.4
+    type: "mysql:8.4"
 ```
+
+Use unversioned `type: mysql` with `image:` only for a custom image whose compatibility you manage yourself. A versioned type plus `image:` is conflicting intent and fails during planning.
 
 </Guide>
