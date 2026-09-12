@@ -90,3 +90,25 @@ Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-covera
 - Drift check: clean
 - Merge: merged (squash)
 ---
+
+## 2026-09-12 06:00 - US-614 (in progress, not complete)
+
+Landed the name-resolution spine, the recursion bound, and the restart brackets. Tooling brackets and the guide remain, so the story stays `passes: false`.
+
+- Landofile event names are no longer a closed literal set. `AppLifecycleEventName` gains `pre-restart`/`post-restart`, and `LandofileEvents` keeps its twelve documented keys alongside a plain-string index signature so `pre-<task>`/`post-<task>` survive decode. The index key is deliberately unconstrained: a malformed name must reach the semantic validator that reports the complete valid set, not die structurally with a useless message.
+- Semantic validation moved to the one place that can see the whole namespace. It ran per raw file before layer merge and before tooling includes resolved, so it could never know the task set; it now runs in the planner right after effective tooling is compiled, on both the cache-hit and fresh-plan paths, and before any provider action. The valid set is the twelve lifecycle names plus brackets for every invocable task, including service-type contributions and namespaced include ids, excluding include-only internal tasks. `app:config:lint` and `doctor --app` share the same builder and comparator against the fully resolved Landofile, so there is one definition of validity rather than two.
+- Nested event recursion is bounded. The active-frame stack carries app, event, source file, and the invoking command with its authored step index, never argv or expression values. Cycle identity is (app, event), so the same command under two different events stays legal; depth is checked before the cycle, capped at sixteen simultaneously active event frames. Both rejections carry the alternating event/command chain, and neither can be swallowed by a step's `ignoreError`.
+- Restart now brackets the pair: `pre-restart`, the untouched stop and start event trees, then `post-restart`, which sits outside route-removal compensation and never runs after a failed pair.
+- Post-event failures are fatal. The warn downgrade is deleted outright, so a failing `post-*` step fails its operation with the redacted output tail instead of a message nobody reads, and a fatal post hook never undoes a body that already succeeded.
+
+Verification: typecheck, lint, check:boundaries, and check:schema-compatibility pass; 60 targeted tests pass across event runtime, planner event-name, landofile validation, and restart scenario suites.
+
+Remaining for the next pass: `pre-<task>`/`post-<task>` brackets around top-level tooling runs, and the `docs/guides/events/task-events.mdx` guide.
+
+- **Learnings for future iterations:**
+  - The tooling-bracket seam cannot live inside `runTooling` alone. `engine/src/operations/event-tooling-command.ts` `runEventToolingCommand` is a second top-level entry that calls the engine directly, so an event `command: app:<task>` step would bypass brackets added only to `runTooling`. Extract one shared resolved-task executor and route both through it.
+  - An event `task:` step is an inline graph invocation and must NOT re-fire brackets; only `command:` re-enters. Blur that line and `pre-foo` calling `task: foo` recurses immediately.
+  - A non-zero tooling exit is a result, not a failure, so "a failed body prevents success post-steps" is an exit-code check, not an error branch.
+  - Tagged errors leak into unions far from where they are raised. Moving `LandofileUnknownEventError` from discovery to planning touched the SDK service signatures, the frozen mvp-surface fixture, six global CLI commands, and doctor. Follow the compiler outward rather than guessing the blast radius.
+  - Pass-through `instanceof` lists are a trap: a new boundary error added to only one of them gets silently rewrapped as a generic step failure. They are now one shared predicate.
+---
