@@ -83,3 +83,10 @@ Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-covera
 - Split/excise decisions: none; event mixed-step collapse stays US-614
 - Verification: typecheck pass, lint pass, 257 targeted tests pass
 ---
+## 2026-09-12 04:40 - Babysit
+- PR: #964 https://github.com/AaronFeledy/core4/pull/964
+- CI outcome: pass
+- Review feedback: fixed (Cursor security finding — flag-derived tooling service targets could resolve to the `:host` sentinel and escape the container; colon-prefixed flag values now rejected as ToolingInputError, with regression coverage)
+- Drift check: clean
+- Merge: merged (squash)
+---
