@@ -140,6 +140,7 @@
     "./services/planner": "./src/services/planner.ts",
     "./services/privilege": "./src/services/privilege.ts",
     "./services/process-runner": "./src/services/process-runner.ts",
+    "./services/secret-environment": "./src/services/secret-environment.ts",
     "./services/secret-store": "./src/services/secret-store.ts",
     "./services/shell-runner": "./src/services/shell-runner.ts",
     "./services/tooling-engine": "./src/services/tooling-engine.ts",
