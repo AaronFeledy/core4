@@ -330,8 +330,10 @@ const parseNpmInclude = (
 };
 
 const fetchLocal = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
-  const candidate = isAbsolute(entry.source) ? entry.source : resolve(ctx.sourceRoot, entry.source);
+  const source = ctx.userOwned ? userIncludeSubpath(`user:${entry.source}`) : entry.source;
+  const candidate = isAbsolute(source) ? source : resolve(ctx.sourceRoot, source);
   const root = ctx.userOwned ? requiredPorts(ctx).resolveUserIncludesDir() : ctx.appRoot;
+  if (ctx.userOwned) assertUserIncludeLexicalPath(root, candidate, entry.source);
   const filePath = await assertUnderRoot(
     root,
     candidate,
@@ -370,14 +372,23 @@ const userIncludeSubpath = (source: string): string => {
   return slashPath;
 };
 
+const assertUserIncludeLexicalPath = (root: string, candidate: string, source: string): void => {
+  const subpath = relative(root, candidate).replace(/\\/gu, "/");
+  if (subpath === ".." || subpath.startsWith("../") || isAbsolute(subpath)) {
+    throw includeError({
+      message: `Include ${source} resolves outside the user includes root.`,
+      source,
+      kind: "outside-root",
+      remediation: "Use an include path that stays inside the user includes root.",
+    });
+  }
+};
+
 const fetchUser = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
   const root = requiredPorts(ctx).resolveUserIncludesDir();
-  const filePath = await assertUnderRoot(
-    root,
-    resolve(root, userIncludeSubpath(entry.source)),
-    entry.source,
-    "user includes root",
-  );
+  const candidate = resolve(root, userIncludeSubpath(entry.source));
+  assertUserIncludeLexicalPath(root, candidate, entry.source);
+  const filePath = await assertUnderRoot(root, candidate, entry.source, "user includes root");
   return {
     sourceId: entry.source,
     inventoryId: entry.source,
