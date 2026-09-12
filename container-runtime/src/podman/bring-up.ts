@@ -13,7 +13,7 @@ import {
   landoServiceNetworkAliases,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
-import type { ApplyResult, EventService } from "@lando/sdk/services";
+import type { ApplyOptions, ApplyResult, EventService } from "@lando/sdk/services";
 
 import { libpodWaitDialect } from "../dialect.ts";
 import type {
@@ -87,6 +87,7 @@ export interface BringUpOptions {
   readonly eventService?: EventPublisher;
   readonly signal?: AbortSignal;
   readonly startFailureRemediation?: StartFailureRemediation;
+  readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
 }
 
 interface BringUpDeps {
@@ -290,6 +291,9 @@ const createContainerRequest = (deps: BringUpDeps, plan: AppPlan, service: Servi
           details: { artifact },
         });
       },
+      ...(deps.options.serviceEnvironment?.[service.name] === undefined
+        ? {}
+        : { environment: deps.options.serviceEnvironment[service.name] }),
     }),
     ...knobs.topLevel,
   };

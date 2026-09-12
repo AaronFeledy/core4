@@ -285,6 +285,7 @@ export interface ContainerCreateBodyOptions {
   readonly hostConfig?: Record<string, unknown>;
   readonly networkingConfig?: Record<string, unknown>;
   readonly onMissingArtifact?: (artifact: ServicePlan["artifact"]) => never;
+  readonly environment?: Readonly<Record<string, string>>;
 }
 
 const missingArtifact = (artifact: ServicePlan["artifact"]): never => {
@@ -306,7 +307,7 @@ export const containerCreateBodyFragment = (
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
-    Env: serviceEnv(service),
+    Env: envArrayFromRecord(options.environment ?? service.environment),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,

@@ -213,6 +213,21 @@ describe("container plan helpers", () => {
     expect(containerCreateBodyFragment(plan, service)).not.toHaveProperty("User");
   });
 
+  test("uses a transient environment override without changing the service plan", () => {
+    // Given
+    const plannedEnvironment = service.environment;
+
+    // When
+    const body = containerCreateBodyFragment(plan, service, {
+      environment: { TOKEN: "resolved-canary" },
+    });
+
+    // Then
+    expect(body.Env).toEqual(["TOKEN=resolved-canary"]);
+    expect(service.environment).toBe(plannedEnvironment);
+    expect(service.environment).toEqual({ FOO: "bar", BAZ: "qux" });
+  });
+
   test("uses preserved user labels in the default create body with Lando labels winning", () => {
     const serviceWithLabels: ServicePlan = {
       ...service,
