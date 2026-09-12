@@ -113,6 +113,7 @@ test("ignores malformed CA descriptors outside the build phase", async () => {
             id: "lando.security:trust-store",
             phase: "app",
             command: "install-trust",
+            user: 42,
             caFiles: [{ path: "" }],
           },
         ],

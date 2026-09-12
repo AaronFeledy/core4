@@ -90,7 +90,7 @@ const oneChunkStdin = async function* (): AsyncIterable<Uint8Array> {
   yield new Uint8Array([0x61]);
 };
 
-const runExec = async (api: DockerApiClient, command: CommandSpec) => {
+const runExec = async (api: DockerApiClient, command: CommandSpec, user?: string) => {
   const appliedPlanState = makePluginStateStore(
     makeTestStateStore().service,
     AbsolutePath.make("/tmp/provider-docker-exec-stdin-state"),
@@ -100,11 +100,15 @@ const runExec = async (api: DockerApiClient, command: CommandSpec) => {
   const provider = await Effect.runPromise(
     makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }),
   );
-  return Effect.runPromise(provider.exec({ app: appId, service: serviceName }, command));
+  return Effect.runPromise(
+    provider.exec({ app: appId, service: serviceName, ...(user === undefined ? {} : { user }) }, command),
+  );
 };
 
-const createBody = (calls: ReadonlyArray<DockerHttpRequest>) =>
-  calls.find((call) => call.method === "POST" && call.path === createPath)?.body;
+const createBody = (calls: ReadonlyArray<DockerHttpRequest>): Record<string, unknown> | undefined => {
+  const body = calls.find((call) => call.method === "POST" && call.path === createPath)?.body;
+  return typeof body === "object" && body !== null ? (body as Record<string, unknown>) : undefined;
+};
 
 describe("provider-docker exec AttachStdin", () => {
   test("sets AttachStdin true when only stdinStream is provided", async () => {
@@ -138,5 +142,34 @@ describe("provider-docker exec AttachStdin", () => {
 
     // Then
     expect(createBody(fake.calls)).toMatchObject({ AttachStdin: false });
+  });
+});
+
+describe("provider-docker exec User", () => {
+  test("sets User on the exec-create body when the target has a user", async () => {
+    // Given
+    const fake = makeFakeApi();
+
+    // When
+    await runExec(fake.api, { command: ["true"] }, "www-data");
+
+    // Then
+    const body = createBody(fake.calls);
+    expect(body).toEqual(expect.objectContaining({ User: "www-data" }));
+  });
+
+  test("omits User from the exec-create body when the target has no user", async () => {
+    // Given
+    const fake = makeFakeApi();
+
+    // When
+    await runExec(fake.api, { command: ["true"] });
+
+    // Then
+    const body = createBody(fake.calls);
+    expect(body).toBeDefined();
+    expect(typeof body).toBe("object");
+    expect(body).not.toBeNull();
+    expect("User" in (body ?? {})).toBe(false);
   });
 });

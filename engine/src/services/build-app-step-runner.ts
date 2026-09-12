@@ -63,7 +63,14 @@ export const runAppBuildStep = (input: AppBuildInput, appStep: AppStep, transcri
           input.paths.roots.userDataRoot,
         );
         yield* input.provider
-          .execStream({ app: input.plan.id, service: step.service }, providerCommand(command))
+          .execStream(
+            {
+              app: input.plan.id,
+              service: step.service,
+              ...(step.user === undefined ? {} : { user: step.user }),
+            },
+            providerCommand(command),
+          )
           .pipe(
             Stream.catchAll(() => Stream.make({ exitCode: 1 })),
             Stream.runForEach((chunk) => {

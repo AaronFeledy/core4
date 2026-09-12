@@ -25,6 +25,7 @@ const BuildSteps = Schema.Struct({
       Schema.Struct({
         id: Schema.optional(Schema.String),
         command: Schema.Unknown,
+        user: Schema.optional(Schema.String),
         buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
       }),
     ),
@@ -74,7 +75,17 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 
 describe("stock PHP prerequisite plan", () => {
   test("carries exact executable and build-key identities", async () => {
-    const steps = buildStepsFor(await composePhpPlan());
+    const plan = await composePhpPlan();
+    const steps = buildStepsFor(plan);
+    const rawSteps =
+      (plan.extensions["@lando/core/service-features"] as { buildSteps?: ReadonlyArray<object> } | undefined)
+        ?.buildSteps ?? [];
+    const rawPrereq = rawSteps.find(
+      (step) => (step as { id?: string }).id === "service-lando.php:prerequisites",
+    );
+    const rawComposer = rawSteps.find(
+      (step) => (step as { id?: string }).id === "service-lando.php:composer",
+    );
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
@@ -86,8 +97,12 @@ describe("stock PHP prerequisite plan", () => {
       extensions: PHP_COMMON_EXTENSIONS,
     });
     expect(steps[1]?.command).toBe(PHP_PREREQUISITES_COMMAND);
+    expect(steps[1]?.user).toBe("root");
+    expect("privileged" in (rawPrereq ?? {})).toBe(false);
     expect(steps[2]?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER });
     expect(steps[2]?.command).toBe(PHP_COMPOSER_COMMAND);
+    expect(steps[2]?.user).toBe("root");
+    expect("privileged" in (rawComposer ?? {})).toBe(false);
   });
 
   test("treats a custom image as the prerequisite opt-out", async () => {

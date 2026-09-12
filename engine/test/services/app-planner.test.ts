@@ -188,12 +188,13 @@ const appMountOnlyServiceType = makeLegacyServiceTypeFake({
 
 const socketOnlyServiceType = makeLegacyServiceTypeFake({
   id: "socket-only",
-  toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+  toServicePlan: ({ name, service, provider = ProviderId.make("lando"), primary = false, metadata }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "socket-only",
       provider,
       primary,
+      ...(service.user === undefined ? {} : { user: service.user }),
       environment: {},
       mounts: [],
       storage: [],
@@ -564,6 +565,117 @@ describe("AppPlannerLive", () => {
             phase: "build",
             command: ["sh", "-lc", "install-dependencies"],
           },
+        ],
+      });
+    });
+  });
+
+  for (const phase of ["artifact", "app"] as const) {
+    for (const scenario of [
+      {
+        name: "inherits the service user for a bare string",
+        user: "node",
+        scripts: "a",
+        entries: [{ run: "a", user: "node" }],
+      },
+      {
+        name: "preserves an explicit root user on an object step",
+        user: "node",
+        scripts: { run: "apt-get update -y", user: "root" },
+        entries: [{ run: "apt-get update -y", user: "root" }],
+      },
+      {
+        name: "omits the user key when no user is configured",
+        user: undefined,
+        scripts: { run: "a" },
+        entries: [{ run: "a" }],
+      },
+      {
+        name: "preserves mixed script order and per-entry users",
+        user: "node",
+        scripts: ["a", { run: "b", user: "root" }, "c"],
+        entries: [
+          { run: "a", user: "node" },
+          { run: "b", user: "root" },
+          { run: "c", user: "node" },
+        ],
+      },
+    ]) {
+      test(`build.${phase} ${scenario.name}`, async () => {
+        await withTempCwd(async () => {
+          // Given
+          const landofile = Schema.decodeUnknownSync(LandofileShape)({
+            name: "build-step-users",
+            runtime: 4,
+            services: {
+              worker: {
+                type: "socket-only",
+                ...(scenario.user === undefined ? {} : { user: scenario.user }),
+                build: { [phase]: scenario.scripts },
+              },
+            },
+          });
+
+          // When
+          const appPlan = await planWithCustomRegistry(landofile);
+
+          // Then
+          const extension = Schema.decodeUnknownSync(
+            Schema.Struct({ buildSteps: Schema.Array(Schema.Unknown) }),
+          )(appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"]);
+          expect(extension.buildSteps).toStrictEqual(
+            scenario.entries.map((entry, index) => ({
+              id: `authored-${phase}:${index + 1}`,
+              phase: phase === "artifact" ? "build" : "app",
+              command:
+                phase === "artifact" ? ["sh", "-lc", entry.run] : { command: ["sh", "-lc", entry.run] },
+              ...("user" in entry ? { user: entry.user } : {}),
+            })),
+          );
+        });
+      });
+    }
+  }
+
+  test("feature-contributed build steps inherit the composed planned user", async () => {
+    await withTempCwd(async () => {
+      // Given
+      const feature: ServiceFeatureDefinition = {
+        ...socketOnlyServiceType.testFeature,
+        apply: (ctx) =>
+          Effect.gen(function* () {
+            yield* socketOnlyServiceType.testFeature.apply(ctx);
+            ctx.addBuildStep({ id: "feature-build", phase: "build", command: ["sh", "-lc", "a"] });
+            ctx.setUser("node");
+          }),
+      };
+      const registry = {
+        ...customPluginRegistry,
+        loadServiceFeature: (id: string) =>
+          id === feature.id ? Effect.succeed(feature) : customPluginRegistry.loadServiceFeature(id),
+      };
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "feature-build-user",
+        runtime: 4,
+        services: { worker: { type: "socket-only", build: { artifact: "authored" } } },
+      });
+
+      // When
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+          Effect.provide(AppPlannerLive),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
+      );
+
+      // Then
+      expect(appPlan.services[ServiceName.make("worker")]?.user).toBe("node");
+      expect(
+        appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"],
+      ).toMatchObject({
+        buildSteps: [
+          { id: "feature-build", phase: "build", command: ["sh", "-lc", "a"], user: "node" },
+          { id: "authored-artifact:1", phase: "build", command: ["sh", "-lc", "authored"], user: "node" },
         ],
       });
     });

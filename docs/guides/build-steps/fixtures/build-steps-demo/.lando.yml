@@ -1,0 +1,15 @@
+name: build-steps-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    user: node
+    build:
+      artifact:
+        - run: apt-get update -y && apt-get install -y --no-install-recommends jq
+          user: root
+        - npm config set fund false
+      app:
+        - npm ci
+        - run: chown -R node:node /app/node_modules
+          user: root

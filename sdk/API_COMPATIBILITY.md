@@ -60,9 +60,15 @@
 - `RouterServiceContributionLayer` additively requires the existing `CertificateAuthority` service so proxy plugins can terminate TLS with the selected active CA; core supplies a deferred resolver-backed implementation to selected proxy contributions.
 - `@lando/sdk/services` additively exports the runtime `ServiceCaFileDescriptor` Effect Schema and
   its inferred type. `ServiceBuildStepIntent` additively accepts optional `caFiles` so derived
-  artifact builders can verify and pack host CA inputs without adding provider-specific intent,
-  and optional `privileged` so a step can request temporary build-time privilege while the
-  artifact realizer restores the parent image's exact inherited user afterward.
+  artifact builders can verify and pack host CA inputs without adding provider-specific intent.
+- `ServiceBuildStepIntent.privileged` changes pre-ship to `user`. The flag only ever meant "run as
+  root", which the resolved identity states directly, and two authorities would have needed a
+  precedence rule. Planning resolves an omitted step user to the service's planned user, so a
+  consumer never re-resolves one. `@lando/sdk/schema` additively exports `ContainerUser`,
+  `CONTAINER_USER_PATTERN`, `isContainerUser`, and `BuildScriptStep`; `BuildScript` additively
+  accepts `{ run, user? }` alongside the string and string-array forms, and `BuildStep` additively
+  gains optional `user`. Artifact realizers switch `USER` only when a step's resolved user differs
+  from the active one and restore the final service `USER` afterward.
 - `LandofileService.discover`'s error channel additively gains `LandofileImportRefMisuseError`,
   `LandofileLoadLimitError`, and `LandofileLoadOutsideRootError` for production `load()` / `import()`
   evaluation; the frozen service-surface fixture is updated to match.

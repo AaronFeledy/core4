@@ -125,6 +125,7 @@ export const phpPrerequisiteBuildSteps = (
     id: "service-lando.php:prerequisites",
     phase: "build",
     command: PHP_PREREQUISITES_COMMAND,
+    user: "root",
     buildKeyInputs: {
       aptPackages: PHP_APT_PACKAGE_PINS,
       extensions: PHP_COMMON_EXTENSIONS,
@@ -138,6 +139,7 @@ export const phpPrerequisiteBuildSteps = (
       id: "service-lando.php:composer",
       phase: "build",
       command: composerCommandFor(release),
+      user: "root",
       buildKeyInputs: { composer: release },
     },
   ];

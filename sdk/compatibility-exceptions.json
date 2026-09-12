@@ -1396,5 +1396,107 @@
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateEncodeInput.context.tooling.anyOf",
     "justification": "Encoder tooling context intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:BuildScript",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInputAuthoringFragment.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInputAuthoring.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
   }
 ]

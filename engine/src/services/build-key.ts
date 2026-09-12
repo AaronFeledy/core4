@@ -35,6 +35,7 @@ interface AppBuildKeyInput {
   readonly command: unknown;
   readonly service: ServicePlan;
   readonly stepId: string;
+  readonly user?: string;
 }
 
 const SECRET_REFERENCE_PATTERN = /^\$\{secret:([^}]+)\}$/u;
@@ -131,6 +132,7 @@ export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
     landoVersion: CORE_VERSION,
     stepId: input.stepId,
     command: input.command,
+    user: typeof input.user === "string" ? input.user : undefined,
     service: {
       name: String(input.service.name),
       artifact: artifactBuildInput(input.service.artifact, undefined),
@@ -159,7 +161,7 @@ const artifactBuildStepInput = (step: unknown): unknown => {
     id: step.id,
     phase: step.phase,
     command: step.command,
-    privileged: step.privileged === true ? true : undefined,
+    user: typeof step.user === "string" ? step.user : undefined,
     dependsOn: step.dependsOn,
     buildKeyInputs: step.buildKeyInputs,
     caFiles: Array.isArray(step.caFiles)

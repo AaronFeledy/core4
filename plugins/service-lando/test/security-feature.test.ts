@@ -17,6 +17,7 @@ const FeatureExtension = Schema.Struct({
         id: Schema.optional(Schema.String),
         phase: Schema.String,
         command: Schema.Unknown,
+        user: Schema.optional(Schema.String),
         buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
         caFiles: Schema.optional(
           Schema.Array(
@@ -158,12 +159,17 @@ describe("lando.security feature", () => {
       LANDO_CA_BUNDLE: "/etc/lando/certs/ca-bundle.pem",
       LANDO_CA_DIR: "/etc/lando/certs",
     });
-    expect(buildStepsFor(plan)).toEqual([
+    const steps = buildStepsFor(plan);
+    const rawSteps =
+      (plan.extensions["@lando/core/service-features"] as { buildSteps?: ReadonlyArray<object> } | undefined)
+        ?.buildSteps ?? [];
+    expect(steps).toEqual([
       {
         id: "lando.security:trust-store",
         phase: "build",
         command:
           "set -e; mkdir -p /etc/lando/certs; if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; elif command -v update-ca-trust >/dev/null 2>&1; then mkdir -p /etc/pki/ca-trust/source/anchors && cp /usr/local/share/ca-certificates/lando-*.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust extract; else echo 'No supported CA trust-store installer found.' >&2; exit 1; fi; cat /usr/local/share/ca-certificates/lando-*.crt > /etc/lando/certs/ca-bundle.pem",
+        user: "root",
         buildKeyInputs: { caDigests: [DIGEST_A, DIGEST_B] },
         caFiles: [
           { path: "/host/b.pem", digest: DIGEST_B, archiveName: `lando-${DIGEST_B}.crt` },
@@ -171,6 +177,7 @@ describe("lando.security feature", () => {
         ],
       },
     ]);
+    expect("privileged" in (rawSteps[0] ?? {})).toBe(false);
   });
 
   test("emits only defined proxy environment when proxy injection is enabled", async () => {

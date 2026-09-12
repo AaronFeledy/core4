@@ -214,3 +214,8 @@ Verification: typecheck, lint, boundaries, schema snapshot codegen, schema compa
 - Split/excise decisions: none; extra §10.2 rewritePath harness excised without a PRD split or passes flip
 - Verification: typecheck pass, lint pass, 127 targeted tests pass
 ---
+## 2026-09-12 10:07 - US-615 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved route shorthand/filters against the binary: lint/config round-trip, invalid shorthand `RouteInputError` on start, layered named-filter merge, then a php:8.3 app whose HTTPS routes stripped `/api`, set request/response headers, forwarded an unfiltered prefix to Apache 404, matched `*.wild.us615.lndo.site`, and 302-redirected. Adjacent lint/exec/destroy stayed green.
+- **Out-of-scope finding:** leftover Traefik from 04:35 UTC had `file.Provider` fail with `error adding file watcher: no space left on device`; first curls 404ed until a later `lando start` recreated Traefik. Not caused by US-615. `lando global:restart` then failed `ProviderUnavailableError` because `lando-global` still had v951-* containers.
+- **Out-of-scope finding:** host 80/443 in use so proxy published on 8000/4443; left concurrent `/tmp/v951/{lamp,lemp,static}` apps in place (sbx951).
+---

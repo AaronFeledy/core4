@@ -1,0 +1,9 @@
+name: build-steps-invalid-user
+services:
+  app:
+    type: "node:22"
+    primary: true
+    build:
+      artifact:
+        - run: apt-get install -y jq
+          user: root wheel

@@ -8,11 +8,12 @@ import type { ServicePlan } from "@lando/sdk/schema";
 import { ServiceCaFileDescriptor } from "@lando/sdk/services";
 
 import type { BuildContextEntry } from "./build-context.ts";
+import { validateDockerfileUser } from "./image-build-user.ts";
 
 export interface PreparedBuildStep {
   readonly command: string | ReadonlyArray<string>;
   readonly phase: string;
-  readonly privileged: boolean;
+  readonly user?: string;
   readonly caFiles: ReadonlyArray<ServiceCaFileDescriptor>;
 }
 
@@ -51,20 +52,21 @@ const parseStep = (
   if (!isRecord(value)) return Effect.succeed(undefined);
   if (value.phase !== "build") return Effect.succeed(undefined);
   const caFiles = "caFiles" in value ? parseCaFiles(value.caFiles, providerId) : Effect.succeed([]);
-  return caFiles.pipe(
-    Effect.map((files) => {
-      let command: string | ReadonlyArray<string>;
-      if (typeof value.command === "string") {
-        command = value.command;
-      } else if (Array.isArray(value.command)) {
-        command = value.command.filter((part): part is string => typeof part === "string");
-        if (command.length !== value.command.length) return undefined;
-      } else {
-        return undefined;
-      }
-      return { command, phase: "build", privileged: value.privileged === true, caFiles: files };
-    }),
-  );
+  return Effect.gen(function* () {
+    const user =
+      "user" in value ? yield* validateDockerfileUser(value.user, "build step user", providerId) : undefined;
+    const files = yield* caFiles;
+    let command: string | ReadonlyArray<string>;
+    if (typeof value.command === "string") {
+      command = value.command;
+    } else if (Array.isArray(value.command)) {
+      command = value.command.filter((part): part is string => typeof part === "string");
+      if (command.length !== value.command.length) return undefined;
+    } else {
+      return undefined;
+    }
+    return { command, phase: "build", ...(user === undefined ? {} : { user }), caFiles: files };
+  });
 };
 
 const uniqueDescriptors = (
