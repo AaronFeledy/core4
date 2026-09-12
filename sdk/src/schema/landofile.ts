@@ -16,6 +16,7 @@ import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, Service
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
+import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
@@ -25,12 +26,22 @@ export { BuildBlock } from "./build-block.ts";
 export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
-export const RouteInput = Schema.Struct({
-  hostname: Schema.String,
-  scheme: Schema.optional(Schema.Literal("http", "https", "both")),
-  endpoint: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  pathPrefix: Schema.optional(Schema.String),
+export const RouteObjectInput = Schema.Struct({
+  hostname: Schema.String.annotations({ description: "Host header pattern for this route." }),
+  scheme: Schema.optional(Schema.Literal("http", "https", "both")).annotations({
+    description: "HTTP or HTTPS schemes served by this route.",
+  }),
+  endpoint: Schema.optional(Schema.Union(Schema.String, Schema.Number)).annotations({
+    description: "Target service endpoint name or port.",
+  }),
+  pathPrefix: Schema.optional(Schema.String).annotations({ description: "Request path prefix to match." }),
+  filters: Schema.optional(Schema.Array(RouteFilter)).annotations({
+    description: "Ordered provider-neutral route filters; names identify filters across layers.",
+  }),
 });
+export type RouteObjectInput = typeof RouteObjectInput.Type;
+
+export const RouteInput = Schema.Union(Schema.NonEmptyString, RouteObjectInput);
 export type RouteInput = typeof RouteInput.Type;
 
 /** Mount input — short ("./src:/app") or expanded form. */

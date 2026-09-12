@@ -55,6 +55,7 @@ import type {
   RemoteError,
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
+  RouteInputError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
   ScratchAppError,
@@ -212,6 +213,7 @@ export type StartAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | RouteInputError
   | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
@@ -261,6 +263,7 @@ export type StopAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | RouteInputError
   | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
@@ -375,6 +378,7 @@ export type InfoAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | RouteInputError
   | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
@@ -424,6 +428,7 @@ export type ExecAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | RouteInputError
   | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
@@ -480,6 +485,7 @@ export type ToolingError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | RouteInputError
   | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLoadExpressionError
@@ -517,6 +523,7 @@ export type LogsAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | RouteInputError
   | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
@@ -580,6 +587,7 @@ export type RemoteSyncError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | RouteInputError
   | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError

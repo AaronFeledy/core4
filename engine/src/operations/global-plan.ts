@@ -13,6 +13,7 @@ import {
   type ProviderConfigError,
   type ProviderUnavailableError,
   type PublicationUnsupportedError,
+  type RouteInputError,
 } from "@lando/sdk/errors";
 import { type AppPlan, type LandofileShape, LandofileShape as LandofileShapeSchema } from "@lando/sdk/schema";
 import {
@@ -52,6 +53,7 @@ export type LoadGlobalPlanError =
   | LandofileParseError
   | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError

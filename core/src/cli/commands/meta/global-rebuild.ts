@@ -19,6 +19,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -84,6 +85,7 @@ export type GlobalRebuildError =
   | LandofileParseError
   | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | PluginManifestError

@@ -28,6 +28,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { ToolingCompileError } from "@lando/sdk/errors";
@@ -81,6 +82,7 @@ type AppCacheRefreshError =
   | LandofileTimeoutError
   | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | LandofileIncludeError
   | LandofileLockMismatchError
   | ToolingCompileError

@@ -14,6 +14,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -86,6 +87,7 @@ type GlobalStatusError =
   | LandofileParseError
   | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError
