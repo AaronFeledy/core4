@@ -103,12 +103,10 @@ export const normalizeAuthoredRoutes = (input: {
 }): Effect.Effect<ReadonlyArray<NormalizedRoute>, RouteInputError> => {
   const serviceRoutes = normalizeRoutes(input.service.routes ?? [], {
     keyPath: `services.${input.name}.routes`,
-    file: `${input.appRoot}/.lando.yml`,
   });
   if (Either.isLeft(serviceRoutes)) return Effect.fail(serviceRoutes.left);
   const proxyRoutes = normalizeRoutes(input.landofile.proxy?.[ServiceName.make(input.name)] ?? [], {
     keyPath: `proxy.${input.name}`,
-    file: `${input.appRoot}/.lando.yml`,
   });
   if (Either.isLeft(proxyRoutes)) return Effect.fail(proxyRoutes.left);
   return Effect.succeed([...serviceRoutes.right, ...proxyRoutes.right]);
