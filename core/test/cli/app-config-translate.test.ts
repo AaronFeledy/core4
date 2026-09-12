@@ -1093,7 +1093,7 @@ describe("appConfigTranslate", () => {
       makeTranslator("v3", {
         name: "demo",
         runtime: 4,
-        tooling: { echo: { cmd: "echo hi", flags: { verbose: { type: "boolean" } } } },
+        tooling: { echo: { cmd: "echo hi", flags: { verbose: { boolean: true } } } },
       }),
     ]);
 

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { ToolingCompileError } from "@lando/sdk/errors";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
@@ -16,6 +17,81 @@ const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
 });
 
 describe("compileToolingCommands", () => {
+  test("omits disabled tasks when compiling app commands", () => {
+    // Given
+    const source = landofile({ hidden: { cmd: "echo hidden", disabled: true } });
+    // When
+    const entries = compileAppCommands(source, []);
+    // Then
+    expect(entries).toEqual([]);
+  });
+
+  test("preserves normalized flag metadata and ordered args when input is declared", () => {
+    // Given
+    const source = landofile({
+      greet: {
+        cmd: "echo hello",
+        flags: {
+          name: { alias: "n", default: "world" },
+          loud: { boolean: true },
+          format: { choices: ["text", "json"], required: true },
+        },
+        args: {
+          suffix: { order: 1, default: "done" },
+          target: { order: 0, choices: ["dev", "prod"], required: true },
+        },
+      },
+    });
+    // When
+    const [entry] = compileToolingCommands(source);
+    // Then
+    expect(entry?.input).toEqual({
+      flags: [
+        { name: "name", alias: "n", default: "world", boolean: false, required: false },
+        { name: "loud", boolean: true, required: false },
+        { name: "format", choices: ["text", "json"], boolean: false, required: true },
+      ],
+      args: [
+        { name: "target", order: 0, choices: ["dev", "prod"], required: true },
+        { name: "suffix", order: 1, default: "done", required: false },
+      ],
+    });
+  });
+
+  test("omits input when neither flags nor args are declared", () => {
+    // Given
+    const source = landofile({ plain: { cmd: "echo plain" } });
+    // When
+    const [entry] = compileToolingCommands(source);
+    // Then
+    expect(entry).not.toHaveProperty("input");
+  });
+
+  test.each([":host", ":target"])("omits a literal service when service is %s", (service) => {
+    // Given
+    const source = landofile({ run: { cmd: "echo run", service, flags: { target: {} } } });
+    // When
+    const [entry] = compileToolingCommands(source);
+    // Then
+    expect(entry).not.toHaveProperty("service");
+  });
+
+  test("retains a literal service when service is web", () => {
+    // Given
+    const source = landofile({ run: { cmd: "echo run", service: "web" } });
+    // When
+    const [entry] = compileToolingCommands(source);
+    // Then
+    expect(entry?.service).toBe("web");
+  });
+
+  test("propagates a compile error when a task has conflicting input metadata", () => {
+    // Given
+    const source = landofile({ invalid: { cmd: "echo", flags: { name: { required: true, default: "x" } } } });
+    // When / Then
+    expect(() => compileAppCommands(source, [])).toThrow(ToolingCompileError);
+  });
+
   test("returns an empty list when the Landofile has no tooling section", () => {
     expect(compileToolingCommands(landofile(undefined))).toEqual([]);
   });
@@ -111,6 +187,26 @@ describe("compileBunShellScriptCommands", () => {
         source: "bun-script",
       },
     ]);
+  });
+
+  test("keeps tooling precedence when a script has the same command id", () => {
+    // Given
+    const source = landofile({ quality: { cmd: "tooling", description: "Tooling wins" } });
+    const scripts = [
+      {
+        id: "app:quality",
+        name: "quality",
+        path: "/app/quality.bun.sh",
+        relativePath: "quality.bun.sh",
+        service: ":host",
+        summary: "Script",
+        frontMatter: {},
+      },
+    ];
+    // When
+    const entries = compileAppCommands(source, scripts);
+    // Then
+    expect(entries).toEqual([{ id: "app:quality", summary: "Tooling wins", hidden: false }]);
   });
 });
 

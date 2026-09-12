@@ -1,12 +1,24 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { serialize } from "node:v8";
 import { Effect } from "effect";
 
+import {
+  APP_COMMAND_MAGIC,
+  COMMAND_INDEX_HEADER_BYTES,
+  COMMAND_INDEX_SCHEMA_VERSION,
+} from "@lando/engine/cache/command-index";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
-import { resolveToolingRoute, toolingName, toolingRouteError } from "../../src/cli/tooling-router.ts";
+import {
+  type ToolingRoute,
+  resolveToolingRoute,
+  toolingName,
+  toolingRouteError,
+} from "../../src/cli/tooling-router.ts";
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-tooling-router-unit-"));
@@ -35,6 +47,53 @@ const writeFreshCache = async (
   await Effect.runPromise(
     writeAppCommandCacheStrict({ landofile, entries, cwd: root, cacheRoot, now: () => 100 }),
   );
+};
+
+/** Prior-generation app-command index (schema v2). Must never decode as a usable hit. */
+const writeSchemaV2CacheBlob = async (
+  root: string,
+  cacheRoot: string,
+  entries: ReadonlyArray<{
+    readonly id: string;
+    readonly summary: string;
+    readonly hidden: boolean;
+  }>,
+): Promise<void> => {
+  const sourceFile = join(root, ".lando.yml");
+  await writeFile(sourceFile, "name: router-test\n");
+  const schemaVersion = 2;
+  const payload = {
+    schemaVersion,
+    landoVersion: "0.0.0",
+    appName: "router-test",
+    sourceFile,
+    sourceMtimeMs: 0,
+    sourceSize: 0,
+    sourceLocalIncludePaths: [] as const,
+    sourceReferencedFiles: [] as const,
+    versionConstraints: [] as const,
+    generatedAtMs: 100,
+    entries,
+  };
+  const header = new Uint8Array(COMMAND_INDEX_HEADER_BYTES);
+  header.set(APP_COMMAND_MAGIC, 0);
+  new DataView(header.buffer).setBigUint64(4, BigInt(schemaVersion), true);
+  const body = new Uint8Array(serialize(payload));
+  const bytes = new Uint8Array(header.byteLength + body.byteLength);
+  bytes.set(header, 0);
+  bytes.set(body, header.byteLength);
+  const cachePath = appToolingCompilationCachePath(cacheRoot, root);
+  await mkdir(dirname(cachePath), { recursive: true });
+  await writeFile(cachePath, bytes);
+};
+
+/** Shape `routeResolvedTooling` switches on before calling `runDynamicTooling`. */
+const assertDynamicToolingRoute = (route: ToolingRoute, name: string): void => {
+  expect(route).toEqual({
+    _tag: "tooling",
+    commandId: `app:${name}`,
+    name,
+  });
 };
 
 test("Given leading-hyphen global options, when deriving a tooling name, then they are not tooling", () => {
@@ -105,13 +164,48 @@ test("Given a fresh cached app task, when resolving its bare name, then it route
     // When
     const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
-    // Then
+    // Then — `_tag: "tooling"` is the branch `routeResolvedTooling` takes into `runDynamicTooling` → `runTooling`
+    assertDynamicToolingRoute(route, "quality");
+    expect(argv.slice(1)).toEqual(["--fix"]);
+  });
+});
+
+test("Given a schema-version-2 cache blob, when resolving a listed task, then it is a cache-miss not an exception", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given — prior index generation still lists the task; current schema is newer
+    expect(Number(COMMAND_INDEX_SCHEMA_VERSION)).toBeGreaterThan(2);
+    await writeSchemaV2CacheBlob(root, cacheRoot, [
+      { id: "app:quality", summary: "Run quality checks", hidden: false },
+    ]);
+
+    // When
+    const route = await Effect.runPromise(resolveToolingRoute("quality", { cwd: root, cacheRoot }));
+
+    // Then — mismatch is a clean miss (never a thrown decode error, never a usable hit)
     expect(route).toEqual({
-      _tag: "tooling",
+      _tag: "cache-miss",
       commandId: "app:quality",
       name: "quality",
+      remediation: expect.stringContaining("lando app:cache:refresh"),
     });
-    expect(argv.slice(1)).toEqual(["--fix"]);
+  });
+});
+
+test("Given a fresh cache that does not list a token, when resolving it, then it is unknown-tooling", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given
+    await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
+
+    // When
+    const route = await Effect.runPromise(resolveToolingRoute("disabled-now", { cwd: root, cacheRoot }));
+
+    // Then
+    expect(route).toEqual({
+      _tag: "unknown-tooling",
+      commandId: "app:disabled-now",
+      name: "disabled-now",
+      remediation: expect.stringContaining("lando app:cache:refresh"),
+    });
   });
 });
 
@@ -147,11 +241,7 @@ test("Given a fresh cached app task, when resolving its canonical id, then it ro
     const route = await Effect.runPromise(resolveToolingRoute(argv[0], { cwd: root, cacheRoot }));
 
     // Then
-    expect(route).toEqual({
-      _tag: "tooling",
-      commandId: "app:quality",
-      name: "quality",
-    });
+    assertDynamicToolingRoute(route, "quality");
     expect(argv.slice(1)).toEqual(["--fix"]);
   });
 });

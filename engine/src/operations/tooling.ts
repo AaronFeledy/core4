@@ -1,10 +1,21 @@
-import { Effect } from "effect";
+// allow: SIZE_OK — tooling operation and exported invocation builder share a file under the current ownership boundary.
+import { join } from "node:path";
+import { parseToolingArgv, resolveServiceRef } from "@lando/landofile/tooling-input";
+import {
+  type NormalizedToolingStep,
+  normalizeToolingTask,
+  requiresProvider,
+} from "@lando/landofile/tooling-normalize";
+import { Effect, Either, Option } from "effect";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import {
   type ComposeKeyRejectedError,
   type LandofileLoadExpressionError,
   ToolingCompileError,
+  ToolingDisabledError,
+  ToolingExecError,
+  type ToolingInputError,
 } from "@lando/sdk/errors";
 import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
@@ -15,8 +26,9 @@ import {
   EventService,
   LandofileService,
   RuntimeProviderRegistry,
+  ShellRunner,
   ToolingEngine,
-  type ToolingHostStep,
+  type ToolingEngineResult,
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
@@ -27,10 +39,12 @@ import {
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
 import { compileEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
+import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 
-import { findAppRoot } from "@lando/landofile/discovery";
+import { LANDOFILE_NAME, findAppRoot } from "@lando/landofile/discovery";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { StreamFrameSink } from "./stream-frame-sink.ts";
@@ -55,7 +69,12 @@ export type { ToolingResult };
 export const runToolingRedactionTokens = (result: RunToolingResult): ReadonlyArray<string> =>
   result.redactionTokens ?? [];
 
-type RunToolingError = ToolingError | ComposeKeyRejectedError | LandofileLoadExpressionError;
+type RunToolingError =
+  | ToolingError
+  | ComposeKeyRejectedError
+  | LandofileLoadExpressionError
+  | ToolingDisabledError
+  | ToolingInputError;
 
 type RunToolingServices =
   | AppPlanner
@@ -77,10 +96,10 @@ const shellCommand = (command: string, args: ReadonlyArray<string>): ReadonlyArr
 
 export const validateToolingArguments = (
   name: string,
-  task: ToolingTaskShape,
+  task: ToolingTaskShape | { readonly acceptsArguments: boolean },
   args: ReadonlyArray<string>,
 ): ToolingCompileError | undefined =>
-  task.arguments === false && args.length > 0
+  ("acceptsArguments" in task ? !task.acceptsArguments : task.arguments === false) && args.length > 0
     ? new ToolingCompileError({
         message: `Tooling command ${name} does not accept positional arguments.`,
         tool: name,
@@ -88,69 +107,62 @@ export const validateToolingArguments = (
       })
     : undefined;
 
-const normalizeCommands = (
-  task: ToolingTaskShape,
-  args: ReadonlyArray<string>,
-): ReadonlyArray<ReadonlyArray<string>> => {
-  const forwardedArgs = task.arguments === false ? [] : args;
-  const cmds = task.cmds;
-  if (cmds !== undefined && cmds.length > 0) {
-    return cmds.map((cmd, index) => {
-      const commandArgs = index === cmds.length - 1 ? forwardedArgs : [];
-      return shellCommand(cmd, commandArgs);
-    });
-  }
-  if (task.cmd !== undefined) {
-    if (typeof task.cmd === "string") {
-      return [shellCommand(task.cmd, forwardedArgs)];
-    }
-    return [[...task.cmd, ...forwardedArgs]];
-  }
-  return [];
+type InvocationOptions = Pick<RunToolingOptions, "args" | "user" | "cwd" | "env"> & {
+  readonly agentEnvAllowlist?: ReadonlyArray<string>;
 };
 
-const normalizeHostSteps = (
-  task: ToolingTaskShape,
-  args: ReadonlyArray<string>,
-): ReadonlyArray<ToolingHostStep> => {
-  const forwardedArgs = task.arguments === false ? [] : args;
-  const cmds = task.cmds;
-  if (cmds !== undefined && cmds.length > 0) {
-    return cmds.map((source, index) => ({
-      kind: "shell",
-      source,
-      argv: index === cmds.length - 1 ? forwardedArgs : [],
-    }));
-  }
-  if (task.cmd === undefined) return [];
-  return typeof task.cmd === "string"
-    ? [{ kind: "shell", source: task.cmd, argv: forwardedArgs }]
-    : [{ kind: "argv", argv: [...task.cmd, ...forwardedArgs] }];
+const stepInvocation = (
+  tool: string,
+  step: NormalizedToolingStep & { readonly resolvedService?: string },
+  options: InvocationOptions,
+): ToolingInvocation => {
+  const args = options.args ?? [];
+  const cwd = step.dir ?? options.cwd;
+  const user = options.user ?? step.user;
+  return {
+    tool,
+    ...(step.resolvedService === undefined ? {} : { service: step.resolvedService }),
+    ...(cwd === undefined ? {} : { cwd }),
+    ...(user === undefined ? {} : { user }),
+    ...(Object.keys(step.env).length === 0 && options.env === undefined
+      ? {}
+      : { env: { ...step.env, ...options.env } }),
+    ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
+    commands: [step.argv === undefined ? shellCommand(step.cmd, args) : [...step.argv, ...args]],
+    hostSteps: [
+      step.argv === undefined
+        ? { kind: "shell", source: step.cmd, argv: args }
+        : { kind: "argv", argv: [...step.argv, ...args] },
+    ],
+  };
 };
 
 export const buildToolingInvocation = (
   name: string,
   task: ToolingTaskShape,
-  options: Pick<RunToolingOptions, "args" | "user" | "cwd" | "env"> & {
-    readonly agentEnvAllowlist?: ReadonlyArray<string>;
-  } = {},
+  options: InvocationOptions = {},
 ): ToolingInvocation => {
-  const commands = normalizeCommands(task, options.args ?? []);
-  const cwd = task.dir ?? options.cwd;
-  const taskEnv =
-    task.env === undefined
-      ? undefined
-      : Object.fromEntries(Object.entries(task.env).map(([key, value]) => [key, String(value)]));
-  const env = taskEnv === undefined && options.env === undefined ? undefined : { ...taskEnv, ...options.env };
+  const normalized = Either.getOrThrowWith(normalizeToolingTask(name, task), (error) => error);
+  const values = Either.getOrThrowWith(
+    parseToolingArgv(normalized, normalized.acceptsArguments ? (options.args ?? []) : []),
+    (error) => error,
+  );
+  const invocations = normalized.steps.map((step, index) => {
+    const service = Either.getOrThrowWith(resolveServiceRef(step.service, values), (error) => error);
+    return stepInvocation(
+      name,
+      { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
+      {
+        ...options,
+        args: index === normalized.steps.length - 1 ? values.argv : [],
+      },
+    );
+  });
   return {
     tool: name,
-    ...(task.service === undefined ? {} : { service: task.service }),
-    ...(options.user === undefined ? {} : { user: options.user }),
-    ...(cwd === undefined ? {} : { cwd }),
-    ...(env === undefined ? {} : { env }),
-    ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
-    commands,
-    hostSteps: normalizeHostSteps(task, options.args ?? []),
+    ...invocations[0],
+    commands: invocations.flatMap((invocation) => invocation.commands),
+    hostSteps: invocations.flatMap((invocation) => invocation.hostSteps ?? []),
   };
 };
 
@@ -227,7 +239,7 @@ export const runTooling = (
       return yield* Effect.fail(planResult.left);
     }
     const plan = planResult.right;
-    const tooling = effectiveToolingForPlan(plan) ?? authoredTooling;
+    const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
     const task = tooling[toolingLookupKey];
     const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);
 
@@ -252,7 +264,22 @@ export const runTooling = (
       );
     }
 
-    if (task.cmd === undefined && (task.cmds === undefined || task.cmds.length === 0)) {
+    const source = {
+      path: join(appRoot ?? target?.root ?? String(plan.root), LANDOFILE_NAME),
+      task: toolingLookupKey,
+    };
+    const normalized = yield* normalizeToolingTask(toolingLookupKey, task, source);
+    if (normalized.disabled) {
+      return yield* Effect.fail(
+        new ToolingDisabledError({
+          message: `Tooling command ${options.name} is disabled.`,
+          tool: toolingLookupKey,
+          source,
+          remediation: `Enable tooling task ${toolingLookupKey} in ${source.path} before running it.`,
+        }),
+      );
+    }
+    if (normalized.steps.length === 0) {
       return yield* Effect.fail(
         new ToolingCompileError({
           message: `Tooling command ${options.name} does not define cmd or cmds.`,
@@ -261,24 +288,33 @@ export const runTooling = (
       );
     }
 
-    const argumentFailure = validateToolingArguments(options.name, task, options.args ?? []);
+    const argumentFailure = validateToolingArguments(options.name, normalized, options.args ?? []);
     if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
-
-    const registry = yield* RuntimeProviderRegistry;
-    const engine = yield* ToolingEngine;
-    const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
-    const provider = yield* registry.select(plan);
-
+    const values = yield* parseToolingArgv(normalized, options.args ?? []);
     const agentEnvAllowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
-    const invocation = buildToolingInvocation(options.name, task, {
-      ...(options.args === undefined ? {} : { args: options.args }),
-      ...(options.user === undefined ? {} : { user: options.user }),
-      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-      ...(options.env === undefined ? {} : { env: options.env }),
-      agentEnvAllowlist,
-    });
+    const invocations = yield* Effect.forEach(normalized.steps, (step, index) =>
+      Effect.gen(function* () {
+        const service = yield* resolveServiceRef(step.service, values);
+        return stepInvocation(
+          options.name,
+          { ...step, ...(service === undefined ? {} : { resolvedService: service }) },
+          {
+            ...options,
+            args: index === normalized.steps.length - 1 ? values.argv : [],
+            agentEnvAllowlist,
+          },
+        );
+      }),
+    );
+    const provider = requiresProvider(normalized)
+      ? yield* Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(plan))
+      : runtimeProviderService;
+    const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
     const redactionTokens = [
-      ...new Set([...collectAppPlanRedactionTokens(plan), ...collectSecretEnvValues(invocation.env)]),
+      ...new Set([
+        ...collectAppPlanRedactionTokens(plan),
+        ...invocations.flatMap((invocation) => collectSecretEnvValues(invocation.env)),
+      ]),
     ];
 
     const sink = yield* Effect.serviceOption(StreamFrameSink);
@@ -291,7 +327,46 @@ export const runTooling = (
     if (liveTree !== undefined) yield* liveTree.start;
 
     const startedAt = Date.now();
-    const exit = yield* Effect.either(engine.run(invocation, plan, provider));
+    const exit = yield* Effect.either(
+      Effect.gen(function* () {
+        let combined: ToolingEngineResult = {
+          tool: options.name,
+          service: "",
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+        };
+        for (const invocation of invocations) {
+          const result = yield* invocation.service === ":host"
+            ? Effect.gen(function* () {
+                const shell = yield* Effect.serviceOption(ShellRunner);
+                if (Option.isNone(shell))
+                  return yield* Effect.fail(
+                    new ToolingCompileError({
+                      message: `ShellRunner is unavailable for tooling command ${options.name}.`,
+                      tool: options.name,
+                    }),
+                  );
+                return yield* runHostToolingWith(shell.value, invocation, plan, provider);
+              })
+            : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, plan, provider));
+          if (result.exitCode !== 0)
+            return yield* Effect.fail(
+              new ToolingExecError({
+                message: `Tooling command ${options.name} failed with exit code ${result.exitCode}.`,
+                tool: options.name,
+                exitCode: result.exitCode,
+              }),
+            );
+          combined = {
+            ...result,
+            stdout: combined.stdout + result.stdout,
+            stderr: combined.stderr + result.stderr,
+          };
+        }
+        return combined;
+      }),
+    );
     const durationMs = Date.now() - startedAt;
     if (liveTree !== undefined) {
       const exitCode = exit._tag === "Right" ? exit.right.exitCode : 1;

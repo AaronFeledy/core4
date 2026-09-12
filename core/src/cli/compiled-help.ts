@@ -50,6 +50,14 @@ type HelpCatalogRow = typeof HelpCatalogRow.Type;
 
 const isBuiltInRegistryId = (id: string): boolean => Object.hasOwn(COMMAND_REGISTRY_MANIFEST.commands, id);
 
+const toToolingHelpEntry = (entry: AppCommandIndexPayload["entries"][number]): ToolingHelpEntry => ({
+  id: entry.id,
+  summary: entry.summary,
+  hidden: entry.hidden,
+  ...(entry.service === undefined ? {} : { service: entry.service }),
+  ...(entry.input === undefined ? {} : { input: entry.input }),
+});
+
 export const toolingHelpEntryForToken = (
   cache: AppCommandIndexPayload,
   token: string,
@@ -57,14 +65,14 @@ export const toolingHelpEntryForToken = (
   const aliasPolicy = cache.aliasPolicy;
   for (const entry of cache.entries) {
     if (entry.hidden || isBuiltInRegistryId(entry.id)) continue;
-    if (entry.id === token) return entry;
+    if (entry.id === token) return toToolingHelpEntry(entry);
     const implicit = entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id;
     const name = typeableName({
       canonicalId: entry.id,
       builtInAliases: implicit.length === 0 ? [] : [implicit],
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     });
-    if (name.primary === token || name.extras.includes(token)) return entry;
+    if (name.primary === token || name.extras.includes(token)) return toToolingHelpEntry(entry);
   }
   return undefined;
 };

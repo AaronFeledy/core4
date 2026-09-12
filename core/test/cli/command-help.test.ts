@@ -238,6 +238,171 @@ describe("renderToolingHelp", () => {
     expect(aliases).toContain("app:greet");
     expect(aliases.split(",").map((token) => token.trim())).not.toContain("hi");
   });
+
+  test("renders FLAGS with name, alias, description, default, and choices when input is present", () => {
+    // Given a tooling entry that declares a valued flag
+    const entry = {
+      id: "app:deploy",
+      summary: "Deploy the app",
+      input: {
+        flags: [
+          {
+            name: "env",
+            alias: "e",
+            boolean: false,
+            choices: ["dev", "prod"] as const,
+            default: "dev",
+            required: false,
+            description: "Target environment",
+          },
+        ],
+        args: [],
+      },
+    };
+
+    // When tooling help is rendered
+    const help = renderToolingHelp(entry);
+
+    // Then FLAGS lists the flag token, alias, description, default, and choices
+    const rows = flagRows(help);
+    expect(rows.some((row) => row.startsWith("--env, -e"))).toBe(true);
+    expect(rows.some((row) => row.includes("Target environment"))).toBe(true);
+    expect(rows.some((row) => row.includes("[default: dev]"))).toBe(true);
+    expect(rows.some((row) => row.includes("(dev, prod)"))).toBe(true);
+  });
+
+  test("renders a boolean flag without a value placeholder", () => {
+    // Given a tooling entry that declares a boolean flag
+    const entry = {
+      id: "app:deploy",
+      summary: "Deploy the app",
+      input: {
+        flags: [
+          {
+            name: "verbose",
+            alias: "v",
+            boolean: true,
+            required: false,
+            description: "Verbose output",
+          },
+        ],
+        args: [],
+      },
+    };
+
+    // When tooling help is rendered
+    const help = renderToolingHelp(entry);
+
+    // Then the boolean flag token has no value placeholder
+    const row = flagRows(help).find((line) => line.startsWith("--verbose"));
+    expect(row).toBeDefined();
+    expect(row).toContain("--verbose, -v");
+    expect(row).not.toContain("--verbose=");
+    expect(row).not.toContain("<verbose>");
+    expect(row).not.toContain(" VERBOSE");
+  });
+
+  test("renders a required marker for a required flag", () => {
+    // Given a tooling entry that declares a required flag
+    const entry = {
+      id: "app:deploy",
+      summary: "Deploy the app",
+      input: {
+        flags: [
+          {
+            name: "name",
+            boolean: false,
+            required: true,
+            description: "Release name",
+          },
+        ],
+        args: [],
+      },
+    };
+
+    // When tooling help is rendered
+    const help = renderToolingHelp(entry);
+
+    // Then the FLAGS row carries the required marker
+    const row = flagRows(help).find((line) => line.startsWith("--name"));
+    expect(row).toBeDefined();
+    expect(row).toContain("[required]");
+  });
+
+  test("renders ARGUMENTS in declared order with choices and required marker", () => {
+    // Given a tooling entry that declares positionals already sorted by order
+    const entry = {
+      id: "app:deploy",
+      summary: "Deploy the app",
+      input: {
+        flags: [],
+        args: [
+          {
+            name: "target",
+            order: 0,
+            choices: ["local", "remote"] as const,
+            required: true,
+            description: "Where to deploy",
+          },
+          {
+            name: "tag",
+            order: 1,
+            required: false,
+            default: "latest",
+            description: "Image tag",
+          },
+        ],
+      },
+    };
+
+    // When tooling help is rendered
+    const help = renderToolingHelp(entry);
+
+    // Then ARGUMENTS lists them in order with choices and the required marker
+    const body = sectionBody(help, "ARGUMENTS");
+    const targetIndex = body.indexOf("target");
+    const tagIndex = body.indexOf("tag");
+    expect(targetIndex).toBeGreaterThanOrEqual(0);
+    expect(tagIndex).toBeGreaterThan(targetIndex);
+    expect(body).toContain("(local, remote)");
+    expect(body).toContain("[required]");
+    expect(body).toContain("[default: latest]");
+  });
+
+  test("names declared positionals in USAGE when input is present", () => {
+    // Given a tooling entry with flags and named args
+    const entry = {
+      id: "app:deploy",
+      summary: "Deploy the app",
+      input: {
+        flags: [{ name: "env", boolean: false, required: false }],
+        args: [
+          { name: "target", order: 0, required: true },
+          { name: "tag", order: 1, required: false },
+        ],
+      },
+    };
+
+    // When tooling help is rendered
+    const help = renderToolingHelp(entry);
+
+    // Then USAGE names the positionals instead of a generic args placeholder
+    expect(sectionBody(help, "USAGE")).toContain("lando deploy [flags] <TARGET> [TAG]");
+    expect(sectionBody(help, "USAGE")).not.toContain("[args...]");
+  });
+
+  test("omits FLAGS and ARGUMENTS when input is absent", () => {
+    // Given a tooling entry with no input field
+    const entry = { id: "app:greet", summary: "Echo hello", service: "appserver" };
+
+    // When tooling help is rendered
+    const help = renderToolingHelp(entry);
+
+    // Then the page matches today's shape with no FLAGS or ARGUMENTS sections
+    expect(help).not.toContain("\nFLAGS\n");
+    expect(help).not.toContain("\nARGUMENTS\n");
+    expect(help).toContain("lando greet [args...]");
+  });
 });
 
 describe("command help color", () => {

@@ -807,7 +807,7 @@ describe("EventCommandExecutorLive", () => {
         inspect: {
           cmd: "inspect",
           arguments: false,
-          flags: { verbose: { type: "boolean" } },
+          flags: { verbose: { boolean: true } },
         },
       },
     );

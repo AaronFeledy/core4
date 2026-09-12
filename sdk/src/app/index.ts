@@ -63,8 +63,10 @@ import type {
   ShellScriptOutsideRootError,
   StateStoreError,
   ToolingCompileError,
+  ToolingDisabledError,
   ToolingExecError,
   ToolingIncludeCycleError,
+  ToolingInputError,
   TunnelProviderUnavailableError,
 } from "../errors/index.ts";
 
@@ -486,6 +488,8 @@ export type ToolingError =
   | CommandAliasConflictError
   | ConfigExpressionError
   | ToolingCompileError
+  | ToolingDisabledError
+  | ToolingInputError
   | ToolingExecError;
 
 export interface LogsAppOptions {

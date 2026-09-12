@@ -2,6 +2,8 @@ import type { CommandAliasConflictError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
 import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
+import { type NormalizedToolingTask, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import { Either } from "effect";
 
 import { reservedToolingNameConflict } from "../operations/reserved-aliases.ts";
 
@@ -14,6 +16,7 @@ interface ToolingServiceContribution {
 }
 
 const effectiveToolingByPlan = new WeakMap<AppPlan, EffectiveTooling>();
+const normalizedToolingByPlan = new WeakMap<AppPlan, ReadonlyMap<string, NormalizedToolingTask>>();
 
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
@@ -65,8 +68,26 @@ export const validateServiceTypeReservedToolingNames = (input: {
 
 export const attachEffectiveTooling = (plan: AppPlan, tooling: EffectiveTooling): AppPlan => {
   effectiveToolingByPlan.set(plan, sortedTooling(tooling));
+  normalizedToolingByPlan.delete(plan);
   return plan;
 };
 
 export const effectiveToolingForPlan = (plan: AppPlan): EffectiveTooling | undefined =>
   effectiveToolingByPlan.get(plan);
+
+export const normalizedToolingForPlan = (
+  plan: AppPlan,
+): ReadonlyMap<string, NormalizedToolingTask> | undefined => {
+  const cached = normalizedToolingByPlan.get(plan);
+  if (cached !== undefined) return cached;
+  const tooling = effectiveToolingByPlan.get(plan);
+  if (tooling === undefined) return undefined;
+  const normalized = new Map(
+    Object.entries(tooling).map(
+      ([name, task]) =>
+        [name, Either.getOrThrowWith(normalizeToolingTask(name, task), (error) => error)] as const,
+    ),
+  );
+  normalizedToolingByPlan.set(plan, normalized);
+  return normalized;
+};

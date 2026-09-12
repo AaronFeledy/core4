@@ -12,12 +12,12 @@
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Predicate, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { McpToolInputError, type McpTransportError } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
-import { CommandRegistry, ConfigService } from "@lando/sdk/services";
+import { CommandRegistry, ConfigService, type RegisteredCommand } from "@lando/sdk/services";
 
 import {
   type RunToolingResult,
@@ -67,11 +67,39 @@ export interface McpCommandRegistry {
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
 }
 
-interface RegisteredToolingCommand {
-  readonly id: string;
-  readonly summary: string;
-  readonly hidden: boolean;
-}
+type RegisteredToolingCommand = RegisteredCommand;
+type ToolingInput = NonNullable<RegisteredToolingCommand["input"]>;
+
+const toolingMemberMetadata = (member: ToolingInput["flags"][number] | ToolingInput["args"][number]) => {
+  const description = [
+    member.description,
+    ...(member.choices === undefined ? [] : [`(one of: ${member.choices.join(", ")})`]),
+    ...(member.default === undefined ? [] : [`[default: ${member.default}]`]),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    required: member.required && member.default === undefined,
+    ...(description === "" ? {} : { description }),
+  };
+};
+
+export const toolingArgvFromInput = (declaration: ToolingInput, input: unknown): ReadonlyArray<string> => {
+  if (!Predicate.isRecord(input)) return [];
+  const flags = Predicate.isRecord(input.flags) ? input.flags : {};
+  const args = Predicate.isRecord(input.args) ? input.args : {};
+  return [
+    ...declaration.flags.flatMap((flag) => {
+      const value = flags[flag.name];
+      if (flag.boolean) return value === true ? [`--${flag.name}`] : [];
+      return typeof value === "string" ? [`--${flag.name}=${value}`] : [];
+    }),
+    ...declaration.args.flatMap((arg) => {
+      const value = args[arg.name];
+      return typeof value === "string" ? [value] : [];
+    }),
+  ];
+};
 
 const ToolingMcpResultSchema = Schema.Struct({
   tool: Schema.String,
@@ -100,15 +128,46 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
     namespace,
     bootstrap: "app",
     hidden: command.hidden,
-    args: {
-      args: {
-        type: "string",
-        multiple: true,
-        description: "Arguments passed to the tooling task.",
-      },
-    },
+    ...(command.input === undefined
+      ? {
+          args: {
+            args: {
+              type: "string" as const,
+              multiple: true,
+              description: "Arguments passed to the tooling task.",
+            },
+          },
+        }
+      : {
+          flags: Object.fromEntries(
+            command.input.flags.map((flag) => [
+              flag.name,
+              {
+                type: flag.boolean ? ("boolean" as const) : ("string" as const),
+                ...toolingMemberMetadata(flag),
+              },
+            ]),
+          ),
+          args: Object.fromEntries(
+            command.input.args.map((arg) => [
+              arg.name,
+              {
+                type: "string" as const,
+                ...toolingMemberMetadata(arg),
+              },
+            ]),
+          ),
+        }),
     resultSchema: ToolingMcpResultSchema,
-    run: (input) => runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true }),
+    run: (input) =>
+      runTooling({
+        name: command.id,
+        args:
+          command.input === undefined
+            ? toolingArgsFromInput(input)
+            : toolingArgvFromInput(command.input, input),
+        renderProgress: true,
+      }),
     redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
     render: (result) => renderRunToolingResult(result as RunToolingResult),
   };

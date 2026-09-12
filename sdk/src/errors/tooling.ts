@@ -3,8 +3,24 @@ import { Schema } from "effect";
 export class ToolingCompileError extends Schema.TaggedError<ToolingCompileError>()("ToolingCompileError", {
   message: Schema.String,
   tool: Schema.String,
+  source: Schema.optional(Schema.Struct({ path: Schema.String, task: Schema.String })),
   remediation: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
+}) {}
+
+export class ToolingInputError extends Schema.TaggedError<ToolingInputError>()("ToolingInputError", {
+  message: Schema.String,
+  tool: Schema.String,
+  field: Schema.optional(Schema.String),
+  source: Schema.optional(Schema.Struct({ path: Schema.String, task: Schema.String })),
+  remediation: Schema.String,
+}) {}
+
+export class ToolingDisabledError extends Schema.TaggedError<ToolingDisabledError>()("ToolingDisabledError", {
+  message: Schema.String,
+  tool: Schema.String,
+  source: Schema.Struct({ path: Schema.String, task: Schema.String }),
+  remediation: Schema.String,
 }) {}
 
 export class ToolingIncludeCycleError extends Schema.TaggedError<ToolingIncludeCycleError>()(

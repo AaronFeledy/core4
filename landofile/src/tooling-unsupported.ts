@@ -9,7 +9,6 @@ const UNSUPPORTED_TOOLING_TASK_KEYS = [
   "engine",
   "bootstrap",
   "dotenv",
-  "user",
   "appMount",
   "stdio",
   "interactive",
@@ -26,7 +25,6 @@ const UNSUPPORTED_TOOLING_TASK_KEYS = [
   "silent",
   "output",
   "failFast",
-  "disabled",
   "aliases",
   "topLevelAlias",
   "namespace",
@@ -36,7 +34,23 @@ const UNSUPPORTED_TOOLING_TASK_KEYS = [
   "usage",
 ] as const;
 
-const UNSUPPORTED_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
+/** Keys allowed on a cmds[] object step once `cmd` is present. */
+const SUPPORTED_STEP_OBJECT_KEYS = new Set(["cmd", "service", "dir", "user", "env"]);
+
+/** Dedicated step forms that remain unimplemented (rejected even without `cmd`). */
+const UNSUPPORTED_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for"]);
+
+const SUPPORTED_FLAG_KEYS = new Set([
+  "alias",
+  "choices",
+  "boolean",
+  "default",
+  "required",
+  "description",
+  "deprecated",
+]);
+
+const SUPPORTED_ARG_KEYS = new Set(["choices", "default", "required", "order", "description", "deprecated"]);
 
 interface ToolingUnsupportedFinding {
   readonly task: string;
@@ -84,6 +98,8 @@ const scanToolingInputMetadataForUnsupported = (
     return undefined;
   }
 
+  const allowedKeys = section === "flags" ? SUPPORTED_FLAG_KEYS : SUPPORTED_ARG_KEYS;
+
   for (const [name, value] of Object.entries(metadata as Record<string, unknown>)) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
       return {
@@ -94,7 +110,7 @@ const scanToolingInputMetadataForUnsupported = (
     }
 
     const keys = Object.keys(value as Record<string, unknown>);
-    const unsupportedKey = keys.find((key) => key !== "deprecated");
+    const unsupportedKey = keys.find((key) => !allowedKeys.has(key));
     if (unsupportedKey !== undefined) {
       return {
         task: taskName,
@@ -102,13 +118,39 @@ const scanToolingInputMetadataForUnsupported = (
         description: `Tooling ${section} field "${unsupportedKey}"`,
       };
     }
-    if (!Object.hasOwn(value, "deprecated")) {
+  }
+
+  return undefined;
+};
+
+const scanCmdsStepForUnsupported = (
+  taskName: string,
+  stepIndex: number,
+  stepObj: Readonly<Record<string, unknown>>,
+): ToolingUnsupportedFinding | undefined => {
+  for (const stepKey of Object.keys(stepObj)) {
+    if (UNSUPPORTED_STEP_OBJECT_KEYS.has(stepKey)) {
       return {
         task: taskName,
-        key: `${section}.${name}`,
-        description: `Tooling ${section} entry "${name}" without deprecation metadata`,
+        key: `cmds[${stepIndex}].${stepKey}`,
+        description: `Step-object cmds entry "${stepKey}"`,
       };
     }
+    if (!SUPPORTED_STEP_OBJECT_KEYS.has(stepKey)) {
+      return {
+        task: taskName,
+        key: `cmds[${stepIndex}].${stepKey}`,
+        description: `Step-object cmds entry "${stepKey}"`,
+      };
+    }
+  }
+
+  if (!Object.hasOwn(stepObj, "cmd")) {
+    return {
+      task: taskName,
+      key: `cmds[${stepIndex}]`,
+      description: `Step-object cmds entry at index ${stepIndex} without "cmd"`,
+    };
   }
 
   return undefined;
@@ -144,18 +186,15 @@ export const scanToolingForUnsupported = (parsed: unknown): ToolingUnsupportedFi
 
     const cmds = task.cmds;
     if (Array.isArray(cmds)) {
-      for (const step of cmds) {
+      for (let stepIndex = 0; stepIndex < cmds.length; stepIndex++) {
+        const step = cmds[stepIndex];
         if (step !== null && typeof step === "object" && !Array.isArray(step)) {
-          const stepObj = step as Record<string, unknown>;
-          for (const stepKey of Object.keys(stepObj)) {
-            if (UNSUPPORTED_STEP_OBJECT_KEYS.has(stepKey)) {
-              return {
-                task: taskName,
-                key: `cmds[].${stepKey}`,
-                description: `Step-object cmds entry "${stepKey}"`,
-              };
-            }
-          }
+          const stepFinding = scanCmdsStepForUnsupported(
+            taskName,
+            stepIndex,
+            step as Record<string, unknown>,
+          );
+          if (stepFinding !== undefined) return stepFinding;
         }
       }
     }
