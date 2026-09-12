@@ -2187,16 +2187,20 @@ describe("AppPlannerLive", () => {
     });
   });
 
-  test("invalidates the app-plan cache when a Node inference input changes", async () => {
+  test("tracks present and absent Node inference candidates in a nested package cache", async () => {
     await withTempCwd(async (appRoot) => {
       const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
       const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-node-inference-cache-")));
       process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
-      await writeFile(join(appRoot, ".nvmrc"), "22.11.0\n");
+      const packageRoot = join(appRoot, "apps", "web");
+      await mkdir(packageRoot, { recursive: true });
+      const nvmrcPath = join(packageRoot, ".nvmrc");
+      const packageJsonPath = join(packageRoot, "package.json");
+      await writeFile(nvmrcPath, "22.11.0\n");
       const landofile: LandofileShape = {
         name: "node-inference-cache",
         runtime: 4,
-        services: { [ServiceName.make("web")]: { type: "node" } },
+        services: { [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" } },
       };
       const layer = AppPlannerLive.pipe(
         Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
@@ -2209,9 +2213,30 @@ describe("AppPlannerLive", () => {
         );
 
       try {
+        const initial = await runPlan();
+        expect(initial.services[ServiceName.make("web")]?.type).toBe("node:22.11.0");
+        expect(await runPlan()).toEqual(initial);
+        await writeFile(nvmrcPath, "22.12.0\n");
+        const changedPin = await runPlan();
+        expect(changedPin.services[ServiceName.make("web")]?.type).toBe("node:22.12.0");
+        await writeFile(packageJsonPath, JSON.stringify({ engines: { node: "22" } }));
+        const createdPackage = await runPlan();
+        expect(createdPackage.services[ServiceName.make("web")]?.provenance).not.toEqual(
+          changedPin.services[ServiceName.make("web")]?.provenance,
+        );
+        await writeFile(packageJsonPath, JSON.stringify({ engines: { node: ">=22 <23" } }));
+        const changedPackage = await runPlan();
+        expect(changedPackage.services[ServiceName.make("web")]?.provenance).not.toEqual(
+          createdPackage.services[ServiceName.make("web")]?.provenance,
+        );
+        await rm(nvmrcPath);
+        expect((await runPlan()).services[ServiceName.make("web")]?.type).toBe("node:22");
+        await writeFile(nvmrcPath, "22.11.0\n");
         expect((await runPlan()).services[ServiceName.make("web")]?.type).toBe("node:22.11.0");
-        await writeFile(join(appRoot, ".nvmrc"), "22.12.0\n");
-        expect((await runPlan()).services[ServiceName.make("web")]?.type).toBe("node:22.12.0");
+        await rm(packageJsonPath);
+        expect((await runPlan()).services[ServiceName.make("web")]?.provenance).toEqual(
+          initial.services[ServiceName.make("web")]?.provenance,
+        );
       } finally {
         if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
         else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
@@ -2223,6 +2248,8 @@ describe("AppPlannerLive", () => {
   test.each([
     [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
     [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
+    [{ type: "php:8.3", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
+    [{ type: "node", packageRoot: "missing" }, /directory does not exist/i],
     [{ type: "node", packageRoot: "../outside" }, /escapes the app root/i],
   ] satisfies ReadonlyArray<readonly [ServiceConfig, RegExp]>)(
     "rejects contradictory or unrelated Node inference config",
