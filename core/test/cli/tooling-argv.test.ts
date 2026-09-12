@@ -4,6 +4,23 @@ import { buildToolingInvocation, validateToolingArguments } from "@lando/engine/
 import { PortablePath } from "@lando/sdk/schema";
 
 describe("buildToolingInvocation", () => {
+  test("keeps PTY intent separate from attached terminal facts", () => {
+    // Given
+    const task = { cmd: "env" } as const;
+
+    // When
+    const invocation = buildToolingInvocation("env", task, {
+      tty: true,
+      hostTerminal: { term: "dumb", columns: 132, rows: 43 },
+    });
+
+    // Then
+    expect(invocation).toMatchObject({
+      tty: true,
+      hostTerminal: { term: "dumb", columns: 132, rows: 43 },
+    });
+  });
+
   test("preserves pass-through argument boundaries for string tooling commands", () => {
     // Given
     const task = { service: "appserver", cmds: ["vendor/bin/drush"] };

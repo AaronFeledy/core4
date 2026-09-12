@@ -846,6 +846,8 @@ describe("EventCommandExecutorLive", () => {
     expect(invocations[0]).toMatchObject({
       commands: [["sh", "-c", 'inspect "$@"', "lando-tooling", "--verbose"]],
     });
+    expect(invocations[0]?.tty).toBeUndefined();
+    expect(invocations[0]?.hostTerminal).toBeUndefined();
   });
 
   test("redacts flag-shaped raw argv from nested lifecycle events without changing target argv", async () => {

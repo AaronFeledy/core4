@@ -6,7 +6,7 @@ import {
   type LandofileLoadExpressionError,
   ToolingCompileError,
 } from "@lando/sdk/errors";
-import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
+import type { HostTerminal, LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
 import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import {
@@ -45,6 +45,8 @@ export interface RunToolingOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
   readonly renderProgress?: boolean;
+  readonly tty?: boolean;
+  readonly hostTerminal?: HostTerminal;
 }
 
 export type RunToolingResult = ToolingResult & {
@@ -131,7 +133,7 @@ const normalizeHostSteps = (
 export const buildToolingInvocation = (
   name: string,
   task: ToolingTaskShape,
-  options: Pick<RunToolingOptions, "args" | "user" | "cwd" | "env"> & {
+  options: Pick<RunToolingOptions, "args" | "user" | "cwd" | "env" | "tty" | "hostTerminal"> & {
     readonly agentEnvAllowlist?: ReadonlyArray<string>;
   } = {},
 ): ToolingInvocation => {
@@ -149,6 +151,8 @@ export const buildToolingInvocation = (
     ...(cwd === undefined ? {} : { cwd }),
     ...(env === undefined ? {} : { env }),
     ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
+    ...(options.tty === undefined ? {} : { tty: options.tty }),
+    ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
     commands,
     hostSteps: normalizeHostSteps(task, options.args ?? []),
   };
@@ -275,6 +279,8 @@ export const runTooling = (
       ...(options.user === undefined ? {} : { user: options.user }),
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       ...(options.env === undefined ? {} : { env: options.env }),
+      ...(options.tty === undefined ? {} : { tty: options.tty }),
+      ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
       agentEnvAllowlist,
     });
     const redactionTokens = [
