@@ -162,7 +162,8 @@ describe("family command builders", () => {
     ]);
     const mongoCount = countCommand("mongodb", creds);
     expect(mongoCount[0]).toBe("sh");
-    expect(mongoCount[2]).toContain('mongosh --quiet --uri="$MONGO_URI"');
+    expect(mongoCount[2]).toContain('mongosh "$MONGO_URI" --quiet');
+    expect(mongoCount[2]).not.toContain("--uri");
     expect(mongoCount[2]).toContain("db.getCollectionNames().length");
     expect(countCommand("mssql", creds)).toEqual([
       "sqlcmd",
@@ -196,7 +197,8 @@ describe("family command builders", () => {
     ]);
     const mongoReset = resetCommand("mongodb", creds);
     expect(mongoReset[0]).toBe("sh");
-    expect(mongoReset[2]).toContain('mongosh --uri="$MONGO_URI"');
+    expect(mongoReset[2]).toContain('mongosh "$MONGO_URI" --quiet');
+    expect(mongoReset[2]).not.toContain("--uri");
     expect(mongoReset[2]).toContain("db.dropDatabase()");
     const mssql = resetCommand("mssql", creds);
     expect(mssql[0]).toBe("sqlcmd");

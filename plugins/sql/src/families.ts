@@ -82,6 +82,12 @@ const mongoTool = (program: string, extra: string): ReadonlyArray<string> => [
   `${program} --uri="$MONGO_URI" ${extra}`,
 ];
 
+const mongoShell = (extra: string): ReadonlyArray<string> => [
+  "sh",
+  "-c",
+  `mongosh "$MONGO_URI" --quiet ${extra}`,
+];
+
 export const dumpCommand = (
   family: Exclude<SqlFamily, "mssql">,
   creds: SqlCommandCreds,
@@ -132,7 +138,7 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
       ]);
     case "mongodb":
-      return mongoTool("mongosh --quiet", `--eval=${quoteShell("db.getCollectionNames().length")}`);
+      return mongoShell(`--eval=${quoteShell("db.getCollectionNames().length")}`);
     case "mssql":
       return [
         "sqlcmd",
@@ -164,7 +170,7 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         `DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ${creds.user};`,
       ]);
     case "mongodb":
-      return mongoTool("mongosh", `--eval=${quoteShell("db.dropDatabase()")}`);
+      return mongoShell(`--eval=${quoteShell("db.dropDatabase()")}`);
     case "mssql":
       return [
         "sqlcmd",
