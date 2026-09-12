@@ -17,6 +17,7 @@ import {
   ProviderUnavailableError,
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
+  SnapshotOwnershipError,
 } from "@lando/sdk/errors";
 import {
   DataTransferProgressEvent,
@@ -51,7 +52,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import {
-  type VerifiedStreamError,
+  VerifiedStreamError,
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
@@ -165,6 +166,10 @@ const snapshotMatches = (info: SnapshotInfo, filter: SnapshotFilter): boolean =>
   if (filter.id !== undefined && info.id !== filter.id) return false;
   if (filter.app !== undefined && String(info.store.app) !== String(filter.app)) return false;
   if (filter.store !== undefined && info.store.store !== filter.store) return false;
+  if (filter.sourceRoot !== undefined && info.metadata?.sourceRoot !== filter.sourceRoot) return false;
+  if (filter.ownerKey !== undefined && info.metadata?.ownerKey !== filter.ownerKey) return false;
+  if (filter.repoGroupKey !== undefined && info.metadata?.repoGroupKey !== filter.repoGroupKey) return false;
+  if (filter.service !== undefined && info.metadata?.service !== filter.service) return false;
   if (filter.scope !== undefined && info.store.scope !== filter.scope) return false;
   if (filter.label !== undefined && info.label !== filter.label) return false;
   if (filter.labels !== undefined) {
@@ -779,7 +784,11 @@ const validateHostEndpoints = (spec: DataTransferSpec, scratchDir: string) => {
         }),
     });
     yield* Effect.all(
-      endpoints.map((endpoint) => ensureInsideRoot(endpoint.path, root)),
+      endpoints.map((endpoint) =>
+        endpoint === spec.from && endpoint._tag === "hostPath" && endpoint.trusted === true
+          ? Effect.void
+          : ensureInsideRoot(endpoint.path, root),
+      ),
       { discard: true },
     );
   });
@@ -874,12 +883,11 @@ const hostReadError = (path: string, cause: unknown): DataTransferError => {
 };
 
 const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransferError> =>
-  Stream.unwrap(
-    Effect.tryPromise({
-      try: () => readFile(path),
-      catch: (cause) => hostReadError(path, cause),
-    }).pipe(Effect.map((payload) => Stream.make(new Uint8Array(payload)))),
-  );
+  Stream.fromReadableStream({
+    evaluate: () => Bun.file(path).stream(),
+    onError: (cause) => hostReadError(path, cause),
+    releaseLockOnEnd: true,
+  });
 
 const byteStreamFromArchive = (
   path: string,
@@ -1064,12 +1072,15 @@ const writeStreamToEndpoint = (
   switch (target._tag) {
     case "hostPath":
       return Effect.gen(function* () {
-        const payload = yield* collectByteStream(body);
         const result = yield* persistVerifiedStream({
-          body: Stream.make(payload),
+          body,
           destinationPath: target.path,
           expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
         return { accelerated: false, sizeBytes: result.sizeBytes, digest: result.sha256 };
       });
     case "hostArchive":
@@ -1182,17 +1193,24 @@ const writeStreamToEndpoint = (
       });
     case "serviceCmd":
       return Effect.gen(function* () {
-        const payload = yield* collectByteStream(body);
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
+        const stagedPath = `${process.cwd()}/.tmp-data-mover-command-${randomUUID()}`;
+        yield* Effect.addFinalizer(() => Effect.promise(() => unlink(stagedPath).catch(() => undefined)));
+        const verified = yield* persistVerifiedStream({
+          body,
+          destinationPath: stagedPath,
           expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
+        const stdinStream = Bun.file(stagedPath).stream();
         const result = yield* provider
           .exec(
             { app: target.app, service: target.service },
             {
               ...providerCommandSpec(target.command, target.env),
-              stdinStream: asyncIterableFromBytes(payload),
+              stdinStream,
             },
           )
           .pipe(Effect.mapError((cause) => serviceCommandFailure("exec", cause)));
@@ -1332,7 +1350,7 @@ export const makeDataMoverService = (
       ),
     ),
   snapshot: (store, opts) => {
-    const snapshotId = opts?.label ?? `${store.store}-${randomUUID()}`;
+    const snapshotId = randomUUID();
     let rollbackInfo: SnapshotInfo | undefined;
     let rollbackNative: VolumeSnapshotRef | undefined;
     return Effect.gen(function* () {
@@ -1381,6 +1399,7 @@ export const makeDataMoverService = (
         ...(native === undefined ? { format } : { native }),
         ...(opts?.label === undefined ? {} : { label: opts.label }),
         ...(opts?.labels === undefined ? {} : { labels: opts.labels }),
+        ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
       };
       rollbackInfo = info;
       yield* writeSnapshotSidecar(persistence, info);
@@ -1424,28 +1443,54 @@ export const makeDataMoverService = (
       typeof handle === "string" ? store : handle.store,
     ).pipe(
       Effect.flatMap((info) =>
-        info.native === undefined
-          ? writeStreamToEndpoint(
-              provider,
-              {
-                from: {
+        Effect.gen(function* () {
+          if (info.metadata !== undefined) {
+            const targets = yield* provider
+              .listVolumes({ app: store.app, store: store.store })
+              .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+            const target = targets.find(
+              (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
+            );
+            if (
+              target?.instanceId === undefined ||
+              target.provenance !== "known" ||
+              target.instanceId !== info.metadata.volumeInstanceId
+            ) {
+              return yield* Effect.fail(
+                new SnapshotOwnershipError({
+                  message: "Physical snapshot ownership does not match the target volume instance.",
+                  snapshotId: info.id,
+                  sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+                  ...(target?.instanceId === undefined ? {} : { targetVolumeInstanceId: target.instanceId }),
+                  remediation:
+                    "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
+                }),
+              );
+            }
+          }
+          return yield* info.native === undefined
+            ? writeStreamToEndpoint(
+                provider,
+                {
+                  from: {
+                    _tag: "hostArchive",
+                    path: absolutePath(snapshotArchivePath(persistence, info)),
+                    format: info.format ?? "tar",
+                  },
+                  to: { _tag: "volume", app: store.app, store: store.store },
+                  expectedDigest: info.digest,
+                  overwrite: true,
+                },
+                streamFromEndpoint(provider, {
                   _tag: "hostArchive",
                   path: absolutePath(snapshotArchivePath(persistence, info)),
                   format: info.format ?? "tar",
-                },
-                to: { _tag: "volume", app: store.app, store: store.store },
-                expectedDigest: info.digest,
-                overwrite: true,
-              },
-              streamFromEndpoint(provider, {
-                _tag: "hostArchive",
-                path: absolutePath(snapshotArchivePath(persistence, info)),
-                format: info.format ?? "tar",
-              }),
-            ).pipe(Effect.asVoid)
-          : provider
-              .restoreVolume({ snapshot: info.native, target: store, overwrite: true })
-              .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause))),
+                }),
+              ).pipe(Effect.asVoid)
+            : provider
+                .restoreVolume({ snapshot: info.native, target: store, overwrite: true })
+                .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
+        }),
       ),
     ),
   listSnapshots: (filter) => listSnapshotInfos(persistence, filter),
