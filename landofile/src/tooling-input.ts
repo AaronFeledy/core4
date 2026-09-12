@@ -88,6 +88,7 @@ export const parseToolingArgv = (
 export const resolveServiceRef = (
   ref: ToolingServiceRef | undefined,
   values: ToolingInputValues,
+  task?: Pick<NormalizedToolingTask, "name" | "source">,
 ): Either.Either<string | undefined, ToolingInputError> => {
   if (ref === undefined) return Either.right(undefined);
   switch (ref.kind) {
@@ -101,10 +102,11 @@ export const resolveServiceRef = (
         ? Either.right(value)
         : Either.left(
             new ToolingInputError({
-              tool: ref.flag,
+              tool: task?.name ?? ref.flag,
               field: ref.flag,
               message: `Service flag ${ref.flag} needs a non-empty string value.`,
               remediation: `Supply --${ref.flag}=<service>.`,
+              ...(task?.source === undefined ? {} : { source: task.source }),
             }),
           );
     }

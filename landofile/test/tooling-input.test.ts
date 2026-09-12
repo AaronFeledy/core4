@@ -125,10 +125,16 @@ describe("resolveServiceRef", () => {
     const result = resolveServiceRef(
       { kind: "flag", flag: "target" },
       { flags, args: {}, argv: ["--target=raw-is-not-trusted"] },
+      { name: "deploy", source: { path: "/app/.lando.yml", task: "deploy" } },
     );
     // Then
     expect(Either.isLeft(result)).toBe(true);
     if (Either.isLeft(result))
-      expect(result.left).toMatchObject({ _tag: "ToolingInputError", field: "target" });
+      expect(result.left).toMatchObject({
+        _tag: "ToolingInputError",
+        tool: "deploy",
+        field: "target",
+        source: { path: "/app/.lando.yml", task: "deploy" },
+      });
   });
 });
