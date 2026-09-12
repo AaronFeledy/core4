@@ -254,7 +254,16 @@ describe("mcpRegistryWithToolingEntries", () => {
     // When
     const argv = mcpCommands.toolingArgvFromInput(command.input, input);
     // Then
-    expect(argv).toEqual(["--name=Lando", "--loud", "dev"]);
+    expect(argv).toEqual(["--name=Lando", "--loud", "--", "dev"]);
+  });
+
+  test("delimits leading-hyphen positionals so MCP matches CLI argv parsing", () => {
+    // Given a declared positional whose value looks like a flag
+    const input = { args: { target: "--literal" } };
+    // When MCP serializes it
+    const argv = mcpCommands.toolingArgvFromInput(command.input, input);
+    // Then the shared parser keeps the positional identity
+    expect(argv).toEqual(["--", "--literal"]);
   });
 
   test("omits false and absent flags without injecting defaults", () => {
@@ -263,7 +272,7 @@ describe("mcpRegistryWithToolingEntries", () => {
     // When
     const argv = mcpCommands.toolingArgvFromInput(command.input, input);
     // Then
-    expect(argv).toEqual(["--name=", "prod", "hi there"]);
+    expect(argv).toEqual(["--name=", "--", "prod", "hi there"]);
   });
 
   test("projects visible registered tooling commands into MCP tooling entries", () => {
