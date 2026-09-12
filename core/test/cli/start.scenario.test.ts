@@ -942,7 +942,7 @@ describe("lando start", () => {
     });
   });
 
-  test("a post-start event failure warns, exits successfully, and does not roll back", async () => {
+  test("a post-start event failure is fatal without destroying the app or removing routes", async () => {
     // Given
     const failedPlan = {
       ...plan,
@@ -952,12 +952,15 @@ describe("lando start", () => {
     const harness = makeStartLayer({ plannedApp: failedPlan });
 
     // When
-    const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
     // Then
-    expect(result.app).toBe("test-start");
-    expect(harness.events).toContain("message.warn");
+    expect(failureOf(exit)).toMatchObject({ _tag: "LandofileEventStepFailedError", event: "post-start" });
+    expect(harness.events).not.toContain("message.warn");
     expect(harness.destroyCalls).toHaveLength(0);
+    expect(harness.buildOrder).toContain("apply");
+    expect(harness.buildOrder).toContain("proxy-apply");
+    expect(harness.buildOrder).not.toContain("proxy-remove");
     expect(
       harness.taskEvents
         .filter((event) => event._tag === "task.detail")

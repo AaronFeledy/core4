@@ -15,11 +15,11 @@ import {
   LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
-  type LandofileUnknownEventError,
   type LandofileValidationError,
   type LandofileVersionConstraintError,
   type ManagedFileTransactionError,
   type NotImplementedError,
+  type RouteInputError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
@@ -42,13 +42,13 @@ export interface ResolvedAppTarget {
 export const userAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 export type UserLandofileError =
+  | RouteInputError
   | ManagedFileTransactionError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileUnknownEventError
   | LandofileFormConflictError
   | NotImplementedError
   | LandofileIncludeError

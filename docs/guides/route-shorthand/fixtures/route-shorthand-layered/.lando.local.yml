@@ -1,0 +1,11 @@
+services:
+  app:
+    routes:
+      - hostname: api.lndo.site
+        filters:
+          - name: strip-v1
+            type: stripPrefix
+            prefix: /v2
+          - type: responseHeader
+            header: X-Served-By
+            value: local
