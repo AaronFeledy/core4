@@ -1247,6 +1247,7 @@ describe("EventCommandExecutorLive", () => {
     expect(input).toEqual({
       argv: ["--", "tail"],
       parsedArgv: ["app", "a", "b", "--", "tail"],
+      interaction: "non-interactive",
       flags: { decimal: 1.25, integer: 4, enabled: false, mode: "SAFE", labels: ["[one]", "[two]"] },
       args: { target: "app", paths: ["a", "b"] },
     });

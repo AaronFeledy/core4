@@ -111,45 +111,79 @@ describe("exec command spec", () => {
     expect(commands[0]?.env).not.toHaveProperty("COLORTERM");
   });
 
-  test("does not attach stdin for non-interactive execution", async () => {
-    const stdinModes: Array<"inherit" | "ignore" | undefined> = [];
-    const provider: RuntimeProviderShape = {
-      ...TestRuntimeProvider,
-      execStream: (_target, command) => {
-        stdinModes.push(command.stdin);
-        return Stream.fromIterable([{ exitCode: 0 }]);
-      },
-    };
-    const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
-    const stdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
-    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+  test.each(["explicit non-interactive", "default event"])(
+    "isolates %s exec on an attached terminal",
+    async (mode) => {
+      // Given
+      const commands: Array<{
+        readonly stdin?: "inherit" | "ignore";
+        readonly tty?: boolean;
+        readonly env?: Readonly<Record<string, string>>;
+      }> = [];
+      const provider: RuntimeProviderShape = {
+        ...TestRuntimeProvider,
+        execStream: (_target, command) => {
+          commands.push(command);
+          return Stream.fromIterable([{ exitCode: 0 }]);
+        },
+      };
+      const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
+      const stdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+      const savedTerm = process.env.TERM;
+      const savedColorterm = process.env.COLORTERM;
+      Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
+      process.env.TERM = "xterm-host";
+      process.env.COLORTERM = "truecolor";
 
-    try {
-      await Effect.runPromise(
-        Effect.scoped(
-          Layer.build(runtime.layer).pipe(
-            Effect.map((context) => Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) })),
-            Effect.flatMap((context) =>
-              execSpec
-                .run({
-                  argv: [],
-                  parsedArgv: ["cat"],
-                  flags: { interactive: true },
-                  args: {},
-                  interaction: "non-interactive",
-                })
-                .pipe(Effect.provide(context)),
+      try {
+        // When
+        await Effect.runPromise(
+          Effect.scoped(
+            Layer.build(runtime.layer).pipe(
+              Effect.map((context) => Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) })),
+              Effect.flatMap((context) =>
+                mode === "default event"
+                  ? makeEventCommandExecutor(Context.add(context, runtimeTag, {}), [
+                      { spec: execSpec, status: { kind: "implemented" } },
+                    ]).run({
+                      command: execSpec.id,
+                      flags: {},
+                      args: { command: "cat" },
+                      argv: [],
+                      cwd: process.cwd(),
+                    })
+                  : execSpec
+                      .run({
+                        argv: [],
+                        parsedArgv: ["cat"],
+                        flags: { interactive: true },
+                        args: {},
+                        interaction: "non-interactive",
+                      })
+                      .pipe(Effect.provide(context)),
+              ),
             ),
           ),
-        ),
-      );
-    } finally {
-      if (stdoutIsTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
-      else Object.defineProperty(process.stdout, "isTTY", stdoutIsTTY);
-    }
+        );
+      } finally {
+        if (stdoutIsTTY === undefined) Reflect.deleteProperty(process.stdout, "isTTY");
+        else Object.defineProperty(process.stdout, "isTTY", stdoutIsTTY);
+        if (savedTerm === undefined) Reflect.deleteProperty(process.env, "TERM");
+        else process.env.TERM = savedTerm;
+        if (savedColorterm === undefined) Reflect.deleteProperty(process.env, "COLORTERM");
+        else process.env.COLORTERM = savedColorterm;
+      }
 
-    expect(stdinModes).toEqual([undefined]);
-  });
+      // Then
+      expect(commands).toHaveLength(1);
+      expect(commands[0]?.stdin).toBeUndefined();
+      expect(commands[0]?.tty).not.toBe(true);
+      expect(commands[0]?.env ?? {}).not.toHaveProperty("TERM");
+      expect(commands[0]?.env ?? {}).not.toHaveProperty("COLORTERM");
+      expect(commands[0]?.env ?? {}).not.toHaveProperty("COLUMNS");
+      expect(commands[0]?.env ?? {}).not.toHaveProperty("LINES");
+    },
+  );
 
   test.each([
     { name: "one-shot default", interactive: false, expectedStdin: undefined },
