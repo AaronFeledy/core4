@@ -1114,7 +1114,7 @@ export const ToolingTaskShape = Schema.Struct({
     description: "User that the task's commands run as inside the target service.",
   }),
   disabled: Schema.optional(Schema.Boolean).annotations({
-    description: "Disables the task so it is neither listed nor executable.",
+    description: "Disables the task so it is hidden from listings and refused at execution.",
   }),
   service: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
