@@ -11,6 +11,7 @@ import type {
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
   LandofileParseError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -81,6 +82,7 @@ export type GlobalRebuildError =
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError

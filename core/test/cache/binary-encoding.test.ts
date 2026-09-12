@@ -143,19 +143,26 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v2.bin",
+      fixture: "app-command-v3.bin",
+      previousFixture: "app-command-v2.bin",
       decode: decodeAppCommandIndex,
     },
     {
       name: "plugin-command",
       magic: PLUGIN_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "plugin-command-v2.bin",
+      fixture: "plugin-command-v3.bin",
+      previousFixture: "plugin-command-v2.bin",
       decode: decodePluginCommandIndex,
     },
   ] as const;
 
   for (const cache of commandCases) {
+    test(`${cache.name} rejects the previous schema fixture`, async () => {
+      const fixture = await readFile(join(fixtureRoot, cache.previousFixture));
+      expect(cache.decode(fixture)).toBeNull();
+    });
+
     test(`${cache.name} fixture matches the encoder output`, async () => {
       const encoded = await makeFixtureBytes(cache.name);
       const fixture = await readFile(join(fixtureRoot, cache.fixture));

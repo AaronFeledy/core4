@@ -105,10 +105,35 @@ export interface ServiceType {
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }
 
+/** Normalized flag metadata carried alongside a registered tooling command. */
+export interface RegisteredCommandFlag {
+  readonly name: string;
+  readonly alias?: string;
+  readonly boolean: boolean;
+  readonly choices?: ReadonlyArray<string>;
+  readonly default?: string | boolean;
+  readonly required: boolean;
+  readonly description?: string;
+}
+
+/** Normalized positional-argument metadata carried alongside a registered tooling command. */
+export interface RegisteredCommandArg {
+  readonly name: string;
+  readonly order: number;
+  readonly choices?: ReadonlyArray<string>;
+  readonly default?: string;
+  readonly required: boolean;
+  readonly description?: string;
+}
+
 export interface RegisteredCommand {
   readonly id: string;
   readonly summary: string;
   readonly hidden: boolean;
+  readonly input?: {
+    readonly flags: ReadonlyArray<RegisteredCommandFlag>;
+    readonly args: ReadonlyArray<RegisteredCommandArg>;
+  };
 }
 
 export class CommandRegistry extends Context.Tag("@lando/core/CommandRegistry")<

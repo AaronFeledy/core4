@@ -18,7 +18,7 @@
   ],
   "serviceTags": {
     "AppPlanner": [
-      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError | CommandAliasConflictError | ConfigExpressionError>"
+      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError | CommandAliasConflictError | ConfigExpressionError | LandofileUnknownEventError>"
     ],
     "BuildOrchestrator": [
       "build: (plan: AppPlan) => Effect.Effect<AppPlan, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
@@ -56,7 +56,7 @@
       "writeFile: (path: string, content: string) => Effect.Effect<void, FileSystemError>"
     ],
     "LandofileService": [
-      "discover: Effect.Effect<LandofileShape, LandofileNotFoundError | LandofileParseError | LandofileValidationError | LandofileSandboxError | LandofileTimeoutError | LandofileUnknownEventError | LandofileFormConflictError | LandofileIncludeError | LandofileLockMismatchError | LandofileImportRefMisuseError | LandofileLoadLimitError | LandofileLoadOutsideRootError | ToolingIncludeCycleError | NotImplementedError | ComposeKeyRejectedError | ManagedFileTransactionError>"
+      "discover: Effect.Effect<LandofileShape, LandofileNotFoundError | LandofileParseError | LandofileValidationError | LandofileSandboxError | LandofileTimeoutError | LandofileFormConflictError | LandofileIncludeError | LandofileLockMismatchError | LandofileImportRefMisuseError | LandofileLoadLimitError | LandofileLoadOutsideRootError | ToolingIncludeCycleError | NotImplementedError | ComposeKeyRejectedError | ManagedFileTransactionError>"
     ],
     "Logger": [
       "debug: (message: string, data?: Readonly<Record<string, unknown>>) => Effect.Effect<void, EventError>",

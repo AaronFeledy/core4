@@ -7,6 +7,7 @@ import type {
   EventError,
   GlobalAppError,
   LandofileParseError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -54,6 +55,7 @@ export type GlobalStopError =
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError

@@ -47,6 +47,8 @@
     "./template-render": "./src/template-render.ts",
     "./tooling-unsupported": "./src/tooling-unsupported.ts",
     "./tooling-defaults": "./src/tooling-defaults.ts",
+    "./tooling-normalize": "./src/tooling-normalize.ts",
+    "./tooling-input": "./src/tooling-input.ts",
     "./tooling-fragment": "./src/tooling-fragment.ts",
     "./tooling-include-entries": "./src/tooling-include-entries.ts",
     "./tooling-include-provenance": "./src/tooling-include-provenance.ts",
