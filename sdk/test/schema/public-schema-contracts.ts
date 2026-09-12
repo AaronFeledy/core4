@@ -99,6 +99,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   BootstrapLevel: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   HostArchitecture: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   HostPlatformFamily: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  HostTerminal: "sdk/test/schema/host-terminal.test.ts",
   AppRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ArtifactRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ArtifactBuildSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
