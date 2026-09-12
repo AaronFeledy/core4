@@ -69,3 +69,9 @@ Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-covera
   - Route dispatch decisions off cache metadata instead of argv shape. The command index already knows whether a task declared input, so the help gate needs no Landofile load and no provider.
   - Once the unsupported-tooling allowlists matched the schema exactly, no tooling key is both schema-valid and scan-rejected, so translator output carrying bad tooling metadata now surfaces as `ConfigTranslateError` before any write rather than `NotImplementedError`.
 ---
+## 2026-09-12 - US-613 Review
+- Fixed in-scope review blockers: cmd/cmds mutual exclusion after schema decode, source-aware missing service-flag errors, declared flags with `arguments: false`, MCP `--` delimiters for hyphen positionals, tagged compile failures from cache refresh, and the plugin-index schema-version assertion.
+- Review notes (deferred/rejected): event-command argv order, mixed-step collapse, and host provider selection stay US-614; CommandRegistry swallow-on-discovery is the existing listing contract; Object.keys cmd/cmds walk was replaced by rejecting both rather than inventing a key-order policy; security lane aborted with no confirmed HIGH/CRITICAL issue.
+- Verification: typecheck and lint passed; 149 focused tests passed across normalize/input/tooling/compiler/MCP/command-registry suites.
+- **Learnings for future iterations:** Schema.Struct rebuilds decoded objects in field-declaration order, so Object.keys authored-order tests that skip decode are false greens. MCP→argv must insert `--` before positionals or leading-hyphen values become flags in the shared parser.
+---
