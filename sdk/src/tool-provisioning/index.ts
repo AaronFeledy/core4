@@ -222,23 +222,34 @@ const ZIP_CENTRAL_HEADER = 0x02014b50;
 const ZIP_EOCD = 0x06054b50;
 
 interface ZipCentralEntry {
+  readonly filename: string;
+  readonly directory: boolean;
   readonly compression: number;
   readonly compressedSize: number;
   readonly uncompressedSize: number;
   readonly mode: number;
 }
 
-const readZipCentralDirectory = (archive: Uint8Array): Map<number, ZipCentralEntry> => {
+const readZipCentralDirectory = (archive: Uint8Array): Map<number, ZipCentralEntry> | undefined => {
   const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
   for (let pos = archive.length - 22; pos >= 0; pos--) {
     if (view.getUint32(pos, true) !== ZIP_EOCD) continue;
+    if (pos + 22 + view.getUint16(pos + 20, true) !== archive.length) continue;
     const cdOffset = view.getUint32(pos + 16, true);
     const cdSize = view.getUint32(pos + 12, true);
     const cdEnd = cdOffset + cdSize;
+    const count = view.getUint16(pos + 10, true);
+    if (
+      view.getUint16(pos + 4, true) !== 0 ||
+      view.getUint16(pos + 6, true) !== 0 ||
+      view.getUint16(pos + 8, true) !== count ||
+      cdEnd !== pos
+    )
+      return undefined;
     const entries = new Map<number, ZipCentralEntry>();
     let cd = cdOffset;
     while (cd + 46 <= cdEnd) {
-      if (view.getUint32(cd, true) !== ZIP_CENTRAL_HEADER) break;
+      if (view.getUint32(cd, true) !== ZIP_CENTRAL_HEADER) return undefined;
       const compression = view.getUint16(cd + 10, true);
       const compressedSize = view.getUint32(cd + 20, true);
       const uncompressedSize = view.getUint32(cd + 24, true);
@@ -247,17 +258,23 @@ const readZipCentralDirectory = (archive: Uint8Array): Map<number, ZipCentralEnt
       const commentLen = view.getUint16(cd + 32, true);
       const externalAttributes = view.getUint32(cd + 38, true);
       const localOffset = view.getUint32(cd + 42, true);
+      const next = cd + 46 + filenameLen + extraLen + commentLen;
+      if (next > cdEnd || localOffset + 30 > cdOffset || entries.has(localOffset)) return undefined;
+      const filename = new TextDecoder("utf-8").decode(archive.subarray(cd + 46, cd + 46 + filenameLen));
       entries.set(localOffset, {
+        filename,
+        directory: (externalAttributes & 0x10) !== 0,
         compression,
         compressedSize,
         uncompressedSize,
         mode: (externalAttributes >>> 16) & 0xffff,
       });
-      cd += 46 + filenameLen + extraLen + commentLen;
+      cd = next;
     }
+    if (cd !== cdEnd || entries.size !== count) return undefined;
     return entries;
   }
-  return new Map();
+  return undefined;
 };
 
 const extractZipMember = (
@@ -267,6 +284,7 @@ const extractZipMember = (
 ): Uint8Array | undefined => {
   const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
   const central = readZipCentralDirectory(archive);
+  if (central === undefined) return undefined;
   let decompressedBytes = 0;
   let pos = 0;
   while (pos + 30 <= archive.length) {
@@ -280,12 +298,20 @@ const extractZipMember = (
     const filename = new TextDecoder("utf-8").decode(archive.subarray(pos + 30, pos + 30 + filenameLen));
     const dataOffset = pos + 30 + filenameLen + extraLen;
     const indexed = central.get(pos);
-    const compression = indexed?.compression ?? headerCompression;
-    const compressedSize = indexed?.compressedSize ?? headerCompressedSize;
-    const uncompressedSize = indexed?.uncompressedSize ?? headerUncompressedSize;
-    const mode = indexed?.mode ?? 0;
+    if (
+      indexed === undefined ||
+      indexed.filename !== filename ||
+      indexed.compression !== headerCompression ||
+      ((flags & 0x08) === 0 &&
+        (indexed.compressedSize !== headerCompressedSize ||
+          indexed.uncompressedSize !== headerUncompressedSize)) ||
+      dataOffset + indexed.compressedSize > archive.length
+    )
+      return undefined;
+    const { compression, compressedSize, uncompressedSize, mode } = indexed;
     const fileType = mode & 0xf000;
-    const isRegular = !filename.endsWith("/") && (fileType === 0 || fileType === 0x8000);
+    const isRegular =
+      !indexed.directory && !filename.endsWith("/") && (fileType === 0 || fileType === 0x8000);
     const remaining = maxDecompressedBytes - decompressedBytes;
     if (remaining <= 0 || uncompressedSize > remaining) {
       throw new DecompressedSizeCapExceeded(decompressedSizeCapMessage());
