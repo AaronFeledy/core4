@@ -95,10 +95,10 @@ const shellCommand = (command: string, args: ReadonlyArray<string>): ReadonlyArr
 
 export const validateToolingArguments = (
   name: string,
-  task: ToolingTaskShape | { readonly acceptsArguments: boolean },
+  task: { readonly acceptsArguments: boolean },
   args: ReadonlyArray<string>,
 ): ToolingCompileError | undefined =>
-  ("acceptsArguments" in task ? !task.acceptsArguments : task.arguments === false) && args.length > 0
+  !task.acceptsArguments && args.length > 0
     ? new ToolingCompileError({
         message: `Tooling command ${name} does not accept positional arguments.`,
         tool: name,

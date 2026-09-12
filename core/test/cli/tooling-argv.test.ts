@@ -130,7 +130,7 @@ describe("buildToolingInvocation", () => {
 
   test("rejects the drupal-scaffold composer.json deletion reproducer", () => {
     // Given
-    const task = { cmd: "rm -f state", arguments: false as const };
+    const task = { acceptsArguments: false };
 
     // When
     const failure = validateToolingArguments("drupal-scaffold", task, ["composer.json"]);
