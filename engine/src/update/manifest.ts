@@ -25,12 +25,17 @@ import {
   UpdateMinimumVersionError,
   UpdateNetworkError,
 } from "./errors.ts";
+import { PluginUpdatePlanRowSchema } from "./plugin-plan.ts";
 
 export type UpdateManifestFetcher = (url: string) => Promise<Uint8Array>;
 
 export const UpdateResultSchema = Schema.Struct({
   updatedCore: Schema.Boolean,
   updatedPlugins: Schema.Array(Schema.String),
+  pluginResults: Schema.optional(Schema.Array(PluginUpdatePlanRowSchema)),
+  hasFailures: Schema.optional(Schema.Boolean),
+  coreBlocked: Schema.optional(Schema.Boolean),
+  coreUpdateAvailable: Schema.optional(Schema.Boolean),
 });
 
 const UPDATE_BASE_URL = "https://update.lando.dev/v4";

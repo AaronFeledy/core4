@@ -4,7 +4,6 @@ import { basename, dirname, join } from "node:path";
 
 import { Effect } from "effect";
 
-import type { LandoCommandError } from "@lando/sdk/errors";
 import type { UpdateChannel, UpdateManifestSchema as UpdateManifest } from "@lando/sdk/schema";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/telemetry/events";
@@ -16,6 +15,7 @@ import {
   UpdateNetworkError,
   UpdatePermissionError,
 } from "./errors.ts";
+import type { UpdateHandoff } from "./handoff.ts";
 import {
   type UpdateManifestFetcher,
   compareVersions,
@@ -38,6 +38,7 @@ import {
   writeUpdateFailureState,
   writeUpdateManifestState,
 } from "./manifest.ts";
+import type { PluginUpdatePlanRow, UpdateSelection } from "./plugin-plan.ts";
 import {
   type ResolvedSelfUpdateOptions,
   type UpdateSelfUpdateOptions,
@@ -77,13 +78,38 @@ export interface UpdateOptions {
   readonly verifyManifestSignature?: UpdateManifestSignatureVerifier;
   readonly verifyChecksumSignature?: UpdateChecksumSignatureVerifier;
   readonly updateStatePath?: string;
+  readonly only?: Exclude<UpdateSelection, "all">;
+  readonly runPluginUpdates?: PluginUpdateRunner;
+  readonly handoff?: UpdateHandoff;
   readonly runUpdate?: () => Effect.Effect<UpdateResult, UpdateError, never>;
 }
 
 export interface UpdateResult {
   readonly updatedCore: boolean;
   readonly updatedPlugins: ReadonlyArray<string>;
+  readonly pluginResults?: ReadonlyArray<PluginUpdatePlanRow> | undefined;
+  readonly hasFailures?: boolean | undefined;
+  readonly coreBlocked?: boolean | undefined;
+  readonly coreUpdateAvailable?: boolean | undefined;
 }
+
+export interface PluginUpdateRunInput {
+  readonly currentCoreVersion: string;
+  readonly targetCoreVersion: string;
+  readonly combined: boolean;
+  readonly dryRun: boolean;
+}
+
+export interface PluginUpdateRunResult {
+  readonly rows: ReadonlyArray<PluginUpdatePlanRow>;
+  readonly updatedPlugins: ReadonlyArray<string>;
+  readonly blockCore: boolean;
+  readonly hasFailures: boolean;
+}
+
+export type PluginUpdateRunner = (
+  input: PluginUpdateRunInput,
+) => Effect.Effect<PluginUpdateRunResult, UpdateError>;
 
 const probeCommandSummary = (path: string): string => `${scrubTelemetryValue(path)} --version`;
 
@@ -288,8 +314,6 @@ const applyWindowsSelfUpdate = ({
       stagedBinaryPath,
       backupPath,
       attemptedVersion,
-      argv: [executablePath, ...reexecUserArgv(selfUpdate.argv)],
-      env: stringEnv(selfUpdate.env),
       manualFallback,
     };
 
@@ -335,7 +359,7 @@ interface DefaultUpdateSuccess {
 
 const defaultUpdate = (
   options: RequiredUpdateOptions,
-): Effect.Effect<DefaultUpdateSuccess, Exclude<UpdateError, LandoCommandError>, ProcessRunner> =>
+): Effect.Effect<DefaultUpdateSuccess, UpdateError, ProcessRunner> =>
   Effect.gen(function* () {
     const manifestUrl = resolveUpdateManifestUrl(options.channel);
     const signatureUrl = `${manifestUrl}.sig`;
@@ -364,7 +388,7 @@ const defaultUpdate = (
         }),
       );
     }
-    const selfUpdate = resolveSelfUpdateOptions(options.selfUpdate);
+    let selfUpdate = resolveSelfUpdateOptions(options.selfUpdate);
     const manifestPlatform = updateManifestPlatform(selfUpdate);
     const binary = manifest.binaries[manifestPlatform];
     if (binary === undefined) {
@@ -391,7 +415,47 @@ const defaultUpdate = (
     yield* enforceNoDowngrade(manifest, options.currentVersion);
     yield* enforceManifestFreshness(manifest, options.updateStatePath, { persist: !options.dryRun });
     const hasNewCoreVersion = compareVersions(manifest.latest, options.currentVersion) > 0;
-    if (!options.dryRun && selfUpdate !== undefined && hasNewCoreVersion) {
+    const pluginExecution =
+      options.only === "core" || options.runPluginUpdates === undefined
+        ? undefined
+        : yield* options.runPluginUpdates({
+            currentCoreVersion: options.currentVersion,
+            targetCoreVersion: manifest.latest,
+            combined: options.only === undefined && hasNewCoreVersion,
+            dryRun: options.dryRun,
+          });
+    const pendingResult: UpdateResult = {
+      updatedCore: !options.dryRun && hasNewCoreVersion && pluginExecution?.blockCore !== true,
+      updatedPlugins: pluginExecution?.updatedPlugins ?? [],
+      coreUpdateAvailable: hasNewCoreVersion,
+      ...(pluginExecution === undefined
+        ? {}
+        : {
+            pluginResults: pluginExecution.rows,
+            hasFailures: pluginExecution.hasFailures,
+            coreBlocked: pluginExecution.blockCore,
+          }),
+    };
+    if (
+      !options.dryRun &&
+      selfUpdate !== undefined &&
+      selfUpdate.platform !== "win32" &&
+      hasNewCoreVersion &&
+      pluginExecution?.blockCore !== true &&
+      options.handoff !== undefined
+    ) {
+      const token = yield* options.handoff.save(pendingResult);
+      selfUpdate = {
+        ...selfUpdate,
+        env: { ...selfUpdate.env, LANDO_UPDATE_HANDOFF_TOKEN: token },
+      };
+    }
+    if (
+      !options.dryRun &&
+      selfUpdate !== undefined &&
+      hasNewCoreVersion &&
+      pluginExecution?.blockCore !== true
+    ) {
       const [binaryBytes, checksumsBytes, checksumSignatureBytes, checksumCertificateBytes] =
         yield* Effect.all([
           fetchBytes(options.fetchManifestBytes, binaryUrl),
@@ -440,10 +504,7 @@ const defaultUpdate = (
     }
     return {
       manifest,
-      result: {
-        updatedCore: !options.dryRun && hasNewCoreVersion,
-        updatedPlugins: [],
-      },
+      result: pendingResult,
     };
   });
 
@@ -456,6 +517,9 @@ interface RequiredUpdateOptions {
   readonly updateStatePath: string;
   readonly verifyChecksumSignature: UpdateChecksumSignatureVerifier;
   readonly verifyManifestSignature: UpdateManifestSignatureVerifier;
+  readonly only?: Exclude<UpdateSelection, "all">;
+  readonly runPluginUpdates?: PluginUpdateRunner;
+  readonly handoff?: UpdateHandoff;
 }
 
 const resolvedOptions = (options: UpdateOptions): RequiredUpdateOptions => ({
@@ -467,6 +531,9 @@ const resolvedOptions = (options: UpdateOptions): RequiredUpdateOptions => ({
   updateStatePath: options.updateStatePath ?? updateManifestStatePath(),
   verifyChecksumSignature: options.verifyChecksumSignature ?? defaultVerifyChecksumSignature,
   verifyManifestSignature: options.verifyManifestSignature ?? defaultVerifyManifestSignature,
+  ...(options.only === undefined ? {} : { only: options.only }),
+  ...(options.runPluginUpdates === undefined ? {} : { runPluginUpdates: options.runPluginUpdates }),
+  ...(options.handoff === undefined ? {} : { handoff: options.handoff }),
 });
 
 export const update = (
@@ -475,18 +542,58 @@ export const update = (
   Effect.gen(function* () {
     const telemetry = yield* Telemetry;
     const required = resolvedOptions(options);
+    if (options.handoff?.token !== undefined) {
+      const receipt = yield* options.handoff.consume(options.handoff.token);
+      if (receipt !== undefined) {
+        const consumed: UpdateResult = {
+          updatedCore: receipt.updatedCore,
+          updatedPlugins: receipt.updatedPlugins,
+          ...(receipt.pluginResults === undefined ? {} : { pluginResults: receipt.pluginResults }),
+          ...(receipt.hasFailures === undefined ? {} : { hasFailures: receipt.hasFailures }),
+          ...(receipt.coreBlocked === undefined ? {} : { coreBlocked: receipt.coreBlocked }),
+          ...(receipt.coreUpdateAvailable === undefined
+            ? {}
+            : { coreUpdateAvailable: receipt.coreUpdateAvailable }),
+        };
+        return consumed;
+      }
+      return yield* Effect.fail(
+        new UpdateNetworkError({
+          message: "The one-shot update replacement receipt is missing or was already consumed.",
+          url: "state://update/handoff",
+        }),
+      );
+    }
     let targetVersion = options.targetVersion ?? CORE_VERSION;
-    const operation =
-      options.runUpdate === undefined
-        ? defaultUpdate(required).pipe(
-            Effect.tap(({ manifest }) =>
-              Effect.sync(() => {
-                targetVersion = manifest.latest;
-              }),
-            ),
-            Effect.map(({ result }) => result),
-          )
-        : options.runUpdate();
+    const operation: Effect.Effect<UpdateResult, UpdateError, ProcessRunner> =
+      options.runUpdate === undefined && options.only === "plugins" && required.runPluginUpdates !== undefined
+        ? required
+            .runPluginUpdates({
+              currentCoreVersion: required.currentVersion,
+              targetCoreVersion: required.currentVersion,
+              combined: false,
+              dryRun: required.dryRun,
+            })
+            .pipe(
+              Effect.map(
+                (execution): UpdateResult => ({
+                  updatedCore: false,
+                  updatedPlugins: execution.updatedPlugins,
+                  pluginResults: execution.rows,
+                  hasFailures: execution.hasFailures,
+                }),
+              ),
+            )
+        : options.runUpdate === undefined
+          ? defaultUpdate(required).pipe(
+              Effect.tap(({ manifest }) =>
+                Effect.sync(() => {
+                  targetVersion = manifest.latest;
+                }),
+              ),
+              Effect.map(({ result }) => result),
+            )
+          : options.runUpdate();
 
     return yield* operation.pipe(
       Effect.tap(() =>

@@ -9,8 +9,6 @@ export interface UpdateWindowsReplacementInput {
   readonly stagedBinaryPath: string;
   readonly backupPath: string;
   readonly attemptedVersion: string;
-  readonly argv: ReadonlyArray<string>;
-  readonly env: Record<string, string>;
   readonly manualFallback: string;
 }
 
@@ -28,8 +26,6 @@ export type UpdateWindowsReplacementSpawner = (input: UpdateWindowsReplacementSp
 
 const windowsBatchValue = (value: string): string => value.replaceAll("%", "%%").replaceAll('"', '""');
 
-const windowsCommandArg = (value: string): string => `"${value.replaceAll('"', '\\"')}"`;
-
 export const windowsManualFallback = ({
   backupPath,
   executablePath,
@@ -41,7 +37,6 @@ export const windowsPermissionRemediation = (executablePath: string): string =>
   `Lando will not request UAC automatically. If this install path is correct, open PowerShell as Administrator and replace ${executablePath} manually with the downloaded Lando binary, or reinstall Lando into a user-writable directory.`;
 
 export const buildWindowsReplacementScript = (input: UpdateWindowsReplacementInput): string => {
-  const restartArgs = input.argv.slice(1).map(windowsCommandArg).join(" ");
   return [
     "@echo off",
     "setlocal",
@@ -59,7 +54,6 @@ export const buildWindowsReplacementScript = (input: UpdateWindowsReplacementInp
     '  move /Y "%BACKUP%" "%TARGET%" >nul 2>nul',
     "  exit /b 1",
     ")",
-    `start "" "%TARGET%"${restartArgs.length === 0 ? "" : ` ${restartArgs}`}`,
     'rmdir /S /Q "%~dp0" >nul 2>nul',
     "endlocal",
   ].join("\r\n");
