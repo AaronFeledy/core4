@@ -41,7 +41,7 @@ const unusedPrivilege = {
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
 };
 
-const makeHarness = (failAtomic = false) => {
+const makeHarness = (failingPathSuffix?: string) => {
   const ensured: Array<ReadonlyArray<string>> = [];
   const files = new Map<string, string>();
   const socketProxy = {
@@ -58,7 +58,7 @@ const makeHarness = (failAtomic = false) => {
     fileSystem: {
       mkdir: () => Effect.void,
       writeAtomic: (path, content) =>
-        failAtomic
+        failingPathSuffix !== undefined && path.endsWith(failingPathSuffix)
           ? Effect.fail(new Error("injected atomic replacement failure"))
           : Effect.sync(() => void files.set(path, String(content))),
       writeSecretAtomic: (path, content) => Effect.sync(() => void files.set(path, String(content))),
@@ -159,12 +159,66 @@ describe("Traefik RouterService", () => {
     expect(otherNames.every((name) => !demoNames.has(name))).toBe(true);
   });
 
-  test("setup ensures the global Traefik service is running", async () => {
+  test("setup installs the unmatched-route diagnostics before starting the global services", async () => {
     const harness = makeHarness();
 
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
 
-    expect(harness.ensured).toEqual([["traefik"]]);
+    expect(harness.files.get("/lando/global/proxy-traefik/diagnostic/nginx.conf")).toBeDefined();
+    expect(harness.files.get("/lando/global/proxy-traefik/dynamic/fallback.yml")).toContain(
+      "traefik-diagnostics.global.internal:8080",
+    );
+    expect(harness.ensured).toEqual([["traefik", "traefik-diagnostics"]]);
+  });
+
+  test("fallback routing has separate lowest-priority HTTP and HTTPS routers", async () => {
+    const harness = makeHarness();
+
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+
+    const fallback = harness.files.get("/lando/global/proxy-traefik/dynamic/fallback.yml") ?? "";
+    expect(fallback).toContain("entryPoints: [web]");
+    expect(fallback).toContain("entryPoints: [websecure]");
+    expect(fallback.match(/priority: 1/g)).toHaveLength(2);
+    expect(fallback.match(/tls: \{\}/g)).toHaveLength(1);
+    expect(fallback).toContain('rule: "PathPrefix(`/`)"');
+  });
+
+  test("diagnostic nginx selects HTML only for GET and HEAD requests that accept text/html", async () => {
+    const harness = makeHarness();
+
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+
+    const config = harness.files.get("/lando/global/proxy-traefik/diagnostic/nginx.conf") ?? "";
+    const pattern = config.match(/^\s*~\*(.+)\s+\/_lando\/404\.html;$/m)?.[1];
+    expect(pattern).toBeDefined();
+    if (pattern === undefined) throw new Error("diagnostic Accept pattern missing");
+    const acceptsHtml = new RegExp(pattern, "i");
+
+    expect(acceptsHtml.test("GET:text/html")).toBe(true);
+    expect(acceptsHtml.test("HEAD:text/html; charset=utf-8")).toBe(true);
+    expect(acceptsHtml.test("GET:application/json, text/html;q=0.8")).toBe(true);
+    expect(acceptsHtml.test("GET:TEXT/HTML;LEVEL=1;Q=0.5")).toBe(true);
+    expect(acceptsHtml.test("GET:text/html;q=0")).toBe(false);
+    expect(acceptsHtml.test("GET:text/html;level=1;q=0.000, application/json")).toBe(false);
+    expect(acceptsHtml.test("GET:*/*")).toBe(false);
+    expect(acceptsHtml.test("POST:text/html")).toBe(false);
+    expect(config).toContain('default_type "text/plain; charset=utf-8";');
+    expect(config).toContain('return 404 "404 page not found\\n";');
+  });
+
+  test("diagnostic page is private and offers actionable recovery commands", async () => {
+    const harness = makeHarness();
+
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+
+    const html = harness.files.get("/lando/global/proxy-traefik/diagnostic/404.html") ?? "";
+    expect(html).toContain("lando start");
+    expect(html).toContain("lando info");
+    expect(html).toContain("lando doctor");
+    expect(html).not.toContain("$host");
+    expect(html).not.toContain("$http_host");
+    expect(html).not.toContain("/home/");
   });
 
   test("apply reports selected external authorities and atomically replaces stale routes", async () => {
@@ -179,7 +233,10 @@ describe("Traefik RouterService", () => {
       { scheme: "http", hostname: "web.demo.lndo.site", port: 8080 },
     ]);
     expect(second.appliedRoutes).toHaveLength(1);
-    expect([...harness.files.values()][0]).not.toContain("api.demo.lndo.site");
+    expect(harness.files.get("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).not.toContain(
+      "api.demo.lndo.site",
+    );
+    expect(harness.files.get("/lando/global/proxy-traefik/dynamic/fallback.yml")).toContain("priority: 1");
   });
 
   test("uses acquisition decision ports for live and persisted authorities", async () => {
@@ -209,6 +266,8 @@ describe("Traefik RouterService", () => {
       authorities: [],
       configuredApps: [],
     });
+    expect(harness.files.has("/lando/global/proxy-traefik/dynamic/fallback.yml")).toBe(false);
+    expect(harness.files.has("/lando/global/proxy-traefik/diagnostic/nginx.conf")).toBe(false);
   });
 
   test("status skips route files removed after the directory snapshot", async () => {
@@ -235,21 +294,39 @@ describe("Traefik RouterService", () => {
   });
 
   test("an atomic replacement failure leaves the prior route file untouched", async () => {
-    const harness = makeHarness(true);
+    const harness = makeHarness("routes-demo.yml");
     harness.files.set("/lando/global/proxy-traefik/dynamic/routes-demo.yml", "previous");
 
     const exit = await Effect.runPromiseExit(harness.service.applyRoutes(routes, app));
 
     expect(exit._tag).toBe("Failure");
-    expect([...harness.files.values()]).toEqual(["previous"]);
+    expect(harness.files.get("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).toBe("previous");
+  });
+
+  test("an atomic diagnostic replacement failure leaves the prior config untouched", async () => {
+    const harness = makeHarness("nginx.conf");
+    const path = "/lando/global/proxy-traefik/diagnostic/nginx.conf";
+    harness.files.set(path, "previous");
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(harness.files.get(path)).toBe("previous");
+    expect(harness.ensured).toEqual([]);
   });
 
   test("removeRoutes is idempotent", async () => {
     const harness = makeHarness();
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    await Effect.runPromise(harness.service.applyRoutes(routes, app));
 
     await Effect.runPromise(harness.service.removeRoutes(app));
     await Effect.runPromise(harness.service.removeRoutes(app));
 
-    expect(harness.files.size).toBe(0);
+    expect(harness.files.has("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).toBe(false);
+    expect(harness.files.has("/lando/global/proxy-traefik/dynamic/fallback.yml")).toBe(true);
+    expect(harness.files.has("/lando/global/proxy-traefik/diagnostic/nginx.conf")).toBe(true);
   });
 });
