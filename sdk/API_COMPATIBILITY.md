@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/schema` additively exports the `HostTerminal` schema for attached output-terminal facts. `ToolingOptions` and `ToolingInvocation` add optional PTY intent, while `ToolingInvocation` can separately carry an attached `HostTerminal`; omission remains noninteractive for existing embedding, event, and MCP callers.
+
 - `ConfigTranslateSecretReference` is narrowed before first release to three mutually exclusive shapes: `secret-store` carries one canonical `${secret:...}` reference, `postInit.stdin` carries only its disposition, and `postInit.secretEnv` carries its disposition and environment variable name. Raw secret strings and generic reference payloads are not accepted. This contract applies to `ConfigTranslateRecipeRequestInput.secretAnswers` and `RecipeDecomposeInput.secrets`; init-only secret bytes remain outside translation and are delivered only to their declared post-init sink.
 
 - `LandofileService.discover` additively exposes `ManagedFileTransactionError` without adding an Effect context requirement. The frozen service-surface fixture matches the expanded error union. `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` preserve the same failure through app operations; restart, rebuild, and destroy inherit it. The additive `ManagedFileTransactionGuard` service provides `ensureConsistent(appRoot)` and `pending(appRoot)` and is included in `LandoRuntimeServices`.
@@ -161,6 +163,7 @@
 
 ## Additive schema exports
 
+- `HostTerminal`
 - `LandofileRecipeField`
 - `LandofileRecipeProvenance`
 - `RecipeContentDigest`

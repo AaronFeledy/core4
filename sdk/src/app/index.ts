@@ -445,6 +445,8 @@ export interface ToolingOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
   readonly renderProgress?: boolean;
+  /** Explicitly request a provider PTY. Omission remains noninteractive. */
+  readonly tty?: boolean;
 }
 
 export interface ToolingResult {
