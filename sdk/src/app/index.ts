@@ -59,6 +59,7 @@ import type {
   ScratchAppError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
+  SecretNotFoundError,
   ShellExecError,
   ShellScriptOutsideRootError,
   StateStoreError,
@@ -220,6 +221,7 @@ export type StartAppError =
   | ConfigExpressionError
   | PublicationUnsupportedError
   | GlobalAutoStartError
+  | SecretNotFoundError
   | HostProxySocketStaleError
   | HostProxyTransportUnavailableError
   | LandoCommandError
