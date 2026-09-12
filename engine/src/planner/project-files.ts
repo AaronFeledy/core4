@@ -111,7 +111,7 @@ const readTextBounded = (
         content.set(chunk, offset);
         offset += chunk.byteLength;
       }
-      return new TextDecoder("utf-8", { fatal: true }).decode(content);
+      return new TextDecoder().decode(content);
     }),
     Effect.mapError((cause) =>
       cause instanceof LandofileValidationError

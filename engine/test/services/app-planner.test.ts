@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
@@ -2241,6 +2241,39 @@ describe("AppPlannerLive", () => {
       });
     },
   );
+
+  test("rejects oversized Node inference inputs", async () => {
+    await withTempCwd(async (appRoot) => {
+      await writeFile(join(appRoot, ".nvmrc"), "2".repeat(1_048_577));
+      const failure = await planWithFileSystem({
+        name: "node-oversized",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node" } },
+      }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+      expect(String(failure)).toMatch(/exceeds the 1048576-byte read limit/i);
+    });
+  });
+
+  test("rejects symbolic links used as Node inference inputs", async () => {
+    await withTempCwd(async (appRoot) => {
+      await writeFile(join(appRoot, "node-version"), "22.11.0\n");
+      await symlink(join(appRoot, "node-version"), join(appRoot, ".nvmrc"));
+      const failure = await planWithFileSystem({
+        name: "node-symlink",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node" } },
+      }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+      expect(String(failure)).toMatch(/\.nvmrc is a symbolic link/i);
+    });
+  });
 
   test("marks slow provider bind mounts as accelerated", async () => {
     await withTempCwd(async () => {
