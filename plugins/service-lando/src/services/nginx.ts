@@ -19,6 +19,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { landoErrorPageSetupLines, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
@@ -59,11 +60,13 @@ const phpFastcgiCommand = (
   "-c",
   [
     "set -eu",
+    ...landoErrorPageSetupLines(),
     "cat > /etc/nginx/conf.d/default.conf <<'LANDO_NGINX_PHP'",
     "server {",
     `  listen ${String(ports.listen)};`,
     `  root ${webroot};`,
     "  index index.php index.html;",
+    ...nginxErrorPageConfigLines(),
     "  location / {",
     "    try_files $uri $uri/ /index.php?$query_string;",
     "  }",
