@@ -253,6 +253,10 @@
 - `BuildPhase`
 - `BuildPlan`
 - `BuildScript`
+- `BuildScriptStep`
+- `ContainerUser`
+- `CONTAINER_USER_PATTERN`
+- `isContainerUser`
 - `BuildStepSkipEvent`
 - `BuildStep`
 - `BunShellScriptFrontMatter`
