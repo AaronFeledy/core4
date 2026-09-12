@@ -139,6 +139,20 @@ export const loadServiceTypeProjectFiles = (
 ): Effect.Effect<ReadonlyArray<ServiceTypeProjectFileInput>, LandofileValidationError> =>
   Effect.gen(function* () {
     if (input.declarations.length === 0) return [];
+    for (const declaration of input.declarations) {
+      if (
+        !Number.isFinite(declaration.maxBytes) ||
+        !Number.isInteger(declaration.maxBytes) ||
+        declaration.maxBytes <= 0
+      ) {
+        return yield* Effect.fail(
+          validationError(
+            input,
+            `Service ${input.serviceName} project-file maxBytes must be a finite positive integer. Correct the service-type declaration.`,
+          ),
+        );
+      }
+    }
     if (input.fileSystem === undefined) {
       return yield* Effect.fail(
         validationError(
