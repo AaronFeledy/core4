@@ -10,6 +10,9 @@
 - `check:guide-coverage` only scans PRDs listed in `docs/guides/prd-sources.json`. A PRD outside that list needs no `docs/guides/INDEX.md` row, so do not add one speculatively.
 - Guide fixtures resolve from `docs/guides/<frontmatter-id>/fixtures/<name>/`, never from the MDX's own subdirectory.
 - A non-zero exit from a tooling command is a RESULT, not an Effect failure: `runTooling` stops at the first non-zero step and returns the accumulated streams carrying that exit code, and the CLI maps it through `successExitCode`. Reserve tagged failures for compile, input, and disabled errors so CLI, MCP, and library surfaces stay uniform.
+- Adding a member to a planner error channel is repo-wide: grep `| CommandAliasConflictError` to find every plan-carrying union across `sdk/src/app`, `sdk/src/services`, `engine/src/operations`, and `core/src/cli/commands`, and patch them in one pass.
+- `engine` and `core` typecheck against `sdk/dist`, not `sdk/src`. After an SDK type change run `bun run --filter='@lando/sdk' build`, or TS reports "Two different types with this name exist, but they are unrelated".
+- Pattern-validated schemas (`ContainerUser`, `AbsoluteContainerPath`) are NOT branded, so their `.Type` is plain `string` and declaration sites need no `.make()`. Brand only when call sites should be forced through a constructor.
 - Removing or widening a public schema property needs an entry in `sdk/compatibility-exceptions.json` keyed by surface + changeKind + path with a justification. `check:schema-compatibility` is its own gate; typecheck, lint, and the test suites all stay green while it fails.
 
 ## 2026-09-11 - US-613 (in progress, not complete)

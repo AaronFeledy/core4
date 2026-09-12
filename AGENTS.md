@@ -97,3 +97,4 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 - Generated outputs and `dist/`/`.tsbuildinfo` can appear after typecheck/build/codegen; clean with `bun run clean` when needed.
 - Do not commit or stage unrelated generated drift. If a generator change is intentional, include the generator and its emitted outputs in the same change.
+- Adding a member to a planner error channel is a repo-wide edit: grep `| CommandAliasConflictError` to find every plan-carrying union (`sdk/src/app`, `sdk/src/services`, `engine/src/operations`, `core/src/cli/commands`) and patch them together. `engine`/`core` typecheck against `sdk/dist`, so run `bun run --filter='@lando/sdk' build` after an SDK type change or TS reports "Two different types with this name exist, but they are unrelated".
