@@ -43,7 +43,6 @@ import type { LandoCommandSpec } from "../../spec/command-base";
 import { renderRunToolingResult } from "../tooling";
 import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
 
-/** Flag inputs parsed from `lando mcp` (`--allow`/`--deny` repeatable, `--tooling`, `--list`). */
 export interface McpCommandFlags {
   readonly allow?: ReadonlyArray<string> | undefined;
   readonly deny?: ReadonlyArray<string> | undefined;
@@ -61,7 +60,6 @@ export interface ResolvedMcpOptions {
 
 export { classifyMcpServeStartup } from "@lando/mcp/stdio-limits";
 
-/** The injected command registry the catalog + dispatch project from. */
 export interface McpCommandRegistry {
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
@@ -304,7 +302,6 @@ const resolveOptions = (
     return options;
   });
 
-/** Build the retained-runtime config seam from the injected registry + runtime layer. */
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
   runtimeLayer: Layer.Layer<unknown>,
@@ -315,10 +312,6 @@ export const buildMcpRuntimeConfig = (
   runtimeLayer,
 });
 
-/**
- * The `--list` result: the effective tool catalog projected as an audit shape
- * (id, summary, source of allowance). A normal machine-output command result.
- */
 export const mcpListResult = (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
@@ -412,7 +405,7 @@ export const dispatchMcpCommand = async (params: {
       command: "meta:mcp",
       invocation: params.invocation,
       resultSchema: McpListResultSchema,
-      render: (value, ctx) => renderMcpListResult(value, ctx),
+      render: renderMcpListResult,
       formatError: params.formatError,
     });
   }

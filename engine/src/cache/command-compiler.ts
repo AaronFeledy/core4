@@ -19,7 +19,7 @@ export const compileToolingCommands = (
   const internal = new Set(getInternalToolingTasks(landofile));
   return Object.entries(effectiveTooling)
     .sort(([a], [b]) => compareOrdinal(a, b))
-    .flatMap(([name, authored]) => {
+    .map(([name, authored]) => {
       // Preserve the synchronous API by throwing the tagged error into callers' Effect boundaries.
       const task = Either.getOrThrowWith(normalizeToolingTask(name, authored), (error) => error);
       let service: string | undefined;
@@ -34,15 +34,13 @@ export const compileToolingCommands = (
         default:
           task.service satisfies never;
       }
-      return [
-        {
-          id: `app:${name}`,
-          summary: task.summary ?? "",
-          hidden: internal.has(name) || task.disabled,
-          ...(service === undefined ? {} : { service }),
-          ...(task.hasInput ? { input: { flags: task.flags, args: task.args } } : {}),
-        },
-      ];
+      return {
+        id: `app:${name}`,
+        summary: task.summary ?? "",
+        hidden: internal.has(name) || task.disabled,
+        ...(service === undefined ? {} : { service }),
+        ...(task.hasInput ? { input: { flags: task.flags, args: task.args } } : {}),
+      };
     });
 };
 

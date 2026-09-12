@@ -1,4 +1,3 @@
-/** Tagged error exports for the SDK. */
 export * from "./app.ts";
 export * from "./build.ts";
 export * from "./command.ts";

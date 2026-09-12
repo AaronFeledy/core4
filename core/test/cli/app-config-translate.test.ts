@@ -1113,7 +1113,6 @@ describe("appConfigTranslate", () => {
     expect(failureTag(exit)).toBe("LandofileNotFoundError");
   });
 
-  // Rendering consumes encoder output from a complete frontend fragment.
   test("renderConfigTranslateResult prints the Landofile and the schema encodes each mode", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
     const translators = withEncoder([

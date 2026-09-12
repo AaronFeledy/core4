@@ -109,7 +109,6 @@ const assertDynamicToolingRoute = (
   });
 };
 
-/** Normalized input metadata the command index carries for a task that declares flags and args. */
 const declaredInput: NonNullable<CommandIndexEntry["input"]> = {
   flags: [
     {

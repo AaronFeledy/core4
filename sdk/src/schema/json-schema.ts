@@ -2644,20 +2644,13 @@ export const validatePublicSchemaAnnotations = (
       const fieldPath = `${schemaName}.${name}`;
       issues.push(...validateExamples(schemaName, fieldPath, schemaFromAst(property.type)));
       if (
-        !hasOwnUsefulDescription(property.annotations) &&
-        !hasOwnUsefulDescription(property.type.annotations) &&
-        !hasOptionalMemberUsefulDescription(property.type) &&
+        !hasUsefulFieldDescription(property) &&
         !inheritsLandofileFieldDescription(schemaName, property.name) &&
         !(
           AST.isUnion(schema.ast) &&
           schema.ast.types.every((member) => {
             const field = AST.getPropertySignatures(member).find((entry) => entry.name === property.name);
-            return (
-              field !== undefined &&
-              (hasOwnUsefulDescription(field.annotations) ||
-                hasOwnUsefulDescription(field.type.annotations) ||
-                hasOptionalMemberUsefulDescription(field.type))
-            );
+            return field !== undefined && hasUsefulFieldDescription(field);
           })
         ) &&
         !(exemptions.fields?.has(fieldPath) ?? false) &&

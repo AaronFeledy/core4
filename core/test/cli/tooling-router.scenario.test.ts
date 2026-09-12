@@ -79,7 +79,6 @@ const writeFreshCache = async (fixture: RouterFixture, taskName: string): Promis
   );
 };
 
-/** Fresh cache for a Landofile task that declares flags and args, as the normalizer would compile it. */
 const writeFreshDeclaredInputCache = async (fixture: RouterFixture, taskName: string): Promise<void> => {
   await Effect.runPromise(
     writeAppCommandCacheStrict({

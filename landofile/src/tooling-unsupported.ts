@@ -129,14 +129,7 @@ const scanCmdsStepForUnsupported = (
   stepObj: Readonly<Record<string, unknown>>,
 ): ToolingUnsupportedFinding | undefined => {
   for (const stepKey of Object.keys(stepObj)) {
-    if (UNSUPPORTED_STEP_OBJECT_KEYS.has(stepKey)) {
-      return {
-        task: taskName,
-        key: `cmds[${stepIndex}].${stepKey}`,
-        description: `Step-object cmds entry "${stepKey}"`,
-      };
-    }
-    if (!SUPPORTED_STEP_OBJECT_KEYS.has(stepKey)) {
+    if (UNSUPPORTED_STEP_OBJECT_KEYS.has(stepKey) || !SUPPORTED_STEP_OBJECT_KEYS.has(stepKey)) {
       return {
         task: taskName,
         key: `cmds[${stepIndex}].${stepKey}`,

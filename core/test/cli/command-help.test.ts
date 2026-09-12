@@ -179,7 +179,7 @@ describe("renderCommandHelp", () => {
     // When per-command help is rendered
     const help = renderCommandHelp(entry);
 
-    // Then the planned-phase STATUS block is still present
+    // Then STATUS explains that the command is not yet implemented
     expect(sectionBody(help, "STATUS")).toContain("Planned for Lando 4.1.");
   });
 

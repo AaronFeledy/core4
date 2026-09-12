@@ -1090,7 +1090,7 @@ export type LandofileEvents = typeof LandofileEvents.Type;
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
  * - `description:` / `summary:` — short help text.
  * - `cmd:` — single command (string or string array).
- * - `cmds:` — sequential command list (strings only in this schema).
+ * - `cmds:` — sequential shell commands or command steps with execution overrides.
  * - `arguments: false` — reject caller-supplied positional arguments.
  * - `dir:` — task working directory.
  * - `env:` — task environment overrides.
@@ -1196,7 +1196,7 @@ export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
  * The map key is the include namespace; the entry names a local tooling
  * fragment carrying only `tooling:` and `toolingIncludes:`.
  *
- * Deliberately omitted: `dir:` (task-level `dir:` is rejected) and
+ * Deliberately omitted: `dir:` (set it on individual tasks instead) and
  * `checksum:` (tooling fragments are local-file only, so there is no remote
  * source to pin).
  */
