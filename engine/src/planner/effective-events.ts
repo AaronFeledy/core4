@@ -5,7 +5,11 @@ const effectiveEventsByPlan = new WeakMap<AppPlan, LandofileEvents>();
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
 const sortedEvents = (events: LandofileEvents): LandofileEvents =>
-  Object.fromEntries(Object.entries(events).sort(([left], [right]) => compareOrdinal(left, right)));
+  Object.fromEntries(
+    Object.entries(events)
+      .flatMap(([name, steps]) => (steps === undefined ? [] : [[name, steps] as const]))
+      .sort(([left], [right]) => compareOrdinal(left, right)),
+  );
 
 export const compileEffectiveEvents = (input: {
   readonly landofile: Pick<LandofileShape, "events">;

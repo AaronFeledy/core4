@@ -78,6 +78,7 @@ import {
   PostPullEvent,
   PostPushEvent,
   PostRebuildEvent,
+  PostRestartEvent,
   PostServiceStartEvent,
   PostServiceStopEvent,
   PostStartEvent,
@@ -108,6 +109,7 @@ import {
   PrePullEvent,
   PrePushEvent,
   PreRebuildEvent,
+  PreRestartEvent,
   PreServiceStartEvent,
   PreServiceStopEvent,
   PreStartEvent,
@@ -503,7 +505,6 @@ const basePublicSchemaRegistry = {
   IsolateMode,
   ProviderCapabilities,
   CommandAliasesShape,
-  LandofileShape,
   ServiceConfig,
   ServiceConfigInput,
   LogSource,
@@ -754,6 +755,9 @@ const basePublicSchemaRegistry = {
 
 const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
   typeof ConfigTranslateSchemas & {
+    readonly PreRestartEvent: typeof PreRestartEvent;
+    readonly PostRestartEvent: typeof PostRestartEvent;
+    readonly LandofileShape: typeof LandofileShape;
     readonly AuthoringExpression: typeof AuthoringExpression;
     readonly AuthoringExpressionExpectedType: typeof AuthoringExpressionExpectedType;
     readonly LandofileAuthoringShape: typeof LandofileAuthoringShape;
@@ -777,6 +781,9 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
     readonly RecipeDecomposeInput: typeof RecipeDecomposeInput;
     readonly RecipeDecomposeResult: typeof RecipeDecomposeResult;
   } = {
+  LandofileShape,
+  PreRestartEvent,
+  PostRestartEvent,
   AuthoringExpression,
   AuthoringExpressionExpectedType,
   LandofileAuthoringShape,
@@ -1063,6 +1070,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PreInitEvent: "Public Lando schema contract for Pre Init Event.",
   PostInitEvent: "Public Lando schema contract for Post Init Event.",
   PreStartEvent: "Public Lando schema contract for Pre Start Event.",
+  PreRestartEvent: "Public Lando schema contract for Pre Restart Event.",
+  PostRestartEvent: "Public Lando schema contract for Post Restart Event.",
   PostStartEvent: "Public Lando schema contract for Post Start Event.",
   PreStopEvent: "Public Lando schema contract for Pre Stop Event.",
   PostStopEvent: "Public Lando schema contract for Post Stop Event.",
@@ -2096,6 +2105,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PostServiceStopEvent.serviceName",
   "PostServiceStopEvent.timestamp",
   "PostStartEvent._tag",
+  "PostRestartEvent._tag",
   "PostStartEvent.app",
   "PostStartEvent.plan",
   "PostStartEvent.scope",
@@ -2235,6 +2245,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PreServiceStopEvent.serviceName",
   "PreServiceStopEvent.timestamp",
   "PreStartEvent._tag",
+  "PreRestartEvent._tag",
   "PreStartEvent.app",
   "PreStartEvent.plan",
   "PreStartEvent.scope",

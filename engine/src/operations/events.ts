@@ -139,6 +139,7 @@ export const runAppEvent = (
           message: `Command ${command} reentered lifecycle event ${event}.`,
           event,
           command,
+          chain: [...active.map((frame) => frame.event), event],
           remediation: "Remove the lifecycle command cycle or call a non-lifecycle command from this event.",
         }),
       );

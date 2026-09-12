@@ -31,6 +31,19 @@ export class LandofileEventLifecycleReentryError extends Schema.TaggedError<Land
     message: Schema.String,
     event: Schema.String,
     command: Schema.String,
+    chain: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
+export class LandofileEventInvocationDepthError extends Schema.TaggedError<LandofileEventInvocationDepthError>()(
+  "LandofileEventInvocationDepthError",
+  {
+    message: Schema.String,
+    event: Schema.String,
+    chain: Schema.Array(Schema.String),
+    depth: Schema.Number,
+    limit: Schema.Number,
     remediation: Schema.String,
   },
 ) {}

@@ -804,12 +804,20 @@ export const AppLifecycleEventName = Schema.Literal(
   "post-start",
   "pre-stop",
   "post-stop",
+  "pre-restart",
+  "post-restart",
   "pre-rebuild",
   "post-rebuild",
   "pre-destroy",
   "post-destroy",
 ).annotations({ description: "App lifecycle point that runs an ordered Landofile event step list." });
 export type AppLifecycleEventName = typeof AppLifecycleEventName.Type;
+
+export const ToolingEventName = Schema.TemplateLiteral(Schema.Literal("pre-", "post-"), Schema.String);
+export type ToolingEventName = typeof ToolingEventName.Type;
+
+export const LandofileEventName = Schema.Union(AppLifecycleEventName, ToolingEventName);
+export type LandofileEventName = typeof LandofileEventName.Type;
 
 const EventStepCondition = Schema.Union(Schema.String, Schema.Boolean);
 
@@ -1065,20 +1073,25 @@ export const EventStep = Schema.Union(
 });
 export type EventStep = typeof EventStep.Type;
 
-export const LandofileEvents = Schema.Struct({
-  "pre-init": Schema.optional(Schema.Array(EventStep)),
-  "post-init": Schema.optional(Schema.Array(EventStep)),
-  "pre-start": Schema.optional(Schema.Array(EventStep)),
-  "post-start": Schema.optional(Schema.Array(EventStep)),
-  "pre-stop": Schema.optional(Schema.Array(EventStep)),
-  "post-stop": Schema.optional(Schema.Array(EventStep)),
-  "pre-rebuild": Schema.optional(Schema.Array(EventStep)),
-  "post-rebuild": Schema.optional(Schema.Array(EventStep)),
-  "pre-destroy": Schema.optional(Schema.Array(EventStep)),
-  "post-destroy": Schema.optional(Schema.Array(EventStep)),
-}).annotations({
+export const LandofileEvents = Schema.Struct(
+  {
+    "pre-init": Schema.optional(Schema.Array(EventStep)),
+    "post-init": Schema.optional(Schema.Array(EventStep)),
+    "pre-start": Schema.optional(Schema.Array(EventStep)),
+    "post-start": Schema.optional(Schema.Array(EventStep)),
+    "pre-stop": Schema.optional(Schema.Array(EventStep)),
+    "post-stop": Schema.optional(Schema.Array(EventStep)),
+    "pre-restart": Schema.optional(Schema.Array(EventStep)),
+    "post-restart": Schema.optional(Schema.Array(EventStep)),
+    "pre-rebuild": Schema.optional(Schema.Array(EventStep)),
+    "post-rebuild": Schema.optional(Schema.Array(EventStep)),
+    "pre-destroy": Schema.optional(Schema.Array(EventStep)),
+    "post-destroy": Schema.optional(Schema.Array(EventStep)),
+  },
+  Schema.Record({ key: Schema.String, value: Schema.Array(EventStep) }),
+).annotations({
   identifier: "LandofileEvents",
-  description: "Ordered tasks keyed by app lifecycle event name.",
+  description: "Ordered tasks keyed by lifecycle or tooling event name, validated after tooling resolution.",
 });
 export type LandofileEvents = typeof LandofileEvents.Type;
 

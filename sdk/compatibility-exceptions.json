@@ -1,5 +1,107 @@
 [
   {
+    "surface": "schema:LandofileEventLifecycleReentryError",
+    "changeKind": "property-added",
+    "path": "$.chain",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.events.anyOf",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEventsAuthoringFragment.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEventsAuthoring.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.events.anyOf",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
     "surface": "command:app:config",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
