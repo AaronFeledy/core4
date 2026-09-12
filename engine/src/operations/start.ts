@@ -145,7 +145,7 @@ export const startAppForTarget = (
       yield* withGlobalStartProgress({ events, plan, serviceIds: neededGlobalServices, work: ensureGlobals });
     }
 
-    return yield* withStartedHostProxy(plan, ref, provider.capabilities, {
+    const startedApp = yield* withStartedHostProxy(plan, ref, provider.capabilities, {
       platform: provider.platform,
       ...(managed === undefined ? {} : { managed }),
       use: (applyPlan) =>
@@ -231,15 +231,6 @@ export const startAppForTarget = (
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
-          const postStart = PostStartEvent.make({
-            _tag: "post-start",
-            scope: "app",
-            app: ref,
-            plan,
-            timestamp: now(),
-          });
-          yield* events.publish(postStart);
-          yield* runAppEvent(plan, "post-start", postStart);
 
           return { app: plan.name, servicesStarted };
         }),
@@ -254,6 +245,16 @@ export const startAppForTarget = (
         ),
       ),
     );
+    const postStart = PostStartEvent.make({
+      _tag: "post-start",
+      scope: "app",
+      app: ref,
+      plan,
+      timestamp: now(),
+    });
+    yield* events.publish(postStart);
+    yield* runAppEvent(plan, "post-start", postStart);
+    return startedApp;
   });
 
 export const startApp = (

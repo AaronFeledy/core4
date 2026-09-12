@@ -5,13 +5,32 @@ import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { RouterService, ToolingEngine } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { restartApp } from "../../src/operations/restart.ts";
+import { startApp } from "../../src/operations/start.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
 import { byTag, makeHarness, plan } from "./start-progress-topology-support.ts";
 
-const restartHarness = (failure?: string) => {
-  const executed: string[] = [];
-  const routeRemovals: string[] = [];
-  const plannedApp = attachEffectiveEvents(plan, {
+const recordingEngine = (executed: string[], failure?: string) => ({
+  id: "recording",
+  run: (invocation: {
+    readonly commands: ReadonlyArray<ReadonlyArray<string>>;
+    readonly tool: string;
+    readonly service?: string;
+  }) =>
+    Effect.sync(() => {
+      const name = invocation.commands[0]?.[2]?.replace(/ "[$]@"$/u, "") ?? invocation.tool;
+      executed.push(name);
+      return {
+        tool: invocation.tool,
+        service: invocation.service ?? ":lando",
+        exitCode: name === failure ? 7 : 0,
+        stdout: "",
+        stderr: "",
+      };
+    }),
+});
+
+const eventPlan = () =>
+  attachEffectiveEvents(plan, {
     "pre-init": ["{{ event._tag }}"],
     "post-init": ["{{ event._tag }}"],
     "pre-restart": ["{{ event._tag }}"],
@@ -21,23 +40,37 @@ const restartHarness = (failure?: string) => {
     "post-start": ["{{ event._tag }}"],
     "post-restart": ["{{ event._tag }}"],
   });
+
+const restartHarness = (failure?: string) => {
+  const executed: string[] = [];
+  const routeRemovals: string[] = [];
+  const plannedApp = eventPlan();
   const harness = makeHarness({ plannedApp });
   const operation = restartApp().pipe(
-    Effect.provideService(ToolingEngine, {
-      id: "recording",
-      run: (invocation) =>
-        Effect.sync(() => {
-          const name = invocation.commands[0]?.[2]?.replace(/ "[$]@"$/u, "") ?? invocation.tool;
-          executed.push(name);
-          return {
-            tool: invocation.tool,
-            service: invocation.service ?? ":lando",
-            exitCode: name === failure ? 7 : 0,
-            stdout: "",
-            stderr: "",
-          };
-        }),
+    Effect.provideService(ToolingEngine, recordingEngine(executed, failure)),
+    Effect.provideService(RouterService, {
+      ...TestRouterService,
+      removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
     }),
+    Effect.provide(harness.layer),
+  );
+  return { ...harness, plannedApp, executed, routeRemovals, operation };
+};
+
+const startHarness = (failure?: string) => {
+  const executed: string[] = [];
+  const routeRemovals: string[] = [];
+  const plannedApp = eventPlan();
+  const harness = makeHarness({ plannedApp });
+  const operation = startApp(
+    {},
+    {
+      plan: plannedApp,
+      root: plannedApp.root,
+      app: { kind: "user", id: plannedApp.id, root: plannedApp.root },
+    },
+  ).pipe(
+    Effect.provideService(ToolingEngine, recordingEngine(executed, failure)),
     Effect.provideService(RouterService, {
       ...TestRouterService,
       removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
@@ -108,5 +141,19 @@ describe("restart lifecycle brackets", () => {
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
     expect(harness.executed.at(-1)).toBe("post-restart");
     expect(harness.routeRemovals).toEqual([]);
+  });
+});
+
+describe("start post-start", () => {
+  test("post-start failure propagates without removing started app routes", async () => {
+    // Given
+    const harness = startHarness("post-start");
+    // When
+    const error = await Effect.runPromise(Effect.flip(harness.operation));
+    // Then
+    expect(error).toBeInstanceOf(LandofileEventStepFailedError);
+    expect(harness.executed).toEqual(["pre-start", "post-start"]);
+    expect(harness.routeRemovals).toEqual([]);
+    expect(byTag(harness.events, "post-start")).toHaveLength(1);
   });
 });
