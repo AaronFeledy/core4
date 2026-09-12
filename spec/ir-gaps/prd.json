@@ -15,7 +15,7 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -28,7 +28,7 @@
       ],
       "dependsOn": ["US-613"],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -41,7 +41,7 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

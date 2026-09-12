@@ -20,7 +20,22 @@ import {
   getJsonSchema,
 } from "@lando/sdk/schema";
 
-const SUPPORTED_TOOLING_FIELDS = ["service", "description", "summary", "cmd", "cmds", "vars"] as const;
+const SUPPORTED_TOOLING_FIELDS = [
+  "service",
+  "description",
+  "summary",
+  "cmd",
+  "cmds",
+  "vars",
+  "user",
+  "disabled",
+  "dir",
+  "env",
+  "flags",
+  "args",
+  "arguments",
+  "deprecated",
+] as const;
 
 const MVP_COMPOSE_SUBSET = ["image", "ports", "environment", "volumes", "command", "dependsOn"] as const;
 
@@ -457,7 +472,7 @@ describe("LandofileShape (MVP)", () => {
       deprecated: notice,
       flags: {
         legacy: {
-          type: "boolean",
+          boolean: true,
           description: "Legacy flag",
           deprecated: notice,
         },
@@ -633,6 +648,78 @@ describe("ServiceConfig — ports numeric coercion (bugbot PR#28 finding 2)", ()
 });
 
 describe("LandofileShape — tooling: supported schema", () => {
+  test("tags tooling input errors when input is invalid", async () => {
+    // Given
+    const { ToolingInputError } = await import("@lando/sdk/errors");
+    // When
+    const error = new ToolingInputError({
+      message: "Invalid choice",
+      tool: "run",
+      field: "target",
+      source: { path: ".lando.yml", task: "run" },
+      remediation: "Choose a declared target.",
+    });
+    // Then
+    expect(error._tag).toBe("ToolingInputError");
+  });
+
+  test("tags disabled tooling errors when a task is disabled", async () => {
+    // Given
+    const { ToolingDisabledError } = await import("@lando/sdk/errors");
+    // When
+    const error = new ToolingDisabledError({
+      message: "Task disabled",
+      tool: "run",
+      source: { path: ".lando.yml", task: "run" },
+      remediation: "Enable the task.",
+    });
+    // Then
+    expect(error._tag).toBe("ToolingDisabledError");
+  });
+
+  test.each<typeof ToolingTaskShape.Encoded>([
+    { cmd: "echo", user: "root", disabled: true },
+    { flags: { name: { alias: "n", choices: ["a", "b"], boolean: false, default: "a", required: true } } },
+    { flags: { loud: { boolean: true } } },
+    { args: { target: { order: 0, choices: ["dev", "prod"], required: true } } },
+    { cmds: ["echo one", { cmd: "echo two", service: "web", user: "root", dir: "/app", env: { K: "v" } }] },
+  ])("preserves tooling authoring fields when decoding %j", (task) => {
+    // Given
+    const input = { tooling: { run: task } };
+    // When
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(input, { onExcessProperty: "error" });
+    const encoded = Schema.encodeUnknownSync(LandofileShape)(decoded);
+    // Then
+    expect(encoded).toEqual(input);
+  });
+
+  test("preserves boolean true when decoding a switch flag", () => {
+    // Given
+    const input = { tooling: { run: { flags: { loud: { boolean: true } } } } };
+    // When
+    const decoded = Schema.decodeUnknownSync(LandofileShape)(input);
+    // Then
+    expect(decoded.tooling?.run?.flags?.loud?.boolean).toBe(true);
+  });
+
+  test.each([-1, 0.5])("rejects argument order when it is %s", (order) => {
+    // Given
+    const input = { tooling: { run: { args: { target: { order } } } } };
+    // When
+    const result = Schema.decodeUnknownEither(LandofileShape)(input);
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
+  test("rejects the retired flag type field when decoding strictly", () => {
+    // Given
+    const input = { tooling: { run: { flags: { loud: { type: "boolean" } } } } };
+    // When
+    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
   test("strictly decodes and round-trips tooling defaults with task env and dir overrides", () => {
     // Given
     const input = {

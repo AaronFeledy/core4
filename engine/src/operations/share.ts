@@ -5,6 +5,7 @@ import {
   type CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type LandofileUnknownEventError,
   type NoProviderInstalledError,
   type ProviderConfigError,
   type ProviderUnavailableError,
@@ -70,6 +71,7 @@ type ShareServices = LandofileService | RuntimeProviderRegistry | AppPlanner;
 
 type AppPlanResolutionError =
   | UserLandofileError
+  | LandofileUnknownEventError
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError

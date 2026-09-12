@@ -7,12 +7,14 @@ import {
   GlobalAppError,
   type GlobalDistConflictError,
   type LandofileParseError,
+  type LandofileUnknownEventError,
   type LandofileValidationError,
   type NoProviderInstalledError,
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
   type PublicationUnsupportedError,
+  type RouteInputError,
 } from "@lando/sdk/errors";
 import type { GlobalDistResult } from "@lando/sdk/services";
 import {
@@ -62,7 +64,9 @@ type GlobalUninstallError =
   | GlobalAppError
   | GlobalDistConflictError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError
