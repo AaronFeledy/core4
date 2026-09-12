@@ -204,3 +204,13 @@ Verification: typecheck, lint, boundaries, schema snapshot codegen, schema compa
 - Verification: typecheck, lint passed; focused merge/normalize/routing/planner tests passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed.
 - **Learnings for future iterations:** persisted YAML parsers must track renderer grammar changes (`Host` vs `HostRegexp`); discriminated-union merge cannot deep-merge when `type` changes.
 ---
+## 2026-09-12 09:56 - US-615 Drift Audit
+- Trigger: 2 cycles, ~2074 net lines, 8 commits
+- Ceremony: unused planner route-wrapper param; rewritePath kept as a frozen adjacent filter in the contract suite
+- Weakened proofs: live routing test hits renderer+Traefik, not Landofile→planner→ProxyService; HostRegexp recovery is proven only on the pure parser — left in place rather than growing a second live path
+- Contract: discover compatibility note implied it raises RouteInputError
+- Deferred work re-examined: rewritePath was owned by this branch's contract suite so it was excised; remaining review deferrals still hold
+- Fixed: dropped unused planner param; removed rewritePath contract stub; corrected discover error-channel note
+- Split/excise decisions: none; extra §10.2 rewritePath harness excised without a PRD split or passes flip
+- Verification: typecheck pass, lint pass, 127 targeted tests pass
+---
