@@ -468,6 +468,25 @@ describe("lando rebuild", () => {
     expect(harness.buildAppCalls).toEqual([]);
   });
 
+  test("rejects an inherited constructor service before provider action", async () => {
+    // Given
+    const harness = makeRebuildLayer(scopedPlan);
+
+    // When
+    const error = await Effect.runPromise(
+      rebuildApp({ services: [ServiceName.make("constructor")] }).pipe(
+        Effect.provide(harness.layer),
+        Effect.flip,
+      ),
+    );
+
+    // Then
+    expect(error._tag).toBe("ServiceNotFoundError");
+    expect(harness.stopCalls).toEqual([]);
+    expect(harness.applyCalls).toEqual([]);
+    expect(harness.destroyCalls).toEqual([]);
+  });
+
   test("reruns cached app build steps after a successful start", async () => {
     await withTempCwd(async () => {
       // Given

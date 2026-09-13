@@ -627,3 +627,10 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
   - Partial rebuild must not close the app handle's whole managed scope: that would tear down unrelated file-sync and host-proxy resources.
   - Assert artifact definitions as well as service names when testing persisted scoped plans; a names-only assertion misses a stale post-build artifact.
 ---
+
+## 2026-09-13 - US-618D1 Review
+- Scoped rebuild now recreates selected containers: apply honors `reconcile` in Docker and shared Podman/Lando bring-up, missing containers are skipped on stop, and prototype-chain names such as `constructor` fail closed before provider action.
+- Review notes (deferred/rejected): MCP integer `option` projection vs `app:logs` tail is pre-existing and out of story scope; Kahn cycle incomplete-plan is planner-rejected already; filtering top-level stores on a subplan is not required by the ACs.
+- Verification: typecheck, lint passed; 86 focused tests passed across rebuild/info scenarios, Podman recreate, Docker bring-up order, argv parser, library handle, and MCP catalog.
+- **Learnings for future iterations:** Unscoped rebuild recreates because stopApp destroy-removes containers; scoped stop+apply only restarts existing ones unless `reconcile` removes and recreates. Provider fakes that record apply calls cannot prove runtime recreation.
+---

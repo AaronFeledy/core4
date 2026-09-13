@@ -81,7 +81,10 @@ const rebuildSelectedServices = (
 
     yield* Effect.forEach(
       [...services].reverse(),
-      (service) => provider.stop({ app: plan.id, service: service.name, plan }),
+      (service) =>
+        provider
+          .stop({ app: plan.id, service: service.name, plan })
+          .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
       { discard: true },
     );
     const builtPlan = yield* withBuildProvider(builds.build(plan), provider);

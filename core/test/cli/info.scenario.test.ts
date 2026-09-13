@@ -356,6 +356,23 @@ describe("lando info", () => {
     expect(inspectCalls).toEqual([]);
   });
 
+  test("rejects an inherited constructor service before inspection", async () => {
+    // Given
+    const inspectCalls: ServiceName[] = [];
+
+    // When
+    const error = await Effect.runPromise(
+      infoApp({ services: [ServiceName.make("constructor")] }).pipe(
+        Effect.provide(makeInfoLayer("running", { inspectCalls })),
+        Effect.flip,
+      ),
+    );
+
+    // Then
+    expect(error._tag).toBe("ServiceNotFoundError");
+    expect(inspectCalls).toEqual([]);
+  });
+
   test("prints running services with endpoint URLs as plain text", async () => {
     const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("running"))));
     const output = renderInfoAppResult(result);

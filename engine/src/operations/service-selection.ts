@@ -37,7 +37,7 @@ const validateRequested = (
   requested: ReadonlyArray<ServiceName> | undefined,
 ): Effect.Effect<ReadonlyArray<ServiceName>, ServiceNotFoundError> => {
   const unique = uniqueRequested(requested ?? []);
-  const missing = unique.find((name) => plan.services[name] === undefined);
+  const missing = unique.find((name) => !Object.hasOwn(plan.services, String(name)));
   return missing === undefined ? Effect.succeed(unique) : Effect.fail(unknownService(plan, missing, unique));
 };
 
@@ -70,11 +70,11 @@ export const selectRebuildPlan = (
       while (pending.length > 0) {
         const name = pending.shift();
         if (name === undefined) continue;
-        const service = plan.services[name];
+        const service = Object.hasOwn(plan.services, String(name)) ? plan.services[name] : undefined;
         if (service === undefined) continue;
         for (const dependency of service.dependsOn) {
           const dependencyName = String(dependency.service);
-          if (plan.services[dependency.service] === undefined || closure.has(dependencyName)) continue;
+          if (!Object.hasOwn(plan.services, dependencyName) || closure.has(dependencyName)) continue;
           closure.add(dependencyName);
           pending.push(dependency.service);
         }

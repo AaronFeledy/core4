@@ -1121,7 +1121,7 @@ const rollbackPartialApply = (
     yield* removeNetworkSilent(api, plan);
   });
 
-const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
+const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal, reconcile = false) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
     yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
@@ -1134,7 +1134,12 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
             return yield* Effect.interrupt;
           }
           const name = containerName(plan, service);
-          const inspected = yield* inspectContainer(api, name);
+          let inspected = yield* inspectContainer(api, name);
+          if (reconcile && inspected.exists) {
+            yield* stopContainerSilent(api, name);
+            yield* removeContainerSilent(api, name);
+            inspected = { exists: false, running: false };
+          }
           touched.push({
             name,
             created: !inspected.exists,
@@ -1750,7 +1755,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           ),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
-          bringUp(plan, dockerApi, applyOptions.signal).pipe(
+          bringUp(plan, dockerApi, applyOptions.signal, applyOptions.reconcile).pipe(
             Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan)),
           ),
         ...resolvedOps,
