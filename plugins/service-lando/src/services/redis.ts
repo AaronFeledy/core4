@@ -59,8 +59,27 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
   id: REDIS_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  apply: (ctx) =>
-    Effect.try({
+  apply: (ctx) => {
+    const startupOverride =
+      ctx.normalizedConfig.command !== undefined
+        ? "command"
+        : ctx.normalizedConfig.entrypoint !== undefined
+          ? "entrypoint"
+          : undefined;
+    const managedOption =
+      ctx.normalizedConfig.password !== undefined
+        ? "password"
+        : ctx.normalizedConfig.persist !== undefined
+          ? "persist"
+          : undefined;
+    if (startupOverride !== undefined && managedOption !== undefined)
+      return Effect.fail(
+        new ServiceFeatureError({
+          message: `Redis authored ${startupOverride} cannot be combined with ${managedOption}; remove the startup override or the managed Redis option.`,
+          feature: REDIS_FEATURE_ID,
+        }),
+      );
+    return Effect.try({
       try: () => applyRedisFeature(ctx),
       catch: (cause) =>
         new ServiceFeatureError({
@@ -68,7 +87,8 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
           feature: REDIS_FEATURE_ID,
           cause,
         }),
-    }),
+    });
+  },
 };
 
 export const redisServiceType: ServiceType = {
