@@ -1,4 +1,7 @@
 import { isHostProxyRunLandoEnvName } from "../subsystems/host-proxy/session-env.ts";
+import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
+
+export type { HostEnv };
 
 export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
   "CLAUDECODE",
@@ -10,8 +13,6 @@ export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
   "AGENT",
   "CI",
 ];
-
-export type HostEnv = Record<string, string | undefined>;
 
 export const AGENT_ENV_DISABLE_ENV_VAR = "LANDO_AGENT_ENV";
 
@@ -48,14 +49,7 @@ interface AgentContextEnvMergeOptions {
 export const resolveAgentContextEnv = (
   hostEnv: HostEnv,
   allowlist: ReadonlyArray<string> = AGENT_CONTEXT_ENV_ALLOWLIST,
-): Record<string, string> => {
-  const resolved: Record<string, string> = {};
-  for (const name of allowlist) {
-    const value = hostEnv[name];
-    if (value !== undefined) resolved[name] = value;
-  }
-  return resolved;
-};
+): Record<string, string> => copyPresentHostEnv(hostEnv, allowlist);
 
 export const withAgentContextEnv = (
   explicitEnv: Readonly<Record<string, string>> | undefined,
