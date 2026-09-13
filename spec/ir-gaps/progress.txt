@@ -548,3 +548,10 @@ Real-surface evidence: on the real binary with isolated user roots, `app:config 
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 92 focused tests pass
 ---
+
+## 2026-09-13 12:20 - US-618B Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved Node globals plus PHP composer packages against the binary: `yarn --version` is 1.22.4, `gulp --version` is CLI 3.1.0, `phpcs --version` and `phpstan --version` run, Composer 2.10.2 stays on PATH, HTTPS returned `us618b-ok`, and a second start rebuilt both services in ~400ms. Invalid `Gulp-CLI` / `drush` fail plan-time `LandofileValidationError`; `composer: "2"` and `composer: false` still plan.
+- Fixed stock `node:22` Corepack `/usr/local/bin/yarn` EEXIST by adding `--force` to `npm install -g`.
+- **Out-of-scope finding:** host 80/443 in use so proxy published on 8000/4443; `curl http://appserver.us618b-verify.lndo.site:8000/` returned Traefik `404 page not found` while HTTPS `:4443` served `us618b-ok`. Same bind fallback as prior verifies, not US-618B.
+- **Learnings for future iterations:** Stock Node images ship Corepack shims at `/usr/local/bin/yarn`. Live package-install tests that use `cowsay` miss the documented `yarn` example. Verify the guide's packages, not a unique dummy.
+---
