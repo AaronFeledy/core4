@@ -91,12 +91,6 @@ export interface ServiceTypeResolution {
 }
 
 /**
- * Normative service-type contract: a resolver that turns
- * `type: <name>` into a {@link ServiceTypeResolution} of normalized config plus
- * the features to compose onto a declared `base`. It chooses base/features/
- * tooling; it does NOT build the plan (that is core's composition pipeline).
- */
-/**
  * What a service type knows about the identities inside the image it ships.
  * Planning reads this to place the planned user's home on a persistent store
  * without guessing a path. It describes the type's OWN image only: a service
@@ -110,6 +104,12 @@ export interface ServiceImageIdentity {
   readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
 }
 
+/**
+ * Normative service-type contract: a resolver that turns
+ * `type: <name>` into a {@link ServiceTypeResolution} of normalized config plus
+ * the features to compose onto a declared `base`. It chooses base/features/
+ * tooling; it does NOT build the plan (that is core's composition pipeline).
+ */
 export interface ServiceType {
   readonly id: string;
   readonly name: string;
