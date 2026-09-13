@@ -1798,7 +1798,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                   });
                 }
 
-                // Plan not available - discover container by labels
                 return Stream.fromEffect(
                   discoverContainers(dockerApi, "dev.lando.app").pipe(
                     Effect.flatMap((containers) => {
@@ -1845,7 +1844,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     const isRunning = container.state === "running";
                     const status = isRunning ? "running" : "stopped";
 
-                    // Inspect container to get endpoints
                     const inspectResponse = yield* request(dockerApi, "list", {
                       method: "GET",
                       path: `/containers/${encodeURIComponent(container.name)}/json`,
