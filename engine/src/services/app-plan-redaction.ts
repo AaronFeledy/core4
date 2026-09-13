@@ -32,9 +32,10 @@ export const collectAppPlanRedactionTokens = (
 export const collectLandofileRedactionTokens = (
   landofile: LandofileTokenSource | LandofileShape,
 ): ReadonlyArray<string> => {
-  const serviceTokens = Object.values(landofile.services ?? {}).flatMap((service) =>
-    collectSecretEnvValues({ ...stringEnv(service?.environment), password: service?.password }),
-  );
+  const serviceTokens = Object.values(landofile.services ?? {}).flatMap((service) => [
+    ...collectSecretEnvValues(stringEnv(service?.environment)),
+    ...collectSecretEnvValues(service?.password === undefined ? undefined : { password: service.password }),
+  ]);
   const toolingTokens = Object.values(landofile.tooling ?? {}).flatMap((task) =>
     collectSecretEnvValues(stringEnv(task?.env)),
   );
