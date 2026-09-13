@@ -50,14 +50,14 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
       ...(typeof flags.user === "string" ? { user: flags.user } : {}),
       ...(typeof flags.cwd === "string" ? { cwd: flags.cwd } : {}),
     };
-    if (json) return execApp({ ...base, tty: false, interactive: false });
-    const tty = process.stdout.isTTY === true;
     const nonInteractive =
       typeof input === "object" &&
       input !== null &&
       "interaction" in input &&
       input.interaction === "non-interactive";
-    const interactive = flags.interactive === true && !nonInteractive;
+    if (json || nonInteractive) return execApp({ ...base, tty: false, interactive: false });
+    const tty = process.stdout.isTTY === true;
+    const interactive = flags.interactive === true;
     return withInheritedStdinRawMode(
       tty && interactive,
       execApp(attachExecHostIo({ ...base, tty, interactive })),
