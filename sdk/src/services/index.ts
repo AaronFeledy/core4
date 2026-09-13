@@ -307,6 +307,10 @@ export interface RuntimeProviderShape {
   ) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
+  readonly observeVolume?: (
+    target: ServiceSelector,
+    destination: PortablePath,
+  ) => Effect.Effect<VolumeInfo, ProviderError>;
   readonly removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>;
   readonly copyToService: (
     target: ExecTarget,

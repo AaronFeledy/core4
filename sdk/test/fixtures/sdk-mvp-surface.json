@@ -94,6 +94,7 @@
       "isAvailable: Effect.Effect<boolean, ProviderUnavailableError>",
       "list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>",
       "listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>",
+      "observeVolume?: (target: ServiceSelector, destination: PortablePath) => Effect.Effect<VolumeInfo, ProviderError>",
       "logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>",
       "planSetup: (options: ProviderSetupInspectOptions) => Effect.Effect<ProviderSetupPlan, ProviderError>",
       "platform: HostPlatform",
