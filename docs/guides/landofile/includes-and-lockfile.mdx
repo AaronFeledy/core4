@@ -36,7 +36,6 @@ content hash, in `.lando.lock.yml`; local includes are not locked.
       <Run command="lando app:config --format=json" />
     </Step>
   </Scenario>
-</Guide>
 
 ## Opt into a user profile
 
@@ -83,6 +82,42 @@ cannot override `name`, `runtime` or reserved runtime environment identity.
 
 User profiles are not lockfile entries. Their content hashes participate in cache
 freshness. The separate `toolingIncludes:` shorthand does not accept `user:`.
+
+  <Scenario id="user-profile-embedding" render={false} reason="Library fixture proof of profile opt-in and project precedence, not a provider transcript">
+    <Step name="load-user-profile">
+      <UseFixture name="user-profile-demo" />
+      <Run
+        runtime="library"
+        code={`const { AbsolutePath, ServiceName } = yield* Effect.promise(() => import("@lando/core/schema"));
+const { LandofileService } = yield* Effect.promise(() => import("@lando/core/services"));
+const appRoot = join(context.testDir, "user-profile-demo");
+const previousCwd = process.cwd();
+try {
+  process.chdir(appRoot);
+  const config = yield* Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+    Effect.provide(LandoCore.makeLandoRuntime({
+      bootstrap: "commands",
+      plugins: { policy: "bundled-only" },
+      config: {
+        userConfRoot: AbsolutePath.make(join(appRoot, "profile-home")),
+        userDataRoot: AbsolutePath.make(join(context.testDir, "data")),
+        userCacheRoot: AbsolutePath.make(join(context.testDir, "cache")),
+        systemPluginRoot: AbsolutePath.make(join(context.testDir, "system")),
+      },
+    })),
+  );
+  expect(config.services?.[ServiceName.make("web")]?.environment?.REGION).toBe("project");
+  expect(config.services?.[ServiceName.make("web")]?.environment?.VALUE).toBe("\${secret:CORP_API_TOKEN}");
+} finally {
+  process.chdir(previousCwd);
+}`}
+        displayCode={`const landofile = yield* LandofileService.pipe(
+  Effect.flatMap((service) => service.discover),
+);`}
+      />
+    </Step>
+  </Scenario>
+</Guide>
 
 ## Locking and remediation
 

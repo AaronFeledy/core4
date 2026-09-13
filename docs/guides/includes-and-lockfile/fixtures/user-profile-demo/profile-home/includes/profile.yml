@@ -1,0 +1,7 @@
+services:
+  web:
+    type: compose
+    image: alpine:3.21
+    environment:
+      REGION: profile
+      VALUE: '${secret:CORP_API_TOKEN}'
