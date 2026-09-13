@@ -381,3 +381,8 @@ Manual CLI QA against `core/bin/lando.ts` with isolated user roots and `provider
 - Split/excise decisions: none
 - Verification: typecheck, lint, and focused AppPlanner/home/host/passthrough/traefik/compat spot checks pass
 ---
+
+## 2026-09-13 02:40 - US-617A Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved home persistence plus host reachability against the binary: `node:22` home marker survived `lando rebuild`; `LANDO_HOST_IP=host.lando.internal` resolved to `169.254.1.2` and served a host HTTP response; compose without `home` failed `HomePathCapabilityError` with both remediations; `home.path` planned; lamp `init --full` then `app:cache:refresh` compiled 3 commands. Adjacent redis `PONG`, `node -e`, info/logs/destroy stayed green.
+- **Out-of-scope finding:** `lando destroy` on a never-started compose Landofile that refuses `HomePathCapabilityError` also fails with that tag (destroy plans first). No containers existed; dir delete cleaned it. Not an AC miss.
+---
