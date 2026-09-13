@@ -84,12 +84,6 @@
     "justification": "US-615 route shorthand and filters"
   },
   {
-    "surface": "schema:ConfigTranslateEncodeInput",
-    "changeKind": "unsupported-construct",
-    "path": "$.$defs.ConfigTranslateEncodeInput.context.services.anyOf",
-    "justification": "US-615 route shorthand and filters"
-  },
-  {
     "surface": "schema:DatasetContext",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
@@ -117,12 +111,6 @@
     "surface": "schema:LandofileAuthoringShapeWire",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringShapeWire.proxy.anyOf",
-    "justification": "US-615 route shorthand and filters"
-  },
-  {
-    "surface": "schema:LandofileAuthoringShapeWire",
-    "changeKind": "unsupported-construct",
-    "path": "$.$defs.LandofileAuthoringShapeWire.services.anyOf",
     "justification": "US-615 route shorthand and filters"
   },
   {
@@ -1377,7 +1365,7 @@
     "surface": "schema:ConfigTranslateEncodeInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateEncodeInput.context.services.anyOf",
-    "justification": "ServiceConfig additively gains optional packageRoot while every previously accepted service remains valid."
+    "justification": "ServiceConfig additively gains optional packageRoot for Node project-file provenance and optional per-step build user on the build-script object form; every previously accepted service remains valid."
   },
   {
     "surface": "schema:DatasetContext",
@@ -1419,7 +1407,7 @@
     "surface": "schema:LandofileAuthoringShapeWire",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringShapeWire.services.anyOf",
-    "justification": "ServiceConfig additively gains optional packageRoot while every previously accepted authoring document remains valid."
+    "justification": "ServiceConfig additively gains optional packageRoot for Node project-file provenance and optional per-step build user on the build-script object form; every previously accepted authoring document remains valid."
   },
   {
     "surface": "schema:PostGlobalRebuildEvent",
