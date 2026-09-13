@@ -33,6 +33,7 @@ import {
 } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
+import { volumeCreationOwnerLabels } from "../volume-observation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
@@ -347,6 +348,7 @@ const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly
   "dev.lando.store": store.name,
   "dev.lando.scope": store.scope,
   "dev.lando.volume-instance": randomUUID(),
+  ...volumeCreationOwnerLabels(plan.identity),
   "dev.lando.volume-selector": volumeSelectorValue({
     providerId: plan.provider,
     appId: plan.id,

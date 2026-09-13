@@ -399,6 +399,7 @@ describe("provider-lando bringUp", () => {
     };
     const cachePlan: AppPlan = {
       ...plan,
+      identity: { appRoot: AbsolutePath.make("/canonical/creation-root"), ownerKey: "creation-owner" },
       services: { [database.name]: database, [cacheService.name]: cacheService },
       stores: [{ name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" }],
     };
@@ -415,6 +416,8 @@ describe("provider-lando bringUp", () => {
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
         "dev.lando.volume-selector": "lando:bringupapp:cache",
+        "dev.lando.volume-owner": "/canonical/creation-root",
+        "dev.lando.volume-instance": expect.stringMatching(/^[0-9a-f-]{36}$/u),
       },
     });
     const nodeCreate = fake.calls.find(
