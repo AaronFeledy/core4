@@ -28,7 +28,9 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";

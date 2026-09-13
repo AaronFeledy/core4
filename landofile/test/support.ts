@@ -1,4 +1,6 @@
 import { cp, rename, rm, stat } from "node:fs/promises";
+import type { StateStoreShape } from "@lando/sdk/services";
+import { makeStateStore } from "@lando/state-store/service";
 
 import type { LandofileRuntimePorts } from "../src/ports.ts";
 
@@ -39,6 +41,14 @@ const publish = async (stagingDir: string, publishedDir: string): Promise<void> 
 };
 
 export const makeTestPublicationPort = (): LandofileRuntimePorts["publication"] => ({ publish });
+
+export const makeTestLandofileStateStore = (): StateStoreShape =>
+  makeStateStore({
+    privateFileAccess: {
+      enforce: async () => undefined,
+      verify: async () => undefined,
+    },
+  });
 
 export const makeTestLandofilePorts = (cacheRoot: string): LandofileRuntimePorts => ({
   resolveUserCacheRoot: () => cacheRoot,

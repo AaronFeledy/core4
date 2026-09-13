@@ -11,10 +11,10 @@ import type {
   LandofileLockMismatchError,
   LandofileSandboxError,
   LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
+  RouteInputError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import {
@@ -26,7 +26,7 @@ import {
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
-import { LandofileService } from "@lando/sdk/services";
+import { LandofileService, type StateStore } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { getAtPath } from "@lando/engine/config-write/dot-path";
@@ -107,8 +107,8 @@ type AppConfigError =
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | LandofileWriteValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
@@ -119,7 +119,7 @@ type AppConfigError =
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
 
-type AppConfigServices = LandofileService;
+type AppConfigServices = LandofileService | StateStore;
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileShape, { onExcessProperty: "error" });
 
@@ -316,7 +316,7 @@ export const appConfigUnset = (
 
 export const appConfigValidate = (
   options: AppConfigOptions,
-): Effect.Effect<AppConfigResult, AppConfigError, never> =>
+): Effect.Effect<AppConfigResult, AppConfigError, StateStore> =>
   Effect.gen(function* () {
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "validate");
     yield* loadLandofileLayers(appRoot, inputPath).pipe(

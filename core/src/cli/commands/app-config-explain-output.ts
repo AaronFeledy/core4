@@ -61,6 +61,19 @@ export const ExplainServiceMapping = Schema.Struct({
   current: Schema.String,
 });
 
+export const ExplainBounds = Schema.Union(
+  Schema.Struct({ _tag: Schema.Literal("complete") }),
+  Schema.Struct({
+    _tag: Schema.Literal("truncated"),
+    omitted: Schema.Struct({
+      services: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+      options: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+      references: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+      takenOver: Schema.Number.pipe(Schema.int(), Schema.nonNegative()),
+    }),
+  }),
+);
+
 export const AppConfigExplainResultSchema = Schema.Struct({
   landofilePath: Schema.String,
   form: Schema.Literal("declarative", "programmatic", "bare", "absent"),
@@ -72,6 +85,7 @@ export const AppConfigExplainResultSchema = Schema.Struct({
     }),
   ),
   comparison: ExplainComparison,
+  bounds: ExplainBounds,
   services: Schema.Array(ExplainServiceMapping),
   options: Schema.Array(ExplainOption),
 });
@@ -105,6 +119,12 @@ export const renderAppConfigExplainResult = (result: AppConfigExplainResult): st
     lines.push(`Comparison: blocked (${result.comparison.reason})`);
     lines.push(`  ${result.comparison.detail}`);
     lines.push(`  ${result.comparison.remediation}`);
+  }
+  if (result.bounds._tag === "truncated") {
+    const omitted = result.bounds.omitted;
+    lines.push(
+      `Report truncated: ${omitted.services} services, ${omitted.options} options, ${omitted.references} references, ${omitted.takenOver} taken-over sites omitted.`,
+    );
   }
 
   for (const mapping of result.services) {

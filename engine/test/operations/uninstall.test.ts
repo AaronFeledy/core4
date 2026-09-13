@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import {
   CGROUPS_DELEGATE_CONF_CONTENT,
   LANDO_SHELLENV_BEGIN,
@@ -20,7 +21,7 @@ import {
   leftoverUninstallRuntimeDirError,
   managedPodmanUnshareRmInvocation,
   stripLandoShellenvBlock,
-  uninstall,
+  uninstall as uninstallEffect,
   uninstallRuntimeDirRemediation,
 } from "../../src/operations/uninstall.ts";
 import {
@@ -29,6 +30,9 @@ import {
   writeFakeManagedPodman,
   writeManagedVolumeTree,
 } from "./uninstall-support.ts";
+
+const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
+  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
 
 const restoreEnv = (key: string, value: string | undefined): void => {
   if (value === undefined) Reflect.deleteProperty(process.env, key);

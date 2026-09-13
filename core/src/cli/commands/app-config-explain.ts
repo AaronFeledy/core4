@@ -33,6 +33,11 @@ export {
   ExplainBlockedReason,
   renderAppConfigExplainResult,
 } from "./app-config-explain-output.ts";
+
+export const APP_CONFIG_EXPLAIN_MAX_BYTES = 1_048_576;
+const EXPLAIN_MAX_SERVICES = 128;
+const EXPLAIN_MAX_OPTIONS = 128;
+const EXPLAIN_MAX_SITES_PER_OPTION = 128;
 export type { AppConfigExplainResult } from "./app-config-explain-output.ts";
 
 export interface AppConfigExplainOptions {
@@ -283,13 +288,17 @@ export const appConfigExplain = (
           "programmatic-landofile",
           "A programmatic Landofile is opaque to provenance comparison and is never executed for it.",
         ),
+        bounds: { _tag: "complete" },
         services: [],
         options: [],
       } satisfies AppConfigExplainResult;
     }
 
-    const content = yield* Effect.tryPromise({
-      try: () => Bun.file(landofilePath).text(),
+    const bytes = yield* Effect.tryPromise({
+      try: () =>
+        Bun.file(landofilePath)
+          .slice(0, APP_CONFIG_EXPLAIN_MAX_BYTES + 1)
+          .bytes(),
       catch: (cause) =>
         new LandofileParseError({
           message: cause instanceof Error ? cause.message : `Failed to read ${landofilePath}.`,
@@ -299,6 +308,18 @@ export const appConfigExplain = (
           cause,
         }),
     });
+    if (bytes.byteLength > APP_CONFIG_EXPLAIN_MAX_BYTES) {
+      return yield* Effect.fail(
+        new LandofileParseError({
+          message: `Landofile exceeds the ${APP_CONFIG_EXPLAIN_MAX_BYTES}-byte explain limit.`,
+          filePath: landofilePath,
+          line: undefined,
+          column: undefined,
+          cause: "input-budget",
+        }),
+      );
+    }
+    const content = new TextDecoder().decode(bytes);
     const parsed = yield* parseLandofile({ file: landofilePath, content, cwd: appRoot });
     const document = (typeof parsed === "object" && parsed !== null ? parsed : {}) as Record<string, unknown>;
 
@@ -360,17 +381,35 @@ export const appConfigExplain = (
                 : ("chosen-by-value" as const),
             }
           : {}),
-        references,
-        takenOver: takenOver.get(name) ?? [],
+        references: references.slice(0, EXPLAIN_MAX_SITES_PER_OPTION),
+        takenOver: (takenOver.get(name) ?? []).slice(0, EXPLAIN_MAX_SITES_PER_OPTION),
       };
     });
+
+    const services = semantic?.services ?? [];
+    const omitted = {
+      services: Math.max(0, services.length - EXPLAIN_MAX_SERVICES),
+      options: Math.max(0, reported.length - EXPLAIN_MAX_OPTIONS),
+      references: reported.reduce(
+        (count, option) =>
+          count + Math.max(0, (referencesByOption.get(option.name) ?? []).length - option.references.length),
+        0,
+      ),
+      takenOver: reported.reduce(
+        (count, option) =>
+          count + Math.max(0, (takenOver.get(option.name) ?? []).length - option.takenOver.length),
+        0,
+      ),
+    };
+    const truncated = Object.values(omitted).some((count) => count > 0);
 
     return {
       landofilePath,
       form: read.form,
       ...(read.recipe === undefined ? {} : { recipe: read.recipe }),
       comparison,
-      services: semantic?.services ?? [],
-      options: reported,
+      bounds: truncated ? { _tag: "truncated", omitted } : { _tag: "complete" },
+      services: services.slice(0, EXPLAIN_MAX_SERVICES),
+      options: reported.slice(0, EXPLAIN_MAX_OPTIONS),
     } satisfies AppConfigExplainResult;
   });

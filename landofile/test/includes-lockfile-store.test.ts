@@ -6,10 +6,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
+import type { StateStoreShape } from "@lando/sdk/services";
+import { makeStateStore } from "@lando/state-store/service";
 
 import type { GitIncludeCloner } from "../src/includes.ts";
 import { updateLandofileIncludes, verifyLandofileIncludes } from "../src/includes.ts";
-import { makeTestLandofilePorts } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const sha256 = (content: string): string => new Bun.CryptoHasher("sha256").update(content).digest("hex");
 
@@ -34,6 +36,21 @@ const renderExpectedLockfile = (
 
 const FRAGMENT = "services:\n  database:\n    type: postgres\n";
 
+const makeRecordingStore = (onOpen: () => void): StateStoreShape => {
+  const store = makeStateStore({
+    privateFileAccess: {
+      enforce: async () => undefined,
+      verify: async () => undefined,
+    },
+  });
+  return {
+    open: (spec) => {
+      onOpen();
+      return store.open(spec);
+    },
+  };
+};
+
 const clonerReturning = (commitSha: string): GitIncludeCloner => ({
   clone: async ({ dest }) => {
     await mkdir(dest, { recursive: true });
@@ -45,6 +62,7 @@ const clonerReturning = (commitSha: string): GitIncludeCloner => ({
 describe("store-backed include lockfile", () => {
   let appRoot: string;
   let cacheRoot: string;
+  let stateStore: StateStoreShape;
   let previousCacheRoot: string | undefined;
 
   beforeEach(async () => {
@@ -52,6 +70,7 @@ describe("store-backed include lockfile", () => {
     cacheRoot = await mkdtemp(join(tmpdir(), "lando-includes-store-cache-"));
     previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+    stateStore = makeTestLandofileStateStore();
   });
 
   afterEach(async () => {
@@ -65,16 +84,22 @@ describe("store-backed include lockfile", () => {
 
   test("update writes the lockfile byte-for-byte through the store", async () => {
     const lockPath = join(appRoot, ".lando.lock.yml");
+    let opens = 0;
+    const stateStore = makeRecordingStore(() => {
+      opens += 1;
+    });
     const report = await Effect.runPromise(
       updateLandofileIncludes({
         landofile: landofile(),
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore,
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );
     expect(report.wrote).toBe(true);
+    expect(opens).toBe(2);
     const written = await readFile(lockPath, "utf8");
     const expected = renderExpectedLockfile([
       { source: "github:acme/fragments/postgres.yml", resolved: "abc123", checksum: sha256(FRAGMENT) },
@@ -90,6 +115,7 @@ describe("store-backed include lockfile", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore,
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );
@@ -100,6 +126,7 @@ describe("store-backed include lockfile", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore,
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );
@@ -120,6 +147,7 @@ describe("store-backed include lockfile", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore,
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );
@@ -137,6 +165,7 @@ describe("store-backed include lockfile", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
+        stateStore,
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );

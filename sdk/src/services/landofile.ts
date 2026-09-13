@@ -12,10 +12,10 @@ import type {
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   ManagedFileTransactionError,
   NotImplementedError,
+  RouteInputError,
   ToolingIncludeCycleError,
 } from "../errors/index.ts";
 import type { LandofileShape } from "../schema/index.ts";
@@ -28,9 +28,9 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
       | LandofileNotFoundError
       | LandofileParseError
       | LandofileValidationError
+      | RouteInputError
       | LandofileSandboxError
       | LandofileTimeoutError
-      | LandofileUnknownEventError
       | LandofileFormConflictError
       | LandofileIncludeError
       | LandofileLockMismatchError

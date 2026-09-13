@@ -43,6 +43,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { version } = configFor(ctx);
   const serviceType = `node:${version}`;
+  const port = service.port ?? DEFAULT_PORT;
   const appMount = {
     source: AbsolutePath.make(ctx.appRoot),
     target: APP_MOUNT_TARGET,
@@ -66,7 +67,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
 
-  addServicePortEndpoints(ctx, { port: DEFAULT_PORT, protocol: "http" });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
 
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
 };

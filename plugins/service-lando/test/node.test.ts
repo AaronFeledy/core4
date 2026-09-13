@@ -109,6 +109,14 @@ describe("node:lts ServiceType", () => {
     ]);
   });
 
+  test("uses the authored service port for its internal endpoint", async () => {
+    // Given / When
+    const plan = await composeNodePlan(nodeLtsServiceType, { type: "node:lts", port: 5173 });
+
+    // Then
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5173, protocol: "http", name: "web" }]);
+  });
+
   test("ServiceConfig schema accepts the framework field", () => {
     const result = Schema.decodeUnknownEither(ServiceConfig)(
       { type: "node:lts", framework: "drupal" },

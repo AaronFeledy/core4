@@ -9,10 +9,10 @@ import { Effect } from "effect";
 import type { PromptBatchOptions, PromptSpec } from "@lando/sdk/schema";
 import type { ConfirmSpec, PromptAnswers, SelectSpec } from "@lando/sdk/services";
 
-import { initApp } from "../../src/cli/commands/init.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";
 import { getRecipeCatalog } from "../../src/recipes/catalog.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
 const scriptedStdin = (lines: ReadonlyArray<string>): NodeJS.ReadableStream =>
   Readable.from(lines.map((line) => `${line}\n`));

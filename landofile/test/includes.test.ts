@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 
 import { getLocalIncludePaths } from "../src/include-provenance.ts";
-import { resolveLandofileIncludes } from "../src/includes.ts";
+import { resolveLandofileIncludes as resolveLandofileIncludesPackage } from "../src/includes.ts";
 import type {
   GitIncludeCloner,
   NpmIncludeExtractor,
@@ -16,10 +16,18 @@ import type {
   NpmIncludeRecipeSource,
   ResolveIncludesError,
 } from "../src/includes.ts";
-import { makeTestLandofilePorts } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+
+const resolveLandofileIncludes = (options: Parameters<typeof resolveLandofileIncludesPackage>[0]) =>
+  resolveLandofileIncludesPackage({ ...options, stateStore: makeTestLandofileStateStore() });
 
 const resolveEffect = (landofile: LandofileShape, appRoot: string, cacheRoot: string) =>
-  resolveLandofileIncludes({ landofile, appRoot, cacheRoot, ports: makeTestLandofilePorts(cacheRoot) });
+  resolveLandofileIncludes({
+    landofile,
+    appRoot,
+    cacheRoot,
+    ports: makeTestLandofilePorts(cacheRoot),
+  });
 
 const runResolve = (landofile: LandofileShape, appRoot: string, cacheRoot: string) =>
   Effect.runPromise(resolveEffect(landofile, appRoot, cacheRoot));

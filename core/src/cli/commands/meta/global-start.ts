@@ -13,6 +13,7 @@ import type {
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
   LandofileParseError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -20,6 +21,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
@@ -82,7 +84,9 @@ export type GlobalStartError =
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | PluginManifestError

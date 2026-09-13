@@ -7,6 +7,19 @@ export type ExecAppHostOptions = ExecAppOptions & {
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
 };
 
+interface RawModeStdin {
+  readonly isTTY?: boolean;
+  readonly isRaw?: boolean;
+  readonly readableFlowing: boolean | null;
+  readonly setRawMode?: (enabled: boolean) => unknown;
+  readonly resume: () => unknown;
+  readonly pause: () => unknown;
+}
+
+interface InheritedStdin extends RawModeStdin, AsyncIterable<Uint8Array> {
+  readonly iterator: (options: { readonly destroyOnReturn: boolean }) => AsyncIterator<Uint8Array>;
+}
+
 const stdoutResizeStream = (): Stream.Stream<{ readonly columns: number; readonly rows: number }> =>
   Stream.async((emit) => {
     const stdout = process.stdout;
@@ -24,19 +37,20 @@ const stdoutResizeStream = (): Stream.Stream<{ readonly columns: number; readonl
 export const withInheritedStdinRawMode = <A, E, R>(
   enabled: boolean,
   effect: Effect.Effect<A, E, R>,
+  stdin: RawModeStdin = process.stdin,
 ): Effect.Effect<A, E, R> => {
   if (!enabled) return effect;
   return Effect.acquireUseRelease(
     Effect.sync(() => {
-      const stdin = process.stdin;
-      if (typeof stdin.setRawMode !== "function" || stdin.isTTY !== true) return () => {};
+      const setRawMode = stdin.setRawMode?.bind(stdin);
+      if (setRawMode === undefined || stdin.isTTY !== true) return () => {};
       const wasRaw = stdin.isRaw === true;
-      const wasPaused = stdin.isPaused();
-      stdin.setRawMode(true);
+      const wasFlowing = stdin.readableFlowing === true;
+      setRawMode(true);
       stdin.resume();
       return () => {
-        stdin.setRawMode(wasRaw);
-        if (wasPaused) stdin.pause();
+        setRawMode(wasRaw);
+        if (!wasFlowing) stdin.pause();
       };
     }),
     () => effect,
@@ -50,12 +64,18 @@ const ttySizeEnv = (env: Readonly<Record<string, string>> | undefined): Readonly
   ...env,
 });
 
-export const attachExecHostIo = (options: ExecAppOptions): ExecAppHostOptions => {
-  const tty = options.tty === true;
+export const attachExecHostIo = (
+  options: ExecAppOptions,
+  stdin: InheritedStdin = process.stdin,
+): ExecAppHostOptions => {
   const interactive = options.interactive === true;
+  const tty = options.tty === true && (interactive ? stdin.isTTY === true : true);
   return {
     ...options,
+    tty,
     ...(tty ? { env: ttySizeEnv(options.env), terminalResize: stdoutResizeStream() } : {}),
-    ...(interactive ? { stdinStream: process.stdin } : {}),
+    ...(interactive
+      ? { stdinStream: { [Symbol.asyncIterator]: () => stdin.iterator({ destroyOnReturn: false }) } }
+      : {}),
   };
 };

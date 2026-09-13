@@ -75,6 +75,7 @@ import type { EventCommandExecutor } from "@lando/engine/services/event-command-
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
 import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-service";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
@@ -113,6 +114,7 @@ type MinimalRuntimeServices =
   | PluginTrustStore
   | PrivilegeService
   | ProcessRunner
+  | PrivateFileAccessService
   | RedactionService
   | SecretStore
   | StateStore

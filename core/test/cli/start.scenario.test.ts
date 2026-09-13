@@ -47,6 +47,7 @@ import {
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
@@ -279,6 +280,7 @@ const emptyPluginRegistry = {
 };
 
 const unusedGlobalServicesLayer = Layer.mergeAll(
+  PrivateFileAccessLive,
   NoopTransactionGuardLive,
   ConfigServiceLive,
   FileSystemLive,
@@ -453,6 +455,7 @@ const makeStartLayer = (
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
         name: "test-start",
@@ -720,6 +723,7 @@ const makeAutoStartLayer = async (options: {
   };
   const plannedGlobal = globalPlan(options.globalServiceIds);
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     NoopTransactionGuardLive,
     ConfigServiceLive,
     FileSystemLive,
@@ -938,7 +942,7 @@ describe("lando start", () => {
     });
   });
 
-  test("a post-start event failure warns, exits successfully, and does not roll back", async () => {
+  test("a post-start event failure is fatal without destroying the app or removing routes", async () => {
     // Given
     const failedPlan = {
       ...plan,
@@ -948,12 +952,15 @@ describe("lando start", () => {
     const harness = makeStartLayer({ plannedApp: failedPlan });
 
     // When
-    const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
     // Then
-    expect(result.app).toBe("test-start");
-    expect(harness.events).toContain("message.warn");
+    expect(failureOf(exit)).toMatchObject({ _tag: "LandofileEventStepFailedError", event: "post-start" });
+    expect(harness.events).not.toContain("message.warn");
     expect(harness.destroyCalls).toHaveLength(0);
+    expect(harness.buildOrder).toContain("apply");
+    expect(harness.buildOrder).toContain("proxy-apply");
+    expect(harness.buildOrder).not.toContain("proxy-remove");
     expect(
       harness.taskEvents
         .filter((event) => event._tag === "task.detail")
@@ -1958,6 +1965,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const fullLayer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2086,6 +2094,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const fullLayer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2208,6 +2217,7 @@ describe("lando start", () => {
     };
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2333,6 +2343,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2456,6 +2467,7 @@ describe("lando start", () => {
     };
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2608,6 +2620,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2752,6 +2765,7 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),

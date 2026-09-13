@@ -32,10 +32,13 @@ import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
 import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { FileSystemLive } from "@lando/engine/services/file-system";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { StateStoreLive } from "@lando/state-store/service";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 
 import "../../src/runtime/engine-composition.ts";
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
@@ -178,6 +181,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 };
 
 const requiredStartServicesLayer = Layer.mergeAll(
+  PrivateFileAccessLive,
   NoopTransactionGuardLive,
   ConfigServiceLive,
   FileSystemLive,
@@ -228,6 +232,7 @@ const makeRebuildLayer = () => {
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-rebuild", services: {} }) }),
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
@@ -292,6 +297,7 @@ const makeCachedBuildLayer = () => {
     query: () => Effect.die("not used"),
   });
   const dependencies = Layer.mergeAll(
+    PrivateFileAccessLive,
     paths,
     registry,
     eventService,

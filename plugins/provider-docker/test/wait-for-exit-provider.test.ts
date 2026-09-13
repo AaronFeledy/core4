@@ -18,6 +18,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("wait-for-exit-app");
@@ -78,6 +79,7 @@ const waitForExit = async (api: DockerApiClient, requestedService = serviceName,
   const appliedPlanState = makePluginStateStore(
     makeTestStateStore().service,
     AbsolutePath.make("/tmp/provider-docker-wait-for-exit-state"),
+    ownerOnlyFileAccess,
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
   const provider = await Effect.runPromise(
@@ -99,6 +101,7 @@ const waitFailure = async (api: DockerApiClient, requestedService = serviceName)
       const appliedPlanState = makePluginStateStore(
         makeTestStateStore().service,
         AbsolutePath.make("/tmp/provider-docker-wait-for-exit-failure-state"),
+        ownerOnlyFileAccess,
       );
       yield* persistAppliedPlan(appliedPlanState, plan);
       const provider = yield* makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState });

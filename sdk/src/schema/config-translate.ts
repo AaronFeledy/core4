@@ -74,8 +74,8 @@ export const ConfigTranslateAnswerValue = Schema.Union(AnswerScalar, Schema.Arra
 export const ConfigTranslateSecretReference = Schema.Union(
   Schema.Struct({
     disposition: Schema.Literal("secret-store").annotations({ description: "Stored-secret disposition." }),
-    reference: Schema.String.annotations({
-      description: "Approved secret-store reference, never the secret value.",
+    reference: Schema.String.pipe(Schema.pattern(/^\$\{secret:[^}]+\}$/)).annotations({
+      description: "One canonical ${secret:...} reference, never the secret value.",
     }),
   }).annotations(metadata("ConfigTranslateStoredSecretReference", "Approved stored-secret reference.")),
   Schema.Struct({

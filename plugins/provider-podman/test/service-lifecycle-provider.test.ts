@@ -18,6 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import { persistAppliedPlan } from "../src/applied-state.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("lifecycle-app");
@@ -83,7 +84,11 @@ const makeFakeApi = (response: EngineHttpResponse) => {
 const makeProvider = async (api: PodmanApiClient) => {
   const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-lifecycle-"));
   temporaryDirectories.push(stateDir);
-  const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+  const state = makePluginStateStore(
+    makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+    AbsolutePath.make(stateDir),
+    ownerOnlyFileAccess,
+  );
   await Effect.runPromise(persistAppliedPlan(state, plan));
   return Effect.runPromise(
     makeRuntimeProvider({

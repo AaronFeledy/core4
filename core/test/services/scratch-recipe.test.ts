@@ -24,11 +24,16 @@ import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { AppPlannerLive } from "@lando/engine/services/planner";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(
+  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessLive)),
+);
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
@@ -174,6 +179,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
+    PrivateFileAccessLive,
     landofileServiceLive,
     plannerLive,
     registryLive,
@@ -195,7 +201,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
   return Layer.mergeAll(
     scratchDeps,
     makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
-  );
+  ).pipe(Layer.provide(PrivateFileAccessLive));
 };
 
 const fileExists = async (path: string): Promise<boolean> => {

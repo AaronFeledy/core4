@@ -7,7 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 import { RecipeSourceError } from "@lando/sdk/errors";
 import type { RecipeRegistryResponse } from "@lando/sdk/schema";
 
-import { initApp } from "../../src/cli/commands/init.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
 import {
   DEFAULT_RECIPE_REGISTRY_URL,

@@ -19,13 +19,14 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -42,6 +43,7 @@ type DestroyAppServices =
   | EventService
   | LandofileService
   | PathsService
+  | PrivateFileAccessService
   | RuntimeProviderRegistry;
 type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
@@ -122,7 +124,10 @@ export const destroyAppForTarget = (
               Effect.tap(() => tree.completeTask("routes")),
               Effect.tapError(() => tree.failTask("routes")),
             );
-            yield* runAllAndMergeFailures<SdkDestroyAppError, never>([providerDestroy, removeRoutes]);
+            yield* runAllAndMergeFailures<SdkDestroyAppError, PrivateFileAccessService>([
+              providerDestroy,
+              removeRoutes,
+            ]);
           } else {
             yield* events.publish(
               MessageWarnEvent.make({
@@ -151,7 +156,7 @@ export const destroyAppForTarget = (
       timestamp: now(),
     });
     yield* events.publish(postDestroy);
-    yield* runPostAppEvent(plan, "post-destroy", postDestroy);
+    yield* runAppEvent(plan, "post-destroy", postDestroy);
 
     return {
       app: plan.name,

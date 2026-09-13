@@ -11,6 +11,8 @@ test/scenarios/generated/guides/**
 
 # Derived bake-time TypeScript
 /core/src/cli/generated/
+/core/src/cli/allowlists/recipe-post-init.ts
+/docs/reference/recipe-post-init.mdx
 /mcp/src/generated/
 /data-mover/src/generated/provider-images.ts
 /core/src/plugins/generated/

@@ -22,6 +22,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 import { appliedPlanPath } from "../src/applied-state.ts";
 
@@ -183,7 +184,11 @@ const makeProvider = (stateDir: string, dockerApi: DockerApiClient) =>
     makeRuntimeProvider({
       platform: "linux",
       dockerApi,
-      appliedPlanState: makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir)),
+      appliedPlanState: makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(stateDir),
+        ownerOnlyFileAccess,
+      ),
       appliedPlanStateDir: stateDir,
       sanitizeAppliedPlan: (applied) => applied,
     }),

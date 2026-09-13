@@ -1,9 +1,10 @@
-# Node + programmatic Landofile
+# Start a Node app with environment expressions
 
-`lando init --recipe node-ts` scaffolds a single Node service whose Landofile adapts to your environment when the app loads. This is an advanced demo. There are no options beyond the app name.
+`lando init --recipe node-ts` scaffolds a canonical `.lando.yml` with one Node service. The Landofile adapts to your environment when the app loads. There are no options beyond the app name.
 
 ```sh
 lando init --recipe node-ts --name=my-node-ts --yes
+cd my-node-ts
 lando start
 lando info
 ```

@@ -15,6 +15,7 @@ import type {
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
+import type { StateStore } from "@lando/sdk/services";
 
 import { verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { rejectComposeKeys, rejectComposeTags } from "@lando/landofile/compose/rejections";
@@ -92,7 +93,7 @@ const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
  */
 export const appIncludesVerify = (
   options: AppIncludesVerifyOptions = {},
-): Effect.Effect<IncludeVerifyReport, AppIncludesVerifyError, never> =>
+): Effect.Effect<IncludeVerifyReport, AppIncludesVerifyError, StateStore> =>
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
     const filePath = yield* Effect.promise(() => findLandofilePath(cwd));

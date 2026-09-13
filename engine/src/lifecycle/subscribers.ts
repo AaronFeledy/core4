@@ -18,6 +18,7 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { builtInCommandIds, bundledPluginModules } from "../composition.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
@@ -140,6 +141,7 @@ const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> =>
 };
 
 export const makeSubscriberRuntimeLive = (
+  privateFileAccess: PrivateFileAccess,
   modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
   builtIns: ReadonlyArray<string> = builtInCommandIds(),
 ) =>
@@ -181,6 +183,7 @@ export const makeSubscriberRuntimeLive = (
             managedFileService: managedFiles,
             stateStore,
             pluginStateRoot,
+            privateFileAccess,
             publishRender: makePublishRender(events, redaction),
           });
           const getHandler = yield* makeCachedSubscriberHandler(
@@ -215,4 +218,14 @@ export const makeSubscriberRuntimeLive = (
         },
       });
     }),
+  );
+
+export const makeSubscriberRuntimeWithPrivateFileAccessLive = (
+  modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
+  builtIns: ReadonlyArray<string> = builtInCommandIds(),
+) =>
+  Layer.unwrapEffect(
+    Effect.map(PrivateFileAccessService, (privateFileAccess) =>
+      makeSubscriberRuntimeLive(privateFileAccess, modules, builtIns),
+    ),
   );

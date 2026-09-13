@@ -18,11 +18,12 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -33,7 +34,13 @@ export const StopAppResultSchema = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String),
 });
 
-type StopAppServices = AppPlanner | EventService | LandofileService | PathsService | RuntimeProviderRegistry;
+type StopAppServices =
+  | AppPlanner
+  | EventService
+  | LandofileService
+  | PathsService
+  | PrivateFileAccessService
+  | RuntimeProviderRegistry;
 type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
@@ -112,7 +119,7 @@ const stopAppWithResolvedPlan = (
     );
     const postStop = PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() });
     yield* events.publish(postStop);
-    yield* runPostAppEvent(plan, "post-stop", postStop);
+    yield* runAppEvent(plan, "post-stop", postStop);
 
     return {
       result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },

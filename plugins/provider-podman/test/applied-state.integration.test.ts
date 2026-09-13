@@ -14,6 +14,7 @@ import {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "../src/applied-state.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("podman");
 const serviceName = ServiceName.make("web");
@@ -69,7 +70,12 @@ const withStateRoot = async <T>(run: (root: string) => Promise<T>): Promise<T> =
   }
 };
 
-const stateFor = (root: string) => makePluginStateStore(makeStateStore(), AbsolutePath.make(root));
+const stateFor = (root: string) =>
+  makePluginStateStore(
+    makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+    AbsolutePath.make(root),
+    ownerOnlyFileAccess,
+  );
 
 describe("provider-podman applied state", () => {
   test("credential-bearing proxy env round-trips across fresh stores", async () => {

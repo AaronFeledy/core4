@@ -1,6 +1,8 @@
 import { Flags } from "../../../spec/metadata";
 
 import type { IncludeVerifyReport } from "@lando/landofile/includes";
+import type { StateStore } from "@lando/sdk/services";
+import type { AppIncludesVerifyError } from "../../../commands/app-includes-verify";
 import {
   AppIncludesVerifyResultSchema,
   appIncludesVerify,
@@ -17,7 +19,11 @@ const usesJsonFormat = (input: unknown): boolean =>
   "format" in input.flags &&
   input.flags.format === "json";
 
-export const appIncludesVerifySpec: LandoCommandSpec<IncludeVerifyReport> = {
+export const appIncludesVerifySpec: LandoCommandSpec<
+  IncludeVerifyReport,
+  AppIncludesVerifyError,
+  StateStore
+> = {
   resultSchema: AppIncludesVerifyResultSchema,
   id: "app:includes:verify",
   summary: "Verify the includes lockfile matches the resolved tree without updating it.",

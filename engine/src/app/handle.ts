@@ -26,6 +26,7 @@ import type { BuildOrchestrator, LogChunk, RouterService, ShellRunner } from "@l
 import { EventService, Renderer } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { runAppInitEvents } from "../operations/events.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
@@ -44,6 +45,7 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
 export type AppHandleRuntimeServices =
   | LandoRuntimeServices
   | BuildOrchestrator
+  | PrivateFileAccessService
   | RouterService
   | ShellRunner
   | RedactionService;

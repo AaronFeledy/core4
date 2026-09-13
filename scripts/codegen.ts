@@ -13,6 +13,10 @@ import {
 const REPOSITORY_ROOT = resolve(import.meta.dirname, "..");
 const BOOTSTRAP_MODULES = [
   {
+    content: "export const RECIPE_POST_INIT_COMMAND_IDS: readonly string[] = [];\n",
+    path: "core/src/cli/allowlists/recipe-post-init.ts",
+  },
+  {
     content: "export const BUILT_IN_COMMAND_IDS: ReadonlyArray<string> = [];\n",
     path: "core/src/cli/generated/command-ids.ts",
   },

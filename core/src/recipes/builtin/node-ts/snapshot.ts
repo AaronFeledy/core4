@@ -4,7 +4,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const NODE_TS_RECIPE_VERSION = "0.1.0";
 export const NODE_TS_CONTENT_DIGEST =
-  "sha256:df6b7b0ed7834bde8d310b856db4cd798ef8a1d84cea578e3e0ceef2ecd40ec5";
+  "sha256:538a62f8272df47d0d25ea1ffabcb8234ba3ff96bde7e7aa9beb85bad9c67c12";
 
 export const nodeTsProducer: RecipeProducer = {
   sourceKind: "bundled",

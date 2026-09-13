@@ -12,6 +12,7 @@ import {
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
 import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
+import { TestStateStoreLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -68,7 +69,9 @@ describe("lando app:config", () => {
       }),
     });
 
-    const result = await Effect.runPromise(appConfig().pipe(Effect.provide(layer)));
+    const result = await Effect.runPromise(
+      appConfig().pipe(Effect.provide(Layer.merge(layer, TestStateStoreLive))),
+    );
 
     expect(result.app).toBe("test-app-config");
     expect(result.source).toBe("resolved");
@@ -95,7 +98,9 @@ describe("lando app:config", () => {
     });
 
     const result = await Effect.runPromise(
-      appConfig({ subcommand: "get", key: "services.web.type" }).pipe(Effect.provide(layer)),
+      appConfig({ subcommand: "get", key: "services.web.type" }).pipe(
+        Effect.provide(Layer.merge(layer, TestStateStoreLive)),
+      ),
     );
 
     expect(result).toMatchObject({
@@ -137,7 +142,9 @@ describe("lando app:config", () => {
     });
 
     const exit = await Effect.runPromiseExit(
-      appConfig({ subcommand: "bogus" as never }).pipe(Effect.provide(layer)),
+      appConfig({ subcommand: "bogus" as never }).pipe(
+        Effect.provide(Layer.merge(layer, TestStateStoreLive)),
+      ),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);

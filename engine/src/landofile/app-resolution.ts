@@ -2,7 +2,7 @@ import { Effect, Option } from "effect";
 
 import { LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
-import { Renderer } from "@lando/sdk/services";
+import { Renderer, StateStore } from "@lando/sdk/services";
 
 import { type UserAppResolution, makeUserAppResolution } from "@lando/landofile/app-resolution";
 import { LANDOFILE_NAME } from "@lando/landofile/discovery";
@@ -113,11 +113,19 @@ export const makeEngineUserAppResolution = (inputs: LandofileRuntimeInputs): Use
       assertLandoVersionConstraint(landofile, sourcePath === undefined ? undefined : { sourcePath }),
   });
 
-const userAppResolution = (): UserAppResolution => makeEngineUserAppResolution(landofileRuntimeInputs());
+const userAppResolution = (): Effect.Effect<UserAppResolution> =>
+  Effect.map(Effect.serviceOption(StateStore), (stateStore) =>
+    makeEngineUserAppResolution({
+      ...landofileRuntimeInputs(),
+      ...(Option.isSome(stateStore) ? { stateStore: stateStore.value } : {}),
+    }),
+  );
 
 export const loadUserLandofile: UserAppResolution["loadUserLandofile"] = (...args) =>
-  userAppResolution().loadUserLandofile(...args);
+  Effect.flatMap(userAppResolution(), (resolution) => resolution.loadUserLandofile(...args));
 export const loadUserLandofileAt: UserAppResolution["loadUserLandofileAt"] = (...args) =>
-  userAppResolution().loadUserLandofileAt(...args);
-export const loadUserLandofileFile: UserAppResolution["loadUserLandofileFile"] = (...args) =>
-  userAppResolution().loadUserLandofileFile(...args);
+  Effect.flatMap(userAppResolution(), (resolution) => resolution.loadUserLandofileAt(...args));
+export const loadUserLandofileFile = (filePath: string) =>
+  Effect.flatMap(StateStore, (stateStore) =>
+    makeEngineUserAppResolution({ ...landofileRuntimeInputs(), stateStore }).loadUserLandofileFile(filePath),
+  );

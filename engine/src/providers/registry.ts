@@ -23,6 +23,11 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import {
+  type PrivateFileAccess,
+  PrivateFileAccessLive,
+  PrivateFileAccessService,
+} from "@lando/state-store/private-file-access";
 import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
@@ -76,7 +81,10 @@ const toProviderUnavailableFromCapability = (
   });
 };
 
-export const makeRuntimeProviderRegistry = (modules: ReadonlyArray<LandoPluginModule>) => {
+export const makeRuntimeProviderRegistry = (
+  modules: ReadonlyArray<LandoPluginModule>,
+  privateFileAccess: PrivateFileAccess,
+) => {
   const capabilityIndex = makePluginCapabilityIndex(modules);
 
   return Layer.effect(
@@ -169,6 +177,7 @@ export const makeRuntimeProviderRegistry = (modules: ReadonlyArray<LandoPluginMo
             managedFileService,
             stateStore,
             pluginStateRoot,
+            privateFileAccess,
             ...(publishRender === undefined ? {} : { publishRender }),
           });
           const provider = contribution
@@ -198,8 +207,17 @@ export const makeRuntimeProviderRegistry = (modules: ReadonlyArray<LandoPluginMo
   );
 };
 
+export const makeRuntimeProviderRegistryWithPrivateFileAccess = (modules: ReadonlyArray<LandoPluginModule>) =>
+  Layer.unwrapEffect(
+    Effect.map(PrivateFileAccessService, (privateFileAccess) =>
+      makeRuntimeProviderRegistry(modules, privateFileAccess),
+    ),
+  );
+
 export { RuntimeProviderRegistry };
 
 export const RuntimeProviderRegistryLive = Layer.suspend(() =>
-  makeRuntimeProviderRegistry(bundledPluginModules()),
+  makeRuntimeProviderRegistryWithPrivateFileAccess(bundledPluginModules()).pipe(
+    Layer.provide(PrivateFileAccessLive),
+  ),
 );

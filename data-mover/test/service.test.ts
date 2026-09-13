@@ -13,6 +13,7 @@ import {
   __testOnlyUnarchivePayloadWithCap,
 } from "@lando/data-mover/service";
 import { makeTestDataMover } from "@lando/data-mover/testing";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {
@@ -46,7 +47,8 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
-import { StateStoreLive } from "@lando/state-store/service";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");

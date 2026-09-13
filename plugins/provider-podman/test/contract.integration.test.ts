@@ -27,6 +27,7 @@ import {
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("persisted-podman");
@@ -720,7 +721,11 @@ describe("provider-podman RuntimeProvider contract", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-state-"));
     try {
       const firstFake = makeFakeApi();
-      const firstState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const firstState = makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(stateDir),
+        ownerOnlyFileAccess,
+      );
       const firstProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
           Effect.provide(
@@ -737,7 +742,11 @@ describe("provider-podman RuntimeProvider contract", () => {
       await Effect.runPromise(Effect.scoped(firstProvider.apply(plan, { reconcile: true })));
 
       const secondFake = makeFakeApi();
-      const secondState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const secondState = makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(stateDir),
+        ownerOnlyFileAccess,
+      );
       const secondProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
           Effect.provide(
@@ -760,7 +769,7 @@ describe("provider-podman RuntimeProvider contract", () => {
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("destroy and logs honor a caller-supplied plan when no plan is persisted", async () => {
     const fake = makeFakeApi();

@@ -7,7 +7,6 @@ import { Cause, Effect, Exit, Runtime } from "effect";
 import { DownloadFetchError, RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { initApp } from "../../src/cli/commands/init.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
 import {
@@ -17,6 +16,7 @@ import {
   makeTarballRecipeExtractor,
   resolveTarballRecipeSource,
 } from "../../src/recipes/tarball-source.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
 const VALID_RECIPE = `id: remote-recipe
 title: Remote Recipe

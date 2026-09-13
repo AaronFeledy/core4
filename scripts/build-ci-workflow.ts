@@ -90,6 +90,10 @@ ${setupBunSteps}
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
+      - name: Native Windows private-file ACL tests
+        if: startsWith(matrix.platform, 'windows-')
+        run: bun test state-store/test/state-store/private-file-access.test.ts
+
       - name: Lint
         run: bun run lint
 

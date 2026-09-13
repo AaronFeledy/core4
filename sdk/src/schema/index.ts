@@ -109,6 +109,7 @@ export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./mounts.ts";
 export * from "./networking.ts";
+export * from "./route-filter.ts";
 export * from "./notify-config.ts";
 export * from "./plugin.ts";
 export * from "./plugin-doctor.ts";
