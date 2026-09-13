@@ -151,10 +151,15 @@ export interface UrlScannerShape {
   /**
    * Per-service settings come from options.plan.services[name].scanner.
    * Omitting the plan scans with the scanner's own defaults.
+   * When `urls` is provided, those host-facing URLs are probed instead of
+   * rediscovering endpoints from the captured provider.
    */
   readonly scan: (
     appId: AppId,
-    options?: { readonly plan?: AppPlan },
+    options?: {
+      readonly plan?: AppPlan;
+      readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+    },
   ) => Effect.Effect<ScanResult, ScannerError>;
   readonly detectCollisions: (
     appIds: ReadonlyArray<AppId>,

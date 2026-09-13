@@ -7,7 +7,7 @@
 - `@lando/sdk/schema` additively exports `ScannerConfig` (`false` or optional `path`, `okCodes`, `retries`, `timeout`) and `ScanPlan` (resolved `enabled`, `path`, `okCodes`, `retries`, `timeoutMs`). Retries are a budget after the first attempt; timeouts are overall deadlines in milliseconds.
 - `ServiceConfig.scanner` and `GlobalConfig.scanner` additively accept optional `ScannerConfig`. `ServicePlan.scanner` additively accepts optional `ScanPlan`.
 - `AppPlan.router` additively accepts `{ enabled: boolean }`. It stays optional only because persisted cached plans predate the field.
-- `UrlScanner.scan` additively accepts optional `{ plan?: AppPlan }`. Per-service settings come from `plan.services[name].scanner`; omitting the plan uses the scanner's own defaults. `makeTestUrlScanner` records supplied options alongside the app id while preserving calls without options.
+- `UrlScanner.scan` additively accepts optional `{ plan?: AppPlan; urls?: ReadonlyArray<{ service: ServiceName; url: string }> }`. Per-service settings come from `plan.services[name].scanner`; omitting the plan uses the scanner's own defaults. When `urls` is present, those host-facing URLs are probed instead of rediscovering endpoints. `makeTestUrlScanner` records supplied options alongside the app id while preserving calls without options.
 
 - `@lando/sdk/schema` additively exports the `HostTerminal` schema for attached output-terminal facts. `ToolingOptions` and `ToolingInvocation` add optional PTY intent, while `ToolingInvocation` can separately carry an attached `HostTerminal`; omission remains noninteractive for existing embedding, event, and MCP callers.
 
