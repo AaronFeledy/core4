@@ -133,6 +133,7 @@ export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
     service: {
       name: String(input.service.name),
       artifact: artifactBuildInput(input.service.artifact, undefined),
+      environment: providerEnvironment(input.service.environment),
       appMount:
         input.service.appMount === undefined
           ? undefined
