@@ -1,10 +1,8 @@
 #!/usr/bin/env bun
+import type { EventEmitter } from "node:events";
 import { resolve } from "node:path";
 
-import {
-  evaluateWorkflowPerformanceReport,
-  writeWorkflowPerformanceReport,
-} from "./workflow-performance-report.ts";
+import { evaluateWorkflowPerformanceReport } from "./workflow-performance-report.ts";
 import { runWorkflowPerformance } from "./workflow-performance-runner.ts";
 
 type CliOptions = {
@@ -97,8 +95,15 @@ const parseOptions = (args: readonly string[]): CliOptions => {
 
 const main = async (args: readonly string[]): Promise<void> => {
   const options = parseOptions(args);
-  const report = await runWorkflowPerformance(options);
-  await writeWorkflowPerformanceReport(report, options.report);
+  const controller = new AbortController();
+  const interrupt = () => controller.abort();
+  const signals: EventEmitter = process;
+  signals.on("SIGINT", interrupt);
+  signals.on("SIGTERM", interrupt);
+  const report = await runWorkflowPerformance({ ...options, signal: controller.signal }).finally(() => {
+    signals.removeListener("SIGINT", interrupt);
+    signals.removeListener("SIGTERM", interrupt);
+  });
   const evaluation = evaluateWorkflowPerformanceReport(report);
   process.stdout.write(`${JSON.stringify({ report: options.report, ...evaluation })}\n`);
   process.exitCode = evaluation.exitCode;
