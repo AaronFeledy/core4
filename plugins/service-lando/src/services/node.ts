@@ -4,6 +4,7 @@ import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
@@ -11,6 +12,7 @@ export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
 
 export const NODE_FEATURE_ID = "service-lando.node" as const;
 export const NODE_FEATURE_PRIORITY = 600;
+export const NODE_GLOBALS_STEP_ID = "service-lando.node:globals" as const;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
@@ -38,6 +40,15 @@ const validateVersion = (
 };
 
 const configFor = (ctx: ServiceFeatureContext): NodeFeatureConfig => ctx.config as NodeFeatureConfig;
+
+export const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
+  [
+    "set -eux",
+    [
+      "npm install -g --no-fund --no-audit",
+      ...entries.map(([name, version]) => shellSingleQuote(`${name}@${version}`)),
+    ].join(" "),
+  ].join(" && ");
 
 const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -70,6 +81,16 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   addServicePortEndpoints(ctx, { port, protocol: "http" });
 
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  const globals = normalizeNpmGlobals(service.globals);
+  if (globals.length > 0) {
+    ctx.addBuildStep({
+      id: NODE_GLOBALS_STEP_ID,
+      phase: "build",
+      command: nodeGlobalsCommandFor(globals),
+      user: "root",
+      buildKeyInputs: { globals },
+    });
+  }
 };
 
 export const nodeServiceFeature: ServiceFeatureDefinition = {
@@ -103,6 +124,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
     Effect.try({
       try: () => {
         const resolvedVersion = validateVersion(input.service.type, version);
+        normalizeNpmGlobals(input.service.globals);
 
         return {
           base: "lando" as const,
