@@ -388,6 +388,7 @@ import {
   UpdateManifestSemver,
   UpdateManifestSha256,
 } from "./update-manifest.ts";
+import { VolumeIdentity } from "./volume-identity.ts";
 
 const catalogServiceSchemaRegistry = {
   DotnetServiceConfig,
@@ -548,6 +549,7 @@ const basePublicSchemaRegistry = {
   DataEndpoint,
   VolumeRef,
   VolumeInfo,
+  VolumeIdentity,
   VolumeFilter,
   VolumeSnapshotSpec,
   VolumeSnapshotRef,
@@ -977,6 +979,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   DataEndpoint: "Public Lando schema contract for Data Endpoint.",
   VolumeRef: "Public Lando schema contract for Volume Ref.",
   VolumeInfo: "Public Lando schema contract for Volume Info.",
+  VolumeIdentity: "Owner-bound observed physical volume generation.",
   VolumeFilter: "Public Lando schema contract for Volume Filter.",
   VolumeSnapshotSpec: "Public Lando schema contract for Volume Snapshot Spec.",
   VolumeSnapshotRef: "Public Lando schema contract for Volume Snapshot Ref.",

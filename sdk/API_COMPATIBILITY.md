@@ -4,6 +4,10 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/schema` additively exports `VolumeIdentity`; `VolumeInfo.identity` is optional. Its `coordinationKey` identifies a daemon namespace and native volume name, not an app slug, root, or generation. `generation` changes on recreation. `ownerRoot` binds the generation to a canonical app root. `origin: adopted` must never establish creation history or freshness.
+- Bundled Docker and Podman volume creation requests attach `dev.lando.volume-owner` from `AppPlan.identity.appRoot` alongside the existing random creation label. Plans without canonical identity do not receive an inferred owner label. An idempotent create response does not itself establish freshness; subsequent observation reads the stored labels, not the submitted token.
+- `RuntimeProviderShape.observeVolume(target, destination)` is optional. Bundled providers resolve the existing container identity, inspect its actual mount at the requested destination, then inspect that native volume. Missing containers, missing or ambiguous destinations, bind mounts, malformed responses, and disappeared volumes fail closed. An identity is returned only when both creation and owner labels and a daemon `/info` ID are observed. Legacy observations retain legacy provenance without an invented creation ID. A missing method or identity does not authorize recovery. This read-only observation is not a lock or mutation precondition; callers must not use it as a substitute for a generation check at mutation time. Witnessed adoption and guarded mutation are not implemented by this observation adapter.
+
 - `@lando/sdk/schema` additively exports `SnapshotMetadata`; `VolumeInfo` additively gains optional physical instance identity and provenance, snapshot options and records additively gain optional recovery metadata, and `ServiceRuntimeInfo` additively gains optional image identity. `@lando/sdk/errors` additively exports `SnapshotOwnershipError`, `SqlRecoveryOperationError`, `SqlRecoveryUnavailableError`, `SqlSeedSourceError`, and `SqlSeedStateError`. `StateStore` additively gains `withLock(key, body)` for host-wide advisory locking of scoped operations.
 
 - `RouteInput` accepts non-empty shorthand strings or `RouteObjectInput` objects. Objects and `RoutePlan` accept ordered `RouteFilter` arrays; `name` is layer-merge identity, while header filters use `header`. `LandofileService.discover` additively includes `RouteInputError` in its error channel so load and plan callers share one union.
@@ -571,6 +575,7 @@
 - `SnapshotOptions`
 - `VolumeFilter`
 - `VolumeInfo`
+- `VolumeIdentity`
 - `VolumeRef`
 - `VolumeRestoreSpec`
 - `VolumeSnapshotRef`
@@ -588,6 +593,7 @@
 - `McpConfig`
 - `McpServeOptions`
 - `AgentEnvConfig`
+- `AppIdentity`
 - `NotifyConfig`
 - `NotifyCommandId`
 - `RendererCapabilities`

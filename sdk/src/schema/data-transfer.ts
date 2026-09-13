@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { StorageScope } from "./mounts.ts";
 import { AbsolutePath, AppId, CommandSpec, PortablePath, ServiceName } from "./primitives.ts";
+import { VolumeIdentity } from "./volume-identity.ts";
 
 /**
  * Archive container format for `hostArchive` endpoints and `copy`-mode volume
@@ -60,6 +61,9 @@ export type VolumeRef = typeof VolumeRef.Type;
  */
 export const VolumeInfo = Schema.Struct({
   ref: VolumeRef,
+  identity: Schema.optional(VolumeIdentity).annotations({
+    description: "Owner-bound physical identity; absent facts must not authorize physical recovery.",
+  }),
   instanceId: Schema.optional(Schema.String).annotations({
     description: "Provider-observed identity for this physical volume creation.",
   }),

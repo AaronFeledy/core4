@@ -182,6 +182,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   DataEndpoint: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  VolumeIdentity: "sdk/test/schema/volume-identity.test.ts",
   VolumeFilter: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeSnapshotSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   VolumeSnapshotRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
