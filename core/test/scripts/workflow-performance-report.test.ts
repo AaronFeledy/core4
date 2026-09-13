@@ -47,6 +47,17 @@ const report = (samples: readonly WorkflowPerformanceSample[]): WorkflowPerforma
 });
 
 describe("workflow performance report", () => {
+  test.each(["running", "interrupted", "failed"] as const)(
+    "fails %s reports even before any lane completes",
+    (status) => {
+      const decoded = decodeWorkflowPerformanceReport({ ...report([]), lanes: [], status });
+      expect(evaluateWorkflowPerformanceReport(decoded).exitCode).toBe(1);
+      expect(
+        evaluateWorkflowPerformanceReport(decodeWorkflowPerformanceReport(report([sample(0, "passed", 10)])))
+          .exitCode,
+      ).toBe(0);
+    },
+  );
   test("excludes failed samples from statistics and keeps timing advisory", () => {
     const samples = [sample(0, "passed", 10), sample(1, "failed", 1), sample(2, "passed", 30)];
     expect(statisticsForSamples(samples)).toEqual({

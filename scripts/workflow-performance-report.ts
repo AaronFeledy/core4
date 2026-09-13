@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Schema } from "effect";
@@ -68,6 +68,8 @@ const LaneSchema = Schema.Struct({
 
 export const WorkflowPerformanceReportSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
+  status: Schema.optional(Schema.Literal("running", "completed", "interrupted", "failed")),
+  failure: Schema.optional(Schema.String),
   series: SeriesSchema,
   run: RunSchema,
   versions: VersionsSchema,
@@ -115,6 +117,7 @@ export const decodeWorkflowPerformanceReport = (input: unknown): WorkflowPerform
 export const evaluateWorkflowPerformanceReport = (
   report: WorkflowPerformanceReport,
 ): { readonly exitCode: 0 | 1; readonly reason: string } =>
+  (report.status !== undefined && report.status !== "completed") ||
   report.lanes.some(
     (laneReport) =>
       laneReport.outcome === "failed" || laneReport.samples.some((sample) => sample.outcome === "failed"),
@@ -128,5 +131,25 @@ export const writeWorkflowPerformanceReport = async (
 ): Promise<void> => {
   const decoded = decodeWorkflowPerformanceReport(report);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(decoded, null, 2)}\n`);
+  const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+  try {
+    const file = await open(temporary, "wx", 0o600);
+    try {
+      await file.writeFile(`${JSON.stringify(decoded, null, 2)}\n`);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await rename(temporary, path);
+    if (process.platform !== "win32") {
+      const directory = await open(dirname(path), "r");
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
+    }
+  } finally {
+    await rm(temporary, { force: true });
+  }
 };
