@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
+import { renderTraefikDiagnosticHtml, renderTraefikDiagnosticNginxConfig } from "../../src/diagnostics.ts";
 import diagnostics from "../../src/global-services/diagnostics.ts";
 import { buildTraefikServiceConfig } from "../../src/global-services/traefik.ts";
 
@@ -14,8 +15,8 @@ test("global diagnostic contribution prepares assets before the service can star
   try {
     const config = await Effect.runPromise(diagnostics);
     const directory = join(root, "global/proxy-traefik/diagnostic");
-    expect(await readFile(join(directory, "nginx.conf"), "utf8")).toContain("listen 8080");
-    expect(await readFile(join(directory, "404.html"), "utf8")).toContain("<!doctype html>");
+    expect(await readFile(join(directory, "nginx.conf"), "utf8")).toBe(renderTraefikDiagnosticNginxConfig());
+    expect(await readFile(join(directory, "404.html"), "utf8")).toBe(renderTraefikDiagnosticHtml());
     expect(config.healthcheck).toMatchObject({ kind: "command" });
     expect(buildTraefikServiceConfig({ http: 8080, https: 8443 }).dependsOn).toEqual([
       { service: "traefik-diagnostics", condition: "service_healthy", required: true },

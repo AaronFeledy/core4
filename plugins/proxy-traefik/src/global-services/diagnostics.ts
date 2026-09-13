@@ -30,13 +30,33 @@ export const prepareTraefikDiagnostics = ({
   });
 
 export const TRAEFIK_DIAGNOSTICS_IMAGE = "nginx:1.26-alpine" as const;
+export const TRAEFIK_DIAGNOSTICS_COMMAND: ReadonlyArray<string> = [
+  "nginx",
+  "-c",
+  `${TRAEFIK_DIAGNOSTICS_CONTAINER_DIR}/nginx.conf`,
+  "-g",
+  "daemon off;",
+];
+// The backend answers every request with 404, so a 404 from the loopback is
+// the readiness signal.
+export const TRAEFIK_DIAGNOSTICS_HEALTHCHECK = {
+  kind: "command",
+  command: [
+    "sh",
+    "-c",
+    `wget -q -S -O /dev/null http://127.0.0.1:${TRAEFIK_DIAGNOSTICS_PORT}/ 2>&1 | grep -q 'HTTP/1.1 404'`,
+  ],
+  intervalSeconds: 1,
+  timeoutSeconds: 2,
+  retries: 30,
+} as const;
 
 const diagnosticsServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   api: 4,
   type: "compose",
   image: TRAEFIK_DIAGNOSTICS_IMAGE,
   appMount: false,
-  command: ["nginx", "-c", `${TRAEFIK_DIAGNOSTICS_CONTAINER_DIR}/nginx.conf`, "-g", "daemon off;"],
+  command: TRAEFIK_DIAGNOSTICS_COMMAND,
   mounts: [
     {
       type: "bind",
@@ -47,13 +67,7 @@ const diagnosticsServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   ],
   endpoints: [{ _tag: "internal", protocol: "http", port: TRAEFIK_DIAGNOSTICS_PORT }],
   hostnames: [TRAEFIK_DIAGNOSTICS_HOSTNAME],
-  healthcheck: {
-    kind: "command",
-    command: ["sh", "-c", "wget -q -S -O /dev/null http://127.0.0.1:8080/ 2>&1 | grep -q 'HTTP/1.1 404'"],
-    intervalSeconds: 1,
-    timeoutSeconds: 2,
-    retries: 30,
-  },
+  healthcheck: TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
   environment: {},
 });
 

@@ -27,6 +27,20 @@ export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
+export {
+  TRAEFIK_DIAGNOSTICS_COMMAND,
+  TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
+  TRAEFIK_DIAGNOSTICS_IMAGE,
+} from "./global-services/diagnostics.ts";
+export {
+  TRAEFIK_DIAGNOSTICS_CONTAINER_DIR,
+  TRAEFIK_DIAGNOSTICS_HOSTNAME,
+  TRAEFIK_DIAGNOSTICS_ID,
+  TRAEFIK_DIAGNOSTICS_PORT,
+  renderTraefikDiagnosticHtml,
+  renderTraefikDiagnosticNginxConfig,
+  renderTraefikFallbackConfig,
+} from "./diagnostics.ts";
 export const routerServices = new Map([["traefik", proxy]]);
 
 export const globalServices: ReadonlyMap<string, GlobalServiceContributionEffect> = new Map([
