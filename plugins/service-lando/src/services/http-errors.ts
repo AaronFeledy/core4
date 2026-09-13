@@ -1,6 +1,6 @@
 export const LANDO_ERROR_PAGE_DIR = "/usr/share/lando/errors" as const;
 
-const errorPage = (status: 403 | 404): string => {
+export const landoErrorPage = (status: 403 | 404): string => {
   const title = status === 403 ? "Access denied" : "Page not found";
   const explanation =
     status === 403
@@ -37,10 +37,10 @@ const errorPage = (status: 403 | 404): string => {
 export const landoErrorPageSetupLines = (): ReadonlyArray<string> => [
   `mkdir -p ${LANDO_ERROR_PAGE_DIR}`,
   `cat > ${LANDO_ERROR_PAGE_DIR}/403.html <<'LANDO_ERROR_403'`,
-  errorPage(403),
+  landoErrorPage(403),
   "LANDO_ERROR_403",
   `cat > ${LANDO_ERROR_PAGE_DIR}/404.html <<'LANDO_ERROR_404'`,
-  errorPage(404),
+  landoErrorPage(404),
   "LANDO_ERROR_404",
 ];
 
