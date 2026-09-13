@@ -3,6 +3,34 @@ import { describe, expect, test } from "bun:test";
 import { LANDO_LOGO_WIDTHS, pickLandoLogoWidth, renderLandoLogo } from "../src/logo.ts";
 
 describe("Lando logo artwork", () => {
+  test("preserves the original mark's broad orbit, cutouts, and outer ring", () => {
+    const { lines } = renderLandoLogo(64);
+    const masks = [
+      [1, 8],
+      [2, 16],
+      [4, 32],
+      [64, 128],
+    ] as const;
+    // Landmarks read from the supplied 282x282 original, independent of the
+    // fitted ellipses. The previous thin orbit left the broad lower edge empty.
+    for (const [x, y, ink] of [
+      [58, 171, true],
+      [72, 174, true],
+      [222, 127, true],
+      [233, 120, true],
+      [213, 110, false],
+      [64, 151, false],
+      [141, 14, true],
+      [141, 24, false],
+    ] as const) {
+      const column = Math.floor((x / 282) * 128);
+      const row = Math.floor((y / 282) * 128);
+      const cell = lines[Math.floor(row / 4)]?.charCodeAt(Math.floor(column / 2)) ?? 0x2800;
+      const bit = masks[row % 4]?.[column % 2] ?? 0;
+      expect(Boolean((cell - 0x2800) & bit)).toBe(ink);
+    }
+  });
+
   test("small planets do not grow narrow caps at their top and bottom", () => {
     // These center-adjacent pixels formed two-dot spikes with the old 2x2 sampling.
     for (const [width, capRow] of [

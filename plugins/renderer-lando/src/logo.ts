@@ -16,30 +16,35 @@ const BRAILLE_DOTS = [
 // adds to small planets. Use the same sampling grid at every icon size.
 const SAMPLE_OFFSETS = [-0.375, -0.125, 0.125, 0.375] as const;
 
-/** Rasterize the planet, enclosing circle, and 20-degree rising orbit into 2x4-dot cells. */
+// Geometry measured from the original 282x282 Lando mark, centered at (141, 141).
+// The orbit is a crescent: an offset cutout gives it tapered tips and a broad
+// lower edge. A uniformly stroked ellipse loses that defining shape.
+const ORBIT_COSINE = Math.cos((16.4 * Math.PI) / 180);
+const ORBIT_SINE = Math.sin((16.4 * Math.PI) / 180);
+
+const insideEllipse = (x: number, y: number, major: number, minor: number): boolean => {
+  const u = x * ORBIT_COSINE - y * ORBIT_SINE;
+  const v = x * ORBIT_SINE + y * ORBIT_COSINE;
+  return (u / major) ** 2 + (v / minor) ** 2 < 1;
+};
+
+const hasInk = (x: number, y: number, planetRadius: number): boolean => {
+  const distanceSquared = x * x + y * y;
+  if (distanceSquared > 141 ** 2) return false;
+  return (
+    distanceSquared >= 123 ** 2 ||
+    distanceSquared < planetRadius ** 2 ||
+    (insideEllipse(x + 0.4, y + 0.6, 126.7, 34.3) && !insideEllipse(x + 3.95, y + 12.1, 91.05, 23.75))
+  );
+};
+
+/** Rasterize the original mark's planet, enclosing circle, and tapered orbit into 2x4-dot cells. */
 export const renderLandoLogo = (width: (typeof LANDO_LOGO_WIDTHS)[number]) => {
   const height = width / 2;
-  const radius = width - 0.65;
-  const cosine = Math.cos(Math.PI / 9);
-  const sine = Math.sin(Math.PI / 9);
-  // Minimum readable strokes, then continuous proportional growth.
-  const outline = Math.max(0.48, radius * 0.052);
-  const orbit = Math.max(0.52, radius * 0.056);
-  const major = radius * 0.99;
-  const minor = radius * 0.24;
-
-  const hasInk = (x: number, y: number): boolean => {
-    const distance = Math.hypot(x, y);
-    const u = x * cosine - y * sine;
-    const v = x * sine + y * cosine;
-    const ellipse = Math.sqrt((u * u) / major ** 2 + (v * v) / minor ** 2);
-    const gradient = Math.sqrt((u * u) / major ** 4 + (v * v) / minor ** 4) / (ellipse || 1);
-    return (
-      Math.abs(distance - radius) < outline ||
-      distance < radius * 0.47 ||
-      Math.abs(ellipse - 1) / (gradient || 1) < orbit
-    );
-  };
+  const scale = 141 / width;
+  // At small sizes, pull the planet edge inward by up to one third of a dot
+  // to avoid two-dot caps. The optical correction tapers to zero at 16 columns.
+  const planetRadius = 65 - Math.max(0, (16 - width) / 24) * scale;
 
   const lines = Array.from({ length: height }, (_, row) =>
     Array.from({ length: width }, (_, column) => {
@@ -49,7 +54,9 @@ export const renderLandoLogo = (width: (typeof LANDO_LOGO_WIDTHS)[number]) => {
         const y = row * 4 + dy - (height * 4 - 1) / 2;
         let coverage = 0;
         for (const ox of SAMPLE_OFFSETS) {
-          for (const oy of SAMPLE_OFFSETS) coverage += Number(hasInk(x + ox, y + oy));
+          for (const oy of SAMPLE_OFFSETS) {
+            coverage += Number(hasInk((x + ox) * scale, (y + oy) * scale, planetRadius));
+          }
         }
         if (coverage >= 8) mask |= bit;
       }
