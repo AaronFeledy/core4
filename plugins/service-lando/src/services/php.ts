@@ -133,14 +133,10 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
     if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
   }
-  const composerPackagesStep = phpComposerPackagesBuildStep(
-    composerRelease,
-    resolvePhpComposerPackages(service.composer),
-    {
-      dependsOnComposerStep: service.image === undefined && composerRelease !== false,
-      composerStepId: PHP_COMPOSER_STEP_ID,
-    },
-  );
+  const composerPackagesStep = phpComposerPackagesBuildStep(resolvePhpComposerPackages(service.composer), {
+    dependsOnComposerStep: service.image === undefined && composerRelease !== false,
+    composerStepId: PHP_COMPOSER_STEP_ID,
+  });
   if (composerPackagesStep !== undefined) ctx.addBuildStep(composerPackagesStep);
   if (xdebug !== false) {
     for (const [name, value] of Object.entries(phpXdebugConfigEnv())) {

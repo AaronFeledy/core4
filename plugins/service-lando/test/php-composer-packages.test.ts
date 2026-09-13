@@ -6,7 +6,6 @@ import type { ServiceType } from "@lando/sdk/services";
 
 import { PHP_COMPOSER_RELEASES } from "../src/services/php-prerequisites.ts";
 import {
-  PHP_COMPOSER,
   PHP_COMPOSER_COMMAND,
   PHP_COMPOSER_PACKAGES_STEP_ID,
   PHP_COMPOSER_STEP_ID,
@@ -77,7 +76,7 @@ describe("composer object form", () => {
     // Given a PHP service authoring the object form with two packages,
     // when the plan is composed,
     // then one root-owned step installs them in sorted order after the
-    // Composer binary step and hashes the release plus the normalized list.
+    // Composer binary step and hashes the normalized package list.
     const plan = await composePhpPlan({
       composer: {
         version: "2",
@@ -95,7 +94,6 @@ describe("composer object form", () => {
       "set -eux && COMPOSER_HOME=/usr/local/composer COMPOSER_BIN_DIR=/usr/local/bin COMPOSER_ALLOW_SUPERUSER=1 COMPOSER_NO_INTERACTION=1 composer global require --no-progress 'phpstan/phpstan:^1.11' 'squizlabs/php_codesniffer:^3.10' && chmod -R a+rX /usr/local/composer",
     );
     expect(step?.buildKeyInputs).toEqual({
-      composer: PHP_COMPOSER,
       packages: [
         ["phpstan/phpstan", "^1.11"],
         ["squizlabs/php_codesniffer", "^3.10"],

@@ -1,7 +1,6 @@
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { type PackageEntry, normalizeComposerPackages, shellSingleQuote } from "./_package-specs.ts";
-import type { PhpComposerRelease } from "./php-prerequisites.ts";
 
 export const PHP_COMPOSER_PACKAGES_STEP_ID = "service-lando.php:composer-packages" as const;
 
@@ -23,7 +22,7 @@ export const resolvePhpComposerPackages = (value: unknown): ReadonlyArray<Packag
   return normalizeComposerPackages((value as { readonly packages?: unknown }).packages);
 };
 
-export const composerPackagesCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
+const composerPackagesCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
   [
     "set -eux",
     [
@@ -40,12 +39,11 @@ export const composerPackagesCommandFor = (entries: ReadonlyArray<PackageEntry>)
 /**
  * Build the global Composer package install step, or `undefined` when no
  * packages were authored. `dependsOnComposerStep` is false when a custom image
- * supplies its own Composer and the Lando-managed install is skipped. The
- * unused release is omitted from this step's build key; the Composer install
- * step already hashes the pin when Lando actually installs it.
+ * supplies its own Composer and the Lando-managed install is skipped. Package
+ * identity is the normalized list; the Composer install step hashes the pin
+ * when Lando actually installs it.
  */
 export const phpComposerPackagesBuildStep = (
-  release: PhpComposerRelease | false,
   entries: ReadonlyArray<PackageEntry>,
   options: { readonly dependsOnComposerStep: boolean; readonly composerStepId: string },
 ): ServiceBuildStepIntent | undefined => {
@@ -56,9 +54,6 @@ export const phpComposerPackagesBuildStep = (
     command: composerPackagesCommandFor(entries),
     user: "root",
     ...(options.dependsOnComposerStep ? { dependsOn: [options.composerStepId] } : {}),
-    buildKeyInputs: {
-      ...(options.dependsOnComposerStep && release !== false ? { composer: release } : {}),
-      packages: entries,
-    },
+    buildKeyInputs: { packages: entries },
   };
 };
