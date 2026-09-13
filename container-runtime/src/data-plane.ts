@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { type MountedVolumeTarget, observeMountedVolume } from "./volume-observation.ts";
+export { volumeCreationOwnerLabels } from "./volume-observation.ts";
 
 import { Effect, Fiber, type Scope, Stream } from "effect";
 
@@ -624,6 +626,7 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
 
 export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
   return {
+    observeVolume: (target: MountedVolumeTarget) => observeMountedVolume(options, target),
     run: (spec: EphemeralRunSpec): Effect.Effect<ExecResult, ProviderError, Scope.Scope> =>
       runBytes(options, { ...spec, captureStdout: spec.captureStdout ?? false }).pipe(
         Effect.map(({ exitCode, stdout, stderr }) => ({

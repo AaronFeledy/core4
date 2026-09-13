@@ -64,6 +64,10 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
 });
 
 const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
+  observeVolume: (target) => {
+    calls.push({ name: "observeVolume", args: [target] });
+    return Effect.succeed({ ref: { app: target.app, store: "actual-native-volume" }, provenance: "legacy" });
+  },
   run: (spec) => {
     calls.push({ name: "run", args: [spec] });
     return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
@@ -123,6 +127,44 @@ const makeInput = (
 };
 
 describe("resolved provider operations", () => {
+  test("observes a volume through the existing container identity and destination", async () => {
+    const calls: Call[] = [];
+    const input = makeInput(calls);
+    const ops = makeResolvedProviderOps({
+      ...input,
+      service: {
+        ...input.service,
+        inspect: () =>
+          Effect.succeed({
+            app,
+            service,
+            providerId: ProviderId.make("test"),
+            status: "stopped",
+            containerId: "observed-id",
+          }),
+      },
+    });
+    if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
+    const destination = PortablePath.make("/var/lib/mysql");
+    const result = await Effect.runPromise(ops.observeVolume(target, destination));
+    expect(result.ref.store).toBe("actual-native-volume");
+    expect(calls).toEqual([
+      { name: "before", args: [] },
+      { name: "observeVolume", args: [{ app, containerId: "observed-id", destination }] },
+    ]);
+  });
+
+  test("rejects volume observation when inspection has no existing container identity", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
+    const result = await Effect.runPromise(
+      Effect.either(ops.observeVolume(target, PortablePath.make("/data"))),
+    );
+    expect(result._tag).toBe("Left");
+    expect(calls.some((call) => call.name === "observeVolume")).toBe(false);
+  });
+
   test("resolves plans before before-effects and service delegation", async () => {
     // Given
     const calls: Call[] = [];

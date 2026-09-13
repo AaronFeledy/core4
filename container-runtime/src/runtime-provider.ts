@@ -67,6 +67,7 @@ export type ResolvedProviderOps = Pick<
   | "snapshotVolume"
   | "restoreVolume"
   | "listVolumes"
+  | "observeVolume"
   | "removeVolume"
   | "copyToService"
   | "copyFromService"
@@ -135,6 +136,19 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     execStream: (target, command) =>
       resolveTargetStream(target, "execStream", (plan) => input.service.execStream(plan, target, command)),
     inspect: (target) => resolveTarget(target, "inspect", (plan) => input.service.inspect(plan, target)),
+    observeVolume: (target, destination) =>
+      resolveTarget(target, "observeVolume", (plan) =>
+        Effect.gen(function* () {
+          const runtime = yield* input.service.inspect(plan, target);
+          if (!runtime.containerId) return yield* Effect.fail(unavailable("observeVolume"));
+          const dataPlane = yield* requireDataPlane("observeVolume");
+          return yield* dataPlane.observeVolume({
+            app: target.app,
+            containerId: runtime.containerId,
+            destination,
+          });
+        }),
+      ),
     run: (spec) =>
       requireDataPlane("run").pipe(
         Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.run(spec)))),
