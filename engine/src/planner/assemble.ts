@@ -141,7 +141,6 @@ export const planApp = (
   | NotImplementedError
   | PublicationUnsupportedError
   | CommandAliasConflictError
-  | HomePathCapabilityError
   | ConfigExpressionError
   | LandofileUnknownEventError
 > => {

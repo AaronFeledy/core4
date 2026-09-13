@@ -124,13 +124,13 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
   );
   const landofile = {
     name: "effective-tooling-cache",
-    services: { [ServiceName.make("web")]: { type: serviceType.id } },
+    services: { [ServiceName.make("web")]: { type: serviceType.id, home: false as const } },
   };
 
   try {
     await writeFile(
       join(appRoot, ".lando.yml"),
-      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n",
+      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n    home: false\n",
     );
     const runPlan = () =>
       Effect.runPromise(
@@ -234,12 +234,12 @@ const phpPlannerLayer = (serviceType: ServiceType) => {
 
 const phpLandofile = (name: string, tooling?: PhpTooling) => ({
   name,
-  services: { [ServiceName.make("web")]: { type: "php" } },
+  services: { [ServiceName.make("web")]: { type: "php", home: false as const } },
   ...(tooling === undefined ? {} : { tooling }),
 });
 
 const phpYaml = (name: string, toolingYaml = ""): string =>
-  `name: ${name}\nservices:\n  web:\n    type: php\n${toolingYaml}`;
+  `name: ${name}\nservices:\n  web:\n    type: php\n    home: false\n${toolingYaml}`;
 
 const withTempPlannerApp = async (yaml: string, run: () => Promise<void>): Promise<void> => {
   const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-reserved-tooling-plan-")));

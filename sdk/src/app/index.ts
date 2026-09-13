@@ -224,7 +224,6 @@ export type StartAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
-  | HomePathCapabilityError
   | ConfigExpressionError
   | HomePathCapabilityError
   | PublicationUnsupportedError
@@ -275,7 +274,6 @@ export type StopAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
-  | HomePathCapabilityError
   | ConfigExpressionError
   | HomePathCapabilityError
   | PublicationUnsupportedError
@@ -393,7 +391,6 @@ export type InfoAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
-  | HomePathCapabilityError
   | ConfigExpressionError
   | HomePathCapabilityError
   | PublicationUnsupportedError
@@ -449,7 +446,6 @@ export type ExecAppError =
   | ProviderError
   | ProviderUnavailableError
   | CommandAliasConflictError
-  | HomePathCapabilityError
   | ConfigExpressionError
   | ToolingExecError;
 
@@ -508,7 +504,6 @@ export type ToolingError =
   | ShellExecError
   | ShellScriptOutsideRootError
   | CommandAliasConflictError
-  | HomePathCapabilityError
   | ConfigExpressionError
   | ToolingCompileError
   | ToolingDisabledError
@@ -541,7 +536,6 @@ export type LogsAppError =
   | NotImplementedError
   | CapabilityError
   | CommandAliasConflictError
-  | HomePathCapabilityError
   | ConfigExpressionError
   | HomePathCapabilityError
   | PublicationUnsupportedError

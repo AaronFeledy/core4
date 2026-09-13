@@ -1,9 +1,8 @@
-name: external-access-demo
+name: home-and-host-explicit-path
 services:
   web:
     type: compose
     image: traefik/whoami:v1.10
-    home: false
     primary: true
-    ports:
-      - 0.0.0.0:8080:80
+    home:
+      path: /home/whoami
