@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `createRedactor` accepts optional `authoritativeValues`; `createSecretRedactor` accepts them as an optional second argument. Explicit short numeric or control-parameter values suppress the whole affected detail, including bounded output and nested error messages. Existing heuristic `values` filtering is unchanged. `@lando/redaction` supplies authoritative SecretStore values through this canonical primitive.
+
 - `RouteInput` accepts non-empty shorthand strings or `RouteObjectInput` objects. Objects and `RoutePlan` accept ordered `RouteFilter` arrays; `name` is layer-merge identity, while header filters use `header`. `LandofileService.discover` additively includes `RouteInputError` in its error channel so load and plan callers share one union.
 
 - `AppPlanner.plan` additively includes `RouteInputError` in its error channel: authored routes are normalized (shorthand parsed, filters attached) before planning, and an invalid route fails the plan with its authored key path and remediation. The frozen service signature is updated.
