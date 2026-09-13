@@ -36,6 +36,8 @@ Forwarded markers are the lowest-precedence layer. Configured service env and ex
 
 While a service shell is interactive: stdin is attached, stdout and stderr stream back, terminal resize (`SIGWINCH`) updates the running shell, and Ctrl-C cancels the exec stream.
 
+PTY allocation and host-terminal detection are separate. `lando exec`, `lando ssh`, and service tooling borrow attached stdout facts such as `TERM`, `COLORTERM`, width, and height only when stdout is a real terminal. Redirected output and MCP calls do not gain terminal identity from a stream sink. An explicit PTY request still allocates a provider PTY through a pipe, using provider-safe size defaults without inventing `TERM` or `COLORTERM`.
+
 ## Use host-mode REPL
 
 Host mode reads one line at a time and evaluates it as a Bun Shell template. Each accepted line composes with pipes, redirection, globs, command substitution, and built-ins (`rm`/`mkdir`/`cat`/`mv`/`which`) the same way on Linux, macOS, and Windows. A blank line re-prompts without evaluating anything.
