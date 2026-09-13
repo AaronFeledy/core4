@@ -1,6 +1,6 @@
 import { Effect, Exit, Layer, Schema, Stream } from "effect";
 
-import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -617,6 +617,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       ? undefined
       : makeProviderDataPlane({
           providerId: LANDO_CTX.providerId,
+          prepareWitnessImage: runtimePullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
+            ctx: LANDO_CTX,
+            dialect: libpodPullDialect,
+          }),
+          ...(socketPath === undefined
+            ? {}
+            : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
           api: podmanApi,
           snapshotMode: "native",
           redactDetails,

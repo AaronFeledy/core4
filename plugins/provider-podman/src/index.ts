@@ -12,7 +12,7 @@
 import { readFile } from "node:fs/promises";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
-import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
@@ -678,6 +678,11 @@ export const makeRuntimeProvider = (
   );
   const dataPlane = makeProviderDataPlane({
     providerId: PROVIDER_ID,
+    endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
+    prepareWitnessImage: pullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
+      ctx: PODMAN_CTX,
+      dialect: libpodPullDialect,
+    }),
     api: podmanApi,
     snapshotMode: "copy",
     redactDetails,
