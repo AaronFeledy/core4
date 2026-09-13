@@ -1,13 +1,15 @@
 import { Effect } from "effect";
 
-import type { RouterConfig } from "@lando/sdk/schema";
+import type { AppPlan, RouterConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 const DEFAULT_HTTP_PORTS = [80, 8080, 8000, 8888, 8008, 38080] as const;
 const DEFAULT_HTTPS_PORTS = [443, 8443, 4443, 4433, 4444, 444, 38443] as const;
 const DEFAULT_BIND_ADDRESS = "127.0.0.1";
+const DEFAULT_ENABLED = true;
 
 type MergedRouterConfig = {
+  readonly enabled: boolean;
   readonly httpPorts: readonly [number, ...number[]];
   readonly httpsPorts: readonly [number, ...number[]];
   readonly bindAddress: string;
@@ -31,6 +33,7 @@ const overlayPorts = (
 const overlayRouter = (prior: MergedRouterConfig, overlay: RouterConfig | undefined): MergedRouterConfig => {
   if (overlay === undefined) return prior;
   return {
+    enabled: overlay.enabled ?? prior.enabled,
     httpPorts: overlayPorts(prior.httpPorts, overlay.httpPort, overlay.httpFallbacks),
     httpsPorts: overlayPorts(prior.httpsPorts, overlay.httpsPort, overlay.httpsFallbacks),
     bindAddress: overlay.bindAddress ?? prior.bindAddress,
@@ -38,6 +41,7 @@ const overlayRouter = (prior: MergedRouterConfig, overlay: RouterConfig | undefi
 };
 
 const COMPILED_DEFAULTS: MergedRouterConfig = {
+  enabled: DEFAULT_ENABLED,
   httpPorts: DEFAULT_HTTP_PORTS,
   httpsPorts: DEFAULT_HTTPS_PORTS,
   bindAddress: DEFAULT_BIND_ADDRESS,
@@ -48,12 +52,31 @@ export const mergeRouterConfig = (
   landofileRouter: RouterConfig | undefined,
 ): MergedRouterConfig => overlayRouter(overlayRouter(COMPILED_DEFAULTS, globalRouter), landofileRouter);
 
+/**
+ * Router enablement under normal precedence: the compiled default, then the
+ * user's global config, then the app's Landofile. The planner resolves this
+ * once and records the answer on the plan so every later consumer reads one
+ * decision instead of re-deriving it.
+ */
+export const routerEnabledFrom = (
+  globalRouter: RouterConfig | undefined,
+  landofileRouter: RouterConfig | undefined,
+): boolean => mergeRouterConfig(globalRouter, landofileRouter).enabled;
+
+/**
+ * Reads the planner's recorded answer. Every consumer that starts, publishes,
+ * or hands out a shared-router hostname asks this instead of re-resolving
+ * precedence; plans persisted before the field existed default to enabled.
+ */
+export const routerEnabled = (plan: Pick<AppPlan, "router">): boolean => plan.router?.enabled ?? true;
+
 export const extractRouterPins = (landofileRouter: RouterConfig | undefined): RouterPin => ({
   ...(landofileRouter?.httpPort === undefined ? {} : { httpPort: landofileRouter.httpPort }),
   ...(landofileRouter?.httpsPort === undefined ? {} : { httpsPort: landofileRouter.httpsPort }),
 });
 
 const toSetupRouter = (merged: MergedRouterConfig): RouterConfig => ({
+  enabled: merged.enabled,
   bindAddress: merged.bindAddress,
   httpPort: merged.httpPorts[0],
   httpsPort: merged.httpsPorts[0],
@@ -75,11 +98,14 @@ export const resolveRouterConfigForApp = (
 ): Effect.Effect<{
   readonly router: RouterConfig;
   readonly routerPin: RouterPin;
+  readonly enabled: boolean;
 }> =>
   Effect.gen(function* () {
     const globalRouter = yield* resolveGlobalRouter;
+    const merged = mergeRouterConfig(globalRouter, landofileRouter);
     return {
-      router: toSetupRouter(mergeRouterConfig(globalRouter, landofileRouter)),
+      router: toSetupRouter(merged),
       routerPin: extractRouterPins(landofileRouter),
+      enabled: merged.enabled,
     };
   });

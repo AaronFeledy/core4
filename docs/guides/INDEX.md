@@ -243,3 +243,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
 | — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
+| — | — | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |

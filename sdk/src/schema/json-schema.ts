@@ -255,6 +255,8 @@ import {
   ProviderCapabilities,
   RoutePlan,
   RouteRef,
+  ScanPlan,
+  ScannerConfig,
   SharedNetworkMembershipPlan,
 } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
@@ -502,6 +504,8 @@ const basePublicSchemaRegistry = {
   ProxyApplyResult,
   ProxyStatus,
   HealthcheckPlan,
+  ScannerConfig,
+  ScanPlan,
   CertificatePlan,
   HostAliasPlan,
   ServiceDependencyCondition,
@@ -933,6 +937,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
   ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",
   HealthcheckPlan: "Public Lando schema contract for Healthcheck Plan.",
+  ScannerConfig: "Post-start URL scan settings, or false to skip scanning.",
+  ScanPlan: "Fully resolved post-start URL scan settings for a service.",
   CertificatePlan: "Public Lando schema contract for Certificate Plan.",
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
   ServiceDependencyCondition: "How a service dependency must be satisfied before dependents start.",

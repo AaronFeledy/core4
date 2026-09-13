@@ -21,6 +21,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
   type ShellRunner,
+  UrlScanner,
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
@@ -38,6 +39,7 @@ import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
@@ -219,6 +221,16 @@ export const startAppForTarget = (
             ...service,
             endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
           }));
+
+          const scanner = yield* Effect.serviceOption(UrlScanner);
+          if (scanner._tag === "Some") {
+            yield* runPostStartScan({
+              scanner: scanner.value,
+              plan: routedPlan,
+              events,
+              urls: startupScanUrls(routedPlan, servicesStarted),
+            });
+          }
 
           yield* compensateFailure(
             events.publish(

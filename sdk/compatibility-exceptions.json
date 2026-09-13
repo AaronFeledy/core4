@@ -1498,5 +1498,77 @@
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ServiceConfigInput.build.oneOf",
     "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "The resolved post-start scan block adds its own definition beside the existing service-plan references and keeps every prior accepted form."
   }
 ]
