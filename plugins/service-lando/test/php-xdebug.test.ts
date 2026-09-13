@@ -27,6 +27,7 @@ const BuildSteps = Schema.Struct({
       Schema.Struct({
         id: Schema.optional(Schema.String),
         command: Schema.Unknown,
+        user: Schema.optional(Schema.String),
         buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
       }),
     ),
@@ -120,11 +121,17 @@ describe("PHP xdebug option", () => {
     const plan = await composePhpPlan({ xdebug: true });
     const steps = buildStepsFor(plan);
     const xdebugStep = steps.find((step) => step.id === "service-lando.php:xdebug");
+    const rawXdebug = (
+      (plan.extensions["@lando/core/service-features"] as { buildSteps?: ReadonlyArray<object> } | undefined)
+        ?.buildSteps ?? []
+    ).find((step) => (step as { id?: string }).id === "service-lando.php:xdebug");
     const command = String(xdebugStep?.command);
 
     expect(xdebugStep?.buildKeyInputs).toEqual({
       xdebug: { ...PHP_XDEBUG_RELEASE, phpVersion: "8.2", mode: "debug" },
     });
+    expect(xdebugStep?.user).toBe("root");
+    expect("privileged" in (rawXdebug ?? {})).toBe(false);
     expect(command).toContain(PHP_XDEBUG_RELEASE.url);
     expect(command).toContain(PHP_XDEBUG_RELEASE.sha256);
     expect(command).toContain("xdebug.mode=debug");

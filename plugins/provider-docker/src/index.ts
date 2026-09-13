@@ -1336,7 +1336,13 @@ const inspectService = (
   });
 };
 
-const createExec = (plan: AppPlan, service: ServicePlan, command: CommandSpec, api: DockerApiClient) =>
+const createExec = (
+  plan: AppPlan,
+  service: ServicePlan,
+  command: CommandSpec,
+  api: DockerApiClient,
+  user?: string,
+) =>
   Effect.gen(function* () {
     const response = yield* request(api, "exec", {
       method: "POST",
@@ -1351,6 +1357,7 @@ const createExec = (plan: AppPlan, service: ServicePlan, command: CommandSpec, a
         ...(command.env === undefined
           ? {}
           : { Env: Object.entries(command.env).map(([key, value]) => `${key}=${value}`) }),
+        ...(user === undefined ? {} : { User: user }),
       },
     });
     if (response.status < 200 || response.status >= 300) {
@@ -1426,7 +1433,7 @@ const execStream = (
   if (service === undefined) {
     return Stream.fail(missingService("exec", target));
   }
-  return Stream.fromEffect(createExec(plan, service, command, api)).pipe(
+  return Stream.fromEffect(createExec(plan, service, command, api, target.user)).pipe(
     Stream.flatMap((execId) => {
       const decodeChunk = makeRuntimeAttachDecoder();
       const resizeEvents = command.terminalResize ?? Stream.empty;
