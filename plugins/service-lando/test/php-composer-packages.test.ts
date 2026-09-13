@@ -155,6 +155,26 @@ describe("composer object form", () => {
     expect(steps.some((candidate) => candidate.id === PHP_COMPOSER_STEP_ID)).toBe(false);
     expect(step).toBeDefined();
     expect(step?.dependsOn).toBeUndefined();
+    expect(step?.buildKeyInputs).toEqual({ packages: [["drush/drush", "^13.0"]] });
+  });
+
+  test("does not hash an unused composer release on a custom image", async () => {
+    // Given a custom image that already ships Composer,
+    // when the same packages are authored with different composer.version pins,
+    // then the package step identity is unchanged because Lando does not install
+    // that release.
+    const unpinned = await composePhpPlan({
+      image: "my/php:8.3",
+      composer: { packages: { "drush/drush": "^13.0" } },
+    });
+    const pinned = await composePhpPlan({
+      image: "my/php:8.3",
+      composer: { version: "2.7.7", packages: { "drush/drush": "^13.0" } },
+    });
+
+    expect(buildStepsFor(unpinned).find((step) => step.id === PHP_COMPOSER_PACKAGES_STEP_ID)).toEqual(
+      buildStepsFor(pinned).find((step) => step.id === PHP_COMPOSER_PACKAGES_STEP_ID),
+    );
   });
 
   test("uses the object-form version when selecting the pinned release", async () => {

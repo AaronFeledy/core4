@@ -40,7 +40,9 @@ export const composerPackagesCommandFor = (entries: ReadonlyArray<PackageEntry>)
 /**
  * Build the global Composer package install step, or `undefined` when no
  * packages were authored. `dependsOnComposerStep` is false when a custom image
- * supplies its own Composer and the Lando-managed install is skipped.
+ * supplies its own Composer and the Lando-managed install is skipped. The
+ * unused release is omitted from this step's build key; the Composer install
+ * step already hashes the pin when Lando actually installs it.
  */
 export const phpComposerPackagesBuildStep = (
   release: PhpComposerRelease | false,
@@ -55,7 +57,7 @@ export const phpComposerPackagesBuildStep = (
     user: "root",
     ...(options.dependsOnComposerStep ? { dependsOn: [options.composerStepId] } : {}),
     buildKeyInputs: {
-      ...(release === false ? {} : { composer: release }),
+      ...(options.dependsOnComposerStep && release !== false ? { composer: release } : {}),
       packages: entries,
     },
   };

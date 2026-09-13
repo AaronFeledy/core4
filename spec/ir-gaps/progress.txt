@@ -531,3 +531,10 @@ Real-surface evidence: on the real binary with isolated user roots, `app:config 
   - Guide fixtures are parsed by the same YAML subset, so a fixture is the cheapest place to discover an authoring limit. The invalid-input fixture has to fail for the reason under test: `"../escape"` failed as malformed YAML rather than as a rejected package name, which proved nothing.
   - `resolveLiveProviderSocket()` can find a Lando-managed Podman socket left running by an earlier step, so an `*.integration.test.ts` named by path will really build images on the host instead of skipping. Budget ~90s and expect real artifacts, cleaned up by the test's `removeArtifact`.
 ---
+
+## 2026-09-13 - US-618B Review
+- Fixed custom-image Composer package steps so an unused `composer.version` no longer invalidates the artifact key; the managed Composer install step still hashes the pin when Lando actually installs it.
+- Review notes (deferred/rejected): charset-only npm/Composer version allowlists stay as designed for secret/injection refusal, not a full specifier grammar; recipe and package READMEs stay init-answer/framework docs (service guides cover the options, matching US-618A); code-quality MINOR on no-op test wording left as-is.
+- Verification: typecheck, lint passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; 26 focused package-spec/composer-package tests passed.
+- **Learnings for future iterations:** Hash only inputs the step actually consumes. A skipped dependency's identity belongs on the step that installs it, not on a later command that merely invokes the binary.
+---
