@@ -1,0 +1,10 @@
+name: php-composer-packages
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    composer:
+      version: "2"
+      packages:
+        squizlabs/php_codesniffer: "^3.10"
+        phpstan/phpstan: "^1.11"
