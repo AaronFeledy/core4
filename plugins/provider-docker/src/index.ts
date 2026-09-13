@@ -3,7 +3,11 @@ import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
-import { makeProviderDataPlane, volumeCreationOwnerLabels } from "@lando/container-runtime/data-plane";
+import {
+  VOLUME_WITNESS_IMAGE,
+  makeProviderDataPlane,
+  volumeCreationOwnerLabels,
+} from "@lando/container-runtime/data-plane";
 import { dockerPullDialect, dockerWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineApiClient,
@@ -1663,6 +1667,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   );
   const dataPlane = makeProviderDataPlane({
     providerId: PROVIDER_ID,
+    endpointNamespace: resolvedDockerHost,
+    prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
+      ctx: DOCKER_CTX,
+      dialect: dockerPullDialect,
+    }),
     api: dockerApi,
     snapshotMode: "copy",
     redactDetails,
