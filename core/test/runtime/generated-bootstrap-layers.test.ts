@@ -58,10 +58,9 @@ describe("generated bootstrap layers", () => {
     );
     expect(commands).toContain("makeEngineLandofileServiceLive");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
-    expect(commands).toContain("makeEngineLandofileServiceLive(landofileRuntimeInputs())");
-    expect(commands).toMatch(
-      /makeEngineLandofileServiceLive\(landofileRuntimeInputs\(\)\)\.pipe\(\s*Layer\.provide\(pluginsBase\),?\s*\)/,
-    );
+    expect(commands).toContain("Effect.map(PathsService");
+    expect(commands).toContain("resolveUserIncludesDir: () => paths.userIncludesDir");
+    expect(commands).toContain("resolveUserCacheRoot: () => paths.roots.userCacheRoot");
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);
     expect(countOccurrences(commands, subscriberInstall)).toBe(1);
