@@ -65,22 +65,7 @@ const resolveMariadb = (serviceDefinition: Record<string, unknown>) =>
 
 describe("mariadb ServiceType", () => {
   test("plans a default MariaDB service with both MARIADB_* and MYSQL_* env aliases", async () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: { db: { type: "mariadb" } },
-    });
-    const service = landofile.services?.[ServiceName.make("db")];
-    if (service === undefined) throw new Error("db service missing");
-
-    const plan = await composeServicePlan({
-      serviceType: mariadbServiceType,
-      service,
-      appRoot: "/srv/apps/myapp",
-      appName: "myapp",
-      serviceName: "db",
-      metadata,
-      featureOverrides: new Map([[MARIADB_FEATURE_ID, mariadbServiceFeature]]),
-    });
+    const plan = await planMariadb({ type: "mariadb" });
 
     expect(plan.type).toBe("mariadb");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "mariadb:11.4" });
