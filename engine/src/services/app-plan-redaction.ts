@@ -6,6 +6,7 @@ type EnvMap = Readonly<Record<string, unknown>> | undefined;
 
 type ServiceEnvSource = {
   readonly environment?: EnvMap;
+  readonly password?: string;
 };
 
 type LandofileTokenSource = {
@@ -32,7 +33,7 @@ export const collectLandofileRedactionTokens = (
   landofile: LandofileTokenSource | LandofileShape,
 ): ReadonlyArray<string> => {
   const serviceTokens = Object.values(landofile.services ?? {}).flatMap((service) =>
-    collectSecretEnvValues(stringEnv(service?.environment)),
+    collectSecretEnvValues({ ...stringEnv(service?.environment), password: service?.password }),
   );
   const toolingTokens = Object.values(landofile.tooling ?? {}).flatMap((task) =>
     collectSecretEnvValues(stringEnv(task?.env)),
