@@ -224,6 +224,7 @@ import {
   HealthcheckInput,
   IncludeEntry,
   LandofileShape,
+  PhpComposerConfig,
   RouteInput,
   RouteObjectInput,
   ServiceConfig,
@@ -521,6 +522,7 @@ const basePublicSchemaRegistry = {
   ServiceConfig,
   ServiceConfigInput,
   ServiceFileConfig,
+  PhpComposerConfig,
   LogSource,
   LogSourceId,
   LogSourceInput,
@@ -957,6 +959,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
   ServiceFileConfig: "App-relative file-backed service configuration mounted read-only into the container.",
+  PhpComposerConfig: "Composer release selection plus the global Composer packages installed with it.",
   LogSource: "Public Lando schema contract for Log Source.",
   LogSourceId: "Public Lando schema contract for Log Source Id.",
   LogSourceInput: "Public Lando schema contract for Log Source Input.",

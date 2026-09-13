@@ -1570,5 +1570,11 @@
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
     "justification": "The resolved post-start scan block adds its own definition beside the existing service-plan references and keeps every prior accepted form."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.composer.anyOf",
+    "justification": "Composer selection additively accepts an object carrying a version and global packages; the previously accepted string and false forms remain members of the same union."
   }
 ]
