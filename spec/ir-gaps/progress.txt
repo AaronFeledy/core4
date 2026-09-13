@@ -386,3 +386,10 @@ Manual CLI QA against `core/bin/lando.ts` with isolated user roots and `provider
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved home persistence plus host reachability against the binary: `node:22` home marker survived `lando rebuild`; `LANDO_HOST_IP=host.lando.internal` resolved to `169.254.1.2` and served a host HTTP response; compose without `home` failed `HomePathCapabilityError` with both remediations; `home.path` planned; lamp `init --full` then `app:cache:refresh` compiled 3 commands. Adjacent redis `PONG`, `node -e`, info/logs/destroy stayed green.
 - **Out-of-scope finding:** `lando destroy` on a never-started compose Landofile that refuses `HomePathCapabilityError` also fails with that tag (destroy plans first). No containers existed; dir delete cleaned it. Not an AC miss.
 ---
+
+## 2026-09-13 04:05 - Babysit
+- PR: #970 https://github.com/AaronFeledy/core4/pull/970
+- CI outcome: pass (after fixes; initially provider-integration-linux-x64 and drupal-journey-linux-x64 failed)
+- Review feedback: fixed (resolved the `sdk/API_COMPATIBILITY.md` conflict by merging main, and declared `home.path: /root` for the live Compose fixture harness's substituted `node:22-alpine` image so the US-617A home refusal no longer pre-empts the unsupported-feature CapabilityError; drupal-journey was a Composer HTTP 504 flake that passed on rerun)
+- Merge: deferred (all merge conditions met and branch is MERGEABLE with every check green, but GitHub's merge API returned repeated 502/500 errors across five spaced attempts)
+---
