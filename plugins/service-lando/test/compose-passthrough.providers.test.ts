@@ -185,6 +185,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
         (k) => (k === "LANDO" || k.startsWith("LANDO_")) && k !== "LANDO_HOST_IP",
       ),
     ).toEqual([]);
+    expect(worker?.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
     expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
   });

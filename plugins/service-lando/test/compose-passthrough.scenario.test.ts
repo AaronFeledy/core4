@@ -192,6 +192,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
         (k) => (k === "LANDO" || k.startsWith("LANDO_")) && k !== "LANDO_HOST_IP",
       ),
     ).toEqual([]);
+    expect(whoami.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
     expect(whoami.appMount).toMatchObject({ target: "/app", readOnly: false });
     expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(true);
@@ -260,6 +261,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
         (k) => (k === "LANDO" || k.startsWith("LANDO_")) && k !== "LANDO_HOST_IP",
       ),
     ).toEqual([]);
+    expect(sidekick.environment.LANDO_HOST_IP).toBe("host.lando.internal");
     expect(sidekick.endpoints).toEqual([
       {
         _tag: "published",
