@@ -448,6 +448,8 @@ Verification: typecheck, lint, all thirteen boundary rules, `check:schema-compat
 
 Manual CLI QA on the real command with isolated user roots and `provider: test`: with the router enabled, `lando open --print` resolves `https://web.router-qa.lndo.site`; a global `router.enabled: false` makes the same app refuse with the new diagnostic and both remediations, and a Landofile `router.enabled: true` opts back in and resolves the hostname again, proving precedence end to end on the binary. `app:config --format=json` round-trips a service `scanner` object and `scanner: false` verbatim, and `retries: -1` fails `app:config:lint` naming `services.app.scanner.retries`.
 
+Real-socket scan evidence is now a permanent test rather than a one-off artifact: `UrlScannerLive` runs against a live `Bun.serve` listener through the real `HttpClientLive`, proving a plan-resolved path and status set score green, an unaccepted real status scores yellow carrying `HTTP 500`, a dead port scores red inside its resolved deadline, and a disabled service is never requested.
+
 **Deferred to Verify (owns real runtime):** a container-backed start proving a published URL is probed and a failing probe warns without failing start, and that a disabled router leaves `lando info` printing host ports only. One host observation worth carrying: the Lando-managed Podman socket left running by the previous story's Verify step un-skips `core/test/cli/start.scenario.test.ts`'s live-provider test on the host, where it times out at 60s. That test is container-runtime scope, not host-safe scope.
 
 - **Learnings for future iterations:**
