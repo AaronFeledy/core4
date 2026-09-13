@@ -228,7 +228,7 @@ export const planServiceDrafts = (input: {
         authoredArtifact,
         authored,
         homeIntent: serviceHomeIntent({
-          service,
+          service: { ...service, home: resolution.normalizedConfig.home ?? service.home },
           serviceTypeId: serviceType.id,
           identity: serviceType.identity,
           pinnedArtifactTag: resolvedArtifactTag,
