@@ -88,7 +88,10 @@ const rebuildSelectedServices = (
     yield* Effect.scoped(
       provider.apply(builtPlan, {
         reconcile: true,
-        recordedPlan,
+        recordedPlan: {
+          ...recordedPlan,
+          services: { ...recordedPlan.services, ...builtPlan.services },
+        },
         ...(signal === undefined ? {} : { signal }),
       }),
     );

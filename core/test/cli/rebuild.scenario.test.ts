@@ -237,6 +237,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     readonly services: ReadonlyArray<string>;
     readonly recordedServices: ReadonlyArray<string>;
   }> = [];
+  const recordedPlans: AppPlan[] = [];
   const stopCalls: ServiceName[] = [];
   const buildAppCalls: Array<{ readonly force: boolean; readonly services: ReadonlyArray<string> }> = [];
   const provider: RuntimeProviderShape = {
@@ -248,6 +249,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     apply: (appliedPlan, options) =>
       Effect.sync(() => {
         lifecycleOrder.push("apply");
+        recordedPlans.push(options.recordedPlan ?? appliedPlan);
         applyCalls.push({
           reconcile: options.reconcile ?? false,
           services: Object.keys(appliedPlan.services),
@@ -281,7 +283,21 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(BuildOrchestrator, {
-      build: (appPlan) => Effect.succeed(appPlan),
+      build: (appPlan) =>
+        Effect.succeed({
+          ...appPlan,
+          services: {
+            ...appPlan.services,
+            ...(appPlan.services[api.name] === undefined
+              ? {}
+              : {
+                  [api.name]: {
+                    ...appPlan.services[api.name],
+                    artifact: { kind: "ref" as const, ref: "api:new-built-artifact" },
+                  },
+                }),
+          },
+        }),
       buildApp: (appPlan, options) =>
         Effect.sync(() => {
           buildAppCalls.push({ force: options?.force === true, services: Object.keys(appPlan.services) });
@@ -303,7 +319,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     }),
   );
 
-  return { layer, destroyCalls, applyCalls, stopCalls, buildAppCalls, lifecycleOrder };
+  return { layer, destroyCalls, applyCalls, recordedPlans, stopCalls, buildAppCalls, lifecycleOrder };
 };
 
 const makeCachedBuildLayer = () => {
@@ -400,6 +416,11 @@ describe("lando rebuild", () => {
         recordedServices: ["api", "database", "dependent", "unrelated"],
       },
     ]);
+    expect(harness.recordedPlans[0]?.services[api.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "api:new-built-artifact",
+    });
+    expect(harness.recordedPlans[0]?.services[unrelated.name]).toEqual(unrelated);
     expect(harness.buildAppCalls).toEqual([{ force: true, services: ["database", "api"] }]);
     expect(result.servicesRebuilt).toEqual(["database", "api"]);
   });
