@@ -41,11 +41,13 @@ const validateVersion = (
 
 const configFor = (ctx: ServiceFeatureContext): NodeFeatureConfig => ctx.config as NodeFeatureConfig;
 
+// Official Node images ship Corepack shims at /usr/local/bin/{yarn,pnpm}.
+// --force lets authored globals replace those stubs instead of failing EEXIST.
 const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
   [
     "set -eux",
     [
-      "npm install -g --no-fund --no-audit",
+      "npm install -g --force --no-fund --no-audit",
       ...entries.map(([name, version]) => shellSingleQuote(`${name}@${version}`)),
     ].join(" "),
   ].join(" && ");

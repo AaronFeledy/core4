@@ -83,7 +83,7 @@ describe("node globals build step", () => {
     expect(step?.phase).toBe("build");
     expect(step?.user).toBe("root");
     expect(step?.command).toBe(
-      "set -eux && npm install -g --no-fund --no-audit 'gulp-cli@latest' 'yarn@1.22.4'",
+      "set -eux && npm install -g --force --no-fund --no-audit 'gulp-cli@latest' 'yarn@1.22.4'",
     );
     expect(step?.buildKeyInputs).toEqual({
       globals: [
