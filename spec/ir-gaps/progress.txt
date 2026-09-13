@@ -410,3 +410,11 @@ Verification: typecheck, lint, boundaries, and schema-compatibility passed; the 
   - A `BREAKING ... surface-removed` row from `check:schema-compatibility` is more often a stale local derived tree than a real regression. `core/dist/schemas` is gitignored, so merging main leaves it missing whatever schemas main added since — here `HostTerminal`, which the branch's own registry still exports. `bun run codegen:schema-snapshot` restored it (384 -> 385 artifacts) and the row disappeared. Regenerate before triaging, and check whether the PR's `schema-snapshot` job is green.
   - When Build reaches a story that is already `published`, the completion path is verification, not a phase signal. Phases move forward (`implemented` -> `reviewed` -> `published` -> `merged`); emitting an earlier one rewinds the pipeline over work that already passed it.
 ---
+
+## 2026-09-13 04:25 - US-617A Drift Audit
+- Trigger: 6 cycles, 1761 insertions, 18 commits
+- Findings: none; second pass after the prior audit found no compounding scope, dual path, ceremony, or gamed proofs
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 95 focused tests pass
+---
