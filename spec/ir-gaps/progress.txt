@@ -418,3 +418,43 @@ Verification: typecheck, lint, boundaries, and schema-compatibility passed; the 
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 95 focused tests pass
 ---
+## 2026-09-13 06:20 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-617B (expected passes: true)
+---
+## 2026-09-13 06:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-13 06:20 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-617B (expected passes: true)
+---
+## 2026-09-13 06:20 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-617B (expected passes: true)
+---
+## 2026-09-13 06:20 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-617B (expected passes: true)
+---
+
+## 2026-09-13 07:15 - US-617B (complete)
+
+Router disablement and post-start URL scanning now change real behavior instead of only resolving into config. The branch arrived with the mechanism written but uncommitted and unverified; this pass closed the consumer gaps that made disablement cosmetic, then verified the whole story.
+
+- `router.enabled` resolves through compiled default, global config, then Landofile, and the planner records the answer on the plan as `AppPlan.router`. Every consumer reads that one decision through a single `routerEnabled` predicate rather than re-deriving precedence. The field is optional purely so plans persisted before it existed still decode, and those default to enabled.
+- Four consumers were still ignoring the decision, so a disabled router only looked disabled. The app-plan cache re-derived `requires.globalServices: ["traefik"]` from `routes.length > 0` alone, which meant the shared router auto-started on every run after the first; scratch apps published routes straight through their own setup/applyRoutes path; `open` handed back `*.lndo.site` hostnames nobody serves; and `share` defaulted its tunnel to the first route hostname. All four now honor the plan, and `share` falls back to the same app-scoped target it already used for a route-less app.
+- `lando open` used to blame the user for the refusal it now produces, printing "the app declares no matching route" for an app that declares one. A disabled router with declared routes gets its own message and remediation naming `router:` `enabled: true` or publishing an http host port.
+- A service accepts `scanner: false | {path?, okCodes?, retries?, timeout?}`, overlaid over an identical global key, and the planner resolves it per service onto `ServicePlan.scanner`. Start hands the plan to `UrlScanner`, so each service probes its own path, status set, retry budget, and deadline; a disabled service is skipped without a request. The probe now carries an overall deadline through `runProbe`, and the per-attempt timeout is capped by whatever is left of it, so a slow URL can no longer outlive its budget.
+- The scan runs after the app is up and never decides whether start succeeded. Every non-pass verdict, and a scan that fails outright, becomes one warning; bodies are redacted again on the way to the event bus, and a dead event bus cannot fail a start that already worked.
+
+Verification: typecheck, lint, all thirteen boundary rules, `check:schema-compatibility` (compatible 17, breaking 0, unknown 0), `codegen:check`, `check:guide-coverage`, `check:public-transcripts`, `check:telemetry-inventory`, `lint:guides`, and guide-drift against origin/main all pass. The router-and-scanner guide runs 3/3 and the adjacent share-target guide stays 2/2. Spot checks are green across the blast radius: 224 engine tests (cache round-trip, routes lifecycle, router precedence, scan plan, post-start scan, share target, scanner live and probe behavior, AppPlanner), 418 sdk tests, and 206 core tests (open resolve and open app, scratch fork/app/recipe/finalizer, share skeleton, info/start/destroy/restart/rebuild scenarios, bootstrap layers, doctor subsystems).
+
+Manual CLI QA on the real command with isolated user roots and `provider: test`: with the router enabled, `lando open --print` resolves `https://web.router-qa.lndo.site`; a global `router.enabled: false` makes the same app refuse with the new diagnostic and both remediations, and a Landofile `router.enabled: true` opts back in and resolves the hostname again, proving precedence end to end on the binary. `app:config --format=json` round-trips a service `scanner` object and `scanner: false` verbatim, and `retries: -1` fails `app:config:lint` naming `services.app.scanner.retries`.
+
+**Deferred to Verify (owns real runtime):** a container-backed start proving a published URL is probed and a failing probe warns without failing start, and that a disabled router leaves `lando info` printing host ports only. One host observation worth carrying: the Lando-managed Podman socket left running by the previous story's Verify step un-skips `core/test/cli/start.scenario.test.ts`'s live-provider test on the host, where it times out at 60s. That test is container-runtime scope, not host-safe scope.
+
+- **Learnings for future iterations:**
+  - A planner decision is not honored until every consumer asks for it. `AppPlan.router.enabled` was written correctly and still did nothing, because the cache re-derived the requirement it was supposed to suppress. When a story adds a plan field that suppresses behavior, grep for code that *derives* the same behavior from a sibling field (here `routes.length > 0`) and not just for readers of the new field.
+  - `engine/src/planner/assemble.ts` sits at exactly 600 lines and `engine/test/planner-module-boundaries.test.ts` fails it at 601. Blank-line trims in that file are load-bearing, not churn; budget a line for a line when adding to the planner, or extract.
+  - Put a plan predicate in the module that owns the rule, not the module that first needs it. `routerEnabled` started in `lifecycle/routes.ts`, which is not an exported engine subpath, so core could not reach it. `config/router-config.ts` is exported and already owned precedence, so it houses both.
+  - Hand-spelling a structural parameter type defeats `exactOptionalPropertyTypes`: `{ readonly router?: { readonly enabled: boolean } }` rejects the `AppPlan` whose field is `... | undefined`. Type these predicates `Pick<AppPlan, "router">`.
+  - Adding one optional property to `ServicePlan` costs twelve `check:schema-compatibility` exception rows, because every plan-carrying surface reports `$.plan.services.additionalProperties` separately. Append them; do not re-serialize `sdk/compatibility-exceptions.json` with a sort, which rewrites 826 unrelated lines.
+  - `check:public-transcripts` fails after running a single guide, because transcripts are gitignored and regenerated per run. Run the guides whose surfaces you touched, then the gate, rather than treating the first failure as a missing artifact.
+---
