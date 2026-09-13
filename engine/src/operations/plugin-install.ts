@@ -1,10 +1,12 @@
 import { lstat, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import { Effect, Either, Schema } from "effect";
 
 import { NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest, type PluginManifest as PluginManifestShape } from "@lando/sdk/schema";
+import { PluginTrustStore } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../cache/command-index-writer";
 import {
@@ -100,7 +102,8 @@ export interface FinalizePluginInstallOptions {
   readonly entry: InstalledPluginRegistryEntry;
   readonly cacheRoot?: string;
   readonly expectedActivation?: InstalledPluginRegistryEntry;
-  readonly mutationLockHeld?: boolean;
+  readonly expectedRegistry?: Readonly<Record<string, InstalledPluginRegistryEntry>>;
+  readonly expectedManifest?: PluginManifestShape;
   readonly stagedPath?: string;
 }
 
@@ -113,6 +116,7 @@ export const finalizePluginInstall = (
       const current = registry[options.entry.name];
       const expected = options.expectedActivation;
       if (
+        (options.expectedRegistry !== undefined && !isDeepStrictEqual(registry, options.expectedRegistry)) ||
         current === undefined ||
         current.version !== expected.version ||
         current.source !== expected.source ||
@@ -129,6 +133,42 @@ export const finalizePluginInstall = (
           }),
         );
       }
+      const trustStore = yield* Effect.serviceOption(PluginTrustStore);
+      const trusted =
+        trustStore._tag === "Some"
+          ? yield* trustStore.value
+              .isPluginTrusted(options.entry.name)
+              .pipe(Effect.orElseSucceed(() => false))
+          : false;
+      if (!trusted) {
+        return yield* Effect.fail(
+          new NotImplementedError({
+            message: `Plugin ${options.entry.name} is no longer trusted; refusing activation.`,
+            commandId: "meta:update",
+            remediation: "Review plugin trust and run lando update again.",
+          }),
+        );
+      }
+    }
+    if (options.expectedManifest !== undefined) {
+      yield* Effect.tryPromise({
+        try: async () => {
+          const { manifest } = await validatePluginManifest(options.stagedPath ?? options.entry.path);
+          if (!isDeepStrictEqual(manifest, options.expectedManifest)) {
+            throw new PluginManifestError({
+              message: `Plugin ${options.entry.name} manifest changed during installation.`,
+              pluginName: options.entry.name,
+              issues: ["The published manifest must match the validated manifest."],
+            });
+          }
+        },
+        catch: (cause) =>
+          new NotImplementedError({
+            message: `Plugin manifest revalidation failed: ${String(cause)}`,
+            commandId: "meta:plugin:add",
+            remediation: "Inspect the plugin lifecycle scripts and retry with an unchanged manifest.",
+          }),
+      });
     }
     if (options.stagedPath !== undefined) {
       const stagedPath = options.stagedPath;
@@ -167,7 +207,5 @@ export const finalizePluginInstall = (
       }),
     ),
   );
-  return options.mutationLockHeld === true
-    ? finalize
-    : withPluginMutationLock(options.pluginsRoot, "meta:plugin:add", finalize);
+  return withPluginMutationLock(options.pluginsRoot, "meta:plugin:add", finalize);
 };

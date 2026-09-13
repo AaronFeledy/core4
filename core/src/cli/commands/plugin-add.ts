@@ -87,7 +87,7 @@ export interface PluginAddOptions {
     readonly requires?: Readonly<Record<string, string>>;
   };
   readonly expectedActivation?: InstalledPluginRegistryEntry;
-  readonly mutationLockHeld?: boolean;
+  readonly expectedRegistry?: Readonly<Record<string, InstalledPluginRegistryEntry>>;
 }
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*(@[^/\s]+)?$/i;
@@ -497,7 +497,8 @@ export const pluginAdd = (
       },
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
       ...(options.expectedActivation === undefined ? {} : { expectedActivation: options.expectedActivation }),
-      ...(options.mutationLockHeld === true ? { mutationLockHeld: true } : {}),
+      ...(options.expectedRegistry === undefined ? {} : { expectedRegistry: options.expectedRegistry }),
+      expectedManifest: manifest,
       ...(targetDir === undefined ? {} : { stagedPath: packageDir }),
     }).pipe(
       Effect.tapErrorCause(() =>

@@ -14,7 +14,6 @@ import {
   type InstalledPluginRegistryEntry,
   readInstalledPluginRegistry,
 } from "@lando/engine/plugins/installed-registry";
-import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { makeLandoPaths } from "@lando/paths";
 import type { ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
@@ -143,6 +142,7 @@ export const makePluginUpdateRunner = (
 
         const updatedPlugins: string[] = [];
         const rows: PluginUpdatePlanRow[] = [];
+        const expectedRegistry = Object.fromEntries(inventory.map((item) => [item.name, item.activation]));
         for (const row of plannedRows) {
           if (row.status !== "update" || row.targetVersion === undefined || row.selector === undefined) {
             rows.push(row);
@@ -155,31 +155,33 @@ export const makePluginUpdateRunner = (
             continue;
           }
           const exit = yield* Effect.exit(
-            withPluginMutationLock(
+            pluginAdd({
+              spec: `${row.name}@${row.targetVersion}`,
               pluginsRoot,
-              "meta:update",
-              pluginAdd({
-                spec: `${row.name}@${row.targetVersion}`,
-                pluginsRoot,
-                ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-                registryUrl,
-                registryClient,
-                ...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),
-                ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
-                ...(options.bunSelfSpawner === undefined ? {} : { bunSelfSpawner: options.bunSelfSpawner }),
-                trustStore: new Set(),
-                requestedSelector: row.selector,
-                expectedManifest: advertised,
-                expectedActivation: item.activation,
-                mutationLockHeld: true,
-                nonInteractive: true,
-              }).pipe(
-                Effect.provideService(ConfigService, config),
-                Effect.provideService(PluginTrustStore, trustStore),
-              ),
+              ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+              registryUrl,
+              registryClient,
+              ...(options.fetcher === undefined ? {} : { fetcher: options.fetcher }),
+              ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
+              ...(options.bunSelfSpawner === undefined ? {} : { bunSelfSpawner: options.bunSelfSpawner }),
+              trustStore: new Set(),
+              requestedSelector: row.selector,
+              expectedManifest: advertised,
+              expectedActivation: item.activation,
+              expectedRegistry,
+              nonInteractive: true,
+            }).pipe(
+              Effect.provideService(ConfigService, config),
+              Effect.provideService(PluginTrustStore, trustStore),
             ),
           );
           if (Exit.isSuccess(exit)) {
+            expectedRegistry[row.name] = {
+              name: exit.value.pluginName,
+              version: exit.value.pluginVersion,
+              path: exit.value.entry,
+              requestedSelector: row.selector,
+            };
             updatedPlugins.push(row.name);
             rows.push(row);
           } else {
