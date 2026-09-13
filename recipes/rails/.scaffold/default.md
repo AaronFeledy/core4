@@ -19,6 +19,12 @@ lando bundle
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+## Choose Redis persistence
+
+Redis keeps data across restarts by default. For disposable caches, set `persist: false` on your Redis service and rebuild. That disables its durable data store, AOF, and RDB snapshots. Don't use it for queues or data you need to keep.
+
+Set `password:` on the same service to require authentication. Configure your Rails Redis client with the matching password; `lando redis-cli` authenticates automatically. Verify the change with `lando redis-cli ping` after `lando rebuild`. See [Add Redis](../../docs/guides/services/redis.mdx) for secret references and restart checks.
+
 ## 1. scaffold
 
 ```bash

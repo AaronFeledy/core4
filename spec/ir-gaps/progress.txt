@@ -555,3 +555,61 @@ Real-surface evidence: on the real binary with isolated user roots, `app:config 
 - **Out-of-scope finding:** host 80/443 in use so proxy published on 8000/4443; `curl http://appserver.us618b-verify.lndo.site:8000/` returned Traefik `404 page not found` while HTTPS `:4443` served `us618b-ok`. Same bind fallback as prior verifies, not US-618B.
 - **Learnings for future iterations:** Stock Node images ship Corepack shims at `/usr/local/bin/yarn`. Live package-install tests that use `cowsay` miss the documented `yarn` example. Verify the guide's packages, not a unique dummy.
 ---
+## 2026-09-13 12:57 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-618C (expected passes: true)
+---
+## 2026-09-13 12:57 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-13 12:57 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-618C (expected passes: true)
+---
+## 2026-09-13 12:57 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-618C (expected passes: true)
+---
+## 2026-09-13 12:57 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-618C (expected passes: true)
+---
+
+## 2026-09-13 - US-618C (complete)
+
+Redis authentication and persistence now follow the Landofile, and app-local Mailpit captures mail from exactly the selected PHP services.
+
+- Redis passwords reach startup through an environment-backed hashed ACL, not command arguments. The generated client and healthcheck inherit authentication, resolved credentials expose the same password to expression consumers, and redaction collects both authored passwords before resolution and REDISCLI_AUTH values afterward.
+- Omitted persistence retains the durable default. Disabling it removes generated data and home stores and disables AOF plus RDB snapshots. The planner now honors a service type's normalized home default while preserving explicitly authored home intent.
+- Mailpit omission selects every resolved PHP service, including a valid no-op when none exist. False and empty lists select none. Lists deduplicate by first occurrence without sorting; unknown and non-PHP names fail planning. Only selected PHP services receive the msmtp build step, sendmail_path, app-local mail environment, and dependency. Mailpit's service-name schema rejects unsafe SMTP host syntax at resolution without changing the general SDK name contract or adding shell escaping.
+- Executable Redis and Mailpit guides cover ephemeral configuration, selected senders, and invalid targets. Relevant plugin and Rails README updates are included; generated scaffolding and the plugin-manifest fixture are committed with their sources.
+
+Verification: 254 focused tests pass with 983 assertions. Typecheck, lint, boundaries, codegen:check, schema compatibility (49 compatible, zero breaking or unknown), guide lint, coverage, drift, and public transcripts pass. Sandbox executable guides pass with Redis 2, Mailpit 4, and Rails 1 scenarios. Returned TypeScript LSP diagnostics are clean; the Redis behavior test's diagnostics request repeatedly timed out, while root typecheck and its direct tests pass.
+
+Real-surface evidence: the current checkout's source CLI ran through the working Lando self-Bun launcher inside lando4-dev. Version and config-lint smoke passed. An unauthenticated Redis request failed with NOAUTH; generated authenticated tooling returned PONG. After restart the durable key still returned durable, while the ephemeral key count was zero, appendonly was no, and save was empty. Selected PHP mail returned MAIL_SENT and appeared in the Mailpit API under its expected subject. The unselected service and a separate mailFrom:false app both retained /usr/sbin/sendmail -t -i without injected wiring. Unknown and non-PHP targets produced LandofileValidationError before build/apply phases. The password canary was absent from info, logs, process argv, and tooling output.
+
+Teardown: both source-QA apps and the earlier proof app were destroyed with purge, with all provider, route, host-proxy, and snapshot cleanup steps successful and volumes removed. Task-owned temporary binaries, scripts, fixtures, and logs were removed; the local branch marker remains. No push or PR was performed.
+
+- **Learnings for future iterations:**
+  - A service-composition test alone does not cover generated home storage. Assert the complete planner's stores when an option promises ephemeral behavior.
+  - Use the supported self-Bun launcher to exercise current source against the sandbox provider when a newly compiled binary fails before application startup; do not substitute an older implementation for runtime proof.
+  - The native exec command takes its service positionally. Run the documentation's actual invocation rather than assuming a --service flag selects it.
+---
+
+## 2026-09-13 - US-618C Build acceptance follow-up
+- Closed an acceptance-check finding: an authored Redis command or entrypoint could bypass managed authentication and persistence flags. Explicit password or persist options now reject that combination during planning with a tagged error and remediation; startup overrides without those options remain supported.
+- Verification: typecheck and lint passed; 36 focused tests passed. Test-first rejection cases went from unexpected successful plans to tagged failures, and sandbox CLI refresh exited 1 before app creation. The scoped acceptance recheck approved the fix. LSP requests for the changed Redis files timed out; repository typecheck passed.
+- **Learnings for future iterations:** Generated startup defaults are not sufficient proof for managed options: test their interaction with authored command and entrypoint overrides so explicit intent cannot be silently discarded.
+---
+
+## 2026-09-13 - US-618C Review
+- Fixed the Redis password example so it loads as a literal Landofile value, and collected authored Redis passwords separately from environment secrets so neither token is dropped.
+- Review notes (deferred/rejected): skipping custom-image PHP Mailpit wiring would violate omitted-mailFrom=all PHP; AppFeature contract suite is already invoked so the synthetic mailpit fixture is not a gate miss; hashed ACL startup is the shipped auth path, not requirepass; short-password redaction policy is pre-existing; unpinned msmtp and RedisServiceConfig are out of scope.
+- Verification: typecheck, lint, lint:guides, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 37 focused Redis/Mailpit/redaction tests passed.
+- **Learnings for future iterations:** Landofile load rejects unescaped `${secret:...}` on this path. Guide password examples must use literals, matching mysql/mariadb, not secret-store syntax.
+---
+
+## 2026-09-13 14:45 - US-618C Drift Audit
+- Trigger: 3 cycles, 721 changed lines, 17 commits
+- Scar tissue: mailFrom was ordered-deduped twice; validated PHP targets could be skipped silently
+- Weakened proofs: command+password refusal used an empty password as the managed-option stand-in
+- Fixed: one owner for mailFrom lists; missing select fails closed; conflict fixture uses a real password
+- Split/excise decisions: none; Mailpit name guard and hashed ACL stay in-story; RedisServiceConfig and msmtp pin stay deferred
+- Verification: typecheck pass, lint pass, 26 then 37 focused tests pass
+---

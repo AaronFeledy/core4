@@ -1,0 +1,17 @@
+name: mail-selected
+services:
+  web:
+    type: php:8.3
+    via: cli
+    composer: false
+    db_client: false
+  worker:
+    type: php:8.3
+    via: cli
+    composer: false
+    db_client: false
+  inbox:
+    type: mailpit
+    mailFrom:
+      - web
+      - web

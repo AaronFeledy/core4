@@ -33,7 +33,7 @@ services:
 
 ## Connect from another service
 
-Connect from another service using the service name `cache` as the hostname. The default image runs without auth for local dev. Add `--requirepass` via `command:` to require one. From inside the app network the connection URL is:
+Connect from another service using the service name `cache` as the hostname. Redis runs without auth unless you set `password:`. From inside the app network the connection URL is:
 
 ```
 redis://cache:6379
@@ -53,6 +53,41 @@ Store and read keys from the host with the same command:
 lando redis-cli set hello world
 ```
 
+## Require a password
+
+Set `password:` on Redis. Keep real credentials in an untracked local Landofile, not your repository.
+
+```yaml
+services:
+  cache:
+    type: redis
+    password: lando
+    persist: true
+```
+
+Run `lando rebuild`, then `lando redis-cli ping`. The generated client and healthcheck authenticate through the container environment, without putting the password in command arguments. Other services must supply the same password to their Redis client.
+
+## Discard cached data on restart
+
+`persist:` defaults to `true`. Setting it to `false` disables durable data storage, append-only files, and RDB snapshots. Don't use this for data you need to keep.
+
+```yaml
+services:
+  cache:
+    type: redis
+    persist: false
+```
+
+Run `lando rebuild`, set a disposable key, then run `lando restart` and read it again:
+
+```sh
+lando redis-cli set temporary value
+lando restart
+lando redis-cli exists temporary
+```
+
+The key should no longer exist. A durable Redis service retains its keys instead.
+
 ## Pin a version
 
 Set `image:` when `redis:7` isn't the version you want:
@@ -64,4 +99,12 @@ services:
     image: redis:6
 ```
 
+  <Scenario id="ephemeral-config" render>
+    <Step name="plan-ephemeral">
+      <UseFixture name="ephemeral" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"persist\":\\s*false" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
 </Guide>

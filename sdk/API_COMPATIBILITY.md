@@ -4,6 +4,9 @@
 
 ## Compatibility notes
 
+- `ServiceConfig` additively accepts Redis `password` and `persist`, plus Mailpit `mailFrom` (`false` or a service-name list). Persistence defaults to enabled. Omitted Mailpit targets select all resolved PHP services; false selects none; lists retain first-occurrence order.
+- Mailpit parses its SMTP service name during service-type resolution, rejecting whitespace, shell metacharacters, empty names, and leading hyphens before generating PHP mail configuration. The general SDK `ServiceName` contract is unchanged.
+
 - `@lando/sdk/schema` additively exports `ScannerConfig` (`false` or optional `path`, `okCodes`, `retries`, `timeout`) and `ScanPlan` (resolved `enabled`, `path`, `okCodes`, `retries`, `timeoutMs`). Retries are a budget after the first attempt; timeouts are overall deadlines in milliseconds.
 - `ServiceConfig.scanner` and `GlobalConfig.scanner` additively accept optional `ScannerConfig`. `ServicePlan.scanner` additively accepts optional `ScanPlan`.
 - `@lando/sdk/schema` additively exports `ServiceFileConfig` (optional `server` and `dir` app-relative paths). `ServiceConfig.config` additively accepts optional `ServiceFileConfig` for file-backed catalog service configuration mounted read-only into the container.

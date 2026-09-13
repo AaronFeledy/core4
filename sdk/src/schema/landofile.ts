@@ -585,6 +585,14 @@ const ServiceConfigWithExtensions = Schema.Struct(
     database: Schema.optional(Schema.String).annotations({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
+    password: Schema.optional(Schema.String).annotations({
+      description:
+        "Redis authentication password, passed through the container environment rather than command arguments.",
+    }),
+    persist: Schema.optional(Schema.Boolean).annotations({
+      description:
+        "Redis disk persistence: defaults to true; false disables durable storage, AOF, and RDB snapshots.",
+    }),
     creds: Schema.optional(ServiceCreds).annotations({
       description: "Service login credentials used to provision or connect to the service.",
     }),
@@ -593,6 +601,10 @@ const ServiceConfigWithExtensions = Schema.Struct(
     }),
     hosts: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))).annotations({
       description: "Database hosts this admin UI connects to; a single hostname or a list of hostnames.",
+    }),
+    mailFrom: Schema.optional(Schema.Union(Schema.Literal(false), Schema.Array(ServiceName))).annotations({
+      description:
+        "Mailpit PHP senders: omitted selects every resolved PHP service, false selects none, and a list selects named PHP services in authored order with duplicates removed.",
     }),
     cores: Schema.optional(Schema.Array(Schema.String)),
     port: Schema.optional(Schema.Number).annotations({
