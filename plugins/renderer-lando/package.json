@@ -22,7 +22,9 @@
     "./format": "./src/format.ts",
     "./task-tree-tail": "./src/task-tree-tail.ts",
     "./keybindings": "./src/keybindings.ts",
-    "./runtime": "./src/renderer-runtime.ts"
+    "./runtime": "./src/renderer-runtime.ts",
+    "./logo": "./src/logo.ts",
+    "./opentui/lando-logo": "./src/opentui/lando-logo.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
   "keywords": ["lando", "lando-plugin", "lando-renderer", "terminal-ui"],
