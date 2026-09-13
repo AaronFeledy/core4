@@ -52,6 +52,13 @@ export const resolveServiceConfigSources = (input: {
           Effect.map((bytes) => createHash("sha256").update(bytes).digest("hex")),
         );
 
+      if (authored.length === 0) {
+        return yield* Effect.fail(
+          validationError(
+            "path must be a non-empty path relative to the app root. Use a readable source inside the app.",
+          ),
+        );
+      }
       if (isAbsolute(authored) || authored.startsWith("~")) {
         return yield* Effect.fail(
           validationError(

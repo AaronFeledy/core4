@@ -71,6 +71,8 @@ Lando mounts that directory read-only at `/etc/lando/solr/conf` inside the conta
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
+If you also set `command:` on the service, yours wins. Lando won't copy that config into each core unless your command does it.
+
 ## Pin a version
 
 Set `image:` when `solr:9` isn't the version you want:

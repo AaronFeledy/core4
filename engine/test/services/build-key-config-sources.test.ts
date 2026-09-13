@@ -57,3 +57,15 @@ test("keeps the build key stable when config sources are reordered", async () =>
   // Then
   expect(reordered).toBe(original);
 });
+
+test("keeps the build key stable when only host source paths change", async () => {
+  // Given
+  const original = await key([server, dir]);
+  // When
+  const relocated = await key([
+    { ...server, source: "/elsewhere/server.conf", authored: "moved/server.conf" },
+    { ...dir, source: "/elsewhere/conf", authored: "moved/conf" },
+  ]);
+  // Then
+  expect(relocated).toBe(original);
+});

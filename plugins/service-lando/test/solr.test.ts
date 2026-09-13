@@ -224,7 +224,7 @@ describe("solr ServiceType", () => {
     expect(plan.command).toEqual([
       "bash",
       "-c",
-      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; mkdir -p /var/solr/data/"$core"/conf; cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/; done; exec solr-foreground -p "$port"',
+      'port="$1"; shift; for core in "$@"; do precreate-core "$core" && mkdir -p /var/solr/data/"$core"/conf && cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/ || exit 1; done; exec solr-foreground -p "$port"',
       "lando-solr-precreate",
       "8983",
       "a",

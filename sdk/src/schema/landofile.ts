@@ -524,10 +524,10 @@ export type ServiceCreds = typeof ServiceCreds.Type;
  * `services.<name>.config` (e.g. a MySQL server config file or a Solr conf directory).
  */
 export const ServiceFileConfig = Schema.Struct({
-  server: Schema.optional(Schema.String).annotations({
+  server: Schema.optional(Schema.NonEmptyString).annotations({
     description: "App-relative path to a regular file mounted read-only as the service's server config.",
   }),
-  dir: Schema.optional(Schema.String).annotations({
+  dir: Schema.optional(Schema.NonEmptyString).annotations({
     description: "App-relative path to a directory mounted read-only as the service's config directory.",
   }),
 }).annotations({

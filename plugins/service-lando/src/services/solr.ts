@@ -24,7 +24,7 @@ export const SOLR_CONFIG_TARGET = PortablePath.make("/etc/lando/solr/conf");
 const PRECREATE_SCRIPT =
   'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"';
 const PRECREATE_WITH_CONFIG_SCRIPT =
-  'port="$1"; shift; for core in "$@"; do precreate-core "$core"; mkdir -p /var/solr/data/"$core"/conf; cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/; done; exec solr-foreground -p "$port"';
+  'port="$1"; shift; for core in "$@"; do precreate-core "$core" && mkdir -p /var/solr/data/"$core"/conf && cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/ || exit 1; done; exec solr-foreground -p "$port"';
 
 const validateCoreName = (core: string): void => {
   if (!CORE_NAME.test(core)) {

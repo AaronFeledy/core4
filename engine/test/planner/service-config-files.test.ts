@@ -78,6 +78,8 @@ describe("service config file sources", () => {
     { key: "dir", authored: "server.cnf" },
     { key: "server", authored: "missing.cnf" },
     { key: "dir", authored: "missing" },
+    { key: "server", authored: "" },
+    { key: "dir", authored: "" },
   ] as const)("rejects $key source $authored", async ({ key, authored }) => {
     // Given an invalid authored source; when resolving it.
     const result = await Effect.runPromise(Effect.either(resolveConfig({ [key]: authored })));

@@ -26,6 +26,28 @@ describe("ServiceFileConfig", () => {
     expect(decoded).toHaveProperty("config.dir", "./solr/conf");
   });
 
+  test("rejects empty config.server", () => {
+    expect(
+      Either.isLeft(
+        Schema.decodeUnknownEither(SDK.ServiceConfigInput)({
+          type: "mysql",
+          config: { server: "" },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects empty config.dir", () => {
+    expect(
+      Either.isLeft(
+        Schema.decodeUnknownEither(SDK.ServiceConfigInput)({
+          type: "solr",
+          config: { dir: "" },
+        }),
+      ),
+    ).toBe(true);
+  });
+
   test("rejects non-string config.server", () => {
     // Given config.server as a number,
     // when decoded,

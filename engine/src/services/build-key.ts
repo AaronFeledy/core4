@@ -192,7 +192,10 @@ const configSourcesFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   return extension.configSources
     .filter(isRecord)
     .sort((left, right) => String(left.key).localeCompare(String(right.key)))
-    .map(stableValue);
+    .map((source) => ({
+      key: source.key,
+      digest: typeof source.digest === "string" ? source.digest : undefined,
+    }));
 };
 
 const stableBuildInput = (
