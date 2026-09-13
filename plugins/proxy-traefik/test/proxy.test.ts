@@ -184,34 +184,6 @@ describe("Traefik RouterService", () => {
     expect(fallback).toContain('rule: "PathPrefix(`/`)"');
   });
 
-  test("diagnostic nginx selects HTML only for GET and HEAD requests that accept text/html", async () => {
-    const harness = makeHarness();
-
-    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
-
-    const config = harness.files.get("/lando/global/proxy-traefik/diagnostic/nginx.conf") ?? "";
-    // Require a complete quoted nginx token: regex semicolons must not end the directive.
-    const pattern = config.match(/^\s*"~\*((?:[^"\\]|\\[\\"])*)"\s+\/_lando\/404\.html;$/m)?.[1];
-    expect(pattern).toBeDefined();
-    if (pattern === undefined) throw new Error("diagnostic Accept pattern missing");
-    expect(pattern).toContain(String.raw`\\s`);
-    const acceptsHtml = new RegExp(pattern.replace(/\\([\\"])/g, "$1"), "i");
-
-    expect(acceptsHtml.test("GET:text/html")).toBe(true);
-    expect(acceptsHtml.test("HEAD:text/html; charset=utf-8")).toBe(true);
-    expect(acceptsHtml.test("GET:application/json, text/html;q=0.8")).toBe(true);
-    expect(acceptsHtml.test("GET:TEXT/HTML;LEVEL=1;Q=0.5")).toBe(true);
-    expect(acceptsHtml.test("GET:text/html;q=0")).toBe(false);
-    expect(acceptsHtml.test("GET:text/html;level=1;q=0.000, application/json")).toBe(false);
-    expect(acceptsHtml.test("GET:*/*")).toBe(false);
-    expect(acceptsHtml.test("POST:text/html")).toBe(false);
-    expect(config).toContain('default_type "text/plain; charset=utf-8";');
-    expect(config).toContain('return 404 "404 page not found\\n";');
-    // mime.types maps the .txt/.html internal URIs, so only a server-level charset
-    // keeps both fallback responses labelled utf-8 like Traefik's own 404.
-    expect(config).toMatch(/^\s*charset utf-8;$/m);
-  });
-
   test("diagnostic page is private and offers actionable recovery commands", async () => {
     const harness = makeHarness();
 

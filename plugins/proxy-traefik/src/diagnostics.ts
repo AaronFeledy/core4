@@ -4,7 +4,15 @@ export const TRAEFIK_DIAGNOSTICS_PORT = 8080;
 export const TRAEFIK_DIAGNOSTICS_SOURCE = "./proxy-traefik/diagnostic" as const;
 export const TRAEFIK_DIAGNOSTICS_CONTAINER_DIR = "/etc/lando/diagnostics" as const;
 
-const HTML_ACCEPT_PATTERN = String.raw`^(?:GET|HEAD):(?:[^,]+,)*\s*text/html(?=[\s;,]|$)(?![^,]*;\s*q\s*=\s*0(?:\.0*)?\s*(?:;|,|$))[^,]*(?:,|$)`;
+// An Accept parameter value may be an RFC 9110 quoted-string, where commas,
+// semicolons, and backslash-escaped quotes are literal text rather than list
+// or parameter boundaries. Every step through a media range therefore consumes
+// either one unquoted non-comma byte or one complete quoted-string.
+const QUOTED_STRING = String.raw`"(?:[^"\\]|\\.)*"`;
+const RANGE_UNIT = String.raw`(?:[^,"]|${QUOTED_STRING})`;
+// Matches `$request_method:$http_accept` when some text/html range carries a
+// positive weight: no `;q=0` (optionally `0.000`) terminates that range.
+const HTML_ACCEPT_PATTERN = String.raw`^(?:GET|HEAD):(?:${RANGE_UNIT}+,)*\s*text/html(?=[\s;,]|$)(?!${RANGE_UNIT}*;\s*q\s*=\s*0(?:\.0*)?\s*(?:;|,|$))${RANGE_UNIT}*(?:,|$)`;
 
 export const renderTraefikDiagnosticHtml = (): string => `<!doctype html>
 <html lang="en">
