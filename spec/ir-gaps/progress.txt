@@ -538,3 +538,13 @@ Real-surface evidence: on the real binary with isolated user roots, `app:config 
 - Verification: typecheck, lint passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; 26 focused package-spec/composer-package tests passed.
 - **Learnings for future iterations:** Hash only inputs the step actually consumes. A skipped dependency's identity belongs on the step that installs it, not on a later command that merely invokes the binary.
 ---
+
+## 2026-09-13 12:05 - US-618B Drift Audit
+- Trigger: 2 cycles, 1476 changed lines, 8 commits
+- Scar tissue: packages step still hashed the Composer pin the install step already owns
+- Ceremony: command and version helpers exported with no external importers
+- Weakened proofs: secrets stay refuse-at-plan; hasher suite still uses synthetic steps beside production apply
+- Fixed: dropped redundant composer identity from the packages step; unexported unused helpers
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 92 focused tests pass
+---
