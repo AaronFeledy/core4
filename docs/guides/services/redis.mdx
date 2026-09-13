@@ -55,13 +55,13 @@ lando redis-cli set hello world
 
 ## Require a password
 
-Set `password:` on Redis. Keep real credentials in an untracked local Landofile or a secret reference, not your repository.
+Set `password:` on Redis. Keep real credentials in an untracked local Landofile, not your repository.
 
 ```yaml
 services:
   cache:
     type: redis
-    password: "${secret:redis-password}"
+    password: lando
     persist: true
 ```
 
