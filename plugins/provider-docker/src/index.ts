@@ -3,7 +3,7 @@ import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
-import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeProviderDataPlane, volumeCreationOwnerLabels } from "@lando/container-runtime/data-plane";
 import { dockerPullDialect, dockerWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineApiClient,
@@ -835,6 +835,7 @@ const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly
   "dev.lando.store": store.name,
   "dev.lando.scope": store.scope,
   "dev.lando.volume-instance": randomUUID(),
+  ...volumeCreationOwnerLabels(plan.identity),
   ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
 });
 

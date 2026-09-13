@@ -1347,6 +1347,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     };
     const plan = {
       ...makePlan(service),
+      identity: { appRoot: AbsolutePath.make("/canonical/creation-root"), ownerKey: "creation-owner" },
       stores: [{ name: "lando-cache-npm", scope: "global" as const, kind: "cache" as const, key: "npm" }],
     };
 
@@ -1360,6 +1361,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         "dev.lando.scope": "global",
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
+        "dev.lando.volume-owner": "/canonical/creation-root",
       },
     });
     expect(
