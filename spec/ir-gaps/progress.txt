@@ -634,3 +634,12 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Verification: typecheck, lint passed; 86 focused tests passed across rebuild/info scenarios, Podman recreate, Docker bring-up order, argv parser, library handle, and MCP catalog.
 - **Learnings for future iterations:** Unscoped rebuild recreates because stopApp destroy-removes containers; scoped stop+apply only restarts existing ones unless `reconcile` removes and recreates. Provider fakes that record apply calls cannot prove runtime recreation.
 ---
+
+## 2026-09-13 17:30 - US-618D1 Drift Audit
+- Trigger: 2 cycles, 721 insertions, 13 commits
+- Deferred work re-examined: MCP integer `option` projection, Kahn incomplete-plan, and unfiltered top-level stores still hold; none are regressions this branch owns
+- Contract: public `services`/`recordedPlan` surfaces and the scoped vs unscoped rebuild split all trace to this story's ACs; only this story's `passes` flip
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 80 focused tests pass
+---
