@@ -197,6 +197,20 @@ export const openForPlan = (
     if (targets.length === 0) {
       const knownServices = Object.values(plan.services).map((service) => String(service.name));
       const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
+      const unpublishedRoutes = !routerEnabled(plan) && plan.routes.length > 0;
+      const askedForUnpublishedRoute =
+        unpublishedRoutes &&
+        options.route !== undefined &&
+        plan.routes.some((route) => route.hostname === options.route);
+      if (askedForUnpublishedRoute) {
+        return yield* Effect.fail(
+          new OpenTargetUnresolvedError({
+            message: `No openable URL matched --route ${options.route} for ${plan.name}: that hostname is declared but the router is disabled. Known services: ${knownServicesText}.`,
+            remediation:
+              "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or omit `--route` to open a published http host port.",
+          }),
+        );
+      }
       if (
         (options.service !== undefined || options.route !== undefined) &&
         resolveOpenTargets(plan, { all: true }).length > 0
@@ -210,7 +224,6 @@ export const openForPlan = (
           }),
         );
       }
-      const unpublishedRoutes = !routerEnabled(plan) && plan.routes.length > 0;
       return yield* Effect.fail(
         new OpenTargetUnresolvedError({
           message: unpublishedRoutes
