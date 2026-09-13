@@ -1,7 +1,7 @@
 import { DateTime, Effect } from "effect";
 
 import { MessageWarnEvent } from "@lando/sdk/events";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -10,7 +10,28 @@ export interface PostStartScanInput {
   readonly scanner: UrlScannerShape;
   readonly plan: AppPlan;
   readonly events: Pick<EventServiceShape, "publish">;
+  readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
 }
+
+export const appendScanPath = (base: string, path: string): string => {
+  const origin = base.endsWith("/") ? base : `${base}/`;
+  const relative = path === "/" ? "" : path.replace(/^\//u, "");
+  return new URL(relative, origin).toString();
+};
+
+export const startupScanUrls = (
+  plan: AppPlan,
+  services: ReadonlyArray<{ readonly name: string; readonly endpoints: ReadonlyArray<string> }>,
+): ReadonlyArray<{ readonly service: ServiceName; readonly url: string }> =>
+  services.flatMap((service) => {
+    const name = ServiceName.make(service.name);
+    const scan = plan.services[name]?.scanner;
+    const path = scan?.path ?? "/";
+    return service.endpoints.map((base) => ({
+      service: name,
+      url: appendScanPath(base, path),
+    }));
+  });
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -44,7 +65,12 @@ export const runPostStartScan = (input: PostStartScanInput): Effect.Effect<void>
     const warn = (body: string) =>
       input.events.publish(MessageWarnEvent.make({ body: redactor.redactString(body), timestamp: now() }));
 
-    const scanned = yield* Effect.either(input.scanner.scan(input.plan.id, { plan: input.plan }));
+    const scanned = yield* Effect.either(
+      input.scanner.scan(input.plan.id, {
+        plan: input.plan,
+        ...(input.urls === undefined ? {} : { urls: input.urls }),
+      }),
+    );
     if (scanned._tag === "Left") {
       yield* warn(`URL scan did not run: ${scanned.left.message}`);
       return;

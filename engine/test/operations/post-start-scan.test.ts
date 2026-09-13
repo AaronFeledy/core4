@@ -7,7 +7,7 @@ import type { AppPlan } from "@lando/sdk/schema";
 import { ServiceName } from "@lando/sdk/schema";
 import type { EventServiceShape, ScanEndpoint, ScanResult, UrlScannerShape } from "@lando/sdk/services";
 
-import { runPostStartScan } from "../../src/operations/post-start-scan.ts";
+import { appendScanPath, runPostStartScan, startupScanUrls } from "../../src/operations/post-start-scan.ts";
 
 const appId = AppId.make("scan-demo");
 const plan = { id: appId, services: {} } as unknown as AppPlan;
@@ -35,13 +35,18 @@ const endpoint = (overrides: Partial<ScanEndpoint>): ScanEndpoint => ({
 
 const scannerReturning = (
   endpoints: ReadonlyArray<ScanEndpoint>,
-  seen: { appId?: AppId; plan?: AppPlan | undefined },
+  seen: {
+    appId?: AppId;
+    plan?: AppPlan | undefined;
+    urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+  },
 ): UrlScannerShape => ({
   id: "stub",
   scan: (id, options) =>
     Effect.sync((): ScanResult => {
       seen.appId = id;
       seen.plan = options?.plan;
+      if (options?.urls !== undefined) seen.urls = options.urls;
       return { appId: id, endpoints };
     }),
   detectCollisions: () => Effect.succeed([]),
@@ -71,6 +76,20 @@ describe("runPostStartScan", () => {
     );
     expect(seen.appId).toBe(appId);
     expect(seen.plan).toBe(plan);
+  });
+
+  test("forwards supplied startup urls to the scanner", async () => {
+    const events = collector();
+    const seen: {
+      appId?: AppId;
+      plan?: AppPlan | undefined;
+      urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+    } = {};
+    const urls = [{ service: ServiceName.make("web"), url: "https://web.demo.lndo.site/" }];
+    await Effect.runPromise(
+      runPostStartScan({ scanner: scannerReturning([endpoint({})], seen), plan, events, urls }),
+    );
+    expect(seen.urls).toEqual(urls);
   });
 
   test("warns once per endpoint that did not pass", async () => {
@@ -118,5 +137,24 @@ describe("runPostStartScan", () => {
     };
     const result = await Effect.runPromise(Effect.either(runPostStartScan({ scanner, plan, events })));
     expect(result._tag).toBe("Right");
+  });
+});
+
+describe("startupScanUrls", () => {
+  test("joins scanner paths onto published and routed bases", () => {
+    const urls = startupScanUrls(
+      {
+        ...plan,
+        services: {
+          web: { scanner: { enabled: true, path: "/ready", okCodes: [], retries: 0, timeoutMs: 1000 } },
+        },
+      } as unknown as AppPlan,
+      [{ name: "web", endpoints: ["http://localhost:8080", "https://web.demo.lndo.site:4443"] }],
+    );
+    expect(urls.map((row) => row.url)).toEqual([
+      "http://localhost:8080/ready",
+      "https://web.demo.lndo.site:4443/ready",
+    ]);
+    expect(appendScanPath("https://web.demo.lndo.site/api", "/")).toBe("https://web.demo.lndo.site/api/");
   });
 });
