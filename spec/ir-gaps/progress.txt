@@ -467,3 +467,13 @@ Real-socket scan evidence is now a permanent test rather than a one-off artifact
 - Verification: typecheck, lint passed; focused open/scanner/routes/planner/post-start tests passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed.
 - **Learnings for future iterations:** `UrlScannerLive` captures `RuntimeProvider` at layer construction, and bootstrap provides the stub whose `list()` is empty. A start-path that calls `scan()` without passing the URLs it already has will probe nothing in production.
 ---
+
+## 2026-09-13 07:39 - US-617B Drift Audit
+- Trigger: 2 cycles, 1961 changed lines, 10 commits
+- Weakened proofs: infoForPlan never asserted published-only endpoints; start never asserted UrlScanner.scan(plan, urls); catchAllCause swallowed scan interruption so a cancelled start could continue
+- Ceremony: appendScanPath was a test-only export
+- Deferred re-examined: interruption swallow was rejected as out of scope but is owned by this branch's new scan wrapper; container-backed start/info remain Verify-owned; guide stays lint/config
+- Fixed: unexported appendScanPath; scan interruption now propagates; restored infoForPlan and start→UrlScanner production-path proofs
+- Split/excise decisions: none; SDK scan options and open/share consumers stay in-story
+- Verification: typecheck, lint, 40 focused tests — pass
+---
