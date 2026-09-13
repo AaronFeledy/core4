@@ -7,6 +7,7 @@ import { AbsolutePath, ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 import { installEngineComposition } from "@lando/engine/composition";
 import { Effect } from "effect";
+import { appConfigValidate } from "../../src/cli/commands/app-config.ts";
 
 for (const bootstrap of ["commands", "app"] as const) {
   test(`${bootstrap} embedding loads profiles from runtime roots instead of process roots`, async () => {
@@ -53,7 +54,11 @@ for (const bootstrap of ["commands", "app"] as const) {
           systemPluginRoot: AbsolutePath.make(join(root, "system")),
         },
       } satisfies LandoRuntimeOptions;
-      const discover = Effect.flatMap(LandofileService, (service) => service.discover);
+      const discover = Effect.gen(function* () {
+        const landofile = yield* (yield* LandofileService).discover;
+        const validation = yield* appConfigValidate({ cwd: app });
+        return { landofile, validation };
+      });
       const commandsOptions: LandoRuntimeOptions & { readonly bootstrap: "commands" } = {
         ...options,
         bootstrap: "commands",
@@ -68,10 +73,11 @@ for (const bootstrap of ["commands", "app"] as const) {
           : discover.pipe(Effect.provide(makeLandoRuntime(appOptions)));
 
       // When: the public embedding factory builds the real discovery service.
-      const landofile = await Effect.runPromise(Effect.scoped(program));
+      const { landofile, validation } = await Effect.runPromise(Effect.scoped(program));
 
       // Then: the conflicting process profile was never consumed.
       expect(landofile.services?.[ServiceName.make("web")]?.environment?.ORIGIN).toBe("embedded");
+      expect(validation.valid).toBe(true);
     } finally {
       installEngineComposition(composition);
       process.chdir(cwd);

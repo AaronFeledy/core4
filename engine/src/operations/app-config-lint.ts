@@ -1,8 +1,6 @@
 import { dirname } from "node:path";
 import { loadLandofileLayers } from "@lando/landofile/service";
-import { PathsService, StateStore } from "@lando/sdk/services";
-import { Effect, Either, Option } from "effect";
-import { landofileRuntimeInputs } from "../composition.ts";
+import { Effect, Either } from "effect";
 import { compileEffectiveTooling } from "../planner/effective-tooling.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "../planner/event-names.ts";
 
@@ -14,7 +12,7 @@ import type {
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import type { LintLandofileOptions } from "@lando/landofile/lint";
-import { lintLandofile } from "../services/landofile-live.ts";
+import { lintLandofile, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
 
@@ -33,21 +31,9 @@ export const appConfigLint = (
   Effect.gen(function* () {
     const result = yield* lintLandofile(options);
     if (!result.valid) return result;
-    const runtimeInputs = landofileRuntimeInputs();
-    const paths = yield* Effect.serviceOption(PathsService);
-    const stateStore = yield* Effect.serviceOption(StateStore);
+    const runtimeInputs = yield* scopedLandofileRuntimeInputs;
     const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
       ...runtimeInputs,
-      ...(Option.isNone(stateStore) ? {} : { stateStore: stateStore.value }),
-      ...(Option.isNone(paths)
-        ? {}
-        : {
-            ports: {
-              ...runtimeInputs.ports,
-              resolveUserIncludesDir: () => paths.value.userIncludesDir,
-              resolveUserCacheRoot: () => paths.value.roots.userCacheRoot,
-            },
-          }),
       ...(options.templates === undefined ? {} : { templates: options.templates }),
     }).pipe(Effect.either);
     if (Either.isLeft(loaded)) {
