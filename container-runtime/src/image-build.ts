@@ -7,7 +7,7 @@ import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
 import { type BuildContextEntry, packBuildContext, tarStream, tarText } from "./build-context.ts";
 import { type PreparedBuildStep, copyInstructions, prepareDerivedBuild } from "./image-build-ca.ts";
 import { type ContainerBuildOptions, requestContainerBuild } from "./image-build-http.ts";
-import { inspectInheritedImageUser } from "./image-build-user.ts";
+import { inspectInheritedImageUser, validateDockerfileUser } from "./image-build-user.ts";
 
 export { buildContextContentDigest, packBuildContext } from "./build-context.ts";
 export type {
@@ -52,7 +52,8 @@ type DerivedDockerfileInput = {
   readonly providerId: string;
   readonly baseRef: string;
   readonly steps: ReadonlyArray<PreparedBuildStep>;
-  readonly inheritedUser: string | undefined;
+  readonly inheritedUser: string;
+  readonly finalUser: string;
 };
 
 const dockerfileForDerivedBuild = (
@@ -60,20 +61,18 @@ const dockerfileForDerivedBuild = (
 ): Effect.Effect<string, ProviderInternalError> =>
   Effect.gen(function* () {
     yield* validateDockerfileToken(input.baseRef, "Base image reference", input.providerId);
-    if (input.inheritedUser !== undefined) {
-      yield* validateDockerfileToken(input.inheritedUser, "Inherited image user", input.providerId);
+    const instructions = [`FROM ${input.baseRef}`];
+    let active = input.inheritedUser;
+    for (const step of input.steps) {
+      const target = step.user ?? input.finalUser;
+      if (target !== active) {
+        instructions.push(`USER ${target}`);
+        active = target;
+      }
+      instructions.push(...copyInstructions(step), yield* runInstruction(step, input.providerId));
     }
-    const instructions = yield* Effect.forEach(input.steps, (step) =>
-      runInstruction(step, input.providerId).pipe(
-        Effect.map((run) => {
-          const stepInstructions = [...copyInstructions(step), run];
-          return step.privileged && input.inheritedUser !== undefined
-            ? ["USER root", ...stepInstructions, `USER ${input.inheritedUser}`]
-            : stepInstructions;
-        }),
-      ),
-    );
-    return [`FROM ${input.baseRef}`, ...instructions.flat(), ""].join("\n");
+    if (active !== input.finalUser) instructions.push(`USER ${input.finalUser}`);
+    return [...instructions, ""].join("\n");
   });
 
 const deterministicRef = (input: ArtifactBuildSpec): string =>
@@ -129,8 +128,11 @@ export const buildContainerArtifact = (
       );
     }
     const artifact = service.artifact;
+    if (service.user !== undefined) {
+      yield* validateDockerfileUser(service.user, "final service user", options.providerId);
+    }
     const { steps, caEntries } = yield* prepareDerivedBuild(service, options.providerId);
-    const hasPrivilegedStep = steps.some((step) => step.privileged);
+    const needsInheritedUser = service.user !== undefined || steps.some((step) => step.user !== undefined);
     const tag = deterministicRef(input);
     let digest: string | undefined;
     const secretValues =
@@ -168,14 +170,15 @@ export const buildContainerArtifact = (
         secretValues,
       });
       if (steps.length > 0) {
-        const inheritedUser = hasPrivilegedStep
+        const inheritedUser = needsInheritedUser
           ? yield* inspectInheritedImageUser({ baseRef: baseTag, providerId: options.providerId, request })
-          : undefined;
+          : "root";
         const dockerfile = yield* dockerfileForDerivedBuild({
           providerId: options.providerId,
           baseRef: baseTag,
           steps,
           inheritedUser,
+          finalUser: service.user ?? inheritedUser,
         });
         const entries: ReadonlyArray<BuildContextEntry> = [
           { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
@@ -192,13 +195,14 @@ export const buildContainerArtifact = (
       }
     } else if (artifact?.kind === "ref" && steps.length > 0) {
       const resolvedRef = resolvedBaseRef(artifact);
-      const baseRef = hasPrivilegedStep ? `${tag}-base` : resolvedRef;
-      if (hasPrivilegedStep) {
+      const baseRef = needsInheritedUser ? `${tag}-base` : resolvedRef;
+      if (needsInheritedUser) {
         const baseDockerfile = yield* dockerfileForDerivedBuild({
           providerId: options.providerId,
           baseRef: resolvedRef,
           steps: [],
-          inheritedUser: undefined,
+          inheritedUser: "root",
+          finalUser: "root",
         });
         yield* requestContainerBuild({
           request,
@@ -211,14 +215,15 @@ export const buildContainerArtifact = (
           secretValues,
         });
       }
-      const inheritedUser = hasPrivilegedStep
+      const inheritedUser = needsInheritedUser
         ? yield* inspectInheritedImageUser({ baseRef, providerId: options.providerId, request })
-        : undefined;
+        : "root";
       const dockerfile = yield* dockerfileForDerivedBuild({
         providerId: options.providerId,
         baseRef,
         steps,
         inheritedUser,
+        finalUser: service.user ?? inheritedUser,
       });
       const entries: ReadonlyArray<BuildContextEntry> = [
         { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },

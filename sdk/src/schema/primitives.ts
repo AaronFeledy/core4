@@ -22,6 +22,21 @@ export type PortablePath = typeof PortablePath.Type;
 export const PortNumber = Schema.Number.pipe(Schema.int(), Schema.between(1, 65535));
 export type PortNumber = typeof PortNumber.Type;
 
+/**
+ * A container identity: a name or numeric id, optionally followed by a group
+ * name or gid. The allowlist keeps the value safe to interpolate into a
+ * `USER` instruction and into a provider exec request.
+ */
+export const CONTAINER_USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-9_][A-Za-z0-9_.-]*)?$/u;
+
+export const isContainerUser = (value: string): boolean => CONTAINER_USER_PATTERN.test(value);
+
+export const ContainerUser = Schema.String.pipe(Schema.pattern(CONTAINER_USER_PATTERN)).annotations({
+  description:
+    'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.',
+});
+export type ContainerUser = typeof ContainerUser.Type;
+
 export const HostPlatform = Schema.Literal("darwin", "linux", "win32", "wsl");
 export type HostPlatform = typeof HostPlatform.Type;
 

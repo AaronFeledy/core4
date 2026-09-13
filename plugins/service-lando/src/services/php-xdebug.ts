@@ -88,6 +88,7 @@ export const phpXdebugBuildStep = (
     id: "service-lando.php:xdebug",
     phase: "build",
     command,
+    user: "root",
     dependsOn: ["service-lando.php:prerequisites"],
     buildKeyInputs: {
       xdebug: { ...release, phpVersion, mode },
