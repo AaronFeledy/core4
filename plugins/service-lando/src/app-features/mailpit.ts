@@ -15,21 +15,20 @@ export const mailpitWireFeature: AppFeatureDefinition = {
   apply: (ctx) =>
     Effect.gen(function* () {
       const php = ctx.selected.filter((service) => service.featureIds.includes(PHP_FEATURE_ID));
+      const unknownTarget = (mailName: string, target: string) =>
+        new AppFeatureSelectorMatchedNothingError({
+          message: `Mailpit service ${mailName} mailFrom target ${target} is not a resolved PHP service.`,
+          feature: ctx.featureId,
+          remediation:
+            "Choose existing PHP service names in mailFrom, omit it for all PHP services, or set it to false.",
+        });
       const wiring = [];
       for (const mail of ctx.selected.filter((service) => service.serviceType === "mailpit")) {
         const authored = mail.normalizedConfig.mailFrom;
-        const targets =
-          authored === false ? [] : [...new Set(authored ?? php.map((service) => service.serviceName))];
+        const targets = authored === false ? [] : (authored ?? php.map((service) => service.serviceName));
         for (const target of targets) {
           if (!php.some((service) => service.serviceName === target)) {
-            return yield* Effect.fail(
-              new AppFeatureSelectorMatchedNothingError({
-                message: `Mailpit service ${mail.serviceName} mailFrom target ${target} is not a resolved PHP service.`,
-                feature: ctx.featureId,
-                remediation:
-                  "Choose existing PHP service names in mailFrom, omit it for all PHP services, or set it to false.",
-              }),
-            );
+            return yield* Effect.fail(unknownTarget(mail.serviceName, target));
           }
         }
         wiring.push({ mail, targets });
@@ -38,7 +37,9 @@ export const mailpitWireFeature: AppFeatureDefinition = {
         const port = mail.normalizedConfig.port ?? MAILPIT_SMTP_PORT;
         for (const target of targets) {
           const service = ctx.select(target);
-          if (service === undefined) continue;
+          if (service === undefined) {
+            return yield* Effect.fail(unknownTarget(mail.serviceName, target));
+          }
           service.addEnv("LANDO_MAIL_HOST", mail.serviceName);
           service.addEnv("LANDO_MAIL_PORT", String(port));
           service.addDependency({
