@@ -132,6 +132,7 @@ export const planServiceDrafts = (input: {
       baseDefaultIds,
       featureRefs,
       routes,
+      resolvedArtifactTag,
     } of input.resolvedServices) {
       const rawPlan = yield* Effect.gen(function* () {
         const configuredFeatureRefs = featureRefs.filter(
@@ -230,6 +231,7 @@ export const planServiceDrafts = (input: {
           service,
           serviceTypeId: serviceType.id,
           identity: serviceType.identity,
+          pinnedArtifactTag: resolvedArtifactTag,
         }),
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,

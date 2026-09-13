@@ -539,6 +539,7 @@ describe("scratchRun", () => {
           "services:",
           "  web:",
           "    type: compose",
+          "    home: false",
           "    primary: true",
           "    build:",
           "      context: .",

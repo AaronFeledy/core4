@@ -22,9 +22,15 @@ export interface ServiceHomeIntent {
   readonly home?: ServiceConfig["home"];
 }
 
-/** True when the Landofile supplies the image instead of the service type. */
-export const hasCustomImage = (service: ServiceConfig): boolean => {
-  if (service.image !== undefined) return true;
+/**
+ * True when the Landofile supplies the image instead of the service type.
+ *
+ * Planning writes the service type's own published artifact tag onto the config
+ * as `image` before this runs, so that tag is passed in and ignored: it is
+ * Lando's image and the type's identity still describes it.
+ */
+export const hasCustomImage = (service: ServiceConfig, pinnedArtifactTag?: string | undefined): boolean => {
+  if (service.image !== undefined && service.image !== pinnedArtifactTag) return true;
   const build = service.build;
   return build !== undefined && "context" in build;
 };
@@ -33,8 +39,9 @@ export const serviceHomeIntent = (input: {
   readonly service: ServiceConfig;
   readonly serviceTypeId: string;
   readonly identity: ServiceImageIdentity | undefined;
+  readonly pinnedArtifactTag?: string | undefined;
 }): ServiceHomeIntent => {
-  const known = hasCustomImage(input.service) ? undefined : input.identity;
+  const known = hasCustomImage(input.service, input.pinnedArtifactTag) ? undefined : input.identity;
   return {
     serviceType: input.serviceTypeId,
     ...(known === undefined ? {} : { identity: known }),

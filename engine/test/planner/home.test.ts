@@ -62,6 +62,19 @@ describe("serviceHomeIntent", () => {
     expect(intentFor({ image: "my/app:1" } as ServiceConfig).identity).toBeUndefined();
   });
 
+  it("Given a planner-pinned catalog artifact tag, When the intent is built, Then the type's identity is kept", () => {
+    // The planner writes the service type's own published image onto the config
+    // as `image` before planning. That is Lando's image, not the author's, so it
+    // must not look like a custom image.
+    const intent = serviceHomeIntent({
+      service: { image: "docker.io/lando/mariadb:10.6" } as ServiceConfig,
+      serviceTypeId: "mariadb",
+      identity,
+      pinnedArtifactTag: "docker.io/lando/mariadb:10.6",
+    });
+    expect(intent.identity).toEqual(identity);
+  });
+
   it("Given the type's own image, When the intent is built, Then the identity is kept", () => {
     expect(intentFor({} as ServiceConfig).identity).toEqual(identity);
   });
