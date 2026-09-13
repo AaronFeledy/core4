@@ -727,3 +727,164 @@ describe("execApp — host agent-context env forwarding", () => {
     expect(calls[0]?.env).toBeUndefined();
   });
 });
+
+describe("execApp — interactive TTY terminal-capability env", () => {
+  const AGENT_KEYS = [
+    "CLAUDECODE",
+    "CLAUDE_CODE",
+    "CURSOR_AGENT",
+    "OPENCODE",
+    "COPILOT_CLI",
+    "GEMINI_CLI",
+    "AGENT",
+    "CI",
+  ] as const;
+
+  const CAPABILITY_KEYS = [
+    "TERM",
+    "COLORTERM",
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "VTE_VERSION",
+    "WT_SESSION",
+    "KONSOLE_VERSION",
+  ] as const;
+
+  const HOST_KEYS = [...AGENT_KEYS, ...CAPABILITY_KEYS, "HOST_SECRET", "HOST_FOO"] as const;
+
+  const withHostEnv = async <A>(
+    env: Record<string, string | undefined>,
+    run: () => Promise<A>,
+  ): Promise<A> => {
+    const saved = new Map<string, string | undefined>();
+    for (const key of HOST_KEYS) saved.set(key, process.env[key]);
+    try {
+      for (const key of HOST_KEYS) {
+        const value = env[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      return await run();
+    } finally {
+      for (const [key, value] of saved) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  };
+
+  const capabilityHost = {
+    CLAUDECODE: undefined,
+    CLAUDE_CODE: undefined,
+    CURSOR_AGENT: undefined,
+    OPENCODE: undefined,
+    COPILOT_CLI: undefined,
+    GEMINI_CLI: undefined,
+    AGENT: undefined,
+    CI: undefined,
+    TERM: "xterm-ghostty",
+    COLORTERM: "truecolor",
+    TERM_PROGRAM: "ghostty",
+    TERM_PROGRAM_VERSION: "1.2.0",
+    VTE_VERSION: undefined,
+    WT_SESSION: undefined,
+    KONSOLE_VERSION: undefined,
+    HOST_SECRET: "shh",
+    HOST_FOO: "nope",
+  } as const;
+
+  test("TTY on forwards allowlisted host capability vars", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ ...capabilityHost }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["htop"], tty: true }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toMatchObject({
+      TERM: "xterm-ghostty",
+      COLORTERM: "truecolor",
+      TERM_PROGRAM: "ghostty",
+      TERM_PROGRAM_VERSION: "1.2.0",
+    });
+    expect(calls[0]?.env).toHaveProperty("COLUMNS");
+    expect(calls[0]?.env).toHaveProperty("LINES");
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "VTE_VERSION")).toBe(false);
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "HOST_SECRET")).toBe(false);
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "HOST_FOO")).toBe(false);
+  });
+
+  test("TTY off leaves capability vars absent even when set on the host", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ ...capabilityHost }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"], tty: false }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toBeUndefined();
+  });
+
+  test("TTY off keeps agent-env clean of capability fingerprints", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ ...capabilityHost, CLAUDECODE: "1" }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["env"] }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    expect(calls[0]?.env).toEqual({ CLAUDECODE: "1" });
+  });
+
+  test("explicit empty/override wins over host capability values", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ ...capabilityHost }, () =>
+      Effect.runPromise(
+        execApp({
+          service: "appserver",
+          command: ["htop"],
+          tty: true,
+          env: { TERM_PROGRAM: "", TERM: "xterm-explicit" },
+        }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+      ),
+    );
+
+    expect(calls[0]?.env).toMatchObject({
+      TERM: "xterm-explicit",
+      TERM_PROGRAM: "",
+      COLORTERM: "truecolor",
+    });
+  });
+
+  test("allowlist does not forward random HOST_* or other junk", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ ...capabilityHost, HOST_SECRET: "shh", HOST_FOO: "nope" }, () =>
+      Effect.runPromise(
+        execApp({ service: "appserver", command: ["htop"], tty: true }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      ),
+    );
+
+    const env = calls[0]?.env ?? {};
+    expect(Object.keys(env).filter((name) => name.startsWith("HOST_"))).toEqual([]);
+    expect(Object.hasOwn(env, "FORCE_HYPERLINK")).toBe(false);
+    expect(env.TERM_PROGRAM).toBe("ghostty");
+  });
+});

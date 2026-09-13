@@ -20,6 +20,7 @@ import {
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
+import { resolveTerminalCapabilityEnv } from "../config/terminal-capability-env.ts";
 import {
   type ResolvedAppTarget,
   loadUserLandofile,
@@ -226,6 +227,7 @@ export const execApp = (
       ? {
           COLUMNS: envOrFallback("COLUMNS", "80"),
           LINES: envOrFallback("LINES", "24"),
+          ...resolveTerminalCapabilityEnv(process.env),
         }
       : undefined;
     const mergedEnv = env === undefined && ttyEnv === undefined ? undefined : { ...ttyEnv, ...env };
