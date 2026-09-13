@@ -1899,6 +1899,17 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("plans routed apps without shared networking when the router is disabled", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        { ...landofileFixture, router: { enabled: false } },
+        { ...providerLandoCapabilities, sharedCrossAppNetwork: false },
+      );
+      expect(appPlan.router?.enabled).toBe(false);
+      expect(appPlan.routes.length).toBeGreaterThan(0);
+    });
+  });
+
   test("fails routed planning when shared cross-app networking is unavailable", async () => {
     await withTempCwd(async () => {
       const exit = await planExit(landofileFixture, {

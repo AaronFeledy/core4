@@ -24,7 +24,11 @@ export const applyAppRoutes = (
   ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | ProxyApplyError
 > =>
   Effect.gen(function* () {
-    if (!routerEnabled(plan)) return { app: plan.id, appliedRoutes: [], authorities: [] };
+    if (!routerEnabled(plan)) {
+      // Best-effort: a disabled plan must not leave previously published hostnames live.
+      yield* proxy.removeRoutes(plan.id).pipe(Effect.catchAll(() => Effect.void));
+      return { app: plan.id, appliedRoutes: [], authorities: [] };
+    }
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
     return yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin })).pipe(

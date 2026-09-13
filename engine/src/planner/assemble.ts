@@ -506,7 +506,7 @@ export const planApp = (
       metadata,
       fileSyncEngineId,
     });
-    if (finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
+    if (routerEnabled && finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
       yield* Effect.fail(
         new CapabilityError({
           message: "Routes require provider capability sharedCrossAppNetwork.",

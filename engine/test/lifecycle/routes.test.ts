@@ -49,13 +49,14 @@ describe("applyAppRoutes", () => {
         calls.push("applyRoutes");
         expect.unreachable("disabled router must not publish routes");
       },
+      removeRoutes: () => Effect.sync(() => void calls.push("removeRoutes")),
     };
 
     // When
     const result = await Effect.runPromise(applyAppRoutes(proxy, plan, { enabled: true }));
 
     // Then
-    expect(calls).toEqual([]);
+    expect(calls).toEqual(["removeRoutes"]);
     expect(result).toEqual({ app: plan.id, appliedRoutes: [], authorities: [] });
   });
 
