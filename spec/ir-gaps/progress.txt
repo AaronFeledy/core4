@@ -362,3 +362,12 @@ Manual CLI QA against `core/bin/lando.ts` with isolated user roots and `provider
   - Establish a failure baseline in a detached `git worktree` of `origin/main` before triaging. It needs its own `bun install` and `bun run codegen` — symlinking the branch's `node_modules` silently resolves `@lando/*` back to branch source and produces a useless comparison.
   - `core/test/app/resolve.test.ts` is genuinely slow (several tests exceed the 5s default) and cascades: when one times out, its temp dir is removed and every later test in the file dies on `chdir`. Failure counts from that file swing between 0 and 9 run to run on the same tree. Re-run it alone before blaming a change.
 ---
+
+## 2026-09-13 - US-617A Review
+- Reviewed home persistence and host reachability against the source ACs; no in-scope blockers. Bugbot found none. review-work: goal/QA/code-quality/security/context all PASS.
+- Review notes (deferred/rejected): LANDO_HOST_IP on compose passthrough stays — AC requires alias/IP from declared capability, not a passthrough-fidelity hole.
+- Review notes (deferred/rejected): apache `user: www-data` fail-closed is correct; identity documents defaultUser `root` only, and guessing `/var/www` would invent a home for a shipped image.
+- Review notes (deferred/rejected): extra_hosts vs planned `host.lando.internal` duplicate is defense-in-depth (Traefik already maps the same host-gateway); not an AC miss. AbsoluteContainerPath `..`/colon tightening is out of AC.
+- Review notes (deferred/rejected): real-runtime home-survives-rebuild and in-container alias resolution stay Verify-owned.
+- Verification: typecheck, lint, and `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; focused home/host/identity/plan/build-key/schema tests plus the home-and-host guide (3/3) passed.
+---
