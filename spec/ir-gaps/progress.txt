@@ -643,3 +643,11 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 80 focused tests pass
 ---
+
+## 2026-09-13 18:54 - Babysit
+- PR: #976 https://github.com/AaronFeledy/core4/pull/976
+- CI outcome: pass (after triage; initial fails were unit-tests-linux-x64-shard 3, plus one drupal-journey-linux-arm64 infra 504 flake re-run green)
+- Review feedback: fixed (decoupled rebuild target assertion from source indentation; synchronized host-proxy startup-interruption test instead of a 25ms sleep)
+- Drift check: clean
+- Merge: merged (squash)
+---
