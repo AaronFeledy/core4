@@ -194,6 +194,7 @@ import {
   FileSyncSessionInfo,
   FileSyncSessionSpec,
 } from "./file-sync-engine.ts";
+import { HostTerminal } from "./host-terminal.ts";
 import {
   HttpClientCapabilities,
   HttpRequest,
@@ -468,6 +469,7 @@ const basePublicSchemaRegistry = {
   BootstrapLevel,
   HostArchitecture,
   HostPlatformFamily,
+  HostTerminal,
   AppRef,
   ArtifactRef,
   ArtifactBuildSpec,
@@ -897,6 +899,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   BootstrapLevel: "Public Lando schema contract for Bootstrap Level.",
   HostArchitecture: "Public Lando schema contract for Host Architecture.",
   HostPlatformFamily: "Host behavior family used for artifact and platform-specific selection.",
+  HostTerminal: "Facts observed from an output terminal that is actually attached to the host process.",
   AppRef: "Public Lando schema contract for App Ref.",
   ArtifactRef: "Public Lando schema contract for Artifact Ref.",
   ArtifactBuildSpec: "Public Lando schema contract for Artifact Build Spec.",

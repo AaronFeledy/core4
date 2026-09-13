@@ -5,6 +5,8 @@
 ## Compatibility notes
 
 - `ServiceConfig` and `ServiceConfigInput` additively accept optional `packageRoot`, an app-root-relative source directory used only by service-type project-file inference. `ServiceType` additively accepts a pure optional `projectFiles(service)` declaration, and `ServiceTypeInput.projectFiles` receives bounded planner-supplied present or absent inputs with content fingerprints. `ServicePlan` additively accepts optional service-type `provenance`; existing explicit service types and plans remain unchanged.
+- `@lando/sdk/schema` additively exports the `HostTerminal` schema for attached output-terminal facts. `ToolingOptions` and `ToolingInvocation` add optional PTY intent, while `ToolingInvocation` can separately carry an attached `HostTerminal`; omission remains noninteractive for existing embedding, event, and MCP callers.
+
 - `RouteInput` accepts non-empty shorthand strings or `RouteObjectInput` objects. Objects and `RoutePlan` accept ordered `RouteFilter` arrays; `name` is layer-merge identity, while header filters use `header`. `LandofileService.discover` additively includes `RouteInputError` in its error channel so load and plan callers share one union.
 
 - `AppPlanner.plan` additively includes `RouteInputError` in its error channel: authored routes are normalized (shorthand parsed, filters attached) before planning, and an invalid route fails the plan with its authored key path and remediation. The frozen service signature is updated.
@@ -179,6 +181,7 @@
 
 ## Additive schema exports
 
+- `HostTerminal`
 - `LandofileRecipeField`
 - `LandofileRecipeProvenance`
 - `RecipeContentDigest`

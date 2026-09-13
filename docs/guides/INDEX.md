@@ -202,6 +202,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | `lando ssh` service shell and host keys | `docs/guides/cli/ssh.mdx` | Shipped |
 | — | — | `lando apps:poweroff` stop every running app | `docs/guides/cli/poweroff.mdx` | Shipped |
 | — | — | `lando exec` one-off commands in a service | `docs/guides/cli/exec.mdx` | Shipped |
+| — | — | `lando share --target` for a non-primary service or extra port | `docs/guides/cli/share-target.mdx` | Shipped |
 | — | — | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
 | — | — | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |
 | — | — | offline / air-gapped development | `docs/guides/config/offline-dev.mdx` | Shipped |

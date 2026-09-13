@@ -13,7 +13,7 @@ import {
   type ToolingExecError,
   type ToolingInputError,
 } from "@lando/sdk/errors";
-import type { AppPlan, ToolingTaskShape } from "@lando/sdk/schema";
+import type { AppPlan, HostTerminal, ToolingTaskShape } from "@lando/sdk/schema";
 import {
   type ProviderError,
   RuntimeProviderRegistry,
@@ -61,6 +61,8 @@ interface InvocationOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly agentEnvAllowlist?: ReadonlyArray<string>;
+  readonly tty?: boolean;
+  readonly hostTerminal?: HostTerminal;
 }
 
 const stepInvocation = (
@@ -80,6 +82,8 @@ const stepInvocation = (
       ? {}
       : { env: { ...step.env, ...options.env } }),
     ...(options.agentEnvAllowlist === undefined ? {} : { agentEnvAllowlist: options.agentEnvAllowlist }),
+    ...(options.tty === undefined ? {} : { tty: options.tty }),
+    ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
     commands: [step.argv === undefined ? shellCommand(step.cmd, args) : [...step.argv, ...args]],
     hostSteps: [
       step.argv === undefined

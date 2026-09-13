@@ -15,6 +15,36 @@ const compile = (name: string, task: ToolingTaskShape, options: Record<string, u
   );
 
 describe("compileToolingInvocations", () => {
+  test.each([true, false])(
+    "preserves PTY intent %s separately from terminal facts on every normalized step",
+    (tty) => {
+      // Given
+      const task = { cmds: ["first", { cmd: "second", service: "worker" }] };
+      const hostTerminal = { term: "dumb", columns: 132, rows: 43 };
+
+      // When
+      const invocations = compile("env", task, { tty, hostTerminal });
+
+      // Then
+      expect(invocations).toHaveLength(2);
+      for (const invocation of invocations) expect(invocation).toMatchObject({ tty, hostTerminal });
+    },
+  );
+
+  test("omits terminal options for noninteractive callers", () => {
+    // Given
+    const task = { cmds: ["first", "second"] };
+
+    // When
+    const invocations = compile("env", task);
+
+    // Then
+    for (const invocation of invocations) {
+      expect(invocation).not.toHaveProperty("tty");
+      expect(invocation).not.toHaveProperty("hostTerminal");
+    }
+  });
+
   test("preserves pass-through argument boundaries for string tooling commands", () => {
     // Given
     const task = { service: "appserver", cmds: ["vendor/bin/drush"] };
