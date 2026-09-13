@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { ScannerError } from "@lando/sdk/errors";
 import { AppId } from "@lando/sdk/schema";
@@ -7,7 +7,7 @@ import type { AppPlan } from "@lando/sdk/schema";
 import { ServiceName } from "@lando/sdk/schema";
 import type { EventServiceShape, ScanEndpoint, ScanResult, UrlScannerShape } from "@lando/sdk/services";
 
-import { appendScanPath, runPostStartScan, startupScanUrls } from "../../src/operations/post-start-scan.ts";
+import { runPostStartScan, startupScanUrls } from "../../src/operations/post-start-scan.ts";
 
 const appId = AppId.make("scan-demo");
 const plan = { id: appId, services: {} } as unknown as AppPlan;
@@ -138,6 +138,18 @@ describe("runPostStartScan", () => {
     const result = await Effect.runPromise(Effect.either(runPostStartScan({ scanner, plan, events })));
     expect(result._tag).toBe("Right");
   });
+
+  test("propagates scan interruption so a cancelled start can stop", async () => {
+    const events = collector();
+    const scanner: UrlScannerShape = {
+      id: "stub",
+      scan: () => Effect.interrupt,
+      detectCollisions: () => Effect.succeed([]),
+    };
+    const exit = await Effect.runPromise(Effect.exit(runPostStartScan({ scanner, plan, events })));
+    expect(Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    expect(events.published).toHaveLength(0);
+  });
 });
 
 describe("startupScanUrls", () => {
@@ -147,14 +159,18 @@ describe("startupScanUrls", () => {
         ...plan,
         services: {
           web: { scanner: { enabled: true, path: "/ready", okCodes: [], retries: 0, timeoutMs: 1000 } },
+          api: { scanner: { enabled: true, path: "/", okCodes: [], retries: 0, timeoutMs: 1000 } },
         },
       } as unknown as AppPlan,
-      [{ name: "web", endpoints: ["http://localhost:8080", "https://web.demo.lndo.site:4443"] }],
+      [
+        { name: "web", endpoints: ["http://localhost:8080", "https://web.demo.lndo.site:4443"] },
+        { name: "api", endpoints: ["https://web.demo.lndo.site/api"] },
+      ],
     );
     expect(urls.map((row) => row.url)).toEqual([
       "http://localhost:8080/ready",
       "https://web.demo.lndo.site:4443/ready",
+      "https://web.demo.lndo.site/api/",
     ]);
-    expect(appendScanPath("https://web.demo.lndo.site/api", "/")).toBe("https://web.demo.lndo.site/api/");
   });
 });

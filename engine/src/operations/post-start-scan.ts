@@ -13,7 +13,7 @@ export interface PostStartScanInput {
   readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
 }
 
-export const appendScanPath = (base: string, path: string): string => {
+const appendScanPath = (base: string, path: string): string => {
   const origin = base.endsWith("/") ? base : `${base}/`;
   const relative = path === "/" ? "" : path.replace(/^\//u, "");
   return new URL(relative, origin).toString();
@@ -57,13 +57,16 @@ const endpointWarning = (endpoint: ScanEndpoint): string => {
  * Probes the app's published URLs once the app is up. Every verdict other than
  * a pass is a warning: the app is already running, so a scan result never
  * decides whether start succeeded. The scanner redacts its own detail, and the
- * warning body is redacted again before it reaches the event bus.
+ * warning body is redacted again before it reaches the event bus. A cancelled
+ * scan still interrupts start; only scan and event-bus failures stay warnings.
  */
 export const runPostStartScan = (input: PostStartScanInput): Effect.Effect<void> =>
   Effect.gen(function* () {
     const redactor = yield* resolveRedactor;
     const warn = (body: string) =>
-      input.events.publish(MessageWarnEvent.make({ body: redactor.redactString(body), timestamp: now() }));
+      input.events
+        .publish(MessageWarnEvent.make({ body: redactor.redactString(body), timestamp: now() }))
+        .pipe(Effect.catchAllCause(() => Effect.void));
 
     const scanned = yield* Effect.either(
       input.scanner.scan(input.plan.id, {
@@ -81,4 +84,4 @@ export const runPostStartScan = (input: PostStartScanInput): Effect.Effect<void>
       (endpoint) => warn(endpointWarning(endpoint)),
       { discard: true },
     );
-  }).pipe(Effect.catchAllCause(() => Effect.void));
+  });
