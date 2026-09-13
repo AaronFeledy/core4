@@ -228,6 +228,7 @@ const makeInfoLayer = (
       readonly hostname: string;
       readonly port: number;
     }>;
+    readonly inspectCalls?: ServiceName[];
   },
 ) => {
   const plannedApp = options?.plannedApp ?? plan;
@@ -272,13 +273,16 @@ const makeInfoLayer = (
     runStream: () => Stream.die("not used"),
     logs: () => Stream.die("not used"),
     inspect: (target) =>
-      Effect.succeed({
-        app: plannedApp.id,
-        service: target.service,
-        providerId,
-        status: state,
-        state,
-        endpoints: state === "running" ? (plannedApp.services[target.service]?.endpoints ?? []) : [],
+      Effect.sync(() => {
+        options?.inspectCalls?.push(target.service);
+        return {
+          app: plannedApp.id,
+          service: target.service,
+          providerId,
+          status: state,
+          state,
+          endpoints: state === "running" ? (plannedApp.services[target.service]?.endpoints ?? []) : [],
+        };
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
@@ -319,6 +323,39 @@ const makeInfoLayer = (
 };
 
 describe("lando info", () => {
+  test("selects requested services in app-plan order without dependencies", async () => {
+    // Given
+    const inspectCalls: ServiceName[] = [];
+
+    // When
+    const result = await Effect.runPromise(
+      infoApp({ services: [valkey.name, node.name, valkey.name] }).pipe(
+        Effect.provide(makeInfoLayer("running", { inspectCalls })),
+      ),
+    );
+
+    // Then
+    expect(result.services.map((service) => service.service)).toEqual(["node", "valkey"]);
+    expect(inspectCalls).toEqual([node.name, valkey.name]);
+  });
+
+  test("validates every requested service before inspection", async () => {
+    // Given
+    const inspectCalls: ServiceName[] = [];
+
+    // When
+    const error = await Effect.runPromise(
+      infoApp({ services: [node.name, ServiceName.make("missing")] }).pipe(
+        Effect.provide(makeInfoLayer("running", { inspectCalls })),
+        Effect.flip,
+      ),
+    );
+
+    // Then
+    expect(error._tag).toBe("ServiceNotFoundError");
+    expect(inspectCalls).toEqual([]);
+  });
+
   test("prints running services with endpoint URLs as plain text", async () => {
     const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("running"))));
     const output = renderInfoAppResult(result);
