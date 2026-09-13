@@ -604,3 +604,12 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Verification: typecheck, lint, lint:guides, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 37 focused Redis/Mailpit/redaction tests passed.
 - **Learnings for future iterations:** Landofile load rejects unescaped `${secret:...}` on this path. Guide password examples must use literals, matching mysql/mariadb, not secret-store syntax.
 ---
+
+## 2026-09-13 14:45 - US-618C Drift Audit
+- Trigger: 3 cycles, 721 changed lines, 17 commits
+- Scar tissue: mailFrom was ordered-deduped twice; validated PHP targets could be skipped silently
+- Weakened proofs: command+password refusal used an empty password as the managed-option stand-in
+- Fixed: one owner for mailFrom lists; missing select fails closed; conflict fixture uses a real password
+- Split/excise decisions: none; Mailpit name guard and hashed ACL stay in-story; RedisServiceConfig and msmtp pin stay deferred
+- Verification: typecheck pass, lint pass, 26 then 37 focused tests pass
+---
