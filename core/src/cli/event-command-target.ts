@@ -83,7 +83,7 @@ const loadPluginSpec = (
 
 const toolingFlag = (definition: ToolingFlagShape) =>
   ({
-    type: definition.type ?? "option",
+    type: definition.boolean === true ? "boolean" : "option",
     ...(definition.default === undefined ? {} : { default: definition.default }),
   }) satisfies NonNullable<ExecutableCommandSpec["flags"]>[string];
 

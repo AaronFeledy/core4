@@ -1,10 +1,12 @@
 import { Chunk, Effect, Stream } from "effect";
 
 import type { ExecAppOptions } from "@lando/sdk/app";
+import type { HostTerminal } from "@lando/sdk/schema";
 
 export type ExecAppHostOptions = ExecAppOptions & {
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
+  readonly hostTerminal?: HostTerminal;
 };
 
 interface RawModeStdin {
@@ -20,18 +22,53 @@ interface InheritedStdin extends RawModeStdin, AsyncIterable<Uint8Array> {
   readonly iterator: (options: { readonly destroyOnReturn: boolean }) => AsyncIterator<Uint8Array>;
 }
 
-const stdoutResizeStream = (): Stream.Stream<{ readonly columns: number; readonly rows: number }> =>
+interface TerminalOutput {
+  readonly isTTY?: boolean;
+  readonly columns?: number;
+  readonly rows?: number;
+  readonly on?: (event: "resize", listener: () => void) => unknown;
+  readonly off?: (event: "resize", listener: () => void) => unknown;
+}
+
+type HostEnv = Readonly<Record<string, string | undefined>>;
+
+export const attachedHostTerminal = (
+  output: TerminalOutput = process.stdout,
+  env: HostEnv = process.env,
+): HostTerminal | undefined => {
+  if (output.isTTY !== true) return undefined;
+  const term = env.TERM;
+  const colorterm = env.COLORTERM;
+  const columns = output.columns;
+  const rows = output.rows;
+  return {
+    ...(term === undefined || term.length === 0 ? {} : { term }),
+    ...(colorterm === undefined || colorterm.length === 0 ? {} : { colorterm }),
+    ...(typeof columns === "number" && Number.isInteger(columns) && columns > 0 ? { columns } : {}),
+    ...(typeof rows === "number" && Number.isInteger(rows) && rows > 0 ? { rows } : {}),
+  };
+};
+
+const stdoutResizeStream = (
+  output: TerminalOutput,
+): Stream.Stream<{ readonly columns: number; readonly rows: number }> =>
   Stream.async((emit) => {
-    const stdout = process.stdout;
     const onResize = (): void => {
-      const columns = stdout.columns;
-      const rows = stdout.rows;
-      if (typeof columns === "number" && typeof rows === "number") {
+      const columns = output.columns;
+      const rows = output.rows;
+      if (
+        typeof columns === "number" &&
+        Number.isInteger(columns) &&
+        columns > 0 &&
+        typeof rows === "number" &&
+        Number.isInteger(rows) &&
+        rows > 0
+      ) {
         emit(Effect.succeed(Chunk.of({ columns, rows })));
       }
     };
-    stdout.on("resize", onResize);
-    return Effect.sync(() => stdout.off("resize", onResize));
+    output.on?.("resize", onResize);
+    return Effect.sync(() => output.off?.("resize", onResize));
   });
 
 export const withInheritedStdinRawMode = <A, E, R>(
@@ -58,22 +95,19 @@ export const withInheritedStdinRawMode = <A, E, R>(
   );
 };
 
-const ttySizeEnv = (env: Readonly<Record<string, string>> | undefined): Readonly<Record<string, string>> => ({
-  COLUMNS: String(process.stdout.columns || 80),
-  LINES: String(process.stdout.rows || 24),
-  ...env,
-});
-
 export const attachExecHostIo = (
   options: ExecAppOptions,
   stdin: InheritedStdin = process.stdin,
+  output: TerminalOutput = process.stdout,
 ): ExecAppHostOptions => {
   const interactive = options.interactive === true;
-  const tty = options.tty === true && (interactive ? stdin.isTTY === true : true);
+  const tty = options.tty === true;
+  const hostTerminal = attachedHostTerminal(output);
   return {
     ...options,
     tty,
-    ...(tty ? { env: ttySizeEnv(options.env), terminalResize: stdoutResizeStream() } : {}),
+    ...(hostTerminal === undefined ? {} : { hostTerminal }),
+    ...(tty && hostTerminal !== undefined ? { terminalResize: stdoutResizeStream(output) } : {}),
     ...(interactive
       ? { stdinStream: { [Symbol.asyncIterator]: () => stdin.iterator({ destroyOnReturn: false }) } }
       : {}),

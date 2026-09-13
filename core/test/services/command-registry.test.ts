@@ -9,6 +9,7 @@ import { CacheError } from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
 
 import {
+  COMMAND_INDEX_SCHEMA_VERSION,
   decodeAppCommandIndex,
   decodePluginCommandIndex,
   encodeAppCommandIndex,
@@ -870,7 +871,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         const decoded = decodePluginCommandIndex(bytes);
         expect(decoded).not.toBeNull();
         if (decoded === null) return;
-        expect(decoded.schemaVersion).toBe(2);
+        expect(decoded.schemaVersion).toBe(Number(COMMAND_INDEX_SCHEMA_VERSION));
         expect(decoded.pluginNames.length).toBeGreaterThan(0);
         expect(Array.isArray(decoded.entries)).toBe(true);
       });

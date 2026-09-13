@@ -1,3 +1,4 @@
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import { Effect, Schema } from "effect";
 
 import {
@@ -11,7 +12,6 @@ import {
   type FileSyncPlan,
   type ProviderCapabilities,
   type ProviderId,
-  type RouteInput,
   type RoutePlan,
   ServiceName,
   ServicePlan,
@@ -60,7 +60,7 @@ export const resolveRoute = (
   appRoot: string,
   serviceName: string,
   endpoints: ServicePlan["endpoints"],
-  route: RouteInput,
+  route: NormalizedRoute,
   expression: {
     readonly routeIndex: number;
     readonly appName: string;
@@ -100,6 +100,7 @@ export const resolveRoute = (
       service: ServiceName.make(serviceName),
       ...(route.endpoint === undefined ? {} : { endpoint: route.endpoint }),
       ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
+      ...(route.filters.length === 0 ? {} : { filters: route.filters }),
       backend: {
         service: ServiceName.make(serviceName),
         protocol: endpoint.protocol,
