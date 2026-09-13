@@ -32,7 +32,7 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
             hostnames: ["web.internal.test"],
             routes: [{ hostname: "certs-app.lndo.site" }],
           },
-          edge: { type: "compose", image: "nginx:alpine", certs: true },
+          edge: { type: "compose", image: "nginx:alpine", certs: true, home: false },
         },
         proxy: { web: [{ hostname: "alias.lndo.site" }] },
       }),
