@@ -1750,7 +1750,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           ),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
-          bringUp(plan, dockerApi, applyOptions.signal).pipe(Effect.tap(() => rememberPlan(plan))),
+          bringUp(plan, dockerApi, applyOptions.signal).pipe(
+            Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan)),
+          ),
         ...resolvedOps,
         destroy: (target, destroyOptions) =>
           resolvePlan(target).pipe(

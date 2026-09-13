@@ -916,7 +916,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
           });
-          yield* rememberPlan(plan);
+          yield* rememberPlan(applyOptions.recordedPlan ?? plan);
           return result;
         }),
       destroy: (target, destroyOptions) =>
