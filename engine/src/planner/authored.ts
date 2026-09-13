@@ -3,13 +3,13 @@ import { type Context, Effect, Either } from "effect";
 import { type NormalizedRoute, normalizeRoutes } from "@lando/landofile/route-normalize";
 import type { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
 import {
+  type LandofileShape,
   PortablePath,
   type ProviderId,
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { LandofileShape } from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 
 import { composeBuildToArtifact, isComposeBuild } from "../services/compose-build-artifact.ts";
@@ -25,8 +25,7 @@ import {
 } from "./extensions.ts";
 import { mergeDefaultExcludes } from "./file-sync.ts";
 import { serviceHomeIntent } from "./home.ts";
-import type { PlannedServiceDraft, ResolvedService } from "./service-types.ts";
-import { servicePlanError } from "./service-types.ts";
+import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
 import { applyAuthoredStorage } from "./storage.ts";
 
 export const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
@@ -133,6 +132,7 @@ export const planServiceDrafts = (input: {
       featureRefs,
       routes,
       resolvedArtifactTag,
+      configSourceInputs,
     } of input.resolvedServices) {
       const rawPlan = yield* Effect.gen(function* () {
         const configuredFeatureRefs = featureRefs.filter(
@@ -236,7 +236,18 @@ export const planServiceDrafts = (input: {
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,
         routes,
-        extensions: servicePlan.extensions,
+        extensions:
+          configSourceInputs.length === 0
+            ? servicePlan.extensions
+            : {
+                ...servicePlan.extensions,
+                [SERVICE_FEATURES_EXTENSION_KEY]: {
+                  ...serviceFeatureExtension(servicePlan.extensions),
+                  configSources: [...configSourceInputs].sort((left, right) =>
+                    left.key.localeCompare(right.key),
+                  ),
+                },
+              },
       });
     }
     return plannedServiceDrafts;

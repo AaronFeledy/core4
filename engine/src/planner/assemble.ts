@@ -86,6 +86,7 @@ import { unknownEventError, unknownEventName, validEventNames } from "./event-na
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
+import { resolveServiceConfigSources } from "./service-config-files.ts";
 import {
   type ResolvedService,
   appFeatureError,
@@ -100,20 +101,12 @@ import {
   unsupportedServiceType,
 } from "./service-types.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
-
-const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
-      issue.path.length === 0 ? issue.message : issue.path.join("."),
-    );
-  }
-  return [cause instanceof Error ? cause.message : "Invalid app plan."];
-};
-
 const decodeAppPlan = (appRoot: string, plan: unknown): Effect.Effect<AppPlan, LandofileValidationError> => {
   const decoded = Schema.decodeUnknownEither(AppPlan)(plan);
   if (Either.isRight(decoded)) return Effect.succeed(decoded.right);
-  const issues = validationIssues(decoded.left);
+  const issues = ParseResult.ArrayFormatter.formatErrorSync(decoded.left).map((issue) =>
+    issue.path.length === 0 ? issue.message : issue.path.join("."),
+  );
   return Effect.fail(
     new LandofileValidationError({
       message: `Planned AppPlan is invalid: ${issues.join(", ")}.`,
@@ -251,6 +244,11 @@ export const planApp = (
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
       const routes = yield* normalizeAuthoredRoutes({ name, service, landofile });
       const loadedEnvFiles = yield* loadServiceEnvFiles({ appRoot, serviceName: name, service, fileSystem });
+      const configSourceInputs = yield* resolveServiceConfigSources({
+        appRoot,
+        serviceName: name,
+        config: service.config,
+      });
       const hasEnvFiles = topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0;
       const serviceWithEnvironment: ServiceConfig = !hasEnvFiles
         ? service
@@ -381,6 +379,7 @@ export const planApp = (
         featureRefs,
         resolvedArtifactTag,
         envFileInputs: loadedEnvFiles.inputs,
+        configSourceInputs,
       });
     }
     const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
@@ -435,6 +434,7 @@ export const planApp = (
             logSources: entry.logSources,
             featureRefs: entry.featureRefs,
             envFileInputs: entry.envFileInputs,
+            configSourceInputs: entry.configSourceInputs,
             ...(entry.resolvedArtifactTag === undefined
               ? {}
               : { resolvedArtifactTag: entry.resolvedArtifactTag }),

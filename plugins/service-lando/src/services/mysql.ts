@@ -16,11 +16,13 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mysql:8.0";
 const DEFAULT_PORT = 3306;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MYSQL_FEATURE_ID = "service-lando.mysql";
+export const MYSQL_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
 
 const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -107,6 +109,16 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
   if (service.user !== undefined) ctx.setUser(service.user);
+
+  const server = service.config?.server;
+  if (server !== undefined && server.length > 0) {
+    ctx.addMount({
+      type: "bind",
+      source: resolveBindSource(server, ctx.appRoot),
+      target: MYSQL_CONFIG_TARGET,
+      readOnly: true,
+    });
+  }
 };
 
 export const mysqlServiceFeature: ServiceFeatureDefinition = {

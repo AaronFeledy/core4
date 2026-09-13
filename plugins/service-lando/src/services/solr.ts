@@ -12,12 +12,19 @@ import type {
 } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "solr:9";
 const DEFAULT_PORT = 8983;
 const DATA_TARGET = PortablePath.make("/var/solr");
 const CORE_NAME = /^[A-Za-z0-9._-]+$/;
 export const SOLR_FEATURE_ID = "service-lando.solr";
+export const SOLR_CONFIG_TARGET = PortablePath.make("/etc/lando/solr/conf");
+
+const PRECREATE_SCRIPT =
+  'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"';
+const PRECREATE_WITH_CONFIG_SCRIPT =
+  'port="$1"; shift; for core in "$@"; do precreate-core "$core" && mkdir -p /var/solr/data/"$core"/conf && cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/ || exit 1; done; exec solr-foreground -p "$port"';
 
 const validateCoreName = (core: string): void => {
   if (!CORE_NAME.test(core)) {
@@ -27,7 +34,7 @@ const validateCoreName = (core: string): void => {
   }
 };
 
-const defaultCommand = (port: number, cores: readonly string[]): string[] => {
+const defaultCommand = (port: number, cores: readonly string[], hasConfigDir: boolean): string[] => {
   if (cores.length === 0) {
     return ["solr-foreground", "-p", String(port)];
   }
@@ -35,7 +42,7 @@ const defaultCommand = (port: number, cores: readonly string[]): string[] => {
   return [
     "bash",
     "-c",
-    'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+    hasConfigDir ? PRECREATE_WITH_CONFIG_SCRIPT : PRECREATE_SCRIPT,
     "lando-solr-precreate",
     String(port),
     ...cores,
@@ -52,14 +59,24 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   const appName = appNameFor(ctx);
   const port = service.port ?? DEFAULT_PORT;
   const cores = service.cores ?? [];
+  const configDir = service.config?.dir;
+  const hasConfigDir = typeof configDir === "string" && configDir.length > 0;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.setCommand(service.command ?? defaultCommand(port, cores));
+  ctx.setCommand(service.command ?? defaultCommand(port, cores, hasConfigDir));
   ctx.addStorage({
     store: `${appName}-solr-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
+  if (hasConfigDir) {
+    ctx.addMount({
+      type: "bind",
+      source: resolveBindSource(configDir, ctx.appRoot),
+      target: SOLR_CONFIG_TARGET,
+      readOnly: true,
+    });
+  }
   addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck({
     kind: "command",
