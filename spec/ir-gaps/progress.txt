@@ -1,6 +1,9 @@
 # IR gaps progress
 
 ## Codebase Patterns
+- A fail-closed planner default lands its blast radius in FIXTURES, not source. Measure before implementing: `bun --no-orphans test --path-ignore-patterns='**/*.integration.test.ts' <pkg>/test` per package. Raw `bun test <dir>` pulls in `*.integration.test.ts`, which fail with `ProviderUnavailableError` on a host with no runtime and mask the real count.
+- Adding one member to a plan-carrying error union touches ~16 unions. Insert it ONCE per union: a second copy is type-identical (`A | A = A`) so nothing fails, and it silently pads line counts and the frozen SDK signature string. Many of those files hold TWO unions (an exported `XError` alias plus an inline channel); both need the member, so a blind dedupe breaks the alias.
+- An SDK error-union change is a three-file commit: the union, `sdk/test/fixtures/sdk-mvp-surface.json` (frozen service-tag signature), and `sdk/API_COMPATIBILITY.md` (additive exports). New exported primitives must be listed in the latter or `sdk-backward-compatibility.test.ts` fails.
 - Build-step identity is resolved ONCE in `servicePlanExtensionsFromDraft` (`engine/src/planner/extensions.ts`), the only point where the final composed `draft.user` and the complete step list (authored plus feature-contributed) meet. Resolve anything that depends on the final planned user there, never in `authored.ts`.
 - Widening a public Landofile union needs a `sdk/compatibility-exceptions.json` row per affected surface (keyed surface + changeKind + path); one union change fans out to every schema and command surface that embeds `ServiceConfigInput`.
 - Type planner helpers with the exported schema types, not re-spelled structural shapes: `Schema.optional(X)` produces `k?: T | undefined`, which `exactOptionalPropertyTypes` rejects against a hand-written `k?: T`.
@@ -296,3 +299,47 @@ Verification: typecheck and lint pass. 78 focused tests pass across home resolut
   - `engine` typechecks against `sdk/dist`, not `sdk/src`. After changing an SDK type, run `bun run --filter='@lando/sdk' build` or the engine reports "Two different types with this name exist, but they are unrelated" and sends you hunting for a phantom mismatch.
   - Pattern-validated schemas like `ContainerUser` are NOT branded, so their `.Type` is plain `string`. Following that precedent for `AbsoluteContainerPath` kept roughly thirty catalog declaration sites free of `.make()` noise.
   - A fail-closed default lands its blast radius in fixtures, not in source. Measure it before implementing: `type: compose` alone appears in 40 files here, including two production global services, so budget the sweep as part of the story rather than discovering it at the end.
+
+## 2026-09-12 14:20 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-617A (expected passes: true)
+---
+## 2026-09-12 14:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-12 14:20 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-617A (expected passes: true)
+---
+## 2026-09-12 14:20 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-617A (expected passes: true)
+---
+## 2026-09-12 14:20 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-617A (expected passes: true)
+---
+
+## 2026-09-12 15:45 - US-617A (in progress, not complete)
+
+Closed the fail-closed blast radius everywhere except `core/test`, and shipped the guide. The story stays `passes: false`: `core/test` is still red and one production path is genuinely broken.
+
+- The two shipped global services declared `type: compose` now opt out. Traefik and Mailpit keep no per-user state, so `home: false` states that directly rather than inventing a path. Without this the router itself could not plan.
+- Swept every fixture that the default-on refusal correctly rejects: engine planner, certs, network-inject, tooling, service-type, and traefik-routing suites; the service-lando compose and catalog scenario suites; and ten executable-guide Landofiles across compose-passthrough, config-lint, external-access, compose-service-block, lamp-stack-variants, and drupal-stack-overrides. The only edit used was adding `home: false`; no assertion was loosened. Two guide fixtures were deliberately left alone because their rejection happens before home planning, and both still reject for their original reason.
+- New executable guide `docs/guides/services/home-and-host.mdx` with three scenarios: the default-on catalog path, the capability refusal on a Landofile-supplied image, and the explicit `home.path` escape hatch. The refusal scenario asserts the diagnostic text and both remediations, so the error's usefulness is now a test, not a hope.
+- Fixed a defect the mechanism shipped with: `HomePathCapabilityError` had been inserted **twice** into most plan-carrying unions. Harmless to the type system, but it pushed `assemble.ts` to 601 lines and broke the planner bounded-concern ceiling, and it leaked a doubled member into the frozen SDK signature. Deduplicated where a union genuinely had two copies.
+- Recorded the story's public surface: the frozen `AppPlanner.plan` signature now carries the new error, and `AbsoluteContainerPath` plus its pattern and predicate are documented as additive exports.
+
+Verification: typecheck, lint, check:boundaries (all 13 rules), check:schema-compatibility (compatible 16, breaking 0, unknown 0, no exception rows needed), codegen:schema-snapshot, lint:guides, check:guide-coverage, and check:public-transcripts all pass. 5699 tests pass with 0 failures across sdk, engine, service-lando, proxy-traefik, container-runtime, and landofile; the new guide runs 3/3. Manual CLI QA on the compiled binary inside the sandbox with isolated user roots: a catalog service lints valid and refreshes its plan, `home: false` and `home.path` both round-trip through `app:config`, and a bare compose service exits 1 with `HomePathCapabilityError` printing both ways out.
+
+**Remaining before this story can pass:**
+1. `core/test` is 139 failures red. Most are mechanical: compose planner-cache and capability fixtures, `conformance/compose-fixtures`, and `cli/global-commands` need the same `home: false` opt-out.
+2. A real product defect blocks the rest. The bundled `lamp` recipe cannot plan: its `database` service is refused with "its image is supplied by the Landofile", which means `hasCustomImage` sees an `image` on a service the author never gave one to. Recipe-rendered and scratch-forked apps are affected (`services/scratch-*`, `recipes/canonical-recipes.matrix`, `app/resolve`). Find where the recipe path puts `image` on the authored config before adding a single `home: false`; opting recipes out would paper over it.
+3. Real-runtime evidence that a home store survives a rebuild and that `host.lando.internal` resolves from inside a container. The Verify step owns this.
+
+**Two contract calls that need adjudication in Review:**
+- Three tests asserted that a compose passthrough service receives no `LANDO_*` environment at all. Host reachability now adds `LANDO_HOST_IP` to every service. Those assertions were narrowed to exclude that one key, because their sibling assertions (`LANDO_APP_KIND`, `LANDO_MAIL_HOST`) show they were written to police the app env layer, not capability realization. If the passthrough-fidelity contract is meant literally, the fix belongs in host reachability instead.
+- `type: apache` with `user: www-data` is refused, because apache declares a home only for `root`. That is a plausible thing to author. Its fixture got `home: false` rather than a guessed `/var/www`, since inventing a home path for a shipped image is exactly what this story refuses to do. The catalog metadata may still be incomplete.
+
+- **Learnings for future iterations:**
+  - Measure per package with the integration tests excluded. `bun test <dir>` runs `*.integration.test.ts`, which fail with `ProviderUnavailableError` on a host with no container runtime and inflate the count with noise you cannot fix.
+  - A blind regex dedupe of a repeated union member breaks the files that hold two unions. Twelve files here export an `XError` alias next to an inline channel; removing the member from the alias typechecks nowhere and shows up as an `exactOptionalPropertyTypes` mismatch far from the edit.
+  - When a delegated fixture sweep hits a fixture with no authored service config to edit, that is the signal a production path is broken, not a stubborn test. The core sweep stopped on exactly that and found the lamp recipe defect.
+  - `provider: test` proves the refusal end to end. `lando app:cache:refresh` resolves the plan, so the capability error and its remediation are assertable in a guide without booting a container.
+---

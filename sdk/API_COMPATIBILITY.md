@@ -178,9 +178,6 @@
 
 ## Additive schema exports
 
-- `ABSOLUTE_CONTAINER_PATH_PATTERN`
-- `AbsoluteContainerPath`
-- `isAbsoluteContainerPath`
 - `LandofileRecipeField`
 - `LandofileRecipeProvenance`
 - `RecipeContentDigest`

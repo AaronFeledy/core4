@@ -56,7 +56,6 @@ const composeLandofile: LandofileShape = {
   services: {
     [ServiceName.make("worker")]: {
       type: "compose",
-      home: false,
       image: "ghcr.io/example/worker:latest",
       ports: [{ target: 9000, published: 9000, protocol: "tcp" }],
       volumes: [{ type: "volume", source: "worker-state", target: "/var/state", readOnly: false }],
@@ -118,7 +117,6 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
       services: {
         [ServiceName.make("worker")]: {
           type: "compose",
-          home: false,
           image: "ghcr.io/example/worker:latest",
           appMount: false,
           volumes: [
@@ -181,9 +179,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     expect(worker?.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(true);
     // compose is an l337 service and must not inject the LANDO_* env layer.
     expect(
-      Object.keys(worker?.environment ?? {}).filter(
-        (k) => (k === "LANDO" || k.startsWith("LANDO_")) && k !== "LANDO_HOST_IP",
-      ),
+      Object.keys(worker?.environment ?? {}).filter((k) => k === "LANDO" || k.startsWith("LANDO_")),
     ).toEqual([]);
 
     expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
@@ -195,7 +191,6 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
       services: {
         [ServiceName.make("worker")]: {
           type: "compose",
-          home: false,
           image: "ghcr.io/example/worker:latest",
           appMount: false,
           ports: [{ target: 9000, published: 9000, protocol: "tcp" }],

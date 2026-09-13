@@ -585,6 +585,7 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       | HomePathCapabilityError
       | PublicationUnsupportedError
       | CommandAliasConflictError
+      | HomePathCapabilityError
       | ConfigExpressionError
       | LandofileUnknownEventError
     >;

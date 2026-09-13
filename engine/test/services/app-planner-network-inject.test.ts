@@ -125,7 +125,6 @@ test("injects global, project, and inline CAs into lando-base services", async (
         edge: {
           type: "compose",
           image: "nginx:alpine",
-          home: false,
           security: { ca: ["../escape.pem", "definitely not a pem\n"] },
         },
       },

@@ -159,7 +159,7 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
   test("AppPlanner produces a valkey plan with TCP endpoint and persistent storage", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { cache: { type: "valkey", home: false } },
+      services: { cache: { type: "valkey" } },
     });
 
     const appPlan = await planLandofile(landofile);

@@ -159,7 +159,7 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
   test("AppPlanner produces a mongodb plan with TCP endpoint and persistent storage", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { db: { type: "mongodb", home: false } },
+      services: { db: { type: "mongodb" } },
     });
 
     const appPlan = await planLandofile(landofile);

@@ -16,7 +16,6 @@ services:
   database-legacy:
     type: mysql
     image: mysql:8.0
-    home: false
 tooling:
   drush:
     service: appserver

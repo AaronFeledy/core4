@@ -1,8 +1,0 @@
-name: home-and-host-explicit-path
-services:
-  web:
-    type: compose
-    image: traefik/whoami:v1.10
-    primary: true
-    home:
-      path: /home/whoami

@@ -48,7 +48,7 @@ describe("service type resolve input", () => {
     };
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "probe-app",
-      services: { web: { type: "probe", image: "alpine:3", home: false } },
+      services: { web: { type: "probe", image: "alpine:3" } },
     });
     const capabilities: ProviderCapabilities = TestRuntimeProvider.capabilities;
 

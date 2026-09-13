@@ -31,8 +31,6 @@ const mailpitServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   type: "compose",
   image: MAILPIT_IMAGE,
   appMount: false,
-  // Mail capture keeps no per-user state, so there is no home to persist.
-  home: false,
   // Internal endpoints: SMTP is reached over the shared cross-app network,
   // and the web UI is reached through Traefik's hostname route below —
   // neither needs a host-published port.

@@ -159,7 +159,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
   test("AppPlanner produces an elasticsearch plan with HTTP endpoint, persistent storage, and command healthcheck", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { search: { type: "elasticsearch", home: false } },
+      services: { search: { type: "elasticsearch" } },
     });
 
     const appPlan = await planLandofile(landofile);

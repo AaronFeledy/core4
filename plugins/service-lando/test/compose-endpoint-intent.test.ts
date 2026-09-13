@@ -62,7 +62,6 @@ describe("compose endpoint intent", () => {
       services: {
         worker: {
           type: "compose",
-          home: false,
           image: "alpine:3",
           ports: [
             { target: 80, name: "web" },

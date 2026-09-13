@@ -14,7 +14,6 @@ services:
   database-legacy:
     type: mysql
     image: mysql:8.0
-    home: false
 tooling:
   composer:
     service: appserver
