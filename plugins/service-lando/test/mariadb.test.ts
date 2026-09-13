@@ -5,7 +5,12 @@ import { Effect, Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
-import { MARIADB_FEATURE_ID, mariadbServiceFeature, mariadbServiceType } from "../src/services/mariadb.ts";
+import {
+  MARIADB_CONFIG_TARGET,
+  MARIADB_FEATURE_ID,
+  mariadbServiceFeature,
+  mariadbServiceType,
+} from "../src/services/mariadb.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -211,5 +216,41 @@ describe("mariadb ServiceType", () => {
       retries: 5,
       startPeriodSeconds: 30,
     });
+  });
+
+  test("mounts config.server read-only at MARIADB_CONFIG_TARGET without changing command or entrypoint", async () => {
+    // Given
+    const baseline = await planMariadb({ type: "mariadb" });
+    const definition = { type: "mariadb", config: { server: "config/my.cnf" } };
+
+    // When
+    const plan = await planMariadb(definition);
+
+    // Then
+    expect(plan.mounts).toEqual([
+      {
+        type: "bind",
+        source: "/srv/apps/myapp/config/my.cnf",
+        target: MARIADB_CONFIG_TARGET,
+        readOnly: true,
+        realization: "passthrough",
+      },
+    ]);
+    expect(String(MARIADB_CONFIG_TARGET)).toBe("/etc/mysql/conf.d/99-lando.cnf");
+    expect(plan.command).toEqual(baseline.command);
+    expect(plan.entrypoint).toEqual(baseline.entrypoint);
+  });
+
+  test("omits the server config mount when config.server is absent", async () => {
+    // Given
+    const definition = { type: "mariadb" };
+
+    // When
+    const plan = await planMariadb(definition);
+
+    // Then
+    expect(plan.mounts).toEqual([]);
+    expect(plan.command).toBeUndefined();
+    expect(plan.entrypoint).toBeUndefined();
   });
 });

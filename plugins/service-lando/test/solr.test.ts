@@ -5,6 +5,7 @@ import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema
 import type { ServiceType } from "@lando/sdk/services";
 
 import {
+  SOLR_CONFIG_TARGET,
   SOLR_FEATURE_ID,
   solr9ServiceType,
   solrServiceFeature,
@@ -173,5 +174,79 @@ describe("solr ServiceType", () => {
     });
 
     expect(plan.environment).toMatchObject({ EXTRA_VAR: "extra" });
+  });
+
+  test("cores without config.dir keep the precreate-only command byte-identical", async () => {
+    const plan = await planSolrService({ type: "solr", cores: ["a", "b"] });
+
+    expect(plan.command).toEqual([
+      "bash",
+      "-c",
+      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      "lando-solr-precreate",
+      "8983",
+      "a",
+      "b",
+    ]);
+    expect(plan.mounts.some((m) => String(m.target) === SOLR_CONFIG_TARGET)).toBe(false);
+  });
+
+  test("config.dir mounts the app-relative directory read-only at SOLR_CONFIG_TARGET", async () => {
+    const plan = await planSolrService({
+      type: "solr",
+      config: { dir: "solr/conf" },
+    });
+
+    expect(plan.mounts).toContainEqual({
+      type: "bind",
+      source: "/srv/apps/myapp/solr/conf",
+      target: SOLR_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+    });
+    expect(plan.command).toEqual(["solr-foreground", "-p", "8983"]);
+  });
+
+  test("config.dir with cores copies conf into each core before solr-foreground", async () => {
+    const plan = await planSolrService({
+      type: "solr",
+      cores: ["a", "b"],
+      config: { dir: "solr/conf" },
+    });
+
+    expect(plan.mounts).toContainEqual({
+      type: "bind",
+      source: "/srv/apps/myapp/solr/conf",
+      target: SOLR_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+    });
+    expect(plan.command).toEqual([
+      "bash",
+      "-c",
+      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; mkdir -p /var/solr/data/"$core"/conf; cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/; done; exec solr-foreground -p "$port"',
+      "lando-solr-precreate",
+      "8983",
+      "a",
+      "b",
+    ]);
+  });
+
+  test("authored command wins even when config.dir is set", async () => {
+    const plan = await planSolrService({
+      type: "solr",
+      cores: ["mycore"],
+      config: { dir: "solr/conf" },
+      command: ["solr-foreground", "-p", "8983"],
+    });
+
+    expect(plan.command).toEqual(["solr-foreground", "-p", "8983"]);
+    expect(plan.mounts).toContainEqual({
+      type: "bind",
+      source: "/srv/apps/myapp/solr/conf",
+      target: SOLR_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+    });
   });
 });

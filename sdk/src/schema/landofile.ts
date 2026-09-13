@@ -520,6 +520,24 @@ export const ServiceCreds = Schema.Struct({
 export type ServiceCreds = typeof ServiceCreds.Type;
 
 /**
+ * App-relative file-backed configuration a catalog service may author under
+ * `services.<name>.config` (e.g. a MySQL server config file or a Solr conf directory).
+ */
+export const ServiceFileConfig = Schema.Struct({
+  server: Schema.optional(Schema.String).annotations({
+    description: "App-relative path to a regular file mounted read-only as the service's server config.",
+  }),
+  dir: Schema.optional(Schema.String).annotations({
+    description: "App-relative path to a directory mounted read-only as the service's config directory.",
+  }),
+}).annotations({
+  identifier: "ServiceFileConfig",
+  title: "Service File Config",
+  description: "App-relative file-backed service configuration mounted read-only into the container.",
+});
+export type ServiceFileConfig = typeof ServiceFileConfig.Type;
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -550,6 +568,9 @@ const ServiceConfigWithExtensions = Schema.Struct(
     }),
     creds: Schema.optional(ServiceCreds).annotations({
       description: "Service login credentials used to provision or connect to the service.",
+    }),
+    config: Schema.optional(ServiceFileConfig).annotations({
+      description: "App-relative file-backed service configuration mounted read-only into the container.",
     }),
     hosts: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))).annotations({
       description: "Database hosts this admin UI connects to; a single hostname or a list of hostnames.",

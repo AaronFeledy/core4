@@ -6,6 +6,7 @@
 
 - `@lando/sdk/schema` additively exports `ScannerConfig` (`false` or optional `path`, `okCodes`, `retries`, `timeout`) and `ScanPlan` (resolved `enabled`, `path`, `okCodes`, `retries`, `timeoutMs`). Retries are a budget after the first attempt; timeouts are overall deadlines in milliseconds.
 - `ServiceConfig.scanner` and `GlobalConfig.scanner` additively accept optional `ScannerConfig`. `ServicePlan.scanner` additively accepts optional `ScanPlan`.
+- `@lando/sdk/schema` additively exports `ServiceFileConfig` (optional `server` and `dir` app-relative paths). `ServiceConfig.config` additively accepts optional `ServiceFileConfig` for file-backed catalog service configuration mounted read-only into the container.
 - `AppPlan.router` additively accepts `{ enabled: boolean }`. It stays optional only because persisted cached plans predate the field.
 - `UrlScanner.scan` additively accepts optional `{ plan?: AppPlan; urls?: ReadonlyArray<{ service: ServiceName; url: string }> }`. Per-service settings come from `plan.services[name].scanner`; omitting the plan uses the scanner's own defaults. When `urls` is present, those host-facing URLs are probed instead of rediscovering endpoints. `makeTestUrlScanner` records supplied options alongside the app id while preserving calls without options.
 
@@ -189,6 +190,7 @@
 
 - `ScannerConfig`
 - `ScanPlan`
+- `ServiceFileConfig`
 - `ABSOLUTE_CONTAINER_PATH_PATTERN`
 - `AbsoluteContainerPath`
 - `isAbsoluteContainerPath`

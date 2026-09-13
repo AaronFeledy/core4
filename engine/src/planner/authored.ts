@@ -133,6 +133,7 @@ export const planServiceDrafts = (input: {
       featureRefs,
       routes,
       resolvedArtifactTag,
+      configSourceInputs,
     } of input.resolvedServices) {
       const rawPlan = yield* Effect.gen(function* () {
         const configuredFeatureRefs = featureRefs.filter(
@@ -236,7 +237,18 @@ export const planServiceDrafts = (input: {
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,
         routes,
-        extensions: servicePlan.extensions,
+        extensions:
+          configSourceInputs.length === 0
+            ? servicePlan.extensions
+            : {
+                ...servicePlan.extensions,
+                [SERVICE_FEATURES_EXTENSION_KEY]: {
+                  ...serviceFeatureExtension(servicePlan.extensions),
+                  configSources: [...configSourceInputs].sort((left, right) =>
+                    left.key.localeCompare(right.key),
+                  ),
+                },
+              },
       });
     }
     return plannedServiceDrafts;

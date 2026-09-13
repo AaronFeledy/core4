@@ -28,6 +28,7 @@ interface StableBuildInput {
     readonly appMount: unknown;
     readonly mounts: ReadonlyArray<unknown>;
     readonly buildSteps: ReadonlyArray<unknown>;
+    readonly configSources: ReadonlyArray<unknown>;
   };
 }
 
@@ -185,6 +186,15 @@ export const artifactBuildStepsFor = (service: ServicePlan): ReadonlyArray<unkno
     .filter((step) => !isRecord(step) || step.phase !== "app")
     .map(artifactBuildStepInput);
 
+const configSourcesFor = (service: ServicePlan): ReadonlyArray<unknown> => {
+  const extension = service.extensions["@lando/core/service-features"];
+  if (!isRecord(extension) || !Array.isArray(extension.configSources)) return [];
+  return extension.configSources
+    .filter(isRecord)
+    .sort((left, right) => String(left.key).localeCompare(String(right.key)))
+    .map(stableValue);
+};
+
 const stableBuildInput = (
   provider: RuntimeProviderShape,
   service: ServicePlan,
@@ -215,6 +225,7 @@ const stableBuildInput = (
               },
         mounts: service.mounts.map(mountBuildInput),
         buildSteps: artifactBuildStepsFor(service),
+        configSources: configSourcesFor(service),
       },
     })),
   );

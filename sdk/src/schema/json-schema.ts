@@ -228,6 +228,7 @@ import {
   RouteObjectInput,
   ServiceConfig,
   ServiceConfigInput,
+  ServiceFileConfig,
   ToolingArgShape,
   ToolingDefaultsShape,
   ToolingFlagShape,
@@ -519,6 +520,7 @@ const basePublicSchemaRegistry = {
   CommandAliasesShape,
   ServiceConfig,
   ServiceConfigInput,
+  ServiceFileConfig,
   LogSource,
   LogSourceId,
   LogSourceInput,
@@ -954,6 +956,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
+  ServiceFileConfig: "App-relative file-backed service configuration mounted read-only into the container.",
   LogSource: "Public Lando schema contract for Log Source.",
   LogSourceId: "Public Lando schema contract for Log Source Id.",
   LogSourceInput: "Public Lando schema contract for Log Source Input.",

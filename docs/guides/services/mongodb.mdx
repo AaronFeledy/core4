@@ -50,6 +50,24 @@ The `mongodb` type ships the `mongosh` client task. After start:
 lando mongosh --eval "db.runCommand('ping')"
 ```
 
+## Use your own mongod.conf
+
+Set `config.server` to an app-relative file when you need to tune the server:
+
+```yaml
+services:
+  db:
+    type: mongodb
+    config:
+      server: ./config/mongod.conf
+```
+
+Lando mounts that file read-only at `/etc/lando/mongod.conf` and starts the server with `--config /etc/lando/mongod.conf`. It has to be a regular file, not a directory.
+
+The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
+
+If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append `--config` to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
+
 ## Pin a version
 
 Set `image:` to use `mongo:6` or `mongo:8` instead of `mongo:7`:

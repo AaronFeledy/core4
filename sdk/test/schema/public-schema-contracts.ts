@@ -150,6 +150,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   CommandAliasesShape: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceConfigInput: "sdk/test/schema/service-config-compose-spellings.test.ts",
+  ServiceFileConfig: "sdk/test/schema/service-file-config.test.ts",
   LogSource: "sdk/test/schema/log-source.test.ts",
   LogSourceId: "sdk/test/schema/log-source.test.ts",
   LogSourceInput: "sdk/test/schema/log-source.test.ts",
