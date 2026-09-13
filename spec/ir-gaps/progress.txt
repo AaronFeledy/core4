@@ -17,6 +17,7 @@
 - `engine` and `core` typecheck against `sdk/dist`, not `sdk/src`. After an SDK type change run `bun run --filter='@lando/sdk' build`, or TS reports "Two different types with this name exist, but they are unrelated".
 - Pattern-validated schemas (`ContainerUser`, `AbsoluteContainerPath`) are NOT branded, so their `.Type` is plain `string` and declaration sites need no `.make()`. Brand only when call sites should be forced through a constructor.
 - Removing or widening a public schema property needs an entry in `sdk/compatibility-exceptions.json` keyed by surface + changeKind + path with a justification. `check:schema-compatibility` is its own gate; typecheck, lint, and the test suites all stay green while it fails.
+- `check:schema-compatibility` reads the WORKING side from the gitignored derived tree (`core/dist/schemas`), which goes stale the moment you merge main. A schema that main added but your local dist predates reports as `BREAKING surface-removed` for a surface your branch never touched. Run `bun run codegen:schema-snapshot` before believing a breaking row, and cross-check the PR's `schema-snapshot` job.
 
 ## 2026-09-11 - US-613 (in progress, not complete)
 
@@ -392,4 +393,20 @@ Manual CLI QA against `core/bin/lando.ts` with isolated user roots and `provider
 - CI outcome: pass (after fixes; initially provider-integration-linux-x64 and drupal-journey-linux-x64 failed)
 - Review feedback: fixed (resolved the `sdk/API_COMPATIBILITY.md` conflict by merging main, and declared `home.path: /root` for the live Compose fixture harness's substituted `node:22-alpine` image so the US-617A home refusal no longer pre-empts the unsupported-feature CapabilityError; drupal-journey was a Composer HTTP 504 flake that passed on rerun)
 - Merge: deferred (all merge conditions met and branch is MERGEABLE with every check green, but GitHub's merge API returned repeated 502/500 errors across five spaced attempts)
+---
+
+## 2026-09-13 04:30 - US-617A (verified complete, no new code)
+
+Build found home persistence and host reachability already finished and published on its branch, with PR #970 open and awaiting a merge that GitHub's API refused with repeated 5xx. Re-verified the story against its acceptance criteria rather than inventing work; no source, test, or fixture changed and no commit was made.
+
+- Re-ran the story's gates on the branch as it stands: typecheck, lint, and all thirteen boundary rules pass; `check:schema-compatibility` reports compatible 16, breaking 0; the home-and-host executable guide runs 3/3.
+- Spot checks across the story's blast radius are green: 178 engine tests (planner home, AppPlanner home, host reachability, service-type input, build-key user), 114 core tests (compose planner-cache and capability fixtures, compose conformance, global-commands, both recipe decomposers), and 54 plugin/container-runtime tests (compose passthrough scenario and providers, service identity, Traefik global service, Compose plan and knobs bring-up).
+- CLI verification re-run on the real command with isolated user roots and `provider: test`: a `mariadb:10.6` catalog service refreshes its plan, proving the pinned-artifact-tag identity fix still holds; a `type: lando` service on `alpine:3.20` exits 1 with `HomePathCapabilityError` printing both remediations; `home.path: /opt/appuser` plans and round-trips through `app:config --format=json`; `home: false` plans.
+- Left the story phase at `published`. The only work left on it is the deferred merge, which Babysit owns; signalling an earlier phase would send an already-reviewed, already-pushed story back through Review and Push for nothing.
+
+Verification: typecheck, lint, boundaries, and schema-compatibility passed; the guide and 346 blast-radius tests passed; four CLI scenarios verified on `core/bin/lando.ts`.
+
+- **Learnings for future iterations:**
+  - A `BREAKING ... surface-removed` row from `check:schema-compatibility` is more often a stale local derived tree than a real regression. `core/dist/schemas` is gitignored, so merging main leaves it missing whatever schemas main added since — here `HostTerminal`, which the branch's own registry still exports. `bun run codegen:schema-snapshot` restored it (384 -> 385 artifacts) and the row disappeared. Regenerate before triaging, and check whether the PR's `schema-snapshot` job is green.
+  - When Build reaches a story that is already `published`, the completion path is verification, not a phase signal. Phases move forward (`implemented` -> `reviewed` -> `published` -> `merged`); emitting an earlier one rewinds the pipeline over work that already passed it.
 ---
