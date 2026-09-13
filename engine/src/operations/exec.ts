@@ -6,7 +6,7 @@ import {
   type LandofileLoadExpressionError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-import type { AppPlan, LandofileShape, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, HostTerminal, LandofileShape, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
   type CommandSpec,
@@ -20,7 +20,7 @@ import {
 
 import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
-import { resolveTerminalCapabilityEnv } from "../config/terminal-capability-env.ts";
+import { withTerminalEnv } from "../config/terminal-env.ts";
 import {
   type ResolvedAppTarget,
   loadUserLandofile,
@@ -36,6 +36,7 @@ export type { ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
 export type ExecAppRuntimeOptions = ExecAppOptions & {
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
+  readonly hostTerminal?: HostTerminal;
 };
 
 export type ExecAppResultWithTokens = ExecAppResult & {
@@ -163,11 +164,6 @@ const collectExecStream = (
     }),
   );
 
-const envOrFallback = (name: "COLUMNS" | "LINES", fallback: string): string => {
-  const value = process.env[name];
-  return value !== undefined && value !== "" ? value : fallback;
-};
-
 const inheritTty = (options: ExecAppRuntimeOptions): boolean => options.tty === true;
 
 const inheritStdin = (options: ExecAppRuntimeOptions): boolean =>
@@ -223,14 +219,13 @@ export const execApp = (
     });
     const tty = inheritTty(options);
     const attachStdin = inheritStdin(options);
-    const ttyEnv = tty
-      ? {
-          COLUMNS: envOrFallback("COLUMNS", "80"),
-          LINES: envOrFallback("LINES", "24"),
-          ...resolveTerminalCapabilityEnv(process.env),
-        }
-      : undefined;
-    const mergedEnv = env === undefined && ttyEnv === undefined ? undefined : { ...ttyEnv, ...env };
+    const mergedEnv = withTerminalEnv({
+      tty,
+      hostEnv: process.env,
+      ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
+      serviceEnv: service.environment,
+      ...(env === undefined ? {} : { env }),
+    });
     const cwd = resolveContainerCwd(service, options.cwd, process.cwd());
     const spec: CommandSpec = {
       command: split.command,

@@ -377,6 +377,59 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(calls[0]?.stdin).toBeUndefined();
   });
 
+  test("forwards attached terminal facts without synthesizing TERM", async () => {
+    // Given
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    // When
+    await Effect.runPromise(
+      execApp({
+        service: "appserver",
+        command: ["htop"],
+        tty: true,
+        hostTerminal: { term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 },
+      }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+    );
+
+    // Then
+    expect(calls[0]?.env).toMatchObject({
+      COLUMNS: "132",
+      LINES: "43",
+      TERM: "dumb",
+      COLORTERM: "truecolor",
+    });
+  });
+
+  test("forced PTY without attachment gets dimensions but no invented terminal identity", async () => {
+    // Given
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const savedColumns = process.env.COLUMNS;
+    const savedLines = process.env.LINES;
+    process.env.COLUMNS = "117";
+    process.env.LINES = "39";
+
+    // When
+    try {
+      await Effect.runPromise(
+        execApp({ service: "appserver", command: ["htop"], tty: true }).pipe(
+          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+        ),
+      );
+    } finally {
+      if (savedColumns === undefined) Reflect.deleteProperty(process.env, "COLUMNS");
+      else process.env.COLUMNS = savedColumns;
+      if (savedLines === undefined) Reflect.deleteProperty(process.env, "LINES");
+      else process.env.LINES = savedLines;
+    }
+
+    // Then
+    expect(calls[0]?.env).toMatchObject({ COLUMNS: "117", LINES: "39" });
+    expect(calls[0]?.env).not.toHaveProperty("TERM");
+    expect(calls[0]?.env).not.toHaveProperty("COLORTERM");
+  });
+
   test("attaches stdin only when interactive and a stdin stream are provided", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
@@ -748,6 +801,8 @@ describe("execApp — interactive TTY terminal-capability env", () => {
     "VTE_VERSION",
     "WT_SESSION",
     "KONSOLE_VERSION",
+    "COLUMNS",
+    "LINES",
   ] as const;
 
   const HOST_KEYS = [...AGENT_KEYS, ...CAPABILITY_KEYS, "HOST_SECRET", "HOST_FOO"] as const;
@@ -789,11 +844,13 @@ describe("execApp — interactive TTY terminal-capability env", () => {
     VTE_VERSION: undefined,
     WT_SESSION: undefined,
     KONSOLE_VERSION: undefined,
+    COLUMNS: "117",
+    LINES: "39",
     HOST_SECRET: "shh",
     HOST_FOO: "nope",
   } as const;
 
-  test("TTY on forwards allowlisted host capability vars", async () => {
+  test("TTY without attached facts forwards dimensions only, not host TERM fingerprints", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
 
@@ -805,17 +862,36 @@ describe("execApp — interactive TTY terminal-capability env", () => {
       ),
     );
 
-    expect(calls[0]?.env).toMatchObject({
+    expect(calls[0]?.env).toEqual({ COLUMNS: "117", LINES: "39" });
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "TERM")).toBe(false);
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "COLORTERM")).toBe(false);
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "TERM_PROGRAM")).toBe(false);
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "HOST_SECRET")).toBe(false);
+  });
+
+  test("TTY with attached facts forwards TERM and COLORTERM, not program fingerprints", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await withHostEnv({ ...capabilityHost }, () =>
+      Effect.runPromise(
+        execApp({
+          service: "appserver",
+          command: ["htop"],
+          tty: true,
+          hostTerminal: { term: "xterm-ghostty", colorterm: "truecolor", columns: 132, rows: 43 },
+        }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+      ),
+    );
+
+    expect(calls[0]?.env).toEqual({
+      COLUMNS: "132",
+      LINES: "43",
       TERM: "xterm-ghostty",
       COLORTERM: "truecolor",
-      TERM_PROGRAM: "ghostty",
-      TERM_PROGRAM_VERSION: "1.2.0",
     });
-    expect(calls[0]?.env).toHaveProperty("COLUMNS");
-    expect(calls[0]?.env).toHaveProperty("LINES");
-    expect(Object.hasOwn(calls[0]?.env ?? {}, "VTE_VERSION")).toBe(false);
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "TERM_PROGRAM")).toBe(false);
     expect(Object.hasOwn(calls[0]?.env ?? {}, "HOST_SECRET")).toBe(false);
-    expect(Object.hasOwn(calls[0]?.env ?? {}, "HOST_FOO")).toBe(false);
   });
 
   test("TTY off leaves capability vars absent even when set on the host", async () => {
@@ -848,7 +924,7 @@ describe("execApp — interactive TTY terminal-capability env", () => {
     expect(calls[0]?.env).toEqual({ CLAUDECODE: "1" });
   });
 
-  test("explicit empty/override wins over host capability values", async () => {
+  test("explicit empty/override wins over attached terminal facts", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
 
@@ -858,33 +934,40 @@ describe("execApp — interactive TTY terminal-capability env", () => {
           service: "appserver",
           command: ["htop"],
           tty: true,
-          env: { TERM_PROGRAM: "", TERM: "xterm-explicit" },
+          hostTerminal: { term: "xterm-ghostty", colorterm: "truecolor", columns: 132, rows: 43 },
+          env: { TERM: "xterm-explicit", COLORTERM: "" },
         }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
       ),
     );
 
-    expect(calls[0]?.env).toMatchObject({
+    expect(calls[0]?.env).toEqual({
+      COLUMNS: "132",
+      LINES: "43",
       TERM: "xterm-explicit",
-      TERM_PROGRAM: "",
-      COLORTERM: "truecolor",
+      COLORTERM: "",
     });
+    expect(Object.hasOwn(calls[0]?.env ?? {}, "TERM_PROGRAM")).toBe(false);
   });
 
-  test("allowlist does not forward random HOST_* or other junk", async () => {
+  test("does not forward random HOST_* or other junk", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
 
     await withHostEnv({ ...capabilityHost, HOST_SECRET: "shh", HOST_FOO: "nope" }, () =>
       Effect.runPromise(
-        execApp({ service: "appserver", command: ["htop"], tty: true }).pipe(
-          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
-        ),
+        execApp({
+          service: "appserver",
+          command: ["htop"],
+          tty: true,
+          hostTerminal: { term: "xterm-ghostty", columns: 117, rows: 39 },
+        }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
       ),
     );
 
     const env = calls[0]?.env ?? {};
     expect(Object.keys(env).filter((name) => name.startsWith("HOST_"))).toEqual([]);
     expect(Object.hasOwn(env, "FORCE_HYPERLINK")).toBe(false);
-    expect(env.TERM_PROGRAM).toBe("ghostty");
+    expect(Object.hasOwn(env, "TERM_PROGRAM")).toBe(false);
+    expect(env.TERM).toBe("xterm-ghostty");
   });
 });
