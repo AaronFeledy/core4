@@ -50,16 +50,24 @@ export const makeUrlScanner = (
     id: SCANNER_ID,
     scan: (appId, options) =>
       Effect.gen(function* () {
-        if (options?.plan === undefined && !config.enabled) return { appId, endpoints: [] };
+        if (options?.plan === undefined && options?.urls === undefined && !config.enabled) {
+          return { appId, endpoints: [] };
+        }
         const redactor = yield* resolveRedactor;
-        const endpoints = yield* deps.listEndpoints(appId);
-        const targets = endpoints.flatMap((endpoint) => {
-          const scan = options?.plan?.services[endpoint.service]?.scanner;
-          const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
-          return resolved.enabled
-            ? scanTargets([endpoint], resolved.path).map((target) => ({ target, config: resolved }))
-            : [];
-        });
+        const targets =
+          options?.urls === undefined
+            ? (yield* deps.listEndpoints(appId)).flatMap((endpoint) => {
+                const scan = options?.plan?.services[endpoint.service]?.scanner;
+                const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
+                return resolved.enabled
+                  ? scanTargets([endpoint], resolved.path).map((target) => ({ target, config: resolved }))
+                  : [];
+              })
+            : options.urls.flatMap((supplied) => {
+                const scan = options.plan?.services[supplied.service]?.scanner;
+                const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
+                return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
+              });
         const scanned = yield* Effect.forEach(
           targets,
           ({ target, config }) => scanTarget(deps, config, redactor, target),

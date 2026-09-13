@@ -161,6 +161,35 @@ describe("makeUrlScanner", () => {
     expect(http.requests).toHaveLength(1);
   });
 
+  test("supplied urls are probed without listing provider endpoints", async () => {
+    // Given: start already knows the host-facing URLs, including router authorities.
+    const http = requestSequence([httpStatus(200)]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
+    const scanner = makeUrlScanner({ request: http.request, listEndpoints: source.listEndpoints });
+    const plan = planWithScanner({
+      enabled: true,
+      path: "/ready",
+      okCodes: [],
+      retries: 0,
+      timeoutMs: 1000,
+    });
+
+    // When
+    const result = await drive(
+      scanner.scan(appId, {
+        plan,
+        urls: [{ service: web, url: "https://web.demo.lndo.site:4443/ready" }],
+      }),
+    );
+
+    // Then: the captured provider is not consulted.
+    expect(source.calls).toHaveLength(0);
+    expect(result.endpoints.map(({ url, outcome }) => ({ url, outcome }))).toEqual([
+      { url: "https://web.demo.lndo.site:4443/ready", outcome: "green" },
+    ]);
+    expect(http.requests.map(({ url }) => url)).toEqual(["https://web.demo.lndo.site:4443/ready"]);
+  });
+
   test("enabled false short-circuits without probing", async () => {
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
