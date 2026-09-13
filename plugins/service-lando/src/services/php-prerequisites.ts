@@ -94,7 +94,7 @@ export const PHP_COMPOSER_STEP_ID = "service-lando.php:composer" as const;
  * The Composer version a service requested, independent of spelling: the
  * object form carries it on `version`, the legacy form is the value itself.
  */
-export const phpComposerRequestedVersion = (value: unknown): unknown => {
+const phpComposerRequestedVersion = (value: unknown): unknown => {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return (value as { readonly version?: unknown }).version;
   }

@@ -41,7 +41,7 @@ const validateVersion = (
 
 const configFor = (ctx: ServiceFeatureContext): NodeFeatureConfig => ctx.config as NodeFeatureConfig;
 
-export const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
+const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
   [
     "set -eux",
     [
