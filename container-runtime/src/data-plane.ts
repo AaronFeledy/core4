@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { type MountedVolumeTarget, observeMountedVolume } from "./volume-observation.ts";
+import {
+  type MountedVolumeTarget,
+  type VolumeAdoptionTarget,
+  adoptMountedVolume,
+  observeMountedVolume,
+} from "./volume-observation.ts";
+import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
 export { volumeCreationOwnerLabels } from "./volume-observation.ts";
+export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
 
 import { Effect, Fiber, type Scope, Stream } from "effect";
 
@@ -45,6 +52,8 @@ export interface DataPlaneApiClient {
 
 export interface ProviderDataPlaneOptions {
   readonly providerId: string;
+  readonly endpointNamespace?: string;
+  readonly prepareWitnessImage?: Effect.Effect<unknown, ProviderError>;
   readonly api: DataPlaneApiClient;
   readonly snapshotMode: "copy" | "native";
   readonly redactDetails: (value: unknown) => unknown;
@@ -236,6 +245,8 @@ const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArr
   env === undefined ? undefined : Object.entries(env).map(([key, value]) => `${key}=${value}`);
 
 const copyModeHelperImage = "alpine:3.20";
+const preserveWitness = `! -name '${VOLUME_WITNESS_FILE}' ! -name '.lando-witness-stage-*'`;
+const excludeWitness = `--exclude='${VOLUME_WITNESS_FILE}' --exclude='./${VOLUME_WITNESS_FILE}' --exclude='.lando-witness-stage-*' --exclude='./.lando-witness-stage-*'`;
 const copyModeMountPath = "/lando-data";
 const copyModeMountTarget = PortablePath.make(copyModeMountPath);
 const copyModeSnapshotMountPath = "/lando-snapshots";
@@ -441,7 +452,16 @@ const ensure2xx = (
         ),
       );
 
-const createEphemeralContainer = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
+interface WitnessMountSource {
+  readonly containerId: string;
+  readonly readOnly: boolean;
+}
+
+const createEphemeralContainer = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+  witnessSource?: WitnessMountSource,
+) => {
   const name = ephemeralContainerName(options.providerId);
   const mount = firstDataStoreMount(spec);
   const binds = dataStoreMounts(spec).map(
@@ -455,7 +475,17 @@ const createEphemeralContainer = (options: ProviderDataPlaneOptions, spec: Ephem
       Image: spec.image,
       Cmd: spec.command,
       ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
-      HostConfig: { Binds: binds },
+      ...(witnessSource === undefined
+        ? { HostConfig: { Binds: binds } }
+        : {
+            User: "0:0",
+            Entrypoint: [],
+            HostConfig: {
+              VolumesFrom: [`${witnessSource.containerId}:${witnessSource.readOnly ? "ro" : "rw"}`],
+              NetworkMode: "none",
+              ReadonlyRootfs: true,
+            },
+          }),
       OpenStdin: attachStdin,
       AttachStdin: attachStdin,
       StdinOnce: attachStdin,
@@ -518,9 +548,13 @@ const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: stri
     Effect.tap((response) => ensure2xx(options, "run.wait", response, firstDataStoreMount(spec)?.store)),
   );
 
-const runBytes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) =>
+const runBytes = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+  witnessSource?: WitnessMountSource,
+) =>
   Effect.acquireUseRelease(
-    createEphemeralContainer(options, spec),
+    createEphemeralContainer(options, spec, witnessSource),
     (name) =>
       Effect.gen(function* () {
         const stdinFiber = yield* Effect.forkScoped(attachEphemeralStdin(options, name, spec));
@@ -590,7 +624,11 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
       image: copyModeHelperImage,
-      command: ["sh", "-c", "rm -rf /snapshot && mkdir -p /snapshot && cp -a /lando-data/. /snapshot/"],
+      command: [
+        "sh",
+        "-c",
+        `mkdir -p /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /snapshot/' sh {} +`,
+      ],
       mounts: [{ store: volumeName(store), target: copyModeMountTarget, readOnly: true }],
       remove: true,
     }),
@@ -625,8 +663,38 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
   );
 
 export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
+  const observation = {
+    ...options,
+    runWitness: (target: MountedVolumeTarget, command: readonly string[]) =>
+      request(options, "witness.image", {
+        method: "GET",
+        path: `/images/${encodeURIComponent(VOLUME_WITNESS_IMAGE)}/json`,
+      }).pipe(
+        Effect.flatMap((image) =>
+          image.status === 404 && options.prepareWitnessImage !== undefined
+            ? options.prepareWitnessImage
+            : ensure2xx(options, "witness.image", image),
+        ),
+        Effect.zipRight(
+          Effect.scoped(
+            runBytes(
+              options,
+              { image: VOLUME_WITNESS_IMAGE, command, captureStdout: true, remove: true },
+              { containerId: target.containerId, readOnly: false },
+            ),
+          ).pipe(
+            Effect.map((result) => ({
+              exitCode: result.exitCode,
+              stdout: textDecoder.decode(result.stdout),
+              stderr: result.stderr,
+            })),
+          ),
+        ),
+      ),
+  };
   return {
-    observeVolume: (target: MountedVolumeTarget) => observeMountedVolume(options, target),
+    observeVolume: (target: MountedVolumeTarget) => observeMountedVolume(observation, target),
+    adoptVolume: (target: VolumeAdoptionTarget) => adoptMountedVolume(observation, target),
     run: (spec: EphemeralRunSpec): Effect.Effect<ExecResult, ProviderError, Scope.Scope> =>
       runBytes(options, { ...spec, captureStdout: spec.captureStdout ?? false }).pipe(
         Effect.map(({ exitCode, stdout, stderr }) => ({
@@ -666,7 +734,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         command: [
           "sh",
           "-c",
-          `mkdir -p ${copyModeSnapshotMountPath} && tar -C ${copyModeMountPath} -cf ${copyModeSnapshotMountPath}/${snapshotFile} .`,
+          `mkdir -p ${copyModeSnapshotMountPath} && tar -C ${copyModeMountPath} -cf ${copyModeSnapshotMountPath}/${snapshotFile} ${excludeWitness} .`,
         ],
         mounts: [
           { store: name, target: copyModeMountTarget, readOnly: true },
@@ -700,7 +768,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       if (options.snapshotMode === "native") {
         const command =
           spec.overwrite !== false
-            ? "find /lando-data -mindepth 1 -maxdepth 1 -exec rm -rf {} +; cp -a /snapshot/. /lando-data/"
+            ? `test -d /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} + && find /snapshot -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /lando-data/' sh {} +`
             : "test -d /snapshot";
         return runBytes(options, {
           image: nativeSnapshotImage(spec.snapshot.id),
@@ -732,7 +800,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const snapshotPath = `${copyModeSnapshotMountPath}/${snapshotFile}`;
       const restoreCommand =
         spec.overwrite !== false
-          ? `test -f ${snapshotPath} && find ${copyModeMountPath} -mindepth 1 -maxdepth 1 -exec rm -rf {} + && tar -C ${copyModeMountPath} -xf ${snapshotPath}`
+          ? `test -f ${snapshotPath} && find ${copyModeMountPath} -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} + && tar -C ${copyModeMountPath} -xf ${snapshotPath} ${excludeWitness}`
           : `test -f ${snapshotPath}`;
       return runBytes(options, {
         image: copyModeHelperImage,

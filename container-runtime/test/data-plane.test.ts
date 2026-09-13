@@ -85,7 +85,7 @@ const makeCopySnapshotApi = () => {
           const dataStore = binds[0]?.split(":")[0];
           const snapshotStore = binds[1]?.split(":")[0];
           if (container !== undefined && dataStore !== undefined && snapshotStore !== undefined) {
-            if (command.includes("tar -C /lando-data -cf /lando-snapshots/snap.tar .")) {
+            if (command.includes("tar -C /lando-data -cf /lando-snapshots/snap.tar")) {
               snapshotFiles.set(`${snapshotStore}/snap.tar`, volumes.get(dataStore) ?? new Uint8Array());
             } else if (command.includes("tar -C /lando-data -xf /lando-snapshots/snap.tar")) {
               const snapshot = snapshotFiles.get(`${snapshotStore}/snap.tar`);

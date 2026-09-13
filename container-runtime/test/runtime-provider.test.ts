@@ -64,6 +64,10 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
 });
 
 const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
+  adoptVolume: (target) => {
+    calls.push({ name: "adoptVolume", args: [target] });
+    return Effect.succeed({ ref: { app: target.app, store: "actual-native-volume" }, provenance: "legacy" });
+  },
   observeVolume: (target) => {
     calls.push({ name: "observeVolume", args: [target] });
     return Effect.succeed({ ref: { app: target.app, store: "actual-native-volume" }, provenance: "legacy" });
@@ -127,6 +131,45 @@ const makeInput = (
 };
 
 describe("resolved provider operations", () => {
+  test("adoption requires canonical ownership rather than falling back to plan root", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    if (!ops.adoptVolume) throw new Error("Expected volume adoption adapter");
+    const result = await Effect.runPromise(
+      Effect.either(ops.adoptVolume(target, PortablePath.make("/data"))),
+    );
+    expect(result._tag).toBe("Left");
+    expect(calls.some((call) => call.name === "adoptVolume")).toBe(false);
+  });
+
+  test("adoption passes the canonical owner and inspected container to the data plane", async () => {
+    const calls: Call[] = [];
+    const canonical = {
+      ...plan,
+      identity: { appRoot: AbsolutePath.make("/canonical/root"), ownerKey: "owner" },
+    };
+    const input = makeInput(calls, () => Effect.succeed(canonical));
+    const ops = makeResolvedProviderOps({
+      ...input,
+      service: {
+        ...input.service,
+        inspect: () =>
+          Effect.succeed({
+            app,
+            service,
+            providerId: ProviderId.make("test"),
+            status: "stopped",
+            containerId: "observed-id",
+          }),
+      },
+    });
+    if (!ops.adoptVolume) throw new Error("Expected volume adoption adapter");
+    await Effect.runPromise(ops.adoptVolume(target, PortablePath.make("/data")));
+    expect(calls.find((call) => call.name === "adoptVolume")?.args).toEqual([
+      { app, containerId: "observed-id", destination: "/data", ownerRoot: "/canonical/root" },
+    ]);
+  });
+
   test("observes a volume through the existing container identity and destination", async () => {
     const calls: Call[] = [];
     const input = makeInput(calls);

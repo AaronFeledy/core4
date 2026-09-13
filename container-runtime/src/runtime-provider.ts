@@ -68,6 +68,7 @@ export type ResolvedProviderOps = Pick<
   | "restoreVolume"
   | "listVolumes"
   | "observeVolume"
+  | "adoptVolume"
   | "removeVolume"
   | "copyToService"
   | "copyFromService"
@@ -146,6 +147,21 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
             app: target.app,
             containerId: runtime.containerId,
             destination,
+          });
+        }),
+      ),
+    adoptVolume: (target, destination) =>
+      resolveTarget(target, "adoptVolume", (plan) =>
+        Effect.gen(function* () {
+          if (!plan.identity) return yield* Effect.fail(unavailable("adoptVolume"));
+          const runtime = yield* input.service.inspect(plan, target);
+          if (!runtime.containerId) return yield* Effect.fail(unavailable("adoptVolume"));
+          const dataPlane = yield* requireDataPlane("adoptVolume");
+          return yield* dataPlane.adoptVolume({
+            app: target.app,
+            containerId: runtime.containerId,
+            destination,
+            ownerRoot: plan.identity.appRoot,
           });
         }),
       ),
