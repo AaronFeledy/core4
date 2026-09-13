@@ -69,7 +69,7 @@ export const dispatchAppCommand = async (argv: ReadonlyArray<string>): Promise<b
   }
 
   if (argv[0] === "rebuild" || argv[0] === "app:rebuild") {
-    await runRebuild();
+    await runRebuild(argv.slice(1));
     return true;
   }
 

@@ -85,6 +85,7 @@ import type {
   RemoteEnvironment,
   RemoteTestResult,
   ServiceCreds,
+  ServiceName,
   SyncResult,
   TunnelSession,
   TunnelTarget,
@@ -296,6 +297,7 @@ export interface RestartAppResult {
 export type RestartAppError = StartAppError;
 
 export interface RebuildAppOptions {
+  readonly services?: ReadonlyArray<ServiceName>;
   readonly signal?: AbortSignal;
 }
 
@@ -323,7 +325,7 @@ export type DestroyAppError = StopAppError | ProxyError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
-  readonly service?: string;
+  readonly services?: ReadonlyArray<ServiceName>;
   readonly path?: string;
   readonly filters?: ReadonlyArray<string>;
 }

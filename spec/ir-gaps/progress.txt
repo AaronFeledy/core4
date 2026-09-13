@@ -18,6 +18,7 @@
 - Pattern-validated schemas (`ContainerUser`, `AbsoluteContainerPath`) are NOT branded, so their `.Type` is plain `string` and declaration sites need no `.make()`. Brand only when call sites should be forced through a constructor.
 - Removing or widening a public schema property needs an entry in `sdk/compatibility-exceptions.json` keyed by surface + changeKind + path with a justification. `check:schema-compatibility` is its own gate; typecheck, lint, and the test suites all stay green while it fails.
 - A new `services.<name>.*` key must clear two gates, not one: the Effect schema, and `SERVICE_CONFIG_KEYS` in `landofile/src/service.ts`, which is derived from `Object.keys(ServiceConfig.fields)` and rejects everything else as an "unsupported MVP key". Decoding an unknown service key silently DROPS it and looks like success, so only a real CLI run proves the key is accepted.
+- A scoped provider apply must persist the full app plan with the newly built selected service definitions overlaid. Remembering only the subplan loses unrelated services; remembering the original full plan loses newly stamped artifact references.
 - Service features are filesystem-free by type: `apply` is `(ctx) => Effect<void, ServiceFeatureError>` with no requirements channel. Anything needing `stat`/`readdir`/realpath belongs in the planner (see certs), leaving the feature the pure `resolveBindSource` join.
 - Export container mount destinations as `PortablePath.make(...)` constants. A bare string constant typechecks at the `addMount` call site but fails every whole-`MountPlan` `toEqual`/`toContainEqual` assertion, because `target` is branded.
 - `check:schema-compatibility` reads the WORKING side from the gitignored derived tree (`core/dist/schemas`), which goes stale the moment you merge main. A schema that main added but your local dist predates reports as `BREAKING surface-removed` for a surface your branch never touched. Run `bun run codegen:schema-snapshot` before believing a breaking row, and cross-check the PR's `schema-snapshot` job.
@@ -612,4 +613,33 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Fixed: one owner for mailFrom lists; missing select fails closed; conflict fixture uses a real password
 - Split/excise decisions: none; Mailpit name guard and hashed ACL stay in-story; RedisServiceConfig and msmtp pin stay deferred
 - Verification: typecheck pass, lint pass, 26 then 37 focused tests pass
+---
+
+## 2026-09-13 16:48 - US-618D1 (complete)
+
+- Rebuild and info accept repeatable service selections through CLI, library, and MCP. Names deduplicate and unknown names fail before provider actions. Info returns only selected services in plan order, without dependencies; omitted or empty selections retain app-wide behavior.
+- Scoped rebuild stops the selected services and their transitive prerequisites in reverse dependency order, builds and applies that closure in topological order, and forces its app-build steps. Running prerequisites restart, while unrelated services and downstream dependents stay untouched. Providers retain the complete app plan, including updated built artifacts for the selected services, rather than replacing persisted state with a partial or stale plan.
+- The executable guide documents both selection semantics. Public SDK compatibility notes cover the plural service options and full-plan recording contract. The acceptance check caught stale artifact references in recorded plans; a failing regression test reproduced it before the fix, and the scoped recheck approved the corrected behavior.
+- Verification: typecheck and lint passed; 65 focused CLI/library/MCP tests and 3 SDK compatibility tests passed, followed by 7 rebuild tests for the recorded-artifact fix. The executable guide passed. Boundaries, codegen drift, schema compatibility, guide lint, coverage, public transcripts, and guide drift passed. Changed TypeScript LSP diagnostics are clean. No full suite was run.
+- Real-surface verification in lando4-dev: selected info omitted prerequisites and duplicates; scoped rebuild restarted api and database while dependent and unrelated process identities stayed unchanged; unknown selections failed without mutation; app-wide info/rebuild retained all services. The QA app was destroyed and its fixture removed. A separate parent CLI check confirmed selected plan ordering, no dependency expansion for info, help flags, and tagged unknown-service refusal. The parent terminal detached without stopping the persistent sandbox.
+- **Learnings for future iterations:**
+  - Native string flags carry type `option`; MCP projection must translate that metadata to JSON Schema string items before repeatable selections validate.
+  - Partial rebuild must not close the app handle's whole managed scope: that would tear down unrelated file-sync and host-proxy resources.
+  - Assert artifact definitions as well as service names when testing persisted scoped plans; a names-only assertion misses a stale post-build artifact.
+---
+
+## 2026-09-13 - US-618D1 Review
+- Scoped rebuild now recreates selected containers: apply honors `reconcile` in Docker and shared Podman/Lando bring-up, missing containers are skipped on stop, and prototype-chain names such as `constructor` fail closed before provider action.
+- Review notes (deferred/rejected): MCP integer `option` projection vs `app:logs` tail is pre-existing and out of story scope; Kahn cycle incomplete-plan is planner-rejected already; filtering top-level stores on a subplan is not required by the ACs.
+- Verification: typecheck, lint passed; 86 focused tests passed across rebuild/info scenarios, Podman recreate, Docker bring-up order, argv parser, library handle, and MCP catalog.
+- **Learnings for future iterations:** Unscoped rebuild recreates because stopApp destroy-removes containers; scoped stop+apply only restarts existing ones unless `reconcile` removes and recreates. Provider fakes that record apply calls cannot prove runtime recreation.
+---
+
+## 2026-09-13 17:30 - US-618D1 Drift Audit
+- Trigger: 2 cycles, 721 insertions, 13 commits
+- Deferred work re-examined: MCP integer `option` projection, Kahn incomplete-plan, and unfiltered top-level stores still hold; none are regressions this branch owns
+- Contract: public `services`/`recordedPlan` surfaces and the scoped vs unscoped rebuild split all trace to this story's ACs; only this story's `passes` flip
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 80 focused tests pass
 ---

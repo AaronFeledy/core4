@@ -772,8 +772,9 @@ export const makeRuntimeProvider = (
             api: podmanApi,
             ctx: PODMAN_CTX,
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+            reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(plan))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan))),
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
             const plan = target.plan ?? (yield* resolvePlan(target.app));

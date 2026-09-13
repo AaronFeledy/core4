@@ -140,6 +140,22 @@ const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<Eng
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 describe("Podman publish-port recreate", () => {
+  test.each([true, false])(
+    "recreates an existing running container without PortBindings only when reconcile=%s",
+    async (reconcile) => {
+      // Given
+      const fake = makeFakeApi({ deleteStatus: 204, omitPortBindings: true });
+      const plan = planWithHostPort(38080);
+
+      // When
+      const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile }));
+
+      // Then
+      expect(result.changed).toBe(reconcile);
+      expect(createCalls(fake.calls)).toHaveLength(reconcile ? 1 : 0);
+    },
+  );
+
   test("Given a fingerprint mismatch and a failed remove, When bringing up, Then start fails instead of keeping old PortBindings", async () => {
     // Given: existing container still publishes 18080; planned host port is 38080; DELETE is rejected.
     const fake = makeFakeApi({ deleteStatus: 409 });

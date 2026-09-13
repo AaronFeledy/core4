@@ -240,6 +240,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-06 | US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | app plan cache refresh | `docs/guides/cli/cache-refresh.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | CLI verbosity, renderer modes, and debug output | `docs/guides/cli/verbosity-and-debug.mdx` | Shipped |
+| IR-GAPS-01 | US-618D1 | service-scoped rebuild and info | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
 | — | — | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
 | — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
