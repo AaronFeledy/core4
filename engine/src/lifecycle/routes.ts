@@ -7,11 +7,11 @@ import type {
   RouterPortPinMismatch,
   RouterPortsExhausted,
 } from "@lando/sdk/errors";
-import type { AppPlan, ProxyApplyResult, RouterConfig } from "@lando/sdk/schema";
+import type { AppPlan, ProxyApplyResult, RouterConfig, ServiceName } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
-import { resolveRouterConfigForApp } from "../config/router-config.ts";
+import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { runAllAndMergeFailures } from "./failure-compensation.ts";
 import { proxyUrlsByService } from "./route-urls.ts";
 
@@ -24,6 +24,7 @@ export const applyAppRoutes = (
   ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | ProxyApplyError
 > =>
   Effect.gen(function* () {
+    if (!routerEnabled(plan)) return { app: plan.id, appliedRoutes: [], authorities: [] };
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
     return yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin })).pipe(
@@ -51,4 +52,6 @@ export const destroyAppAndRemoveRoutes = <E, R>(
 ) => runAllAndMergeFailures<E | ProxyError, R>([providerDestroy, proxy.removeRoutes(plan.id)]);
 
 export const routeUrlsForPlan = (proxy: RouterServiceShape, plan: AppPlan) =>
-  proxy.status.pipe(Effect.map((status) => proxyUrlsByService(plan.routes, status.authorities)));
+  routerEnabled(plan)
+    ? proxy.status.pipe(Effect.map((status) => proxyUrlsByService(plan.routes, status.authorities)))
+    : Effect.succeed<ReadonlyMap<ServiceName, ReadonlyArray<string>>>(new Map());

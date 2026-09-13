@@ -335,6 +335,151 @@ const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("AppPlannerLive", () => {
+  for (const setting of ["router", "scanner"] as const) {
+    test(`invalidates persisted plans when global ${setting} changes`, async () => {
+      await withTempCwd(async (appRoot) => {
+        // Given
+        const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+        process.env.LANDO_USER_CACHE_ROOT = join(appRoot, "cache");
+        let config = Schema.decodeUnknownSync(GlobalConfig)({ telemetry: { enabled: false } });
+        let loads = 0;
+        const load = Effect.sync(() => {
+          loads += 1;
+          return config;
+        });
+        const layer = AppPlannerLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              PluginRegistryLive,
+              CacheServiceLive,
+              Layer.succeed(ConfigService, {
+                load,
+                get: <K extends keyof GlobalConfig>(key: K) =>
+                  Effect.map(load, (value): GlobalConfig[K] => value[key]),
+              }),
+            ),
+          ),
+        );
+        const landofile = Schema.decodeUnknownSync(LandofileShape)({
+          name: "global-plan-cache",
+          runtime: 4,
+          services: { web: { type: "nginx", home: false } },
+        });
+        const execute = () =>
+          Effect.runPromise(
+            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+              Effect.provide(layer),
+            ),
+          );
+        try {
+          await execute();
+          const cachePath = appPlanCachePath(join(appRoot, "cache"), "global-plan-cache", appRoot);
+          const payloadSchema = Schema.Struct({ key: Schema.String });
+          const before = payloadSchema.pipe(Schema.decodeUnknownSync)(
+            deserialize((await readFile(cachePath)).subarray(APP_PLAN_CACHE_HEADER_BYTES)),
+          );
+          config = Schema.decodeUnknownSync(GlobalConfig)({
+            telemetry: { enabled: false },
+            [setting]: setting === "router" ? { enabled: false } : { path: "/global-ready" },
+          });
+          // When
+          const changed = await execute();
+          const cached = await execute();
+          // Then
+          const after = payloadSchema.pipe(Schema.decodeUnknownSync)(
+            deserialize((await readFile(cachePath)).subarray(APP_PLAN_CACHE_HEADER_BYTES)),
+          );
+          expect(after.key).not.toBe(before.key);
+          expect(loads).toBe(3);
+          expect(changed.router?.enabled).toBe(setting !== "router");
+          expect(changed.services[ServiceName.make("web")]?.scanner?.path).toBe(
+            setting === "scanner" ? "/global-ready" : "/",
+          );
+          expect(cached.router).toEqual(changed.router);
+          expect(cached.services[ServiceName.make("web")]?.scanner).toEqual(
+            changed.services[ServiceName.make("web")]?.scanner,
+          );
+        } finally {
+          if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+          else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        }
+      });
+    });
+  }
+
+  for (const enabled of [true, false]) {
+    test(`records router ${enabled} with populated routes`, async () => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "router-plan",
+        runtime: 4,
+        ...(enabled ? {} : { router: { enabled: false } }),
+        services: { web: { type: "nginx", home: false } },
+      });
+      // When
+      const appPlan = await plan(landofile);
+      // Then
+      expect(appPlan.router?.enabled).toBe(enabled);
+      expect(appPlan.routes.length).toBeGreaterThan(0);
+      expect((appPlan.requires?.globalServices ?? []).includes("traefik")).toBe(enabled);
+    });
+  }
+
+  for (const scanner of [{ path: "/ready", okCodes: [204], retries: 0, timeout: 7000 }, false] as const) {
+    test(`records resolved scanner when authored as ${scanner === false ? "false" : "an object"}`, async () => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "scanner-plan",
+        runtime: 4,
+        services: { web: { type: "nginx", home: false, scanner } },
+      });
+      // When
+      const appPlan = await plan(landofile);
+      // Then
+      expect(appPlan.services[ServiceName.make("web")]?.scanner).toEqual(
+        scanner === false
+          ? { enabled: false, path: "/", okCodes: [], retries: 2, timeoutMs: 20000 }
+          : { enabled: true, path: "/ready", okCodes: [204], retries: 0, timeoutMs: 7000 },
+      );
+    });
+  }
+
+  test("reads scanner settings from service-type normalized config", async () => {
+    // Given: the type contributes settings absent from the authored service.
+    const serviceType: ServiceType = {
+      id: "scanner-type",
+      name: "scanner-type",
+      base: "l337",
+      schema: Schema.Unknown,
+      resolve: ({ service }) =>
+        Effect.succeed({
+          base: "l337",
+          normalizedConfig: { ...service, scanner: { path: "/type-ready", retries: 0 } },
+          features: [],
+        }),
+    };
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "scanner-type-plan",
+      runtime: 4,
+      services: { worker: { type: serviceType.id, home: false } },
+    });
+    // When
+    const appPlan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
+      ),
+    );
+    // Then
+    expect(appPlan.services[ServiceName.make("worker")]?.scanner).toEqual({
+      enabled: true,
+      path: "/type-ready",
+      okCodes: [],
+      retries: 0,
+      timeoutMs: 20000,
+    });
+  });
+
   test("uses LANDO_PROVIDER when the Landofile does not set provider", async () => {
     const previous = process.env.LANDO_PROVIDER;
     process.env.LANDO_PROVIDER = "docker";

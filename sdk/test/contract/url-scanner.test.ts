@@ -1,10 +1,35 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
-import { AppId } from "@lando/sdk/schema";
+import { AppId, AppPlan } from "@lando/sdk/schema";
 import { ContractFailure, TestUrlScanner, makeTestUrlScanner, runScannerContract } from "@lando/sdk/test";
 
 describe("UrlScanner contract", () => {
+  test("records options when a plan is passed to scan", async () => {
+    // Given a scanner and an app plan.
+    const scanner = makeTestUrlScanner();
+    const appId = AppId.make("myapp");
+    const plan = Schema.decodeUnknownSync(AppPlan)({
+      id: appId,
+      name: "myapp",
+      slug: "myapp",
+      root: "/app",
+      provider: "docker",
+      services: {},
+      routes: [],
+      networks: [],
+      stores: [],
+      fileSync: [],
+      extensions: {},
+      metadata: { resolvedAt: "2026-06-14T00:00:00.000Z", source: ".lando.yml", runtime: 4 },
+    });
+    const options = { plan };
+    // When scanning with that plan.
+    await Effect.runPromise(scanner.scan(appId, options));
+    // Then record the options alongside the app id.
+    expect(scanner.calls).toEqual([{ op: "scan", appId, options }]);
+  });
+
   test("TestUrlScanner satisfies runScannerContract", async () => {
     const exit = await Effect.runPromiseExit(runScannerContract(TestUrlScanner));
     if (exit._tag === "Failure") {

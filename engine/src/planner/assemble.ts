@@ -1,5 +1,3 @@
-import { type Context, DateTime, Effect, Either, ParseResult, Schema } from "effect";
-
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { findLandofilePath } from "@lando/landofile/discovery";
@@ -39,7 +37,7 @@ import {
   type PathsService,
   type PluginRegistry,
 } from "@lando/sdk/services";
-
+import { type Context, DateTime, Effect, Either, ParseResult, Schema } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -48,6 +46,7 @@ import {
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
+import { routerEnabledFrom } from "../config/router-config.ts";
 import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -86,6 +85,7 @@ import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
+import { attachScanPlans } from "./scanner-plan.ts";
 import {
   type ResolvedService,
   appFeatureError,
@@ -173,6 +173,7 @@ export const planApp = (
             ),
           );
     const configProvider = globalConfig?.defaultProviderId;
+    const routerEnabled = routerEnabledFrom(globalConfig?.router, landofile.router);
     const networkPlan = yield* Effect.try({
       try: () => resolveNetworkTrustPlan({ network: globalConfig?.network }, process.env),
       catch: (cause) =>
@@ -278,7 +279,6 @@ export const planApp = (
       if (authored.globalEntry !== undefined) {
         yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
       }
-
       const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
       const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
         Effect.mapError((error) =>
@@ -383,7 +383,6 @@ export const planApp = (
         envFileInputs: loadedEnvFiles.inputs,
       });
     }
-
     const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
     const toolingServices = resolvedServices.map((entry) => ({
       name: entry.name,
@@ -419,6 +418,7 @@ export const planApp = (
       landofile: { ...landofile, provider },
       providerCapabilities,
       pluginManifests: manifests,
+      config: { routerEnabled, scanner: globalConfig?.scanner ?? null },
       ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
       versionConstraints,
       serviceInputs: {
@@ -517,7 +517,6 @@ export const planApp = (
         }),
       );
     }
-
     const serviceNames = Object.keys(finalized.services);
     const hasServices = serviceNames.length > 0;
     const networks: ReadonlyArray<NetworkPlan> = hasServices
@@ -540,7 +539,7 @@ export const planApp = (
     };
     const hasComposeProjectExtension = Object.keys(composeProjectExtension).length > 0;
     const requiredGlobalServices = [
-      ...(finalized.routes.length > 0 ? ["traefik"] : []),
+      ...(finalized.routes.length > 0 && routerEnabled ? ["traefik"] : []),
       ...appFeatureResult.requires.globalServices,
     ];
     const plan = attachEffectiveEvents(
@@ -551,6 +550,7 @@ export const planApp = (
           slug: appSlug,
           root: AbsolutePath.make(appRoot),
           provider,
+          router: { enabled: routerEnabled },
           services: finalized.services,
           routes: finalized.routes,
           networks,
@@ -570,7 +570,7 @@ export const planApp = (
           ...(requiredGlobalServices.length === 0
             ? {}
             : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
-        }),
+        }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
         effectiveTooling,
       ),
       effectiveEvents,

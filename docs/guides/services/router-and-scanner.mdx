@@ -1,0 +1,171 @@
+---
+id: router-and-scanner
+provider: test
+timeout: 120000
+tags: [beta, docs, services, router, scanner]
+---
+
+# Turn the router off and tune the post-start URL scanner
+
+Lando starts a shared router for every app and, once the app is up, pokes each published URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
+
+```yaml
+name: router-and-scanner-demo
+router:
+  enabled: false
+services:
+  web:
+    type: "nginx"
+    primary: true
+    scanner:
+      path: /healthz
+proxy:
+  web:
+    - web.router-and-scanner-demo.lndo.site
+```
+
+Check it, then start:
+
+```sh
+lando app:config:lint
+lando start
+lando info
+```
+
+With `router.enabled: false`, `lando info` lists only the endpoints `web` publishes on host ports. The `web.router-and-scanner-demo.lndo.site` route stays in the Landofile, but nobody serves it until you flip the router back on.
+
+## Turn the router off
+
+```yaml
+router:
+  enabled: false
+```
+
+When the router is off, Lando skips two things at start: it doesn't launch the shared router, and it doesn't hand the app's routes to it. Everything else runs as usual. Services still get their host ports, `lando ssh` and `lando exec` still work, and `lando info` still prints the endpoints that exist. What you lose is the `*.lndo.site` hostnames.
+
+`lando open` and `lando share` follow the same rule. Neither hands you a hostname nobody serves: they reach for a published host port instead, and when there is nothing left to reach, `lando open` says the router is off rather than telling you to declare the route you already declared.
+
+The routes you declared in `services.<name>.routes` or top-level `proxy:` aren't deleted or rewritten. They're simply never published. Set `enabled: true` (or remove the key) and the next `lando start` publishes them again.
+
+The rest of the `router:` block works the same whether or not you touch `enabled`:
+
+| Key | What it does |
+| --- | --- |
+| `enabled` | Start the shared router and publish this app's routes. Default `true`. |
+| `bindAddress` | Host address the router listens on. |
+| `httpPort` | Host port for plain HTTP. |
+| `httpsPort` | Host port for HTTPS. |
+| `httpFallbacks` | Extra HTTP ports to try when `httpPort` is taken. |
+| `httpsFallbacks` | Extra HTTPS ports to try when `httpsPort` is taken. |
+
+## Where `router.enabled` comes from
+
+The value resolves through normal config precedence. Last one wins:
+
+1. Built-in default: `true`.
+2. Your global config: `router.enabled`.
+3. The app's Landofile: `router.enabled`.
+
+So a global `router.enabled: false` turns the router off for every app on the machine, and a single app can opt back in with `router.enabled: true` in its own Landofile. The reverse works too: leave the global default alone and disable the router for the one app that doesn't want it.
+
+## Tune the scanner per service
+
+After `lando start` finishes, Lando probes every http and https URL each service publishes. A URL that doesn't answer, or answers with a status outside the accepted set, gets a warning. That's it. A failed scan never fails `lando start`; the app is up and the warning tells you which URL to go look at.
+
+The default probe hits `/`, accepts any 2xx, retries twice after the first attempt, and gives up on a URL after 20 seconds. Change that under `services.<name>.scanner`:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    primary: true
+    scanner:
+      path: /healthz
+      okCodes: [200, 204]
+      retries: 1
+      timeout: 2000
+```
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `path` | `/` | Path appended to each published URL before probing. |
+| `okCodes` | none | Extra HTTP statuses to accept beyond 2xx. Handy for a `301` on `/` or a `401` behind basic auth. |
+| `retries` | `2` | Retries after the first attempt, so the default is three tries. |
+| `timeout` | `20000` | Deadline in milliseconds for the whole probe of one URL, retries included. |
+
+Every key is optional. Set only the one you need. A `retries` below `0` fails lint before anything starts, so you find out at `lando app:config:lint` rather than after a start.
+
+If a probe fails, the message Lando prints has already been through redaction, so a URL with credentials in it won't leak them into your terminal or logs.
+
+## Turn scanning off
+
+Skip one service:
+
+```yaml
+services:
+  web:
+    type: "nginx"
+    scanner: false
+```
+
+Skip every service on this machine by setting the same key in your global config:
+
+```yaml
+scanner: false
+```
+
+Per-service `scanner:` settings override the global one, so a global `false` really does mean off everywhere. Pick this for a service that has no HTTP surface worth probing, or for a machine where the first request always takes longer than any sane timeout.
+
+<Guide>
+  <Scenario id="router-disabled" render>
+    <Step name="scaffold-disabled">
+      <UseFixture name="router-and-scanner-disabled" />
+    </Step>
+    <Step name="lint-disabled">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="resolve-disabled-plan">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup-disabled">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scanner-tuned" render>
+    <Step name="scaffold-tuned">
+      <UseFixture name="router-and-scanner-tuned" />
+    </Step>
+    <Step name="inspect-tuned">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"scanner\":\\s*false" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"/healthz\"" } }} />
+    </Step>
+    <Step name="resolve-tuned-plan">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup-tuned">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scanner-invalid" render>
+    <Step name="scaffold-invalid">
+      <UseFixture name="router-and-scanner-invalid" />
+    </Step>
+    <Step name="lint-invalid-retries">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "services\\.app\\.scanner\\.retries" } }} />
+    </Step>
+    <Step name="cleanup-invalid">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- Spelling routes as strings and adding filters: [Write routes as shorthand strings and add filters](../proxy/route-shorthand.mdx)
+- Checking a Landofile before you start: [Lint a Landofile](../landofile/config-lint.mdx)

@@ -12,6 +12,7 @@ import { EndpointInput } from "./endpoint.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
+import { ScannerConfig } from "./networking.ts";
 import {
   AbsoluteContainerPath,
   CommandSpec,
@@ -654,6 +655,9 @@ const ServiceConfigWithExtensions = Schema.Struct(
         "Persist the planned user's home directory, or false to disable it. Set path to choose the destination when the image's home is not known.",
     }),
 
+    scanner: Schema.optional(ScannerConfig).annotations({
+      description: "How the post-start URL scan probes this service, or false to skip it.",
+    }),
     endpoints: Schema.optional(Schema.Array(EndpointInput)).annotations({
       description: "Internal or published network endpoints exposed by the service.",
     }),

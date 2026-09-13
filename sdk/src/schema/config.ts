@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { ScannerConfig } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
@@ -165,6 +166,9 @@ export const GlobalConfig = Schema.Struct({
   }),
   router: Schema.optional(RouterConfig).annotations({
     description: "Global shared-router bind address and port policy (global router).",
+  }),
+  scanner: Schema.optional(ScannerConfig).annotations({
+    description: "Global post-start URL scan settings, or false to skip scanning by default.",
   }),
   mcp: Schema.optional(McpConfig).annotations({
     description: "Global MCP command exposure policy (global mcp).",

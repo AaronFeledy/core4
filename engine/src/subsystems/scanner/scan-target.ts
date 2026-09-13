@@ -2,7 +2,14 @@ import { Duration, Effect, Ref } from "effect";
 
 import { ScannerError } from "@lando/sdk/errors";
 import { type ProbeOutcome, runProbe } from "@lando/sdk/probe";
-import type { AppId, BindAddress, PortNumber, PublishedEndpoint, ServiceName } from "@lando/sdk/schema";
+import type {
+  AppId,
+  BindAddress,
+  PortNumber,
+  PublishedEndpoint,
+  ScanPlan,
+  ServiceName,
+} from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ScanEndpoint } from "@lando/sdk/services";
 
@@ -23,6 +30,7 @@ export interface UrlScanConfig {
   readonly retry: number;
   readonly delaySeconds: number;
   readonly timeoutSeconds: number;
+  readonly deadlineMs?: number;
   readonly path: string;
   readonly okCodes: ReadonlyArray<number>;
   readonly maxRedirects: number;
@@ -33,10 +41,20 @@ export const defaultUrlScanConfig: UrlScanConfig = {
   retry: 3,
   delaySeconds: 1,
   timeoutSeconds: 5,
+  deadlineMs: 20000,
   path: "/",
   okCodes: [],
   maxRedirects: 0,
 };
+
+export const scanConfigFromPlan = (scan: ScanPlan, base: UrlScanConfig): UrlScanConfig => ({
+  ...base,
+  enabled: scan.enabled,
+  path: scan.path,
+  okCodes: scan.okCodes,
+  retry: scan.retries + 1,
+  deadlineMs: scan.timeoutMs,
+});
 
 export type ScanSourceEndpoint = PublishedEndpoint & {
   readonly service: ServiceName;
@@ -99,20 +117,21 @@ const makeAttempt = (
   status: Ref.Ref<AttemptStatus>,
 ): Effect.Effect<ProbeOutcome> =>
   Effect.gen(function* () {
+    const timeoutMs = Math.min(config.timeoutSeconds * 1000, config.deadlineMs ?? Number.POSITIVE_INFINITY);
     const completed = yield* Effect.timeoutTo(
       Effect.either(
         Effect.scoped(
           deps.request({
             url,
             method: "GET",
-            timeoutMs: config.timeoutSeconds * 1000,
+            timeoutMs,
             redirect: config.maxRedirects > 0 ? "follow" : "manual",
             callerId: "url-scanner",
           }),
         ),
       ),
       {
-        duration: Duration.seconds(config.timeoutSeconds),
+        duration: Duration.millis(timeoutMs),
         onSuccess: (result) => result,
         onTimeout: () => "timeout" as const,
       },
@@ -171,6 +190,7 @@ export const scanTarget = (
           maxAttempts: Math.max(1, config.retry),
           delay: Duration.seconds(config.delaySeconds),
           backoff: "fixed",
+          ...(config.deadlineMs === undefined ? {} : { timeout: Duration.millis(config.deadlineMs) }),
         },
         classify: {
           success: (value) => (value === "green" ? "green" : value === "yellow" ? "yellow" : "red"),

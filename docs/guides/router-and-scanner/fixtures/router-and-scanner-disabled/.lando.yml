@@ -1,0 +1,10 @@
+name: router-and-scanner-disabled
+router:
+  enabled: false
+services:
+  web:
+    type: "nginx"
+    primary: true
+proxy:
+  web:
+    - web.router-and-scanner-disabled.lndo.site

@@ -18,6 +18,7 @@ import type {
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
   AppId,
+  AppPlan,
   HealthcheckPlan,
   ProxyApplyResult,
   ProxyCapabilities,
@@ -147,7 +148,14 @@ export interface PortCollision {
 
 export interface UrlScannerShape {
   readonly id: string;
-  readonly scan: (appId: AppId) => Effect.Effect<ScanResult, ScannerError>;
+  /**
+   * Per-service settings come from options.plan.services[name].scanner.
+   * Omitting the plan scans with the scanner's own defaults.
+   */
+  readonly scan: (
+    appId: AppId,
+    options?: { readonly plan?: AppPlan },
+  ) => Effect.Effect<ScanResult, ScannerError>;
   readonly detectCollisions: (
     appIds: ReadonlyArray<AppId>,
   ) => Effect.Effect<ReadonlyArray<PortCollision>, ScannerError | PortCollisionError>;
