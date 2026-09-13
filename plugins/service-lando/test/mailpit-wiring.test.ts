@@ -95,6 +95,11 @@ describe("Mailpit selected PHP senders", () => {
         required: true,
       });
     }
+    const selected = new Set<string>(expected);
+    for (const service of Object.values(result.services)) {
+      if (selected.has(String(service.name))) continue;
+      expect(JSON.stringify(service.extensions)).not.toContain("sendmail_path");
+    }
   });
 
   test.each([["missing"], ["cache"], ["second", "missing"]])(
