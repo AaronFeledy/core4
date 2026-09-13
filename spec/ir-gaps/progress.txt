@@ -371,3 +371,13 @@ Manual CLI QA against `core/bin/lando.ts` with isolated user roots and `provider
 - Review notes (deferred/rejected): real-runtime home-survives-rebuild and in-container alias resolution stay Verify-owned.
 - Verification: typecheck, lint, and `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; focused home/host/identity/plan/build-key/schema tests plus the home-and-host guide (3/3) passed.
 ---
+
+## 2026-09-13 - US-617A Drift Audit
+- Trigger: 4 cycles, 1545 insertions, 9 commits
+- Weakened proofs: default-on catalog home, pinned-tag identity, explicit path, apache www-data refusal, and hostReachability none were isolated-unit or opted-out; restored through AppPlanner.plan. Compose LANDO_* filters now require LANDO_HOST_IP instead of only carving it out.
+- Dual path: Traefik extra_hosts duplicated planner hostAliases; extra_hosts removed so the alias comes only from declared capability.
+- Contract drift: HomePathCapabilityError, ServiceConfig.home, and ServiceType.identity were missing from API_COMPATIBILITY; documented. Real-runtime rebuild/DNS remains Verify-owned.
+- Fixed: restored production-path proofs; deleted Traefik extra_hosts dual path; documented the public error/channel.
+- Split/excise decisions: none
+- Verification: typecheck, lint, and focused AppPlanner/home/host/passthrough/traefik/compat spot checks pass
+---
