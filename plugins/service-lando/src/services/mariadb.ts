@@ -137,6 +137,7 @@ export const mariadbServiceType: ServiceType = {
   id: "mariadb",
   name: "mariadb",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = mariadbCreds(input, input.name, input.service);

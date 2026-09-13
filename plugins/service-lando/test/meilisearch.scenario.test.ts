@@ -159,7 +159,7 @@ describe("meilisearch service type — scenario: index create + document post + 
   test("AppPlanner produces a meilisearch plan with HTTP endpoint, persistent storage, and /health healthcheck", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { search: { type: "meilisearch" } },
+      services: { search: { type: "meilisearch", home: false } },
     });
 
     const appPlan = await planLandofile(landofile);

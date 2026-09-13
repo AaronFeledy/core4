@@ -3,6 +3,7 @@ services:
   whoami:
     type: compose
     image: traefik/whoami:v1.10
+    home: false
     ports:
       - 80:80
 tooling:

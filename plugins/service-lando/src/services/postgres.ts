@@ -105,6 +105,7 @@ export const postgresServiceType: ServiceType = {
   id: "postgres",
   name: "postgres",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input);

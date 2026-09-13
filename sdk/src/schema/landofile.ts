@@ -12,7 +12,14 @@ import { EndpointInput } from "./endpoint.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
-import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
+import {
+  AbsoluteContainerPath,
+  CommandSpec,
+  PortablePath,
+  ProviderExtensionConfig,
+  ProviderId,
+  ServiceName,
+} from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
@@ -634,6 +641,17 @@ const ServiceConfigWithExtensions = Schema.Struct(
     }),
     storage: Schema.optional(Schema.Array(StorageInput)).annotations({
       description: "Persistent or cached storage attached to the service.",
+    }),
+    home: Schema.optional(
+      Schema.Union(
+        Schema.Literal(false),
+        Schema.Struct({
+          path: Schema.optional(AbsoluteContainerPath),
+        }),
+      ),
+    ).annotations({
+      description:
+        "Persist the planned user's home directory, or false to disable it. Set path to choose the destination when the image's home is not known.",
     }),
 
     endpoints: Schema.optional(Schema.Array(EndpointInput)).annotations({

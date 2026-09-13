@@ -101,6 +101,7 @@ export const mongodbServiceType: ServiceType = {
   id: "mongodb",
   name: "mongodb",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input, input.service);

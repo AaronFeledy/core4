@@ -84,6 +84,7 @@ const makeRabbitMQServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: RabbitMQServiceConfig,
   resolve: (input) => {
     const appName = input.appName ?? (basename(input.appRoot) || "app");

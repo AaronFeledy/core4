@@ -14,6 +14,7 @@ import {
   type ConfigError,
   type ConfigExpressionError,
   type DeprecatedSurfaceError,
+  type HomePathCapabilityError,
   type LandofileFormConflictError,
   type LandofileIncludeError,
   type LandofileLoadExpressionError,
@@ -130,6 +131,7 @@ export type ShellAppError =
   | AppIdReservedError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | ComposeKeyRejectedError
   | PublicationUnsupportedError

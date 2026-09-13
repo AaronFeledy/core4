@@ -12,6 +12,7 @@ import {
   CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type HomePathCapabilityError,
   type LandofileUnknownEventError,
   LandofileValidationError,
   type NotImplementedError,
@@ -136,6 +137,7 @@ export const planApp = (
   | LandofileValidationError
   | RouteInputError
   | CapabilityError
+  | HomePathCapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
   | CommandAliasConflictError

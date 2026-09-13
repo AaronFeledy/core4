@@ -113,6 +113,7 @@ export const minioServiceType: ServiceType = {
   id: "minio",
   name: "minio",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: MinIOServiceConfig,
   resolve: (input) =>
     Effect.succeed({

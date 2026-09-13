@@ -4,7 +4,12 @@ import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type {
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceImageIdentity,
+  ServiceType,
+} from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
@@ -86,10 +91,16 @@ export const solrServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
+const IDENTITY: ServiceImageIdentity = {
+  defaultUser: "solr",
+  homes: { solr: "/var/solr", root: "/root" },
+};
+
 export const solr9ServiceType: ServiceType = {
   id: "solr:9",
   name: "solr",
   base: "lando",
+  identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({
@@ -103,6 +114,7 @@ export const solrServiceType: ServiceType = {
   id: "solr",
   name: "solr",
   base: "lando",
+  identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({

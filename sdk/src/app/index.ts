@@ -26,6 +26,7 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
+  HomePathCapabilityError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   LandoCommandError,
@@ -224,6 +225,7 @@ export type StartAppError =
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | GlobalAutoStartError
   | HostProxySocketStaleError
@@ -273,6 +275,7 @@ export type StopAppError =
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -389,6 +392,7 @@ export type InfoAppError =
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -421,6 +425,7 @@ export type ExecAppError =
   | AppIdReservedError
   | ComposeKeyRejectedError
   | CapabilityError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | ConfigError
   | LandofileNotFoundError
@@ -477,6 +482,7 @@ export type ToolingError =
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | ConfigError
   | ComposeKeyRejectedError
@@ -533,6 +539,7 @@ export type LogsAppError =
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError

@@ -90,6 +90,7 @@ export const localstackServiceType: ServiceType = {
   id: "localstack",
   name: "localstack",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: LocalStackServiceConfig,
   resolve: (input) =>
     Effect.succeed({

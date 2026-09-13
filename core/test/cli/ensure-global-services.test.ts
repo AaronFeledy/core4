@@ -129,7 +129,7 @@ const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => 
   const modulePath = join(moduleRoot, "fake-global-service.mjs");
   await Bun.write(
     modulePath,
-    'import { Effect } from "effect";\nexport default Effect.succeed({ type: "lando" });\n',
+    'import { Effect } from "effect";\nexport default Effect.succeed({ type: "lando", home: false });\n',
   );
   return modulePath;
 };
