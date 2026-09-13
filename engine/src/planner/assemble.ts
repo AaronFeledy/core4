@@ -286,6 +286,9 @@ export const planApp = (
             : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds),
         ),
       );
+      if (serviceType.id === "node" && version !== undefined) {
+        yield* Effect.fail(unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds));
+      }
       const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
       const pinnedService: ServiceConfig =
         resolvedArtifactTag === undefined
@@ -300,7 +303,7 @@ export const planApp = (
           }),
         );
       }
-      if (serviceType.id === "node" && pinnedService.image !== undefined) {
+      if (service.type === "node" && service.image !== undefined) {
         yield* Effect.fail(
           new LandofileValidationError({
             message: `Service ${name} cannot combine bare type: node inference with image. Remove image or use an explicit Node type.`,

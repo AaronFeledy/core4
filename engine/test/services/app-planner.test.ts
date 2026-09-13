@@ -2394,6 +2394,10 @@ describe("AppPlannerLive", () => {
   });
 
   test.each([
+    [
+      { type: "node:22.11.0" },
+      /Unsupported service type node:22\.11\.0.*Supported alternatives: node:22, node:lts/i,
+    ],
     [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
     [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
     [{ type: "php:8.3", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
