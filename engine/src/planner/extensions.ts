@@ -1,4 +1,4 @@
-import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import type { BuildScript, BuildScriptStep, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent, ServiceTypeResolution } from "@lando/sdk/services";
 
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
@@ -11,11 +11,16 @@ export const LOG_SOURCES_EXTENSION_KEY = "@lando/core/log-sources";
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-export const normalizeBuildScripts = (
-  value: string | ReadonlyArray<string> | undefined,
-): ReadonlyArray<string> => {
+type NormalizedBuildStep = Exclude<BuildScriptStep, string>;
+
+const normalizeBuildStep = (step: BuildScriptStep): NormalizedBuildStep =>
+  typeof step === "string" ? { run: step } : step;
+
+export const normalizeBuildScripts = (value: BuildScript | undefined): ReadonlyArray<NormalizedBuildStep> => {
   if (value === undefined) return [];
-  return typeof value === "string" ? [value] : value;
+  if (typeof value === "string") return [{ run: value }];
+  if ("run" in value) return [value];
+  return value.map(normalizeBuildStep);
 };
 
 export const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
@@ -168,7 +173,10 @@ const servicePlanExtensionsFromDraft = (
     [SERVICE_FEATURES_EXTENSION_KEY]: {
       ...serviceFeatureExtension(extensions),
       ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
-      buildSteps: draft.buildSteps.map((step) => ({ ...step })),
+      buildSteps: draft.buildSteps.map(({ user: authoredUser, ...step }) => {
+        const user = authoredUser ?? draft.user;
+        return { ...step, ...(user === undefined ? {} : { user }) };
+      }),
     },
   };
 };

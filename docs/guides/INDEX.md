@@ -240,3 +240,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-07 | US-580 | app plan cache refresh | `docs/guides/cli/cache-refresh.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | CLI verbosity, renderer modes, and debug output | `docs/guides/cli/verbosity-and-debug.mdx` | Shipped |
 | — | — | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
+| — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
