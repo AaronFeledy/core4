@@ -37,7 +37,7 @@ test("refuses an authored Redis command that bypasses explicit authentication", 
   // Given
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "command-auth",
-    services: { cache: { type: "redis", password: "", command: ["redis-server"] } },
+    services: { cache: { type: "redis", password: "redis-secret", command: ["redis-server"] } },
   });
 
   // When
