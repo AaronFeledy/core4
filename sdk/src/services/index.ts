@@ -311,6 +311,10 @@ export interface RuntimeProviderShape {
     target: ServiceSelector,
     destination: PortablePath,
   ) => Effect.Effect<VolumeInfo, ProviderError>;
+  readonly adoptVolume?: (
+    target: ServiceSelector,
+    destination: PortablePath,
+  ) => Effect.Effect<VolumeInfo, ProviderError>;
   readonly removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>;
   readonly copyToService: (
     target: ExecTarget,
