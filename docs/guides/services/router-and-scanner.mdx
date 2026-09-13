@@ -114,7 +114,7 @@ Skip every service on this machine by setting the same key in your global config
 scanner: false
 ```
 
-Per-service `scanner:` settings override the global one, so a global `false` really does mean off everywhere. Pick this for a service that has no HTTP surface worth probing, or for a machine where the first request always takes longer than any sane timeout.
+Per-service `scanner:` settings override the global one. A global `false` turns scanning off unless a service authors an object to opt back in. Pick this for a service that has no HTTP surface worth probing, or for a machine where the first request always takes longer than any sane timeout.
 
 <Guide>
   <Scenario id="router-disabled" render>
