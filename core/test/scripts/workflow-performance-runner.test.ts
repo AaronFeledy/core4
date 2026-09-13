@@ -70,7 +70,8 @@ describe("workflow performance runner", () => {
       expect(lane?.statistics).toBeUndefined();
       expect(commands.filter((command) => command.cwd.includes(id)).map((command) => command.id)).toEqual([
         "prepare:setup",
-        "cleanup:poweroff",
+        "cleanup:global",
+        "cleanup:runtime",
       ]);
     }
     expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(0);
@@ -94,7 +95,7 @@ describe("workflow performance runner", () => {
     expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(1);
   });
 
-  test.each(["prepare:setup", "cleanup:poweroff"])(
+  test.each(["prepare:setup", "cleanup:runtime"])(
     "retains %s failure even when readiness would skip the lane",
     async (failureId) => {
       const report = await runWorkflowPerformance({
@@ -140,7 +141,7 @@ describe("workflow performance runner", () => {
       exitCode: 9,
       stderr: "cleanup failed",
     });
-    expect(commands.filter((id) => id === "cleanup:poweroff")).toHaveLength(report.lanes.length);
+    expect(commands.filter((id) => id === "cleanup:runtime")).toHaveLength(report.lanes.length);
   });
 
   test("uses independent roots, pre-pulls images, and records journey step timings", async () => {

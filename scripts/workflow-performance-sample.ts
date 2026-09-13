@@ -1,10 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { cleanupWorkflowPerformanceSample } from "./workflow-performance-cleanup.ts";
 
 import type {
   WorkflowPerformanceCommand,
   WorkflowPerformanceCommandResult,
 } from "./workflow-performance-command.ts";
+import { workflowPerformanceDeadlineRunner } from "./workflow-performance-command.ts";
 import {
   buildMeasuredCommands,
   performanceCommand,
@@ -13,6 +15,7 @@ import {
 } from "./workflow-performance-measurement.ts";
 import type { WorkflowPerformanceLaneId, WorkflowPerformanceLanePlan } from "./workflow-performance-plan.ts";
 import type { WorkflowPerformanceSample } from "./workflow-performance-report.ts";
+import { boundedPerformanceEvidence } from "./workflow-performance-report.ts";
 
 const imagesFor = (laneId: WorkflowPerformanceLaneId): readonly string[] => {
   if (laneId.startsWith("mysql-")) return ["mysql:8.0"];
@@ -40,6 +43,9 @@ type PreparedSample = {
 };
 
 type RunSampleInput = {
+  readonly signal?: AbortSignal;
+  readonly commandTimeoutMs?: number;
+  readonly sampleTimeoutMs?: number;
   readonly lane: WorkflowPerformanceLanePlan;
   readonly binary: string;
   readonly rootDir: string;
@@ -49,7 +55,10 @@ type RunSampleInput = {
   readonly runCommand: (command: WorkflowPerformanceCommand) => Promise<WorkflowPerformanceCommandResult>;
 };
 
-const prepareSample = async (input: RunSampleInput): Promise<PreparedSample> => {
+const prepareSample = async (
+  input: RunSampleInput,
+  acquired: (sample: PreparedSample) => void,
+): Promise<PreparedSample> => {
   const { lane, binary, rootDir, key, fixturePath, runCommand } = input;
   const sampleRoot = join(rootDir, "samples", key);
   const appParent = join(sampleRoot, "apps");
@@ -58,6 +67,8 @@ const prepareSample = async (input: RunSampleInput): Promise<PreparedSample> => 
   const runtimeRoot = join(sampleRoot, "xdg-runtime");
   const storageConfig = join(sampleRoot, "storage.conf");
   const journey = lane.id === "drupal-journey" || lane.id === "rails-journey";
+  await mkdir(join(rootDir, "samples"), { recursive: true });
+  await mkdir(sampleRoot);
   await Promise.all([
     mkdir(journey ? appParent : appRoot, { recursive: true }),
     mkdir(runtimeRoot, { recursive: true, mode: 0o700 }),
@@ -68,6 +79,10 @@ const prepareSample = async (input: RunSampleInput): Promise<PreparedSample> => 
   );
   const env = {
     ...process.env,
+    LANDO_PROVIDER: "lando",
+    CONTAINER_HOST: undefined,
+    CONTAINER_CONNECTION: undefined,
+    DOCKER_HOST: undefined,
     LANDO_USER_CONF_ROOT: join(sampleRoot, "conf"),
     LANDO_USER_DATA_ROOT: dataRoot,
     LANDO_USER_CACHE_ROOT: join(sampleRoot, "cache"),
@@ -75,6 +90,8 @@ const prepareSample = async (input: RunSampleInput): Promise<PreparedSample> => 
     XDG_RUNTIME_DIR: runtimeRoot,
   };
   const cwd = journey ? appParent : appRoot;
+  if (!journey) await writeFile(join(appRoot, ".lando.yml"), landofileFor(lane.id, key));
+  acquired({ appRoot, env, fileSyncEvidence: "" });
   const setup = await runCommand(
     performanceCommand(
       "prepare:setup",
@@ -116,7 +133,6 @@ const prepareSample = async (input: RunSampleInput): Promise<PreparedSample> => 
     );
     if (pulled.exitCode !== 0) return { appRoot, env, failure: pulled, fileSyncEvidence: setup.stdout };
   }
-  if (!journey) await writeFile(join(appRoot, ".lando.yml"), landofileFor(lane.id, key));
   if (lane.id === "warm-stop-start" || lane.id === "unchanged-rebuild" || lane.fixtureFamily !== undefined) {
     const started = await runCommand(performanceCommand("prepare:start", [binary, "start"], appRoot, env));
     if (started.exitCode !== 0) return { appRoot, env, failure: started, fileSyncEvidence: setup.stdout };
@@ -153,19 +169,31 @@ export const runWorkflowPerformanceSample = async (
     | { readonly skipReason: string }
   )
 > => {
-  const prepared = await prepareSample(input);
+  const runCommand = workflowPerformanceDeadlineRunner(input);
+  let acquired: PreparedSample | undefined;
+  const prepared = await prepareSample({ ...input, runCommand }, (sample) => {
+    acquired = sample;
+  }).catch((cause: unknown) => {
+    if (acquired === undefined) throw cause;
+    return {
+      ...acquired,
+      failure: {
+        id: "prepare:failure",
+        durationMs: 0,
+        exitCode: 1,
+        stdout: "",
+        stderr: boundedPerformanceEvidence(cause instanceof Error ? cause.message : String(cause)),
+      },
+    };
+  });
   if (prepared.skipReason !== undefined) {
-    const poweredOff = await input.runCommand(
-      performanceCommand(
-        "cleanup:poweroff",
-        [input.binary, "poweroff"],
-        dirname(prepared.appRoot),
-        prepared.env,
-      ),
+    const failures = await cleanupWorkflowPerformanceSample(
+      { binary: input.binary, ...prepared, setupOnly: true },
+      input.runCommand,
     );
     return {
       fileSyncEvidence: prepared.fileSyncEvidence,
-      ...(poweredOff.exitCode === 0
+      ...(failures.length === 0
         ? { skipReason: prepared.skipReason }
         : {
             sample: {
@@ -173,7 +201,7 @@ export const runWorkflowPerformanceSample = async (
               key: input.key,
               outcome: "failed",
               resetCondition: "setup only; lane requirement unmet; runtime cleanup failed",
-              steps: [poweredOff],
+              steps: failures,
             },
           }),
     };
@@ -186,9 +214,7 @@ export const runWorkflowPerformanceSample = async (
     env: prepared.env,
   });
   const measured =
-    prepared.failure === undefined
-      ? await runUntilFailure(commands, input.runCommand)
-      : [{ ...prepared.failure, durationMs: 0 }];
+    prepared.failure === undefined ? await runUntilFailure(commands, runCommand) : [prepared.failure];
   const steps = validateJourneyResults({
     lane: input.lane,
     binary: input.binary,
@@ -203,18 +229,10 @@ export const runWorkflowPerformanceSample = async (
     resetCondition: "fresh Lando config, data, cache, app, and owned volume identities; images pre-pulled",
     steps,
   };
-  const destroyed = await input.runCommand(
-    performanceCommand(
-      "cleanup:destroy",
-      [input.binary, "destroy", "-y", "--purge"],
-      prepared.appRoot,
-      prepared.env,
-    ),
+  const cleanupFailures = await cleanupWorkflowPerformanceSample(
+    { binary: input.binary, ...prepared, setupOnly: false },
+    input.runCommand,
   );
-  const poweredOff = await input.runCommand(
-    performanceCommand("cleanup:poweroff", [input.binary, "poweroff"], prepared.appRoot, prepared.env),
-  );
-  const cleanupFailures = [destroyed, poweredOff].filter((result) => result.exitCode !== 0);
   return {
     sample:
       cleanupFailures.length === 0
