@@ -124,7 +124,6 @@ export const buildTraefikServiceConfig = (ports: TraefikPublishPorts): ServiceCo
       },
     ],
     ports: ["8080"],
-    extra_hosts: { "host.lando.internal": "host-gateway" },
     cap_add: ["NET_BIND_SERVICE"],
     environment: {},
   });
