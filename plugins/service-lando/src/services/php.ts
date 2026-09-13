@@ -6,8 +6,10 @@ import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import {
+  PHP_COMPOSER_STEP_ID,
   assertPhpComposerCompatible,
   phpPrerequisiteBuildSteps,
   resolvePhpComposer,
@@ -32,8 +34,11 @@ export {
   PHP_COMPOSER,
   PHP_COMPOSER_COMMAND,
   PHP_COMPOSER_RELEASES,
+  PHP_COMPOSER_STEP_ID,
   PHP_PREREQUISITES_COMMAND,
 } from "./php-prerequisites.ts";
+
+export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
 
 export { PHP_FPM_LOG_SOURCES } from "./php-via.ts";
 
@@ -123,10 +128,16 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? phpImageFor(version, via) });
   const xdebug = resolvePhpXdebug(service.xdebug);
+  const composerRelease = resolvePhpComposer(service.composer);
   if (service.image === undefined) {
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
     if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
   }
+  const composerPackagesStep = phpComposerPackagesBuildStep(resolvePhpComposerPackages(service.composer), {
+    dependsOnComposerStep: service.image === undefined && composerRelease !== false,
+    composerStepId: PHP_COMPOSER_STEP_ID,
+  });
+  if (composerPackagesStep !== undefined) ctx.addBuildStep(composerPackagesStep);
   if (xdebug !== false) {
     for (const [name, value] of Object.entries(phpXdebugConfigEnv())) {
       ctx.addEnv(name, value);
@@ -203,6 +214,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       try: () => {
         const resolvedVersion = validateVersion(input.service.type, version);
         resolvePhpComposer(input.service.composer);
+        resolvePhpComposerPackages(input.service.composer);
         assertPhpComposerCompatible(resolvedVersion, input.service.composer);
         const via = resolvePhpVia(input.service.via);
         assertPhpViaKeys(via, input.service);

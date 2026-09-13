@@ -538,6 +538,25 @@ export const ServiceFileConfig = Schema.Struct({
 export type ServiceFileConfig = typeof ServiceFileConfig.Type;
 
 /**
+ * The additive object form of `services.<name>.composer`, selecting a Composer
+ * release and the global Composer packages installed alongside it.
+ */
+export const PhpComposerConfig = Schema.Struct({
+  version: Schema.optional(Schema.String).annotations({
+    description:
+      "Composer major channel or exact checksum-pinned version; omitted selects the bundled release.",
+  }),
+  packages: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+    description: "Global Composer packages installed at build time, package name to version constraint.",
+  }),
+}).annotations({
+  identifier: "PhpComposerConfig",
+  title: "Php Composer Config",
+  description: "Composer release selection plus the global Composer packages installed with it.",
+});
+export type PhpComposerConfig = typeof PhpComposerConfig.Type;
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -589,9 +608,15 @@ const ServiceConfigWithExtensions = Schema.Struct(
     allowOverride: Schema.optional(Schema.Boolean).annotations({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
     }),
-    composer: Schema.optional(Schema.Union(Schema.Literal(false), Schema.String)).annotations({
+    composer: Schema.optional(
+      Schema.Union(Schema.Literal(false), Schema.String, PhpComposerConfig),
+    ).annotations({
       description:
-        "PHP Composer selection: a major channel, an exact checksum-pinned version, or false to skip install.",
+        "PHP Composer selection: a major channel, an exact checksum-pinned version, false to skip install, or an object carrying a version and global packages.",
+    }),
+    globals: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+      description:
+        "Global npm packages installed at build time, package name to version specifier; authored order is normalized.",
     }),
     via: Schema.optional(Schema.String).annotations({
       description: 'PHP serving mode: "apache" (default), "fpm", or "cli".',

@@ -506,3 +506,52 @@ Verification: typecheck, lint, all boundary rules, `codegen:schema-snapshot` (38
 - Verification: typecheck, lint, lint:guides, and `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; 97 focused tests passed.
 - **Learnings for future iterations:** Bind-mount config identity belongs in the build key as `{key,digest}` only. Including the canonical host `source` reintroduces path sensitivity the mount projection already stripped.
 ---
+## 2026-09-13 09:31 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-13 10:55 - US-618B (complete)
+
+Catalog services can now bake global packages into their image from the Landofile.
+
+- PHP `composer:` additively accepts `{ version, packages }` beside the string and `false` forms it already took. `{ version: "2" }` plans byte-identically to `composer: "2"`, and `packages: {}` is a no-op. Packages install with `composer global require` into `COMPOSER_HOME=/usr/local/composer` with `COMPOSER_BIN_DIR=/usr/local/bin`, so the binary proxies land on the default PATH with no PATH editing and no symlink loop, and the Composer home is left world readable for a non-root service user.
+- Node services accept `globals:`, a package-name-to-version-specifier map installed with `npm install -g`. Unlike the PHP prerequisite stack, globals are emitted even when the service brings its own `image:`: dropping authored intent silently is worse than a loud "npm not found" at build time. The PHP package step follows the Composer binary step instead, because it cannot run without one; with a custom image it is emitted without the `dependsOn` edge.
+- Both maps normalize through one shared module before anything is generated. Names are validated (npm names including `@scope/`, Composer's own lowercase `vendor/name` grammar) and so are versions, against charsets that exclude quoting, substitution, and expression characters. That is what makes the "secrets redacted" requirement structural rather than a post-hoc pass: a `${secret:...}` constraint is refused at plan time, so no secret can reach a build command or a build-key input. Each entry is single-quoted in the generated command as a second guard.
+- Packages sort by name before they reach the build step, so reordering the YAML map cannot invalidate a built image, while adding, removing, or re-pinning one does. The normalized list rides on `buildKeyInputs`, which the artifact key already folds, so the engine needed no package-specific hashing.
+- One latent bug fell out: `assertPhpComposerCompatible` compared the raw authored value against `"2.7.7"`, so the object form would have slipped a Composer release past the PHP 8.5 gate. Both it and `resolvePhpComposer` now read the requested version through one accessor.
+- The Landofile YAML subset rejected the authored shape outright: mapping keys were `[A-Za-z0-9_.-]+`, so neither `drush/drush:` nor `@angular/cli:` could be written at all. The key charset now also accepts `/` and `@`. Sequence scalars are unaffected because list-item map detection still requires whitespace or end-of-line after the colon, which is pinned by a new test asserting `- ./src:/app` and `- 8080:80` stay strings.
+
+Verification: typecheck, lint, check:boundaries, check:schema-compatibility (compatible 2, breaking 0, unknown 0; one appended exception row for the widened `$.composer.anyOf`), codegen:check, lint:guides, check:guide-coverage, check:guide-drift, and check:public-transcripts pass. 653 focused tests pass across the blast radius (schema, package normalization, PHP, node, engine build key, and the whole landofile and sdk landofile trees). Both executable guides run green.
+
+Real-surface evidence: on the real binary with isolated user roots, `app:config --format=json` round-trips the composer object form and the globals map, and the persisted plan carries `npm install -g --no-fund --no-audit 'gulp-cli@latest' 'yarn@1.22.4'` and `composer global require --no-progress 'phpstan/phpstan:^1.11' 'squizlabs/php_codesniffer:^3.10'` in sorted order. An uppercase npm package name fails `app:cache:refresh` with a tagged `LandofileValidationError` and exit 1 before any provider action. A live Podman socket was present on this host, so the new `package-installs.integration.test.ts` actually built both stock images and ran the installed tools: `cowsay@1.6.0` appears in `npm ls -g` and `cowsay moo` runs, and `phpcs --version` reports PHP_CodeSniffer with `composer global show` listing it.
+
+- **Learnings for future iterations:**
+  - Check the Landofile YAML subset before designing a map-keyed option. `sdk/src/landofile/parser.ts` restricts mapping keys to `[A-Za-z0-9_.@/-]+` and supports no quoted keys, so a key with `/`, `@`, `:`, or a space simply cannot be authored. Schema decode never sees it; the file fails with `LandofileParseError` naming the line.
+  - Naming a new union member with an `identifier` changes the shape of the schema-compatibility bill. The widened `composer` cost exactly one new exception row (`schema:ServiceConfig` / `unsupported-construct` / `$.composer.anyOf`) because every embedding surface reported `ref-graph-changed` at `$.$defs`, which prior stories had already accepted. An anonymous inline struct would have reported per-path instead.
+  - Guide fixtures are parsed by the same YAML subset, so a fixture is the cheapest place to discover an authoring limit. The invalid-input fixture has to fail for the reason under test: `"../escape"` failed as malformed YAML rather than as a rejected package name, which proved nothing.
+  - `resolveLiveProviderSocket()` can find a Lando-managed Podman socket left running by an earlier step, so an `*.integration.test.ts` named by path will really build images on the host instead of skipping. Budget ~90s and expect real artifacts, cleaned up by the test's `removeArtifact`.
+---
+
+## 2026-09-13 - US-618B Review
+- Fixed custom-image Composer package steps so an unused `composer.version` no longer invalidates the artifact key; the managed Composer install step still hashes the pin when Lando actually installs it.
+- Review notes (deferred/rejected): charset-only npm/Composer version allowlists stay as designed for secret/injection refusal, not a full specifier grammar; recipe and package READMEs stay init-answer/framework docs (service guides cover the options, matching US-618A); code-quality MINOR on no-op test wording left as-is.
+- Verification: typecheck, lint passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; 26 focused package-spec/composer-package tests passed.
+- **Learnings for future iterations:** Hash only inputs the step actually consumes. A skipped dependency's identity belongs on the step that installs it, not on a later command that merely invokes the binary.
+---
+
+## 2026-09-13 12:05 - US-618B Drift Audit
+- Trigger: 2 cycles, 1476 changed lines, 8 commits
+- Scar tissue: packages step still hashed the Composer pin the install step already owns
+- Ceremony: command and version helpers exported with no external importers
+- Weakened proofs: secrets stay refuse-at-plan; hasher suite still uses synthetic steps beside production apply
+- Fixed: dropped redundant composer identity from the packages step; unexported unused helpers
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 92 focused tests pass
+---
+
+## 2026-09-13 12:20 - US-618B Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved Node globals plus PHP composer packages against the binary: `yarn --version` is 1.22.4, `gulp --version` is CLI 3.1.0, `phpcs --version` and `phpstan --version` run, Composer 2.10.2 stays on PATH, HTTPS returned `us618b-ok`, and a second start rebuilt both services in ~400ms. Invalid `Gulp-CLI` / `drush` fail plan-time `LandofileValidationError`; `composer: "2"` and `composer: false` still plan.
+- Fixed stock `node:22` Corepack `/usr/local/bin/yarn` EEXIST by adding `--force` to `npm install -g`.
+- **Out-of-scope finding:** host 80/443 in use so proxy published on 8000/4443; `curl http://appserver.us618b-verify.lndo.site:8000/` returned Traefik `404 page not found` while HTTPS `:4443` served `us618b-ok`. Same bind fallback as prior verifies, not US-618B.
+- **Learnings for future iterations:** Stock Node images ship Corepack shims at `/usr/local/bin/yarn`. Live package-install tests that use `cowsay` miss the documented `yarn` example. Verify the guide's packages, not a unique dummy.
+---
