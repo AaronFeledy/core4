@@ -7,9 +7,11 @@ import {
   type DataTransferResult,
   type DataTransferSpec,
   PortablePath,
+  type PrunePolicy,
   ServiceName,
   type SnapshotFilter,
   type SnapshotHandle,
+  type SnapshotId,
   type SnapshotInfo,
   type SnapshotOptions,
   type VolumeRef,
@@ -41,6 +43,7 @@ export type SqlMover = {
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
   readonly restore: (id: string, store: VolumeRef) => Effect.Effect<void, unknown>;
   readonly listSnapshots: (filter: SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>, unknown>;
+  readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, unknown>;
 };
 
 export const requireVolume = (

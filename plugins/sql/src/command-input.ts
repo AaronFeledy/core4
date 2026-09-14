@@ -52,6 +52,8 @@ export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInp
   ...(typeof input.flags.label === "string" ? { label: input.flags.label } : {}),
   ...(typeof input.flags["from-app"] === "string" ? { fromApp: input.flags["from-app"] } : {}),
   ...(typeof input.flags["from-path"] === "string" ? { fromPath: input.flags["from-path"] } : {}),
+  ...(typeof input.flags["keep-latest"] === "number" ? { keepLatest: input.flags["keep-latest"] } : {}),
+  ...(input.flags.preview === true ? { preview: true } : {}),
   ...(input.flags.compression === "gzip" ||
   input.flags.compression === "zstd" ||
   input.flags.compression === "none"

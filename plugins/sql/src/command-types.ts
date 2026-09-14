@@ -8,7 +8,15 @@ import type { SqlPublisher } from "./progress.ts";
 import type { SqlRecoveryDeps } from "./recovery.ts";
 import type { SqlLandofile, SqlPlan } from "./views.ts";
 
-export type DbAction = "import" | "export" | "snapshot" | "snapshots" | "restore" | "reset" | "seed";
+export type DbAction =
+  | "import"
+  | "export"
+  | "snapshot"
+  | "snapshots"
+  | "prune"
+  | "restore"
+  | "reset"
+  | "seed";
 
 export type DbCommandInput = {
   readonly action: DbAction;
@@ -21,6 +29,8 @@ export type DbCommandInput = {
   readonly fromApp?: string;
   readonly fromPath?: string;
   readonly hostCwd?: string;
+  readonly keepLatest?: number;
+  readonly preview?: boolean;
 };
 
 export type SqlCommandDeps = SqlMover &
