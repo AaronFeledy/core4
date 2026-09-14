@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
-import { AppId, CommandSpec, PlanMetadata, ServiceName } from "./primitives.ts";
+import { AppId, CommandSpec, ContainerUser, PlanMetadata, ServiceName } from "./primitives.ts";
 
 // BuildPlan — DAG over BuildSteps for artifact and app work.
 
@@ -23,6 +23,8 @@ export const BuildStep = Schema.Struct({
   artifact: Schema.optional(Schema.Union(ArtifactRef, ArtifactBuildSpec)),
   /** Step ids this step depends on. */
   dependsOn: Schema.Array(Schema.String),
+  /** Resolved container identity the step runs as (kind = execStream). */
+  user: Schema.optional(ContainerUser),
   /** Content-hash key for the up-to-date check. */
   buildKey: Schema.String,
 });

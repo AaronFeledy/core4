@@ -1,6 +1,7 @@
 import { Flags } from "../../spec/metadata";
 
 import { AppInfoResultSchema, type InfoAppResult, infoApp } from "@lando/engine/operations/info";
+import { ServiceName } from "@lando/sdk/schema";
 import { renderInfoAppResult } from "../../commands/info-render";
 import type { LandoCommandSpec } from "../../spec/command-base";
 
@@ -8,10 +9,19 @@ import type { LandoCommandSpec } from "../../spec/command-base";
  * `lando app:info` — native command metadata adapter.
  */
 
-const infoDeepFromInput = (input: unknown): boolean => {
-  if (typeof input !== "object" || input === null) return false;
+export const infoOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof infoApp>[0]> => {
+  if (typeof input !== "object" || input === null) return {};
   const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
-  return flags.deep === true;
+  const values = Array.isArray(flags.service)
+    ? flags.service.filter((value): value is string => typeof value === "string")
+    : typeof flags.service === "string"
+      ? [flags.service]
+      : [];
+  const services = values.filter((value) => value.length > 0).map((value) => ServiceName.make(value));
+  return {
+    ...(flags.deep === true ? { deep: true } : {}),
+    ...(services.length === 0 ? {} : { services }),
+  };
 };
 
 export const infoSpec: LandoCommandSpec<InfoAppResult> = {
@@ -28,7 +38,12 @@ export const infoSpec: LandoCommandSpec<InfoAppResult> = {
       description: "Include the resolved host agent-context env forwarding allowlist.",
       default: false,
     }),
+    service: Flags.string({
+      char: "s",
+      description: "Inspect a specific planned service (repeatable).",
+      multiple: true,
+    }),
   },
-  run: (input) => infoApp({ deep: infoDeepFromInput(input) }),
+  run: (input) => infoApp(infoOptionsFromInput(input)),
   render: (result, _input, ctx) => renderInfoAppResult(result as InfoAppResult, ctx),
 };

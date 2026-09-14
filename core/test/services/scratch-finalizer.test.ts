@@ -42,6 +42,7 @@ const providerId = ProviderId.make("lando");
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
+    resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
       resolve: (packageSpec) =>
         Promise.resolve({
@@ -111,6 +112,7 @@ const forkLandofile = [
   "  appserver:",
   "    image: node:20-alpine",
   "    primary: true",
+  "    home: false",
   "",
 ].join("\n");
 

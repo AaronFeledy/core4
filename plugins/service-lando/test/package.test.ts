@@ -30,6 +30,7 @@ const expectedServiceTypes = [
   "mysql:8.4",
   "mysql:9.7",
   "nginx",
+  "node",
   "node:lts",
   "node:22",
   "opensearch",

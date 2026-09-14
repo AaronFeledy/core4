@@ -10,7 +10,7 @@ import {
   type ToolingDisabledError,
   type ToolingInputError,
 } from "@lando/sdk/errors";
-import type { LandofileShape } from "@lando/sdk/schema";
+import type { HostTerminal, LandofileShape } from "@lando/sdk/schema";
 
 import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import {
@@ -49,6 +49,8 @@ export interface RunToolingOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
   readonly renderProgress?: boolean;
+  readonly tty?: boolean;
+  readonly hostTerminal?: HostTerminal;
 }
 
 export type RunToolingResult = ToolingResult & {
@@ -186,6 +188,8 @@ export const runTooling = (
       ...(options.user === undefined ? {} : { user: options.user }),
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
       ...(options.env === undefined ? {} : { env: options.env }),
+      ...(options.tty === undefined ? {} : { tty: options.tty }),
+      ...(options.hostTerminal === undefined ? {} : { hostTerminal: options.hostTerminal }),
       agentEnvAllowlist,
     });
     const invocations = compiled.invocations;

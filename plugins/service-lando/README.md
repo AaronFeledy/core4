@@ -24,7 +24,7 @@ framework presets ship post-GA; the table below tracks what
 | Type       | Versions     | Supported `framework:` values                                | Notes                                                                                                                       |
 | ---------- | ------------ | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | `php`      | 8.1, 8.2, 8.3, 8.4, 8.5 | n/a                                                    | Uses explicit `webroot:` (default `/app`) and `allowOverride:` (default `false`); recipes own framework-specific choices.     |
-| `node`     | lts, 22      | `none`                                                       | No framework presets; users select their own dev-server `command:`. The `framework:` field is accepted for schema compatibility and ignored by the ServiceType. |
+| `node`     | inferred, lts, 22 | `none`                                                    | Bare `node` infers from `.nvmrc` and compatible `package.json` engines under optional `packageRoot`; explicit types stay unchanged. No framework presets; users select their own dev-server `command:`. |
 | `python`   | 3.12         | `django`, `fastapi`, `flask`, `none`                         | Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints.                         |
 | `ruby`     | 3.3          | `rails`, `none`                                              | `rails` preset emits `public/` webroot and a `rails server -b 0.0.0.0 -p 3000` default command.                             |
 | `go`       | 1.22, 1.23   | `none`                                                       | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; only `framework: none` is accepted today.    |
@@ -36,6 +36,10 @@ The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
 `mysql`, `mssql`, `postgres`, `mongodb`, `redis`, `valkey`, `memcached`, `rabbitmq`,
 `minio`, `localstack`, `mailpit`, `mailhog`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`,
 `phpmyadmin`, `nginx`, `apache`, `tomcat`, `varnish`, `static`, `compose`) do not accept a `framework:` field.
+
+## Capture PHP mail
+
+Add a `mailpit` service and run `lando rebuild` to wire PHP's `mail()` to the app inbox. Omitted `mailFrom` selects every resolved PHP service; `false` selects none; a list selects only those PHP services, with duplicates removed in authored order. Unknown and non-PHP targets fail before provider action. Selected services receive `msmtp` plus a PHP `sendmail_path` setting. Other services keep their mail configuration. Run `lando info` to find the inbox URL and verify a message from a selected PHP service there.
 
 ## Beta scope vs. the GA-target catalog
 

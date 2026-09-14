@@ -29,7 +29,7 @@ import {
   mysqlServiceType,
 } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
-import { node22ServiceType, nodeLtsServiceType } from "./services/node.ts";
+import { node22ServiceType, nodeLtsServiceType, nodeServiceType } from "./services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "./services/opensearch.ts";
 import {
   php81ServiceType,
@@ -91,6 +91,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["mysql:8.4", mysql84ServiceType],
   ["mysql:9.7", mysql97ServiceType],
   ["nginx", nginxServiceType],
+  ["node", nodeServiceType],
   ["node:lts", nodeLtsServiceType],
   ["node:22", node22ServiceType],
   ["opensearch", opensearchServiceType],
@@ -195,6 +196,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "mysql:8.4",
       "mysql:9.7",
       "nginx",
+      "node",
       "node:lts",
       "node:22",
       "opensearch",
@@ -230,6 +232,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     ],
     serviceFeatures: SERVICE_FEATURE_IDS,
     appFeatures: [
+      "service-lando.mailpit.wire",
       "service-lando.php.db-client",
       "service-lando.phpmyadmin.wire",
       "service-lando.nginx.php-fpm.wire",

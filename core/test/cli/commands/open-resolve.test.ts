@@ -164,6 +164,37 @@ describe("resolveOpenTargets", () => {
     ]);
   });
 
+  test("a disabled router hands out published endpoints instead of route hostnames", () => {
+    // Given: routes exist but nothing publishes them.
+    const disabled = {
+      ...plan(routes, [
+        svc("api", [
+          endpoint({ _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } }),
+        ]),
+        "web",
+      ]),
+      router: { enabled: false },
+    };
+
+    // When / Then: every selection form skips the unserved hostnames.
+    expect(resolveOpenTargets(disabled, {}).map((target) => target.url)).toEqual(["http://localhost:8080"]);
+    expect(resolveOpenTargets(disabled, { service: "api" }).map((target) => target.url)).toEqual([
+      "http://localhost:8080",
+    ]);
+    expect(resolveOpenTargets(disabled, { all: true }).map((target) => target.url)).toEqual([
+      "http://localhost:8080",
+    ]);
+    expect(resolveOpenTargets(disabled, { route: "web.myapp.lndo.site" })).toEqual([]);
+    expect(resolveOpenTargets(disabled, { service: "web" })).toEqual([]);
+  });
+
+  test("an enabled router keeps preferring route hostnames", () => {
+    // Given
+    const enabled = { ...p, router: { enabled: true } };
+    // When / Then
+    expect(resolveOpenTargets(enabled, {}).map((target) => target.hostname)).toEqual(["api.myapp.lndo.site"]);
+  });
+
   test("S5 default prefers any proxy route before endpoint fallbacks", () => {
     const p = plan(
       [route({ hostname: "app.myapp.lndo.site", scheme: "https", service: "app" })],

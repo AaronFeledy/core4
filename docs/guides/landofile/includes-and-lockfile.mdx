@@ -36,6 +36,87 @@ content hash, in `.lando.lock.yml`; local includes are not locked.
       <Run command="lando app:config --format=json" />
     </Step>
   </Scenario>
+
+## Opt into a user profile
+
+Put reusable YAML fragments in the `includes` directory below your Lando user
+configuration root. For example, save this as `includes/php-corp.yml`:
+
+```yaml
+services:
+  appserver:
+    environment:
+      COMPANY_REGION: local
+      API_TOKEN: '${secret:CORP_API_TOKEN}'
+```
+
+Select it explicitly in each consuming app's Landofile:
+
+```yaml
+includes:
+  - user:php-corp.yml
+```
+
+Inspect the merged config without starting containers:
+
+```sh
+lando app:config --format=json
+```
+
+The structured result includes a `sources` inventory of logical source IDs and
+SHA-256 hashes, not profile contents or host paths. Exact service-environment
+secret references remain references in config and plans. The SecretStore supplies
+their values only for the provider action; don't interpolate secrets into build
+arguments or scripts.
+
+No profile is loaded automatically. Opting in trusts its build and tooling
+commands, not just its environment values. Profiles must use `.yml` or `.yaml`;
+TypeScript, file-access expressions, remote nested includes, absolute sources and
+paths escaping the user includes root are rejected.
+
+Nested relative includes resolve from the declaring profile's directory, while
+nested `user:` includes start at the user includes root. Build `context` and
+`env_file` paths still resolve from the consuming app root. Include order, array
+merge rules and project overrides work as they do for local fragments. Profiles
+cannot override `name`, `runtime` or reserved runtime environment identity.
+
+User profiles are not lockfile entries. Their content hashes participate in cache
+freshness. The separate `toolingIncludes:` shorthand does not accept `user:`.
+
+  <Scenario id="user-profile-embedding" render={false} reason="Library fixture proof of profile opt-in and project precedence, not a provider transcript">
+    <Step name="load-user-profile">
+      <UseFixture name="user-profile-demo" />
+      <Run
+        runtime="library"
+        code={`const { AbsolutePath, ServiceName } = yield* Effect.promise(() => import("@lando/core/schema"));
+const { LandofileService } = yield* Effect.promise(() => import("@lando/core/services"));
+const appRoot = join(context.testDir, "user-profile-demo");
+const previousCwd = process.cwd();
+try {
+  process.chdir(appRoot);
+  const config = yield* Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+    Effect.provide(LandoCore.makeLandoRuntime({
+      bootstrap: "commands",
+      plugins: { policy: "bundled-only" },
+      config: {
+        userConfRoot: AbsolutePath.make(join(appRoot, "profile-home")),
+        userDataRoot: AbsolutePath.make(join(context.testDir, "data")),
+        userCacheRoot: AbsolutePath.make(join(context.testDir, "cache")),
+        systemPluginRoot: AbsolutePath.make(join(context.testDir, "system")),
+      },
+    })),
+  );
+  expect(config.services?.[ServiceName.make("web")]?.environment?.REGION).toBe("project");
+  expect(config.services?.[ServiceName.make("web")]?.environment?.VALUE).toBe("\${secret:CORP_API_TOKEN}");
+} finally {
+  process.chdir(previousCwd);
+}`}
+        displayCode={`const landofile = yield* LandofileService.pipe(
+  Effect.flatMap((service) => service.discover),
+);`}
+      />
+    </Step>
+  </Scenario>
 </Guide>
 
 ## Locking and remediation

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
 import type { EngineHttpRequest, PodmanApiClient } from "@lando/container-runtime/engine-api";
-import { resolveLiveProviderSocket } from "@lando/core/testing";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, logs, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,

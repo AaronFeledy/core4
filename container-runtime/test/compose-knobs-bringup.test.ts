@@ -64,9 +64,13 @@ const baseService: ServicePlan = {
   extensions: {},
 };
 
-const planWithCompose = (compose?: Record<string, unknown>): AppPlan => {
+const planWithCompose = (
+  compose?: Record<string, unknown>,
+  hostAliases: ServicePlan["hostAliases"] = [],
+): AppPlan => {
   const service: ServicePlan = {
     ...baseService,
+    hostAliases,
     extensions: compose === undefined ? {} : { compose },
   };
   return {
@@ -244,6 +248,27 @@ describe("Podman Compose knob bring-up realization", () => {
       "api.local:10.0.0.2",
     ]);
   });
+
+  test.each([
+    { compose: {}, expected: ["host.lando.internal:host-gateway"] },
+    {
+      compose: { extra_hosts: { "api.local": "10.0.0.1" } },
+      expected: ["host.lando.internal:host-gateway", "api.local:10.0.0.1"],
+    },
+  ])(
+    "Given plan aliases and $compose, when bringing up, then ExtraHosts is $expected",
+    async ({ compose, expected }) => {
+      // Given
+      const fake = makeFakeApi();
+      const plan = planWithCompose(compose, [{ hostname: "host.lando.internal", ip: "host-gateway" }]);
+
+      // When
+      await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
+
+      // Then
+      expect(field(hostConfig(findCreateRequest(fake.calls)), "ExtraHosts")).toEqual(expected);
+    },
+  );
 
   test("Given baseline fields and knobs, when both containers are created, then knobs do not clobber baseline fields", async () => {
     // Given

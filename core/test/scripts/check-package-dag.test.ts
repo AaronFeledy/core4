@@ -43,7 +43,7 @@ describe("check-package-dag manifest policy", () => {
     // Given
     await fixture.writePackage("plugins/provider-lando", "@lando/provider-lando", {
       dependencies: { "@lando/provider-podman": "workspace:*" },
-      devDependencies: { "@lando/core": "workspace:*" },
+      devDependencies: { "@lando/engine": "workspace:*" },
     });
 
     // When

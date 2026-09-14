@@ -5,6 +5,7 @@ import { AppId as AppIdSchema, ServiceName } from "@lando/sdk/schema";
 import { runScannerContract } from "@lando/sdk/test";
 
 import { makeUrlScanner } from "../../../src/subsystems/scanner/live.ts";
+import * as scanModule from "../../../src/subsystems/scanner/scan-target.ts";
 import {
   appId,
   drive,
@@ -28,12 +29,63 @@ const worker = ServiceName.make("worker");
 const db = ServiceName.make("db");
 
 describe("makeUrlScanner probe behavior", () => {
+  test("overall deadline stops retrying before maxAttempts", async () => {
+    // Given a retry delay that crosses the overall deadline.
+    const http = requestSequence([httpStatus(503)]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
+    const scanner = makeUrlScanner(
+      { request: http.request, listEndpoints: source.listEndpoints },
+      { retry: 5, delaySeconds: 1, deadlineMs: 1500 },
+    );
+    // When the virtual clock advances beyond all possible attempts.
+    const timed = await runExitUnderClock(scanner.scan(appId), "10 seconds");
+    // Then the last verdict is retained and only two attempts ran.
+    expect(http.requests).toHaveLength(2);
+    expect(timed.elapsedMs).toBe(1500);
+    expect(successOf(timed.exit).endpoints[0]?.outcome).toBe("yellow");
+  });
+
+  test.each([
+    [0, 1],
+    [3, 4],
+  ])("scanConfigFromPlan maps retries %i to %i attempts", (retries, attempts) => {
+    // Given resolved settings distinct from every overridden base field.
+    const scan = { enabled: false, path: "/ready", okCodes: [418], retries, timeoutMs: 1234 };
+    // When the plan is mapped onto the base configuration.
+    const config = scanModule.scanConfigFromPlan(scan, scanModule.defaultUrlScanConfig);
+    // Then retries become total attempts and unrelated tuning survives.
+    expect(config).toEqual({
+      ...scanModule.defaultUrlScanConfig,
+      enabled: false,
+      path: "/ready",
+      okCodes: [418],
+      retry: attempts,
+      deadlineMs: 1234,
+    });
+  });
+
+  test("per-attempt timeout is capped by a smaller overall deadline", async () => {
+    // Given an HTTP response slower than the overall budget.
+    const http = requestSequence([httpSleep("30 seconds", 200)]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
+    const scanner = makeUrlScanner(
+      { request: http.request, listEndpoints: source.listEndpoints },
+      { retry: 1, timeoutSeconds: 5, deadlineMs: 250 },
+    );
+    // When scanning under a virtual clock.
+    const timed = await runExitUnderClock(scanner.scan(appId), "10 seconds");
+    // Then neither the request budget nor completion exceeds the deadline.
+    expect(http.requests[0]?.timeoutMs).toBe(250);
+    expect(timed.elapsedMs).toBe(250);
+    expect(successOf(timed.exit).endpoints[0]?.outcome).toBe("red");
+  });
+
   test("green on the third attempt after two fixed delays", async () => {
     const http = requestSequence([httpStatus(500), httpFailure("connection refused"), httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
-      { retry: 3, delaySeconds: 10 },
+      { retry: 3, delaySeconds: 10, deadlineMs: 30000 },
     );
 
     const timed = await runExitUnderClock(scanner.scan(appId), "20 seconds");
@@ -55,7 +107,7 @@ describe("makeUrlScanner probe behavior", () => {
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
-      { retry: 3, delaySeconds: 10 },
+      { retry: 3, delaySeconds: 10, deadlineMs: 30000 },
     );
 
     await Effect.runPromise(

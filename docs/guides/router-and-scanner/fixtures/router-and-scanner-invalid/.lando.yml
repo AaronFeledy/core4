@@ -1,0 +1,7 @@
+name: router-and-scanner-invalid
+services:
+  app:
+    type: "node:22"
+    primary: true
+    scanner:
+      retries: -1

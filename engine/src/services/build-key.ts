@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { buildContextContentDigest } from "@lando/container-runtime/image-build";
 import { Effect } from "effect";
 
+import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
@@ -28,6 +29,7 @@ interface StableBuildInput {
     readonly appMount: unknown;
     readonly mounts: ReadonlyArray<unknown>;
     readonly buildSteps: ReadonlyArray<unknown>;
+    readonly configSources: ReadonlyArray<unknown>;
   };
 }
 
@@ -35,9 +37,8 @@ interface AppBuildKeyInput {
   readonly command: unknown;
   readonly service: ServicePlan;
   readonly stepId: string;
+  readonly user?: string;
 }
-
-const SECRET_REFERENCE_PATTERN = /^\$\{secret:([^}]+)\}$/u;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,8 +61,8 @@ const stableHash = (value: unknown): string =>
     .digest("hex");
 
 const secretAwareString = (value: string): unknown => {
-  const match = SECRET_REFERENCE_PATTERN.exec(value);
-  return match === null ? value : { secret: match[1] };
+  const secret = exactSecretReferenceId(value);
+  return secret === undefined ? value : { secret };
 };
 
 const stableStringRecord = (
@@ -131,9 +132,11 @@ export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
     landoVersion: CORE_VERSION,
     stepId: input.stepId,
     command: input.command,
+    user: typeof input.user === "string" ? input.user : undefined,
     service: {
       name: String(input.service.name),
       artifact: artifactBuildInput(input.service.artifact, undefined),
+      environment: providerEnvironment(input.service.environment),
       appMount:
         input.service.appMount === undefined
           ? undefined
@@ -159,7 +162,7 @@ const artifactBuildStepInput = (step: unknown): unknown => {
     id: step.id,
     phase: step.phase,
     command: step.command,
-    privileged: step.privileged === true ? true : undefined,
+    user: typeof step.user === "string" ? step.user : undefined,
     dependsOn: step.dependsOn,
     buildKeyInputs: step.buildKeyInputs,
     caFiles: Array.isArray(step.caFiles)
@@ -182,6 +185,18 @@ export const artifactBuildStepsFor = (service: ServicePlan): ReadonlyArray<unkno
   buildStepsFor(service)
     .filter((step) => !isRecord(step) || step.phase !== "app")
     .map(artifactBuildStepInput);
+
+const configSourcesFor = (service: ServicePlan): ReadonlyArray<unknown> => {
+  const extension = service.extensions["@lando/core/service-features"];
+  if (!isRecord(extension) || !Array.isArray(extension.configSources)) return [];
+  return extension.configSources
+    .filter(isRecord)
+    .sort((left, right) => String(left.key).localeCompare(String(right.key)))
+    .map((source) => ({
+      key: source.key,
+      digest: typeof source.digest === "string" ? source.digest : undefined,
+    }));
+};
 
 const stableBuildInput = (
   provider: RuntimeProviderShape,
@@ -213,6 +228,7 @@ const stableBuildInput = (
               },
         mounts: service.mounts.map(mountBuildInput),
         buildSteps: artifactBuildStepsFor(service),
+        configSources: configSourcesFor(service),
       },
     })),
   );

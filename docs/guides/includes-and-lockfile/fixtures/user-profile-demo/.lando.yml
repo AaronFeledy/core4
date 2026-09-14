@@ -1,0 +1,7 @@
+name: user-profile-demo
+includes:
+  - user:profile.yml
+services:
+  web:
+    environment:
+      REGION: project

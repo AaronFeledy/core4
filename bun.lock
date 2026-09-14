@@ -194,7 +194,7 @@
         "effect": "^3.21.2",
       },
       "devDependencies": {
-        "@lando/core": "workspace:*",
+        "@lando/engine": "workspace:*",
       },
     },
     "plugins/provider-lando": {
@@ -206,7 +206,7 @@
         "effect": "^3.21.2",
       },
       "devDependencies": {
-        "@lando/core": "workspace:*",
+        "@lando/engine": "workspace:*",
       },
       "peerDependencies": {
         "@lando/sdk": "workspace:*",
@@ -221,7 +221,7 @@
         "effect": "^3.21.2",
       },
       "devDependencies": {
-        "@lando/core": "workspace:*",
+        "@lando/engine": "workspace:*",
       },
     },
     "plugins/proxy-traefik": {
@@ -242,8 +242,9 @@
         "effect": "^3.21.2",
       },
       "devDependencies": {
-        "@lando/core": "workspace:*",
+        "@lando/engine": "workspace:*",
         "@lando/paths": "workspace:*",
+        "@lando/renderer": "workspace:*",
       },
     },
     "plugins/service-lando": {
@@ -251,11 +252,13 @@
       "version": "0.0.0",
       "dependencies": {
         "effect": "^3.21.2",
+        "semver": "^7.8.5",
       },
       "devDependencies": {
-        "@lando/core": "workspace:*",
+        "@lando/engine": "workspace:*",
         "@lando/provider-docker": "workspace:*",
         "@lando/provider-lando": "workspace:*",
+        "@types/semver": "^7.7.1",
       },
       "peerDependencies": {
         "@lando/sdk": "workspace:*",
