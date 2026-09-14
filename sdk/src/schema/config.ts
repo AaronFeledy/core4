@@ -1,9 +1,82 @@
 import { Schema } from "effect";
 
+import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
 import { ScannerConfig } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
+
+export { CORE_SERVICE_ENV_KEYS, isCoreServiceEnvKey } from "./generated/core-service-env.ts";
+
+const encodedByteLength = (value: string): number => new TextEncoder().encode(value).length;
+const encodedMapByteLength = (value: Readonly<Record<string, string>>): number =>
+  encodedByteLength(JSON.stringify(value));
+
+const APP_ENVIRONMENT_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+const AppEnvironmentValue = Schema.String.pipe(
+  Schema.filter((value) => encodedByteLength(value) <= 32 * 1024, {
+    message: () => "Global app environment values must not exceed 32 KiB of UTF-8 text",
+  }),
+);
+
+export const AppEnvironmentDefaults = Schema.Record({
+  key: Schema.String,
+  value: AppEnvironmentValue,
+}).pipe(
+  Schema.filter(
+    (value) => {
+      const keys = Object.keys(value);
+      return (
+        keys.length <= 256 &&
+        keys.every((key) => APP_ENVIRONMENT_KEY.test(key) && !isCoreServiceEnvKey(key)) &&
+        encodedMapByteLength(value) <= 1024 * 1024
+      );
+    },
+    {
+      message: () =>
+        "Global app environment must use POSIX identifiers, exclude core-owned keys, contain at most 256 entries, and encode to at most 1 MiB",
+    },
+  ),
+  Schema.annotations({
+    identifier: "AppEnvironmentDefaults",
+    title: "Global App Environment Defaults",
+    description: "Bounded environment defaults applied only to user-app services.",
+    jsonSchema: { maxProperties: 256 },
+  }),
+);
+export type AppEnvironmentDefaults = typeof AppEnvironmentDefaults.Type;
+
+const validAppLabelKey = (key: string): boolean => {
+  const bytes = encodedByteLength(key);
+  return (
+    bytes >= 1 && bytes <= 253 && !key.includes("\0") && !key.includes("=") && !key.startsWith("dev.lando.")
+  );
+};
+const AppLabelValue = Schema.String.pipe(
+  Schema.filter((value) => encodedByteLength(value) <= 4 * 1024, {
+    message: () => "Global app label values must not exceed 4 KiB of UTF-8 text",
+  }),
+);
+
+export const AppLabelDefaults = Schema.Record({ key: Schema.String, value: AppLabelValue }).pipe(
+  Schema.filter(
+    (value) => {
+      const keys = Object.keys(value);
+      return keys.length <= 256 && keys.every(validAppLabelKey) && encodedMapByteLength(value) <= 256 * 1024;
+    },
+    {
+      message: () =>
+        "Global app labels must use valid non-reserved keys, contain at most 256 entries, and encode to at most 256 KiB",
+    },
+  ),
+  Schema.annotations({
+    identifier: "AppLabelDefaults",
+    title: "Global App Label Defaults",
+    description: "Bounded container-label defaults applied only to user-app services.",
+    jsonSchema: { maxProperties: 256 },
+  }),
+);
+export type AppLabelDefaults = typeof AppLabelDefaults.Type;
 
 /**
  * Telemetry defaults on for CLI global config. Library runtimes do not use this
@@ -130,6 +203,12 @@ export const GlobalConfig = Schema.Struct({
   defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
   defaultRouterService: Schema.optional(Schema.String).annotations({
     description: "Globally selected RouterService contribution id.",
+  }),
+  appEnv: Schema.optional(AppEnvironmentDefaults).annotations({
+    description: "Environment defaults applied below each user-app service's authored environment.",
+  }),
+  appLabels: Schema.optional(AppLabelDefaults).annotations({
+    description: "Container-label defaults applied below each user-app service's authored labels.",
   }),
   telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }),
   renderer: Schema.optional(Schema.String),

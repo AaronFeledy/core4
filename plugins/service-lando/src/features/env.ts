@@ -3,11 +3,11 @@ import { basename } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
+import { isCoreServiceEnvKey } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { MAILPIT_SHARED_NETWORK_HOST, MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
 
-const RESERVED_PREFIX = "LANDO" as const;
 const GLOBAL_APP_NAME = "global" as const;
 
 export const LANDO_ENV_FEATURE_ID = "lando.env" as const;
@@ -26,9 +26,6 @@ type LandoEnvFeatureConfig = typeof LandoEnvFeatureConfigSchema.Type;
 
 const configFor = (ctx: ServiceFeatureContext): LandoEnvFeatureConfig => ctx.config as LandoEnvFeatureConfig;
 
-const isReservedKey = (key: string): boolean =>
-  key === RESERVED_PREFIX || key.startsWith(`${RESERVED_PREFIX}_`);
-
 const slug = (input: string): string =>
   input
     .toLowerCase()
@@ -44,7 +41,7 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
   const appName = appNameFor(ctx);
   const userEnv = ctx.normalizedConfig.environment ?? {};
 
-  const reserved = Object.keys(userEnv).filter((key) => isReservedKey(key));
+  const reserved = Object.keys(userEnv).filter(isCoreServiceEnvKey);
   if (reserved.length > 0) {
     throw new Error(
       `User environment cannot override reserved LANDO_* keys: ${reserved.join(", ")}. ` +

@@ -40,7 +40,11 @@ const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string
     systemPluginRoot: roots.systemPluginRoot,
     defaultProviderId: "lando",
   };
-  return deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);
+  const merged = deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);
+  for (const key of ["appEnv", "appLabels"] as const) {
+    if (Object.hasOwn(overlay, key)) merged[key] = overlay[key];
+  }
+  return merged;
 };
 
 export const loadGlobalConfigSync = (): GlobalConfig => {
