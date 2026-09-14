@@ -1561,6 +1561,77 @@ describe("DataMoverLive", () => {
     });
   });
 
+  test("accepts a validated adoption witness as the physical snapshot source identity", async () => {
+    // Given: a physical snapshot request whose source was explicitly adopted rather than created by Lando.
+    await withTempDir(async (dir) => {
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+      const generation = "00000000-0000-4000-8000-000000000009";
+
+      try {
+        // When: DataMover rechecks the source through the provider's canonical witness projection.
+        const handle = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              return yield* dataMover.snapshot(
+                { app, store: "data" },
+                {
+                  volumeSnapshot: "native",
+                  metadata: {
+                    sourceRoot: AbsolutePath.make(dir),
+                    service,
+                    volumeInstanceId: generation,
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "mysql@sha256:adopted",
+                    recoveryReason: "manual",
+                  },
+                },
+              );
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: () =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: "data" },
+                      identity: {
+                        coordinationKey: "provider:data",
+                        nativeName: "data",
+                        generation,
+                        ownerRoot: AbsolutePath.make(dir),
+                        origin: "adopted",
+                      },
+                      provenance: "legacy",
+                    },
+                  ]),
+                snapshotVolume: ({ snapshotId }) =>
+                  Effect.succeed({
+                    provider: ProviderId.make("test"),
+                    id: snapshotId ?? "snapshot",
+                    digest: sha256("adopted-volume"),
+                    sizeBytes: bytes("adopted-volume").byteLength,
+                    format: "native",
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: snapshot creation proceeds with the witness generation without inventing a creation id.
+        expect(handle.store).toEqual({ app, store: "data" });
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
   test("persists native snapshot refs in the sidecar without writing an archive", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");

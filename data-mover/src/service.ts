@@ -41,6 +41,8 @@ import {
   type SnapshotId,
   type SnapshotInfo,
   SnapshotInfo as SnapshotInfoSchema,
+  type SnapshotMetadata,
+  type VolumeInfo,
   type VolumeRef,
   type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
@@ -1153,6 +1155,18 @@ const failureDetail = (cause: Cause.Cause<unknown>): string => {
   return "error";
 };
 
+const physicalVolumeGeneration = (volume: VolumeInfo | undefined): string | undefined =>
+  volume?.identity?.generation ?? (volume?.provenance === "known" ? volume.instanceId : undefined);
+
+const matchesSnapshotSource = (volume: VolumeInfo | undefined, metadata: SnapshotMetadata): boolean => {
+  const identity = volume?.identity;
+  return (
+    physicalVolumeGeneration(volume) === metadata.volumeInstanceId &&
+    (identity === undefined ||
+      (identity.ownerRoot === metadata.sourceRoot && identity.nativeName === volume?.ref.store))
+  );
+};
+
 export const makeDataMoverService = (
   provider: Context.Tag.Service<typeof RuntimeProvider>,
   events: DataMoverEvents,
@@ -1288,17 +1302,15 @@ export const makeDataMoverService = (
         const source = sources.find(
           (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
         );
-        if (
-          source?.provenance !== "known" ||
-          source.instanceId === undefined ||
-          source.instanceId !== opts.metadata.volumeInstanceId
-        ) {
+        if (!matchesSnapshotSource(source, opts.metadata)) {
           return yield* Effect.fail(
             new SnapshotOwnershipError({
               message: "Physical snapshot source identity changed before creation.",
               snapshotId,
               sourceVolumeInstanceId: opts.metadata.volumeInstanceId,
-              ...(source?.instanceId === undefined ? {} : { targetVolumeInstanceId: source.instanceId }),
+              ...(physicalVolumeGeneration(source) === undefined
+                ? {}
+                : { targetVolumeInstanceId: physicalVolumeGeneration(source) }),
               remediation: "Re-observe the database volume and retry the snapshot operation.",
             }),
           );
@@ -1425,19 +1437,15 @@ export const makeDataMoverService = (
               const target = targets.find(
                 (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
               );
-              if (
-                target?.provenance !== "known" ||
-                target.instanceId === undefined ||
-                target.instanceId !== info.metadata.volumeInstanceId
-              ) {
+              if (!matchesSnapshotSource(target, info.metadata)) {
                 return yield* Effect.fail(
                   new SnapshotOwnershipError({
                     message: "Physical snapshot ownership does not match the target volume instance.",
                     snapshotId: info.id,
                     sourceVolumeInstanceId: info.metadata.volumeInstanceId,
-                    ...(target?.instanceId === undefined
+                    ...(physicalVolumeGeneration(target) === undefined
                       ? {}
-                      : { targetVolumeInstanceId: target.instanceId }),
+                      : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
                     remediation:
                       "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
                   }),
@@ -1489,7 +1497,8 @@ export const makeDataMoverService = (
           const target = targets.find(
             (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
           );
-          if (target?.instanceId === undefined || target.provenance !== "known") {
+          const targetGeneration = physicalVolumeGeneration(target);
+          if (targetGeneration === undefined) {
             return yield* Effect.fail(
               new SnapshotOwnershipError({
                 message: "Physical restore target identity is unknown.",
@@ -1501,17 +1510,15 @@ export const makeDataMoverService = (
             );
           }
           if (info.metadata !== undefined) {
-            if (
-              target.instanceId === undefined ||
-              target.provenance !== "known" ||
-              target.instanceId !== info.metadata.volumeInstanceId
-            ) {
+            if (!matchesSnapshotSource(target, info.metadata)) {
               return yield* Effect.fail(
                 new SnapshotOwnershipError({
                   message: "Physical snapshot ownership does not match the target volume instance.",
                   snapshotId: info.id,
                   sourceVolumeInstanceId: info.metadata.volumeInstanceId,
-                  ...(target?.instanceId === undefined ? {} : { targetVolumeInstanceId: target.instanceId }),
+                  ...(physicalVolumeGeneration(target) === undefined
+                    ? {}
+                    : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
                   remediation:
                     "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
                 }),
@@ -1522,7 +1529,7 @@ export const makeDataMoverService = (
             .restoreVolume({
               snapshot: info.native,
               target: store,
-              expectedTargetGeneration: target.instanceId,
+              expectedTargetGeneration: targetGeneration,
               overwrite: true,
             })
             .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
