@@ -23,6 +23,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   type ServiceRuntimeInfo,
+  StateStore,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
@@ -35,6 +36,7 @@ import { startApp } from "../../src/operations/start.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { makeShellRunnerLive } from "../../src/services/shell-runner.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { NoopTransactionGuardLive } from "../services/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
@@ -111,6 +113,7 @@ export const makeHarness = (
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
+  const stateStore = makeTestStateStore();
   const events: LandoEvent[] = [];
   let signalApplyTreeStart = (): void => undefined;
   const applyTreeStarted = new Promise<void>((resolve) => {
@@ -132,11 +135,24 @@ export const makeHarness = (
         endpoints: plannedApp.services[target.service]?.endpoints ?? [],
       }),
     destroy: () => Effect.void,
+    locateVolume: (ref) =>
+      Effect.succeed({
+        coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
+        nativeName: ref.store,
+        identity: {
+          coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
+          nativeName: ref.store,
+          generation: "00000000-0000-4000-8000-000000000001",
+          ownerRoot: plannedApp.root,
+          origin: "created",
+        },
+      }),
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
     PrivateFileAccessLive,
+    Layer.succeed(StateStore, stateStore.service),
     NoopTransactionGuardLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
     Layer.succeed(PathsService, makeLandoPaths()),
@@ -186,7 +202,7 @@ export const makeHarness = (
     }),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
   );
-  return { layer, events, applyTreeStarted };
+  return { layer, events, applyTreeStarted, stateStore };
 };
 
 export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan = plan) =>
