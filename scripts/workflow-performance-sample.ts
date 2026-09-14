@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtempDisposable, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanupWorkflowPerformanceSample } from "./workflow-performance-cleanup.ts";
 
@@ -58,13 +59,13 @@ type RunSampleInput = {
 const prepareSample = async (
   input: RunSampleInput,
   acquired: (sample: PreparedSample) => void,
+  runtimeRoot: string,
 ): Promise<PreparedSample> => {
   const { lane, binary, rootDir, key, fixturePath, runCommand } = input;
   const sampleRoot = join(rootDir, "samples", key);
   const appParent = join(sampleRoot, "apps");
   const appRoot = join(appParent, key);
   const dataRoot = join(sampleRoot, "data");
-  const runtimeRoot = join(sampleRoot, "xdg-runtime");
   const storageConfig = join(sampleRoot, "storage.conf");
   const journey = lane.id === "drupal-journey" || lane.id === "rails-journey";
   await mkdir(join(rootDir, "samples"), { recursive: true });
@@ -171,11 +172,16 @@ export const runWorkflowPerformanceSample = async (
     | { readonly skipReason: string }
   )
 > => {
+  await using runtimeDirectory = await mkdtempDisposable(join(tmpdir(), "lp-"));
   const runCommand = workflowPerformanceDeadlineRunner(input);
   let acquired: PreparedSample | undefined;
-  const prepared = await prepareSample({ ...input, runCommand }, (sample) => {
-    acquired = sample;
-  }).catch((cause: unknown) => {
+  const prepared = await prepareSample(
+    { ...input, runCommand },
+    (sample) => {
+      acquired = sample;
+    },
+    runtimeDirectory.path,
+  ).catch((cause: unknown) => {
     if (acquired === undefined) throw cause;
     return {
       ...acquired,
