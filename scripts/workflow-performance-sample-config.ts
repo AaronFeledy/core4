@@ -1,6 +1,8 @@
 import type { WorkflowPerformanceLaneId } from "./workflow-performance-plan.ts";
 
 export const imagesFor = (laneId: WorkflowPerformanceLaneId): readonly string[] => {
+  if (laneId === "mysql-snapshot-restore") return ["mysql:8.0", "alpine:3.20"];
+  if (laneId === "postgres-snapshot-restore") return ["postgres:16", "alpine:3.20"];
   if (laneId.startsWith("mysql-")) return ["mysql:8.0"];
   if (laneId.startsWith("postgres-")) return ["postgres:16"];
   if (laneId === "drupal-journey") return ["php:8.3-apache-bookworm", "mariadb:11.4", "traefik:v3.3"];
