@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { SqlCommandFailedError, VolumeNotFoundError } from "@lando/sdk/errors";
+import { SqlCommandFailedError, type VolumeNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -28,6 +28,7 @@ import {
 } from "./families.ts";
 import { wrapExportCommand, wrapImportCommand } from "./gzip.ts";
 import type { SqlPlan, SqlPlanService } from "./views.ts";
+import { requireDatabaseMount } from "./volume-target.ts";
 
 export type SqlExec = (
   service: string,
@@ -45,21 +46,11 @@ export type SqlMover = {
 export const requireVolume = (
   plan: SqlPlan,
   service: SqlPlanService,
-  name: string,
-): Effect.Effect<VolumeRef, VolumeNotFoundError> => {
-  const store = service.storage[0]?.store;
-  if (store === undefined) {
-    return Effect.fail(
-      new VolumeNotFoundError({
-        message: `Service ${name} has no data volume.`,
-        store: name,
-        app: plan.id,
-        remediation: "Add persistent storage to the database service.",
-      }),
-    );
-  }
-  return Effect.succeed({ app: AppId.make(plan.id), store });
-};
+  _name: string,
+): Effect.Effect<VolumeRef, VolumeNotFoundError> =>
+  requireDatabaseMount(service, plan.id).pipe(
+    Effect.map((mount) => ({ app: AppId.make(plan.id), store: mount.store })),
+  );
 
 const requireExecOk = (
   result: { readonly ok: boolean },
