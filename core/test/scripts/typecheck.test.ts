@@ -1,6 +1,23 @@
 import { expect, test } from "bun:test";
-import { typecheck } from "../../../scripts/typecheck.ts";
+import { typecheck, typecheckEnvironment } from "../../../scripts/typecheck.ts";
 import config from "../../../tsconfig.json";
+
+test("gives the compiler 4 GiB of old space when no Node options are inherited", () => {
+  // Given / When
+  const env = typecheckEnvironment({ PATH: "/tools" });
+  // Then
+  expect(env).toEqual({ PATH: "/tools", NODE_OPTIONS: "--max-old-space-size=4096" });
+});
+
+test("preserves inherited options while overriding a smaller compiler heap limit", () => {
+  // Given
+  const inherited = { NODE_OPTIONS: "--trace-warnings --max-old-space-size=2048" };
+  // When
+  const env = typecheckEnvironment(inherited);
+  // Then
+  expect(env.NODE_OPTIONS).toBe("--trace-warnings --max-old-space-size=2048 --max-old-space-size=4096");
+  expect(inherited.NODE_OPTIONS).toBe("--trace-warnings --max-old-space-size=2048");
+});
 
 test("checks every root reference while separating package and test compiler lifetimes", async () => {
   // Given
