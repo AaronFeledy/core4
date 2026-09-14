@@ -14,6 +14,7 @@ test.each(["copy", "native"] as const)(
     const source = join(root, "source");
     const target = join(root, "target");
     let command: readonly string[] = [];
+    const generation = "00000000-0000-4000-8000-000000000001";
     try {
       await mkdir(source);
       await mkdir(target);
@@ -28,6 +29,15 @@ test.each(["copy", "native"] as const)(
         redactDetails: (value) => value,
         api: {
           request: (input) => {
+            if (input.path === "/volumes/actual") {
+              return Effect.succeed({
+                status: 200,
+                body: JSON.stringify({
+                  Name: "actual",
+                  Labels: { "dev.lando.volume-instance": generation },
+                }),
+              });
+            }
             if (input.path.startsWith("/containers/create"))
               command = Schema.decodeUnknownSync(Schema.Struct({ Cmd: Schema.Array(Schema.String) }))(
                 input.body,
@@ -42,6 +52,7 @@ test.each(["copy", "native"] as const)(
           plane.restoreVolume({
             target: { app: AppId.make("app"), store: "actual" },
             snapshot: { provider: "fixture", id: "snap" },
+            expectedTargetGeneration: generation,
           }),
         ),
       );

@@ -40,6 +40,7 @@ const multiplexedStderrFrame = (payload: Uint8Array): Uint8Array => multiplexedF
 const appId = AppId.make("app-id");
 const serviceName = ServiceName.make("web");
 const providerId = ProviderId.make("test");
+const volumeGeneration = "00000000-0000-4000-8000-000000000001";
 const plan = {
   id: appId,
   name: "App Name",
@@ -72,6 +73,15 @@ const makeCopySnapshotApi = () => {
   const api: DataPlaneApiClient = {
     request: (request) =>
       Effect.sync(() => {
+        if (request.path === "/volumes/data") {
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Name: "data",
+              Labels: { "dev.lando.volume-instance": volumeGeneration },
+            }),
+          };
+        }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
           containers.set(name, { body: request.body as never, exitCode: 0 });
@@ -424,7 +434,11 @@ describe("provider data plane", () => {
     fake.volumes.set("data", bytes("changed"));
     await Effect.runPromise(
       Effect.scoped(
-        secondProvider.restoreVolume({ snapshot, target: { app: AppId.make("app"), store: "data" } }),
+        secondProvider.restoreVolume({
+          snapshot,
+          target: { app: AppId.make("app"), store: "data" },
+          expectedTargetGeneration: volumeGeneration,
+        }),
       ),
     );
 
@@ -454,12 +468,59 @@ describe("provider data plane", () => {
         provider.restoreVolume({
           snapshot,
           target: { app: AppId.make("app"), store: "data" },
+          expectedTargetGeneration: volumeGeneration,
           overwrite: false,
         }),
       ),
     );
 
     expect(text(fake.volumes.get("data") ?? new Uint8Array())).toBe("changed");
+  });
+
+  test("rejects restore and removal when the observed volume generation changed", async () => {
+    const mutations: string[] = [];
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        if (request.path === "/volumes/data" && request.method === "GET") {
+          return Effect.succeed({
+            status: 200,
+            body: JSON.stringify({
+              Name: "data",
+              Labels: { "dev.lando.volume-instance": volumeGeneration },
+            }),
+          });
+        }
+        return Effect.sync(() => {
+          mutations.push(`${request.method} ${request.path}`);
+          return { status: 204, body: "" };
+        });
+      },
+      stream: () => Stream.empty,
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+    const staleGeneration = "00000000-0000-4000-8000-000000000002";
+
+    const restore = await Effect.runPromiseExit(
+      Effect.scoped(
+        provider.restoreVolume({
+          snapshot: { provider: ProviderId.make("test"), id: "snap" },
+          target: { app: AppId.make("app"), store: "data" },
+          expectedTargetGeneration: staleGeneration,
+        }),
+      ),
+    );
+    const remove = await Effect.runPromiseExit(
+      provider.removeVolume({ app: AppId.make("app"), store: "data" }, staleGeneration),
+    );
+
+    expect(Exit.isFailure(restore)).toBe(true);
+    expect(Exit.isFailure(remove)).toBe(true);
+    expect(mutations).toEqual([]);
   });
 
   test("filters volume listings to matching Lando labels", async () => {

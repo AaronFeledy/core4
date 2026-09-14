@@ -3,6 +3,7 @@ import {
   type MountedVolumeTarget,
   type VolumeAdoptionTarget,
   adoptMountedVolume,
+  locateVolume,
   observeMountedVolume,
 } from "./volume-observation.ts";
 import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
@@ -693,7 +694,45 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
       ),
   };
+  const verifyExpectedIdentity = (input: {
+    readonly ref: Parameters<RuntimeProviderShape["locateVolume"]>[0];
+    readonly expectedGeneration: string;
+    readonly operation: "restoreVolume" | "removeVolume";
+  }) =>
+    request(options, input.operation, {
+      method: "GET",
+      path: `/volumes/${encodeURIComponent(volumeName(input.ref.store))}`,
+    }).pipe(
+      Effect.flatMap((response) =>
+        response.status === 200
+          ? Effect.try({
+              try: () => JSON.parse(response.body) as EngineVolume,
+              catch: (cause) =>
+                volumeError(options, input.operation, "Provider volume inspection failed.", undefined, cause),
+            })
+          : Effect.fail(
+              volumeError(options, input.operation, "Provider volume inspection failed.", response),
+            ),
+      ),
+      Effect.flatMap((current) =>
+        current.Name === volumeName(input.ref.store) &&
+        current.Labels?.["dev.lando.volume-instance"] === input.expectedGeneration
+          ? Effect.void
+          : Effect.fail(
+              volumeError(
+                options,
+                input.operation,
+                "Provider volume generation changed before mutation.",
+                undefined,
+                undefined,
+                input.ref.store,
+              ),
+            ),
+      ),
+    );
   return {
+    locateVolume: (ref: Parameters<RuntimeProviderShape["locateVolume"]>[0]) =>
+      locateVolume(observation, ref),
     observeVolume: (target: MountedVolumeTarget) => observeMountedVolume(observation, target),
     adoptVolume: (target: VolumeAdoptionTarget) => adoptMountedVolume(observation, target),
     run: (spec: EphemeralRunSpec): Effect.Effect<ExecResult, ProviderError, Scope.Scope> =>
@@ -771,12 +810,19 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           spec.overwrite !== false
             ? `test -d /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} + && find /snapshot -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /lando-data/' sh {} +`
             : "test -d /snapshot";
-        return runBytes(options, {
-          image: nativeSnapshotImage(spec.snapshot.id),
-          command: ["sh", "-c", command],
-          mounts: [{ store: name, target: copyModeMountTarget, readOnly: false }],
-          remove: true,
+        return verifyExpectedIdentity({
+          ref: spec.target,
+          expectedGeneration: spec.expectedTargetGeneration,
+          operation: "restoreVolume",
         }).pipe(
+          Effect.zipRight(
+            runBytes(options, {
+              image: nativeSnapshotImage(spec.snapshot.id),
+              command: ["sh", "-c", command],
+              mounts: [{ store: name, target: copyModeMountTarget, readOnly: false }],
+              remove: true,
+            }),
+          ),
           Effect.flatMap((result) =>
             result.exitCode === 0
               ? Effect.void
@@ -803,15 +849,22 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         spec.overwrite !== false
           ? `test -f ${snapshotPath} && find ${copyModeMountPath} -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} + && tar -C ${copyModeMountPath} -xf ${snapshotPath} ${excludeWitness}`
           : `test -f ${snapshotPath}`;
-      return runBytes(options, {
-        image: copyModeHelperImage,
-        command: ["sh", "-c", restoreCommand],
-        mounts: [
-          { store: name, target: copyModeMountTarget, readOnly: false },
-          { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: true },
-        ],
-        remove: true,
+      return verifyExpectedIdentity({
+        ref: spec.target,
+        expectedGeneration: spec.expectedTargetGeneration,
+        operation: "restoreVolume",
       }).pipe(
+        Effect.zipRight(
+          runBytes(options, {
+            image: copyModeHelperImage,
+            command: ["sh", "-c", restoreCommand],
+            mounts: [
+              { store: name, target: copyModeMountTarget, readOnly: false },
+              { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: true },
+            ],
+            remove: true,
+          }),
+        ),
         Effect.flatMap((result) =>
           result.exitCode === 0
             ? Effect.void
@@ -854,11 +907,14 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           volumeError(options, "listVolumes", "Provider volume list failed.", undefined, cause, filter.store),
         ),
       )) satisfies RuntimeProviderShape["listVolumes"],
-    removeVolume: ((ref) =>
-      request(options, "removeVolume", {
-        method: "DELETE",
-        path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
-      }).pipe(
+    removeVolume: ((ref, expectedGeneration) =>
+      verifyExpectedIdentity({ ref, expectedGeneration, operation: "removeVolume" }).pipe(
+        Effect.zipRight(
+          request(options, "removeVolume", {
+            method: "DELETE",
+            path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
+          }),
+        ),
         Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
         Effect.mapError((cause) =>
