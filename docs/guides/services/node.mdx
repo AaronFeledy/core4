@@ -81,7 +81,36 @@ lando npm start
 lando exec app -- node server.js
 ```
 
-The default HTTP port the service exposes is `3000`.
+The default HTTP port is `3000`. Lando sets `PORT=3000` but keeps the default command idle, so it does not probe a server you have not started.
+
+Set `port:` when your app listens somewhere else. Lando uses it for the internal endpoint, the default `PORT` value, and the generated healthcheck when you also author a server `command:`:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    port: 5173
+    command: node server.mjs
+```
+
+An explicit `environment.PORT` still wins for the process environment. The endpoint and generated healthcheck continue to use `port:`, so keep those values aligned unless your command intentionally translates between them.
+
+  <Scenario id="authored-port" render>
+    <Step name="scaffold">
+      <UseFixture name="node-port" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*5173" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: node-port" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 ## Install global npm packages
 
