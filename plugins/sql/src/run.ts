@@ -175,7 +175,15 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         yield* runReset(deps.exec, target.name, target.family, creds, env);
         break;
       case "snapshot": {
-        const handle = yield* runSnapshot(deps, deps.plan, service, target.name, input.label);
+        const handle = yield* runSnapshot(
+          deps,
+          deps.plan,
+          service,
+          target.name,
+          input.label,
+          deps.start,
+          deps.stop,
+        );
         snapshotId = handle.id;
         break;
       }

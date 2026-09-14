@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import type { DataTransferResult, DataTransferSpec, SnapshotHandle } from "@lando/sdk/schema";
+import type { DataTransferResult, DataTransferSpec } from "@lando/sdk/schema";
 
 import type { SqlCommandDeps } from "../../src/run.ts";
 import type { SqlLandofile, SqlPlan } from "../../src/views.ts";
@@ -22,6 +22,7 @@ export type SqlTestOptions = {
   readonly countFails?: boolean;
   readonly execFails?: boolean;
   readonly restoreFails?: boolean;
+  readonly snapshotFails?: boolean;
   readonly startFails?: boolean;
   readonly extraServices?: ReadonlyArray<ExtraSqlService>;
   readonly storage?: ReadonlyArray<{ readonly store: string }>;
@@ -124,15 +125,16 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         transfers.push(spec);
         return { accelerated: true, sizeBytes: 12 };
       }),
-    snapshot: (store, opts) =>
-      Effect.sync((): SnapshotHandle => {
-        snapshots.push({
-          store: store.store,
-          ...(opts?.format === undefined ? {} : { format: opts.format }),
-          ...(opts?.label === undefined ? {} : { label: opts.label }),
-        });
-        return { id: opts?.label ?? `snap-${store.store}`, store };
-      }),
+    snapshot: (store, opts) => {
+      snapshots.push({
+        store: store.store,
+        ...(opts?.format === undefined ? {} : { format: opts.format }),
+        ...(opts?.label === undefined ? {} : { label: opts.label }),
+      });
+      return options.snapshotFails === true
+        ? Effect.fail(new FakeRestoreError())
+        : Effect.succeed({ id: opts?.label ?? `snap-${store.store}`, store });
+    },
     restore: () => {
       lifecycle.push("restore");
       return options.restoreFails === true ? Effect.fail(new FakeRestoreError()) : Effect.void;

@@ -192,11 +192,20 @@ export const runSnapshot = (
   plan: SqlPlan,
   service: SqlPlanService,
   name: string,
-  label?: string,
+  label: string | undefined,
+  start: (service: string) => Effect.Effect<void, unknown>,
+  stop: (service: string) => Effect.Effect<void, unknown>,
 ) =>
   Effect.gen(function* () {
     const store = yield* requireVolume(plan, service, name);
-    return yield* mover.snapshot(store, { format: "tar.gz", ...(label === undefined ? {} : { label }) });
+    yield* stop(name);
+    const snapped = yield* mover
+      .snapshot(store, { format: "tar.gz", ...(label === undefined ? {} : { label }) })
+      .pipe(Effect.exit);
+    const started = yield* start(name).pipe(Effect.either);
+    if (snapped._tag === "Failure") return yield* Effect.failCause(snapped.cause);
+    if (started._tag === "Left") return yield* Effect.fail(started.left);
+    return snapped.value;
   });
 
 export const runRestore = (

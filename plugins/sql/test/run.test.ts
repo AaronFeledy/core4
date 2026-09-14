@@ -333,6 +333,18 @@ describe("executeDbCommand", () => {
     expect(exit.value.snapshotId).toBe("before-change");
     expect(harness.snapshots()[0]?.store).toBe("sql-app_database_data");
     expect(harness.snapshots()[0]?.format).toBe("tar.gz");
+    expect(harness.lifecycle()).toEqual(["stop", "start"]);
+  });
+
+  test("starts the service after a failed snapshot", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, snapshotFails: true });
+
+    const exit = await run(harness.deps, { action: "snapshot", label: "before-change", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(exit.cause._tag === "Fail" ? exit.cause.error : undefined).toBeInstanceOf(FakeRestoreError);
+    expect(harness.lifecycle()).toEqual(["stop", "start"]);
   });
 
   test("fails restore when the service has no data volume", async () => {
