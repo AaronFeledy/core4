@@ -1130,9 +1130,16 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             : Effect.succeed({ header, sourceSize: sourceStat.size });
         }),
         Effect.flatMap(({ header, sourceSize }) => {
-          const source = Stream.fromReadableStream({
-            evaluate: () => Bun.file(spec.sourcePath).stream(),
-            onError: (cause) =>
+          const source = Stream.fromAsyncIterable(
+            (async function* () {
+              let emitted = 0;
+              for await (const chunk of Bun.file(spec.sourcePath).slice(0, sourceSize).stream()) {
+                emitted += chunk.byteLength;
+                yield chunk;
+              }
+              if (emitted !== sourceSize) throw new RangeError("Copy source changed size during upload.");
+            })(),
+            (cause) =>
               copyError(
                 options,
                 "copyToService",
@@ -1141,8 +1148,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                 cause,
                 target.service,
               ),
-            releaseLockOnEnd: true,
-          });
+          );
           const archive = Stream.concat(
             Stream.make(header),
             Stream.concat(
