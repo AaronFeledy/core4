@@ -5,11 +5,7 @@ import type {
   DestroyAppResult,
   DestroyAppError as SdkDestroyAppError,
 } from "@lando/sdk/app";
-import type {
-  ComposeKeyRejectedError,
-  LandofileLoadExpressionError,
-  StateStoreError,
-} from "@lando/sdk/errors";
+import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent, PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
@@ -20,15 +16,16 @@ import {
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
-  type RuntimeProviderShape,
   StateStore,
-  type StateStoreShape,
-  physicalVolumeLockKey,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
+import {
+  verifyActiveVolumeCoordination,
+  withPlanVolumeCoordination,
+} from "../lifecycle/volume-coordination.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
@@ -58,28 +55,7 @@ const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-const withPlanVolumeLocks = <A, E>(
-  plan: AppPlan,
-  stateStore: StateStoreShape,
-  provider: RuntimeProviderShape,
-  body: Effect.Effect<A, E>,
-) =>
-  provider.listVolumes({ app: plan.id }).pipe(
-    Effect.flatMap((volumes) => {
-      const instanceIds = Array.from(
-        new Set(volumes.flatMap((volume) => (volume.instanceId === undefined ? [] : [volume.instanceId]))),
-      ).sort();
-      const lockAll = (remaining: ReadonlyArray<string>): Effect.Effect<A, E | StateStoreError> => {
-        const [instanceId, ...rest] = remaining;
-        return instanceId === undefined
-          ? body
-          : stateStore.withLock(physicalVolumeLockKey(instanceId), lockAll(rest));
-      };
-      return lockAll(instanceIds);
-    }),
-  );
-
-export const destroyAppForTarget = (
+const destroyAppForTargetUncoordinated = (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
@@ -88,7 +64,6 @@ export const destroyAppForTarget = (
     const registry = yield* RuntimeProviderRegistry;
     const events = yield* EventService;
     const paths = yield* PathsService;
-    const stateStore = yield* StateStore;
     const proxy = yield* Effect.serviceOption(RouterService);
 
     const plan = target.plan;
@@ -125,21 +100,19 @@ export const destroyAppForTarget = (
           if (fileSyncApplicable) yield* tree.completeTask("file-sync");
 
           yield* tree.startTask("provider");
-          const destroy = provider.destroy(
-            { app: plan.id, plan },
-            {
-              volumes,
-              ...(resolvedOptions.purgeCaches === undefined
-                ? {}
-                : { purgeCaches: resolvedOptions.purgeCaches }),
-              removeState: true,
-            },
-          );
-          const providerDestroy = (
-            volumes || resolvedOptions.purgeCaches === true
-              ? withPlanVolumeLocks(plan, stateStore, provider, destroy)
-              : destroy
-          ).pipe(
+          const providerDestroy = verifyActiveVolumeCoordination(provider).pipe(
+            Effect.zipRight(
+              provider.destroy(
+                { app: plan.id, plan },
+                {
+                  volumes,
+                  ...(resolvedOptions.purgeCaches === undefined
+                    ? {}
+                    : { purgeCaches: resolvedOptions.purgeCaches }),
+                  removeState: true,
+                },
+              ),
+            ),
             Effect.ensuring(
               Effect.gen(function* () {
                 yield* tree.startTask("host-proxy");
@@ -187,6 +160,23 @@ export const destroyAppForTarget = (
         .map((service) => String(service.name)),
       volumesRemoved: volumes || resolvedOptions.purgeCaches === true,
     };
+  });
+
+export const destroyAppForTarget = (
+  options: DestroyAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
+  Effect.gen(function* () {
+    const context = yield* Effect.context<BoundDestroyAppServices>();
+    const registry = yield* RuntimeProviderRegistry;
+    const stateStore = yield* StateStore;
+    const provider = yield* registry.select(target.plan);
+    return yield* withPlanVolumeCoordination({
+      plan: target.plan,
+      provider,
+      stateStore,
+      body: () => destroyAppForTargetUncoordinated(options, target).pipe(Effect.provide(context)),
+    });
   });
 
 export const destroyApp = (
