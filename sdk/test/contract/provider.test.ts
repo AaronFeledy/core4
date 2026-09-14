@@ -164,11 +164,19 @@ describe("RuntimeProvider contract", () => {
         TestRuntimeProvider.restoreVolume({
           snapshot: { provider: "test", id: "snap-1" },
           target: { app: TEST_APP_ID, store: "data" },
+          expectedTargetGeneration: "00000000-0000-4000-8000-000000000001",
         }),
       ),
     ).toBe(true);
     expect(Effect.isEffect(TestRuntimeProvider.listVolumes({ app: TEST_APP_ID }))).toBe(true);
-    expect(Effect.isEffect(TestRuntimeProvider.removeVolume({ app: TEST_APP_ID, store: "data" }))).toBe(true);
+    expect(
+      Effect.isEffect(
+        TestRuntimeProvider.removeVolume(
+          { app: TEST_APP_ID, store: "data" },
+          "00000000-0000-4000-8000-000000000001",
+        ),
+      ),
+    ).toBe(true);
     expect(
       Effect.isEffect(
         TestRuntimeProvider.copyToService(

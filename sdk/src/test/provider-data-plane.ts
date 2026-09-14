@@ -223,6 +223,13 @@ export const runProviderDataPlaneContract = (
           mapProviderOrContractFailure("volume import via EphemeralRunSpec.stdinStream succeeds"),
         ),
       );
+      const targetVolumes = yield* provider
+        .listVolumes({ app: TEST_APP_ID, store })
+        .pipe(Effect.mapError(mapProviderFailure("listVolumes succeeds")));
+      const targetGeneration = targetVolumes.find((volume) => volume.ref.store === store)?.instanceId;
+      if (targetGeneration === undefined) {
+        return yield* contractFailure("created data-plane volume has a generation", targetVolumes);
+      }
       const exportedVolume = yield* readMountedVolume(provider, store).pipe(
         Effect.mapError(mapProviderFailure("volume export via runStream succeeds")),
       );
@@ -264,6 +271,7 @@ export const runProviderDataPlaneContract = (
         .restoreVolume({
           snapshot,
           target: { app: TEST_APP_ID, store },
+          expectedTargetGeneration: targetGeneration,
           overwrite: true,
         })
         .pipe(Effect.mapError(mapProviderFailure("restoreVolume succeeds")));
@@ -340,8 +348,22 @@ const storageScopeFromKey = (scope: string | undefined): StorageScope | undefine
 const volumeRef = (app: AppId, store: string, scope?: StorageScope | undefined): VolumeRef =>
   scope === undefined ? { app, store } : { app, store, scope };
 
-const volumeInfo = (ref: VolumeRef, labels?: Readonly<Record<string, string>> | undefined): VolumeInfo =>
-  labels === undefined ? { ref } : { ref, labels };
+const testVolumeGeneration = "00000000-0000-4000-8000-000000000001";
+const testVolumeRoot = AbsolutePath.make("/tmp/lando-sdk-test");
+
+const volumeInfo = (ref: VolumeRef, labels?: Readonly<Record<string, string>> | undefined): VolumeInfo => ({
+  ref,
+  instanceId: testVolumeGeneration,
+  provenance: "known",
+  identity: {
+    coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
+    nativeName: ref.store,
+    generation: testVolumeGeneration,
+    ownerRoot: testVolumeRoot,
+    origin: "created",
+  },
+  ...(labels === undefined ? {} : { labels }),
+});
 
 const collectAsyncBytes = (input: AsyncIterable<Uint8Array> | undefined): Effect.Effect<Uint8Array> =>
   Effect.promise(async () => {
@@ -572,6 +594,12 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
               filter.labels,
             ),
           ];
+    }),
+  locateVolume: (ref) =>
+    Effect.succeed({
+      coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
+      nativeName: ref.store,
+      identity: volumeInfo(ref).identity,
     }),
   removeVolume: (ref) =>
     Effect.sync(() => {

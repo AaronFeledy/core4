@@ -189,6 +189,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
         provider.restoreVolume({
           snapshot: { provider: provider.id, id: "snapshot-1" },
           target: { app: TEST_APP_ID, store: "data" },
+          expectedTargetGeneration: "00000000-0000-4000-8000-000000000001",
         }),
       ),
       "restoreVolume is Effect-typed",
@@ -208,7 +209,9 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       provider.removeVolume,
     );
     yield* requireContract(
-      Effect.isEffect(provider.removeVolume({ app: TEST_APP_ID, store: "data" })),
+      Effect.isEffect(
+        provider.removeVolume({ app: TEST_APP_ID, store: "data" }, "00000000-0000-4000-8000-000000000001"),
+      ),
       "removeVolume is Effect-typed",
     );
     yield* requireContract(
