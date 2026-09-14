@@ -8,6 +8,7 @@ export interface InstalledPluginRegistryEntry {
   readonly name: string;
   readonly version: string;
   readonly path: string;
+  readonly requestedSelector?: string | undefined;
   readonly source?: "installed" | "linked" | undefined;
   readonly linkedPath?: string | undefined;
 }
@@ -32,6 +33,7 @@ const InstalledPluginRegistryEntryShape = Schema.Struct({
   name: Schema.String,
   version: Schema.String,
   path: Schema.String,
+  requestedSelector: Schema.optional(Schema.String),
   source: Schema.optional(Schema.Literal("installed", "linked")),
   linkedPath: Schema.optional(Schema.String),
 });

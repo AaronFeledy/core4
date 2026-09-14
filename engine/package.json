@@ -97,6 +97,7 @@
     "./plugins/installed-plugin-loader": "./src/plugins/installed-plugin-loader.ts",
     "./plugins/installed-registry": "./src/plugins/installed-registry.ts",
     "./plugins/module-set": "./src/plugins/module-set.ts",
+    "./plugins/mutation-lock": "./src/plugins/mutation-lock.ts",
     "./plugins/plugin-discovery": "./src/plugins/plugin-discovery.ts",
     "./plugins/registry": "./src/plugins/registry.ts",
     "./plugins/setup-flags": "./src/plugins/setup-flags.ts",
