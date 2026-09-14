@@ -63,7 +63,7 @@ describe("MySQL PHP client selection", () => {
   test("Given a custom MySQL image and explicit PHP client, when planning, then it preserves both choices", async () => {
     const appPlan = await planMysqlApp({
       [ServiceName.make("app")]: { type: "php:8.3", db_client: "mysql:9.7" },
-      [ServiceName.make("db")]: { type: "mysql", image: "example/mysql-custom@sha256:deadbeef" },
+      [ServiceName.make("db")]: { type: "mysql", image: "example/mysql-custom@sha256:deadbeef", home: false },
     });
     const app = appPlan.services[ServiceName.make("app")];
     const db = appPlan.services[ServiceName.make("db")];
@@ -80,7 +80,7 @@ describe("MySQL PHP client selection", () => {
   test("Given a custom MySQL image and PHP auto selection, when planning, then it requires explicit compatibility", async () => {
     const planned = planMysqlApp({
       [ServiceName.make("app")]: { type: "php:8.3" },
-      [ServiceName.make("db")]: { type: "mysql", image: "example/mysql-custom@sha256:deadbeef" },
+      [ServiceName.make("db")]: { type: "mysql", image: "example/mysql-custom@sha256:deadbeef", home: false },
     });
 
     await expectRejects(planned, /unknown MySQL client compatibility.*db_client/i);

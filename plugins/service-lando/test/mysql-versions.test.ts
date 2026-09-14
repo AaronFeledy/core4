@@ -62,7 +62,9 @@ describe("MySQL managed versions", () => {
     expect(analyticsStore).not.toContain("9.7");
     expect(appPlan.stores.map((store) => store.name)).toEqual([
       "mysql-versions-db-mysql-data",
+      "lando-mysql-versions-db-home",
       "mysql-versions-analytics-mysql-data",
+      "lando-mysql-versions-analytics-home",
     ]);
   });
 
