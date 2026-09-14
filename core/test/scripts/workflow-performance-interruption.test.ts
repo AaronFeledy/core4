@@ -122,7 +122,8 @@ test("retains interrupted prep and attempts every owned cleanup with independent
       "cleanup:runtime",
     ]);
     const root = commands[0]?.env.LANDO_USER_DATA_ROOT;
-    expect(root?.startsWith(join(rootDir, "samples"))).toBe(true);
+    expect(root).toBeTruthy();
+    expect(Buffer.byteLength(join(root ?? "", "runtime/run/podman.sock"))).toBeLessThan(108);
     for (const command of commands) {
       if (command.id.startsWith("cleanup:")) {
         expect(command.signal).toBeUndefined();

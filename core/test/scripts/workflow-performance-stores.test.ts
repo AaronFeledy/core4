@@ -14,6 +14,7 @@ test.each([false, true])(
     const lane = buildWorkflowPerformancePlan({ runId: "stores" }).lanes[0];
     if (lane === undefined) throw new Error("missing lane");
     let runtimeRoot = "";
+    let dataRoot = "";
     let store = "";
     const evidence = join(rootDir, "report.log");
     await writeFile(evidence, "retained");
@@ -28,7 +29,8 @@ test.each([false, true])(
         sampleTimeoutMs: 0,
         runCommand: async (command) => {
           runtimeRoot = command.env.XDG_RUNTIME_DIR ?? "";
-          store = join(command.env.LANDO_USER_DATA_ROOT ?? "", "runtime", "storage");
+          dataRoot = command.env.LANDO_USER_DATA_ROOT ?? "";
+          store = join(dataRoot, "runtime", "storage");
           if (command.id !== "cleanup:storage-helpers") {
             await mkdir(store, { recursive: true });
             await writeFile(join(store, "owned-image"), "image");
@@ -56,6 +58,7 @@ test.each([false, true])(
     } finally {
       await rm(rootDir, { recursive: true, force: true });
       if (runtimeRoot) await rm(runtimeRoot, { recursive: true, force: true });
+      if (dataRoot) await rm(dataRoot, { recursive: true, force: true });
     }
   },
 );
@@ -86,7 +89,9 @@ test("releases runtime store when fixture staging throws after acquisition", asy
     if (!("sample" in result)) throw new Error("unexpected skip");
     expect(result.sample.outcome).toBe("failed");
     expect(result.sample.steps.some((step) => step.id === "prepare:failure")).toBe(true);
-    const leaked = (await readdir(tmpdir())).filter((name) => name.startsWith("lp-") && !before.has(name));
+    const leaked = (await readdir(tmpdir())).filter(
+      (name) => (name.startsWith("lp-") || name.startsWith("ld-")) && !before.has(name),
+    );
     expect(leaked).toEqual([]);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
