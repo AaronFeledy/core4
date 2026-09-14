@@ -167,7 +167,7 @@ export const checkPackageTestEdges = async (
       context.report(
         violation.file,
         violation.line,
-        `[PackageDagForbiddenTestEdge] ${violation.owner} test -> ${violation.specifier}. Remediation: ${violation.target} is above ${violation.owner} in the workspace DAG; import the owning package's testing subpath (for example @lando/engine/testing/*) or declare ${violation.target} in ${violation.owner}'s dependencies/devDependencies policy in WORKSPACE_EDGE_TABLE.`,
+        `[PackageDagForbiddenTestEdge] ${violation.owner} test -> ${violation.specifier}. Remediation: ${violation.target} is not an allowed test-tier target for ${violation.owner}. Move the test to ${violation.target}/test, import the owning package's testing subpath (for example @lando/engine/testing/*), or document a pre-existing test-only inversion with a commented testTargets override; do not add an upward dependency solely to make a test pass.`,
       );
       continue;
     }

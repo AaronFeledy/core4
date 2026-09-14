@@ -79,7 +79,7 @@ describe("check-package-dag test-tier policy", () => {
 
     // Then
     expect(result.stdout).toContain(
-      "plugins/provider-lando/test/core.test.ts:1: [PackageDagForbiddenTestEdge] @lando/provider-lando test -> @lando/core/testing. Remediation: @lando/core is above @lando/provider-lando in the workspace DAG; import the owning package's testing subpath (for example @lando/engine/testing/*) or declare @lando/core in @lando/provider-lando's dependencies/devDependencies policy in WORKSPACE_EDGE_TABLE.",
+      "plugins/provider-lando/test/core.test.ts:1: [PackageDagForbiddenTestEdge] @lando/provider-lando test -> @lando/core/testing. Remediation: @lando/core is not an allowed test-tier target for @lando/provider-lando. Move the test to @lando/core/test, import the owning package's testing subpath (for example @lando/engine/testing/*), or document a pre-existing test-only inversion with a commented testTargets override; do not add an upward dependency solely to make a test pass.",
     );
   });
 
