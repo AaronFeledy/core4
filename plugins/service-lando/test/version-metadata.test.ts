@@ -5,12 +5,21 @@ import { serviceTypeVersionMatrices } from "../../../scripts/build-service-type-
 import { serviceTypes } from "../src/index.ts";
 
 const EXPECTED_OWNED_MATRICES = {
+  dotnet: {
+    "8.0": "mcr.microsoft.com/dotnet/sdk:8.0",
+    "9.0": "mcr.microsoft.com/dotnet/sdk:9.0",
+  },
   elasticsearch: { "8": "docker.elastic.co/elasticsearch/elasticsearch:8.17.0" },
   go: { "1.22": "golang:1.22", "1.23": "golang:1.23" },
   mariadb: { "11.4": "mariadb:11.4" },
   meilisearch: { "1": "getmeili/meilisearch:v1.11" },
   mongodb: { "7": "mongo:7" },
+  mssql: {
+    "2019": "mcr.microsoft.com/mssql/server:2019-latest",
+    "2022": "mcr.microsoft.com/mssql/server:2022-latest",
+  },
   mysql: { "8.0": "mysql:8.0" },
+  node: { lts: "node:lts", "22": "node:22" },
   opensearch: { "2": "opensearchproject/opensearch:2" },
   php: {
     "8.1": "php:8.1-apache-bookworm",
@@ -19,20 +28,24 @@ const EXPECTED_OWNED_MATRICES = {
     "8.4": "php:8.4-apache-bookworm",
     "8.5": "php:8.5-apache-bookworm",
   },
+  phpmyadmin: { "5": "phpmyadmin:5", latest: "phpmyadmin:latest" },
   postgres: { "16": "postgres:16" },
   python: { "3.12": "python:3.12-slim" },
+  rabbitmq: { "3": "rabbitmq:3-management", "4": "rabbitmq:4-management" },
   redis: { "7": "redis:7" },
   ruby: { "3.3": "ruby:3.3-slim" },
   solr: { "9": "solr:9" },
+  tomcat: { "9": "tomcat:9-jre21", "10": "tomcat:10-jre21", "11": "tomcat:11-jre21" },
+  varnish: { "6": "varnish:6", "7": "varnish:7" },
 } as const;
 
 describe("canonical ServiceType version metadata", () => {
   test("publishes the owned shipped version matrix with complete artifact pins", () => {
-    const matrices = new Map(serviceTypeVersionMatrices().map((matrix) => [matrix.family, matrix.artifacts]));
+    const published = Object.fromEntries(
+      serviceTypeVersionMatrices().map((matrix) => [matrix.family, matrix.artifacts]),
+    );
 
-    for (const [family, artifacts] of Object.entries(EXPECTED_OWNED_MATRICES)) {
-      expect(matrices.get(family)).toEqual(artifacts);
-    }
+    expect(published).toEqual(EXPECTED_OWNED_MATRICES);
   });
 
   test("keeps every registered variant in a family on one canonical matrix", () => {

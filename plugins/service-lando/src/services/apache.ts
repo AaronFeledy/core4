@@ -42,7 +42,7 @@ const apacheConfigPath = (webroot: string): string => {
   return webroot.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 };
 
-export const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
+const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
   const path = apacheConfigPath(webroot);
   return [
     "sh",
