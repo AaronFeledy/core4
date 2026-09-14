@@ -18,6 +18,8 @@ import {
   applyAuthoredDependencies,
   applyAuthoredHealthcheck,
 } from "../planner/authored.ts";
+import { attachEffectiveEvents, effectiveEventsForPlan } from "../planner/effective-events.ts";
+import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { FILE_SYNC_DEFAULT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
@@ -58,7 +60,16 @@ export const AppPlannerLive = Layer.effect(
               Option.getOrUndefined(certificateAuthorityResolver),
               landofile,
               providerCapabilities,
-            ).pipe(Effect.map((plan) => ({ ...plan, identity }))),
+            ).pipe(
+              Effect.map((plan) => {
+                const identified = { ...plan, identity };
+                const tooling = effectiveToolingForPlan(plan);
+                const events = effectiveEventsForPlan(plan);
+                if (tooling !== undefined) attachEffectiveTooling(identified, tooling);
+                if (events !== undefined) attachEffectiveEvents(identified, events);
+                return identified;
+              }),
+            ),
           ),
         ),
     } satisfies Context.Tag.Service<typeof AppPlanner>;
