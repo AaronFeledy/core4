@@ -3,6 +3,14 @@ import { describe, expect, test } from "bun:test";
 import { toSqlPlan } from "../src/views.ts";
 
 describe("toSqlPlan", () => {
+  test("preserves storage destinations when projecting a service", () => {
+    const storage = [
+      { store: "home", target: "/home/lando" },
+      { store: "data", target: "/var/lib/mysql" },
+    ];
+    const plan = toSqlPlan({ services: { database: { type: "mysql", storage } } });
+    expect(plan.services.database?.storage).toEqual(storage);
+  });
   test("retains planner-owned app identity", () => {
     // Given: a planned app with canonical owner and repository-group identity.
     const planned = {

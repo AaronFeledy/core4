@@ -15,7 +15,7 @@ export type SqlPlanService = {
   readonly type: string;
   readonly version?: string;
   readonly environment: Readonly<Record<string, string>>;
-  readonly storage: ReadonlyArray<{ readonly store: string }>;
+  readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
 };
 
 export type SqlPlan = {
@@ -103,7 +103,8 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
     const storage = Array.isArray(service.storage)
       ? service.storage.flatMap((entry) => {
           if (!isRecord(entry) || typeof entry.store !== "string") return [];
-          return [{ store: entry.store }];
+          const target = asString(entry.target);
+          return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
         })
       : [];
     const artifact = isRecord(service.artifact) ? service.artifact : undefined;
