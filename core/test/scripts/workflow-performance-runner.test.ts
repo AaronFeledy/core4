@@ -103,7 +103,7 @@ describe("workflow performance runner", () => {
         runCommand: async (command) => ({
           id: command.id,
           durationMs: 12,
-          exitCode: command.id === failureId ? 9 : 0,
+          exitCode: command.id === failureId && command.cwd.includes("drupal-journey") ? 9 : 0,
           stdout: "file-sync: unavailable (userDataRoot is not configured)",
           stderr: command.id === failureId ? "command failed" : "",
         }),
@@ -136,6 +136,8 @@ describe("workflow performance runner", () => {
 
     expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(1);
     expect(report.lanes[0]?.statistics).toBeUndefined();
+    expect(report.status).toBe("failed");
+    expect(report.lanes).toHaveLength(1);
     expect(report.lanes[0]?.samples[0]?.steps.at(-1)).toMatchObject({
       id: "cleanup:destroy",
       exitCode: 9,

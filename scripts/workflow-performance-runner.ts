@@ -172,6 +172,11 @@ export const runWorkflowPerformance = async (
         samples.push(result.sample);
         lanes[laneIndex] = laneReport(lane, samples);
         await persist();
+        if (result.sample.steps.some((step) => step.id.startsWith("cleanup:") && step.exitCode !== 0)) {
+          status = options.signal?.aborted ? "interrupted" : "failed";
+          failure = "Sample cleanup failed; stopped before acquiring further resources.";
+          return await persist();
+        }
       }
       lanes[laneIndex] = laneReport(lane, samples, skipReason);
     }
