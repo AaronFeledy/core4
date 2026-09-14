@@ -1,8 +1,6 @@
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { findLandofilePath } from "@lando/landofile/discovery";
-import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
-import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
@@ -200,11 +198,9 @@ export const planApp = (
     const fileSyncEngineId =
       providerCapabilities.bindMountPerformance === "slow" ? resolveFileSyncEngineId(manifests) : undefined;
     const cacheRoot = resolveUserCacheRoot();
-    const sourceFingerprint = yield* readAppPlanSourceFingerprint(
-      appRoot,
-      getLandofileReferencedFiles(landofile),
-      getLandofileIncludeSources(landofile),
-    ).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
+      Effect.catchAll(() => Effect.succeed(undefined)),
+    );
     const registeredServiceTypeIds = manifests.flatMap((manifest) =>
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     );

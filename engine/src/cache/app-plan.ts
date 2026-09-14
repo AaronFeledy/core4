@@ -14,9 +14,12 @@ import {
 } from "@lando/sdk/schema";
 import { CacheService } from "@lando/sdk/services";
 
-import type { LandofileIncludeSource } from "@lando/landofile/include-provenance";
+import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
+import {
+  type LandofileReferencedFile,
+  getLandofileReferencedFiles,
+} from "@lando/landofile/load-expression-provenance";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
@@ -113,8 +116,7 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
-  referencedFiles: ReadonlyArray<LandofileReferencedFile> = [],
-  includeSources: ReadonlyArray<LandofileIncludeSource> = [],
+  landofile?: LandofileShape,
 ): Effect.Effect<AppPlanSourceFingerprint, CacheError> =>
   Effect.tryPromise({
     try: async () => {
@@ -129,8 +131,8 @@ export const readAppPlanSourceFingerprint = (
         ),
         includeLockfileHash: await readOptionalHash(includeLockfilePath),
         includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
-        referencedFiles,
-        includeSources,
+        referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
+        includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
       };
     },
     catch: (cause) =>
