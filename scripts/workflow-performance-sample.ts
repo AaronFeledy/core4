@@ -58,10 +58,6 @@ const prepareSample = async (
     mkdir(journey ? appParent : appRoot, { recursive: true }),
     mkdir(runtimeRoot, { recursive: true, mode: 0o700 }),
   ]);
-  await writeFile(
-    storageConfig,
-    `[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "${join(dataRoot, "runtime/bin/fuse-overlayfs")}"\n`,
-  );
   const env = {
     ...process.env,
     BUN_BE_BUN: undefined,
@@ -77,8 +73,12 @@ const prepareSample = async (
     XDG_RUNTIME_DIR: runtimeRoot,
   };
   const cwd = journey ? appParent : appRoot;
-  if (!journey) await writeFile(join(appRoot, ".lando.yml"), landofileFor(lane.id, key));
   acquired({ appRoot, env, fileSyncEvidence: "" });
+  await writeFile(
+    storageConfig,
+    `[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "${join(dataRoot, "runtime/bin/fuse-overlayfs")}"\n`,
+  );
+  if (!journey) await writeFile(join(appRoot, ".lando.yml"), landofileFor(lane.id, key));
   let fixturePath: string | undefined;
   if (input.fixturePath !== undefined) {
     const contents = await readFile(input.fixturePath);
@@ -175,25 +175,33 @@ export const runWorkflowPerformanceSample = async (
   const stores = await acquirePerformanceStores(input.rootDir, input.key);
   const runCommand = workflowPerformanceDeadlineRunner(input);
   let acquired: PreparedSample | undefined;
-  const prepared = await prepareSample(
-    { ...input, rootDir: join(stores.sampleRoot, "../.."), runCommand },
-    (sample) => {
-      acquired = sample;
-    },
-    stores.runtimeRoot,
-  ).catch((cause: unknown) => {
-    if (acquired === undefined) throw cause;
-    return {
-      ...acquired,
-      failure: {
-        id: "prepare:failure",
-        durationMs: 0,
-        exitCode: 1,
-        stdout: "",
-        stderr: boundedPerformanceEvidence(cause instanceof Error ? cause.message : String(cause)),
+  let prepared: PreparedSample;
+  try {
+    prepared = await prepareSample(
+      { ...input, rootDir: join(stores.sampleRoot, "../.."), runCommand },
+      (sample) => {
+        acquired = sample;
       },
-    };
-  });
+      stores.runtimeRoot,
+    ).catch((cause: unknown) => {
+      if (acquired === undefined) throw cause;
+      return {
+        ...acquired,
+        failure: {
+          id: "prepare:failure",
+          durationMs: 0,
+          exitCode: 1,
+          stdout: "",
+          stderr: boundedPerformanceEvidence(cause instanceof Error ? cause.message : String(cause)),
+        },
+      };
+    });
+  } catch (cause) {
+    await stores
+      .release(input.runCommand, performanceCommand("cleanup:storage", [], stores.sampleRoot, {}))
+      .catch(() => undefined);
+    throw cause;
+  }
   if (prepared.skipReason !== undefined) {
     const failures = await cleanupWorkflowPerformanceSample(
       { binary: input.binary, ...prepared, setupOnly: true, stores },

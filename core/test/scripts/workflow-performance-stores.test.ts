@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildWorkflowPerformancePlan } from "../../../scripts/workflow-performance-plan.ts";
@@ -59,3 +59,36 @@ test.each([false, true])(
     }
   },
 );
+
+test("releases runtime store when fixture staging throws after acquisition", async () => {
+  const rootDir = await mkdtemp(join(tmpdir(), "perf-stores-"));
+  const lane = buildWorkflowPerformancePlan({ runId: "stores" }).lanes.find(
+    (candidate) => candidate.id === "mysql-import",
+  );
+  if (lane === undefined) throw new Error("missing lane");
+  const before = new Set(await readdir(tmpdir()));
+  try {
+    const result = await runWorkflowPerformanceSample({
+      lane,
+      binary: "/lando",
+      rootDir,
+      key: "stores",
+      index: 0,
+      fixturePath: join(rootDir, "missing.sql"),
+      runCommand: async (command) => ({
+        id: command.id,
+        durationMs: 0,
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+      }),
+    });
+    if (!("sample" in result)) throw new Error("unexpected skip");
+    expect(result.sample.outcome).toBe("failed");
+    expect(result.sample.steps.some((step) => step.id === "prepare:failure")).toBe(true);
+    const leaked = (await readdir(tmpdir())).filter((name) => name.startsWith("lp-") && !before.has(name));
+    expect(leaked).toEqual([]);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
