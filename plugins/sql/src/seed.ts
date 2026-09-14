@@ -53,18 +53,12 @@ export const executeSeed = (
       Effect.gen(function* () {
         if (!(yield* state.begin(operationId))) return yield* Effect.fail(reject("in-progress"));
         const seeded = Effect.gen(function* () {
-          const current = (yield* deps.inspectVolume(input.service, input.store.store))?.identity;
-          if (
-            !current ||
-            current.coordinationKey !== identity.coordinationKey ||
-            current.generation !== identity.generation ||
-            current.ownerRoot !== identity.ownerRoot
-          )
-            return yield* Effect.fail(reject("unknown"));
+          yield* context.verifyVolume;
           return yield* seedSnapshotId === undefined
             ? runImport(deps, deps.exec, input)
             : Effect.gen(function* () {
                 if (context.running) yield* deps.stop(input.service);
+                yield* context.verifyVolume;
                 yield* deps.restore(seedSnapshotId, { ...input.store, store: identity.nativeName });
                 if (context.running) yield* deps.start(input.service);
                 return undefined;

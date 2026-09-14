@@ -3,7 +3,7 @@ import { Effect } from "effect";
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
 import { SqlRecoveryUnavailableError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
-import { AppId, type DataTransferResult, type SnapshotInfo } from "@lando/sdk/schema";
+import type { DataTransferResult, SnapshotInfo } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import { hostFile, parseCount, secretTokens } from "./command-input.ts";
@@ -219,10 +219,8 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
             "restore",
             (context) =>
               Effect.gen(function* () {
-                yield* deps.restore(snapshotId ?? "", {
-                  app: AppId.make(deps.plan.id),
-                  store: store?.store ?? "",
-                });
+                yield* context.verifyVolume;
+                yield* deps.restore(snapshotId ?? "", context.volume);
                 if (context.running) yield* startDatabase(target.name);
               }),
             false,
@@ -240,7 +238,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
           body: (context) =>
             executeSeed({ ...deps, start: startDatabase }, context, {
               ...io,
-              store: store ?? { app: AppId.make(deps.plan.id), store: "" },
+              store: context.volume,
               ...(input.snapshotId === undefined ? {} : { snapshotId: input.snapshotId }),
             }),
         });

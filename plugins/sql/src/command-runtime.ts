@@ -3,7 +3,7 @@ import { realpath } from "node:fs/promises";
 import { Effect } from "effect";
 
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
   DataMover,
@@ -78,15 +78,15 @@ export const runDbCommand = (input: DbCommandInput) =>
                   ...(info.imageIdentity === undefined ? {} : { imageIdentity: info.imageIdentity }),
                 })),
               ),
-          inspectVolume: (service, store) => {
+          inspectVolume: (service, store, destination) => {
             const mount = planned.services[ServiceName.make(service)]?.storage.find(
-              (entry) => entry.store === store,
+              (entry) => entry.store === store && (destination === undefined || entry.target === destination),
             );
             return mount === undefined || provider.observeVolume === undefined
               ? Effect.succeed(undefined)
               : provider.observeVolume(
                   { app: planned.id, service: ServiceName.make(service), plan: planned },
-                  mount.target,
+                  PortablePath.make(destination ?? mount.target),
                 );
           },
           withVolumeLock: (instanceId, body) => stateStore.withLock(physicalVolumeLockKey(instanceId), body),

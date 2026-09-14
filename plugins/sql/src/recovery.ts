@@ -1,13 +1,20 @@
 import { Effect } from "effect";
 
 import { SqlRecoveryOperationError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, ServiceName, type SnapshotMetadata, type VolumeInfo } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  ServiceName,
+  type SnapshotMetadata,
+  type VolumeInfo,
+  type VolumeRef,
+} from "@lando/sdk/schema";
 import type { VolumeIdentity } from "@lando/sdk/schema";
 import type { VolumeInitialization } from "@lando/sdk/services";
 
-import { type SqlMover, runSnapshot } from "./actions.ts";
+import type { SqlMover } from "./actions.ts";
 import type { SqlFamily } from "./families.ts";
 import type { SqlPlan, SqlPlanService } from "./views.ts";
+import { requireDatabaseMount } from "./volume-target.ts";
 
 export type SqlRecoveryDeps = SqlMover & {
   readonly start: (service: string) => Effect.Effect<void, unknown>;
@@ -15,7 +22,11 @@ export type SqlRecoveryDeps = SqlMover & {
   readonly inspect: (
     service: string,
   ) => Effect.Effect<{ readonly running: boolean; readonly imageIdentity?: string }, unknown>;
-  readonly inspectVolume: (service: string, store: string) => Effect.Effect<VolumeInfo | undefined, unknown>;
+  readonly inspectVolume: (
+    service: string,
+    store: string,
+    destination?: string,
+  ) => Effect.Effect<VolumeInfo | undefined, unknown>;
   readonly withVolumeLock: <A, E>(
     instanceId: string,
     body: Effect.Effect<A, E>,
@@ -26,7 +37,9 @@ export type SqlRecoveryDeps = SqlMover & {
 export type SqlRecoveryContext = {
   readonly running: boolean;
   readonly metadata: SnapshotMetadata;
-  readonly volumeIdentity?: VolumeIdentity;
+  readonly volumeIdentity: VolumeIdentity;
+  readonly volume: VolumeRef;
+  readonly verifyVolume: Effect.Effect<void, unknown>;
 };
 
 type SqlPhysicalContextInput = Omit<
@@ -50,16 +63,16 @@ type SqlPhysicalOperation<A, E> = {
 
 const resolvePhysicalContext = (input: SqlPhysicalContextInput) =>
   Effect.gen(function* () {
-    const storeName = input.service.storage[0]?.store;
-    const volume =
-      storeName === undefined ? undefined : yield* input.deps.inspectVolume(input.serviceName, storeName);
+    const mount = yield* requireDatabaseMount(input.service, input.plan.id);
+    const volume = yield* input.deps.inspectVolume(input.serviceName, mount.store, mount.target);
     const runtime = yield* input.deps.inspect(input.serviceName);
     const imageIdentity = runtime.imageIdentity;
     const separator = input.service.type.indexOf(":");
     const version = input.service.version ?? (separator < 0 ? "" : input.service.type.slice(separator + 1));
     if (
-      volume?.provenance !== "known" ||
-      volume.instanceId === undefined ||
+      volume?.identity === undefined ||
+      volume.identity.ownerRoot !== input.plan.root ||
+      volume.identity.nativeName !== volume.ref.store ||
       imageIdentity === undefined ||
       version.length === 0
     ) {
@@ -72,9 +85,32 @@ const resolvePhysicalContext = (input: SqlPhysicalContextInput) =>
         }),
       );
     }
+    const identity = volume.identity;
+    const verifyVolume = Effect.suspend(() =>
+      input.deps.inspectVolume(input.serviceName, mount.store, mount.target),
+    ).pipe(
+      Effect.flatMap((current) =>
+        current?.identity?.coordinationKey === identity.coordinationKey &&
+        current.identity.generation === identity.generation &&
+        current.identity.ownerRoot === identity.ownerRoot &&
+        current.identity.nativeName === identity.nativeName &&
+        current.ref.store === volume.ref.store
+          ? Effect.void
+          : Effect.fail(
+              new SqlRecoveryUnavailableError({
+                message: `The mounted database volume for ${input.serviceName} changed.`,
+                service: input.serviceName,
+                reason: "The current mount does not match the locked physical target.",
+                remediation: "Leave the database stopped and inspect its mounts before retrying recovery.",
+              }),
+            ),
+      ),
+    );
     return {
       running: runtime.running,
-      ...(volume.identity === undefined ? {} : { volumeIdentity: volume.identity }),
+      volume: volume.ref,
+      verifyVolume,
+      volumeIdentity: identity,
       metadata: {
         sourceRoot: AbsolutePath.make(input.plan.root),
         ...(input.plan.identity?.ownerKey === undefined ? {} : { ownerKey: input.plan.identity.ownerKey }),
@@ -82,7 +118,7 @@ const resolvePhysicalContext = (input: SqlPhysicalContextInput) =>
           ? {}
           : { repoGroupKey: input.plan.identity.repoGroupKey }),
         service: ServiceName.make(input.serviceName),
-        volumeInstanceId: volume.instanceId,
+        volumeInstanceId: identity.generation,
         family: input.family,
         version,
         imageIdentity,
@@ -99,14 +135,16 @@ export const withPhysicalVolumeLock = <A, E>(
   resolvePhysicalContext(input).pipe(
     Effect.flatMap((context) =>
       input.deps.withVolumeLock(
-        context.volumeIdentity?.coordinationKey ?? context.metadata.volumeInstanceId,
+        context.volumeIdentity.coordinationKey,
         resolvePhysicalContext(input).pipe(
           Effect.flatMap(
             (lockedContext): Effect.Effect<A, E | SqlRecoveryUnavailableError> =>
               lockedContext.metadata.volumeInstanceId === context.metadata.volumeInstanceId &&
-              lockedContext.volumeIdentity?.coordinationKey === context.volumeIdentity?.coordinationKey &&
-              lockedContext.volumeIdentity?.generation === context.volumeIdentity?.generation &&
-              lockedContext.volumeIdentity?.ownerRoot === context.volumeIdentity?.ownerRoot
+              lockedContext.volumeIdentity.coordinationKey === context.volumeIdentity.coordinationKey &&
+              lockedContext.volumeIdentity.generation === context.volumeIdentity.generation &&
+              lockedContext.volumeIdentity.ownerRoot === context.volumeIdentity.ownerRoot &&
+              lockedContext.volume.store === context.volume.store &&
+              lockedContext.volumeIdentity.nativeName === context.volumeIdentity.nativeName
                 ? Effect.suspend(() => input.body(lockedContext))
                 : Effect.fail(
                     new SqlRecoveryUnavailableError({
@@ -134,15 +172,12 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
       Effect.gen(function* () {
         if (input.preflight !== undefined) yield* input.preflight(context);
         if (context.running) yield* input.deps.stop(input.serviceName);
-        const recovery = yield* runSnapshot(
-          input.deps,
-          input.plan,
-          input.service,
-          input.serviceName,
-          input.label,
-          { ...context.metadata, recoveryReason: input.reason },
-          input.format,
-        );
+        yield* context.verifyVolume;
+        const recovery = yield* input.deps.snapshot(context.volume, {
+          format: input.format ?? "tar.gz",
+          ...(input.label === undefined ? {} : { label: input.label }),
+          metadata: { ...context.metadata, recoveryReason: input.reason },
+        });
         if (input.resumeAfterSnapshot && context.running) yield* input.deps.start(input.serviceName);
         return yield* input.body(context, recovery.id).pipe(
           Effect.mapError((cause) =>
