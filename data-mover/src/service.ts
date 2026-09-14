@@ -52,6 +52,7 @@ import {
 import { execStdoutStream } from "./exec-stream.ts";
 import { providerImages } from "./generated/provider-images.ts";
 import { stageVerifiedStream } from "./staged-stream.ts";
+import { sharedVolumeInitialization } from "./volume-initialization.ts";
 
 interface DataMoverEvents {
   readonly redactText: (text: string) => string;
@@ -1225,6 +1226,7 @@ export const makeDataMoverService = (
   events: DataMoverEvents,
   persistence: SnapshotPersistence,
 ): Context.Tag.Service<typeof DataMover> => ({
+  volumeInitialization: (identity) => sharedVolumeInitialization(persistence.stateStore, identity),
   transfer: (spec) => {
     const startedAt = Date.now();
     const fromEndpoint = events.redactText(endpointName(spec.from));
@@ -1563,6 +1565,7 @@ export const DataMoverLive: Layer.Layer<
         );
       return {
         transfer: (spec) => service().pipe(Effect.flatMap((mover) => mover.transfer(spec))),
+        volumeInitialization: (identity) => sharedVolumeInitialization(stateStore, identity),
         transferStream: (spec) =>
           Stream.unwrap(service().pipe(Effect.map((mover) => mover.transferStream(spec)))),
         snapshot: (store, opts) => service().pipe(Effect.flatMap((mover) => mover.snapshot(store, opts))),

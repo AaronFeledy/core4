@@ -53,8 +53,14 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [],
   },
   "@lando/data-mover": {
-    dependencies: ["@lando/sdk", "@lando/paths", "@lando/landofile", "@lando/redaction"],
-    devDependencies: ["@lando/state-store"],
+    dependencies: [
+      "@lando/sdk",
+      "@lando/paths",
+      "@lando/landofile",
+      "@lando/redaction",
+      "@lando/state-store",
+    ],
+    devDependencies: [],
   },
   "@lando/telemetry": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/renderer": {
