@@ -281,17 +281,35 @@ describe("ci workflow", () => {
     const arm = findIndentedBlock(jobs, "mysql-arm-client-linux-arm64", 2);
 
     expect(arm).toContain("    runs-on: ubuntu-24.04-arm");
-    expect(arm).toContain("    timeout-minutes: 90");
+    expect(arm).toContain("    timeout-minutes: 120");
+    expect(arm).toContain("      - name: Setup Go for Linux Podman source build");
+    expect(arm).toContain("      - name: Setup Rust for Linux helper source builds");
+    expect(arm).toContain("      - name: Assemble current-commit linux-arm64 runtime bundle");
+    expect(arm).toContain("        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
+    expect(arm).toContain("      - name: Report current-commit ARM runtime bundle fingerprints");
+    expect(arm).toContain("          name: runtime-bundle-linux-arm64-current");
+    expect(arm).toContain("      - name: Build local runtime bundle manifest");
+    expect(arm).toContain(
+      '          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-arm64 --runtime-version "$RUNTIME_VERSION")"',
+    );
+    expect(arm).toContain('          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"');
     expect(arm).toContain("      - name: Regenerate derived sources");
     expect(arm).toContain("        run: bun run codegen");
     expect(arm).toContain("      - name: Build Linux arm64 binary");
     expect(arm).toContain("          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64");
     expect(arm).toContain('          test "$(uname -m)" = aarch64');
     expect(arm).toContain("      - name: Isolate Lando roots");
-    expect(arm).toContain("      - name: Prepare provider via lando setup against the published manifest");
-    expect(arm).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
+    expect(arm).toContain(
+      "      - name: Prepare provider via lando setup against the current-commit manifest",
+    );
+    expect(arm).toContain('          test -n "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
     expect(arm).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');
     expect(arm).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_SHA256:-}"');
+    expect(arm).toContain(
+      "      - name: Verify the current-commit bundle downloaded, verified, and installed",
+    );
+    expect(arm).toContain("runtime-bundle-portability");
+    expect(arm).toContain("libgpgme|libassuan|not found");
     expect(arm).toContain("      - name: Wrap managed Podman for ARM MySQL client tests");
     expect(arm).toContain('          echo "LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper" >> "$GITHUB_ENV"');
     expect(arm).toContain(
@@ -300,7 +318,14 @@ describe("ci workflow", () => {
     expect(arm).toContain("      - name: Teardown managed Lando runtime");
     expect(arm).toContain("name=lando-mysql-arm-");
     expect(arm).not.toContain("podman system prune");
-    expect(arm).not.toContain("LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST");
+    expect(arm).not.toContain('          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
+    expect(arm).not.toContain("      - name: Install Podman 6 toolchain");
+    expect(arm.indexOf("Assemble current-commit linux-arm64 runtime bundle")).toBeLessThan(
+      arm.indexOf("Build local runtime bundle manifest"),
+    );
+    expect(arm.indexOf("Build local runtime bundle manifest")).toBeLessThan(
+      arm.indexOf("Prepare provider via lando setup against the current-commit manifest"),
+    );
     expect(arm.indexOf("Regenerate derived sources")).toBeLessThan(arm.indexOf("Build Linux arm64 binary"));
     expect(arm.indexOf("Build Linux arm64 binary")).toBeLessThan(arm.indexOf("Wrap managed Podman"));
     expect(arm.indexOf("Wrap managed Podman")).toBeLessThan(arm.indexOf("Run native ARM MySQL client tests"));

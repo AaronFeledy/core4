@@ -181,6 +181,8 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("bun run scripts/update-test-timings.ts");
       expect(firstWorkflow).toContain("mysql-arm-client-linux-arm64:");
       expect(firstWorkflow).toContain("runs-on: ubuntu-24.04-arm");
+      expect(firstWorkflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
+      expect(firstWorkflow).toContain("runtime-bundle-linux-arm64-current");
       expect(firstWorkflow).toContain("--target bun-linux-arm64");
       expect(firstWorkflow).toContain("Wrap managed Podman for ARM MySQL client tests");
       expect(firstWorkflow).toContain("LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper");

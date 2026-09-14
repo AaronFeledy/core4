@@ -8,6 +8,7 @@ import {
 } from "./build-ci-workflow.ts";
 import { CI_PLATFORMS, type CiPlatform, LINUX_X64_CI_RUNNERS } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
+import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
 
 const linuxArm64 = CI_PLATFORMS.find((platform) => platform.id === "linux-arm64");
@@ -297,12 +298,53 @@ ${bunSetupStep}
 const mysqlArmClientLinuxArm64Job = `
   mysql-arm-client-linux-arm64:
     runs-on: ${linuxArm64.runsOn}
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
 ${bunSetupStep}
 
 ${landoRootlessPrereqSteps}
+
+      - name: Setup Go for Linux Podman source build
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo}
+        with:
+          go-version: 1.25.6
+
+      - name: Setup Rust for Linux helper source builds
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
+
+      - name: Install Linux Podman source-build prerequisites
+        run: |
+          ${supplyChain.RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
+
+      - name: Assemble current-commit linux-arm64 runtime bundle
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+
+      - name: Report current-commit ARM runtime bundle fingerprints
+        run: |
+          BUNDLE=dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
+          test -f "$BUNDLE"
+          SHA="$(sha256sum "$BUNDLE" | awk '{print $1}')"
+          SIZE="$(wc -c < "$BUNDLE" | tr -d ' ')"
+          echo "linux-arm64 sha256=$SHA size=$SIZE"
+          echo "::notice title=runtime-bundle-candidate::linux-arm64 sha256=$SHA size=$SIZE"
+
+      - name: Upload current-commit linux-arm64 runtime bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-bundle-linux-arm64-current
+          path: dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Build local runtime bundle manifest
+        run: |
+          test -f dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-arm64 --runtime-version "$RUNTIME_VERSION")"
+          test -n "$MANIFEST"
+          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+          echo "::notice title=runtime-bundle-candidate-manifest::$MANIFEST"
 
       - name: Regenerate derived sources
         run: bun run codegen
@@ -346,16 +388,16 @@ ${landoRootlessPrereqSteps}
             printf '{"default":[{"type":"insecureAcceptAnything"}]}\\n' > "$HOME/.config/containers/policy.json"
           fi
 
-      - name: Prepare provider via lando setup against the published manifest
+      - name: Prepare provider via lando setup against the current-commit manifest
         run: |
-          test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
+          test -n "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_URL:-}"
           test -z "\${LANDO_RUNTIME_BUNDLE_SHA256:-}"
           export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
           mkdir -p "$XDG_RUNTIME_DIR"
           dist/${linuxArm64.binaryName} setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
 
-      - name: Verify the published bundle downloaded, verified, and installed
+      - name: Verify the current-commit bundle downloaded, verified, and installed
         run: |
           for _ in {1..30}; do
             test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
