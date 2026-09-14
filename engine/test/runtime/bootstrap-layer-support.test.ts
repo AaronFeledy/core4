@@ -21,7 +21,10 @@ describe("bootstrap runtime provider stub", () => {
       runtimeProviderService.listVolumes({ app: "myapp" as never }),
     );
     const removeExit = await Effect.runPromiseExit(
-      runtimeProviderService.removeVolume({ app: "myapp" as never, store: "data" }),
+      runtimeProviderService.removeVolume(
+        { app: "myapp" as never, store: "data" },
+        "00000000-0000-4000-8000-000000000001",
+      ),
     );
 
     expect(Exit.isFailure(listExit)).toBe(true);
