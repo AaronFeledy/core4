@@ -49,7 +49,7 @@ export const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
     "-c",
     [
       "set -eu",
-      "cat >> /usr/local/apache2/conf/httpd.conf <<'LANDO_APACHE_WEBROOT'",
+      "cat > /usr/local/apache2/conf/extra/lando-webroot.conf <<'LANDO_APACHE_WEBROOT'",
       `DocumentRoot "${path}"`,
       `<Directory "${path}">`,
       "  Options -Indexes +FollowSymLinks",
@@ -57,7 +57,7 @@ export const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
       "  Require all granted",
       "</Directory>",
       "LANDO_APACHE_WEBROOT",
-      "exec httpd-foreground",
+      "exec httpd-foreground -c 'Include conf/extra/lando-webroot.conf'",
     ].join("\n"),
   ];
 };

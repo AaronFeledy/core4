@@ -148,4 +148,15 @@ describe("apache ServiceType", () => {
     expect(plan.command).toEqual(["httpd", "-DFOREGROUND"]);
     expect(plan.entrypoint).toEqual(["custom-entrypoint"]);
   });
+
+  test("overwrites Apache webroot config instead of appending on each start", async () => {
+    // Given / When
+    const plan = await composeApachePlan({ type: "apache", webroot: "/app/public" });
+    const script = Array.isArray(plan.command) ? plan.command[2] : undefined;
+
+    // Then
+    expect(script).toContain("cat > /usr/local/apache2/conf/extra/lando-webroot.conf");
+    expect(script).not.toContain("cat >>");
+    expect(script).toContain('DocumentRoot "/app/public"');
+  });
 });
