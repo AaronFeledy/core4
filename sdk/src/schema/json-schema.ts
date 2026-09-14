@@ -169,6 +169,7 @@ import {
   SnapshotInfo,
   VolumeFilter,
   VolumeInfo,
+  VolumeLocator,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotRef,
@@ -550,6 +551,7 @@ const basePublicSchemaRegistry = {
   DataEndpoint,
   VolumeRef,
   VolumeInfo,
+  VolumeLocator,
   VolumeIdentity,
   VolumeCreationFact,
   VolumeInitializationRecord,
@@ -1197,6 +1199,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HttpResponse: "Public Lando schema contract for Http Response.",
   HttpStreamResponse: "Public Lando schema contract for Http Stream Response.",
   HttpUploadRequest: "Public Lando schema contract for Http Upload Request.",
+  VolumeLocator: "Stable provider locator for one native volume before or after creation.",
   PreHttpCallEvent: "Public Lando schema contract for Pre Http Call Event.",
   PostHttpCallEvent: "Public Lando schema contract for Post Http Call Event.",
 } as const satisfies Record<keyof typeof rawPublicSchemaRegistry, string>;
