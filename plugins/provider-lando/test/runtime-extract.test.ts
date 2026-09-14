@@ -370,6 +370,95 @@ describe("installRuntimeBundle", () => {
     }
   });
 
+  test("rejects tar hardlink entries without writing runtimeBinDir", async () => {
+    // Given: a runtime archive whose required executable is represented as a hardlink.
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const archiveBytes = buildTarGz([{ path: "podman", typeflag: "1" }]);
+
+      // When: installation validates the strict runtime archive.
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+      );
+
+      // Then: publication fails closed without creating the destination.
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(existsSync(runtimeBinDir)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects traversal carried by a GNU longname without writing runtimeBinDir", async () => {
+    // Given: a GNU longname header that assigns a traversal path to the following regular member.
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const archiveBytes = buildTarGz([
+        { path: "././@LongLink", bytes: encoder.encode("../escape\0"), typeflag: "L" },
+        { path: "placeholder", bytes: encoder.encode("podman") },
+      ]);
+
+      // When: installation parses the longname member.
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+      );
+
+      // Then: traversal is rejected before publication.
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(existsSync(runtimeBinDir)).toBe(false);
+      expect(existsSync(join(dirname(runtimeBinDir), "escape"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([{ path: "C:\\runtime\\podman" }, { path: "\\\\server\\runtime\\podman" }])(
+    "rejects rooted tar member $path",
+    ({ path }) => {
+      // Given: a tar entry rooted using a Windows drive or UNC spelling.
+      const archiveBytes = buildTarGz([{ path, bytes: encoder.encode("podman") }]);
+
+      // When/Then: strict extraction rejects the rooted member.
+      expect(() => extractRuntimeArchiveEntries(archiveBytes)).toThrow(ProviderRuntimeExtractError);
+    },
+  );
+
+  test.each([
+    { name: "../podman", mode: 0o100755 },
+    { name: "C:\\runtime\\podman", mode: 0o100755 },
+    { name: "\\\\server\\runtime\\podman", mode: 0o100755 },
+    { name: "podman", mode: 0o120777 },
+  ])("rejects unsafe ZIP member $name with mode $mode", ({ name, mode }) => {
+    // Given: ZIP metadata identifying a traversal, rooted path, or symbolic link.
+    const archiveBytes = buildZip([{ name, bytes: encoder.encode("podman"), mode }]);
+
+    // When/Then: strict extraction rejects the entry.
+    expect(() => extractRuntimeArchiveEntries(archiveBytes)).toThrow(ProviderRuntimeExtractError);
+  });
+
+  test("leaves only the existing destination parent after a post-staging validation failure", async () => {
+    // Given: a valid archive that lacks the required runtime entrypoint.
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    const runtimeParent = dirname(runtimeBinDir);
+    try {
+      const archiveBytes = buildTarGz([{ path: "other", bytes: encoder.encode("helper") }]);
+
+      // When: installation stages the member but rejects the incomplete runtime.
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
+      );
+
+      // Then: staged files and the destination are absent while the created parent remains empty.
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(existsSync(runtimeBinDir)).toBe(false);
+      expect(await Array.fromAsync(new Bun.Glob("*").scan({ cwd: runtimeParent, onlyFiles: false }))).toEqual(
+        [],
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("rejects empty extracted archives without replacing an installed runtime", async () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {

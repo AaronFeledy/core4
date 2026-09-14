@@ -1,0 +1,5 @@
+name: redis-ephemeral
+services:
+  cache:
+    type: redis
+    persist: false

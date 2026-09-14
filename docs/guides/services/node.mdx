@@ -50,6 +50,36 @@ anything.
 The explicit-version example below keeps the version in the Landofile with
 `type: "node:22"`, without consulting project files.
 
+  <Scenario id="install-globals" render>
+    <Step name="scaffold">
+      <UseFixture name="node-globals" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"gulp-cli\":\\s*\"latest\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: node-globals" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-invalid-global" render={false} reason="Plan-time tagged failure for an unsafe npm package name">
+    <Step name="scaffold">
+      <UseFixture name="node-globals-invalid" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported npm package" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="node-demo" />
@@ -81,6 +111,27 @@ lando exec app -- node server.js
 ```
 
 The default HTTP port the service exposes is `3000`.
+
+## Install global npm packages
+
+Tools your whole image needs go on `globals`, a map of package name to version specifier:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    globals:
+      yarn: "1.22.4"
+      gulp-cli: "latest"
+```
+
+They install with `npm install -g` while the image is baked, so `gulp` is on `PATH` without an extra `lando npm install -g` every rebuild.
+
+Lando normalizes the map first: names and version specifiers are validated at plan time, and packages install in sorted order. Reordering the YAML does not rebuild the image; adding, removing, or re-pinning a package does, because the normalized list is part of the image build key.
+
+Specifiers are ordinary npm spellings such as `1.22.4`, `^17.0.0`, `>=5 <6`, or a dist-tag like `latest`. Anything else fails at plan time, before any container work, naming the package that broke.
+
+`globals` applies to a custom `image:` too, so the image you bring needs `npm`.
 
 ## Read a nested package
 

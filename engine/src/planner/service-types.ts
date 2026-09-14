@@ -21,6 +21,8 @@ import type {
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
+import type { ServiceHomeIntent } from "./home.ts";
+import type { ServiceConfigSource } from "./service-config-files.ts";
 
 export type ContributionRef = string | { readonly id: string };
 
@@ -163,6 +165,7 @@ export interface ResolvedService {
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
   readonly projectFiles: ReadonlyArray<ServiceTypeProjectFileInput>;
+  readonly configSourceInputs: ReadonlyArray<ServiceConfigSource>;
 }
 
 export type AuthoredStorageInfo = {
@@ -176,6 +179,7 @@ export type PlannedServiceDraft = {
   readonly hostnames: ReadonlyArray<string>;
   readonly authoredArtifact: ServicePlan["artifact"];
   readonly authored: ResolvedService["authored"];
+  readonly homeIntent: ServiceHomeIntent;
   readonly draft: AppFeatureServiceDraft;
   readonly logSources: ReadonlyArray<LogSource>;
   readonly routes: ReadonlyArray<NormalizedRoute>;

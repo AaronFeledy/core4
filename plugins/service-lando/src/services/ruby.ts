@@ -159,6 +159,7 @@ export const makeRubyServiceType = (version: SupportedRubyVersion): ServiceType 
   id: `ruby:${version}`,
   name: `ruby:${version}`,
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.try({

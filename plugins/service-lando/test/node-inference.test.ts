@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceTypeProjectFileInput } from "@lando/sdk/services";
 
-import { nodeServiceType, resolveNodeInference } from "../src/services/node.ts";
+import { node22ServiceType, nodeServiceType, resolveNodeInference } from "../src/services/node.ts";
 
 const projectFile = (path: string, text: string): ServiceTypeProjectFileInput => ({
   path,
@@ -138,5 +138,27 @@ describe("bare node version inference", () => {
       },
     });
     expect(JSON.stringify(resolution.metadata)).not.toContain("engines");
+  });
+
+  test("declares the same image identity as versioned Node types", () => {
+    expect(nodeServiceType.identity).toEqual(node22ServiceType.identity);
+  });
+
+  test("rejects invalid globals during bare type resolution", async () => {
+    const result = await Effect.runPromise(
+      Effect.either(
+        nodeServiceType.resolve({
+          name: "web",
+          service: { type: "node", globals: { "../escape": "1.0.0" } },
+          appRoot: "/app",
+          metadata: { resolvedAt: "2026-09-11T00:00:00Z", source: "/app/.lando.yml", runtime: 4 },
+          projectFiles: [projectFile(".nvmrc", "22.11.0"), absentProjectFile("package.json")],
+        }),
+      ),
+    );
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(String(result.left)).toMatch(/Unsupported npm package "\.\.\/escape"/);
+    }
   });
 });

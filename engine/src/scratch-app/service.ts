@@ -52,7 +52,7 @@ import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
-import { resolveRouterConfigForApp } from "../config/router-config.ts";
+import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
@@ -572,7 +572,7 @@ const makeScratchAppService = (
     );
 
   const applyScratchRoutes = (plan: AppPlan, landofileRouter?: RouterConfig): Effect.Effect<void, never> =>
-    plan.routes.length === 0
+    plan.routes.length === 0 || !routerEnabled(plan)
       ? Effect.void
       : Option.match(proxy, {
           onNone: () => Effect.void,

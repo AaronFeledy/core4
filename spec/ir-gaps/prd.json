@@ -67,7 +67,7 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -80,7 +80,7 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 26,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -93,7 +93,7 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 27,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -106,7 +106,7 @@
       ],
       "dependsOn": ["US-616"],
       "priority": 28,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -119,7 +119,7 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 29,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -134,7 +134,7 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 30,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

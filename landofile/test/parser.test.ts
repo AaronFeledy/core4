@@ -421,3 +421,45 @@ describe("parseLandofile — alias expansion budget", () => {
     expect(error.remediation).toMatch(/alias/i);
   });
 });
+
+describe("package-map keys", () => {
+  test("parses vendor/name and scoped package keys in a mapping", async () => {
+    // Given Composer and npm package maps, whose keys carry `/` and `@`,
+    // when parsed,
+    // then both keys survive as authored.
+    const parsed = (await parse(
+      [
+        "services:",
+        "  appserver:",
+        "    composer:",
+        "      packages:",
+        '        drush/drush: "^13.0"',
+        "  app:",
+        "    globals:",
+        '      @angular/cli: "^17.0.0"',
+        '      gulp-cli: "latest"',
+        "",
+      ].join("\n"),
+    )) as Record<string, Record<string, Record<string, Record<string, unknown>>>>;
+
+    expect(parsed.services?.appserver?.composer?.packages).toEqual({ "drush/drush": "^13.0" });
+    expect(parsed.services?.app?.globals).toEqual({
+      "@angular/cli": "^17.0.0",
+      "gulp-cli": "latest",
+    });
+  });
+
+  test("keeps a colon-joined sequence item a scalar", async () => {
+    // Given bind mounts and port mappings authored as sequence scalars,
+    // when parsed,
+    // then the wider key charset does not turn them into mappings.
+    const parsed = (await parse(
+      ["services:", "  app:", "    volumes:", "      - ./src:/app", "    ports:", "      - 8080:80", ""].join(
+        "\n",
+      ),
+    )) as Record<string, Record<string, Record<string, unknown>>>;
+
+    expect(parsed.services?.app?.volumes).toEqual(["./src:/app"]);
+    expect(parsed.services?.app?.ports).toEqual(["8080:80"]);
+  });
+});

@@ -5,6 +5,16 @@
 ## Compatibility notes
 
 - `ServiceConfig` and `ServiceConfigInput` additively accept optional `packageRoot`, an app-root-relative source directory used only by service-type project-file inference. `ServiceType` additively accepts a pure optional `projectFiles(service)` declaration, and `ServiceTypeInput.projectFiles` receives bounded planner-supplied present or absent inputs with content fingerprints. `ServicePlan` additively accepts optional service-type `provenance`; existing explicit service types and plans remain unchanged.
+- `ServiceConfig` additively accepts Redis `password` and `persist`, plus Mailpit `mailFrom` (`false` or a service-name list). Persistence defaults to enabled. Omitted Mailpit targets select all resolved PHP services; false selects none; lists retain first-occurrence order.
+- Mailpit parses its SMTP service name during service-type resolution, rejecting whitespace, shell metacharacters, empty names, and leading hyphens before generating PHP mail configuration. The general SDK `ServiceName` contract is unchanged.
+
+- `@lando/sdk/schema` additively exports `ScannerConfig` (`false` or optional `path`, `okCodes`, `retries`, `timeout`) and `ScanPlan` (resolved `enabled`, `path`, `okCodes`, `retries`, `timeoutMs`). Retries are a budget after the first attempt; timeouts are overall deadlines in milliseconds.
+- `ServiceConfig.scanner` and `GlobalConfig.scanner` additively accept optional `ScannerConfig`. `ServicePlan.scanner` additively accepts optional `ScanPlan`.
+- `@lando/sdk/schema` additively exports `ServiceFileConfig` (optional `server` and `dir` app-relative paths). `ServiceConfig.config` additively accepts optional `ServiceFileConfig` for file-backed catalog service configuration mounted read-only into the container.
+- `@lando/sdk/schema` additively exports `PhpComposerConfig` (optional `version` and `packages`). `ServiceConfig.composer` additively accepts it beside the previously accepted string and `false` forms, and `ServiceConfig.globals` additively accepts a package-name-to-version-specifier map for global npm installs.
+- `AppPlan.router` additively accepts `{ enabled: boolean }`. It stays optional only because persisted cached plans predate the field.
+- `UrlScanner.scan` additively accepts optional `{ plan?: AppPlan; urls?: ReadonlyArray<{ service: ServiceName; url: string }> }`. Per-service settings come from `plan.services[name].scanner`; omitting the plan uses the scanner's own defaults. When `urls` is present, those host-facing URLs are probed instead of rediscovering endpoints. `makeTestUrlScanner` records supplied options alongside the app id while preserving calls without options.
+
 - `@lando/sdk/schema` additively exports the `HostTerminal` schema for attached output-terminal facts. `ToolingOptions` and `ToolingInvocation` add optional PTY intent, while `ToolingInvocation` can separately carry an attached `HostTerminal`; omission remains noninteractive for existing embedding, event, and MCP callers.
 
 - `RouteInput` accepts non-empty shorthand strings or `RouteObjectInput` objects. Objects and `RoutePlan` accept ordered `RouteFilter` arrays; `name` is layer-merge identity, while header filters use `header`. `LandofileService.discover` additively includes `RouteInputError` in its error channel so load and plan callers share one union.
@@ -35,6 +45,8 @@
 - `@lando/sdk/errors` additively exports `PhpMyAdminHostsCredsError` and `AppFeatureError` additively includes it; `ServiceInfo` / `InfoAppService` additively gain optional `creds`.
 
 - `AppPlanner.plan`'s error channel additively gains `CommandAliasConflictError` for plan-time rejection of surviving service-type reserved tooling names; the frozen service-surface fixture is updated to match. The type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions additively include the same tag because those App-handle methods plan through `AppPlanner`.
+
+- `@lando/sdk/errors` additively exports `HomePathCapabilityError` (`message`, `service`, `serviceType`, optional `user`, `remediation`) when a service persists its home but the planner cannot know the destination. `AppPlanner.plan`'s error channel additively includes the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match. `ServiceConfig` additively accepts optional `home` (`false` or `{ path? }`). `ServiceType` additively accepts optional `identity` (`ServiceImageIdentity`).
 
 - `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, `SqlCommandFailedError`, and `SqlDumpNotFoundError` (`message`, `path`, `appRoot`, `remediation`) for database helper target selection, confirmation, failed in-service dump/load/reset commands, and missing/unreadable import dump files.
 
@@ -177,10 +189,18 @@
 - The pre-release authoring projection now preserves structural refinements instead of replacing them with their input schemas. Complete `LandofileAuthoringShape` and `LandofileAuthoringShapeWire` roots accept only Landofile objects; fragments keep their document-level expression alternative. Nested object and array value sites still accept typed expressions, including recipe-provenance values, but those alternatives now sit beside refined definition references instead of inside the definitions. Scalar refinements still validate every literal. Container semantic predicates validate all-literal subtrees and defer when an unresolved expression prevents a truthful result. The same projection change appears in config-translator fragment schemas and `RecipeDecomposeResult.fragment`; no compatibility shim preserves expression-only complete Landofiles because they were not valid runtime documents.
 
 - `@lando/sdk/expressions` additively exports `expressionInterpolationsTouchOnlyScopes`, a second scope predicate that asks whether every `{{ ... }}` interpolation reads only the given context scopes through pure helpers while treating `${VAR}` and `${secret:...}` text as inert. It is for a caller that replays that shell and secret text verbatim instead of evaluating it; `expressionTouchesOnlyScopes` keeps its stricter meaning and still reports such a template as unanalyzable. Same contracts-only tier as the rest of `@lando/sdk/expressions`: pure, no Effect runtime, no Bun, no IO, and no schema or service-tag freeze.
+- `RebuildAppOptions` additively gains optional `services?: ReadonlyArray<ServiceName>` for scoped rebuilds. `InfoAppOptions.service` is replaced pre-ship by `services?: ReadonlyArray<ServiceName>` without an alias. `ApplyOptions` additively gains optional `recordedPlan?: AppPlan` so a provider can persist the full app plan while applying a selected subplan. These are type-only interface changes with no JSON Schema artifact or frozen service-tag signature change.
 
 
 ## Additive schema exports
 
+- `ScannerConfig`
+- `ScanPlan`
+- `ServiceFileConfig`
+- `PhpComposerConfig`
+- `ABSOLUTE_CONTAINER_PATH_PATTERN`
+- `AbsoluteContainerPath`
+- `isAbsoluteContainerPath`
 - `HostTerminal`
 - `LandofileRecipeField`
 - `LandofileRecipeProvenance`
@@ -800,6 +820,7 @@
 - `HttpRequestError`
 - `HttpTrustError`
 - `HttpUploadError`
+- `HomePathCapabilityError`
 - `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
 - `DeprecationContradictionError`

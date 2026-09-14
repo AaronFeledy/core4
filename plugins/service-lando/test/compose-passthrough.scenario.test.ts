@@ -162,6 +162,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
       services: {
         whoami: {
           type: "compose",
+          home: false,
           image: "traefik/whoami:v1.10",
           ports: ["8080:80"],
         },
@@ -184,9 +185,14 @@ describe("compose passthrough — scenario: third-party image with default endpo
     ]);
 
     // compose is an l337 service and must not inject the LANDO_* env layer.
-    expect(Object.keys(whoami.environment).filter((k) => k === "LANDO" || k.startsWith("LANDO_"))).toEqual(
-      [],
-    );
+    // LANDO_HOST_IP is host-reachability realization from provider capability,
+    // not part of that env layer, so it is excluded from this check.
+    expect(
+      Object.keys(whoami.environment).filter(
+        (k) => (k === "LANDO" || k.startsWith("LANDO_")) && k !== "LANDO_HOST_IP",
+      ),
+    ).toEqual([]);
+    expect(whoami.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
     expect(whoami.appMount).toMatchObject({ target: "/app", readOnly: false });
     expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(true);
@@ -201,6 +207,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
       services: {
         whoami: {
           type: "compose",
+          home: false,
           image: "traefik/whoami:v1.10",
           ports: ["8080:80"],
         },
@@ -235,6 +242,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
       services: {
         sidekick: {
           type: "compose",
+          home: false,
           image: "traefik/whoami:v1.10",
           appMount: false,
           ports: ["9090:80"],
@@ -248,9 +256,12 @@ describe("compose passthrough — scenario: third-party image with default endpo
 
     expect(sidekick.appMount).toBeUndefined();
     expect(sidekick.mounts).toEqual([]);
-    expect(Object.keys(sidekick.environment).filter((k) => k === "LANDO" || k.startsWith("LANDO_"))).toEqual(
-      [],
-    );
+    expect(
+      Object.keys(sidekick.environment).filter(
+        (k) => (k === "LANDO" || k.startsWith("LANDO_")) && k !== "LANDO_HOST_IP",
+      ),
+    ).toEqual([]);
+    expect(sidekick.environment.LANDO_HOST_IP).toBe("host.lando.internal");
     expect(sidekick.endpoints).toEqual([
       {
         _tag: "published",

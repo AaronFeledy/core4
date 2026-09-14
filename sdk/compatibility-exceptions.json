@@ -3,13 +3,13 @@
     "surface": "schema:PreRestartEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Restart events embed AppPlan; its ServicePlan values additively gain optional service-type provenance for project-file inference. Existing restart payloads remain valid."
+    "justification": "Restart events embed AppPlan; its ServicePlan values additively gain optional service-type provenance for project-file inference and an optional resolved post-start scan block. Existing restart payloads remain valid."
   },
   {
     "surface": "schema:PostRestartEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Restart events embed AppPlan; its ServicePlan values additively gain optional service-type provenance for project-file inference. Existing restart payloads remain valid."
+    "justification": "Restart events embed AppPlan; its ServicePlan values additively gain optional service-type provenance for project-file inference and an optional resolved post-start scan block. Existing restart payloads remain valid."
   },
   {
     "surface": "command:app:config",
@@ -1359,7 +1359,7 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "ServicePlan additively gains optional service-type provenance; every previously accepted service remains valid."
+    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block; every previously accepted service remains valid."
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
@@ -1371,7 +1371,7 @@
     "surface": "schema:DatasetContext",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted dataset context remains valid."
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted dataset context remains valid."
   },
   {
     "surface": "schema:ToolingFlagShape",
@@ -1413,43 +1413,43 @@
     "surface": "schema:PostGlobalRebuildEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
   },
   {
     "surface": "schema:PostGlobalStartEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
   },
   {
     "surface": "schema:PostStartEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
   },
   {
     "surface": "schema:PreGlobalRebuildEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
   },
   {
     "surface": "schema:PreGlobalStartEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
   },
   {
     "surface": "schema:PreStartEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted event remains valid."
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
   },
   {
     "surface": "schema:TunnelStartRequest",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",
-    "justification": "Nested ServicePlan values additively gain optional service-type provenance; every previously accepted tunnel request remains valid."
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted tunnel request remains valid."
   },
   {
     "surface": "schema:LandofileAuthoringShapeWire",
@@ -1564,5 +1564,17 @@
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ServiceConfigInput.build.oneOf",
     "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "The resolved post-start scan block adds its own definition beside the existing service-plan references and keeps every prior accepted form."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.composer.anyOf",
+    "justification": "Composer selection additively accepts an object carrying a version and global packages; the previously accepted string and false forms remain members of the same union."
   }
 ]

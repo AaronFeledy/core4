@@ -1,0 +1,8 @@
+name: mail-invalid
+services:
+  cache:
+    type: redis
+  inbox:
+    type: mailpit
+    mailFrom:
+      - cache

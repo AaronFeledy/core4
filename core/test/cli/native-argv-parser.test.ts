@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
+import { infoOptionsFromInput } from "../../src/cli/command-specs/app/info.ts";
 import { logsFollowFromInput, logsOptionsFromInput } from "../../src/cli/command-specs/app/logs.ts";
+import { rebuildOptionsFromInput } from "../../src/cli/command-specs/app/rebuild.ts";
 import { initOptionsFromInput } from "../../src/cli/command-specs/apps/init.ts";
 import { appsListPathFromInput } from "../../src/cli/command-specs/apps/list.ts";
 import { keepVolumesFromInput } from "../../src/cli/command-specs/apps/scratch/destroy.ts";
@@ -141,6 +143,14 @@ describe("native argv parser seam", () => {
 
     expect(logsOptionsFromInput(logs)).toEqual({ service: "appserver", since: "1h", tail: 25 });
     expect(init.flags.answer).toEqual(["php=8.3", "database=mysql"]);
+  });
+
+  test("app info and rebuild preserve repeatable service selections", () => {
+    const info = infoOptionsFromInput(compiledInput("app:info", ["--service", "api", "-s", "database"]));
+    const rebuild = rebuildOptionsFromInput(compiledInput("app:rebuild", ["-sapi", "--service=database"]));
+
+    expect(info.services?.map(String)).toEqual(["api", "database"]);
+    expect(rebuild.services?.map(String)).toEqual(["api", "database"]);
   });
 
   test("app:logs parses --source through the native input seam", () => {

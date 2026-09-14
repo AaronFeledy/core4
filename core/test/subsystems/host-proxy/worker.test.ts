@@ -630,6 +630,7 @@ console.log(JSON.stringify({
 
   test("terminates the spawned worker when startup is interrupted before readiness", async () => {
     const root = await tempRoot();
+    const readingReady = Promise.withResolvers<void>();
     let terminated = 0;
     try {
       const fiber = Effect.runFork(
@@ -642,14 +643,17 @@ console.log(JSON.stringify({
             pid: 67890,
             argv: spec.argv,
             writeStdin: async () => undefined,
-            readReady: () => new Promise(() => undefined),
+            readReady: () => {
+              readingReady.resolve();
+              return new Promise(() => undefined);
+            },
             terminate: async () => {
               terminated += 1;
             },
           }),
         }),
       );
-      await new Promise((resolve) => setTimeout(resolve, 25));
+      await readingReady.promise;
       await Effect.runPromise(Fiber.interrupt(fiber));
 
       expect(terminated).toBe(1);
