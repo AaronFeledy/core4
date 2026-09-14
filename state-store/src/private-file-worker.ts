@@ -125,7 +125,7 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new TypeError("Private file ACL worker timed out.")),
-            options.timeoutMs ?? 2_000,
+            options.timeoutMs ?? 15_000,
           );
         }),
       ]);

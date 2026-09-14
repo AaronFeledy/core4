@@ -100,6 +100,20 @@ describe("private-file ACL worker lifecycle", () => {
     },
   );
 
+  test("default timeout accepts a slow successful ACL response", async () => {
+    const spawn = makeRecordingWorkerSpawn(async () => {
+      await Bun.sleep(2_500);
+      return { kind: "response" as const, ok: true };
+    });
+    const worker = makeWorker(spawn);
+    try {
+      await worker.enforce("D:\\tmp\\slow.json");
+      expect(spawn.requests).toEqual([{ id: "1", operation: "enforce", path: "D:\\tmp\\slow.json" }]);
+    } finally {
+      await worker.close();
+    }
+  });
+
   test.each(["enforce", "verify"] as const)(
     "sends ASCII-only %s frames for Unicode paths",
     async (operation) => {
