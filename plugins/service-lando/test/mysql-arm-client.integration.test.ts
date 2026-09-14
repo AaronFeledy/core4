@@ -102,7 +102,9 @@ test.skipIf(podmanEnv === undefined).each([
           "test -d /usr/lib64/mysql/plugin",
           `mysql -h db -u root -Nse "SELECT plugin FROM mysql.user WHERE user='lando'"`,
           `mysql --ssl-mode=DISABLED --get-server-public-key -h db -u lando lando -e "CREATE TABLE proof (id INT); INSERT INTO proof VALUES (957)"`,
-          "mysqldump -h db -u lando --no-tablespaces lando > /tmp/proof.sql",
+          series === "9.7"
+            ? "mysqldump -h db -u lando --single-transaction --set-gtid-purged=OFF --no-tablespaces --skip-masking-policies lando > /tmp/proof.sql"
+            : "mysqldump -h db -u lando --single-transaction --set-gtid-purged=OFF --no-tablespaces lando > /tmp/proof.sql",
           "mysql -h db -u lando lando -e 'DROP TABLE proof'",
           "mysql -h db -u lando lando < /tmp/proof.sql",
           "mysql -h db -u lando -Nse 'SELECT id FROM lando.proof; SELECT VERSION()'",
