@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
+import { makeAttachDecoder } from "./streams.ts";
 import {
   type MountedVolumeTarget,
   type VolumeAdoptionTarget,
@@ -89,12 +91,12 @@ const octal = (value: number, width: number): string | undefined => {
   return text.padStart(width - 1, "0");
 };
 
-const archiveFile = (name: string, payload: Uint8Array): Uint8Array | undefined => {
+const archiveFileHeader = (name: string, payloadSize: number): Uint8Array | undefined => {
   if (name.length === 0 || new TextEncoder().encode(name).byteLength > 100) return undefined;
   const mode = octal(0o644, 8);
   const uid = octal(0, 8);
   const gid = octal(0, 8);
-  const size = octal(payload.byteLength, 12);
+  const size = octal(payloadSize, 12);
   const mtime = octal(0, 12);
   if (
     mode === undefined ||
@@ -120,22 +122,38 @@ const archiveFile = (name: string, payload: Uint8Array): Uint8Array | undefined 
   const checksumOctal = octal(checksum, 7);
   if (checksumOctal === undefined) return undefined;
   writeAscii(header, 148, `${checksumOctal}\0 `, 8);
-  const output = new Uint8Array(tarBlockSize + padToBlock(payload.byteLength) + tarBlockSize * 2);
-  output.set(header, 0);
-  output.set(payload, tarBlockSize);
+  return header;
+};
+
+const appendBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
+  if (left.byteLength === 0) return right;
+  const output = new Uint8Array(left.byteLength + right.byteLength);
+  output.set(left);
+  output.set(right, left.byteLength);
   return output;
 };
 
-const extractFirstTarFile = (archive: Uint8Array): Uint8Array | undefined => {
-  if (archive.byteLength < tarBlockSize) return undefined;
-  const header = archive.slice(0, tarBlockSize);
-  const sizeRaw = textDecoder.decode(header.slice(124, 136)).replace(/\0.*$/u, "").trim();
-  const size = Number.parseInt(sizeRaw || "0", 8);
-  if (!Number.isFinite(size) || size < 0) return undefined;
-  const start = tarBlockSize;
-  const end = start + size;
-  if (end > archive.byteLength) return undefined;
-  return archive.slice(start, end);
+const extractFirstTarFile = async function* (source: AsyncIterable<Uint8Array>): AsyncGenerator<Uint8Array> {
+  let buffered: Uint8Array<ArrayBufferLike> = new Uint8Array();
+  let remaining: number | undefined;
+  for await (const chunk of source) {
+    buffered = appendBytes(buffered, chunk);
+    if (remaining === undefined) {
+      if (buffered.byteLength < tarBlockSize) continue;
+      const sizeRaw = textDecoder.decode(buffered.subarray(124, 136)).replaceAll("\0", "").trim();
+      remaining = sizeRaw.length === 0 ? 0 : Number.parseInt(sizeRaw, 8);
+      if (!Number.isSafeInteger(remaining) || remaining < 0)
+        throw new RangeError("Invalid tar payload size.");
+      buffered = buffered.subarray(tarBlockSize);
+    }
+    if (remaining > 0 && buffered.byteLength > 0) {
+      const count = Math.min(remaining, buffered.byteLength);
+      yield buffered.subarray(0, count);
+      buffered = buffered.subarray(count);
+      remaining -= count;
+    }
+  }
+  if (remaining === undefined || remaining !== 0) throw new RangeError("Truncated tar payload.");
 };
 
 const decodeDockerRunLogs = (
@@ -185,11 +203,6 @@ const collectStreamBytes = <E, R>(stream: Stream.Stream<Uint8Array, E, R>) =>
     Stream.runCollect,
     Effect.map((chunks) => concatBytes(chunks)),
   );
-
-const oneChunk = (chunk: Uint8Array): AsyncIterable<Uint8Array> =>
-  (async function* () {
-    yield chunk;
-  })();
 
 const basename = (path: string): string => path.split(/[\\/]/u).filter(Boolean).at(-1) ?? "";
 const dirname = (path: string): string => {
@@ -550,6 +563,19 @@ const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: stri
     Effect.tap((response) => ensure2xx(options, "run.wait", response, firstDataStoreMount(spec)?.store)),
   );
 
+const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
+  request(options, "run.inspect", {
+    method: "GET",
+    path: `/containers/${encodeURIComponent(name)}/json`,
+  }).pipe(
+    Effect.tap((response) => ensure2xx(options, "run.inspect", response, firstDataStoreMount(spec)?.store)),
+    Effect.map((response) => {
+      const parsed =
+        response.body.length === 0 ? {} : (JSON.parse(response.body) as { State?: { ExitCode?: number } });
+      return parsed.State?.ExitCode ?? 0;
+    }),
+  );
+
 const runBytes = (
   options: ProviderDataPlaneOptions,
   spec: EphemeralRunSpec,
@@ -576,15 +602,9 @@ const runBytes = (
             path: `/containers/${encodeURIComponent(name)}/logs?stdout=${captureStdout ? "true" : "false"}&stderr=true`,
           }),
         ).pipe(Effect.map((payload) => decodeDockerRunLogs(payload, captureStdout ? "stdout" : "stderr")));
-        const inspect = yield* request(options, "run.inspect", {
-          method: "GET",
-          path: `/containers/${encodeURIComponent(name)}/json`,
-        });
-        yield* ensure2xx(options, "run.inspect", inspect, firstDataStoreMount(spec)?.store);
-        const parsed =
-          inspect.body.length === 0 ? {} : (JSON.parse(inspect.body) as { State?: { ExitCode?: number } });
+        const exitCode = yield* inspectEphemeralExitCode(options, name, spec);
         return {
-          exitCode: parsed.State?.ExitCode ?? 0,
+          exitCode,
           stdout: logs.stdout,
           stderr: textDecoder.decode(logs.stderr),
           chunks: logs.chunks,
@@ -605,6 +625,83 @@ const runBytes = (
       ),
     (name) => removeEphemeralContainer(options, name, spec.remove !== false),
   );
+
+const runByteStream = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> => {
+  const decode = makeAttachDecoder();
+  return Stream.acquireRelease(createEphemeralContainer(options, { ...spec, captureStdout: true }), (name) =>
+    removeEphemeralContainer(options, name, spec.remove !== false),
+  ).pipe(
+    Stream.flatMap((name) =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const stdinFiber = yield* Effect.forkScoped(attachEphemeralStdin(options, name, spec));
+          const started = yield* request(options, "run.start", {
+            method: "POST",
+            path: `/containers/${encodeURIComponent(name)}/start`,
+          });
+          yield* ensure2xx(options, "run.start", started, firstDataStoreMount(spec)?.store);
+          const output = stream(options, "run.logs", {
+            method: "GET",
+            path: `/containers/${encodeURIComponent(name)}/logs?follow=true&stdout=true&stderr=true`,
+          }).pipe(
+            Stream.mapConcat((chunk) =>
+              decode(chunk).map(
+                (frame): ExecChunk => ({ kind: frame.stream, chunk: new Uint8Array(frame.payload) }),
+              ),
+            ),
+          );
+          const completed = Stream.fromEffect(
+            Effect.gen(function* () {
+              if (spec.stdinStream !== undefined) yield* Fiber.join(stdinFiber);
+              yield* waitForEphemeralContainer(options, name, spec);
+              return { exitCode: yield* inspectEphemeralExitCode(options, name, spec) } satisfies ExecChunk;
+            }),
+          );
+          return Stream.concat(output, completed);
+        }).pipe(
+          Effect.mapError((cause) =>
+            volumeError(
+              options,
+              "runStream",
+              "Provider ephemeral stream failed.",
+              undefined,
+              cause,
+              firstDataStoreMount(spec)?.store,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+};
+
+const parseSnapshotMetrics = (
+  options: ProviderDataPlaneOptions,
+  output: string,
+  format: "tar" | "native",
+  store: string,
+): Effect.Effect<
+  { readonly digest: string; readonly sizeBytes: number; readonly format: "tar" | "native" },
+  ProviderError
+> => {
+  const match = output.trim().match(/^(\S+)\s+(\d+)$/u);
+  const sizeBytes = match === null ? Number.NaN : Number(match[2]);
+  return match !== null && match[1] !== undefined && Number.isSafeInteger(sizeBytes) && sizeBytes >= 0
+    ? Effect.succeed({ digest: match[1], sizeBytes, format })
+    : Effect.fail(
+        volumeError(
+          options,
+          "snapshotVolume",
+          "Provider snapshot integrity output was invalid.",
+          output,
+          undefined,
+          store,
+        ),
+      );
+};
 
 const commitNativeSnapshot = (
   options: ProviderDataPlaneOptions,
@@ -744,17 +841,54 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         })),
       ),
     runStream: (spec: EphemeralRunSpec): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> =>
-      Stream.unwrap(
-        runBytes(options, { ...spec, captureStdout: true }).pipe(
-          Effect.map(({ exitCode, chunks }) => Stream.make(...chunks, { exitCode })),
-        ),
-      ),
+      runByteStream(options, spec),
     snapshotVolume: ((spec) => {
       const store = spec.volume.store;
       const name = volumeName(store);
       const id = spec.snapshotId ?? `${name}-snapshot-${randomUUID()}`;
       if (options.snapshotMode === "native") {
         return snapshotVolumeWithCommit(options, store, id).pipe(
+          Effect.flatMap((snapshot) =>
+            request(options, "snapshotVolume", {
+              method: "GET",
+              path: `/images/${encodeURIComponent(nativeSnapshotImage(id))}/json`,
+            }).pipe(
+              Effect.tap((response) => ensure2xx(options, "snapshotVolume", response, store)),
+              Effect.flatMap((response) =>
+                Effect.try({
+                  try: () => JSON.parse(response.body) as { readonly Id?: string; readonly Size?: number },
+                  catch: (cause) =>
+                    volumeError(
+                      options,
+                      "snapshotVolume",
+                      "Provider native snapshot inspection failed.",
+                      response,
+                      cause,
+                      store,
+                    ),
+                }),
+              ),
+              Effect.flatMap((image) =>
+                image.Id === undefined || image.Size === undefined
+                  ? Effect.fail(
+                      volumeError(
+                        options,
+                        "snapshotVolume",
+                        "Provider native snapshot identity was incomplete.",
+                        image,
+                        undefined,
+                        store,
+                      ),
+                    )
+                  : Effect.succeed({
+                      ...snapshot,
+                      digest: image.Id,
+                      sizeBytes: image.Size,
+                      format: "native" as const,
+                    }),
+              ),
+            ),
+          ),
           Effect.mapError((cause) =>
             volumeError(
               options,
@@ -774,17 +908,18 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         command: [
           "sh",
           "-c",
-          `mkdir -p ${copyModeSnapshotMountPath} && tar -C ${copyModeMountPath} -cf ${copyModeSnapshotMountPath}/${snapshotFile} ${excludeWitness} .`,
+          `set -eu; mkdir -p ${copyModeSnapshotMountPath}; file=${copyModeSnapshotMountPath}/${snapshotFile}; tar -C ${copyModeMountPath} -cf "$file" ${excludeWitness} .; digest="$(sha256sum "$file")"; set -- $digest; printf '%s %s\n' "$1" "$(wc -c < "$file")"`,
         ],
         mounts: [
           { store: name, target: copyModeMountTarget, readOnly: true },
           { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: false },
         ],
+        captureStdout: true,
         remove: true,
       }).pipe(
         Effect.flatMap((result) =>
           result.exitCode === 0
-            ? Effect.void
+            ? parseSnapshotMetrics(options, textDecoder.decode(result.stdout), "tar", store)
             : Effect.fail(
                 volumeError(
                   options,
@@ -796,7 +931,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                 ),
               ),
         ),
-        Effect.as({ provider: ProviderId.make(options.providerId), id }),
+        Effect.map((metrics) => ({ provider: ProviderId.make(options.providerId), id, ...metrics })),
         Effect.mapError((cause) =>
           volumeError(options, "snapshotVolume", "Provider volume snapshot failed.", undefined, cause, store),
         ),
@@ -810,11 +945,48 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           spec.overwrite !== false
             ? `test -d /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} + && find /snapshot -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /lando-data/' sh {} +`
             : "test -d /snapshot";
-        return verifyExpectedIdentity({
-          ref: spec.target,
-          expectedGeneration: spec.expectedTargetGeneration,
-          operation: "restoreVolume",
+        const verifySource = request(options, "restoreVolume", {
+          method: "GET",
+          path: `/images/${encodeURIComponent(nativeSnapshotImage(spec.snapshot.id))}/json`,
         }).pipe(
+          Effect.tap((response) => ensure2xx(options, "restoreVolume", response, store)),
+          Effect.flatMap((response) =>
+            Effect.try({
+              try: () => JSON.parse(response.body) as { readonly Id?: string; readonly Size?: number },
+              catch: (cause) =>
+                volumeError(
+                  options,
+                  "restoreVolume",
+                  "Provider native snapshot inspection failed.",
+                  response,
+                  cause,
+                  store,
+                ),
+            }),
+          ),
+          Effect.flatMap((image) =>
+            image.Id === spec.snapshot.digest && image.Size === spec.snapshot.sizeBytes
+              ? Effect.void
+              : Effect.fail(
+                  volumeError(
+                    options,
+                    "restoreVolume",
+                    "Provider native snapshot identity changed before mutation.",
+                    image,
+                    undefined,
+                    store,
+                  ),
+                ),
+          ),
+        );
+        return verifySource.pipe(
+          Effect.zipRight(
+            verifyExpectedIdentity({
+              ref: spec.target,
+              expectedGeneration: spec.expectedTargetGeneration,
+              operation: "restoreVolume",
+            }),
+          ),
           Effect.zipRight(
             runBytes(options, {
               image: nativeSnapshotImage(spec.snapshot.id),
@@ -847,8 +1019,8 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const snapshotPath = `${copyModeSnapshotMountPath}/${snapshotFile}`;
       const restoreCommand =
         spec.overwrite !== false
-          ? `test -f ${snapshotPath} && find ${copyModeMountPath} -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} + && tar -C ${copyModeMountPath} -xf ${snapshotPath} ${excludeWitness}`
-          : `test -f ${snapshotPath}`;
+          ? `set -eu; test -f "$1"; actual="$(sha256sum "$1")"; actual="${"${actual%% *}"}"; test "$actual" = "$2"; test "$(wc -c < "$1")" = "$3"; find ${copyModeMountPath} -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} +; tar -C ${copyModeMountPath} -xf "$1" ${excludeWitness}`
+          : `set -eu; test -f "$1"; actual="$(sha256sum "$1")"; actual="${"${actual%% *}"}"; test "$actual" = "$2"; test "$(wc -c < "$1")" = "$3"`;
       return verifyExpectedIdentity({
         ref: spec.target,
         expectedGeneration: spec.expectedTargetGeneration,
@@ -857,7 +1029,15 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         Effect.zipRight(
           runBytes(options, {
             image: copyModeHelperImage,
-            command: ["sh", "-c", restoreCommand],
+            command: [
+              "sh",
+              "-c",
+              restoreCommand,
+              "lando-restore",
+              snapshotPath,
+              spec.snapshot.digest,
+              String(spec.snapshot.sizeBytes),
+            ],
             mounts: [
               { store: name, target: copyModeMountTarget, readOnly: false },
               { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: true },
@@ -923,7 +1103,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       )) satisfies RuntimeProviderShape["removeVolume"],
     copyToService: ((target, spec) =>
       Effect.tryPromise({
-        try: async () => new Uint8Array(await Bun.file(spec.sourcePath).arrayBuffer()),
+        try: () => stat(spec.sourcePath),
         catch: (cause) =>
           copyError(
             options,
@@ -934,9 +1114,9 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             target.service,
           ),
       }).pipe(
-        Effect.flatMap((payload) => {
-          const archive = archiveFile(basename(spec.targetPath), payload);
-          return archive === undefined
+        Effect.flatMap((sourceStat) => {
+          const header = archiveFileHeader(basename(spec.targetPath), sourceStat.size);
+          return header === undefined
             ? Effect.fail(
                 copyError(
                   options,
@@ -947,31 +1127,57 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                   target.service,
                 ),
               )
-            : Effect.succeed(archive);
+            : Effect.succeed({ header, sourceSize: sourceStat.size });
         }),
-        Effect.flatMap((payload) =>
-          requireServiceContainerName(options, "copyToService", target).pipe(
-            Effect.flatMap((containerName) =>
-              request(options, "copyToService", {
-                method: "PUT",
-                path: `/containers/${encodeURIComponent(containerName)}/archive?path=${encodeURIComponent(dirname(spec.targetPath))}&overwrite=${String(spec.overwrite ?? false)}`,
-                headers: { "Content-Type": "application/x-tar" },
-                stdin: oneChunk(payload),
-              }).pipe(
-                Effect.mapError((cause) =>
-                  copyError(
-                    options,
-                    "copyToService",
-                    "Provider service copy-in failed.",
-                    undefined,
-                    cause,
-                    target.service,
+        Effect.flatMap(({ header, sourceSize }) => {
+          const source = Stream.fromReadableStream({
+            evaluate: () => Bun.file(spec.sourcePath).stream(),
+            onError: (cause) =>
+              copyError(
+                options,
+                "copyToService",
+                "Failed to read copy source.",
+                { sourcePath: spec.sourcePath },
+                cause,
+                target.service,
+              ),
+            releaseLockOnEnd: true,
+          });
+          const archive = Stream.concat(
+            Stream.make(header),
+            Stream.concat(
+              source,
+              Stream.make(new Uint8Array(padToBlock(sourceSize) - sourceSize + tarBlockSize * 2)),
+            ),
+          );
+          return Effect.scoped(
+            Stream.toAsyncIterableEffect(archive).pipe(
+              Effect.flatMap((stdin) =>
+                requireServiceContainerName(options, "copyToService", target).pipe(
+                  Effect.flatMap((containerName) =>
+                    request(options, "copyToService", {
+                      method: "PUT",
+                      path: `/containers/${encodeURIComponent(containerName)}/archive?path=${encodeURIComponent(dirname(spec.targetPath))}&overwrite=${String(spec.overwrite ?? false)}`,
+                      headers: { "Content-Type": "application/x-tar" },
+                      stdin,
+                    }).pipe(
+                      Effect.mapError((cause) =>
+                        copyError(
+                          options,
+                          "copyToService",
+                          "Provider service copy-in failed.",
+                          undefined,
+                          cause,
+                          target.service,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        }),
         Effect.tap((response) =>
           response.status >= 200 && response.status < 300
             ? Effect.void
@@ -989,31 +1195,27 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         Effect.asVoid,
       )) satisfies RuntimeProviderShape["copyToService"],
     copyFromService: ((target, spec) =>
-      Stream.unwrap(
+      Stream.unwrapScoped(
         requireServiceContainerName(options, "copyFromService", target).pipe(
           Effect.flatMap((containerName) =>
-            collectStreamBytes(
+            Stream.toAsyncIterableEffect(
               stream(options, "copyFromService", {
                 method: "GET",
                 path: `/containers/${encodeURIComponent(containerName)}/archive?path=${encodeURIComponent(spec.sourcePath)}`,
               }),
             ).pipe(
-              Effect.flatMap((archive) => {
-                const payload = extractFirstTarFile(archive);
-                return payload === undefined
-                  ? Effect.fail(
-                      copyError(
-                        options,
-                        "copyFromService",
-                        "Failed to extract provider service copy archive.",
-                        { sourcePath: spec.sourcePath },
-                        undefined,
-                        target.service,
-                      ),
-                    )
-                  : Effect.succeed(payload);
-              }),
-              Effect.map((payload) => Stream.make(payload)),
+              Effect.map((archive) =>
+                Stream.fromAsyncIterable(extractFirstTarFile(archive), (cause) =>
+                  copyError(
+                    options,
+                    "copyFromService",
+                    "Failed to extract provider service copy archive.",
+                    { sourcePath: spec.sourcePath },
+                    cause,
+                    target.service,
+                  ),
+                ),
+              ),
               Effect.mapError((cause) =>
                 copyError(
                   options,
@@ -1045,28 +1247,28 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
       )) satisfies RuntimeProviderShape["exportArtifact"],
     importArtifact: ((data) =>
-      collectStreamBytes(data).pipe(
-        Effect.mapError((cause) =>
-          artifactError(
-            options,
-            "importArtifact",
-            "Failed to read artifact import stream.",
-            undefined,
-            cause,
-          ),
-        ),
-        Effect.flatMap((payload) =>
-          request(options, "importArtifact", {
-            method: "POST",
-            path: "/images/load",
-            headers: { "Content-Type": "application/x-tar" },
-            stdin: oneChunk(payload),
-          }).pipe(
-            Effect.mapError((cause) =>
-              artifactError(options, "importArtifact", "Provider artifact import failed.", undefined, cause),
+      Effect.scoped(
+        Stream.toAsyncIterableEffect(data).pipe(
+          Effect.flatMap((stdin) =>
+            request(options, "importArtifact", {
+              method: "POST",
+              path: "/images/load",
+              headers: { "Content-Type": "application/x-tar" },
+              stdin,
+            }).pipe(
+              Effect.mapError((cause) =>
+                artifactError(
+                  options,
+                  "importArtifact",
+                  "Provider artifact import failed.",
+                  undefined,
+                  cause,
+                ),
+              ),
             ),
           ),
         ),
+      ).pipe(
         Effect.tap((response) =>
           response.status >= 200 && response.status < 300
             ? Effect.void

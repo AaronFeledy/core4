@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +24,8 @@ test.each(["copy", "native"] as const)(
       await writeFile(join(target, VOLUME_WITNESS_FILE), "target-generation");
       await writeFile(join(target, "stale"), "stale");
       expect(await Bun.spawn(["tar", "-cf", join(root, "snap.tar"), "-C", source, "."]).exited).toBe(0);
+      const archive = new Uint8Array(await Bun.file(join(root, "snap.tar")).arrayBuffer());
+      const archiveDigest = createHash("sha256").update(archive).digest("hex");
       const plane = makeProviderDataPlane({
         providerId: "fixture",
         snapshotMode,
@@ -38,6 +41,12 @@ test.each(["copy", "native"] as const)(
                 }),
               });
             }
+            if (input.path.startsWith("/images/")) {
+              return Effect.succeed({
+                status: 200,
+                body: JSON.stringify({ Id: "sha256:native-snapshot", Size: archive.byteLength }),
+              });
+            }
             if (input.path.startsWith("/containers/create"))
               command = Schema.decodeUnknownSync(Schema.Struct({ Cmd: Schema.Array(Schema.String) }))(
                 input.body,
@@ -51,7 +60,13 @@ test.each(["copy", "native"] as const)(
         Effect.scoped(
           plane.restoreVolume({
             target: { app: AppId.make("app"), store: "actual" },
-            snapshot: { provider: "fixture", id: "snap" },
+            snapshot: {
+              provider: "fixture",
+              id: "snap",
+              digest: snapshotMode === "copy" ? archiveDigest : "sha256:native-snapshot",
+              sizeBytes: archive.byteLength,
+              format: snapshotMode === "copy" ? "tar" : "native",
+            },
             expectedTargetGeneration: generation,
           }),
         ),

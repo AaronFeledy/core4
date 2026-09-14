@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Stream } from "effect";
 
@@ -7,6 +9,7 @@ import { AbsolutePath, AppId, type AppPlan, PortablePath, ProviderId, ServiceNam
 
 const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
 const text = (value: Uint8Array): string => new TextDecoder().decode(value);
+const sha256 = (value: Uint8Array): string => createHash("sha256").update(value).digest("hex");
 
 const stdinBytes = (value: string): AsyncIterable<Uint8Array> => ({
   async *[Symbol.asyncIterator]() {
@@ -95,12 +98,19 @@ const makeCopySnapshotApi = () => {
           const dataStore = binds[0]?.split(":")[0];
           const snapshotStore = binds[1]?.split(":")[0];
           if (container !== undefined && dataStore !== undefined && snapshotStore !== undefined) {
-            if (command.includes("tar -C /lando-data -cf /lando-snapshots/snap.tar")) {
+            if (command.includes("tar -C /lando-data -cf") && !command.includes("lando-restore")) {
               snapshotFiles.set(`${snapshotStore}/snap.tar`, volumes.get(dataStore) ?? new Uint8Array());
-            } else if (command.includes("tar -C /lando-data -xf /lando-snapshots/snap.tar")) {
+            } else if (command.includes("lando-restore") && command.includes("tar -C /lando-data -xf")) {
               const snapshot = snapshotFiles.get(`${snapshotStore}/snap.tar`);
-              if (snapshot === undefined) container.exitCode = 1;
-              else volumes.set(dataStore, snapshot);
+              const expectedDigest = container.body.Cmd?.at(-2);
+              const expectedSize = Number(container.body.Cmd?.at(-1));
+              if (
+                snapshot === undefined ||
+                sha256(snapshot) !== expectedDigest ||
+                snapshot.byteLength !== expectedSize
+              ) {
+                container.exitCode = 1;
+              } else volumes.set(dataStore, snapshot);
             }
           }
           return { status: 204, body: "" };
@@ -120,9 +130,12 @@ const makeCopySnapshotApi = () => {
         }
         return { status: 500, body: "{}" };
       }),
-    stream: () => Stream.empty,
+    stream: (request) =>
+      request.path.includes("/logs?")
+        ? Stream.make(multiplexedStdoutFrame(bytes(`${sha256(bytes("original"))} 8\n`)))
+        : Stream.empty,
   };
-  return { api, volumes };
+  return { api, volumes, snapshotFiles };
 };
 
 describe("provider data plane", () => {
@@ -145,6 +158,128 @@ describe("provider data plane", () => {
 
     expect(ref.providerId).toBe(ProviderId.make("test"));
     expect(ref.ref).toBe("example/app:latest");
+  });
+
+  test("starts artifact upload before requesting the next producer chunk", async () => {
+    // Given: a producer that permits its second chunk only after the provider request starts.
+    let requestStarted = false;
+    let uploaded = "";
+    const sourceError = new ArtifactTransferError({
+      providerId: "test",
+      operation: "importArtifact",
+      message: "Provider request did not start before the producer resumed.",
+    });
+    const source = Stream.fromAsyncIterable(
+      (async function* () {
+        yield bytes("first");
+        if (!requestStarted) throw sourceError;
+        yield bytes("second");
+      })(),
+      (cause) => (cause instanceof ArtifactTransferError ? cause : sourceError),
+    );
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        requestStarted = true;
+        return Effect.tryPromise({
+          try: async () => {
+            uploaded = text(await collectAsyncBytes(request.stdin));
+            return { status: 200, body: JSON.stringify({ aux: { ID: "sha256:streamed" } }) };
+          },
+          catch: (cause) =>
+            new ArtifactTransferError({
+              providerId: "test",
+              operation: "importArtifact",
+              message: "Failed to consume artifact upload.",
+              cause,
+            }),
+        });
+      },
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: the artifact is imported through the provider data plane.
+    const ref = await Effect.runPromise(provider.importArtifact(source));
+
+    // Then: request consumption and producer emission interleave without buffering the payload first.
+    expect(uploaded).toBe("firstsecond");
+    expect(ref.ref).toBe("sha256:streamed");
+  });
+
+  test("streams an artifact larger than two GiB through the provider request", async () => {
+    // Given: a reusable one-MiB chunk emitted enough times to cross the signed 32-bit boundary.
+    const chunk = new Uint8Array(1024 * 1024);
+    const chunkCount = 2049;
+    const source = Stream.fromIterable(Array.from({ length: chunkCount })).pipe(Stream.map(() => chunk));
+    let uploadedBytes = 0;
+    const api: DataPlaneApiClient = {
+      request: (request) =>
+        Effect.promise(async () => {
+          if (request.stdin !== undefined) {
+            for await (const part of request.stdin) uploadedBytes += part.byteLength;
+          }
+          return { status: 200, body: JSON.stringify({ aux: { ID: "sha256:large" } }) };
+        }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: the real artifact-import path forwards the source to the provider API.
+    const ref = await Effect.runPromise(provider.importArtifact(source));
+
+    // Then: every byte crosses the production boundary without a whole-payload allocation.
+    expect(uploadedBytes).toBe(chunk.byteLength * chunkCount);
+    expect(uploadedBytes).toBeGreaterThan(2 * 1024 * 1024 * 1024);
+    expect(ref.ref).toBe("sha256:large");
+  });
+
+  test("propagates artifact producer failures from the provider request", async () => {
+    // Given: an upload producer that fails after its first chunk.
+    const sourceError = new ArtifactTransferError({
+      providerId: "test",
+      operation: "produceArtifact",
+      message: "Artifact producer failed.",
+    });
+    const api: DataPlaneApiClient = {
+      request: (request) =>
+        Effect.tryPromise({
+          try: async () => {
+            await collectAsyncBytes(request.stdin);
+            return { status: 200, body: JSON.stringify({ aux: { ID: "sha256:unreachable" } }) };
+          },
+          catch: (cause) =>
+            new ArtifactTransferError({
+              providerId: "test",
+              operation: "importArtifact",
+              message: "Artifact upload failed.",
+              cause,
+            }),
+        }),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+    const source = Stream.concat(Stream.make(bytes("first")), Stream.fail(sourceError));
+
+    // When: the provider consumes the failing producer.
+    const exit = await Effect.runPromiseExit(provider.importArtifact(source));
+
+    // Then: the import fails instead of returning an image reference.
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ArtifactTransferError);
+    }
   });
 
   test("imports artifacts from image-load aux ids", async () => {
@@ -191,6 +326,15 @@ describe("provider data plane", () => {
     const api: DataPlaneApiClient = {
       request: (request) => {
         paths.push(request.path);
+        if (request.path.startsWith("/commit?")) {
+          return Effect.succeed({ status: 201, body: JSON.stringify({ Id: "sha256:native-snapshot" }) });
+        }
+        if (request.path.startsWith("/images/")) {
+          return Effect.succeed({
+            status: 200,
+            body: JSON.stringify({ Id: "sha256:native-snapshot", Size: 4096 }),
+          });
+        }
         if (request.path.includes("/wait")) return Effect.succeed({ status: 200, body: "{}" });
         return Effect.succeed({ status: request.method === "DELETE" ? 204 : 201, body: "{}" });
       },
@@ -210,6 +354,7 @@ describe("provider data plane", () => {
 
     expect(snapshot.provider).toBe(ProviderId.make("test"));
     expect(snapshot.id).toBe("snap");
+    expect(snapshot).toMatchObject({ digest: "sha256:native-snapshot", sizeBytes: 4096, format: "native" });
     expect(paths.some((path) => path.includes("/commit?"))).toBe(true);
   });
 
@@ -408,6 +553,41 @@ describe("provider data plane", () => {
     ]);
   });
 
+  test("emits provider run output before waiting for process completion", async () => {
+    // Given: a provider whose wait request records whether streaming was deferred until completion.
+    let waited = false;
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        if (request.path.endsWith("/wait")) waited = true;
+        return Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        );
+      },
+      stream: () => Stream.make(multiplexedStdoutFrame(bytes("first"))),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: a consumer asks for only the first streamed chunk.
+    const chunks = await Effect.runPromise(
+      Effect.scoped(
+        provider
+          .runStream({ image: "alpine:3.20", command: ["echo", "first"], remove: true })
+          .pipe(Stream.take(1), Stream.runCollect),
+      ),
+    );
+
+    // Then: output was observable without buffering through the wait/inspect path.
+    expect(Array.from(chunks)).toEqual([{ kind: "stdout", chunk: bytes("first") }]);
+    expect(waited).toBe(false);
+  });
+
   test("persists copy-mode snapshots in a provider volume across data-plane instances", async () => {
     const fake = makeCopySnapshotApi();
     const firstProvider = makeProviderDataPlane({
@@ -431,6 +611,12 @@ describe("provider data plane", () => {
         }),
       ),
     );
+
+    expect(snapshot).toMatchObject({
+      digest: sha256(bytes("original")),
+      sizeBytes: bytes("original").byteLength,
+      format: "tar",
+    });
     fake.volumes.set("data", bytes("changed"));
     await Effect.runPromise(
       Effect.scoped(
@@ -477,6 +663,39 @@ describe("provider data plane", () => {
     expect(text(fake.volumes.get("data") ?? new Uint8Array())).toBe("changed");
   });
 
+  test("rejects changed copy snapshot bytes before target mutation", async () => {
+    // Given: a completed copy snapshot whose provider-owned archive is changed afterward.
+    const fake = makeCopySnapshotApi();
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api: fake.api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+    const snapshot = await Effect.runPromise(
+      Effect.scoped(
+        provider.snapshotVolume({ volume: { app: AppId.make("app"), store: "data" }, snapshotId: "snap" }),
+      ),
+    );
+    fake.snapshotFiles.set("lando-test-copy-snapshots/snap.tar", bytes("tampered"));
+    fake.volumes.set("data", bytes("target-before-restore"));
+
+    // When: restore checks the immutable source artifact and target generation.
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        provider.restoreVolume({
+          snapshot,
+          target: { app: AppId.make("app"), store: "data" },
+          expectedTargetGeneration: volumeGeneration,
+        }),
+      ),
+    );
+
+    // Then: the helper fails without replacing the target bytes.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(text(fake.volumes.get("data") ?? new Uint8Array())).toBe("target-before-restore");
+  });
+
   test("rejects restore and removal when the observed volume generation changed", async () => {
     const mutations: string[] = [];
     const api: DataPlaneApiClient = {
@@ -508,7 +727,13 @@ describe("provider data plane", () => {
     const restore = await Effect.runPromiseExit(
       Effect.scoped(
         provider.restoreVolume({
-          snapshot: { provider: ProviderId.make("test"), id: "snap" },
+          snapshot: {
+            provider: ProviderId.make("test"),
+            id: "snap",
+            digest: "missing",
+            sizeBytes: 0,
+            format: "tar",
+          },
           target: { app: AppId.make("app"), store: "data" },
           expectedTargetGeneration: staleGeneration,
         }),
@@ -649,10 +874,16 @@ describe("provider data plane", () => {
 
   test("uses the plan slug for service copy container names", async () => {
     const calls: string[] = [];
+    let uploadChunks = 0;
     const api: DataPlaneApiClient = {
       request: (request) => {
         calls.push(request.path);
-        return Effect.succeed({ status: 200, body: "{}" });
+        return Effect.promise(async () => {
+          if (request.stdin !== undefined) {
+            for await (const _chunk of request.stdin) uploadChunks += 1;
+          }
+          return { status: 200, body: "{}" };
+        });
       },
     };
     const provider = makeProviderDataPlane({
@@ -673,5 +904,6 @@ describe("provider data plane", () => {
     );
 
     expect(calls[0]).toContain("/containers/lando-app-slug-web/archive?");
+    expect(uploadChunks).toBeGreaterThan(1);
   });
 });
