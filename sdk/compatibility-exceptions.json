@@ -1438,5 +1438,59 @@
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateEncodeInput.context.tooling.anyOf",
     "justification": "Encoder tooling context intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.digest",
+    "justification": "The unreleased snapshot contract now binds native restore metadata to the provider-observed immutable artifact digest instead of a synthetic snapshot identifier."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.format",
+    "justification": "The unreleased snapshot contract now records whether provider restore metadata identifies a native artifact or a portable tar archive."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.sizeBytes",
+    "justification": "The unreleased snapshot contract now records provider-observed immutable artifact size so restore rejects replacement artifacts before mutation."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.digest",
+    "justification": "The unreleased provider restore contract now requires the immutable source digest so providers can reject changed snapshot artifacts before target mutation."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.format",
+    "justification": "The unreleased provider restore contract now requires the snapshot artifact format needed to select and verify the restore path."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.sizeBytes",
+    "justification": "The unreleased provider restore contract now requires immutable source size so providers can reject truncated or replaced artifacts before target mutation."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.digest",
+    "justification": "The unreleased snapshot reference now identifies the real immutable provider artifact digest rather than deriving integrity from the snapshot id."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.format",
+    "justification": "The unreleased snapshot reference now distinguishes native provider artifacts from portable tar archives."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.sizeBytes",
+    "justification": "The unreleased snapshot reference now carries provider-observed artifact size for pre-mutation restore verification."
   }
 ]
