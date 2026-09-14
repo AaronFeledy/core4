@@ -132,7 +132,7 @@ for (const scenario of cases) {
           verifyChecksumSignature: (input) => verifyBytes(input.checksumsBytes, input.signatureBytes),
           selfUpdate: {
             executablePath: installed,
-            argv: [installed, "/$bunfs/root/lando.js", "update", "--only", "core", "--yes"],
+            argv: [installed, "/$bunfs/root/lando.js", "update", "--only", "core"],
             env: { PATH: process.env.PATH },
             execve: (input) =>
               Effect.sync(() => {
@@ -159,7 +159,7 @@ for (const scenario of cases) {
           const exec = execCalls[0];
           assert.ok(exec);
           assert.equal(exec.path, installed);
-          assert.deepEqual(exec.argv, [installed, "update", "--only", "core", "--yes"]);
+          assert.deepEqual(exec.argv, [installed, "update", "--only", "core"]);
           const token = exec.env.LANDO_UPDATE_HANDOFF_TOKEN;
           assert.ok(token);
           const receipt = yield* update({ handoff: makeUpdateHandoff(store, token) });
