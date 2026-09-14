@@ -500,7 +500,8 @@ describe("AppPlannerLive", () => {
       path: "/type-ready",
       okCodes: [],
       retries: 0,
-      timeoutMs: 20000,    });
+      timeoutMs: 20000,
+    });
   });
 
   test("uses LANDO_PROVIDER when the Landofile does not set provider", async () => {

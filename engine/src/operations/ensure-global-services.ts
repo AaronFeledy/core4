@@ -38,10 +38,10 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
-import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { publishedEndpointUrls } from "./authority-url.ts";
 
 import { globalInstall } from "./global-install.ts";

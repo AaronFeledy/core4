@@ -85,8 +85,7 @@ type StartAppServices =
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner
-  | StateStore
-  | UrlScanner;
+  | StateStore;
 
 type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
 
