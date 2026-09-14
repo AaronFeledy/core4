@@ -26,7 +26,7 @@ test("plans user profile build context and env_file from the consuming app root"
   await writeFile(join(appRoot, "docker", "Dockerfile"), "FROM alpine:latest\n");
   await writeFile(
     join(includesRoot, "profile.yml"),
-    "services:\n  web:\n    type: compose\n    build:\n      context: ./docker\n    env_file:\n      - ./app.env\n    environment:\n      VALUE: '${secret:OPAQUE}'\n",
+    "services:\n  web:\n    type: compose\n    home: false\n    build:\n      context: ./docker\n    env_file:\n      - ./app.env\n    environment:\n      VALUE: '${secret:OPAQUE}'\n",
   );
   try {
     const landofile = await Effect.runPromise(

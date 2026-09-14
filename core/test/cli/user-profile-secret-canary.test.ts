@@ -166,7 +166,7 @@ test.each([
       await writeFile(join(appRoot, ".lando.yml"), "name: profile-canary\nincludes:\n  - user:profile.yml\n");
       await writeFile(
         join(paths.userIncludesDir, "profile.yml"),
-        `services:\n  web:\n    type: compose\n    image: alpine:3.21\n    environment:\n      VALUE: '${reference}'\n    build:\n      app:\n        - echo build\n`,
+        `services:\n  web:\n    type: compose\n    image: alpine:3.21\n    home: false\n    environment:\n      VALUE: '${reference}'\n    build:\n      app:\n        - echo build\n`,
       );
 
       // When: config, planning, caching, start, and app builds run through their real implementations.

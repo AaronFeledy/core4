@@ -29,7 +29,7 @@ test.each([
   const keyFor = async (env: string) => {
     await writeFile(
       join(includesRoot, "profile.yml"),
-      `services:\n  web:\n    type: compose\n    image: alpine:3.21\n    environment:\n      ${env}\n    build:\n      app:\n        - echo build\n`,
+      `services:\n  web:\n    type: compose\n    image: alpine:3.21\n    home: false\n    environment:\n      ${env}\n    build:\n      app:\n        - echo build\n`,
     );
     const plan = await Effect.runPromise(
       Effect.gen(function* () {

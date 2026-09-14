@@ -32,7 +32,7 @@ test("recomputes profile identities through edit, deletion, and byte-identical r
   const cacheRoot = join(root, "cache");
   const profilePath = join(includesRoot, "profile.yml");
   const original =
-    "services:\n  web:\n    type: compose\n    image: alpine:3.21\n    environment:\n      ORIGIN: original\n";
+    "services:\n  web:\n    type: compose\n    image: alpine:3.21\n    home: false\n    environment:\n      ORIGIN: original\n";
   const previousCache = process.env.LANDO_USER_CACHE_ROOT;
   process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
   let writes = 0;
