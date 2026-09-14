@@ -202,6 +202,11 @@ export interface ServiceRuntimeInfo {
   readonly lastStartedAt?: Date;
 }
 
+export interface ServiceRuntimeIdentity {
+  readonly containerId: string;
+  readonly imageIdentity: string;
+}
+
 export interface ListFilter {
   readonly app?: AppId;
 }
@@ -252,6 +257,14 @@ export interface RuntimeProviderShape {
   readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+  readonly resume?: (
+    target: ServiceSelector,
+    identity: ServiceRuntimeIdentity,
+  ) => Effect.Effect<void, ProviderError>;
+  readonly suspend?: (
+    target: ServiceSelector,
+    identity: ServiceRuntimeIdentity,
+  ) => Effect.Effect<void, ProviderError>;
   readonly waitForExit: (
     target: ServiceSelector,
     options?: WaitForExitOptions,

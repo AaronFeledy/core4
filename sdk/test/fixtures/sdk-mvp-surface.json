@@ -104,6 +104,7 @@
       "removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>",
       "removeVolume: (ref: VolumeRef, expectedGeneration: VolumeIdentity[\"generation\"]) => Effect.Effect<void, ProviderError>",
       "removeVolumeSnapshot?: (snapshot: VolumeSnapshotRef) => Effect.Effect<void, ProviderError, Scope.Scope>",
+      "resume?: (target: ServiceSelector, identity: ServiceRuntimeIdentity) => Effect.Effect<void, ProviderError>",
       "restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
       "run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>",
       "runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>",
@@ -111,6 +112,7 @@
       "snapshotVolume: (spec: VolumeSnapshotSpec) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>",
       "start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
       "stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
+      "suspend?: (target: ServiceSelector, identity: ServiceRuntimeIdentity) => Effect.Effect<void, ProviderError>",
       "restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>",
       "version: string",
       "waitForExit: (target: ServiceSelector, options?: WaitForExitOptions) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>"
