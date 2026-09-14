@@ -247,9 +247,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     lifecycle: () => lifecycle,
     snapshotFilters: () => snapshotFilters,
     countAttempts: () => countAttempts,
-    dispose: () => {
-      rmSync(root, { recursive: true, force: true });
-    },
+    dispose: () => rmSync(root, { recursive: true, force: true }),
   };
   liveHarnesses.push(harness);
   return harness;
