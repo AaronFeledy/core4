@@ -4,7 +4,7 @@ import { Effect, Exit } from "effect";
 import { ServiceName } from "@lando/sdk/schema";
 
 import { executeDbCommand } from "../src/execute.ts";
-import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 afterEach(cleanupSqlTestDeps);
 
@@ -26,6 +26,105 @@ test("rejects restore when a stopped target has no observed image identity", asy
   // Then: source metadata cannot substitute for target observation before mutation.
   expect(Exit.isFailure(result)).toBe(true);
   expect(harness.lifecycle()).toEqual([]);
+});
+
+test("temporarily resumes the exact stopped runtime for observation and returns it to stopped", async () => {
+  const harness = makeSqlTestDeps({ password: "test-password", initiallyRunning: false });
+
+  const exit = await Effect.runPromiseExit(
+    executeDbCommand(harness.deps, { action: "snapshot", yes: false }),
+  );
+
+  expect(Exit.isSuccess(exit)).toBe(true);
+  expect(harness.lifecycle()).toEqual(["lock", "resume", "suspend", "snapshot"]);
+});
+
+test("does not treat a missing container as a stopped runtime", async () => {
+  const harness = makeSqlTestDeps({ password: "test-password", runtimeExists: false });
+
+  const exit = await Effect.runPromiseExit(
+    executeDbCommand(harness.deps, { action: "snapshot", yes: false }),
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(harness.lifecycle()).toEqual([]);
+});
+
+test("rejects a replaced container after the lock-held version query", async () => {
+  const harness = makeSqlTestDeps({ password: "test-password" });
+  let replaced = false;
+  const deps = {
+    ...harness.deps,
+    exec: (service: string, command: ReadonlyArray<string>, env?: Readonly<Record<string, string>>) =>
+      harness.deps.exec(service, command, env).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (command.includes("SELECT VERSION()")) replaced = true;
+          }),
+        ),
+      ),
+    inspect: (service: string) =>
+      harness.deps.inspect(service).pipe(
+        Effect.map((runtime) => ({
+          ...runtime,
+          containerId: replaced ? "container:replacement" : "container:database",
+        })),
+      ),
+  };
+
+  const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(harness.snapshots()).toEqual([]);
+  expect(harness.lifecycle()).toEqual(["lock"]);
+});
+
+test("uses the inspected identity instead of an edited-plan name-based start", async () => {
+  const harness = makeSqlTestDeps({
+    password: "test-password",
+    initiallyRunning: false,
+    containerId: "container:immutable",
+  });
+  const resumed: Array<{ readonly containerId: string; readonly imageIdentity: string }> = [];
+  const deps = {
+    ...harness.deps,
+    start: () => Effect.die("name-based start must not run"),
+    resume: (_service: string, identity: { readonly containerId: string; readonly imageIdentity: string }) =>
+      Effect.sync(() => {
+        resumed.push({ containerId: identity.containerId, imageIdentity: identity.imageIdentity });
+      }).pipe(Effect.zipRight(harness.deps.resume(_service, identity))),
+  };
+
+  const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
+
+  expect(Exit.isSuccess(exit)).toBe(true);
+  expect(resumed).toEqual([{ containerId: "container:immutable", imageIdentity: "sha256:mysql-runtime" }]);
+});
+
+test("fails closed and returns to stopped when exact temporary resume fails", async () => {
+  const harness = makeSqlTestDeps({ password: "test-password", initiallyRunning: false, startFails: true });
+
+  const exit = await Effect.runPromiseExit(
+    executeDbCommand(harness.deps, { action: "snapshot", yes: false }),
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(harness.lifecycle()).toEqual(["lock", "resume", "suspend"]);
+  expect(harness.snapshots()).toEqual([]);
+});
+
+test("returns a running database to running when nonmutating snapshot capture fails", async () => {
+  const harness = makeSqlTestDeps({ password: "test-password" });
+  const deps = {
+    ...harness.deps,
+    snapshot: (...args: Parameters<typeof harness.deps.snapshot>) =>
+      harness.deps.snapshot(...args).pipe(Effect.zipRight(Effect.fail(new FakeRestoreError()))),
+  };
+
+  const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(harness.lifecycle()).toEqual(["lock", "suspend", "snapshot", "resume"]);
 });
 
 test("rejects a replaced volume when replacement occurs while waiting for its lock", async () => {

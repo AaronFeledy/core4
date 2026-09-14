@@ -59,8 +59,8 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       command: countCommand(target.family, creds),
       env,
     });
-    const startDatabase = (serviceName: string) =>
-      deps.start(serviceName).pipe(Effect.zipRight(waitForDatabase));
+    const resumeDatabase = (serviceName: string, identity: Parameters<typeof deps.resume>[1]) =>
+      deps.resume(serviceName, identity).pipe(Effect.zipRight(waitForDatabase));
     if (input.action === "seed" && (input.file === undefined) === (input.snapshotId === undefined)) {
       return yield* Effect.fail(
         new SqlSeedSourceError({
@@ -159,11 +159,13 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       preflight?: Parameters<typeof runPhysicalOperation<A, E>>[0]["preflight"],
     ) =>
       runPhysicalOperation({
-        deps: { ...deps, start: startDatabase },
+        deps: { ...deps, resume: resumeDatabase },
         plan: deps.plan,
         service,
         serviceName: target.name,
         family: target.family,
+        creds,
+        env,
         ...(input.label === undefined ? {} : { label: input.label }),
         ...(input.compression === undefined
           ? {}
@@ -221,7 +223,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
               Effect.gen(function* () {
                 yield* context.verifyVolume;
                 yield* deps.restore(snapshotId ?? "", context.volume);
-                if (context.running) yield* startDatabase(target.name);
+                if (context.running) yield* context.resume;
               }),
             false,
             (context) => requireCompatibleSnapshot(restoreSource, context),
@@ -235,8 +237,10 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
           service,
           serviceName: target.name,
           family: target.family,
+          creds,
+          env,
           body: (context) =>
-            executeSeed({ ...deps, start: startDatabase }, context, {
+            executeSeed({ ...deps, resume: resumeDatabase }, context, {
               ...io,
               store: context.volume,
               ...(input.snapshotId === undefined ? {} : { snapshotId: input.snapshotId }),
