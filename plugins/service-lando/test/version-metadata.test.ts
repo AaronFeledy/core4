@@ -54,8 +54,8 @@ describe("canonical ServiceType version metadata", () => {
       const family = id.split(":", 1)[0] ?? id;
       const matrix = serviceTypeVersionMatrices().find((candidate) => candidate.family === family);
       if (matrix === undefined) throw new Error(`Missing canonical matrix for ${family}`);
-      expect(serviceType.versions).toEqual(matrix?.versions);
-      expect(serviceType.artifacts).toEqual(matrix?.artifacts);
+      expect(serviceType.versions).toEqual(matrix.versions);
+      expect(serviceType.artifacts).toEqual(matrix.artifacts);
     }
   });
 

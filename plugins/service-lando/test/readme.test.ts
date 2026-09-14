@@ -58,15 +58,15 @@ describe("@lando/service-lando README — framework presets table", () => {
       },
       {
         language: "python",
-        frameworks: [...SUPPORTED_PYTHON_FRAMEWORKS],
+        frameworks: SUPPORTED_PYTHON_FRAMEWORKS,
       },
       {
         language: "ruby",
-        frameworks: [...SUPPORTED_RUBY_FRAMEWORKS],
+        frameworks: SUPPORTED_RUBY_FRAMEWORKS,
       },
       {
         language: "go",
-        frameworks: [...SUPPORTED_GO_FRAMEWORKS],
+        frameworks: SUPPORTED_GO_FRAMEWORKS,
       },
     ];
 

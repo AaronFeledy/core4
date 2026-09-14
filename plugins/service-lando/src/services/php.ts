@@ -204,11 +204,6 @@ export const phpServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
-const normalizedService = (service: ServiceConfig, resolvedVersion: SupportedPhpVersion): ServiceConfig => ({
-  ...service,
-  type: `php:${resolvedVersion}`,
-});
-
 const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   id: `php:${version}`,
   name: `php:${version}`,
@@ -233,7 +228,10 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
 
         return {
           base: "lando" as const,
-          normalizedConfig: normalizedService(input.service, resolvedVersion),
+          normalizedConfig: {
+            ...input.service,
+            type: `php:${resolvedVersion}`,
+          } satisfies ServiceConfig,
           logSources: PHP_FPM_LOG_SOURCES,
           features: [
             { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot } },

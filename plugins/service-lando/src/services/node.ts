@@ -44,8 +44,6 @@ const validateVersion = (
   throw new Error(`Unsupported Node version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const configFor = (ctx: ServiceFeatureContext): NodeFeatureConfig => ctx.config as NodeFeatureConfig;
-
 // Official Node images ship Corepack shims at /usr/local/bin/{yarn,pnpm}.
 // --force lets authored globals replace those stubs instead of failing EEXIST.
 const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
@@ -59,7 +57,7 @@ const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
 
 const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const { version } = configFor(ctx);
+  const { version } = ctx.config as NodeFeatureConfig;
   const serviceType = `node:${version}`;
   const port = service.port ?? DEFAULT_PORT;
   const appMount = {

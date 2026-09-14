@@ -16,6 +16,7 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  GlobalConfig,
   LandofileShape,
   LogSource,
   PluginManifest,
@@ -26,7 +27,6 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
-import { GlobalConfig } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/sdk/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -2041,16 +2041,11 @@ describe("AppPlannerLive", () => {
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(CapabilityError);
-          const error = failure.value as CapabilityError;
-          expect(error.capability).toBe("sharedCrossAppNetwork");
-          expect(error.feature).toBe("test.needs-shared-network");
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure.capability).toBe("sharedCrossAppNetwork");
+        expect(failure.feature).toBe("test.needs-shared-network");
       }
     });
   });
@@ -3906,7 +3901,6 @@ describe("AppPlannerLive", () => {
 
         expect(first.services[ServiceName.make("web")]?.environment.ONE_FEATURE).toBe("1");
         expect(first.services[ServiceName.make("web")]?.environment.TWO_FEATURE).toBeUndefined();
-        // The feature set changed, so the cache key must roll and re-plan.
         expect(second.services[ServiceName.make("web")]?.environment.TWO_FEATURE).toBe("1");
         expect(second.services[ServiceName.make("web")]?.environment.ONE_FEATURE).toBeUndefined();
         expect(resolveCalls).toBe(2);
