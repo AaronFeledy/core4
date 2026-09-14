@@ -611,6 +611,10 @@ const ServiceConfigWithExtensions = Schema.Struct(
       description: "Primary container port exposed by the service.",
     }),
     framework: Schema.optional(Schema.String),
+    packageRoot: Schema.optional(Schema.String).annotations({
+      description:
+        "App-root-relative source directory used only by service-type project-file inference; it does not change mounts or the container working directory.",
+    }),
     webroot: Schema.optional(PortablePath).annotations({
       description: "Container path served as this service's HTTP document root.",
     }),

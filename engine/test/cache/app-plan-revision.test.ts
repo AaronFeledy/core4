@@ -147,7 +147,7 @@ test("ignores a valid revision-6 app plan without pinned PHP prerequisite identi
   expect(await readFile(path)).toEqual(persisted);
 });
 
-test("includes revision 15 in the app-plan cache key", () => {
+test("includes revision 16 in the app-plan cache key", () => {
   // Given
   const input = {
     appRoot: "/workspace/revision-key",

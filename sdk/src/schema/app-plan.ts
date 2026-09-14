@@ -55,6 +55,9 @@ export const ServicePlan = Schema.Struct({
   certs: Schema.optional(CertificatePlan),
   hostAliases: Schema.Array(HostAliasPlan),
   metadata: PlanMetadata,
+  provenance: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })).annotations({
+    description: "Service-type resolution inputs and selected artifact, excluding source file contents.",
+  }),
   extensions: ProviderExtensionConfig,
 });
 export type ServicePlan = typeof ServicePlan.Type;

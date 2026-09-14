@@ -20,7 +20,7 @@ import {
 import {
   AbsolutePath,
   AppId,
-  AppPlan,
+  type AppPlan,
   type LandofileShape,
   type NetworkPlan,
   type NetworkingPlan,
@@ -36,7 +36,7 @@ import {
   type PathsService,
   type PluginRegistry,
 } from "@lando/sdk/services";
-import { type Context, DateTime, Effect, Either, ParseResult, Schema } from "effect";
+import { type Context, DateTime, Effect, Either } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -85,6 +85,8 @@ import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
+import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
+import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import {
@@ -95,26 +97,13 @@ import {
   loadServiceTypeWithVersion,
   resolveHostFacts,
   resolvePinnedArtifactTag,
+  resolvedServiceCacheInput,
   servicePlanError,
   serviceTypeCollision,
   serviceTypeFor,
   unsupportedServiceType,
 } from "./service-types.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
-const decodeAppPlan = (appRoot: string, plan: unknown): Effect.Effect<AppPlan, LandofileValidationError> => {
-  const decoded = Schema.decodeUnknownEither(AppPlan)(plan);
-  if (Either.isRight(decoded)) return Effect.succeed(decoded.right);
-  const issues = ParseResult.ArrayFormatter.formatErrorSync(decoded.left).map((issue) =>
-    issue.path.length === 0 ? issue.message : issue.path.join("."),
-  );
-  return Effect.fail(
-    new LandofileValidationError({
-      message: `Planned AppPlan is invalid: ${issues.join(", ")}.`,
-      file: `${appRoot}/.lando.yml`,
-      issues,
-    }),
-  );
-};
 
 export const planApp = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
@@ -288,6 +277,17 @@ export const planApp = (
         resolvedArtifactTag === undefined
           ? serviceWithEnvironment
           : { ...serviceWithEnvironment, image: resolvedArtifactTag };
+      const projectFiles = yield* loadAuthorizedServiceProjectFiles({
+        appRoot,
+        name,
+        service,
+        serviceType,
+        serviceTypeId,
+        version,
+        pinnedService,
+        registeredServiceTypeIds,
+        fileSystem,
+      });
       const resolution = yield* serviceType
         .resolve({
           name,
@@ -299,6 +299,7 @@ export const planApp = (
           metadata: encodedMetadata,
           host,
           capabilities: providerCapabilities,
+          projectFiles,
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       const resolvedAuthored = authoredStorageScopes(appRoot, name, resolution.normalizedConfig);
@@ -377,6 +378,7 @@ export const planApp = (
         featureRefs,
         resolvedArtifactTag,
         envFileInputs: loadedEnvFiles.inputs,
+        projectFiles,
         configSourceInputs,
       });
     }
@@ -423,20 +425,7 @@ export const planApp = (
         composition: {
           topLevelEnvFileInputs: topLevelEnvFiles.inputs,
           composeConfigFileInputs,
-          services: resolvedServices.map((entry) => ({
-            name: entry.name,
-            serviceType: entry.serviceType.id,
-            base: entry.resolution.base,
-            normalizedConfig: entry.resolution.normalizedConfig,
-            tooling: entry.resolution.tooling ?? {},
-            logSources: entry.logSources,
-            featureRefs: entry.featureRefs,
-            envFileInputs: entry.envFileInputs,
-            configSourceInputs: entry.configSourceInputs,
-            ...(entry.resolvedArtifactTag === undefined
-              ? {}
-              : { resolvedArtifactTag: entry.resolvedArtifactTag }),
-          })),
+          services: resolvedServices.map(resolvedServiceCacheInput),
           appFeatures: appFeatures.map((entry) => ({
             id: entry.id,
             ...(entry.pluginId === undefined ? {} : { pluginId: entry.pluginId }),

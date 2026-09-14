@@ -7,20 +7,49 @@ tags: [beta, docs, node, service, runtime]
 
 # Add Node.js
 
-Put `type: node:22` on the primary service. Node has no bare `type: node` alias, so pin a version.
-Lando currently supports `node:lts` and `node:22`, and derives the default
-image (`node:22`) from the version you pin. Your repository is bind-mounted
-read-write at `/app`, which is also the working directory:
+Put `type: node` on the primary service to use the Node version your project
+already declares. Lando reads `.nvmrc` first, then checks `package.json`
+`engines.node` when it exists. Your repository is bind-mounted read-write at
+`/app`, which is also the working directory:
 
 ```yaml
 name: node-demo
 services:
   app:
-    type: "node:22"
+    type: node
     primary: true
 ```
 
+Add a project constraint next to the Landofile:
+
+```text
+22.11.0
+```
+
+That `.nvmrc` resolves to `node:22.11.0`. A major pin such as `22`, the Node 22
+LTS codename `jod`, or `lts/jod` resolves to `node:22`. The moving `lts/*`
+selector resolves to `node:lts`. If `package.json` also declares
+`engines.node`, its range must include the complete image selection from
+`.nvmrc`; conflicting constraints fail before Lando asks the provider to do
+anything.
+
 <Guide>
+  <Scenario id="infer-exact-version" render>
+    <Step name="start-from-project-pin">
+      <UseFixture name="node-inference" />
+      <Verify file="node-inference/.nvmrc" expect={{ regex: "^22[.]11[.]0\\s*$" }} />
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+The explicit-version example below keeps the version in the Landofile with
+`type: "node:22"`, without consulting project files.
+
   <Scenario id="install-globals" render>
     <Step name="scaffold">
       <UseFixture name="node-globals" />
@@ -104,10 +133,26 @@ Specifiers are ordinary npm spellings such as `1.22.4`, `^17.0.0`, `>=5 <6`, or 
 
 `globals` applies to a custom `image:` too, so the image you bring needs `npm`.
 
-## Pin a version
+## Read a nested package
 
-Pin a different supported Node version, or set `image:` to use a custom
-Node base image:
+Set `packageRoot` when the Node package lives below the app root. This changes
+only where Lando reads `.nvmrc` and `package.json`. It does not change mounts or
+the container working directory.
+
+```yaml
+services:
+  app:
+    type: node
+    packageRoot: apps/web
+```
+
+The directory must exist inside the app root. Lando rejects absolute paths,
+parent traversal, and symbolic links for inference inputs.
+
+## Pin the service type
+
+Use an explicit type when the Landofile, rather than project files, should own
+the version. Lando supports `node:lts` and `node:22` as explicit types:
 
 ```yaml
 services:
@@ -121,5 +166,9 @@ services:
     type: "node:22"
     image: node:22-bookworm
 ```
+
+Custom `image:` values work with explicit Node types. Don't combine `image:`
+with bare `type: node`; inference must choose the image without a second source
+of truth.
 
 </Guide>
