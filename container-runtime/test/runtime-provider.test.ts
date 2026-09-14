@@ -86,7 +86,13 @@ const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
   },
   snapshotVolume: (spec) => {
     calls.push({ name: "snapshotVolume", args: [spec] });
-    return Effect.succeed({ provider: ProviderId.make("test"), id: "snap" });
+    return Effect.succeed({
+      provider: ProviderId.make("test"),
+      id: "snap",
+      digest: "sha256:snap",
+      sizeBytes: 1,
+      format: "native" as const,
+    });
   },
   restoreVolume: (spec) => {
     calls.push({ name: "restoreVolume", args: [spec] });
@@ -335,7 +341,13 @@ describe("resolved provider operations", () => {
     const snapshotSpec = { volume, snapshotId: "snap" };
     const generation = "00000000-0000-4000-8000-000000000001";
     const restoreSpec = {
-      snapshot: { provider: ProviderId.make("test"), id: "snap" },
+      snapshot: {
+        provider: ProviderId.make("test"),
+        id: "snap",
+        digest: "sha256:snap",
+        sizeBytes: 1,
+        format: "native" as const,
+      },
       target: volume,
       expectedTargetGeneration: generation,
     };
@@ -406,7 +418,13 @@ describe("resolved provider operations", () => {
       Effect.scoped(ops.snapshotVolume({ volume })),
       Effect.scoped(
         ops.restoreVolume({
-          snapshot: { provider: ProviderId.make("test"), id: "x" },
+          snapshot: {
+            provider: ProviderId.make("test"),
+            id: "x",
+            digest: "sha256:x",
+            sizeBytes: 1,
+            format: "native" as const,
+          },
           target: volume,
           expectedTargetGeneration: "00000000-0000-4000-8000-000000000001",
         }),

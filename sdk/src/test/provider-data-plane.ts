@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -563,8 +564,15 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   snapshotVolume: (spec) =>
     Effect.sync(() => {
       const id = spec.snapshotId ?? `${spec.volume.store}-snapshot`;
-      testSnapshotBytes.set(id, cloneBytes(testVolumeBytes.get(volumeKey(spec.volume)) ?? utf8("")));
-      return { provider: TEST_PROVIDER_ID, id };
+      const payload = cloneBytes(testVolumeBytes.get(volumeKey(spec.volume)) ?? utf8(""));
+      testSnapshotBytes.set(id, payload);
+      return {
+        provider: TEST_PROVIDER_ID,
+        id,
+        digest: createHash("sha256").update(payload).digest("hex"),
+        sizeBytes: payload.byteLength,
+        format: "native",
+      };
     }),
   removeVolumeSnapshot: (snapshot: VolumeSnapshotRef) =>
     Effect.sync(() => {

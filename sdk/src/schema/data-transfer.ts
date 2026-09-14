@@ -105,6 +105,13 @@ export type VolumeFilter = typeof VolumeFilter.Type;
 export const VolumeSnapshotRef = Schema.Struct({
   provider: Schema.String,
   id: Schema.String,
+  digest: Schema.String.annotations({
+    description: "SHA-256 digest or provider-observed immutable artifact identity.",
+  }),
+  sizeBytes: Schema.Number.annotations({ description: "Provider-observed immutable artifact size." }),
+  format: Schema.Literal("tar", "native").annotations({
+    description: "Immutable artifact format used by the provider snapshot.",
+  }),
 });
 export type VolumeSnapshotRef = typeof VolumeSnapshotRef.Type;
 

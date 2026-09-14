@@ -162,7 +162,13 @@ describe("RuntimeProvider contract", () => {
     expect(
       Effect.isEffect(
         TestRuntimeProvider.restoreVolume({
-          snapshot: { provider: "test", id: "snap-1" },
+          snapshot: {
+            provider: "test",
+            id: "snap-1",
+            digest: "sha256:snap-1",
+            sizeBytes: 1,
+            format: "native",
+          },
           target: { app: TEST_APP_ID, store: "data" },
           expectedTargetGeneration: "00000000-0000-4000-8000-000000000001",
         }),
