@@ -1,17 +1,22 @@
 /** Windows deferred binary replacement contracts and scheduling. */
-import { writeFile } from "node:fs/promises";
+import { copyFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { StateStore } from "@lando/sdk/services";
+import { StateStoreLive } from "@lando/state-store/service";
 import { Effect } from "effect";
+import type { CoreReplacementPrecondition } from "./compatibility.ts";
+import { type StoredUpdateResult, makeUpdateHandoff } from "./handoff.ts";
+export { runWindowsReplacement, runWindowsReplacementProcess } from "./windows-helper.ts";
 
 export interface UpdateWindowsReplacementInput {
   readonly executablePath: string;
   readonly stagedBinaryPath: string;
   readonly backupPath: string;
   readonly attemptedVersion: string;
-  readonly argv: ReadonlyArray<string>;
-  readonly env: Record<string, string>;
   readonly manualFallback: string;
+  readonly precondition?: CoreReplacementPrecondition;
+  readonly completedResult?: StoredUpdateResult;
 }
 
 export type UpdateWindowsReplacement = (
@@ -28,8 +33,6 @@ export type UpdateWindowsReplacementSpawner = (input: UpdateWindowsReplacementSp
 
 const windowsBatchValue = (value: string): string => value.replaceAll("%", "%%").replaceAll('"', '""');
 
-const windowsCommandArg = (value: string): string => `"${value.replaceAll('"', '\\"')}"`;
-
 export const windowsManualFallback = ({
   backupPath,
   executablePath,
@@ -40,26 +43,15 @@ export const windowsManualFallback = ({
 export const windowsPermissionRemediation = (executablePath: string): string =>
   `Lando will not request UAC automatically. If this install path is correct, open PowerShell as Administrator and replace ${executablePath} manually with the downloaded Lando binary, or reinstall Lando into a user-writable directory.`;
 
-export const buildWindowsReplacementScript = (input: UpdateWindowsReplacementInput): string => {
-  const restartArgs = input.argv.slice(1).map(windowsCommandArg).join(" ");
+export const buildWindowsReplacementScript = (
+  input: UpdateWindowsReplacementInput,
+  token: string,
+): string => {
   return [
     "@echo off",
-    "setlocal",
-    `set "TARGET=${windowsBatchValue(input.executablePath)}"`,
-    `set "CANDIDATE=${windowsBatchValue(input.stagedBinaryPath)}"`,
-    `set "BACKUP=${windowsBatchValue(input.backupPath)}"`,
-    ":wait",
-    'move /Y "%TARGET%" "%BACKUP%" >nul 2>nul',
-    "if not errorlevel 1 goto install",
-    "timeout /t 1 /nobreak >nul 2>nul",
-    "goto wait",
-    ":install",
-    'move /Y "%CANDIDATE%" "%TARGET%" >nul 2>nul',
-    "if errorlevel 1 (",
-    '  move /Y "%BACKUP%" "%TARGET%" >nul 2>nul',
-    "  exit /b 1",
-    ")",
-    `start "" "%TARGET%"${restartArgs.length === 0 ? "" : ` ${restartArgs}`}`,
+    "setlocal DisableDelayedExpansion",
+    `"${windowsBatchValue(join(dirname(input.stagedBinaryPath), "lando-update-helper.exe"))}" --lando-update-replacement "${windowsBatchValue(join(dirname(input.stagedBinaryPath), "replacement.json"))}" "${windowsBatchValue(token)}"`,
+    "if errorlevel 1 exit /b 1",
     'rmdir /S /Q "%~dp0" >nul 2>nul',
     "endlocal",
   ].join("\r\n");
@@ -79,19 +71,40 @@ const defaultWindowsReplacementSpawner: UpdateWindowsReplacementSpawner = (input
 export const scheduleWindowsReplacement = (
   input: UpdateWindowsReplacementInput,
   spawner: UpdateWindowsReplacementSpawner = defaultWindowsReplacementSpawner,
-): Effect.Effect<void, unknown, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const scriptPath = join(dirname(input.stagedBinaryPath), "replace-lando.cmd");
-      await writeFile(scriptPath, buildWindowsReplacementScript(input));
-      spawner({
-        cmd: ["cmd.exe", "/d", "/s", "/c", scriptPath],
-        cwd: dirname(input.stagedBinaryPath),
-        detached: true,
-      });
-    },
-    catch: (cause) => cause,
+): Effect.Effect<void, unknown, StateStore> =>
+  Effect.gen(function* () {
+    if (input.precondition === undefined || input.completedResult === undefined)
+      return yield* Effect.fail(
+        new Error("Windows replacement requires a compatibility precondition and completed receipt."),
+      );
+    const handoff = makeUpdateHandoff(yield* StateStore);
+    const token = yield* handoff.saveDeferred(input.completedResult);
+    yield* Effect.tryPromise({
+      try: async () => {
+        const scriptPath = join(dirname(input.stagedBinaryPath), "replace-lando.cmd");
+        await copyFile(
+          input.executablePath,
+          join(dirname(input.stagedBinaryPath), "lando-update-helper.exe"),
+        );
+        await writeFile(
+          join(dirname(input.stagedBinaryPath), "replacement.json"),
+          JSON.stringify({
+            ...input,
+            token,
+            parentPid: process.pid,
+          }),
+          { mode: 0o600 },
+        );
+        await writeFile(scriptPath, buildWindowsReplacementScript(input, token));
+        spawner({
+          cmd: ["cmd.exe", "/d", "/s", "/c", scriptPath],
+          cwd: dirname(input.stagedBinaryPath),
+          detached: true,
+        });
+      },
+      catch: (cause) => cause,
+    }).pipe(Effect.tapError(() => handoff.consume(token)));
   });
 
 export const defaultWindowsReplacement: UpdateWindowsReplacement = (input) =>
-  scheduleWindowsReplacement(input);
+  scheduleWindowsReplacement(input).pipe(Effect.provide(StateStoreLive));
