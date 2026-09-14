@@ -21,10 +21,12 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
   if (resolve(sampleRoot, "..") !== (await realpath(parent)))
     throw new PerformanceStoreCleanupError("Sample key must name a direct child of samples");
   await mkdir(sampleRoot, { mode: 0o700 });
-  const runtimeRoot = await mkdtemp(join(await realpath(tmpdir()), "lp-"));
-  const identities = await Promise.all([lstat(sampleRoot), lstat(runtimeRoot)]);
+  const tmp = await realpath(tmpdir());
+  const runtimeRoot = await mkdtemp(join(tmp, "lp-"));
+  const dataRoot = await mkdtemp(join(tmp, "ld-"));
+  const identities = await Promise.all([lstat(sampleRoot), lstat(runtimeRoot), lstat(dataRoot)]);
   const assertOwned = async () => {
-    for (const [index, path] of [sampleRoot, runtimeRoot].entries()) {
+    for (const [index, path] of [sampleRoot, runtimeRoot, dataRoot].entries()) {
       const stat = await lstat(path);
       const original = identities[index];
       if (
@@ -39,6 +41,7 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
   return {
     sampleRoot,
     runtimeRoot,
+    dataRoot,
     assertOwned,
     release: async (
       runCommand: (command: WorkflowPerformanceCommand) => Promise<WorkflowPerformanceCommandResult>,
@@ -46,8 +49,8 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
     ) => {
       await assertOwned();
       const targets = [
-        join(sampleRoot, "data/runtime/storage"),
-        join(sampleRoot, "data/runtime/bin"),
+        join(dataRoot, "runtime/storage"),
+        join(dataRoot, "runtime/bin"),
         join(sampleRoot, "cache"),
       ];
       for (const target of targets) {
@@ -72,13 +75,13 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
           ...command,
           id: "cleanup:storage",
           timeoutMs: 30_000,
-          env: { ...command.env, CONTAINERS_CONF: join(sampleRoot, "data/runtime/config/containers.conf") },
+          env: { ...command.env, CONTAINERS_CONF: join(dataRoot, "runtime/config/containers.conf") },
           argv: [
-            join(sampleRoot, "data/runtime/bin/podman"),
+            join(dataRoot, "runtime/bin/podman"),
             "--root",
             storage,
             "--runroot",
-            join(sampleRoot, "data/runtime/run"),
+            join(dataRoot, "runtime/run"),
             "unshare",
             "sh",
             "-ec",
@@ -103,6 +106,7 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
       }
       for (const target of targets) await rm(target, { recursive: true, force: true });
       await rm(runtimeRoot, { recursive: true });
+      await rm(dataRoot, { recursive: true });
       return [];
     },
   };

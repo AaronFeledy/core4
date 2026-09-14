@@ -17,6 +17,7 @@ test("refuses a replaced sample root and preserves unrelated files", async () =>
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(stores.runtimeRoot, { recursive: true, force: true });
+    await rm(stores.dataRoot, { recursive: true, force: true });
   }
 });
 

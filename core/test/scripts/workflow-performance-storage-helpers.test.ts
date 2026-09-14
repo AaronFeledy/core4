@@ -14,9 +14,9 @@ test.each([
   // Given an owned store whose namespace deletion can spawn another pause process.
   const root = await mkdtemp(join(tmpdir(), "perf-helper-"));
   const stores = await acquirePerformanceStores(root, "sample");
-  const bin = join(stores.sampleRoot, "data/runtime/bin");
+  const bin = join(stores.dataRoot, "runtime/bin");
   await mkdir(bin, { recursive: true });
-  await mkdir(join(stores.sampleRoot, "data/runtime/storage"));
+  await mkdir(join(stores.dataRoot, "runtime/storage"));
   const commands: string[] = [];
   try {
     // When storage deletion finishes but its helper cleanup succeeds or fails.
@@ -41,12 +41,11 @@ test.each([
       ...(helperExit === 0 ? [] : ["cleanup:storage-helpers"]),
     ]);
     expect(existsSync(bin)).toBe(storageExit !== 0 || helperExit !== 0);
-    expect(existsSync(join(stores.sampleRoot, "data/runtime/storage"))).toBe(
-      storageExit !== 0 || helperExit !== 0,
-    );
+    expect(existsSync(join(stores.dataRoot, "runtime/storage"))).toBe(storageExit !== 0 || helperExit !== 0);
     expect(existsSync(stores.runtimeRoot)).toBe(storageExit !== 0 || helperExit !== 0);
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(stores.runtimeRoot, { recursive: true, force: true });
+    await rm(stores.dataRoot, { recursive: true, force: true });
   }
 });
