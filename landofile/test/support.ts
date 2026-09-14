@@ -50,8 +50,12 @@ export const makeTestLandofileStateStore = (): StateStoreShape =>
     },
   });
 
-export const makeTestLandofilePorts = (cacheRoot: string): LandofileRuntimePorts => ({
+export const makeTestLandofilePorts = (
+  cacheRoot: string,
+  userIncludesDir = cacheRoot,
+): LandofileRuntimePorts => ({
   resolveUserCacheRoot: () => cacheRoot,
+  resolveUserIncludesDir: () => userIncludesDir,
   npmRecipeSource: {
     resolve: async () => {
       throw new Error("Unexpected npm recipe source port call in test");

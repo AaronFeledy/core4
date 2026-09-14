@@ -36,6 +36,7 @@ import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
@@ -153,6 +154,7 @@ export const startAppForTarget = (
       use: (applyPlan) =>
         Effect.gen(function* () {
           const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
+          const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
           const serviceList = Object.values(builtPlan.services);
 
           const applyAndInspect = Effect.gen(function* () {
@@ -161,6 +163,7 @@ export const startAppForTarget = (
               provider.apply(builtPlan, {
                 reconcile: resolvedOptions.reconcile ?? false,
                 ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                serviceEnvironment,
               }),
             );
             return yield* Effect.forEach(serviceList, (service) =>
