@@ -1005,3 +1005,4 @@ export declare class RecipeDecomposer extends Context.Tag("@lando/core/RecipeDec
   RecipeDecomposer,
   RecipeDecomposerShape
 >() {}
+export type { VolumeInitialization } from "./volume-initialization.ts";

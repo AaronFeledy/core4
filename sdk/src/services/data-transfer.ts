@@ -1,4 +1,7 @@
 import { Context, type Effect, type Scope, type Stream } from "effect";
+import type { StateStoreError } from "../errors/index.ts";
+import type { VolumeIdentity } from "../schema/volume-identity.ts";
+import type { VolumeInitialization } from "./volume-initialization.ts";
 
 import type {
   ArchiveFormatError,
@@ -38,6 +41,9 @@ export type DataMoverError =
   | ArchiveFormatError;
 
 export interface DataMoverShape {
+  readonly volumeInitialization?: (
+    identity: VolumeIdentity,
+  ) => Effect.Effect<VolumeInitialization, StateStoreError>;
   readonly transfer: (
     spec: DataTransferSpec,
   ) => Effect.Effect<DataTransferResult, DataMoverError, Scope.Scope>;
