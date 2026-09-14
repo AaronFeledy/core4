@@ -6,6 +6,7 @@ import { buildProviderCapabilities } from "@lando/container-runtime/capabilities
 import {
   VOLUME_WITNESS_IMAGE,
   makeProviderDataPlane,
+  volumeCreationFact,
   volumeCreationOwnerLabels,
 } from "@lando/container-runtime/data-plane";
 import { dockerPullDialect, dockerWaitDialect } from "@lando/container-runtime/dialect";
@@ -843,18 +844,23 @@ const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly
   ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
 });
 
-const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) =>
-  request(api, "apply", {
+const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) => {
+  const labels = volumeLabels(plan, store);
+  return request(api, "apply", {
     method: "POST",
     path: "/volumes/create",
     body: {
       Name: store.name,
-      Labels: volumeLabels(plan, store),
+      Labels: labels,
     },
   }).pipe(
     Effect.flatMap((response) =>
       response.status === 201 || response.status === 200 || response.status === 409
-        ? Effect.void
+        ? Effect.succeed(
+            response.status === 409
+              ? []
+              : volumeCreationFact({ body: response.body, name: store.name, labels }),
+          )
         : Effect.fail(
             unavailable(
               "apply.volume",
@@ -864,6 +870,7 @@ const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["store
           ),
     ),
   );
+};
 
 const inspectContainer = (api: DockerApiClient, name: string) =>
   Effect.gen(function* () {
@@ -1132,7 +1139,9 @@ const rollbackPartialApply = (
 const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
-    yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
+    const createdVolumes = (yield* Effect.forEach(plan.stores, (store) =>
+      ensureVolume(api, plan, store),
+    )).flat();
     const sharedNetwork = landoSharedNetworkName(plan);
     const touched: TouchedContainer[] = [];
     const schedule = yield* runServiceStartSchedule(plan, {
@@ -1222,7 +1231,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
         ),
       );
     }
-    return { changed: schedule.changed };
+    return { changed: schedule.changed, createdVolumes };
   });
 
 interface BringDownOptions {
