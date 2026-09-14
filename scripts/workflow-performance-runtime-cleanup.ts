@@ -31,7 +31,9 @@ else {
             current.executable !== service.executable
           )
             return { terminated: false };
-          return Effect.runPromise(Effect.scoped(teardownRuntimeService({ paths })));
+          return Effect.runPromise(
+            Effect.scoped(teardownRuntimeService({ paths })).pipe(Effect.timeout("5 seconds")),
+          );
         },
         stopped: async () => (await readPerformanceProcess(pid))?.startTime !== service.startTime,
         timeoutMs: 5_000,
