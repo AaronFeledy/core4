@@ -1,0 +1,5 @@
+name: node-inference
+services:
+  app:
+    type: node
+    primary: true

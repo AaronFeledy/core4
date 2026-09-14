@@ -13,6 +13,18 @@ export const joinFor = (paths: ProxyPaths) => (paths.platform === "win32" ? win3
 export const dynamicConfigDir = (paths: ProxyPaths): string =>
   joinFor(paths)(paths.globalAppRoot, "proxy-traefik", "dynamic");
 
+export const diagnosticDir = (paths: ProxyPaths): string =>
+  joinFor(paths)(paths.globalAppRoot, "proxy-traefik", "diagnostic");
+
+export const diagnosticConfigFile = (paths: ProxyPaths): string =>
+  joinFor(paths)(diagnosticDir(paths), "nginx.conf");
+
+export const diagnosticHtmlFile = (paths: ProxyPaths): string =>
+  joinFor(paths)(diagnosticDir(paths), "404.html");
+
+export const fallbackConfigFile = (paths: ProxyPaths): string =>
+  joinFor(paths)(dynamicConfigDir(paths), "fallback.yml");
+
 export const routeFile = (paths: ProxyPaths, app: AppId): string =>
   joinFor(paths)(
     dynamicConfigDir(paths),

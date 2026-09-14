@@ -26,6 +26,23 @@ const runtimeLandofileInput = {
   pluginManifests: [],
 };
 
+for (const config of [
+  { routerEnabled: false, scanner: null },
+  { routerEnabled: true, scanner: { retries: 0 } },
+]) {
+  test(`changes the cache key when global ${config.scanner === null ? "router enablement" : "scanner"} changes`, () => {
+    // Given
+    const original = deriveAppPlanCacheKey({
+      ...runtimeLandofileInput,
+      config: { routerEnabled: true, scanner: null },
+    });
+    // When
+    const changed = deriveAppPlanCacheKey({ ...runtimeLandofileInput, config });
+    // Then
+    expect(changed).not.toBe(original);
+  });
+}
+
 const runtimeAppPlan: AppPlan = {
   id: AppId.make("runtime-key"),
   name: "runtime-key",
@@ -130,7 +147,7 @@ test("ignores a valid revision-6 app plan without pinned PHP prerequisite identi
   expect(await readFile(path)).toEqual(persisted);
 });
 
-test("includes revision 15 in the app-plan cache key", () => {
+test("includes revision 16 in the app-plan cache key", () => {
   // Given
   const input = {
     appRoot: "/workspace/revision-key",
@@ -142,7 +159,7 @@ test("includes revision 15 in the app-plan cache key", () => {
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(15n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(16n);
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });
 
@@ -268,3 +285,48 @@ test("does not change the app-plan cache key for env, host, or template inputs",
   expect(pluginVersionChanged).not.toBe(baseline);
   expect(envFileChanged).not.toBe(baseline);
 });
+
+for (const router of [undefined, { enabled: true }, { enabled: false }] as const) {
+  const label = router === undefined ? "omits router" : `sets router.enabled ${router.enabled}`;
+  test(`derives the shared-router requirement from enablement when a cached plan ${label}`, async () => {
+    // Given: a persisted plan that declares a route but no global-service requirement.
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-router-"));
+    const appRoot = "/workspace/router-cache";
+    const service = ServiceName.make("web");
+    const routedPlan: AppPlan = {
+      ...runtimeAppPlan,
+      id: AppId.make("router-cache"),
+      name: "router-cache",
+      slug: "router-cache",
+      root: AbsolutePath.make(appRoot),
+      ...(router === undefined ? {} : { router }),
+      routes: [
+        {
+          hostname: "router-cache.lndo.site",
+          scheme: "https",
+          service,
+          backend: { service, protocol: "http", port: 8080 },
+        },
+      ],
+    };
+    await runWithCache(
+      writeCachedAppPlan({
+        cacheRoot,
+        appName: "router-cache",
+        appRoot,
+        key: "router-key",
+        plan: routedPlan,
+        now: () => 1,
+      }),
+    );
+
+    // When
+    const read = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "router-cache", appRoot, key: "router-key" }),
+    );
+
+    // Then: a disabled router must not auto-start the shared router on the next start.
+    expect(read?.routes).toHaveLength(1);
+    expect(read?.requires?.globalServices ?? []).toEqual(router?.enabled === false ? [] : ["traefik"]);
+  });
+}

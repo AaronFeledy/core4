@@ -13,7 +13,7 @@ import {
   landoServiceNetworkAliases,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
-import type { ApplyResult, EventService } from "@lando/sdk/services";
+import type { ApplyOptions, ApplyResult, EventService } from "@lando/sdk/services";
 
 import { libpodWaitDialect } from "../dialect.ts";
 import type {
@@ -86,7 +86,9 @@ export interface BringUpOptions {
   readonly ctx: ProviderErrorContext;
   readonly eventService?: EventPublisher;
   readonly signal?: AbortSignal;
+  readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
+  readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
 }
 
 interface BringUpDeps {
@@ -290,6 +292,9 @@ const createContainerRequest = (deps: BringUpDeps, plan: AppPlan, service: Servi
           details: { artifact },
         });
       },
+      ...(deps.options.serviceEnvironment?.[service.name] === undefined
+        ? {}
+        : { environment: deps.options.serviceEnvironment[service.name] }),
     }),
     ...knobs.topLevel,
   };
@@ -543,9 +548,10 @@ const startService = (
     let before = inspected;
     if (
       before.exists &&
-      plannedFingerprint.length > 0 &&
-      before.publishFingerprint.length > 0 &&
-      before.publishFingerprint !== plannedFingerprint
+      (deps.options.reconcile === true ||
+        (plannedFingerprint.length > 0 &&
+          before.publishFingerprint.length > 0 &&
+          before.publishFingerprint !== plannedFingerprint))
     ) {
       yield* stopContainerSilent(deps, name);
       yield* removeContainer(deps, service, name);

@@ -13,7 +13,7 @@ describe("library makeLandoRuntime app bootstrap", () => {
       runtime: 4,
       provider: ProviderId.make(TestRuntimeProvider.id),
       services: {
-        [service]: { image: "node:lts", primary: true },
+        [service]: { image: "node:lts", primary: true, home: false },
       },
     };
 

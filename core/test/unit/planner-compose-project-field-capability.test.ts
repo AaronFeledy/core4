@@ -54,7 +54,7 @@ describe("Compose project field capabilities", () => {
       configs,
       secrets,
       "x-project": extension,
-      services: { web: { image: "node:lts" } },
+      services: { web: { image: "node:lts", home: false } },
     });
     const capabilities = {
       ...TestRuntimeProvider.capabilities,
@@ -82,7 +82,7 @@ describe("Compose project field capabilities", () => {
         name: `${field}-field`,
         runtime: 4,
         [field]: { app: { file: `./${field}.txt` } },
-        services: { web: { image: "node:lts" } },
+        services: { web: { image: "node:lts", home: false } },
       });
 
       await withTempCwd(async () => {
@@ -117,7 +117,7 @@ describe("Compose project field capabilities", () => {
       name: "project-extension",
       runtime: 4,
       "x-project": extension,
-      services: { web: { image: "node:lts" } },
+      services: { web: { image: "node:lts", home: false } },
     });
 
     await withTempCwd(async () => {

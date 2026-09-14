@@ -187,6 +187,15 @@
               "providerCapabilities": ["sharedCrossAppNetwork"]
             },
             "summary": "Global Traefik router"
+          },
+          {
+            "enabledByDefault": true,
+            "id": "traefik-diagnostics",
+            "module": "./src/global-services/diagnostics.ts",
+            "requires": {
+              "providerCapabilities": ["sharedCrossAppNetwork"]
+            },
+            "summary": "Unmatched route diagnostics"
           }
         ],
         "routerServices": [
@@ -234,6 +243,7 @@
       "bootstrap": "app",
       "contributes": {
         "appFeatures": [
+          "service-lando.mailpit.wire",
           "service-lando.php.db-client",
           "service-lando.phpmyadmin.wire",
           "service-lando.nginx.php-fpm.wire"
@@ -317,6 +327,7 @@
           "mssql:2022",
           "mysql",
           "nginx",
+          "node",
           "node:lts",
           "node:22",
           "opensearch",

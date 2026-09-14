@@ -12,7 +12,15 @@ import { EndpointInput } from "./endpoint.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
-import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
+import { ScannerConfig } from "./networking.ts";
+import {
+  AbsoluteContainerPath,
+  CommandSpec,
+  PortablePath,
+  ProviderExtensionConfig,
+  ProviderId,
+  ServiceName,
+} from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
@@ -512,6 +520,43 @@ export const ServiceCreds = Schema.Struct({
 export type ServiceCreds = typeof ServiceCreds.Type;
 
 /**
+ * App-relative file-backed configuration a catalog service may author under
+ * `services.<name>.config` (e.g. a MySQL server config file or a Solr conf directory).
+ */
+export const ServiceFileConfig = Schema.Struct({
+  server: Schema.optional(Schema.NonEmptyString).annotations({
+    description: "App-relative path to a regular file mounted read-only as the service's server config.",
+  }),
+  dir: Schema.optional(Schema.NonEmptyString).annotations({
+    description: "App-relative path to a directory mounted read-only as the service's config directory.",
+  }),
+}).annotations({
+  identifier: "ServiceFileConfig",
+  title: "Service File Config",
+  description: "App-relative file-backed service configuration mounted read-only into the container.",
+});
+export type ServiceFileConfig = typeof ServiceFileConfig.Type;
+
+/**
+ * The additive object form of `services.<name>.composer`, selecting a Composer
+ * release and the global Composer packages installed alongside it.
+ */
+export const PhpComposerConfig = Schema.Struct({
+  version: Schema.optional(Schema.String).annotations({
+    description:
+      "Composer major channel or exact checksum-pinned version; omitted selects the bundled release.",
+  }),
+  packages: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+    description: "Global Composer packages installed at build time, package name to version constraint.",
+  }),
+}).annotations({
+  identifier: "PhpComposerConfig",
+  title: "Php Composer Config",
+  description: "Composer release selection plus the global Composer packages installed with it.",
+});
+export type PhpComposerConfig = typeof PhpComposerConfig.Type;
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -540,17 +585,36 @@ const ServiceConfigWithExtensions = Schema.Struct(
     database: Schema.optional(Schema.String).annotations({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
+    password: Schema.optional(Schema.String).annotations({
+      description:
+        "Redis authentication password, passed through the container environment rather than command arguments.",
+    }),
+    persist: Schema.optional(Schema.Boolean).annotations({
+      description:
+        "Redis disk persistence: defaults to true; false disables durable storage, AOF, and RDB snapshots.",
+    }),
     creds: Schema.optional(ServiceCreds).annotations({
       description: "Service login credentials used to provision or connect to the service.",
     }),
+    config: Schema.optional(ServiceFileConfig).annotations({
+      description: "App-relative file-backed service configuration mounted read-only into the container.",
+    }),
     hosts: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))).annotations({
       description: "Database hosts this admin UI connects to; a single hostname or a list of hostnames.",
+    }),
+    mailFrom: Schema.optional(Schema.Union(Schema.Literal(false), Schema.Array(ServiceName))).annotations({
+      description:
+        "Mailpit PHP senders: omitted selects every resolved PHP service, false selects none, and a list selects named PHP services in authored order with duplicates removed.",
     }),
     cores: Schema.optional(Schema.Array(Schema.String)),
     port: Schema.optional(Schema.Number).annotations({
       description: "Primary container port exposed by the service.",
     }),
     framework: Schema.optional(Schema.String),
+    packageRoot: Schema.optional(Schema.String).annotations({
+      description:
+        "App-root-relative source directory used only by service-type project-file inference; it does not change mounts or the container working directory.",
+    }),
     webroot: Schema.optional(PortablePath).annotations({
       description: "Container path served as this service's HTTP document root.",
     }),
@@ -560,9 +624,15 @@ const ServiceConfigWithExtensions = Schema.Struct(
     allowOverride: Schema.optional(Schema.Boolean).annotations({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
     }),
-    composer: Schema.optional(Schema.Union(Schema.Literal(false), Schema.String)).annotations({
+    composer: Schema.optional(
+      Schema.Union(Schema.Literal(false), Schema.String, PhpComposerConfig),
+    ).annotations({
       description:
-        "PHP Composer selection: a major channel, an exact checksum-pinned version, or false to skip install.",
+        "PHP Composer selection: a major channel, an exact checksum-pinned version, false to skip install, or an object carrying a version and global packages.",
+    }),
+    globals: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+      description:
+        "Global npm packages installed at build time, package name to version specifier; authored order is normalized.",
     }),
     via: Schema.optional(Schema.String).annotations({
       description: 'PHP serving mode: "apache" (default), "fpm", or "cli".',
@@ -635,7 +705,21 @@ const ServiceConfigWithExtensions = Schema.Struct(
     storage: Schema.optional(Schema.Array(StorageInput)).annotations({
       description: "Persistent or cached storage attached to the service.",
     }),
+    home: Schema.optional(
+      Schema.Union(
+        Schema.Literal(false),
+        Schema.Struct({
+          path: Schema.optional(AbsoluteContainerPath),
+        }),
+      ),
+    ).annotations({
+      description:
+        "Persist the planned user's home directory, or false to disable it. Set path to choose the destination when the image's home is not known.",
+    }),
 
+    scanner: Schema.optional(ScannerConfig).annotations({
+      description: "How the post-start URL scan probes this service, or false to skip it.",
+    }),
     endpoints: Schema.optional(Schema.Array(EndpointInput)).annotations({
       description: "Internal or published network endpoints exposed by the service.",
     }),

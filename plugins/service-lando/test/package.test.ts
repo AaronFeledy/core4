@@ -27,6 +27,7 @@ const expectedServiceTypes = [
   "mssql:2022",
   "mysql",
   "nginx",
+  "node",
   "node:lts",
   "node:22",
   "opensearch",

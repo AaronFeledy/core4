@@ -100,8 +100,14 @@ export interface ArtifactPullSpec {
 
 export interface ApplyOptions {
   readonly reconcile: boolean;
+  readonly recordedPlan?: AppPlan;
   readonly signal?: AbortSignal;
+  readonly serviceEnvironment?: ServiceEnvironmentOverrides;
 }
+
+export type ServiceEnvironmentOverrides = Readonly<
+  Partial<Record<ServiceName, Readonly<Record<string, string>>>>
+>;
 
 export interface ApplyResult {
   readonly changed: boolean;

@@ -80,6 +80,7 @@ describe("Compose config file identity", () => {
         services: {
           web: {
             image: "node:lts",
+            home: false,
             configs: ["phpini"],
           },
         },

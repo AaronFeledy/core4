@@ -34,13 +34,34 @@ tooling:
 
 ## Install global tools in the image
 
-A `build.artifact` step runs while the image is baked, before project code is mounted. Use it for tools the whole image needs:
+Put the tools on `composer.packages` and Lando bakes them into the image for you:
+
+```yaml
+services:
+  appserver:
+    type: "php:8.3"
+    composer:
+      version: "2"
+      packages:
+        squizlabs/php_codesniffer: "^3.10"
+        phpstan/phpstan: "^1.11"
+```
+
+The object form is additive. `composer: "2"` and `composer: false` keep working, and `composer: { version: "2" }` with no packages plans exactly like the string form.
+
+Packages install with `composer global require` into `/usr/local/composer`, with the generated binary proxies written to `/usr/local/bin`, so `phpcs` and `phpstan` are callable by name without editing `PATH`. The Composer home is left world readable so a non-root service user can run them too.
+
+Lando normalizes the map before it reaches the build: package names and version constraints are validated at plan time, and the packages are installed in sorted order. Reordering the YAML does not rebuild the image; adding, removing, or re-pinning a package does, because the normalized list is part of the image build key.
+
+Names must be lowercase `vendor/name`, and constraints are ordinary Composer constraints such as `^13.0`, `13.0.0`, or `>=1.0,<2.0`. Anything else fails at plan time, before any container work, with the offending package named.
+
+A custom `image:` skips the Lando-managed Composer install but still installs your packages, so bring an image that already ships `composer`.
+
+If you would rather script it yourself, a `build.artifact` step also runs while the image is baked, before project code is mounted:
 
 ```sh
 composer global require squizlabs/php_codesniffer
 ```
-
-Composer's `--working-dir` or global mode installs a tool into the image once. A global Composer binary lands under the Composer home's `vendor/bin`, so add that directory to `PATH` in the same `build.artifact` step if the tool must be callable by name.
 
 ## Re-run after composer.json changes
 
@@ -111,6 +132,37 @@ Unknown versions fail at plan time with remediation. Changing `composer:` rebuil
     <Step name="plan">
       <Run command="lando app:cache:refresh" />
       <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-composer-skip" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="install-global-packages" render>
+    <Step name="scaffold">
+      <UseFixture name="php-composer-packages" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"packages\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"phpstan/phpstan\":\\s*\"\\^1\\.11\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: php-composer-packages" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-invalid-package" render={false} reason="Plan-time tagged failure for a package name that is not vendor/name">
+    <Step name="scaffold">
+      <UseFixture name="php-composer-packages-invalid" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported Composer package" }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

@@ -5,6 +5,8 @@ import { McpToolInputError } from "@lando/sdk/errors";
 
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
+import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
+import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 
@@ -23,6 +25,27 @@ const entry = (id: string, extra: Partial<LandoCommandSpec> = {}): McpCommandEnt
 });
 
 describe("deriveToolInputSchema", () => {
+  test("projects repeatable service arrays for app info and rebuild", () => {
+    // Given
+    const specs = [infoSpec, rebuildSpec];
+
+    // When
+    const schemas = specs.map(deriveToolInputSchema);
+
+    // Then
+    for (const schema of schemas) {
+      expect(schema).toMatchObject({
+        properties: {
+          flags: {
+            properties: {
+              service: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+      });
+    }
+  });
+
   test("projects flags and args into a closed object schema", () => {
     const schema = deriveToolInputSchema(
       spec("app:info", {

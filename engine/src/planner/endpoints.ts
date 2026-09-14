@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import {
   type CapabilityError,
   type ConfigExpressionError,
+  HomePathCapabilityError,
   LandofileValidationError,
   PublicationUnsupportedError,
 } from "@lando/sdk/errors";
@@ -23,7 +24,9 @@ import {
   usesManagedProxyNetwork,
 } from "../lifecycle/cross-engine-routes.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
+import { sortRecord } from "../services/draft.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
+import { applyHostReachability } from "../subsystems/networking.ts";
 import {
   bindRealization,
   missingCapability,
@@ -32,6 +35,7 @@ import {
 } from "./compose-capabilities.ts";
 import { LOG_SOURCES_EXTENSION_KEY, isRecord, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
+import { applyServiceHome } from "./home.ts";
 import { DEFAULT_PROXY_DOMAIN } from "./naming.ts";
 import { evaluateRouteHostname } from "./route-hostname.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
@@ -135,7 +139,11 @@ export const finalizeServices = (input: {
   readonly fileSyncEngineId: string | undefined;
 }): Effect.Effect<
   FinalizedServices,
-  LandofileValidationError | CapabilityError | PublicationUnsupportedError | ConfigExpressionError
+  | LandofileValidationError
+  | CapabilityError
+  | HomePathCapabilityError
+  | PublicationUnsupportedError
+  | ConfigExpressionError
 > =>
   Effect.gen(function* () {
     const services: Record<string, unknown> = {};
@@ -173,6 +181,7 @@ export const finalizeServices = (input: {
       authoredArtifact,
       authored,
       draft,
+      homeIntent,
       logSources,
       routes: authoredRoutes,
       extensions,
@@ -219,8 +228,13 @@ export const finalizeServices = (input: {
         redirectSteps.length === 0
           ? draft
           : { ...draft, buildSteps: [...draft.buildSteps, ...redirectSteps] };
+      const planned = applyHostReachability(
+        servicePlanFromDraft(draftForPlan, [], input.metadata, extensionsForPlan),
+        input.providerCapabilities.hostReachability,
+      );
       const servicePlan = {
-        ...servicePlanFromDraft(draftForPlan, [], input.metadata, extensionsForPlan),
+        ...planned,
+        environment: sortRecord(planned.environment),
         ...(logSources.length === 0 ? {} : { logSources }),
       };
 
@@ -259,8 +273,17 @@ export const finalizeServices = (input: {
         ),
       };
 
+      const withHome = applyServiceHome({
+        servicePlan: servicePlanWithCapabilityRealization,
+        serviceName: name,
+        appSlug: input.appSlug,
+        intent: homeIntent,
+      });
+      if (withHome instanceof HomePathCapabilityError) yield* Effect.fail(withHome);
+      const servicePlanWithHome = withHome as ServicePlan;
+
       const endpointNames = new Set<string>();
-      for (const endpoint of servicePlanWithCapabilityRealization.endpoints) {
+      for (const endpoint of servicePlanWithHome.endpoints) {
         if (endpoint.name === undefined) continue;
         if (endpointNames.has(endpoint.name)) {
           yield* Effect.fail(duplicateEndpointNameError(input.appRoot, name, endpoint.name));
@@ -273,23 +296,17 @@ export const finalizeServices = (input: {
         for (const [routeIndex, route] of authoredRoutes.entries()) {
           routeRefs.push({
             index: pushRoute(
-              yield* resolveRoute(
-                input.appRoot,
-                name,
-                servicePlanWithCapabilityRealization.endpoints,
-                route,
-                {
-                  routeIndex,
-                  appName: input.appName,
-                  appSlug: input.appSlug,
-                  defaultDomain: input.defaultDomain,
-                },
-              ),
+              yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route, {
+                routeIndex,
+                appName: input.appName,
+                appSlug: input.appSlug,
+                defaultDomain: input.defaultDomain,
+              }),
             ),
           });
         }
       } else {
-        const endpoint = servicePlanWithCapabilityRealization.endpoints.find(isRoutableEndpoint);
+        const endpoint = servicePlanWithHome.endpoints.find(isRoutableEndpoint);
         if (endpoint !== undefined) {
           routeRefs.push({
             index: pushRoute({
@@ -307,11 +324,11 @@ export const finalizeServices = (input: {
         }
       }
       const servicePlanWithRoutes: ServicePlan = {
-        ...servicePlanWithCapabilityRealization,
+        ...servicePlanWithHome,
         routes: routeRefs,
         endpoints: usesManagedProxyNetwork(input.provider)
-          ? servicePlanWithCapabilityRealization.endpoints
-          : promoteRoutableEndpointsForHostProxy(servicePlanWithCapabilityRealization.endpoints),
+          ? servicePlanWithHome.endpoints
+          : promoteRoutableEndpointsForHostProxy(servicePlanWithHome.endpoints),
       };
 
       if (

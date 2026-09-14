@@ -29,6 +29,7 @@ const BuildSteps = Schema.Struct({
         id: Schema.optional(Schema.String),
         command: Schema.Unknown,
         phase: Schema.optional(Schema.String),
+        user: Schema.optional(Schema.String),
         dependsOn: Schema.optional(Schema.Array(Schema.String)),
         buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
       }),
@@ -307,7 +308,11 @@ describe("PHP db_client option", () => {
     ]);
     expect(mysql?.id).toBe("service-lando.php:db-client:mysql");
     expect(mysql?.phase).toBe("build");
+    expect(mysql?.user).toBe("root");
+    expect("privileged" in (mysql ?? {})).toBe(false);
     expect(mysql?.dependsOn).toEqual(["service-lando.php:prerequisites"]);
+    expect(mongo?.user).toBe("root");
+    expect("privileged" in (mongo ?? {})).toBe(false);
     expect(String(mysql?.command)).toContain("mysql-community-client");
     expect(String(mysql?.command)).toContain("mysql-8.4-lts");
     expect(String(mysql?.command)).not.toMatch(/[\r\n]/);

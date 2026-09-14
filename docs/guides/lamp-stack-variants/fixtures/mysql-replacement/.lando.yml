@@ -11,6 +11,7 @@ services:
   database:
     type: mysql
     image: mysql:8.4
+    home: false
 tooling:
   composer:
     service: appserver
