@@ -1431,15 +1431,47 @@ export const makeDataMoverService = (
     ).pipe(
       Effect.flatMap((info) =>
         Effect.gen(function* () {
-          if (info.metadata !== undefined) {
-            const targets = yield* provider
-              .listVolumes({ app: store.app, store: store.store })
-              .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
-            const target = targets.find(
-              (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
+          if (info.native === undefined) {
+            return yield* writeStreamToEndpoint(
+              provider,
+              {
+                from: {
+                  _tag: "hostArchive",
+                  path: absolutePath(snapshotArchivePath(persistence, info)),
+                  format: info.format ?? "tar",
+                },
+                to: { _tag: "volume", app: store.app, store: store.store },
+                expectedDigest: info.digest,
+                overwrite: true,
+              },
+              streamFromEndpoint(provider, {
+                _tag: "hostArchive",
+                path: absolutePath(snapshotArchivePath(persistence, info)),
+                format: info.format ?? "tar",
+              }),
+              persistence.paths.scratchDir,
+            ).pipe(Effect.asVoid);
+          }
+          const targets = yield* provider
+            .listVolumes({ app: store.app, store: store.store })
+            .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+          const target = targets.find(
+            (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
+          );
+          if (target?.instanceId === undefined || target.provenance !== "known") {
+            return yield* Effect.fail(
+              new SnapshotOwnershipError({
+                message: "Physical restore target identity is unknown.",
+                snapshotId: info.id,
+                sourceVolumeInstanceId: info.metadata?.volumeInstanceId ?? "unknown",
+                remediation:
+                  "Use a logical export and import when the target volume identity cannot be proven.",
+              }),
             );
+          }
+          if (info.metadata !== undefined) {
             if (
-              target?.instanceId === undefined ||
+              target.instanceId === undefined ||
               target.provenance !== "known" ||
               target.instanceId !== info.metadata.volumeInstanceId
             ) {
@@ -1455,29 +1487,14 @@ export const makeDataMoverService = (
               );
             }
           }
-          return yield* info.native === undefined
-            ? writeStreamToEndpoint(
-                provider,
-                {
-                  from: {
-                    _tag: "hostArchive",
-                    path: absolutePath(snapshotArchivePath(persistence, info)),
-                    format: info.format ?? "tar",
-                  },
-                  to: { _tag: "volume", app: store.app, store: store.store },
-                  expectedDigest: info.digest,
-                  overwrite: true,
-                },
-                streamFromEndpoint(provider, {
-                  _tag: "hostArchive",
-                  path: absolutePath(snapshotArchivePath(persistence, info)),
-                  format: info.format ?? "tar",
-                }),
-                persistence.paths.scratchDir,
-              ).pipe(Effect.asVoid)
-            : provider
-                .restoreVolume({ snapshot: info.native, target: store, overwrite: true })
-                .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
+          return yield* provider
+            .restoreVolume({
+              snapshot: info.native,
+              target: store,
+              expectedTargetGeneration: target.instanceId,
+              overwrite: true,
+            })
+            .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
         }),
       ),
     ),

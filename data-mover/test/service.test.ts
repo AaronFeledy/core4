@@ -1433,7 +1433,17 @@ describe("DataMoverLive", () => {
           ).pipe(
             Effect.provide(DataMoverLive),
             Effect.provide(
-              providerLayer({ capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }) }),
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: ({ store }) =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: store ?? "data" },
+                      instanceId: "00000000-0000-4000-8000-000000000001",
+                      provenance: "known",
+                    },
+                  ]),
+              }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
@@ -1680,6 +1690,14 @@ describe("DataMoverLive", () => {
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: ({ store }) =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: store ?? "data" },
+                      instanceId: "00000000-0000-4000-8000-000000000001",
+                      provenance: "known",
+                    },
+                  ]),
                 snapshotVolume: (spec) =>
                   Effect.gen(function* () {
                     const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
