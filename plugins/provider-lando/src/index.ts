@@ -918,8 +918,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             ...(applyOptions.serviceEnvironment === undefined
               ? {}
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
+            reconcile: applyOptions.reconcile,
           });
-          yield* rememberPlan(plan);
+          yield* rememberPlan(applyOptions.recordedPlan ?? plan);
           return result;
         }),
       destroy: (target, destroyOptions) =>

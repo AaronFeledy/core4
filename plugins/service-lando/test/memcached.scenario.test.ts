@@ -159,7 +159,7 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
   test("AppPlanner produces a memcached plan with TCP endpoint and no persistent storage", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { cache: { type: "memcached" } },
+      services: { cache: { type: "memcached", home: false } },
     });
 
     const appPlan = await planLandofile(landofile);

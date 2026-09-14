@@ -272,10 +272,12 @@ export const containerHostConfigFragment = (
   );
   const binds = bindMountStrings(plan, service, options);
   const mounts = containerMountObjects(service, options);
+  const extraHosts = service.hostAliases.map(({ hostname, ip }) => `${hostname}:${ip}`);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
     ...(binds.length > 0 ? { Binds: binds } : {}),
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
+    ...(extraHosts.length === 0 ? {} : { ExtraHosts: extraHosts }),
   };
 };
 

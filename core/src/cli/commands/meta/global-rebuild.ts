@@ -11,6 +11,7 @@ import type {
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
+  HomePathCapabilityError,
   LandofileParseError,
   LandofileUnknownEventError,
   LandofileValidationError,
@@ -75,6 +76,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 
 export type GlobalRebuildError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

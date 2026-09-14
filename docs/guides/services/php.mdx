@@ -88,7 +88,7 @@ lando composer install
 ```
 
 Stock PHP services install a checksum-pinned Composer 2 release (`2.10.2`).
-Set `composer:` on the service to pick a different pinned version or skip the install entirely. See [PHP Composer workflows](../tooling/php-composer-workflows.mdx).
+Set `composer:` on the service to pick a different pinned version, skip the install entirely, or use the object form to also bake global Composer packages into the image. See [PHP Composer workflows](../tooling/php-composer-workflows.mdx).
 
 A `php` alias runs the CLI inside the service:
 

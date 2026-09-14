@@ -38,7 +38,7 @@ test("Given a cached plan with configs, when support is omitted, then the cache 
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "cached-project-field",
     runtime: 4,
-    services: { web: { image: "node:lts" } },
+    services: { web: { image: "node:lts", home: false } },
   });
   const plannerLayer = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),

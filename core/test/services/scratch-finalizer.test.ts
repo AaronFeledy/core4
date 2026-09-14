@@ -112,6 +112,7 @@ const forkLandofile = [
   "  appserver:",
   "    image: node:20-alpine",
   "    primary: true",
+  "    home: false",
   "",
 ].join("\n");
 

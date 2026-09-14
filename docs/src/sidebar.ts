@@ -93,6 +93,7 @@ export const sidebar = [
           { label: "Reap orphaned scratch apps", slug: "guides/scratch/scratch-gc" },
           { label: "Open a shell in a service", slug: "guides/cli/ssh" },
           { label: "Run commands inside a service", slug: "guides/cli/exec" },
+          { label: "Share a service or extra port", slug: "guides/cli/share-target" },
           { label: "Init from a remote source", slug: "guides/cli/init-from-remote" },
           { label: "Interactive prompts", slug: "guides/cli/interactive-prompts" },
           { label: "Power off every app", slug: "guides/cli/poweroff" },

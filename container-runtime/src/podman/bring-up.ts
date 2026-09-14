@@ -86,6 +86,7 @@ export interface BringUpOptions {
   readonly ctx: ProviderErrorContext;
   readonly eventService?: EventPublisher;
   readonly signal?: AbortSignal;
+  readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
   readonly serviceEnvironment?: ApplyOptions["serviceEnvironment"];
 }
@@ -547,9 +548,10 @@ const startService = (
     let before = inspected;
     if (
       before.exists &&
-      plannedFingerprint.length > 0 &&
-      before.publishFingerprint.length > 0 &&
-      before.publishFingerprint !== plannedFingerprint
+      (deps.options.reconcile === true ||
+        (plannedFingerprint.length > 0 &&
+          before.publishFingerprint.length > 0 &&
+          before.publishFingerprint !== plannedFingerprint))
     ) {
       yield* stopContainerSilent(deps, name);
       yield* removeContainer(deps, service, name);

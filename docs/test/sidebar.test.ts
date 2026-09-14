@@ -114,6 +114,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/cli/verbosity-and-debug");
     expect(slugs).toContain("guides/scratch/scratch-from-recipe");
     expect(slugs).toContain("guides/cli/ssh");
+    expect(slugs).toContain("guides/cli/share-target");
     expect(slugs).toContain("guides/setup/provider-selection");
     expect(slugs).toContain("guides/setup/provider-auto-setup");
     expect(slugs).toContain("guides/install/github-releases");

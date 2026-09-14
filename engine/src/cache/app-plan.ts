@@ -23,6 +23,7 @@ import {
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
+import { routerEnabled } from "../config/router-config.ts";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
 import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
@@ -216,7 +217,7 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
 };
 
 const withDerivedRouteRequirements = (plan: AppPlan): AppPlan => {
-  if (plan.routes.length === 0) return plan;
+  if (plan.routes.length === 0 || !routerEnabled(plan)) return plan;
 
   const current = plan.requires?.globalServices ?? [];
   if (current.includes("traefik")) return plan;

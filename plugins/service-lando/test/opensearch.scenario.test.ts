@@ -159,7 +159,7 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
   test("AppPlanner produces an opensearch plan with HTTP endpoint, persistent storage, and command healthcheck", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { search: { type: "opensearch" } },
+      services: { search: { type: "opensearch", home: false } },
     });
 
     const appPlan = await planLandofile(landofile);

@@ -1,7 +1,7 @@
 import { Context, type Effect } from "effect";
 
 import type { EventError, ToolingCompileError, ToolingExecError } from "../errors/index.ts";
-import type { AppPlan, RendererCapabilities } from "../schema/index.ts";
+import type { AppPlan, HostTerminal, RendererCapabilities } from "../schema/index.ts";
 import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
 
 /**
@@ -87,6 +87,10 @@ export interface ToolingInvocation {
    * disables forwarding (opt-out / off-switch).
    */
   readonly agentEnvAllowlist?: ReadonlyArray<string>;
+  /** Provider PTY allocation intent. Omission remains noninteractive. */
+  readonly tty?: boolean;
+  /** Attached output-terminal facts, independent from PTY allocation intent. */
+  readonly hostTerminal?: HostTerminal;
   /** Pre-normalized argv forms, executed in order. */
   readonly commands: ReadonlyArray<ReadonlyArray<string>>;
   /** Structural Bun Shell forms for host execution, executed in order. */

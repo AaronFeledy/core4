@@ -187,6 +187,7 @@ export const nginxServiceType: ServiceType = {
   id: "nginx",
   name: "nginx",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({

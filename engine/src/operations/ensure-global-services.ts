@@ -9,6 +9,7 @@ import type {
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
+  HomePathCapabilityError,
   LandofileParseError,
   LandofileUnknownEventError,
   LandofileValidationError,
@@ -67,6 +68,7 @@ export interface EnsureGlobalServicesResult {
 
 export type EnsureGlobalServicesError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

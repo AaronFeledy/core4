@@ -59,6 +59,8 @@ const expectations = {
   "corpus/environment-files-labels.compose.yaml": (context) => {
     const worker = servicePlan(context, "worker");
     expect(worker.environment).toEqual({
+      // Realized for every service from the provider's declared host reachability.
+      LANDO_HOST_IP: "host.lando.internal",
       APP_ENV: "production",
       QUEUE: "critical",
       US476_WORKER_0: "fixture-0",

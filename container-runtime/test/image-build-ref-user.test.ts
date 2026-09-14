@@ -12,18 +12,18 @@ import {
 } from "@lando/sdk/schema";
 
 const providerId = ProviderId.make("docker");
-const appId = AppId.make("ref-privilege-build-app");
+const appId = AppId.make("ref-user-build-app");
 const serviceName = ServiceName.make("web");
-const tag = "lando-build-docker-web-privilege-key";
+const tag = "lando-build-docker-web-user-key";
 const baseTag = `${tag}-base`;
 const runtimeUser = "runtime-only";
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-08-01T00:00:00Z"),
-  source: "image-build-ref-privilege.test.ts",
+  source: "image-build-ref-user.test.ts",
   runtime: 4 as const,
 };
 
-const plan = (privileged: boolean): AppPlan => {
+const plan = (withRootStep: boolean): AppPlan => {
   const service: ServicePlan = {
     name: serviceName,
     type: "node",
@@ -41,13 +41,13 @@ const plan = (privileged: boolean): AppPlan => {
     metadata,
     extensions: {
       "@lando/core/service-features": {
-        buildSteps: privileged
+        buildSteps: withRootStep
           ? [
               {
                 id: "lando.boot",
                 phase: "build",
                 command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
-                privileged: true,
+                user: "root",
               },
               { id: "later", phase: "build", command: "compile-as-app" },
             ]
@@ -57,9 +57,9 @@ const plan = (privileged: boolean): AppPlan => {
   };
   return {
     id: appId,
-    name: "Ref Privilege Build App",
-    slug: "ref-privilege-build-app",
-    root: AbsolutePath.make("/tmp/ref-privilege-build-app"),
+    name: "Ref User Build App",
+    slug: "ref-user-build-app",
+    root: AbsolutePath.make("/tmp/ref-user-build-app"),
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
@@ -84,7 +84,7 @@ const dockerfileFrom = async (request: ContainerBuildHttpRequest): Promise<strin
   return new TextDecoder().decode(archive.subarray(512, 512 + size));
 };
 
-const run = async (privileged: boolean, inheritedUser = "app:staff") => {
+const run = async (withRootStep: boolean, inheritedUser = "app:staff") => {
   const requests: ContainerBuildHttpRequest[] = [];
   const request = (entry: ContainerBuildHttpRequest) => {
     requests.push(entry);
@@ -99,7 +99,7 @@ const run = async (privileged: boolean, inheritedUser = "app:staff") => {
   };
   await Effect.runPromise(
     buildContainerArtifact(
-      { app: appId, service: serviceName, plan: plan(privileged), buildKey: "privilege-key" },
+      { app: appId, service: serviceName, plan: plan(withRootStep), buildKey: "user-key" },
       { providerId, api: { request } },
     ),
   );
@@ -110,7 +110,7 @@ const run = async (privileged: boolean, inheritedUser = "app:staff") => {
   };
 };
 
-test("materializes a digest-pinned base before privileged inherited-user inspection", async () => {
+test("materializes a digest-pinned base before inherited-user inspection", async () => {
   // Given / When
   const first = await run(true);
   const repeated = await run(true);
@@ -125,31 +125,40 @@ test("materializes a digest-pinned base before privileged inherited-user inspect
   ]);
   expect(first.dockerfiles).toEqual([
     "FROM debian:12@sha256:resolved-parent\n",
-    `FROM ${baseTag}\nUSER root\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nUSER app:staff\nRUN compile-as-app\n`,
+    `FROM ${baseTag}\nUSER root\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nUSER runtime-only\nRUN compile-as-app\n`,
   ]);
-  expect(first.dockerfiles.every((dockerfile) => !dockerfile.includes(runtimeUser))).toBe(true);
+  expect(first.dockerfiles[1]?.match(/^USER .+$/gmu)?.at(-1)).toBe(`USER ${runtimeUser}`);
   expect(repeated).toEqual(first);
 });
 
-test("keeps a root referenced parent on the exact scaffold path without USER transitions", async () => {
+test("distinguishes root with a group and restores the final service user", async () => {
   // Given / When
   const result = await run(true, "root:wheel");
 
   // Then
   expect(result.dockerfiles).toEqual([
     "FROM debian:12@sha256:resolved-parent\n",
-    `FROM ${baseTag}\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nRUN compile-as-app\n`,
+    `FROM ${baseTag}\nUSER root\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nUSER runtime-only\nRUN compile-as-app\n`,
   ]);
-  expect(result.dockerfiles.every((dockerfile) => !dockerfile.includes("USER"))).toBe(true);
-  expect(result.dockerfiles.every((dockerfile) => !dockerfile.includes(runtimeUser))).toBe(true);
+  expect(result.dockerfiles[0]).not.toContain("USER");
+  expect(result.dockerfiles[1]?.match(/^USER .+$/gmu)).toEqual(["USER root", `USER ${runtimeUser}`]);
 });
 
-test("keeps an unprivileged referenced artifact on the single-build path", async () => {
+test("inspects a referenced parent for an authored service user even without step users", async () => {
   // Given / When
   const result = await run(false);
 
   // Then
-  expect(result.paths).toEqual([`POST /build?t=${tag}&dockerfile=Dockerfile`, `GET /images/${tag}/json`]);
-  expect(result.dockerfiles).toEqual(["FROM debian:12@sha256:resolved-parent\nRUN compile-as-app\n"]);
-  expect(result.dockerfiles.every((dockerfile) => !dockerfile.includes(runtimeUser))).toBe(true);
+  expect(result.paths).toEqual([
+    `POST /build?t=${baseTag}&dockerfile=Dockerfile`,
+    `GET /images/${baseTag}/json`,
+    `GET /images/${baseTag}/json`,
+    `POST /build?t=${tag}&dockerfile=Dockerfile`,
+    `GET /images/${tag}/json`,
+  ]);
+  expect(result.dockerfiles).toEqual([
+    "FROM debian:12@sha256:resolved-parent\n",
+    `FROM ${baseTag}\nUSER runtime-only\nRUN compile-as-app\n`,
+  ]);
+  expect(result.dockerfiles[1]?.match(/^USER .+$/gmu)?.at(-1)).toBe(`USER ${runtimeUser}`);
 });
