@@ -668,3 +668,26 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Review notes (deferred/rejected): compose `writeScalarMap` YAML key quoting is pre-existing export-only emission with no apply callers, not this story's AC, and authored service labels already share that renderer; dotted-label secret heuristics stay the existing `collectSecretEnvValues` splitter, which already covers the story's hyphenated label tokens.
 - Verification: typecheck and lint trusted from the clean post-build tree; 52 focused tests passed across planner defaults, schema bounds, env overlays, redaction, and catalog generation.
 ---
+## 2026-09-13 20:46 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-13 21:00 - US-618D3 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), and proved global `appEnv`/`appLabels` on a php:8.3 app: service env/labels won over defaults, reserved `LANDO_APP_NAME` and `dev.lando.*` writes were refused, `LANDO_APP_ENV` replaced the whole map on restart, and global/scratch containers did not receive the defaults. Adjacent `info`, `logs`, `exec`, HTTPS, and destroy stayed green. Scenario app, scratch fork, temp dirs, and config keys were torn down; only the global app remains.
+- **Out-of-scope finding:** setup warned ports 80/443 were in use and fell back to 8000/4443. After restart, `curl http://appserver.us618d3v.lndo.site:8000/` returned nginx `404 page not found` (`Server: nginx/1.26.3`) while `https://appserver.us618d3v.lndo.site:4443/` still printed `us618d3-ok`. Suspected leftover host/WSL bind on 8000, not US-618D3.
+- **Out-of-scope finding:** `lando config get appEnv --format=json` and `lando config --format=json` omit the map values (dump shows only `userDataRoot`/`userConfRoot`/`defaultProviderId`); `config set` and `~/.config/lando/config.yml` showed the maps. Suspected meta:config JSON projection, not this story's apply path.
+---
+
+## 2026-09-13 22:40 - Babysit
+- PR: #977 https://github.com/AaronFeledy/core4/pull/977
+- CI outcome: pass (initially failed `guide-scenarios-darwin-arm64`)
+- Review feedback: fixed (typecheck OOMed at the default ~2GB V8 heap on darwin-arm64 — a pre-existing borderline failure on main that this branch's added typecheck surface made deterministic; raised the compiler subprocess heap ceiling in `scripts/typecheck.ts` for every `bun run typecheck` consumer, plus a transient Drupal scaffold e2e rerun)
+- Merge: merged (squash)
+---
+
+## 2026-09-13 23:45 - US-618E
+- Apache honors authored `webroot` in generated httpd config plus `APACHE_DOCUMENT_ROOT`/`LANDO_WEBROOT`; Node sets `PORT`, targets authored `port` for endpoints, and only adds a TCP healthcheck when a server `command` is authored (idle default stays unprobed).
+- Canonical `ServiceType.versions`/`artifacts` is the single shipped matrix: planner rejects unknown/absent versions (including php8.0/node999/apache9) with tagged remediation before app registration; registered ids must also validate; planner-injected PHP pins no longer suppress FPM/prerequisites; Node idle command has no healthcheck.
+- Learnings: exact registered version ids must also validate; planner-injected PHP pin must not suppress FPM/prerequisites; Node idle command no healthcheck.
+- Verification: parent root typecheck/lint clean; 274 targeted tests across nine files passed; boundaries, codegen:check, schema compatibility (one accepted PhpServiceConfig widening), guide lint/coverage/public transcripts/drift pass. Sandbox fresh compile proved Apache `/app/public` HTTP, Node PORT5173 HTTP+TCP health, PHP8.3.33; php8.0/node999/apache9 fail LandofileValidationError before app registration. Apache2 Node4 PHPmatrix7 guide scenarios pass. Source LSP clean; scoped Oracle acceptance approved. QA three apps purged, temporary binaries/scripts/terminal removed, shared global remains. No full suite run.
+---
