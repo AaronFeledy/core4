@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { Cause, Chunk, DateTime, Effect, Exit, Stream } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { resolveLiveProviderSocket } from "@lando/core/testing";
-import { makePluginStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
 import { ServiceCopyError } from "@lando/sdk/errors";
 import {

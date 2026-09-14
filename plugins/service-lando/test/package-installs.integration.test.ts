@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { dirname, join } from "node:path";
 
-import { buildKeyForService, resolveLiveProviderSocket, stripHostProxyRunLando } from "@lando/core/testing";
+import { buildKeyForService } from "@lando/engine/services/build-key";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,

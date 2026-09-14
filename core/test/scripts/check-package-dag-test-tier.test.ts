@@ -70,6 +70,40 @@ describe("check-package-dag test-tier policy", () => {
     );
   });
 
+  test("rejects a plugin test edge to core even through a named exports subpath", async () => {
+    // Given
+    await fixture.write("plugins/provider-lando/test/core.test.ts", 'import "@lando/core/testing";\n');
+
+    // When
+    const result = await fixture.runGate(["--report"]);
+
+    // Then
+    expect(result.stdout).toContain(
+      "plugins/provider-lando/test/core.test.ts:1: [PackageDagForbiddenTestEdge] @lando/provider-lando test -> @lando/core/testing. Remediation: @lando/core is above @lando/provider-lando in the workspace DAG; import the owning package's testing subpath (for example @lando/engine/testing/*) or declare @lando/core in @lando/provider-lando's dependencies/devDependencies policy in WORKSPACE_EDGE_TABLE.",
+    );
+  });
+
+  test("allows a plugin test edge to an engine testing subpath", async () => {
+    // Given
+    await fixture.writePackage("engine", "@lando/engine", {
+      ...engineDefinition,
+      exports: { ...engineDefinition.exports, "./testing/state-store": "./src/testing/state-store.ts" },
+    });
+    await Promise.all([
+      fixture.write("engine/src/testing/state-store.ts", "export {};\n"),
+      fixture.write(
+        "plugins/provider-lando/test/engine.test.ts",
+        'import "@lando/engine/testing/state-store";\n',
+      ),
+    ]);
+
+    // When
+    const result = await fixture.runGate(["--report"]);
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "Package DAG violations: 0\n", stderr: "" });
+  });
+
   test("allows own-package deep imports by relative path and package name", async () => {
     // Given
     await fixture.write(

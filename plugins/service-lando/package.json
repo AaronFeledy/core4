@@ -38,7 +38,7 @@
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "@lando/core": "workspace:*",
+    "@lando/engine": "workspace:*",
     "@lando/provider-docker": "workspace:*",
     "@lando/provider-lando": "workspace:*"
   }

@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { AppPlanner, PluginRegistry } from "@lando/core/services";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
-import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
 import { globalServices, services } from "../src/index.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
-import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/core/testing";
+import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const makePluginStateStore = (
   store: Parameters<typeof makePluginStateStoreWithAccess>[0],

@@ -105,7 +105,7 @@ export const createPackageDagFixture = async (): Promise<PackageDagFixture> => {
     }),
     writePackage("plugins/provider-lando", "@lando/provider-lando", {
       dependencies: { "@lando/container-runtime": "workspace:*" },
-      devDependencies: { "@lando/core": "workspace:*" },
+      devDependencies: { "@lando/engine": "workspace:*" },
     }),
     writePackage("plugins/provider-podman", "@lando/provider-podman", {
       dependencies: {
@@ -114,7 +114,7 @@ export const createPackageDagFixture = async (): Promise<PackageDagFixture> => {
       },
     }),
     writePackage("plugins/service-lando", "@lando/service-lando", {
-      devDependencies: { "@lando/core": "workspace:*" },
+      devDependencies: { "@lando/engine": "workspace:*" },
     }),
     writePackage("plugins/renderer-lando", "@lando/renderer-lando", {
       dependencies: { "@lando/sdk": "workspace:*" },
