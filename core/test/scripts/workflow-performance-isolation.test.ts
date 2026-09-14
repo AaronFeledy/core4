@@ -21,8 +21,8 @@ test("classifies an owned rootlessport as touching the private data root", () =>
   expect(processTouchesPerformanceRoot(rootlessport, `${root}-other`)).toBe(false);
 });
 
-test("cleanup helper scan currently omits owned rootlessport host-port holders", () => {
-  expect(isPerformanceRuntimeHelper(rootlessport, root)).toBe(false);
+test("cleanup helper scan reaps owned rootlessport host-port holders", () => {
+  expect(isPerformanceRuntimeHelper(rootlessport, root)).toBe(true);
 });
 
 test("parses a loopback listen inode for port 80", () => {
@@ -44,9 +44,35 @@ test("inspect reports leftover host listen ports owned by private-root processes
     ],
     netnsTcpTables: async () => [],
     socketNames: async () => ["podman.sock"],
+    stray: async () => [],
   };
   const snapshot = await inspectOwnedPerformanceResources(walk);
   expect(snapshot.processes).toEqual([rootlessport]);
   expect(snapshot.listen).toEqual([{ port: 80, pid: 4242, comm: `${root}/runtime/bin/rootlessport` }]);
   expect(snapshot.sockets).toEqual(["podman.sock"]);
+  expect(snapshot.stray).toEqual([]);
+});
+
+test("inspect reports detached host-proxy workers that do not touch the private root", async () => {
+  const worker = {
+    pid: 9,
+    uid: 1000,
+    startTime: "1",
+    executable: "/opt/lando/dist/lando",
+    argv: ["/opt/lando/dist/lando", "__internal:host-proxy-worker", "--app-id", "perf-1"],
+  };
+  const walk: IsolationWalk = {
+    uid: 1000,
+    roots: [root],
+    pids: async () => [],
+    process: async () => undefined,
+    fds: async () => [],
+    fdTarget: async () => undefined,
+    tcpTables: async () => [],
+    netnsTcpTables: async () => [],
+    socketNames: async () => [],
+    stray: async () => [worker],
+  };
+  const snapshot = await inspectOwnedPerformanceResources(walk);
+  expect(snapshot.stray).toEqual([worker]);
 });

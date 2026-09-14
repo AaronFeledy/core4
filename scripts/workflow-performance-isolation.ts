@@ -1,6 +1,10 @@
 import { readdir, readlink, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { type PerformanceProcess, readPerformanceProcess } from "./workflow-performance-processes.ts";
+import {
+  HOST_PROXY_WORKER_ARGV,
+  type PerformanceProcess,
+  readPerformanceProcess,
+} from "./workflow-performance-processes.ts";
 
 const TCP_LISTEN = "0A";
 
@@ -28,6 +32,7 @@ export type OwnedResourceSnapshot = {
   readonly listen: readonly OwnedListen[];
   readonly sockets: readonly string[];
   readonly nftHints: readonly string[];
+  readonly stray: readonly PerformanceProcess[];
 };
 
 export type IsolationWalk = {
@@ -41,6 +46,7 @@ export type IsolationWalk = {
   readonly netnsTcpTables: (pid: number) => Promise<readonly string[]>;
   readonly socketNames: () => Promise<readonly string[]>;
   readonly nftHints?: (pids: readonly number[]) => Promise<readonly string[]>;
+  readonly stray?: () => Promise<readonly PerformanceProcess[]>;
 };
 
 export const processTouchesPerformanceRoot = (snapshot: PerformanceProcess, root: string): boolean =>
@@ -92,14 +98,18 @@ const optionalLink = async (path: string): Promise<string | undefined> => {
   }
 };
 
+const processLabel = (snapshot: PerformanceProcess): string =>
+  `${snapshot.pid}:${snapshot.executable.split("/").at(-1) ?? snapshot.executable}`;
+
 export const liveIsolationWalk = (roots: PerformanceIsolationRoots): IsolationWalk => {
   const uid = process.getuid?.() ?? -1;
   const ownedRoots = [roots.sampleRoot, roots.dataRoot, roots.runtimeRoot];
+  const pids = async () =>
+    (await optionalNames("/proc")).filter((entry) => /^\d+$/u.test(entry)).map((entry) => Number(entry));
   return {
     uid,
     roots: ownedRoots,
-    pids: async () =>
-      (await optionalNames("/proc")).filter((entry) => /^\d+$/u.test(entry)).map((entry) => Number(entry)),
+    pids,
     process: readPerformanceProcess,
     fds: (pid) => optionalNames(`/proc/${pid}/fd`),
     fdTarget: (pid, fd) => optionalLink(`/proc/${pid}/fd/${fd}`),
@@ -115,9 +125,9 @@ export const liveIsolationWalk = (roots: PerformanceIsolationRoots): IsolationWa
       ...(await optionalNames(roots.runtimeRoot)),
       ...(await optionalNames(join(roots.dataRoot, "runtime/run"))),
     ],
-    nftHints: async (pids) => {
+    nftHints: async (owned) => {
       const hints: string[] = [];
-      for (const pid of pids) {
+      for (const pid of owned) {
         try {
           await stat(`/proc/${pid}/net/nf_tables`);
           hints.push(`${pid}:nf_tables`);
@@ -133,6 +143,17 @@ export const liveIsolationWalk = (roots: PerformanceIsolationRoots): IsolationWa
         }
       }
       return hints;
+    },
+    stray: async () => {
+      const found: PerformanceProcess[] = [];
+      for (const pid of await pids()) {
+        const snapshot = await readPerformanceProcess(pid);
+        if (snapshot === undefined || snapshot.uid !== uid) continue;
+        if (!snapshot.argv.includes(HOST_PROXY_WORKER_ARGV)) continue;
+        if (ownedRoots.some((root) => processTouchesPerformanceRoot(snapshot, root))) continue;
+        found.push(snapshot);
+      }
+      return found;
     },
   };
 };
@@ -176,6 +197,7 @@ export const inspectOwnedPerformanceResources = async (
     listen,
     sockets: await walk.socketNames(),
     nftHints: (await walk.nftHints?.(processes.map((snapshot) => snapshot.pid))) ?? [],
+    stray: (await walk.stray?.()) ?? [],
   };
 };
 
@@ -183,6 +205,8 @@ export const recordPerformanceIsolation = async (
   phase: IsolationPhase,
   roots: PerformanceIsolationRoots,
 ): Promise<OwnedResourceSnapshot> => {
+  if (process.env.WORKFLOW_PERF_ISOLATION !== "1")
+    return { processes: [], listen: [], sockets: [], nftHints: [], stray: [] };
   const snapshot = await inspectOwnedPerformanceResources(liveIsolationWalk(roots));
   try {
     await writeFile(join(roots.sampleRoot, `isolation-${phase}.json`), `${JSON.stringify(snapshot)}\n`);
@@ -193,7 +217,7 @@ export const recordPerformanceIsolation = async (
   }
   if (process.env.WORKFLOW_PERF_ISOLATION === "1")
     process.stderr.write(
-      `perf-isolation ${phase} processes=${snapshot.processes.length} listen=${snapshot.listen.map((entry) => `${entry.port}@${entry.pid}`).join(",") || "none"} sockets=${snapshot.sockets.length} nft=${snapshot.nftHints.length}\n`,
+      `perf-isolation ${phase} processes=${snapshot.processes.map(processLabel).join(",") || "none"} listen=${snapshot.listen.map((entry) => `${entry.port}@${entry.pid}`).join(",") || "none"} stray=${snapshot.stray.map(processLabel).join(",") || "none"} sockets=${snapshot.sockets.length} nft=${snapshot.nftHints.length}\n`,
     );
   return snapshot;
 };
