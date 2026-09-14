@@ -12,6 +12,7 @@ test.each(["8.0", "8.4", "9.7"])(
     // Given / When
     const [step] = phpDbClientBuildStepsForSources([{ family: "mysql", version }]);
     // Then
+    expect(step?.user).toBe("root");
     expect(step?.buildKeyInputs).toMatchObject({
       dbClient: { source: { architectures: ["amd64", "arm64"] } },
     });

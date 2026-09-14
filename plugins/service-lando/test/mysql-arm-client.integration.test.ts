@@ -1,13 +1,25 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { phpDbClientBuildStepsForSources } from "../src/services/php-db-client-sources.ts";
 
-const podman = process.env.LANDO_TEST_MYSQL_ARM64_PODMAN;
-const run = async (args: readonly string[]) => {
-  if (podman === undefined) throw new Error("LANDO_TEST_MYSQL_ARM64_PODMAN is required");
+const podmanEnv = process.env.LANDO_TEST_MYSQL_ARM64_PODMAN;
+
+const requireManagedPodman = async (): Promise<string> => {
+  if (podmanEnv === undefined || podmanEnv.length === 0) {
+    throw new Error("LANDO_TEST_MYSQL_ARM64_PODMAN is required");
+  }
+  if (!isAbsolute(podmanEnv)) {
+    throw new Error("LANDO_TEST_MYSQL_ARM64_PODMAN must be an absolute executable");
+  }
+  await access(podmanEnv, constants.X_OK);
+  return podmanEnv;
+};
+
+const run = async (podman: string, args: readonly string[]) => {
   const child = Bun.spawn([podman, ...args], { stdout: "pipe", stderr: "pipe", timeout: 600_000 });
   const [exit, stdout, stderr] = await Promise.all([
     child.exited,
@@ -18,7 +30,12 @@ const run = async (args: readonly string[]) => {
   return stdout.trim();
 };
 
-test.skipIf(podman === undefined).each([
+const discard = async (podman: string, args: readonly string[]): Promise<void> => {
+  const child = Bun.spawn([podman, ...args], { stdout: "pipe", stderr: "pipe", timeout: 60_000 });
+  await child.exited;
+};
+
+test.skipIf(podmanEnv === undefined).each([
   ["8.0", "8.0.46"],
   ["8.4", "8.4.11"],
   ["9.7", "9.7.2"],
@@ -27,6 +44,7 @@ test.skipIf(podman === undefined).each([
   async (series, version) => {
     expect(process.platform).toBe("linux");
     expect(process.arch).toBe("arm64");
+    const podman = await requireManagedPodman();
     const root = await mkdtemp(join(tmpdir(), "lando-mysql-arm-live-"));
     const id = `lando-mysql-arm-${crypto.randomUUID()}`;
     const image = `localhost/${id}:test`;
@@ -34,11 +52,11 @@ test.skipIf(podman === undefined).each([
     try {
       await Bun.write(
         join(root, "Containerfile"),
-      `FROM php:8.3-apache-bookworm\nRUN ${String(step?.command)}\n`,
+        `FROM php:8.3-apache-bookworm\nRUN ${String(step?.command)}\n`,
       );
-      await run(["build", "--platform", "linux/arm64", "-t", image, root]);
-      await run(["network", "create", id]);
-      await run([
+      await run(podman, ["build", "-t", image, root]);
+      await run(podman, ["network", "create", id]);
+      await run(podman, [
         "run",
         "-d",
         "--name",
@@ -47,8 +65,6 @@ test.skipIf(podman === undefined).each([
         id,
         "--network-alias",
         "db",
-        "--platform",
-        "linux/arm64",
         "-e",
         "MYSQL_ROOT_PASSWORD=lando-test",
         "-e",
@@ -65,8 +81,8 @@ test.skipIf(podman === undefined).each([
         "60",
         `mysql:${version}`,
       ]);
-      await run(["wait", "--condition=healthy", id]);
-      const output = await run([
+      await run(podman, ["wait", "--condition=healthy", id]);
+      const output = await run(podman, [
         "run",
         "--rm",
         "--network",
@@ -78,7 +94,10 @@ test.skipIf(podman === undefined).each([
         "-ec",
         [
           'test "$(uname -m)" = aarch64',
+          "command -v mysql mysqladmin mysqldump",
           "mysql --version",
+          "mysqladmin --version",
+          "mysqldump --version",
           "ldd /usr/bin/mysql",
           "test -d /usr/lib64/mysql/plugin",
           `mysql -h db -u root -Nse "SELECT plugin FROM mysql.user WHERE user='lando'"`,
@@ -94,13 +113,10 @@ test.skipIf(podman === undefined).each([
       expect(output.split("\n")).toContain("957");
       expect(output).not.toContain("not found");
     } finally {
-      try {
-        await run(["rm", "-f", "--ignore", "--volumes", id]);
-        await run(["network", "rm", "--ignore", id]);
-        await run(["rmi", "--force", "--ignore", image]);
-      } finally {
-        await rm(root, { recursive: true, force: true });
-      }
+      await discard(podman, ["rm", "-f", "--volumes", id]);
+      await discard(podman, ["network", "rm", id]);
+      await discard(podman, ["rmi", "--force", image]);
+      await rm(root, { recursive: true, force: true });
     }
   },
   1_200_000,
