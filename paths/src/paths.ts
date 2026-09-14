@@ -214,6 +214,7 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     // userConf-scoped
     configFile: j(userConfRoot, "config.yml"),
     configDir: userConfRoot,
+    userIncludesDir: j(userConfRoot, "includes"),
     globalConfigFile: j(userConfRoot, "global.config.yml"),
     pluginTrustFile: j(userConfRoot, "plugin-trust.yml"),
   };

@@ -84,6 +84,7 @@ import type {
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
+  HomePathCapabilityError,
   HttpClientUnavailableError,
   HttpRequestError,
   HttpTrustError,
@@ -581,6 +582,7 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       | RouteInputError
       | CapabilityError
       | NotImplementedError
+      | HomePathCapabilityError
       | PublicationUnsupportedError
       | CommandAliasConflictError
       | ConfigExpressionError

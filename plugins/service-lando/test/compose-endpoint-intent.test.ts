@@ -4,7 +4,8 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 
-import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { linuxMvpCapabilities } from "@lando/provider-lando";
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -62,6 +63,7 @@ describe("compose endpoint intent", () => {
       services: {
         worker: {
           type: "compose",
+          home: false,
           image: "alpine:3",
           ports: [
             { target: 80, name: "web" },

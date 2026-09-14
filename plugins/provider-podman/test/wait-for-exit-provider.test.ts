@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
-import { makePluginStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import {
   AbsolutePath,

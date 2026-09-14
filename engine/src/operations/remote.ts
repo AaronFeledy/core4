@@ -7,6 +7,7 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
+  HomePathCapabilityError,
   LandofileUnknownEventError,
   NoProviderInstalledError,
   ProviderConfigError,
@@ -126,6 +127,7 @@ type AppPlanResolutionError =
   | LandofileUnknownEventError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | NoProviderInstalledError
   | ProviderConfigError

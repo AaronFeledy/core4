@@ -18,7 +18,7 @@
   ],
   "serviceTags": {
     "AppPlanner": [
-      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | RouteInputError | CapabilityError | NotImplementedError | PublicationUnsupportedError | CommandAliasConflictError | ConfigExpressionError | LandofileUnknownEventError>"
+      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | RouteInputError | CapabilityError | NotImplementedError | HomePathCapabilityError | PublicationUnsupportedError | CommandAliasConflictError | ConfigExpressionError | LandofileUnknownEventError>"
     ],
     "BuildOrchestrator": [
       "build: (plan: AppPlan) => Effect.Effect<AppPlan, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"

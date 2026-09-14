@@ -63,7 +63,13 @@ describe("toolbox decomposition", () => {
     expect(authoringOf(defaults)).toEqual({
       runtime: 4,
       services: {
-        toolbox: { type: "lando", primary: true, image: TOOLBOX_IMAGE, command: "sleep infinity" },
+        toolbox: {
+          type: "lando",
+          primary: true,
+          image: TOOLBOX_IMAGE,
+          command: "sleep infinity",
+          home: false,
+        },
       },
     });
     expect(result.fragment.services.toolbox.image).toBe(TOOLBOX_IMAGE);

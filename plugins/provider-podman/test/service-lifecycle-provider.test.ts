@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { makePluginStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {

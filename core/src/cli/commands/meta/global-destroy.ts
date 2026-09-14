@@ -6,6 +6,7 @@ import {
   type ConfigExpressionError,
   type GlobalAppError,
   GlobalDestroyConfirmationError,
+  type HomePathCapabilityError,
   type LandofileParseError,
   type LandofileUnknownEventError,
   type LandofileValidationError,
@@ -49,6 +50,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
 
 type GlobalDestroyError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

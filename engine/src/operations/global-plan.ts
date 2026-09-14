@@ -5,6 +5,7 @@ import {
   type CommandAliasConflictError,
   type ConfigExpressionError,
   GlobalAppError,
+  type HomePathCapabilityError,
   type LandofileParseError,
   type LandofileUnknownEventError,
   LandofileValidationError,
@@ -47,6 +48,7 @@ export type LoadGlobalPlanResult = MissingGlobalPlanResult | LoadedGlobalPlanRes
 export type LoadGlobalPlanError =
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | FileSystemError
   | GlobalAppError

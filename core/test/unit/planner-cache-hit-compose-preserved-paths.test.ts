@@ -37,6 +37,7 @@ test("fails closed when a cached preserved path is unsupported by the current pr
     services: {
       web: {
         image: "node:lts",
+        home: false,
         healthcheck: { test: ["CMD", "true"], start_interval: "5s" },
       },
     },

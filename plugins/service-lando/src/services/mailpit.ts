@@ -2,14 +2,15 @@ import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
-import { PortNumber } from "@lando/sdk/schema";
+import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
+import { PortNumber, ServiceName } from "@lando/sdk/schema";
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { MAILPIT_IMAGE, MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
 
 export const MAILPIT_FEATURE_ID = "service-lando.mailpit";
+const MailpitServiceName = ServiceName.pipe(Schema.pattern(/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u));
 
 const appNameFor = (input: {
   readonly appName?: string | undefined;
@@ -72,21 +73,35 @@ export const mailpitServiceType: ServiceType = {
   id: "mailpit",
   name: "mailpit",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: MailpitServiceConfig,
   resolve: (input) =>
-    Effect.succeed({
-      base: "lando",
-      normalizedConfig: {
-        ...input.service,
-        type: "mailpit",
-        image: input.service.image ?? MAILPIT_IMAGE,
-        routes: input.service.routes ?? [
-          {
-            hostname: `${input.name}.${appNameFor(input)}.lndo.site`,
-            endpoint: MAILPIT_WEB_PORT,
-          },
-        ],
-      },
-      features: [{ id: MAILPIT_FEATURE_ID }],
-    }),
+    Schema.decodeUnknown(MailpitServiceName)(input.name).pipe(
+      Effect.map(() => ({
+        base: "lando" as const,
+        normalizedConfig: {
+          ...input.service,
+          type: "mailpit",
+          ...(input.service.mailFrom === undefined || input.service.mailFrom === false
+            ? {}
+            : { mailFrom: [...new Set(input.service.mailFrom)] }),
+          image: input.service.image ?? MAILPIT_IMAGE,
+          routes: input.service.routes ?? [
+            {
+              hostname: `${input.name}.${appNameFor(input)}.lndo.site`,
+              endpoint: MAILPIT_WEB_PORT,
+            },
+          ],
+        },
+        features: [{ id: MAILPIT_FEATURE_ID }],
+      })),
+      Effect.mapError(
+        () =>
+          new ServiceTypeError({
+            serviceType: "mailpit",
+            message:
+              "Mailpit service names must start with a letter, digit, or underscore and contain only letters, digits, underscores, dots, or hyphens.",
+          }),
+      ),
+    ),
 };

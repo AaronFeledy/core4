@@ -67,6 +67,15 @@ export const normalizeToolingTask = (
         remediation: `Correct the tooling declaration for ${name}: ${message}`,
       }),
     );
+  const authoredEnvironments = [
+    task.env,
+    ...(task.cmds ?? []).map((step) => (typeof step === "string" ? undefined : step.env)),
+  ];
+  const reserved = authoredEnvironments.flatMap((env) =>
+    Object.keys(env ?? {}).filter((key) => key === "LANDO" || key.startsWith("LANDO_")),
+  );
+  if (reserved.length > 0)
+    return fail(`Tooling env must not override reserved runtime keys: ${reserved.join(", ")}.`);
   const flags: NormalizedToolingFlag[] = [];
   const flagEntries = Object.entries(task.flags ?? {});
   const names = new Set(flagEntries.map(([key]) => key));

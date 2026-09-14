@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
-import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { appBuildKeyForStep, buildKeyForService } from "../../src/services/build-key.ts";
@@ -66,6 +66,21 @@ const keyForOrderedSteps = (steps: ReadonlyArray<{ readonly user?: string }>): P
   Effect.runPromise(buildKeyForService(provider, serviceWithOrderedSteps(steps)));
 
 describe("build step user identity", () => {
+  test("keeps the artifact build key unchanged when home storage is added", async () => {
+    // Given
+    const service = serviceWithStepUser("root");
+    const before = await Effect.runPromise(buildKeyForService(provider, service));
+    // When
+    const after = await Effect.runPromise(
+      buildKeyForService(provider, {
+        ...service,
+        storage: [{ store: "lando-app-web-home", target: PortablePath.make("/root"), readOnly: false }],
+      }),
+    );
+    // Then
+    expect(after).toBe(before);
+  });
+
   test("changes the artifact build key when step user differs", async () => {
     // Given / When
     const asRoot = await keyForStepUser("root");
@@ -107,6 +122,23 @@ describe("appBuildKeyForStep user identity", () => {
   const appService = (): ServicePlan => ({
     ...baseServiceFields,
     extensions: {},
+  });
+
+  test("keeps the app-step build key unchanged when home storage is added", () => {
+    // Given
+    const service = appService();
+    const input = { command: ["sh", "-c", "echo hi"], service, stepId: "app-step" };
+    const before = appBuildKeyForStep(input);
+    // When
+    const after = appBuildKeyForStep({
+      ...input,
+      service: {
+        ...service,
+        storage: [{ store: "lando-app-web-home", target: PortablePath.make("/root"), readOnly: false }],
+      },
+    });
+    // Then
+    expect(after).toBe(before);
   });
 
   test("changes the app-phase key when the step resolved user changes", () => {
