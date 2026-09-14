@@ -1543,6 +1543,13 @@ describe("DataMoverLive", () => {
                     {
                       ref: { app, store: store ?? "data" },
                       instanceId: "00000000-0000-4000-8000-000000000001",
+                      identity: {
+                        coordinationKey: "provider:data",
+                        nativeName: "data",
+                        generation: "00000000-0000-4000-8000-000000000001",
+                        ownerRoot: AbsolutePath.make(dir),
+                        origin: "created",
+                      },
                       provenance: "known",
                     },
                   ]),
@@ -1625,6 +1632,73 @@ describe("DataMoverLive", () => {
 
         // Then: snapshot creation proceeds with the witness generation without inventing a creation id.
         expect(handle.store).toEqual({ app, store: "data" });
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("rejects a matching generation without owner-bound source identity", async () => {
+    await withTempDir(async (dir) => {
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+      const generation = "00000000-0000-4000-8000-000000000009";
+      let snapshotCalls = 0;
+
+      try {
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              return yield* dataMover.snapshot(
+                { app, store: "data" },
+                {
+                  volumeSnapshot: "native",
+                  metadata: {
+                    sourceRoot: AbsolutePath.make(dir),
+                    service,
+                    volumeInstanceId: generation,
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "mysql@sha256:unowned",
+                    recoveryReason: "manual",
+                  },
+                },
+              );
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: () =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: "data" },
+                      instanceId: generation,
+                      provenance: "known",
+                    },
+                  ]),
+                snapshotVolume: () =>
+                  Effect.sync(() => {
+                    snapshotCalls += 1;
+                    return {
+                      provider: ProviderId.make("test"),
+                      id: "snapshot",
+                      digest: sha256("unowned-volume"),
+                      sizeBytes: bytes("unowned-volume").byteLength,
+                      format: "native" as const,
+                    };
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(exit._tag).toBe("Failure");
+        expect(snapshotCalls).toBe(0);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;

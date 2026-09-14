@@ -1162,8 +1162,9 @@ const matchesSnapshotSource = (volume: VolumeInfo | undefined, metadata: Snapsho
   const identity = volume?.identity;
   return (
     physicalVolumeGeneration(volume) === metadata.volumeInstanceId &&
-    (identity === undefined ||
-      (identity.ownerRoot === metadata.sourceRoot && identity.nativeName === volume?.ref.store))
+    identity !== undefined &&
+    identity.ownerRoot === metadata.sourceRoot &&
+    identity.nativeName === volume?.ref.store
   );
 };
 
