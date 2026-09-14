@@ -148,6 +148,8 @@ import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
 import {
   AgentEnvConfig,
+  AppEnvironmentDefaults,
+  AppLabelDefaults,
   GlobalConfig,
   McpConfig,
   NetworkCaConfig,
@@ -542,6 +544,8 @@ const basePublicSchemaRegistry = {
   IncludeEntry,
   McpConfig,
   AgentEnvConfig,
+  AppEnvironmentDefaults,
+  AppLabelDefaults,
   NotifyConfig,
   RendererCapabilities,
   TelemetryConfig,
@@ -1191,6 +1195,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   SubscriberSelector: "Public Lando schema contract for Subscriber Selector.",
   SubscriberManifestEntry: "Public Lando schema contract for Subscriber Manifest Entry.",
   PublishedGlobalConfigKey: "Public Lando schema contract for Published Global Config Key.",
+  AppEnvironmentDefaults: "Bounded environment defaults applied only to user-app services.",
+  AppLabelDefaults: "Bounded container-label defaults applied only to user-app services.",
   NotifyConfig: "Public Lando schema contract for Notify Config.",
   RendererCapabilities: "Public Lando schema contract for Renderer Capabilities.",
   PromptSpec: "Public Lando schema contract for Prompt Spec.",

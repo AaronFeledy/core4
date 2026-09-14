@@ -5,6 +5,7 @@
 ## Compatibility notes
 
 - `createRedactor` accepts optional `authoritativeValues`; `createSecretRedactor` accepts them as an optional second argument. Explicit short numeric or control-parameter values suppress the whole affected detail, including bounded output and nested error messages. Existing heuristic `values` filtering is unchanged. `@lando/redaction` supplies authoritative SecretStore values through this canonical primitive.
+- `@lando/sdk/schema` additively exports `AppEnvironmentDefaults`, `AppLabelDefaults`, `CORE_SERVICE_ENV_KEYS`, and `isCoreServiceEnvKey`. `GlobalConfig` additively accepts optional `appEnv` and `appLabels` maps for bounded user-app service defaults; service-authored values retain precedence.
 - `ServiceConfig` additively accepts Redis `password` and `persist`, plus Mailpit `mailFrom` (`false` or a service-name list). Persistence defaults to enabled. Omitted Mailpit targets select all resolved PHP services; false selects none; lists retain first-occurrence order.
 - Mailpit parses its SMTP service name during service-type resolution, rejecting whitespace, shell metacharacters, empty names, and leading hyphens before generating PHP mail configuration. The general SDK `ServiceName` contract is unchanged.
 
@@ -194,6 +195,10 @@
 
 ## Additive schema exports
 
+- `AppEnvironmentDefaults`
+- `AppLabelDefaults`
+- `CORE_SERVICE_ENV_KEYS`
+- `isCoreServiceEnvKey`
 - `ScannerConfig`
 - `ScanPlan`
 - `ServiceFileConfig`
