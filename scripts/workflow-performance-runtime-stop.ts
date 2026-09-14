@@ -11,8 +11,15 @@ export const waitForPerformanceRuntimeStop = async (input: {
     throw new PerformanceStoreCleanupError(
       "Runtime ownership/termination was not confirmed; retaining stores",
     );
-  const deadline = performance.now() + input.timeoutMs;
-  while (!(await input.stopped())) {
+  await waitForPerformanceRuntimeQuiescence(input.stopped, input.timeoutMs);
+};
+
+export const waitForPerformanceRuntimeQuiescence = async (
+  stopped: () => Promise<boolean>,
+  timeoutMs: number,
+): Promise<void> => {
+  const deadline = performance.now() + timeoutMs;
+  while (!(await stopped())) {
     if (performance.now() >= deadline)
       throw new PerformanceStoreCleanupError(
         "Runtime did not stop before cleanup deadline; retaining stores",
