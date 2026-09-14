@@ -64,13 +64,16 @@ export type SqlPhysicalTarget = {
   readonly volume: VolumeInfo & { readonly identity: VolumeIdentity };
 };
 
+const canonicalAppRoot = (plan: SqlPhysicalContextInput["plan"]): string =>
+  plan.identity?.appRoot ?? plan.root;
+
 export const resolvePhysicalTarget = (input: SqlPhysicalContextInput) =>
   Effect.gen(function* () {
     const mount = yield* requireDatabaseMount(input.service, input.plan.id);
     const volume = yield* input.deps.inspectVolume(input.serviceName, mount.store, mount.target);
     if (
       volume?.identity === undefined ||
-      volume.identity.ownerRoot !== input.plan.root ||
+      volume.identity.ownerRoot !== canonicalAppRoot(input.plan) ||
       volume.identity.nativeName !== volume.ref.store
     ) {
       return yield* Effect.fail(
@@ -148,7 +151,7 @@ export const resolvePhysicalContext = (input: SqlPhysicalContextInput, target: S
       verifyVolume,
       volumeIdentity: identity,
       metadata: {
-        sourceRoot: AbsolutePath.make(input.plan.root),
+        sourceRoot: AbsolutePath.make(canonicalAppRoot(input.plan)),
         ...(input.plan.identity?.ownerKey === undefined ? {} : { ownerKey: input.plan.identity.ownerKey }),
         ...(input.plan.identity?.repoGroupKey === undefined
           ? {}

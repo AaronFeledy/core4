@@ -199,3 +199,21 @@ for (const mismatch of ["owner", "service"] as const) {
     expect(harness.lifecycle()).toEqual(["lock"]);
   });
 }
+
+test("binds physical ownership to canonical appRoot when plan.root differs", async () => {
+  // Given: a worktree path that is not the realpath-owned app root.
+  const harness = makeSqlTestDeps({ password: "test-password" });
+  const deps = {
+    ...harness.deps,
+    plan: { ...harness.deps.plan, root: "/unresolved/worktree" },
+  };
+
+  // When: a recovery snapshot is captured.
+  const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
+
+  // Then: provenance matches the labeled owner root, not the unresolved plan path.
+  expect(Exit.isSuccess(exit)).toBe(true);
+  expect(String(harness.snapshots()[0]?.metadata?.sourceRoot)).toBe(
+    String(harness.deps.plan.identity?.appRoot),
+  );
+});
