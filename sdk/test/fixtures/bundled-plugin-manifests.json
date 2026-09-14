@@ -243,6 +243,7 @@
       "bootstrap": "app",
       "contributes": {
         "appFeatures": [
+          "service-lando.mailpit.wire",
           "service-lando.php.db-client",
           "service-lando.phpmyadmin.wire",
           "service-lando.nginx.php-fpm.wire"

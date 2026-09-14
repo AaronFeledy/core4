@@ -157,6 +157,7 @@ const makeGoServiceType = (version: SupportedGoVersion): ServiceType => ({
   id: `go:${version}`,
   name: `go:${version}`,
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.try({

@@ -1,0 +1,67 @@
+---
+id: lando3-transition-options
+provider: test
+timeout: 90000
+tags: [beta, docs, landofile, lifecycle]
+---
+
+# Rebuild or inspect selected services
+
+Use repeatable `--service` or `-s` flags when one part of an app needs attention. Omit the flag to keep the app-wide behavior.
+
+## Inspect selected services
+
+`lando info` reports only the services you name. It does not add their dependencies, and it prints them in Landofile plan order rather than flag order:
+
+```sh
+lando info --service api --service frontend
+lando info -s api -s frontend --format=json
+```
+
+An unknown service fails before Lando inspects anything. This keeps a typo from returning a convincing partial result.
+
+## Rebuild a service and its prerequisites
+
+`lando rebuild` includes every transitive `dependsOn` prerequisite of the selected services:
+
+```sh
+lando rebuild --service api
+lando rebuild -s api -s api --format=json
+```
+
+Repeated names count once. Lando stops and force-builds the selected closure in dependency order, then starts that closure again. Unrelated services and services that depend on your selection keep running.
+
+Use an app-wide rebuild when you changed shared configuration:
+
+```sh
+lando rebuild
+```
+
+<Guide>
+  <Scenario id="service-selection" render>
+    <Step name="start">
+      <UseFixture name="scoped-services" />
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect-selected-services">
+      <Run command="lando info -s api -s frontend --format=json" />
+      <Verify command="lando info -s api -s frontend --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"frontend\"[\\s\\S]*\"service\":\\s*\"api\"" } }} />
+      <Verify command="lando info -s api -s frontend --format=json" expect={{ stdout: { not: { regex: "\"service\":\\s*\"database\"" } } }} />
+    </Step>
+    <Step name="rebuild-selected-services">
+      <Run command="lando rebuild -s api -s api --format=json" />
+      <Verify command="lando rebuild -s api -s api --format=json" expect={{ stdout: { regex: "\"servicesRebuilt\":\\s*\\[\\s*\"database\",\\s*\"api\"\\s*\\]" } }} />
+      <Verify command="lando rebuild -s api -s api --format=json" expect={{ stdout: { not: { regex: "\"servicesRebuilt\"[^]]*\"frontend\"" } } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run the everyday app lifecycle](../tutorial/app-lifecycle.mdx)
+- [Inspect services with JSON](../scripting-with-json.mdx)

@@ -132,6 +132,7 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: VarnishServiceConfig,
   resolve: (input) => {
     const backend = input.service.backend?.trim() ?? "";

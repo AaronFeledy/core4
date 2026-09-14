@@ -6,6 +6,7 @@ import type {
   CommandAliasConflictError,
   ConfigExpressionError,
   GlobalAppError,
+  HomePathCapabilityError,
   LandofileParseError,
   LandofileUnknownEventError,
   LandofileValidationError,
@@ -79,6 +80,7 @@ export const GlobalStatusResultSchema = Schema.Struct({
 
 type GlobalStatusError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

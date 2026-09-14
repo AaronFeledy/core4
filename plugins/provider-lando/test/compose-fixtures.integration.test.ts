@@ -166,10 +166,12 @@ const rejectedFixtures = [
   },
 ] satisfies readonly RejectedFixtureCase[];
 
+// The harness supplies node:22-alpine, whose default root user lives at /root.
+// Keep home persistence enabled without asking the planner to guess image metadata.
 const makeRunnableLandofile = (name: string, fixture: string): string =>
   `name: ${name}\nprovider: lando\n${fixture.replace(
     /^(\s*)image:.*$/gmu,
-    '$1type: compose\n$1image: node:22-alpine\n$1command: ["node", "-e", "setInterval(() => {}, 1000)"]',
+    '$1type: compose\n$1image: node:22-alpine\n$1home:\n$1  path: /root\n$1command: ["node", "-e", "setInterval(() => {}, 1000)"]',
   )}`;
 
 const runFixture = async (fixture: FixtureCase): Promise<void> => {
@@ -279,6 +281,10 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     expect(response.status).toBe(200);
     const inspect: unknown = JSON.parse(response.body);
     assertServiceContainerRunning(inspect, containerName);
+    const home = arrayField(inspect, "Mounts").find((mount) => field(mount, "Destination") === "/root");
+    expect(field(home, "Type")).toBe("volume");
+    expect(field(home, "Name")).toBe(`lando-${plan.slug}-${fixture.service}-home`);
+    expect(field(home, "RW")).toBe(true);
     fixture.assertInspect(inspect, appRoot);
   } finally {
     try {

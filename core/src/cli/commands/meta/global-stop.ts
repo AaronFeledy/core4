@@ -6,6 +6,7 @@ import type {
   ConfigExpressionError,
   EventError,
   GlobalAppError,
+  HomePathCapabilityError,
   LandofileParseError,
   LandofileUnknownEventError,
   LandofileValidationError,
@@ -49,6 +50,7 @@ export const GlobalStopResultSchema = Schema.Struct({
 
 export type GlobalStopError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

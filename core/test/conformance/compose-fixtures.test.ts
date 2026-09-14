@@ -146,7 +146,7 @@ const asComposeLandofile = (landofile: LandofileShape, dir: string): LandofileSh
       services: Object.fromEntries(
         Object.entries(landofile.services ?? {}).map(([name, service]) => [
           name,
-          { ...service, type: "compose" },
+          { ...service, type: "compose", home: false },
         ]),
       ),
     },

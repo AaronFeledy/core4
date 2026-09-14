@@ -28,6 +28,7 @@ interface StableBuildInput {
     readonly appMount: unknown;
     readonly mounts: ReadonlyArray<unknown>;
     readonly buildSteps: ReadonlyArray<unknown>;
+    readonly configSources: ReadonlyArray<unknown>;
   };
 }
 
@@ -35,6 +36,7 @@ interface AppBuildKeyInput {
   readonly command: unknown;
   readonly service: ServicePlan;
   readonly stepId: string;
+  readonly user?: string;
 }
 
 const SECRET_REFERENCE_PATTERN = /^\$\{secret:([^}]+)\}$/u;
@@ -131,6 +133,7 @@ export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
     landoVersion: CORE_VERSION,
     stepId: input.stepId,
     command: input.command,
+    user: typeof input.user === "string" ? input.user : undefined,
     service: {
       name: String(input.service.name),
       artifact: artifactBuildInput(input.service.artifact, undefined),
@@ -159,7 +162,7 @@ const artifactBuildStepInput = (step: unknown): unknown => {
     id: step.id,
     phase: step.phase,
     command: step.command,
-    privileged: step.privileged === true ? true : undefined,
+    user: typeof step.user === "string" ? step.user : undefined,
     dependsOn: step.dependsOn,
     buildKeyInputs: step.buildKeyInputs,
     caFiles: Array.isArray(step.caFiles)
@@ -182,6 +185,18 @@ export const artifactBuildStepsFor = (service: ServicePlan): ReadonlyArray<unkno
   buildStepsFor(service)
     .filter((step) => !isRecord(step) || step.phase !== "app")
     .map(artifactBuildStepInput);
+
+const configSourcesFor = (service: ServicePlan): ReadonlyArray<unknown> => {
+  const extension = service.extensions["@lando/core/service-features"];
+  if (!isRecord(extension) || !Array.isArray(extension.configSources)) return [];
+  return extension.configSources
+    .filter(isRecord)
+    .sort((left, right) => String(left.key).localeCompare(String(right.key)))
+    .map((source) => ({
+      key: source.key,
+      digest: typeof source.digest === "string" ? source.digest : undefined,
+    }));
+};
 
 const stableBuildInput = (
   provider: RuntimeProviderShape,
@@ -213,6 +228,7 @@ const stableBuildInput = (
               },
         mounts: service.mounts.map(mountBuildInput),
         buildSteps: artifactBuildStepsFor(service),
+        configSources: configSourcesFor(service),
       },
     })),
   );

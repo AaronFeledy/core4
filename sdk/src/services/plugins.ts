@@ -7,6 +7,8 @@ import type {
   ServiceTypeError,
 } from "../errors/index.ts";
 import type {
+  AbsoluteContainerPath,
+  ContainerUser,
   LogSource,
   PlanMetadata,
   PluginManifest,
@@ -89,6 +91,20 @@ export interface ServiceTypeResolution {
 }
 
 /**
+ * What a service type knows about the identities inside the image it ships.
+ * Planning reads this to place the planned user's home on a persistent store
+ * without guessing a path. It describes the type's OWN image only: a service
+ * that supplies its own `image:` or Compose `build:` is a custom image and this
+ * metadata no longer applies to it.
+ */
+export interface ServiceImageIdentity {
+  /** The identity the image runs as when the Landofile names none. */
+  readonly defaultUser: ContainerUser;
+  /** Home directory per user principal, keyed without any `:group` suffix. */
+  readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
+}
+
+/**
  * Normative service-type contract: a resolver that turns
  * `type: <name>` into a {@link ServiceTypeResolution} of normalized config plus
  * the features to compose onto a declared `base`. It chooses base/features/
@@ -101,6 +117,7 @@ export interface ServiceType {
   readonly versions?: ReadonlyArray<string>;
   readonly extends?: string;
   readonly artifacts?: Readonly<Record<string, string>>;
+  readonly identity?: ServiceImageIdentity;
   readonly schema: Schema.Schema.AnyNoContext;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }

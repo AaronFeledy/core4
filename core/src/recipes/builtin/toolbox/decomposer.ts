@@ -49,7 +49,15 @@ export const toolboxDecomposer = ((ports) => ({
           runtime: 4,
           recipe: provenance,
           services: {
-            toolbox: { type: "lando", primary: true, image: TOOLBOX_IMAGE, command: "sleep infinity" },
+            // The recipe supplies the image, so it states home intent rather than
+            // letting planning guess where this image keeps a home.
+            toolbox: {
+              type: "lando",
+              primary: true,
+              image: TOOLBOX_IMAGE,
+              command: "sleep infinity",
+              home: false,
+            },
           },
         },
         provenance,
