@@ -56,6 +56,8 @@ const diagnosticsServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   type: "compose",
   image: TRAEFIK_DIAGNOSTICS_IMAGE,
   appMount: false,
+  // Diagnostic pages keep no per-user state, so there is no home to persist.
+  home: false,
   command: TRAEFIK_DIAGNOSTICS_COMMAND,
   mounts: [
     {
