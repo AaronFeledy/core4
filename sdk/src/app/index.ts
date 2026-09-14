@@ -26,6 +26,7 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
+  HomePathCapabilityError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   LandoCommandError,
@@ -61,6 +62,7 @@ import type {
   ScratchAppError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
+  SecretNotFoundError,
   ShellExecError,
   ShellScriptOutsideRootError,
   StateStoreError,
@@ -84,6 +86,7 @@ import type {
   RemoteEnvironment,
   RemoteTestResult,
   ServiceCreds,
+  ServiceName,
   SyncResult,
   TunnelSession,
   TunnelTarget,
@@ -224,8 +227,10 @@ export type StartAppError =
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | GlobalAutoStartError
+  | SecretNotFoundError
   | HostProxySocketStaleError
   | HostProxyTransportUnavailableError
   | LandoCommandError
@@ -273,6 +278,7 @@ export type StopAppError =
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -293,6 +299,7 @@ export interface RestartAppResult {
 export type RestartAppError = StartAppError;
 
 export interface RebuildAppOptions {
+  readonly services?: ReadonlyArray<ServiceName>;
   readonly signal?: AbortSignal;
 }
 
@@ -320,7 +327,7 @@ export type DestroyAppError = StopAppError | ProxyError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
-  readonly service?: string;
+  readonly services?: ReadonlyArray<ServiceName>;
   readonly path?: string;
   readonly filters?: ReadonlyArray<string>;
 }
@@ -389,6 +396,7 @@ export type InfoAppError =
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -421,6 +429,7 @@ export type ExecAppError =
   | AppIdReservedError
   | ComposeKeyRejectedError
   | CapabilityError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | ConfigError
   | LandofileNotFoundError
@@ -455,6 +464,8 @@ export interface ToolingOptions {
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
   readonly renderProgress?: boolean;
+  /** Explicitly request a provider PTY. Omission remains noninteractive. */
+  readonly tty?: boolean;
 }
 
 export interface ToolingResult {
@@ -475,6 +486,7 @@ export type ToolingError =
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | ConfigError
   | ComposeKeyRejectedError
@@ -531,6 +543,7 @@ export type LogsAppError =
   | CapabilityError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | HomePathCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError

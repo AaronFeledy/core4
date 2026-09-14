@@ -41,10 +41,11 @@ export interface McpCommandEntry {
  * `.args` are keyed by name; each value is interpreted as this shape.
  */
 export interface McpInputMemberView {
-  readonly type?: "string" | "boolean" | "number";
+  readonly type?: "string" | "boolean" | "number" | "option";
   readonly description?: string;
   readonly required?: boolean;
   readonly multiple?: boolean;
+  readonly valueType?: "string" | "integer";
 }
 
 /** A JSON-Schema-shaped object (the value carried in `McpToolDescriptor.inputSchema`). */
@@ -53,16 +54,21 @@ export type JsonSchemaObject = Record<string, unknown>;
 const asView = (value: unknown): McpInputMemberView =>
   value !== null && typeof value === "object" ? (value as McpInputMemberView) : {};
 
+const memberType = (view: McpInputMemberView): "string" | "boolean" | "number" => {
+  if (view.type === "option") return view.valueType === "integer" ? "number" : "string";
+  return view.type ?? "string";
+};
+
 const jsonTypeFor = (view: McpInputMemberView): string => {
-  const base = view.type ?? "string";
+  const base = memberType(view);
   return view.multiple === true ? "array" : base;
 };
 
 const memberSchema = (view: McpInputMemberView): JsonSchemaObject => {
   const base: JsonSchemaObject =
     view.multiple === true
-      ? { type: "array", items: { type: view.type ?? "string" } }
-      : { type: view.type ?? "string" };
+      ? { type: "array", items: { type: memberType(view) } }
+      : { type: memberType(view) };
   return view.description === undefined ? base : { ...base, description: view.description };
 };
 

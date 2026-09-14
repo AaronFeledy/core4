@@ -128,6 +128,11 @@ describe("nginx PHP FastCGI preset", () => {
         : "";
     expect(command).toContain("fastcgi_pass appserver:9000");
     expect(command).toContain("root /app/web");
+    expect(command).toContain("/usr/share/lando/errors/403.html");
+    expect(command).toContain("/usr/share/lando/errors/404.html");
+    expect(command).toContain("error_page 403 /_lando/errors/403.html;");
+    expect(command).toContain("error_page 404 /_lando/errors/404.html;");
+    expect(command).not.toContain("fastcgi_intercept_errors");
     expect(plan.dependsOn).toEqual([
       { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
     ]);
@@ -225,6 +230,8 @@ describe("nginx PHP FPM app-feature wire", () => {
 
     expect(commandText(commands.get("edge"))).toContain("fastcgi_pass appserver:9070");
     expect(commandText(commands.get("edge"))).toContain("root /app/web");
+    expect(commandText(commands.get("edge"))).toContain("error_page 404 /_lando/errors/404.html;");
+    expect(commandText(commands.get("edge"))).not.toContain("fastcgi_intercept_errors");
     expect(commands.get("appserver")).toBeUndefined();
   });
 

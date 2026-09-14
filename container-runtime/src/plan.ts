@@ -272,10 +272,12 @@ export const containerHostConfigFragment = (
   );
   const binds = bindMountStrings(plan, service, options);
   const mounts = containerMountObjects(service, options);
+  const extraHosts = service.hostAliases.map(({ hostname, ip }) => `${hostname}:${ip}`);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
     ...(binds.length > 0 ? { Binds: binds } : {}),
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
+    ...(extraHosts.length === 0 ? {} : { ExtraHosts: extraHosts }),
   };
 };
 
@@ -285,6 +287,7 @@ export interface ContainerCreateBodyOptions {
   readonly hostConfig?: Record<string, unknown>;
   readonly networkingConfig?: Record<string, unknown>;
   readonly onMissingArtifact?: (artifact: ServicePlan["artifact"]) => never;
+  readonly environment?: Readonly<Record<string, string>>;
 }
 
 const missingArtifact = (artifact: ServicePlan["artifact"]): never => {
@@ -306,7 +309,7 @@ export const containerCreateBodyFragment = (
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
-    Env: serviceEnv(service),
+    Env: envArrayFromRecord(options.environment ?? service.environment),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,

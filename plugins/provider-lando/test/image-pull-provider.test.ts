@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { Effect, Stream } from "effect";
 
-import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { ImagePullProgressEvent } from "@lando/sdk/events";
 
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";

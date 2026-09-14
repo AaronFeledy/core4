@@ -3,9 +3,11 @@ services:
   cache:
     type: compose
     image: valkey/valkey:8-alpine
+    home: false
   web:
     type: compose
     image: traefik/whoami:v1.10
+    home: false
     ports:
       - target: 80
         published: "8080"

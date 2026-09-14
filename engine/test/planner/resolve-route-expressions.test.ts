@@ -43,6 +43,7 @@ const phpishDraft = (routes: ReadonlyArray<NormalizedRoute>): PlannedServiceDraf
   hostnames: [],
   authoredArtifact: undefined,
   authored: { byStore: new Map() },
+  homeIntent: { serviceType: "lando", home: false as const },
   draft: {
     name: ServiceName.make("appserver"),
     serviceName: "appserver",

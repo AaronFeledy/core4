@@ -29,7 +29,7 @@ snapshot:
     packageName: "@lando/recipe-toolbox"
     recipeId: "toolbox"
     manifestVersion: "0.1.0"
-    contentDigest: "sha256:4b5e0f9d25dcd214e0bbe5ade44833400aee0e7afade5d633fa4a6a333afa4dd"
+    contentDigest: "sha256:6540da2fb72dcb90282aafb0308b43bdb601758a1a722b6549c138bc2dbfed92"
   optionTypes:
   defaults:
   template:
@@ -64,4 +64,8 @@ snapshot:
                       value:
                         kind: "Literal"
                         value: "sleep infinity"
+                    - key: "home"
+                      value:
+                        kind: "Literal"
+                        value: false
   assets: []

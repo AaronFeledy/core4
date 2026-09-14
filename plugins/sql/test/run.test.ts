@@ -48,7 +48,20 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("serviceCmd");
     expect(transfer?.to._tag).toBe("hostPath");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(wrapExportCommand(["mysqldump", "-u", "lando", "sql-app"], true));
+      expect(transfer.from.command).toEqual(
+        wrapExportCommand(
+          [
+            "mysqldump",
+            "-u",
+            "lando",
+            "--single-transaction",
+            "--set-gtid-purged=OFF",
+            "--no-tablespaces",
+            "sql-app",
+          ],
+          true,
+        ),
+      );
       expect(transfer.from.env?.MYSQL_PWD).toBe(SECRET);
       expect(JSON.stringify(transfer.from.command)).not.toContain(SECRET);
     }

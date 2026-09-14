@@ -90,6 +90,71 @@ describe("openForPlan", () => {
     expect(rec.commands).toEqual([]);
   });
 
+  test("a disabled router says so instead of blaming missing proxy config", async () => {
+    // Given: the app declares a route, but the router that would publish it is off.
+    const rec = record();
+    const plan = { ...httpsPlan(), router: { enabled: false } };
+
+    // When
+    const exit = await run(plan, { platform: "linux", env: { DISPLAY: ":0" } }, rec);
+
+    // Then: the diagnostic names the real cause and the real way out.
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      const err = exit.cause.error as {
+        readonly _tag: string;
+        readonly message: string;
+        readonly remediation?: string;
+      };
+      expect(err._tag).toBe("OpenTargetUnresolvedError");
+      expect(err.message).toContain("router is disabled");
+      expect(err.remediation).toContain("router:");
+      expect(err.remediation).toContain("enabled: true");
+      expect(err.remediation).not.toContain("Declare a route");
+    }
+    expect(rec.commands).toEqual([]);
+  });
+
+  test("a disabled router names the unpublished --route even when a host port exists", async () => {
+    // Given: a declared hostname plus an unrelated published port must not look like a bad selector.
+    const rec = record();
+    const plan = {
+      ...httpsPlan(),
+      router: { enabled: false },
+      services: {
+        web: {
+          name: "web",
+          routes: [],
+          endpoints: [{ _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } }],
+        },
+      },
+    } as AppPlan;
+
+    // When
+    const exit = await run(
+      plan,
+      { route: "web.myapp.lndo.site", platform: "linux", env: { DISPLAY: ":0" } },
+      rec,
+    );
+
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      const err = exit.cause.error as {
+        readonly _tag: string;
+        readonly message: string;
+        readonly remediation?: string;
+      };
+      expect(err._tag).toBe("OpenTargetUnresolvedError");
+      expect(err.message).toContain("--route web.myapp.lndo.site");
+      expect(err.message).toContain("router is disabled");
+      expect(err.remediation).toContain("router:");
+      expect(err.remediation).toContain("enabled: true");
+      expect(err.remediation).not.toContain("Choose one of the listed services");
+    }
+    expect(rec.commands).toEqual([]);
+  });
+
   test("selection miss reports the bad selector instead of missing proxy config", async () => {
     const rec = record();
     const exit = await run(httpsPlan(), { service: "api", platform: "linux", env: { DISPLAY: ":0" } }, rec);

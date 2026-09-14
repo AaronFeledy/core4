@@ -84,6 +84,47 @@ export const HealthcheckPlan = Schema.Struct({
 });
 export type HealthcheckPlan = typeof HealthcheckPlan.Type;
 
+export const ScannerConfig = Schema.Union(
+  Schema.Literal(false),
+  Schema.Struct({
+    path: Schema.optional(Schema.String.pipe(Schema.startsWith("/"))).annotations({
+      description: "URL path to probe, starting with a slash.",
+    }),
+    okCodes: Schema.optional(Schema.Array(Schema.Int.pipe(Schema.between(100, 599)))).annotations({
+      description: "HTTP response status codes accepted as reachable.",
+    }),
+    retries: Schema.optional(Schema.Int.pipe(Schema.between(0, 20))).annotations({
+      description: "Retry budget after the first attempt; N retries allow N+1 attempts.",
+    }),
+    timeout: Schema.optional(Schema.Int.pipe(Schema.between(1, 600000))).annotations({
+      description: "Overall probe deadline in milliseconds, including all retry attempts.",
+    }),
+  }),
+).annotations({
+  identifier: "ScannerConfig",
+  title: "Scanner Config",
+  description: "Post-start URL scan settings, or false to skip scanning.",
+});
+export type ScannerConfig = typeof ScannerConfig.Type;
+
+export const ScanPlan = Schema.Struct({
+  enabled: Schema.Boolean.annotations({ description: "Whether to scan this service after start." }),
+  path: Schema.String.annotations({ description: "Resolved URL path to probe." }),
+  okCodes: Schema.Array(Schema.Int).annotations({
+    description: "Resolved HTTP response status codes accepted as reachable.",
+  }),
+  retries: Schema.Int.annotations({
+    description: "Resolved retry budget after the first attempt; N retries allow N+1 attempts.",
+  }),
+  timeoutMs: Schema.Int.annotations({
+    description: "Resolved overall probe deadline in milliseconds, including all retry attempts.",
+  }),
+}).annotations({
+  identifier: "ScanPlan",
+  description: "Fully resolved post-start URL scan settings for a service.",
+});
+export type ScanPlan = typeof ScanPlan.Type;
+
 /**
  * Certificate plan — leaf certs reserved for this service.
  */

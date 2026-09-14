@@ -1,8 +1,10 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
+import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
+import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
   CapabilityError,
   CommandAliasConflictError,
@@ -12,6 +14,7 @@ import type {
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
+  HomePathCapabilityError,
   LandofileParseError,
   LandofileUnknownEventError,
   LandofileValidationError,
@@ -22,6 +25,7 @@ import type {
   ProviderUnavailableError,
   PublicationUnsupportedError,
   RouteInputError,
+  SecretNotFoundError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
@@ -74,6 +78,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 
 export type GlobalStartError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
@@ -93,6 +98,7 @@ export type GlobalStartError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
+  | SecretNotFoundError
   | ToolingExecError;
 
 export type GlobalStartServices =
@@ -132,13 +138,12 @@ const selectedServices = (
   const services = Object.values(plan.services);
   if (requested === undefined || requested.length === 0) return Effect.succeed(services);
 
-  const ids = new Set(requested);
-  const matched = services.filter((service) => ids.has(String(service.name)));
-  const matchedIds = new Set(matched.map((service) => String(service.name)));
-  const missing = [...ids].find((service) => !matchedIds.has(service));
-
+  const available = new Set(services.map((service) => String(service.name)));
+  const missing = requested.find((service) => !available.has(service));
   if (missing !== undefined) return Effect.fail(unknownServiceError(missing, plan.services));
-  return Effect.succeed(matched);
+
+  const ids = includeAvailableDependencies(requested, services);
+  return Effect.succeed(services.filter((service) => ids.has(String(service.name))));
 };
 
 const READY_STATES = new Set(["running", "ready"]);
@@ -199,11 +204,13 @@ export const globalStart = (
 
     const builds = yield* BuildOrchestrator;
     const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
     yield* Effect.scoped(
       provider.apply(builtPlan, {
         reconcile: false,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
+        serviceEnvironment,
       }),
     );
 

@@ -14,6 +14,7 @@ import {
   NetworkingPlan,
   RoutePlan,
   RouteRef,
+  ScanPlan,
 } from "./networking.ts";
 import {
   AbsolutePath,
@@ -47,10 +48,16 @@ export const ServicePlan = Schema.Struct({
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optional(HealthcheckPlan),
+  scanner: Schema.optional(ScanPlan).annotations({
+    description: "Fully resolved settings for this service's post-start URL scan.",
+  }),
   logSources: Schema.optional(Schema.Array(LogSource)),
   certs: Schema.optional(CertificatePlan),
   hostAliases: Schema.Array(HostAliasPlan),
   metadata: PlanMetadata,
+  provenance: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })).annotations({
+    description: "Service-type resolution inputs and selected artifact, excluding source file contents.",
+  }),
   extensions: ProviderExtensionConfig,
 });
 export type ServicePlan = typeof ServicePlan.Type;
@@ -182,6 +189,14 @@ export const AppPlan = Schema.Struct({
   fileSync: Schema.Array(FileSyncPlan),
   metadata: PlanMetadata,
   extensions: ProviderExtensionConfig,
+  router: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.Boolean.annotations({ description: "Whether shared routing is enabled for this app." }),
+    }),
+  ).annotations({
+    description:
+      "Resolved router enablement; optional only because persisted cached plans predate this field.",
+  }),
   /**
    * Global-app services this app depends on at start, aggregated by the planner
    * (e.g. proxy routes require the global `traefik` service). The user-app start

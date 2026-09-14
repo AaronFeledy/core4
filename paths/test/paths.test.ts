@@ -525,6 +525,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.configFile).toBe(join(conf, "config.yml"));
     expect(paths.globalConfigFile).toBe(join(conf, "global.config.yml"));
     expect(paths.pluginTrustFile).toBe(join(conf, "plugin-trust.yml"));
+    expect(paths.userIncludesDir).toBe(join(conf, "includes"));
   });
 
   test("app-cache builders sanitize names and fingerprint the app root", () => {
@@ -588,6 +589,7 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.scratchRegistryFile).toBe(
       "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache\\scratch\\registry.bin",
     );
+    expect(paths.userIncludesDir).toBe("C:\\Users\\tester\\AppData\\Roaming\\Lando\\includes");
     expect(paths.tunnelRunDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\run\\tunnels");
     expect(paths.tunnelRegistryFile).toBe(
       "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache\\tunnels\\registry.bin",

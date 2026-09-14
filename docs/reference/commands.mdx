@@ -213,6 +213,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--deep` | Include the resolved host agent-context env forwarding allowlist. |
+| `--service, -s` | Inspect a specific planned service (repeatable). |
 
 ## `lando app:logs`
 
@@ -297,6 +298,12 @@ Flags:
 Rebuild artifacts and restart the current app.
 
 Aliases: `lando rebuild`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service, -s` | Rebuild a specific planned service and its prerequisites (repeatable). |
 
 ## `lando app:remote:add`
 

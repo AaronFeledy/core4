@@ -52,15 +52,57 @@ app needs its own capture server.
       <Cleanup />
     </Step>
   </Scenario>
-</Guide>
 
-## Ports and UI
+## Choose PHP senders
+
+Omit `mailFrom:` to connect every resolved PHP service to this inbox. Set it to `false` to wire none, or list only the PHP services that should send here:
+
+```yaml
+services:
+  web:
+    type: "php:8.3"
+  worker:
+    type: "php:8.3"
+    via: cli
+  inbox:
+    type: mailpit
+    mailFrom:
+      - web
+```
+
+Run `lando rebuild`, then send a message from `web`:
+
+```sh
+lando exec web -- php -r 'mail("you@example.test", "Mailpit check", "Hello from PHP");'
+lando info
+```
+
+Open the inbox URL printed by `lando info` and check for the message. Lando installs `msmtp` and sets PHP's `sendmail_path` only on selected services. Here, `worker` keeps its existing mail configuration. Duplicate names are removed in first-occurrence order. Unknown names and non-PHP targets fail planning before any provider action. An app with no PHP services needs no opt-out.
+
+## Open the UI
+  <Scenario id="selected-php" render>
+    <Step name="plan-senders">
+      <UseFixture name="selected-php" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"mailFrom\"" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="reject-non-php" render={false} reason="Reject non-PHP senders before provider actions">
+    <Step name="reject-target">
+      <UseFixture name="invalid-target" />
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+</Guide>
 
 SMTP stays on `1025` unless you set `port:`. The UI stays on `8025`. Lando
 adds a default hostname route to that UI port; override `routes:` when you
 want a different URL.
 
-## MailHog
+## Replace MailHog
 
 `type: mailhog` still plans as a working SMTP + UI service, but it is
 deprecated since 4.2.0 and scheduled for removal in 5.0.0. Switch to

@@ -19,6 +19,11 @@ provides:
       enabledByDefault: true
       requires:
         providerCapabilities: [sharedCrossAppNetwork]
+    - id: traefik-diagnostics
+      module: ./src/global-services/diagnostics.ts
+      enabledByDefault: true
+      requires:
+        providerCapabilities: [sharedCrossAppNetwork]
 
 requires:
   "@lando/core": "^4.0.0"

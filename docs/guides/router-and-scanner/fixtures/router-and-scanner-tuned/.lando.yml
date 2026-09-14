@@ -1,0 +1,13 @@
+name: router-and-scanner-tuned
+services:
+  app:
+    type: "node:22"
+    primary: true
+    scanner:
+      path: /healthz
+      okCodes: [200, 204]
+      retries: 1
+      timeout: 2000
+  web:
+    type: "nginx"
+    scanner: false

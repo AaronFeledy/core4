@@ -1,13 +1,27 @@
 # IR gaps progress
 
 ## Codebase Patterns
+- A fail-closed planner default lands its blast radius in FIXTURES, not source. Measure before implementing: `bun --no-orphans test --path-ignore-patterns='**/*.integration.test.ts' <pkg>/test` per package. Raw `bun test <dir>` pulls in `*.integration.test.ts`, which fail with `ProviderUnavailableError` on a host with no runtime and mask the real count.
+- Adding one member to a plan-carrying error union touches ~16 unions. Insert it ONCE per union: a second copy is type-identical (`A | A = A`) so nothing fails, and it silently pads line counts and the frozen SDK signature string. Many of those files hold TWO unions (an exported `XError` alias plus an inline channel); both need the member, so a blind dedupe breaks the alias.
+- An SDK error-union change is a three-file commit: the union, `sdk/test/fixtures/sdk-mvp-surface.json` (frozen service-tag signature), and `sdk/API_COMPATIBILITY.md` (additive exports). New exported primitives must be listed in the latter or `sdk-backward-compatibility.test.ts` fails.
+- Build-step identity is resolved ONCE in `servicePlanExtensionsFromDraft` (`engine/src/planner/extensions.ts`), the only point where the final composed `draft.user` and the complete step list (authored plus feature-contributed) meet. Resolve anything that depends on the final planned user there, never in `authored.ts`.
+- Widening a public Landofile union needs a `sdk/compatibility-exceptions.json` row per affected surface (keyed surface + changeKind + path); one union change fans out to every schema and command surface that embeds `ServiceConfigInput`.
+- Type planner helpers with the exported schema types, not re-spelled structural shapes: `Schema.optional(X)` produces `k?: T | undefined`, which `exactOptionalPropertyTypes` rejects against a hand-written `k?: T`.
 - Tooling metadata normalizes ONCE via `normalizeToolingTask` in `@lando/landofile/tooling-normalize`; every consumer (command cache, CLI help, machine index, MCP, execution) reads that IR instead of re-deriving from the authored `ToolingTaskShape`. Argv validation lives beside it in `@lando/landofile/tooling-input` so CLI and MCP share one validation path and emit identical error tags.
 - Adding a publicly registered schema needs THREE edits, not one: the schema itself, `JSON_SCHEMA_REGISTRY` in `sdk/src/schema/json-schema.ts`, and a fixture row in `sdk/test/schema/public-schema-contracts.ts`. Missing the third fails `codegen:schema-snapshot` with "Public schema contract fixture list does not match JSON_SCHEMA_NAMES".
 - Widening a Landofile value type ripples into expression resolution: `engine/src/tooling/step-runner.ts` walks the same shape and must handle every new union member, and `Effect.forEach` over a heterogeneous union needs an explicit callback return annotation under `exactOptionalPropertyTypes`.
 - `check:guide-coverage` only scans PRDs listed in `docs/guides/prd-sources.json`. A PRD outside that list needs no `docs/guides/INDEX.md` row, so do not add one speculatively.
 - Guide fixtures resolve from `docs/guides/<frontmatter-id>/fixtures/<name>/`, never from the MDX's own subdirectory.
 - A non-zero exit from a tooling command is a RESULT, not an Effect failure: `runTooling` stops at the first non-zero step and returns the accumulated streams carrying that exit code, and the CLI maps it through `successExitCode`. Reserve tagged failures for compile, input, and disabled errors so CLI, MCP, and library surfaces stay uniform.
+- Adding a member to a planner error channel is repo-wide: grep `| CommandAliasConflictError` to find every plan-carrying union across `sdk/src/app`, `sdk/src/services`, `engine/src/operations`, and `core/src/cli/commands`, and patch them in one pass.
+- `engine` and `core` typecheck against `sdk/dist`, not `sdk/src`. After an SDK type change run `bun run --filter='@lando/sdk' build`, or TS reports "Two different types with this name exist, but they are unrelated".
+- Pattern-validated schemas (`ContainerUser`, `AbsoluteContainerPath`) are NOT branded, so their `.Type` is plain `string` and declaration sites need no `.make()`. Brand only when call sites should be forced through a constructor.
 - Removing or widening a public schema property needs an entry in `sdk/compatibility-exceptions.json` keyed by surface + changeKind + path with a justification. `check:schema-compatibility` is its own gate; typecheck, lint, and the test suites all stay green while it fails.
+- A new `services.<name>.*` key must clear two gates, not one: the Effect schema, and `SERVICE_CONFIG_KEYS` in `landofile/src/service.ts`, which is derived from `Object.keys(ServiceConfig.fields)` and rejects everything else as an "unsupported MVP key". Decoding an unknown service key silently DROPS it and looks like success, so only a real CLI run proves the key is accepted.
+- A scoped provider apply must persist the full app plan with the newly built selected service definitions overlaid. Remembering only the subplan loses unrelated services; remembering the original full plan loses newly stamped artifact references.
+- Service features are filesystem-free by type: `apply` is `(ctx) => Effect<void, ServiceFeatureError>` with no requirements channel. Anything needing `stat`/`readdir`/realpath belongs in the planner (see certs), leaving the feature the pure `resolveBindSource` join.
+- Export container mount destinations as `PortablePath.make(...)` constants. A bare string constant typechecks at the `addMount` call site but fails every whole-`MountPlan` `toEqual`/`toContainEqual` assertion, because `target` is branded.
+- `check:schema-compatibility` reads the WORKING side from the gitignored derived tree (`core/dist/schemas`), which goes stale the moment you merge main. A schema that main added but your local dist predates reports as `BREAKING surface-removed` for a surface your branch never touched. Run `bun run codegen:schema-snapshot` before believing a breaking row, and cross-check the PR's `schema-snapshot` job.
 
 ## 2026-09-11 - US-613 (in progress, not complete)
 
@@ -90,6 +104,7 @@ Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-covera
 - Drift check: clean
 - Merge: merged (squash)
 ---
+
 
 ## 2026-09-12 06:00 - US-614 (in progress, not complete)
 
@@ -213,4 +228,443 @@ Verification: typecheck, lint, boundaries, schema snapshot codegen, schema compa
 - Fixed: dropped unused planner param; removed rewritePath contract stub; corrected discover error-channel note
 - Split/excise decisions: none; extra §10.2 rewritePath harness excised without a PRD split or passes flip
 - Verification: typecheck pass, lint pass, 127 targeted tests pass
+---
+## 2026-09-12 10:07 - US-615 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved route shorthand/filters against the binary: lint/config round-trip, invalid shorthand `RouteInputError` on start, layered named-filter merge, then a php:8.3 app whose HTTPS routes stripped `/api`, set request/response headers, forwarded an unfiltered prefix to Apache 404, matched `*.wild.us615.lndo.site`, and 302-redirected. Adjacent lint/exec/destroy stayed green.
+- **Out-of-scope finding:** leftover Traefik from 04:35 UTC had `file.Provider` fail with `error adding file watcher: no space left on device`; first curls 404ed until a later `lando start` recreated Traefik. Not caused by US-615. `lando global:restart` then failed `ProviderUnavailableError` because `lando-global` still had v951-* containers.
+- **Out-of-scope finding:** host 80/443 in use so proxy published on 8000/4443; left concurrent `/tmp/v951/{lamp,lemp,static}` apps in place (sbx951).
+---
+## 2026-09-12 11:55 - US-616
+
+Build steps now name the identity they run as, and planning resolves that identity once.
+
+- `build.artifact:` and `build.app:` accept `{ run, user? }` beside the existing string and string-array forms. A new `ContainerUser` primitive (`<name|uid>[:<group|gid>]`, allowlisted so the value is safe to interpolate into a `USER` instruction) validates authored users at the schema boundary, and the hand-written `build` JSON Schema twin mirrors the widened union.
+- `servicePlanExtensionsFromDraft` is the single resolution point: every step, authored or feature-contributed, gets `step.user ?? draft.user`, and the key stays absent when neither exists. That funnel is the only place the final composed planned user and the complete step list meet, so resolving in `authored.ts` would have used a pre-composition user.
+- The artifact realizer replaced its per-step privilege wrap with active-user tracking: it emits `USER` only when a step's resolved identity differs from the currently active one and restores the service's final identity after the last step. Inherited image identities are now preserved exactly rather than collapsed to nothing when they are root-ish, so a `root:wheel` base is restored as `root:wheel` instead of bare `root`. Inspection and referenced-parent materialization now trigger on any resolved user, not just privilege.
+- The `privileged` build-step flag is gone. It only ever meant "run as root", which the resolved identity states directly, and keeping both would have needed a precedence rule the contract does not define. The six bundled system-mutating steps (boot scaffold, CA trust store, PHP prerequisites, Composer, Xdebug, database clients) now declare `user: "root"` so a service authored with a non-root `user:` cannot starve them of privilege.
+- Resolved users reach execution and caching: app steps carry their identity on the `ExecTarget`, and both the Docker and Podman exec-create bodies now send `User`. That seam was declared in the provider contract but silently discarded, so Landofile tooling's `user:` had never actually applied either. Per-step identity also enters ordered artifact and app build-key hashing.
+
+Verification: typecheck, lint, check:boundaries, check:schema-compatibility, check:guide-coverage, check:public-transcripts, check:telemetry-inventory, and lint:guides pass; schema snapshot regenerated (383 schemas). 468 targeted tests pass across 32 sdk/engine/container-runtime/plugin suites, plus the new build-steps guide (2 scenarios). Manual CLI QA on the real binary with isolated user roots: a mixed string/object build block lints valid, `app:config --format=json` round-trips object steps verbatim in authored order, and `user: "root wheel"` fails lint with `services.app.build.artifact`.
+
+- **Learnings for future iterations:**
+  - Widening a Landofile union costs 17 separate `unknown` findings in `check:schema-compatibility` (ServiceConfig, ServiceConfigInput, LandofileShape, both authoring projections, TemplateRenderContext, and ten `app:config`/`meta:global:config` command surfaces). `breaking` stays 0, but each needs its own `sdk/compatibility-exceptions.json` row keyed by surface + changeKind + path. Budget for it.
+  - Deleting a field means grepping `docs/guides/**` for its prose, not just `src`. `lando-boot-scaffold.mdx` asserted that a service `user:` override "is never baked into the derived artifact", which this story inverted; no scanner or gate would have caught that sentence.
+  - A test can encode the very gap a later story closes. `image-build-privilege.test.ts` asserted `not.toContain("runtime-only")` to prove the artifact ignored the service user. Treat a suspiciously specific negative assertion as a contract marker and rewrite it deliberately rather than deleting it.
+  - `Schema.optional(X)` yields `user?: string | undefined`, which does not satisfy a hand-spelled `user?: string` parameter under `exactOptionalPropertyTypes`. Type planner helpers with the exported schema type (`BuildScript`, `Exclude<BuildScriptStep, string>`) instead of re-spelling the shape.
+  - `Array.isArray` does not narrow a `readonly` array out of a union of object-or-array; discriminate with `"run" in value` and let the array fall through.
+  - `provider: test` cannot prove planner-resolved users, because no command prints the resolved plan's build steps. The guide proves schema round-trip, lint rejection, and a successful plan refresh, and leaves USER emission to the container-runtime suites.
+---
+
+## 2026-09-12 - US-616 Review
+- Kept generated log-redirect mkdir/ln steps as root so a non-root service user cannot starve system log-path mutations; formatted the IR-gap PRD index so lint is green.
+- Review notes (deferred/rejected): omitting `user` when neither the step nor the service names one is the intended image-default path, not a planning hole; public BuildPlan materialization is a pre-existing orchestrator shape, not this story's surface; feature-intent ContainerUser decoding is defense-in-depth after Landofile schema validation (security PASS); full-suite uninstall failures are unrelated and out of host-safe scope.
+- Verification: typecheck, lint passed; 192 focused tests passed across redirect, planner, build-key, image-user, boot/security, and the build-steps guide (2/2).
+- **Learnings for future iterations:** System-mutating build steps include generated log redirects, not only bundled feature producers. After replacing `privileged` with inherited planned users, grep every `addBuildStep` / build-step factory for a missing `user: "root"`.
+---
+## 2026-09-12 12:20 - US-616 Drift Audit
+- Trigger: 2 cycles, 1509/499 changed lines, 5 commits
+- Scar tissue: intent comment claimed consumers never re-resolve omitted users; artifact realization still maps omitted to the final/inherited identity (two-layer semantics, comment aligned)
+- Ceremony: leftover privilege-key names in new build-user tests renamed
+- Weakened proofs: none; privilege→user assertions were inverted/expanded; guide stays CLI/schema-only as already documented
+- Collateral: none; only this story's `passes` flip
+- Deferred work re-examined: image-default omit, feature-intent string typing, and artifact users on extensions rather than public BuildPlan rows still hold
+- Fixed: contract comment; privilege leftover test names
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 326 then 51 focused tests pass
+---
+
+## 2026-09-12 13:25 - Babysit
+- PR: #968 https://github.com/AaronFeledy/core4/pull/968
+- CI outcome: pass (after triage; initially failed library-api-tests-runner and unit-tests-linux-x64-shard 3)
+- Review feedback: fixed (documented additive build-user SDK exports; expect `user: "root"` on planned trust-store step)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-09-12 14:05 - US-617A (in progress, not complete)
+
+Landed the mechanism for planned-user home persistence and host reachability. The story is NOT marked passing: the fail-closed default is live and the fixtures it now refuses have not been updated yet.
+
+- A service accepts `home: false | { path? }`, enabled when omitted. A new `AbsoluteContainerPath` primitive validates the authored path the same pattern-only way `ContainerUser` does, so it stays a plain string at every call site.
+- A service type now declares the identities inside the image it ships: `ServiceType.identity` is `{ defaultUser, homes }`, where `homes` maps a user principal (the part before any `:group`) to that user's home directory. Every bundled catalog type declares one; `compose` and `lando` deliberately do not, because their image comes from the Landofile.
+- Planning resolves the home once, in `finalizeServices`, which is the first point where the composed planned user, the final artifact, the complete storage list, and the provider capabilities all exist. `home.path` wins outright; otherwise the planned user (or the identity's default user) selects the path. An authored storage entry already covering that destination keeps its own store name, scope, and ownership, and nothing is generated on top of it; a trailing slash does not make two destinations different.
+- A service whose image is supplied by the Landofile has no trustworthy identity, so it refuses with the new `HomePathCapabilityError` before any provider action, naming the service and both ways out. That error is threaded through every plan-carrying error union up to the public `AppPlanner.plan` signature.
+- Host reachability is realized only from declared capability: when a provider reports `hostReachability` other than `none`, each service gets the `host.lando.internal` alias pointing at the runtime-resolved `host-gateway` sentinel plus `LANDO_HOST_IP` naming that alias. When the provider cannot reach the host, neither exists and planning does not fail for it. `ServicePlan.hostAliases` was a dead field; the shared container host-config fragment now projects it into `ExtraHosts`, so both the Podman bring-up path and the Docker provider realize it.
+- Build keys already excluded storage; that is now pinned by regression coverage rather than left implicit.
+
+Verification: typecheck and lint pass. 78 focused tests pass across home resolution, host reachability, extends identity merge, catalog identity coverage, container host config, compose-knob ExtraHosts merge, and build-key storage.
+
+**Remaining before this story can pass:**
+1. Landofile fixtures that author `image:` on a catalog type, or use `type: compose`, now refuse by design. `engine/test/services/app-planner.test.ts` has 97 such failures, all `HomePathCapabilityError`. They need `home: false`, and the same sweep covers `core/test`, `plugins/*/test`, and `docs/guides/**/fixtures`.
+2. `plugins/proxy-traefik/src/global-services/traefik.ts` and `plugins/service-lando/src/global-services/mailpit.ts` are production global services declared as `type: compose`; both need `home: false` or the router itself will not plan.
+3. The `docs/guides/services/home-and-host.mdx` executable guide, its fixtures under `docs/guides/home-and-host/fixtures/`, and the `docs/guides/INDEX.md` row.
+4. `check:schema-compatibility` and `codegen:schema-snapshot` for the added `home` property, plus `check:boundaries` and real-runtime evidence.
+
+- **Learnings for future iterations:**
+  - Adding one member to a planner error channel is a repo-wide edit, not a local one. `HomePathCapabilityError` had to join sixteen separate unions across `sdk/src/app`, `sdk/src/services`, `engine/src/operations`, and seven `core/src/cli/commands` files before the tree typechecked. Grep `| CommandAliasConflictError` to find every plan-carrying union at once.
+  - `engine` typechecks against `sdk/dist`, not `sdk/src`. After changing an SDK type, run `bun run --filter='@lando/sdk' build` or the engine reports "Two different types with this name exist, but they are unrelated" and sends you hunting for a phantom mismatch.
+  - Pattern-validated schemas like `ContainerUser` are NOT branded, so their `.Type` is plain `string`. Following that precedent for `AbsoluteContainerPath` kept roughly thirty catalog declaration sites free of `.make()` noise.
+  - A fail-closed default lands its blast radius in fixtures, not in source. Measure it before implementing: `type: compose` alone appears in 40 files here, including two production global services, so budget the sweep as part of the story rather than discovering it at the end.
+
+## 2026-09-12 14:20 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-617A (expected passes: true)
+---
+## 2026-09-12 14:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-12 14:20 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-617A (expected passes: true)
+---
+## 2026-09-12 14:20 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-617A (expected passes: true)
+---
+## 2026-09-12 14:20 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-617A (expected passes: true)
+---
+
+## 2026-09-12 15:45 - US-617A (in progress, not complete)
+
+Closed the fail-closed blast radius everywhere except `core/test`, and shipped the guide. The story stays `passes: false`: `core/test` is still red and one production path is genuinely broken.
+
+- The two shipped global services declared `type: compose` now opt out. Traefik and Mailpit keep no per-user state, so `home: false` states that directly rather than inventing a path. Without this the router itself could not plan.
+- Swept every fixture that the default-on refusal correctly rejects: engine planner, certs, network-inject, tooling, service-type, and traefik-routing suites; the service-lando compose and catalog scenario suites; and ten executable-guide Landofiles across compose-passthrough, config-lint, external-access, compose-service-block, lamp-stack-variants, and drupal-stack-overrides. The only edit used was adding `home: false`; no assertion was loosened. Two guide fixtures were deliberately left alone because their rejection happens before home planning, and both still reject for their original reason.
+- New executable guide `docs/guides/services/home-and-host.mdx` with three scenarios: the default-on catalog path, the capability refusal on a Landofile-supplied image, and the explicit `home.path` escape hatch. The refusal scenario asserts the diagnostic text and both remediations, so the error's usefulness is now a test, not a hope.
+- Fixed a defect the mechanism shipped with: `HomePathCapabilityError` had been inserted **twice** into most plan-carrying unions. Harmless to the type system, but it pushed `assemble.ts` to 601 lines and broke the planner bounded-concern ceiling, and it leaked a doubled member into the frozen SDK signature. Deduplicated where a union genuinely had two copies.
+- Recorded the story's public surface: the frozen `AppPlanner.plan` signature now carries the new error, and `AbsoluteContainerPath` plus its pattern and predicate are documented as additive exports.
+
+Verification: typecheck, lint, check:boundaries (all 13 rules), check:schema-compatibility (compatible 16, breaking 0, unknown 0, no exception rows needed), codegen:schema-snapshot, lint:guides, check:guide-coverage, and check:public-transcripts all pass. 5699 tests pass with 0 failures across sdk, engine, service-lando, proxy-traefik, container-runtime, and landofile; the new guide runs 3/3. Manual CLI QA on the compiled binary inside the sandbox with isolated user roots: a catalog service lints valid and refreshes its plan, `home: false` and `home.path` both round-trip through `app:config`, and a bare compose service exits 1 with `HomePathCapabilityError` printing both ways out.
+
+**Remaining before this story can pass:**
+1. `core/test` is 139 failures red. Most are mechanical: compose planner-cache and capability fixtures, `conformance/compose-fixtures`, and `cli/global-commands` need the same `home: false` opt-out.
+2. A real product defect blocks the rest. The bundled `lamp` recipe cannot plan: its `database` service is refused with "its image is supplied by the Landofile", which means `hasCustomImage` sees an `image` on a service the author never gave one to. Recipe-rendered and scratch-forked apps are affected (`services/scratch-*`, `recipes/canonical-recipes.matrix`, `app/resolve`). Find where the recipe path puts `image` on the authored config before adding a single `home: false`; opting recipes out would paper over it.
+3. Real-runtime evidence that a home store survives a rebuild and that `host.lando.internal` resolves from inside a container. The Verify step owns this.
+
+**Two contract calls that need adjudication in Review:**
+- Three tests asserted that a compose passthrough service receives no `LANDO_*` environment at all. Host reachability now adds `LANDO_HOST_IP` to every service. Those assertions were narrowed to exclude that one key, because their sibling assertions (`LANDO_APP_KIND`, `LANDO_MAIL_HOST`) show they were written to police the app env layer, not capability realization. If the passthrough-fidelity contract is meant literally, the fix belongs in host reachability instead.
+- `type: apache` with `user: www-data` is refused, because apache declares a home only for `root`. That is a plausible thing to author. Its fixture got `home: false` rather than a guessed `/var/www`, since inventing a home path for a shipped image is exactly what this story refuses to do. The catalog metadata may still be incomplete.
+
+- **Learnings for future iterations:**
+  - Measure per package with the integration tests excluded. `bun test <dir>` runs `*.integration.test.ts`, which fail with `ProviderUnavailableError` on a host with no container runtime and inflate the count with noise you cannot fix.
+  - A blind regex dedupe of a repeated union member breaks the files that hold two unions. Twelve files here export an `XError` alias next to an inline channel; removing the member from the alias typechecks nowhere and shows up as an `exactOptionalPropertyTypes` mismatch far from the edit.
+  - When a delegated fixture sweep hits a fixture with no authored service config to edit, that is the signal a production path is broken, not a stubborn test. The core sweep stopped on exactly that and found the lamp recipe defect.
+  - `provider: test` proves the refusal end to end. `lando app:cache:refresh` resolves the plan, so the capability error and its remediation are assertable in a guide without booting a container.
+---
+
+## 2026-09-13 01:45 - US-617A (complete)
+
+Closed the last two blockers on home persistence and host reachability, so the story now passes end to end.
+
+- Fixed the product defect that blocked every recipe-rendered and versioned-catalog app. A service written as `type: mariadb:10.6` has the service type's *own* published artifact tag written onto its config as `image` during assembly, long before home planning runs. The custom-image test read that as "the author supplied an image" and refused the service with `HomePathCapabilityError`, which is why the bundled `lamp` recipe could not plan. The resolved tag now travels to `serviceHomeIntent` as `pinnedArtifactTag` and is excluded from the check: an `image` equal to Lando's own pinned tag still leaves the type's identity describing the container. Any other `image`, and any Compose `build.context`, is still a custom image.
+- Three Lando-supplied images now state their home intent instead of leaning on that fix. The `toolbox` and `node-ts` bundled recipes author their own `image:` on a `lando`/`node` service, and the ssh-agent sidecar runs a bare Alpine; none keeps per-user state, so each declares `home: false`. Both recipe snapshots and the canonical `recipes/toolbox/recipe.yml` were regenerated with their new content digests.
+- Finished the fail-closed fixture sweep in `core/test`: compose planner-cache and capability fixtures, the compose conformance fixture tables, global-commands, scratch fork/finalizer/run, the library runtime app, and the recipe decomposer suites. Only `home: false` was added; no assertion was weakened.
+
+Verification: typecheck, lint, check:boundaries (all 13 rules), check:schema-compatibility (compatible 16, breaking 0, unknown 0), codegen:check (catalog clean), check:guide-coverage, check:public-transcripts, check:telemetry-inventory, and lint:guides pass. The home-and-host guide runs 3/3. Test spot checks: 1197 core blast-radius tests pass with 0 failures; the wider engine/sdk/container-runtime/plugins/landofile sweep is 6811 pass; the whole `core/test` tree is 5431 pass with 13 failures that reproduce identically on `origin/main` in a clean worktree (renderer-lando transcript-tail-reader, runtime-service uninstall, and the slow scratch tests in `app/resolve` that exceed the 5s default when the machine is loaded).
+
+Manual CLI QA against `core/bin/lando.ts` with isolated user roots and `provider: test`: a `mariadb:10.6` service refreshes its plan (and, with the pinned-tag exclusion temporarily reverted, refuses with `HomePathCapabilityError` — red/green on the real command); a `lando` service on `alpine:3.20` refuses with both remediations printed; adding `home.path: /opt/appuser` makes it plan and round-trip through `app:config --format=json`; `home: false` plans; and `lando init --recipe lamp --full` produces an app that refreshes three commands, which is the defect above proven fixed at the CLI.
+
+- **Learnings for future iterations:**
+  - `ServiceConfig.image` is not authored intent once you are inside the planner. `assemble.ts` overwrites it with `resolvePinnedArtifactTag(...)` for any versioned type, so anything downstream that asks "did the author give this an image?" must compare against the resolved tag. Expect the same trap in future capability checks.
+  - When a fail-closed default breaks a *recipe*, do not opt the recipe out. The rendered Landofile has no authored `image:`, so an opt-out there hides a planner bug. Recipes that genuinely author their own image (toolbox, node-ts) are a different case and should say `home: false` explicitly.
+  - Establish a failure baseline in a detached `git worktree` of `origin/main` before triaging. It needs its own `bun install` and `bun run codegen` — symlinking the branch's `node_modules` silently resolves `@lando/*` back to branch source and produces a useless comparison.
+  - `core/test/app/resolve.test.ts` is genuinely slow (several tests exceed the 5s default) and cascades: when one times out, its temp dir is removed and every later test in the file dies on `chdir`. Failure counts from that file swing between 0 and 9 run to run on the same tree. Re-run it alone before blaming a change.
+---
+
+## 2026-09-13 - US-617A Review
+- Reviewed home persistence and host reachability against the source ACs; no in-scope blockers. Bugbot found none. review-work: goal/QA/code-quality/security/context all PASS.
+- Review notes (deferred/rejected): LANDO_HOST_IP on compose passthrough stays — AC requires alias/IP from declared capability, not a passthrough-fidelity hole.
+- Review notes (deferred/rejected): apache `user: www-data` fail-closed is correct; identity documents defaultUser `root` only, and guessing `/var/www` would invent a home for a shipped image.
+- Review notes (deferred/rejected): extra_hosts vs planned `host.lando.internal` duplicate is defense-in-depth (Traefik already maps the same host-gateway); not an AC miss. AbsoluteContainerPath `..`/colon tightening is out of AC.
+- Review notes (deferred/rejected): real-runtime home-survives-rebuild and in-container alias resolution stay Verify-owned.
+- Verification: typecheck, lint, and `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; focused home/host/identity/plan/build-key/schema tests plus the home-and-host guide (3/3) passed.
+---
+
+## 2026-09-13 - US-617A Drift Audit
+- Trigger: 4 cycles, 1545 insertions, 9 commits
+- Weakened proofs: default-on catalog home, pinned-tag identity, explicit path, apache www-data refusal, and hostReachability none were isolated-unit or opted-out; restored through AppPlanner.plan. Compose LANDO_* filters now require LANDO_HOST_IP instead of only carving it out.
+- Dual path: Traefik extra_hosts duplicated planner hostAliases; extra_hosts removed so the alias comes only from declared capability.
+- Contract drift: HomePathCapabilityError, ServiceConfig.home, and ServiceType.identity were missing from API_COMPATIBILITY; documented. Real-runtime rebuild/DNS remains Verify-owned.
+- Fixed: restored production-path proofs; deleted Traefik extra_hosts dual path; documented the public error/channel.
+- Split/excise decisions: none
+- Verification: typecheck, lint, and focused AppPlanner/home/host/passthrough/traefik/compat spot checks pass
+---
+
+## 2026-09-13 02:40 - US-617A Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved home persistence plus host reachability against the binary: `node:22` home marker survived `lando rebuild`; `LANDO_HOST_IP=host.lando.internal` resolved to `169.254.1.2` and served a host HTTP response; compose without `home` failed `HomePathCapabilityError` with both remediations; `home.path` planned; lamp `init --full` then `app:cache:refresh` compiled 3 commands. Adjacent redis `PONG`, `node -e`, info/logs/destroy stayed green.
+- **Out-of-scope finding:** `lando destroy` on a never-started compose Landofile that refuses `HomePathCapabilityError` also fails with that tag (destroy plans first). No containers existed; dir delete cleaned it. Not an AC miss.
+---
+
+## 2026-09-13 04:05 - Babysit
+- PR: #970 https://github.com/AaronFeledy/core4/pull/970
+- CI outcome: pass (after fixes; initially provider-integration-linux-x64 and drupal-journey-linux-x64 failed)
+- Review feedback: fixed (resolved the `sdk/API_COMPATIBILITY.md` conflict by merging main, and declared `home.path: /root` for the live Compose fixture harness's substituted `node:22-alpine` image so the US-617A home refusal no longer pre-empts the unsupported-feature CapabilityError; drupal-journey was a Composer HTTP 504 flake that passed on rerun)
+- Merge: deferred (all merge conditions met and branch is MERGEABLE with every check green, but GitHub's merge API returned repeated 502/500 errors across five spaced attempts)
+---
+
+## 2026-09-13 04:30 - US-617A (verified complete, no new code)
+
+Build found home persistence and host reachability already finished and published on its branch, with PR #970 open and awaiting a merge that GitHub's API refused with repeated 5xx. Re-verified the story against its acceptance criteria rather than inventing work; no source, test, or fixture changed and no commit was made.
+
+- Re-ran the story's gates on the branch as it stands: typecheck, lint, and all thirteen boundary rules pass; `check:schema-compatibility` reports compatible 16, breaking 0; the home-and-host executable guide runs 3/3.
+- Spot checks across the story's blast radius are green: 178 engine tests (planner home, AppPlanner home, host reachability, service-type input, build-key user), 114 core tests (compose planner-cache and capability fixtures, compose conformance, global-commands, both recipe decomposers), and 54 plugin/container-runtime tests (compose passthrough scenario and providers, service identity, Traefik global service, Compose plan and knobs bring-up).
+- CLI verification re-run on the real command with isolated user roots and `provider: test`: a `mariadb:10.6` catalog service refreshes its plan, proving the pinned-artifact-tag identity fix still holds; a `type: lando` service on `alpine:3.20` exits 1 with `HomePathCapabilityError` printing both remediations; `home.path: /opt/appuser` plans and round-trips through `app:config --format=json`; `home: false` plans.
+- Left the story phase at `published`. The only work left on it is the deferred merge, which Babysit owns; signalling an earlier phase would send an already-reviewed, already-pushed story back through Review and Push for nothing.
+
+Verification: typecheck, lint, boundaries, and schema-compatibility passed; the guide and 346 blast-radius tests passed; four CLI scenarios verified on `core/bin/lando.ts`.
+
+- **Learnings for future iterations:**
+  - A `BREAKING ... surface-removed` row from `check:schema-compatibility` is more often a stale local derived tree than a real regression. `core/dist/schemas` is gitignored, so merging main leaves it missing whatever schemas main added since — here `HostTerminal`, which the branch's own registry still exports. `bun run codegen:schema-snapshot` restored it (384 -> 385 artifacts) and the row disappeared. Regenerate before triaging, and check whether the PR's `schema-snapshot` job is green.
+  - When Build reaches a story that is already `published`, the completion path is verification, not a phase signal. Phases move forward (`implemented` -> `reviewed` -> `published` -> `merged`); emitting an earlier one rewinds the pipeline over work that already passed it.
+---
+
+## 2026-09-13 04:25 - US-617A Drift Audit
+- Trigger: 6 cycles, 1761 insertions, 18 commits
+- Findings: none; second pass after the prior audit found no compounding scope, dual path, ceremony, or gamed proofs
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 95 focused tests pass
+---
+## 2026-09-13 06:20 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-617B (expected passes: true)
+---
+## 2026-09-13 06:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-13 06:20 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-617B (expected passes: true)
+---
+## 2026-09-13 06:20 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-617B (expected passes: true)
+---
+## 2026-09-13 06:20 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-617B (expected passes: true)
+---
+
+## 2026-09-13 07:15 - US-617B (complete)
+
+Router disablement and post-start URL scanning now change real behavior instead of only resolving into config. The branch arrived with the mechanism written but uncommitted and unverified; this pass closed the consumer gaps that made disablement cosmetic, then verified the whole story.
+
+- `router.enabled` resolves through compiled default, global config, then Landofile, and the planner records the answer on the plan as `AppPlan.router`. Every consumer reads that one decision through a single `routerEnabled` predicate rather than re-deriving precedence. The field is optional purely so plans persisted before it existed still decode, and those default to enabled.
+- Four consumers were still ignoring the decision, so a disabled router only looked disabled. The app-plan cache re-derived `requires.globalServices: ["traefik"]` from `routes.length > 0` alone, which meant the shared router auto-started on every run after the first; scratch apps published routes straight through their own setup/applyRoutes path; `open` handed back `*.lndo.site` hostnames nobody serves; and `share` defaulted its tunnel to the first route hostname. All four now honor the plan, and `share` falls back to the same app-scoped target it already used for a route-less app.
+- `lando open` used to blame the user for the refusal it now produces, printing "the app declares no matching route" for an app that declares one. A disabled router with declared routes gets its own message and remediation naming `router:` `enabled: true` or publishing an http host port.
+- A service accepts `scanner: false | {path?, okCodes?, retries?, timeout?}`, overlaid over an identical global key, and the planner resolves it per service onto `ServicePlan.scanner`. Start hands the plan to `UrlScanner`, so each service probes its own path, status set, retry budget, and deadline; a disabled service is skipped without a request. The probe now carries an overall deadline through `runProbe`, and the per-attempt timeout is capped by whatever is left of it, so a slow URL can no longer outlive its budget.
+- The scan runs after the app is up and never decides whether start succeeded. Every non-pass verdict, and a scan that fails outright, becomes one warning; bodies are redacted again on the way to the event bus, and a dead event bus cannot fail a start that already worked.
+
+Verification: typecheck, lint, all thirteen boundary rules, `check:schema-compatibility` (compatible 17, breaking 0, unknown 0), `codegen:check`, `check:guide-coverage`, `check:public-transcripts`, `check:telemetry-inventory`, `lint:guides`, and guide-drift against origin/main all pass. The router-and-scanner guide runs 3/3 and the adjacent share-target guide stays 2/2. Spot checks are green across the blast radius: 224 engine tests (cache round-trip, routes lifecycle, router precedence, scan plan, post-start scan, share target, scanner live and probe behavior, AppPlanner), 418 sdk tests, and 206 core tests (open resolve and open app, scratch fork/app/recipe/finalizer, share skeleton, info/start/destroy/restart/rebuild scenarios, bootstrap layers, doctor subsystems).
+
+Manual CLI QA on the real command with isolated user roots and `provider: test`: with the router enabled, `lando open --print` resolves `https://web.router-qa.lndo.site`; a global `router.enabled: false` makes the same app refuse with the new diagnostic and both remediations, and a Landofile `router.enabled: true` opts back in and resolves the hostname again, proving precedence end to end on the binary. `app:config --format=json` round-trips a service `scanner` object and `scanner: false` verbatim, and `retries: -1` fails `app:config:lint` naming `services.app.scanner.retries`.
+
+Real-socket scan evidence is now a permanent test rather than a one-off artifact: `UrlScannerLive` runs against a live `Bun.serve` listener through the real `HttpClientLive`, proving a plan-resolved path and status set score green, an unaccepted real status scores yellow carrying `HTTP 500`, a dead port scores red inside its resolved deadline, and a disabled service is never requested.
+
+**Deferred to Verify (owns real runtime):** a container-backed start proving a published URL is probed and a failing probe warns without failing start, and that a disabled router leaves `lando info` printing host ports only. One host observation worth carrying: the Lando-managed Podman socket left running by the previous story's Verify step un-skips `core/test/cli/start.scenario.test.ts`'s live-provider test on the host, where it times out at 60s. That test is container-runtime scope, not host-safe scope.
+
+- **Learnings for future iterations:**
+  - A planner decision is not honored until every consumer asks for it. `AppPlan.router.enabled` was written correctly and still did nothing, because the cache re-derived the requirement it was supposed to suppress. When a story adds a plan field that suppresses behavior, grep for code that *derives* the same behavior from a sibling field (here `routes.length > 0`) and not just for readers of the new field.
+  - `engine/src/planner/assemble.ts` sits at exactly 600 lines and `engine/test/planner-module-boundaries.test.ts` fails it at 601. Blank-line trims in that file are load-bearing, not churn; budget a line for a line when adding to the planner, or extract.
+  - Put a plan predicate in the module that owns the rule, not the module that first needs it. `routerEnabled` started in `lifecycle/routes.ts`, which is not an exported engine subpath, so core could not reach it. `config/router-config.ts` is exported and already owned precedence, so it houses both.
+  - Hand-spelling a structural parameter type defeats `exactOptionalPropertyTypes`: `{ readonly router?: { readonly enabled: boolean } }` rejects the `AppPlan` whose field is `... | undefined`. Type these predicates `Pick<AppPlan, "router">`.
+  - Adding one optional property to `ServicePlan` costs twelve `check:schema-compatibility` exception rows, because every plan-carrying surface reports `$.plan.services.additionalProperties` separately. Append them; do not re-serialize `sdk/compatibility-exceptions.json` with a sort, which rewrites 826 unrelated lines.
+  - `check:public-transcripts` fails after running a single guide, because transcripts are gitignored and regenerated per run. Run the guides whose surfaces you touched, then the gate, rather than treating the first failure as a missing artifact.
+---
+
+## 2026-09-13 - US-617B Review
+- Fixed production post-start scanning so start probes the published and routed URLs it already computed instead of listing through the bootstrap stub provider; unpublished `--route` now names router disablement even when a host port exists; disabled plans no longer require shared cross-app networking and withdraw previously published routes.
+- Review notes (deferred/rejected): scanner HTTP proxy bypass and unbounded response buffering are pre-existing HttpClient behavior, not this story; timeout warning text still reports per-attempt seconds rather than the capped deadline; scan interruption remains swallowed so a cancelled scan cannot fail start; container-backed start/info proofs stay Verify-owned.
+- Verification: typecheck, lint passed; focused open/scanner/routes/planner/post-start tests passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed.
+- **Learnings for future iterations:** `UrlScannerLive` captures `RuntimeProvider` at layer construction, and bootstrap provides the stub whose `list()` is empty. A start-path that calls `scan()` without passing the URLs it already has will probe nothing in production.
+---
+
+## 2026-09-13 07:39 - US-617B Drift Audit
+- Trigger: 2 cycles, 1961 changed lines, 10 commits
+- Weakened proofs: infoForPlan never asserted published-only endpoints; start never asserted UrlScanner.scan(plan, urls); catchAllCause swallowed scan interruption so a cancelled start could continue
+- Ceremony: appendScanPath was a test-only export
+- Deferred re-examined: interruption swallow was rejected as out of scope but is owned by this branch's new scan wrapper; container-backed start/info remain Verify-owned; guide stays lint/config
+- Fixed: unexported appendScanPath; scan interruption now propagates; restored infoForPlan and start→UrlScanner production-path proofs
+- Split/excise decisions: none; SDK scan options and open/share consumers stay in-story
+- Verification: typecheck, lint, 40 focused tests — pass
+---
+
+## 2026-09-13 09:25 - US-618A (complete)
+
+Catalog services can now be configured from a file in the project instead of only through Landofile keys.
+
+- A new `services.<name>.config` block accepts `server` (a single file) and `dir` (a directory), both app-relative. Solr mounts `config.dir` read-only at `/etc/lando/solr/conf` and its startup script copies that directory into `/var/solr/data/<core>/conf` for every declared core, so a config dir and three cores yield three identically configured cores without an init container. PostgreSQL mounts `config.server` at `/etc/lando/postgresql.conf` and starts with `-c config_file=...`; MongoDB mounts at `/etc/lando/mongod.conf` and starts with `--config`; MySQL and MariaDB mount at `/etc/mysql/conf.d/99-lando.cnf`, which the server reads as a drop-in with no command change. An authored `command:`/`entrypoint:` still wins everywhere; the mount is added either way.
+- Sources are validated in the planner, before any provider action, by one new module that every service type shares. Absolute paths and `~` paths are refused outright, containment runs through the same realpath guard that governs includes and certs, the declared kind is enforced (a directory handed to `server` or a file handed to `dir` is refused), and a directory walk refuses entries that symlink out of the app root, dangling symlinks, and symlink cycles. Every refusal is a tagged `LandofileValidationError` naming `services.<name>.config.<key>` with remediation.
+- Source identity is content, not path. A file hashes its bytes; a directory hashes its sorted relative-path-plus-content list, so adding, renaming, or editing a file inside the config directory changes the identity. That identity is folded into the app-plan cache key and into the per-service build key. The build-key wiring matters because the plan's mount input deliberately drops the host source, so without an explicit digest a changed config file would have been invisible to the up-to-date check even though it changes what the container runs.
+- The five service guides document the option, its container destination, the read-only mount, and the pre-start refusal. No recipe README changed: no bundled recipe ships Solr, and recipe READMEs document init answers rather than per-type service options.
+
+Verification: typecheck, lint, all boundary rules, `codegen:schema-snapshot` (387 SDK schemas), `check:schema-compatibility` (compatible 2, breaking 0, unknown 0 — `ServiceFileConfig` reported as `surface-added`), `lint:guides`, and `check:guide-coverage` pass. Spot checks are green across the blast radius: 92 story tests plus 199 service-lando catalog/contract/scenario tests and an 830-test planner/services sweep, with 0 failures. Manual CLI QA on the real binary with isolated user roots and `provider: test`: all four services round-trip their `config` block through `app:config --format=json`; `app:cache:refresh` resolves the plan and the persisted plan carries the mysql bind source and `/etc/mysql/conf.d/99-lando.cnf` target, `config_file=/etc/lando/postgresql.conf`, `--config /etc/lando/mongod.conf`, the Solr per-core copy script, and the `configSources` identities; `../outside.cnf`, `/etc/passwd`, and a directory handed to `server` each fail with the tagged error naming `services.db.config.server` before any provider action.
+
+- **Learnings for future iterations:**
+  - A new service key is rejected twice before it works. Beyond the Effect schema, `landofile/src/service.ts` builds `SERVICE_CONFIG_KEYS` from `Object.keys(ServiceConfig.fields)` and refuses anything else as an "unsupported MVP key" — it is derived, so adding the schema field clears it, but a CLI smoke test is the only thing that proves it. Decode alone silently drops an unknown key and looks like success.
+  - Export container destinations as `PortablePath.make(...)` constants, not bare strings. A plain string constant typechecks at the `addMount` call but breaks every test that asserts a whole `MountPlan`, because `target` is branded and `toEqual`/`toContainEqual` compare against the branded type.
+  - Service features cannot touch the filesystem: `apply` is `(ctx) => Effect<void, ServiceFeatureError>` with no requirements channel. Anything needing `stat`, `readdir`, or realpath belongs in the planner, with the feature left to the pure `resolveBindSource` join — the same split certs already uses.
+  - The SDK `FileSystem` service has no directory listing, so a directory-identity walk has to use `node:fs/promises` directly. That is also the only way to see symlinks, since the service's `stat` follows them.
+  - `deriveAppPlanCacheKey` runs at the end of assemble and the cached-plan lookup happens after it, so planner-side validation is always reached and a content digest folded into the key busts the cache correctly. A validation placed after the cache read would be skipped on every warm run.
+---
+
+## 2026-09-13 - US-618A Review
+- Fixed empty `config.server`/`config.dir` at schema and planner, hashed only `{key,digest}` into the service build key, and made Solr's per-core copy fail closed instead of starting after a failed `cp`.
+- Review notes (deferred/rejected): post-plan symlink TOCTOU snapshotting matches the existing certs bind-mount contract, not this AC; live daemon config loading stays Verify-owned; recipe READMEs stay init-answer docs (service guides cover the options); ignored extra `config.*` keys on other types are the shared schema, not a silent per-type contract; fabricated `.lando.yml` on `LandofileValidationError` is the planner house style; overlay-replace, empty-dir hashing, core `..`, and app-step keys are out of scope.
+- Verification: typecheck, lint, lint:guides, and `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; 97 focused tests passed.
+- **Learnings for future iterations:** Bind-mount config identity belongs in the build key as `{key,digest}` only. Including the canonical host `source` reintroduces path sensitivity the mount projection already stripped.
+---
+## 2026-09-13 09:31 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-13 10:55 - US-618B (complete)
+
+Catalog services can now bake global packages into their image from the Landofile.
+
+- PHP `composer:` additively accepts `{ version, packages }` beside the string and `false` forms it already took. `{ version: "2" }` plans byte-identically to `composer: "2"`, and `packages: {}` is a no-op. Packages install with `composer global require` into `COMPOSER_HOME=/usr/local/composer` with `COMPOSER_BIN_DIR=/usr/local/bin`, so the binary proxies land on the default PATH with no PATH editing and no symlink loop, and the Composer home is left world readable for a non-root service user.
+- Node services accept `globals:`, a package-name-to-version-specifier map installed with `npm install -g`. Unlike the PHP prerequisite stack, globals are emitted even when the service brings its own `image:`: dropping authored intent silently is worse than a loud "npm not found" at build time. The PHP package step follows the Composer binary step instead, because it cannot run without one; with a custom image it is emitted without the `dependsOn` edge.
+- Both maps normalize through one shared module before anything is generated. Names are validated (npm names including `@scope/`, Composer's own lowercase `vendor/name` grammar) and so are versions, against charsets that exclude quoting, substitution, and expression characters. That is what makes the "secrets redacted" requirement structural rather than a post-hoc pass: a `${secret:...}` constraint is refused at plan time, so no secret can reach a build command or a build-key input. Each entry is single-quoted in the generated command as a second guard.
+- Packages sort by name before they reach the build step, so reordering the YAML map cannot invalidate a built image, while adding, removing, or re-pinning one does. The normalized list rides on `buildKeyInputs`, which the artifact key already folds, so the engine needed no package-specific hashing.
+- One latent bug fell out: `assertPhpComposerCompatible` compared the raw authored value against `"2.7.7"`, so the object form would have slipped a Composer release past the PHP 8.5 gate. Both it and `resolvePhpComposer` now read the requested version through one accessor.
+- The Landofile YAML subset rejected the authored shape outright: mapping keys were `[A-Za-z0-9_.-]+`, so neither `drush/drush:` nor `@angular/cli:` could be written at all. The key charset now also accepts `/` and `@`. Sequence scalars are unaffected because list-item map detection still requires whitespace or end-of-line after the colon, which is pinned by a new test asserting `- ./src:/app` and `- 8080:80` stay strings.
+
+Verification: typecheck, lint, check:boundaries, check:schema-compatibility (compatible 2, breaking 0, unknown 0; one appended exception row for the widened `$.composer.anyOf`), codegen:check, lint:guides, check:guide-coverage, check:guide-drift, and check:public-transcripts pass. 653 focused tests pass across the blast radius (schema, package normalization, PHP, node, engine build key, and the whole landofile and sdk landofile trees). Both executable guides run green.
+
+Real-surface evidence: on the real binary with isolated user roots, `app:config --format=json` round-trips the composer object form and the globals map, and the persisted plan carries `npm install -g --no-fund --no-audit 'gulp-cli@latest' 'yarn@1.22.4'` and `composer global require --no-progress 'phpstan/phpstan:^1.11' 'squizlabs/php_codesniffer:^3.10'` in sorted order. An uppercase npm package name fails `app:cache:refresh` with a tagged `LandofileValidationError` and exit 1 before any provider action. A live Podman socket was present on this host, so the new `package-installs.integration.test.ts` actually built both stock images and ran the installed tools: `cowsay@1.6.0` appears in `npm ls -g` and `cowsay moo` runs, and `phpcs --version` reports PHP_CodeSniffer with `composer global show` listing it.
+
+- **Learnings for future iterations:**
+  - Check the Landofile YAML subset before designing a map-keyed option. `sdk/src/landofile/parser.ts` restricts mapping keys to `[A-Za-z0-9_.@/-]+` and supports no quoted keys, so a key with `/`, `@`, `:`, or a space simply cannot be authored. Schema decode never sees it; the file fails with `LandofileParseError` naming the line.
+  - Naming a new union member with an `identifier` changes the shape of the schema-compatibility bill. The widened `composer` cost exactly one new exception row (`schema:ServiceConfig` / `unsupported-construct` / `$.composer.anyOf`) because every embedding surface reported `ref-graph-changed` at `$.$defs`, which prior stories had already accepted. An anonymous inline struct would have reported per-path instead.
+  - Guide fixtures are parsed by the same YAML subset, so a fixture is the cheapest place to discover an authoring limit. The invalid-input fixture has to fail for the reason under test: `"../escape"` failed as malformed YAML rather than as a rejected package name, which proved nothing.
+  - `resolveLiveProviderSocket()` can find a Lando-managed Podman socket left running by an earlier step, so an `*.integration.test.ts` named by path will really build images on the host instead of skipping. Budget ~90s and expect real artifacts, cleaned up by the test's `removeArtifact`.
+---
+
+## 2026-09-13 - US-618B Review
+- Fixed custom-image Composer package steps so an unused `composer.version` no longer invalidates the artifact key; the managed Composer install step still hashes the pin when Lando actually installs it.
+- Review notes (deferred/rejected): charset-only npm/Composer version allowlists stay as designed for secret/injection refusal, not a full specifier grammar; recipe and package READMEs stay init-answer/framework docs (service guides cover the options, matching US-618A); code-quality MINOR on no-op test wording left as-is.
+- Verification: typecheck, lint passed; `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; 26 focused package-spec/composer-package tests passed.
+- **Learnings for future iterations:** Hash only inputs the step actually consumes. A skipped dependency's identity belongs on the step that installs it, not on a later command that merely invokes the binary.
+---
+
+## 2026-09-13 12:05 - US-618B Drift Audit
+- Trigger: 2 cycles, 1476 changed lines, 8 commits
+- Scar tissue: packages step still hashed the Composer pin the install step already owns
+- Ceremony: command and version helpers exported with no external importers
+- Weakened proofs: secrets stay refuse-at-plan; hasher suite still uses synthetic steps beside production apply
+- Fixed: dropped redundant composer identity from the packages step; unexported unused helpers
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 92 focused tests pass
+---
+
+## 2026-09-13 12:20 - US-618B Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved Node globals plus PHP composer packages against the binary: `yarn --version` is 1.22.4, `gulp --version` is CLI 3.1.0, `phpcs --version` and `phpstan --version` run, Composer 2.10.2 stays on PATH, HTTPS returned `us618b-ok`, and a second start rebuilt both services in ~400ms. Invalid `Gulp-CLI` / `drush` fail plan-time `LandofileValidationError`; `composer: "2"` and `composer: false` still plan.
+- Fixed stock `node:22` Corepack `/usr/local/bin/yarn` EEXIST by adding `--force` to `npm install -g`.
+- **Out-of-scope finding:** host 80/443 in use so proxy published on 8000/4443; `curl http://appserver.us618b-verify.lndo.site:8000/` returned Traefik `404 page not found` while HTTPS `:4443` served `us618b-ok`. Same bind fallback as prior verifies, not US-618B.
+- **Learnings for future iterations:** Stock Node images ship Corepack shims at `/usr/local/bin/yarn`. Live package-install tests that use `cowsay` miss the documented `yarn` example. Verify the guide's packages, not a unique dummy.
+---
+## 2026-09-13 12:57 - Review
+- [looper] gate skipped Review: gate: prdPasses is false for US-618C (expected passes: true)
+---
+## 2026-09-13 12:57 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-13 12:57 - Verify
+- [looper] gate skipped Verify: gate: prdPasses is false for US-618C (expected passes: true)
+---
+## 2026-09-13 12:57 - Cleanup
+- [looper] gate skipped Cleanup: gate: prdPasses is false for US-618C (expected passes: true)
+---
+## 2026-09-13 12:57 - Push
+- [looper] gate skipped Push: gate: prdPasses is false for US-618C (expected passes: true)
+---
+
+## 2026-09-13 - US-618C (complete)
+
+Redis authentication and persistence now follow the Landofile, and app-local Mailpit captures mail from exactly the selected PHP services.
+
+- Redis passwords reach startup through an environment-backed hashed ACL, not command arguments. The generated client and healthcheck inherit authentication, resolved credentials expose the same password to expression consumers, and redaction collects both authored passwords before resolution and REDISCLI_AUTH values afterward.
+- Omitted persistence retains the durable default. Disabling it removes generated data and home stores and disables AOF plus RDB snapshots. The planner now honors a service type's normalized home default while preserving explicitly authored home intent.
+- Mailpit omission selects every resolved PHP service, including a valid no-op when none exist. False and empty lists select none. Lists deduplicate by first occurrence without sorting; unknown and non-PHP names fail planning. Only selected PHP services receive the msmtp build step, sendmail_path, app-local mail environment, and dependency. Mailpit's service-name schema rejects unsafe SMTP host syntax at resolution without changing the general SDK name contract or adding shell escaping.
+- Executable Redis and Mailpit guides cover ephemeral configuration, selected senders, and invalid targets. Relevant plugin and Rails README updates are included; generated scaffolding and the plugin-manifest fixture are committed with their sources.
+
+Verification: 254 focused tests pass with 983 assertions. Typecheck, lint, boundaries, codegen:check, schema compatibility (49 compatible, zero breaking or unknown), guide lint, coverage, drift, and public transcripts pass. Sandbox executable guides pass with Redis 2, Mailpit 4, and Rails 1 scenarios. Returned TypeScript LSP diagnostics are clean; the Redis behavior test's diagnostics request repeatedly timed out, while root typecheck and its direct tests pass.
+
+Real-surface evidence: the current checkout's source CLI ran through the working Lando self-Bun launcher inside lando4-dev. Version and config-lint smoke passed. An unauthenticated Redis request failed with NOAUTH; generated authenticated tooling returned PONG. After restart the durable key still returned durable, while the ephemeral key count was zero, appendonly was no, and save was empty. Selected PHP mail returned MAIL_SENT and appeared in the Mailpit API under its expected subject. The unselected service and a separate mailFrom:false app both retained /usr/sbin/sendmail -t -i without injected wiring. Unknown and non-PHP targets produced LandofileValidationError before build/apply phases. The password canary was absent from info, logs, process argv, and tooling output.
+
+Teardown: both source-QA apps and the earlier proof app were destroyed with purge, with all provider, route, host-proxy, and snapshot cleanup steps successful and volumes removed. Task-owned temporary binaries, scripts, fixtures, and logs were removed; the local branch marker remains. No push or PR was performed.
+
+- **Learnings for future iterations:**
+  - A service-composition test alone does not cover generated home storage. Assert the complete planner's stores when an option promises ephemeral behavior.
+  - Use the supported self-Bun launcher to exercise current source against the sandbox provider when a newly compiled binary fails before application startup; do not substitute an older implementation for runtime proof.
+  - The native exec command takes its service positionally. Run the documentation's actual invocation rather than assuming a --service flag selects it.
+---
+
+## 2026-09-13 - US-618C Build acceptance follow-up
+- Closed an acceptance-check finding: an authored Redis command or entrypoint could bypass managed authentication and persistence flags. Explicit password or persist options now reject that combination during planning with a tagged error and remediation; startup overrides without those options remain supported.
+- Verification: typecheck and lint passed; 36 focused tests passed. Test-first rejection cases went from unexpected successful plans to tagged failures, and sandbox CLI refresh exited 1 before app creation. The scoped acceptance recheck approved the fix. LSP requests for the changed Redis files timed out; repository typecheck passed.
+- **Learnings for future iterations:** Generated startup defaults are not sufficient proof for managed options: test their interaction with authored command and entrypoint overrides so explicit intent cannot be silently discarded.
+---
+
+## 2026-09-13 - US-618C Review
+- Fixed the Redis password example so it loads as a literal Landofile value, and collected authored Redis passwords separately from environment secrets so neither token is dropped.
+- Review notes (deferred/rejected): skipping custom-image PHP Mailpit wiring would violate omitted-mailFrom=all PHP; AppFeature contract suite is already invoked so the synthetic mailpit fixture is not a gate miss; hashed ACL startup is the shipped auth path, not requirepass; short-password redaction policy is pre-existing; unpinned msmtp and RedisServiceConfig are out of scope.
+- Verification: typecheck, lint, lint:guides, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 37 focused Redis/Mailpit/redaction tests passed.
+- **Learnings for future iterations:** Landofile load rejects unescaped `${secret:...}` on this path. Guide password examples must use literals, matching mysql/mariadb, not secret-store syntax.
+---
+
+## 2026-09-13 14:45 - US-618C Drift Audit
+- Trigger: 3 cycles, 721 changed lines, 17 commits
+- Scar tissue: mailFrom was ordered-deduped twice; validated PHP targets could be skipped silently
+- Weakened proofs: command+password refusal used an empty password as the managed-option stand-in
+- Fixed: one owner for mailFrom lists; missing select fails closed; conflict fixture uses a real password
+- Split/excise decisions: none; Mailpit name guard and hashed ACL stay in-story; RedisServiceConfig and msmtp pin stay deferred
+- Verification: typecheck pass, lint pass, 26 then 37 focused tests pass
+---
+
+## 2026-09-13 16:48 - US-618D1 (complete)
+
+- Rebuild and info accept repeatable service selections through CLI, library, and MCP. Names deduplicate and unknown names fail before provider actions. Info returns only selected services in plan order, without dependencies; omitted or empty selections retain app-wide behavior.
+- Scoped rebuild stops the selected services and their transitive prerequisites in reverse dependency order, builds and applies that closure in topological order, and forces its app-build steps. Running prerequisites restart, while unrelated services and downstream dependents stay untouched. Providers retain the complete app plan, including updated built artifacts for the selected services, rather than replacing persisted state with a partial or stale plan.
+- The executable guide documents both selection semantics. Public SDK compatibility notes cover the plural service options and full-plan recording contract. The acceptance check caught stale artifact references in recorded plans; a failing regression test reproduced it before the fix, and the scoped recheck approved the corrected behavior.
+- Verification: typecheck and lint passed; 65 focused CLI/library/MCP tests and 3 SDK compatibility tests passed, followed by 7 rebuild tests for the recorded-artifact fix. The executable guide passed. Boundaries, codegen drift, schema compatibility, guide lint, coverage, public transcripts, and guide drift passed. Changed TypeScript LSP diagnostics are clean. No full suite was run.
+- Real-surface verification in lando4-dev: selected info omitted prerequisites and duplicates; scoped rebuild restarted api and database while dependent and unrelated process identities stayed unchanged; unknown selections failed without mutation; app-wide info/rebuild retained all services. The QA app was destroyed and its fixture removed. A separate parent CLI check confirmed selected plan ordering, no dependency expansion for info, help flags, and tagged unknown-service refusal. The parent terminal detached without stopping the persistent sandbox.
+- **Learnings for future iterations:**
+  - Native string flags carry type `option`; MCP projection must translate that metadata to JSON Schema string items before repeatable selections validate.
+  - Partial rebuild must not close the app handle's whole managed scope: that would tear down unrelated file-sync and host-proxy resources.
+  - Assert artifact definitions as well as service names when testing persisted scoped plans; a names-only assertion misses a stale post-build artifact.
+---
+
+## 2026-09-13 - US-618D1 Review
+- Scoped rebuild now recreates selected containers: apply honors `reconcile` in Docker and shared Podman/Lando bring-up, missing containers are skipped on stop, and prototype-chain names such as `constructor` fail closed before provider action.
+- Review notes (deferred/rejected): MCP integer `option` projection vs `app:logs` tail is pre-existing and out of story scope; Kahn cycle incomplete-plan is planner-rejected already; filtering top-level stores on a subplan is not required by the ACs.
+- Verification: typecheck, lint passed; 86 focused tests passed across rebuild/info scenarios, Podman recreate, Docker bring-up order, argv parser, library handle, and MCP catalog.
+- **Learnings for future iterations:** Unscoped rebuild recreates because stopApp destroy-removes containers; scoped stop+apply only restarts existing ones unless `reconcile` removes and recreates. Provider fakes that record apply calls cannot prove runtime recreation.
+---
+
+## 2026-09-13 17:30 - US-618D1 Drift Audit
+- Trigger: 2 cycles, 721 insertions, 13 commits
+- Deferred work re-examined: MCP integer `option` projection, Kahn incomplete-plan, and unfiltered top-level stores still hold; none are regressions this branch owns
+- Contract: public `services`/`recordedPlan` surfaces and the scoped vs unscoped rebuild split all trace to this story's ACs; only this story's `passes` flip
+- Fixed: none
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 80 focused tests pass
+---
+
+## 2026-09-13 18:54 - Babysit
+- PR: #976 https://github.com/AaronFeledy/core4/pull/976
+- CI outcome: pass (after triage; initial fails were unit-tests-linux-x64-shard 3, plus one drupal-journey-linux-arm64 infra 504 flake re-run green)
+- Review feedback: fixed (decoupled rebuild target assertion from source indentation; synchronized host-proxy startup-interruption test instead of a 25ms sleep)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-09-13 - US-618D3 (complete)
+- Global app environment and label defaults now apply below service-authored values to user apps only. Environment overrides replace whole maps; global and scratch apps remain excluded. Bounded schemas enforce entry and byte limits and reserve an exact generated core environment catalog plus the core label namespace.
+- Effective environment and secret-bearing label values enter canonical plan redaction. The executable guide covers setting defaults and rejecting reserved keys. Acceptance review caught missing bare-property database keys and label-token collection; both received regression tests and the scoped recheck passed.
+- Verification: typecheck, lint, build, boundaries, schema compatibility, guide lint/coverage/public transcripts and focused guide passed; 194 focused tests and 399 public-contract tests passed, then 9 affected regressions passed after the acceptance fixes. Changed-file LSP checks passed; committed codegen catalog drift is clean. The implementation agent incorrectly attempted the prohibited full suite, which reported runtime cleanup and live-provider failures; it was not repeated.
+- Sandbox CLI verification confirmed user-service defaults, runtime environment propagation, reserved-key refusal, and global/scratch exclusion. QA apps were destroyed and isolated config roots removed; the persistent sandbox was preserved.
+- **Learnings for future iterations:**
+  - Generated environment reservations must recognize bare object-property keys as well as quoted setter arguments; database credentials use the former.
+  - Effective container labels live under Compose plan extensions and need explicit inclusion in secret-token collection.
+---
+
+## 2026-09-13 - US-618D3 Review
+- No in-scope code fixes. Goal, QA, quality, and context lanes passed; Bugbot found no bugs; guide-drift passed against origin/main.
+- Review notes (deferred/rejected): compose `writeScalarMap` YAML key quoting is pre-existing export-only emission with no apply callers, not this story's AC, and authored service labels already share that renderer; dotted-label secret heuristics stay the existing `collectSecretEnvValues` splitter, which already covers the story's hyphenated label tokens.
+- Verification: typecheck and lint trusted from the clean post-build tree; 52 focused tests passed across planner defaults, schema bounds, env overlays, redaction, and catalog generation.
 ---

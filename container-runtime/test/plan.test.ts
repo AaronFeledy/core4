@@ -54,6 +54,36 @@ const service = {
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {
+  test("omits ExtraHosts when host aliases are empty", () => {
+    // Given
+    const withoutAliases = { ...service, hostAliases: [] };
+    // When
+    const hostConfig = containerHostConfigFragment(plan, withoutAliases);
+    // Then
+    expect(hostConfig).not.toHaveProperty("ExtraHosts");
+  });
+
+  test.each([
+    {
+      aliases: [{ hostname: "host.lando.internal", ip: "host-gateway" }],
+      expected: ["host.lando.internal:host-gateway"],
+    },
+    {
+      aliases: [
+        { hostname: "host.lando.internal", ip: "host-gateway" },
+        { hostname: "api.local", ip: "10.0.0.1" },
+      ],
+      expected: ["host.lando.internal:host-gateway", "api.local:10.0.0.1"],
+    },
+  ])("renders host aliases in order when given $expected", ({ aliases, expected }) => {
+    // Given
+    const withAliases = { ...service, hostAliases: aliases };
+    // When
+    const hostConfig = containerHostConfigFragment(plan, withAliases);
+    // Then
+    expect(hostConfig.ExtraHosts).toEqual(expected);
+  });
+
   test("converts env records and mount read-only suffixes", () => {
     expect(envArrayFromRecord({ FOO: "bar", BAZ: "qux" })).toEqual(["FOO=bar", "BAZ=qux"]);
     expect(mountSuffix(true)).toBe(":ro");
@@ -211,6 +241,21 @@ describe("container plan helpers", () => {
     });
     expect(containerCreateBodyFragment(plan, { ...service, user: "" })).not.toHaveProperty("User");
     expect(containerCreateBodyFragment(plan, service)).not.toHaveProperty("User");
+  });
+
+  test("uses a transient environment override without changing the service plan", () => {
+    // Given
+    const plannedEnvironment = service.environment;
+
+    // When
+    const body = containerCreateBodyFragment(plan, service, {
+      environment: { TOKEN: "resolved-canary" },
+    });
+
+    // Then
+    expect(body.Env).toEqual(["TOKEN=resolved-canary"]);
+    expect(service.environment).toBe(plannedEnvironment);
+    expect(service.environment).toEqual({ FOO: "bar", BAZ: "qux" });
   });
 
   test("uses preserved user labels in the default create body with Lando labels winning", () => {
