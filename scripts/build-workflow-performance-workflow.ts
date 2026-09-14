@@ -81,6 +81,7 @@ ${landoRootlessPrereqSteps}
           START_SAMPLES: \${{ inputs.start_samples || '5' }}
           HEAVY_SAMPLES: \${{ inputs.heavy_samples || '3' }}
           FAILING_FIXTURE_LANE: \${{ inputs.failing_fixture_lane || '' }}
+          WORKFLOW_PERF_ISOLATION: "1"
         run: |
           set +e
           ROOT="$RUNNER_TEMP/workflow-performance-${cell.id}"
@@ -177,6 +178,7 @@ on:
         description: Controlled failure proof (empty, mysql-import, or postgres-import)
         default: ''
         type: string
+  pull_request:
 
 defaults:
   run:
