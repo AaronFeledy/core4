@@ -105,6 +105,7 @@ Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-covera
 - Merge: merged (squash)
 ---
 
+
 ## 2026-09-12 06:00 - US-614 (in progress, not complete)
 
 Landed the name-resolution spine, the recursion bound, and the restart brackets. Tooling brackets and the guide remain, so the story stays `passes: false`.
@@ -650,4 +651,14 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Review feedback: fixed (decoupled rebuild target assertion from source indentation; synchronized host-proxy startup-interruption test instead of a 25ms sleep)
 - Drift check: clean
 - Merge: merged (squash)
+---
+
+## 2026-09-13 - US-618D3 (complete)
+- Global app environment and label defaults now apply below service-authored values to user apps only. Environment overrides replace whole maps; global and scratch apps remain excluded. Bounded schemas enforce entry and byte limits and reserve an exact generated core environment catalog plus the core label namespace.
+- Effective environment and secret-bearing label values enter canonical plan redaction. The executable guide covers setting defaults and rejecting reserved keys. Acceptance review caught missing bare-property database keys and label-token collection; both received regression tests and the scoped recheck passed.
+- Verification: typecheck, lint, build, boundaries, schema compatibility, guide lint/coverage/public transcripts and focused guide passed; 194 focused tests and 399 public-contract tests passed, then 9 affected regressions passed after the acceptance fixes. Changed-file LSP checks passed; committed codegen catalog drift is clean. The implementation agent incorrectly attempted the prohibited full suite, which reported runtime cleanup and live-provider failures; it was not repeated.
+- Sandbox CLI verification confirmed user-service defaults, runtime environment propagation, reserved-key refusal, and global/scratch exclusion. QA apps were destroyed and isolated config roots removed; the persistent sandbox was preserved.
+- **Learnings for future iterations:**
+  - Generated environment reservations must recognize bare object-property keys as well as quoted setter arguments; database credentials use the former.
+  - Effective container labels live under Compose plan extensions and need explicit inclusion in secret-token collection.
 ---
