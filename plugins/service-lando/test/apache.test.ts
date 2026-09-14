@@ -93,6 +93,32 @@ describe("apache ServiceType", () => {
     });
   });
 
+  test("serves an authored webroot through Apache config and LANDO env", async () => {
+    // Given / When
+    const plan = await composeApachePlan({ type: "apache", webroot: "/app/public files/$site" });
+
+    // Then
+    expect(plan.environment).toMatchObject({
+      APACHE_DOCUMENT_ROOT: "/app/public files/$site",
+      LANDO_WEBROOT: "/app/public files/$site",
+    });
+    expect(plan.command).toEqual([
+      "sh",
+      "-c",
+      expect.stringContaining('DocumentRoot "/app/public files/$site"'),
+    ]);
+    expect(Array.isArray(plan.command) ? plan.command[2] : undefined).toContain(
+      '<Directory "/app/public files/$site">',
+    );
+  });
+
+  test("rejects line breaks in an authored webroot before generating Apache config", async () => {
+    // Given / When / Then
+    expect(composeApachePlan({ type: "apache", webroot: "/app/public\nRequire all denied" })).rejects.toThrow(
+      /Apache webroot must not contain line breaks/,
+    );
+  });
+
   test("user environment overrides Apache feature defaults after lando.env applies", async () => {
     const plan = await composeApachePlan({
       type: "apache",
@@ -106,5 +132,20 @@ describe("apache ServiceType", () => {
       LANDO_PROJECT_MOUNT: "/app",
       LANDO_WEBROOT: "/app",
     });
+    expect(Array.isArray(plan.command) ? plan.command[2] : undefined).toContain('DocumentRoot "/app/custom"');
+  });
+
+  test("preserves authored command and entrypoint instead of installing the generated launcher", async () => {
+    // Given / When
+    const plan = await composeApachePlan({
+      type: "apache",
+      webroot: "/app/public",
+      command: ["httpd", "-DFOREGROUND"],
+      entrypoint: ["custom-entrypoint"],
+    });
+
+    // Then
+    expect(plan.command).toEqual(["httpd", "-DFOREGROUND"]);
+    expect(plan.entrypoint).toEqual(["custom-entrypoint"]);
   });
 });
