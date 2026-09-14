@@ -1,0 +1,154 @@
+---
+id: astro-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, astro, node, postgres, mariadb]
+---
+
+# Run the Astro recipe
+
+```sh
+lando init --recipe astro --name=astro-demo --yes
+lando start
+```
+
+`--yes` skips prompts. Defaults are Node lts and no database. First start builds `web`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
+
+## See what the recipe writes
+
+Init writes `.lando.yml` only. Put an Astro app in after start.
+
+| Piece | What you get |
+| --- | --- |
+| `web` | `node:lts` (or `node:22` when you pass `--answer=node=22`), port `4321`, `ASTRO_TELEMETRY_DISABLED=1` |
+| `database` | omitted by default; `postgres` with `--answer=database=postgres`; `mariadb` with `--answer=database=mariadb` |
+| Tooling | `lando astro` (`npx astro`) and `lando npm` on `web` |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a database and `web` waits on that service.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="astro-workflow" display="astro-demo" />
+      <Run command="lando init --recipe astro --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"astro\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ASTRO_TELEMETRY_DISABLED" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="node22-postgres" render>
+    <Step name="init">
+      <Variable name="appName" value="astro-workflow-pg" display="astro-pg" />
+      <Run command="lando init --recipe astro --name={{appName}} --yes --answer=node=22 --answer=database=postgres" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "dependsOn" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Scaffold Astro, then run it
+
+`create-astro` wants a clean directory, and `.lando.yml` is already there. Scaffold into a subdirectory, then move the app up and keep `.lando.yml`. Pin a `create-astro` release you trust (this guide used `4.13.2`); bump the version when you want a newer scaffold:
+
+```sh
+lando exec web -- npx --yes create-astro@4.13.2 webapp -- \
+  --template minimal \
+  --install \
+  --no-git \
+  --typescript strict \
+  --yes \
+  --skip-houston \
+  --no-ai
+```
+
+Move the contents of `webapp/` into the app root. Leave `.lando.yml` in place. If `node_modules` already exists at the root, move the scaffold files first, remove the empty root `node_modules` if needed, then run:
+
+```sh
+lando npm install
+```
+
+Confirm tooling:
+
+```sh
+lando astro --version
+lando astro --help
+lando npm --version
+```
+
+Serve through the proxy with an all-interfaces bind. Use `--port 3000` so the `lando info` proxy URLs reach the app; `4321` is what the recipe writes as Astro's default. Pass your app hostname to `--allowed-hosts` (swap `astro-demo` for your app name) so Vite accepts the Traefik `Host` header:
+
+```sh
+lando astro dev --host 0.0.0.0 --port 3000 --allowed-hosts astro-demo.lndo.site
+```
+
+Open the URL `lando info` prints. Prefer Node 22 with Postgres at init?
+
+```sh
+lando init --recipe astro --name=astro-pg --yes \
+  --answer=node=22 \
+  --answer=database=postgres
+```
+
+MariaDB instead:
+
+```sh
+lando init --recipe astro --name=astro-maria --yes \
+  --answer=database=mariadb
+```
+
+## Talk to Postgres
+
+When you pick `database=postgres`, the app network hostname is `database`:
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Port | `5432` |
+| Database | app name (here `astro-pg`) |
+| User | `lando` |
+| Password | generated when omitted; read it from `lando info` |
+
+Ping from the database service:
+
+```sh
+lando exec database -- psql -U lando -d astro-pg -c 'SELECT version();'
+```
+
+Swap `astro-pg` for your app name. Point your Astro content source or ORM at host `database`. Do not hardcode the password in committed app code.
+
+## Destroy without surprises
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Astro recipe](/recipes/astro/)
+- [Add Node](../services/node.mdx)
+- [Add PostgreSQL](../services/postgres.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
