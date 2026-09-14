@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 
-/** Ordered source of truth for codegen execution and output ownership. */
 export type CodegenOwnership = "committed-pin" | "committed-workflow" | "derived";
 export type CodegenWorkspace = "repo" | "core";
 
@@ -17,6 +16,7 @@ export type CodegenCommand = {
   readonly cwd: string;
 };
 
+/** Ordered source of truth for codegen execution and output ownership. */
 export const CODEGEN_CATALOG = [
   {
     id: "build-guide-scenarios",

@@ -183,12 +183,7 @@ export const AgentEnvConfig = Schema.Struct({
 export type AgentEnvConfig = typeof AgentEnvConfig.Type;
 
 /**
- * GlobalConfig — host-root fields resolved at the `global` bootstrap level.
- * (envPrefix, domain, landoFile, pre/postLandoFiles, userCacheRoot,
- * systemPluginRoot, providers, plugins, pluginDirs, disablePlugins,
- * bindAddress, routing, network, logger, toolingEngine,
- * commandAliases, pluginConfig, keys, maxKeyWarning, scanner, healthcheck,
- * build, logLevelConsole, experimental, stats) is modeled elsewhere.
+ * Global configuration resolved at the `global` bootstrap level.
  *
  * `renderer` selects the CLI output mode (`lando`/`json`/`plain`/`verbose`)
  * with precedence flag > env > config > default.

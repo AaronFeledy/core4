@@ -81,11 +81,9 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
   }
 };
 
-const loadConfig = async (): Promise<GlobalConfig> => loadGlobalConfigSync();
-
 const configService: Context.Tag.Service<typeof ConfigService> = {
   load: Effect.tryPromise({
-    try: loadConfig,
+    try: async (): Promise<GlobalConfig> => loadGlobalConfigSync(),
     catch: (cause) =>
       cause instanceof ConfigError
         ? cause

@@ -24,8 +24,6 @@ const LandoEnvFeatureConfigSchema = Schema.Struct({
 });
 type LandoEnvFeatureConfig = typeof LandoEnvFeatureConfigSchema.Type;
 
-const configFor = (ctx: ServiceFeatureContext): LandoEnvFeatureConfig => ctx.config as LandoEnvFeatureConfig;
-
 const slug = (input: string): string =>
   input
     .toLowerCase()
@@ -60,7 +58,7 @@ const applyEnv = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("LANDO_SERVICE_NAME", ctx.serviceName);
   ctx.addEnv("LANDO_SERVICE_TYPE", ctx.serviceType);
 
-  const { appPaths, webroot } = configFor(ctx);
+  const { appPaths, webroot } = ctx.config as LandoEnvFeatureConfig;
   if (appPaths !== undefined) {
     ctx.addEnv("LANDO_APP_ROOT", appPaths.appRoot);
     ctx.addEnv("LANDO_PROJECT_MOUNT", appPaths.projectMount);
