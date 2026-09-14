@@ -1416,6 +1416,12 @@
     "justification": "Step lists intentionally accept an ordered command object beside the previously accepted string form; every previously accepted string entry remains valid."
   },
   {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.expectedTargetGeneration",
+    "justification": "The unreleased physical restore contract now requires the caller's observed target generation so providers fail before mutating a replaced volume."
+  },
+  {
     "surface": "schema:LandofileAuthoringShape",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringShape.tooling.anyOf",

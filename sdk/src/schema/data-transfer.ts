@@ -56,6 +56,18 @@ export const VolumeRef = Schema.Struct({
 });
 export type VolumeRef = typeof VolumeRef.Type;
 
+/** Stable provider locator for one native volume, available before creation. */
+export const VolumeLocator = Schema.Struct({
+  coordinationKey: Schema.NonEmptyString.annotations({
+    description: "Opaque configured-endpoint and native-volume key, stable across recreation.",
+  }),
+  nativeName: Schema.NonEmptyString.annotations({ description: "Provider-native volume name." }),
+  identity: Schema.optional(VolumeIdentity).annotations({
+    description: "Observed generation and owner when the volume currently exists with provenance.",
+  }),
+});
+export type VolumeLocator = typeof VolumeLocator.Type;
+
 /**
  * Provider-observed metadata for a named volume.
  */
@@ -113,6 +125,7 @@ export type VolumeSnapshotSpec = typeof VolumeSnapshotSpec.Type;
 export const VolumeRestoreSpec = Schema.Struct({
   snapshot: VolumeSnapshotRef,
   target: VolumeRef,
+  expectedTargetGeneration: VolumeIdentity.fields.generation,
   overwrite: Schema.optional(Schema.Boolean),
 });
 export type VolumeRestoreSpec = typeof VolumeRestoreSpec.Type;

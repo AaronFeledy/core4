@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { AppId, VolumeIdentity, VolumeInfo } from "@lando/sdk/schema";
+import { AppId, VolumeIdentity, VolumeInfo, VolumeLocator } from "@lando/sdk/schema";
 
 test("preserves legacy volume consumers without inventing identity", () => {
   const result = Schema.decodeUnknownSync(VolumeInfo)({ ref: { app: AppId.make("app"), store: "data" } });
@@ -36,4 +36,19 @@ test("keeps adopted generation separate from actual creation history", () => {
   expect(result.identity?.origin).toBe("adopted");
   expect(result.instanceId).toBeUndefined();
   expect(result.provenance).toBe("legacy");
+});
+
+test("allows a pre-creation locator without fabricating a generation", () => {
+  // Given a provider-native volume name in a stable endpoint namespace.
+  const encoded = {
+    coordinationKey: '["endpoint:unix:///run/podman.sock","native-data"]',
+    nativeName: "native-data",
+  };
+
+  // When decoding the provider locator before the volume exists.
+  const result = Schema.decodeUnknownSync(VolumeLocator)(encoded);
+
+  // Then the stable physical key is retained without invented identity facts.
+  expect(result).toEqual(encoded);
+  expect(result.identity).toBeUndefined();
 });

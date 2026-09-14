@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/schema` additively exports `VolumeLocator`, and `RuntimeProviderShape.locateVolume(ref)` returns its configured-endpoint plus provider-native coordination key before or after creation without inventing generation or ownership. Bundled providers re-read optional generation evidence from the native volume while retaining the same key. Provider restores and removals now require the caller's expected target generation and fail before mutation when the native generation changed. App lifecycle operations coordinate on these physical keys and fail closed when ownership or generation cannot be proven.
+
 - `SqlSeedStateError.status` additively accepts `unknown`; absent or mismatched initialization records can no longer be reported as fresh.
 
 - `VolumeCreationFact` and `VolumeInitializationRecord` are additive schemas. `ApplyResult.createdVolumes` is optional and reports only a daemon-echoed newly generated creation token with its owner. Engine apply consumers re-observe the mounted generation before persisting freshness. Missing evidence, old volumes, and adoption never imply freshness. `DataMoverShape.volumeInitialization` is an optional shared host-state port with `read`, atomic `begin(operationId)`, and generation/owner/operation-checked `finish`. SQL uses this port rather than plugin-scoped buckets; absence is unknown, and interruption quarantines a claimed generation as failed. Process death leaves in-progress state ineligible for another claim. Whole-lifecycle locking remains separate.
@@ -186,6 +188,7 @@
 
 - `VolumeCreationFact`
 - `VolumeInitializationRecord`
+- `VolumeLocator`
 
 - `LandofileRecipeField`
 - `LandofileRecipeProvenance`
