@@ -33,21 +33,33 @@ export const isSqlServiceType = (type: string): boolean => familyFromServiceType
 
 export const mssqlBackupServicePath = (database: string): string => `/var/opt/mssql/backup/${database}.bak`;
 
-export const mssqlBackupCommand = (database: string): ReadonlyArray<string> => [
-  "sqlcmd",
+const mssqlClient = (extra: ReadonlyArray<string>): ReadonlyArray<string> => [
+  "/opt/mssql-tools18/bin/sqlcmd",
+  "-S",
+  "localhost",
   "-U",
   "sa",
-  "-Q",
-  `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}' WITH INIT`,
+  "-C",
+  ...extra,
 ];
 
-export const mssqlRestoreCommand = (database: string): ReadonlyArray<string> => [
-  "sqlcmd",
-  "-U",
-  "sa",
-  "-Q",
-  `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
+export const mssqlPrepareBackupCommand = (): ReadonlyArray<string> => [
+  "mkdir",
+  "-p",
+  "/var/opt/mssql/backup",
 ];
+
+export const mssqlBackupCommand = (database: string): ReadonlyArray<string> =>
+  mssqlClient([
+    "-Q",
+    `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}' WITH INIT`,
+  ]);
+
+export const mssqlRestoreCommand = (database: string): ReadonlyArray<string> =>
+  mssqlClient([
+    "-Q",
+    `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
+  ]);
 
 type MysqlFamily = "mysql" | "mariadb";
 
@@ -158,17 +170,7 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
     case "mongodb":
       return mongoShell(`--eval=${quoteShell("db.getCollectionNames().length")}`);
     case "mssql":
-      return [
-        "sqlcmd",
-        "-U",
-        "sa",
-        "-d",
-        creds.database,
-        "-Q",
-        "SELECT COUNT(*) FROM sys.tables",
-        "-h",
-        "-1",
-      ];
+      return mssqlClient(["-d", creds.database, "-Q", "SELECT COUNT(*) FROM sys.tables", "-h", "-1"]);
     default:
       return assertNever(family);
   }
@@ -184,10 +186,7 @@ export const versionCommand = (family: SqlFamily, creds: SqlCommandCreds): Reado
     case "mongodb":
       return mongoShell(`--eval=${quoteShell("print(db.version())")}`);
     case "mssql":
-      return [
-        "sqlcmd",
-        "-U",
-        "sa",
+      return mssqlClient([
         "-d",
         creds.database,
         "-h",
@@ -195,7 +194,7 @@ export const versionCommand = (family: SqlFamily, creds: SqlCommandCreds): Reado
         "-W",
         "-Q",
         "SET NOCOUNT ON; SELECT CONVERT(varchar(128), SERVERPROPERTY('ProductVersion'))",
-      ];
+      ]);
     default:
       return assertNever(family);
   }
@@ -243,13 +242,10 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
     case "mongodb":
       return mongoShell(`--eval=${quoteShell("db.dropDatabase()")}`);
     case "mssql":
-      return [
-        "sqlcmd",
-        "-U",
-        "sa",
+      return mssqlClient([
         "-Q",
         `ALTER DATABASE [${creds.database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${creds.database}]; CREATE DATABASE [${creds.database}];`,
-      ];
+      ]);
     default:
       return assertNever(family);
   }

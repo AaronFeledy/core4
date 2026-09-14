@@ -10,6 +10,7 @@ import {
   loadCommand,
   mssqlBackupCommand,
   mssqlBackupServicePath,
+  mssqlPrepareBackupCommand,
   resetCommand,
 } from "../src/families.ts";
 import { isGzipPath, wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
@@ -151,14 +152,19 @@ describe("family command builders", () => {
 
   test("mssql load is sqlcmd without -P", () => {
     const argv = loadCommand("mssql", creds);
-    expect(argv[0]).toBe("sqlcmd");
+    expect(argv.slice(0, 6)).toEqual(["/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-C"]);
     expect(argv).not.toContain("-P");
     expect(argv.some((part) => part.includes("WITH REPLACE"))).toBe(true);
   });
 
   test("mssql backup overwrites an existing bak file", () => {
     const argv = mssqlBackupCommand("appdb");
+    expect(argv[0]).toBe("/opt/mssql-tools18/bin/sqlcmd");
     expect(argv.some((part) => part.includes("WITH INIT"))).toBe(true);
+  });
+
+  test("mssql prepares the server-owned backup directory", () => {
+    expect(mssqlPrepareBackupCommand()).toEqual(["mkdir", "-p", "/var/opt/mssql/backup"]);
   });
 
   test("countCommand uses family-specific emptiness probes", () => {
@@ -187,9 +193,12 @@ describe("family command builders", () => {
     expect(mongoCount[2]).not.toContain("--uri");
     expect(mongoCount[2]).toContain("db.getCollectionNames().length");
     expect(countCommand("mssql", creds)).toEqual([
-      "sqlcmd",
+      "/opt/mssql-tools18/bin/sqlcmd",
+      "-S",
+      "localhost",
       "-U",
       "sa",
+      "-C",
       "-d",
       "appdb",
       "-Q",
@@ -222,7 +231,7 @@ describe("family command builders", () => {
     expect(mongoReset[2]).not.toContain("--uri");
     expect(mongoReset[2]).toContain("db.dropDatabase()");
     const mssql = resetCommand("mssql", creds);
-    expect(mssql[0]).toBe("sqlcmd");
+    expect(mssql[0]).toBe("/opt/mssql-tools18/bin/sqlcmd");
     expect(mssql).toContain(
       "ALTER DATABASE [appdb] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [appdb]; CREATE DATABASE [appdb];",
     );
