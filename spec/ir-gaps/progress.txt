@@ -698,3 +698,13 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Verification: typecheck and lint passed; Apache, planner-home, app-planner, Node, version-metadata, registration, and five recipe decomposer suites passed; guide-drift passed against origin/main. Post-fix Bugbot found no bugs.
 - **Learnings for future iterations:** Fail-closed ServiceType version matrices must be checked against recipe prompt/snapshot enums in the same story, or init will write Landofiles that cannot plan.
 ---
+
+## 2026-09-14 00:37 - US-618E Drift Audit
+- Trigger: 2 cycles, 716 changed lines, 9 commits
+- Weakened proofs: version-metadata lock only pinned a subset of shipped families
+- Ceremony: unused Apache launcher export
+- Dual validation: plugin validateVersion and registry-family rejects stay; php:8.0 still fail-closes as deferred
+- Fixed: exhaustive shipped-matrix equality; unused Apache launcher unexported
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 202 focused tests pass
+---
