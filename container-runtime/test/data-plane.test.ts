@@ -44,6 +44,9 @@ const appId = AppId.make("app-id");
 const serviceName = ServiceName.make("web");
 const providerId = ProviderId.make("test");
 const volumeGeneration = "00000000-0000-4000-8000-000000000001";
+const adoptedGeneration = "00000000-0000-4000-8000-000000000009";
+const replacementGeneration = "00000000-0000-4000-8000-000000000010";
+const adoptedOwnerRoot = AbsolutePath.make("/canonical/app");
 const plan = {
   id: appId,
   name: "App Name",
@@ -136,6 +139,64 @@ const makeCopySnapshotApi = () => {
         : Stream.empty,
   };
   return { api, volumes, snapshotFiles };
+};
+
+const makeWitnessVolumeApi = (
+  initialGeneration = adoptedGeneration,
+  labels: Readonly<Record<string, string>> = {},
+) => {
+  let generation = initialGeneration;
+  const requests: Array<{ readonly method: string; readonly path: string; readonly body?: unknown }> = [];
+  const volume = () => ({
+    Name: "data",
+    Driver: "local",
+    Options: {},
+    ...(Object.keys(labels).length === 0 ? {} : { Labels: labels }),
+  });
+  const api: DataPlaneApiClient = {
+    request: (request) =>
+      Effect.suspend(() => {
+        requests.push(request);
+        if (request.path === "/volumes" && request.method === "GET") {
+          return Effect.succeed({ status: 200, body: JSON.stringify({ Volumes: [volume()] }) });
+        }
+        if (request.path === "/volumes/data" && request.method === "GET") {
+          return Effect.succeed({ status: 200, body: JSON.stringify(volume()) });
+        }
+        if (request.path === "/containers/service/json") {
+          return Effect.succeed({
+            status: 200,
+            body: JSON.stringify({ Mounts: [{ Type: "volume", Destination: "/data", Name: "data" }] }),
+          });
+        }
+        if (request.path.startsWith("/images/")) return Effect.succeed({ status: 200, body: "{}" });
+        if (request.path.startsWith("/containers/create?name=")) {
+          return Effect.succeed({ status: 201, body: "{}" });
+        }
+        if (request.path.endsWith("/wait")) {
+          return Effect.succeed({ status: 200, body: JSON.stringify({ StatusCode: 0 }) });
+        }
+        if (request.path.endsWith("/json")) {
+          return Effect.succeed({ status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) });
+        }
+        return Effect.succeed({ status: 204, body: "" });
+      }),
+    stream: (request) =>
+      request.path.includes("/logs?")
+        ? Stream.make(
+            multiplexedStdoutFrame(
+              bytes(`${JSON.stringify({ version: 1, generation, ownerRoot: adoptedOwnerRoot })}\n`),
+            ),
+          )
+        : Stream.empty,
+  };
+  return {
+    api,
+    requests,
+    replace: () => {
+      generation = replacementGeneration;
+    },
+  };
 };
 
 describe("provider data plane", () => {
@@ -838,6 +899,175 @@ describe("provider data plane", () => {
     const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app"), store: "data" }));
 
     expect(volumes).toEqual([{ ref: { app: AppId.make("app"), store: "data" }, provenance: "legacy" }]);
+  });
+
+  test("projects a validated adoption witness for an exact volume listing without writing the volume", async () => {
+    // Given: an exact legacy volume whose explicit adoption elected a durable witness.
+    const { api, requests } = makeWitnessVolumeApi();
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      endpointNamespace: "unix:///run/test.sock",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: a safety consumer performs an exact read-only list.
+    const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app"), store: "data" }));
+
+    // Then: the elected generation is projected without an adoption/write command.
+    expect(volumes).toEqual([
+      {
+        ref: { app: AppId.make("app"), store: "data" },
+        identity: {
+          coordinationKey: JSON.stringify(["endpoint:unix:///run/test.sock", "data"]),
+          nativeName: "data",
+          generation: adoptedGeneration,
+          ownerRoot: adoptedOwnerRoot,
+          origin: "adopted",
+        },
+        provenance: "legacy",
+      },
+    ]);
+    const create = requests.find((request) => request.path.startsWith("/containers/create?name="));
+    expect(create?.body).toMatchObject({ HostConfig: { Binds: ["data:/lando-data:ro"] } });
+    expect(JSON.stringify(create?.body)).toContain('\\"operation\\":\\"read\\"');
+    expect(JSON.stringify(create?.body)).not.toContain('\\"operation\\":\\"adopt\\"');
+  });
+
+  test("returns the elected adopted identity from targeted location", async () => {
+    // Given: one witnessed legacy native volume.
+    const { api } = makeWitnessVolumeApi();
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      endpointNamespace: "unix:///run/test.sock",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: a consumer locates its exact native volume.
+    const located = await Effect.runPromise(provider.locateVolume({ app: AppId.make("app"), store: "data" }));
+
+    // Then: the read-only path exposes the elected adoption identity.
+    expect(located.identity).toEqual({
+      coordinationKey: JSON.stringify(["endpoint:unix:///run/test.sock", "data"]),
+      nativeName: "data",
+      generation: adoptedGeneration,
+      ownerRoot: adoptedOwnerRoot,
+      origin: "adopted",
+    });
+  });
+
+  test("keeps creation-label identity authoritative when a witness is also readable", async () => {
+    // Given: a Lando-created volume carrying its complete creation fact.
+    const { api, requests } = makeWitnessVolumeApi(adoptedGeneration, {
+      "dev.lando.app": "app",
+      "dev.lando.store": "data",
+      "dev.lando.volume-instance": volumeGeneration,
+      "dev.lando.volume-owner": String(adoptedOwnerRoot),
+    });
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      endpointNamespace: "unix:///run/test.sock",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: its exact identity is listed.
+    const volumes = await Effect.runPromise(provider.listVolumes({ app: AppId.make("app"), store: "data" }));
+
+    // Then: the creation generation and origin remain unchanged and no witness helper runs.
+    expect(volumes[0]?.identity?.generation).toBe(volumeGeneration);
+    expect(volumes[0]?.identity?.origin).toBe("created");
+    expect(requests.some((request) => request.path.startsWith("/containers/create?name="))).toBe(false);
+  });
+
+  test("allows removal only while the elected witness generation still matches", async () => {
+    // Given: an adopted volume and its current witness generation.
+    const { api, requests } = makeWitnessVolumeApi();
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      endpointNamespace: "unix:///run/test.sock",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: removal rechecks the matching witness.
+    await Effect.runPromise(
+      provider.removeVolume({ app: AppId.make("app"), store: "data" }, adoptedGeneration),
+    );
+
+    // Then: the exact native volume is removed after the read-only recheck.
+    expect(requests.some((request) => request.method === "DELETE" && request.path === "/volumes/data")).toBe(
+      true,
+    );
+  });
+
+  test("allows restore only while the elected witness generation still matches", async () => {
+    // Given: an adopted target volume and a verified copy snapshot.
+    const { api, requests } = makeWitnessVolumeApi();
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      endpointNamespace: "unix:///run/test.sock",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: restore rechecks the matching witness before mutation.
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        provider.restoreVolume({
+          snapshot: {
+            provider: ProviderId.make("test"),
+            id: "snapshot",
+            digest: sha256(bytes("snapshot")),
+            sizeBytes: bytes("snapshot").byteLength,
+            format: "tar",
+          },
+          target: { app: AppId.make("app"), store: "data" },
+          expectedTargetGeneration: adoptedGeneration,
+          overwrite: true,
+        }),
+      ),
+    );
+
+    // Then: identity verification passes and the restore helper receives the writable target.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(
+      requests.some(
+        (request) =>
+          request.path.startsWith("/containers/create?name=") &&
+          JSON.stringify(request.body).includes("data:/lando-data"),
+      ),
+    ).toBe(true);
+  });
+
+  test("invalidates an adopted identity when the native volume is deleted and recreated", async () => {
+    // Given: a consumer holding the first elected generation before replacement.
+    const { api, replace, requests } = makeWitnessVolumeApi();
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      endpointNamespace: "unix:///run/test.sock",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+    replace();
+
+    // When: removal rechecks the stale generation against the replacement witness.
+    const exit = await Effect.runPromiseExit(
+      provider.removeVolume({ app: AppId.make("app"), store: "data" }, adoptedGeneration),
+    );
+
+    // Then: the replacement is preserved.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(requests.some((request) => request.method === "DELETE" && request.path === "/volumes/data")).toBe(
+      false,
+    );
   });
 
   test("fails service copy when the applied plan is unavailable", async () => {

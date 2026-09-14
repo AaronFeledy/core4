@@ -3,12 +3,14 @@ import { stat } from "node:fs/promises";
 import { makeAttachDecoder } from "./streams.ts";
 import {
   type MountedVolumeTarget,
+  type NativeVolumeIdentityResolution,
   type VolumeAdoptionTarget,
   adoptMountedVolume,
   locateVolume,
   observeMountedVolume,
+  resolveNativeVolumeIdentity,
 } from "./volume-observation.ts";
-import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
+import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
 export { volumeCreationOwnerLabels } from "./volume-observation.ts";
 export { volumeCreationFact } from "./volume-creation.ts";
 export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
@@ -350,6 +352,8 @@ const requireServiceContainerName = (
 
 interface EngineVolume {
   readonly Name?: string;
+  readonly Driver?: string;
+  readonly Options?: Readonly<Record<string, string>> | null;
   readonly Labels?: Readonly<Record<string, string>>;
   readonly CreatedAt?: string;
 }
@@ -762,34 +766,44 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
   );
 
 export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
+  const executeWitness = (spec: EphemeralRunSpec, witnessSource?: WitnessMountSource) =>
+    request(options, "witness.image", {
+      method: "GET",
+      path: `/images/${encodeURIComponent(VOLUME_WITNESS_IMAGE)}/json`,
+    }).pipe(
+      Effect.flatMap((image) =>
+        image.status === 404 && options.prepareWitnessImage !== undefined
+          ? options.prepareWitnessImage
+          : ensure2xx(options, "witness.image", image),
+      ),
+      Effect.zipRight(Effect.scoped(runBytes(options, spec, witnessSource))),
+      Effect.map((result) => ({
+        exitCode: result.exitCode,
+        stdout: textDecoder.decode(result.stdout),
+        stderr: result.stderr,
+      })),
+    );
   const observation = {
     ...options,
-    runWitness: (target: MountedVolumeTarget, command: readonly string[]) =>
-      request(options, "witness.image", {
-        method: "GET",
-        path: `/images/${encodeURIComponent(VOLUME_WITNESS_IMAGE)}/json`,
-      }).pipe(
-        Effect.flatMap((image) =>
-          image.status === 404 && options.prepareWitnessImage !== undefined
-            ? options.prepareWitnessImage
-            : ensure2xx(options, "witness.image", image),
-        ),
-        Effect.zipRight(
-          Effect.scoped(
-            runBytes(
-              options,
-              { image: VOLUME_WITNESS_IMAGE, command, captureStdout: true, remove: true },
-              { containerId: target.containerId, readOnly: false },
-            ),
-          ).pipe(
-            Effect.map((result) => ({
-              exitCode: result.exitCode,
-              stdout: textDecoder.decode(result.stdout),
-              stderr: result.stderr,
-            })),
-          ),
-        ),
+    runWitness: (target: MountedVolumeTarget, command: readonly string[], readOnly: boolean) =>
+      executeWitness(
+        { image: VOLUME_WITNESS_IMAGE, command, captureStdout: true, remove: true },
+        { containerId: target.containerId, readOnly },
       ),
+    runVolumeWitness: (nativeName: string, command: readonly string[]) =>
+      executeWitness({
+        image: VOLUME_WITNESS_IMAGE,
+        command,
+        captureStdout: true,
+        mounts: [
+          {
+            store: nativeName,
+            target: PortablePath.make(VOLUME_WITNESS_MOUNT),
+            readOnly: true,
+          },
+        ],
+        remove: true,
+      }),
   };
   const verifyExpectedIdentity = (input: {
     readonly ref: Parameters<RuntimeProviderShape["locateVolume"]>[0];
@@ -812,8 +826,21 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             ),
       ),
       Effect.flatMap((current) =>
-        current.Name === volumeName(input.ref.store) &&
-        current.Labels?.["dev.lando.volume-instance"] === input.expectedGeneration
+        current.Name === volumeName(input.ref.store)
+          ? resolveNativeVolumeIdentity(
+              observation,
+              {
+                Name: current.Name,
+                ...(current.Driver === undefined ? {} : { Driver: current.Driver }),
+                ...(current.Options === undefined ? {} : { Options: current.Options }),
+                ...(current.Labels === undefined ? {} : { Labels: current.Labels }),
+              },
+              { _tag: "named" },
+            )
+          : Effect.succeed<NativeVolumeIdentityResolution>({}),
+      ),
+      Effect.flatMap((resolution) =>
+        (resolution.identity?.generation ?? resolution.creationGeneration) === input.expectedGeneration
           ? Effect.void
           : Effect.fail(
               volumeError(
@@ -1067,7 +1094,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     listVolumes: ((filter) =>
       request(options, "listVolumes", { method: "GET", path: "/volumes" }).pipe(
         Effect.tap((response) => ensure2xx(options, "listVolumes", response, filter.store)),
-        Effect.map((response) => {
+        Effect.flatMap((response) => {
           const parsed =
             response.body.length === 0
               ? { Volumes: [] }
@@ -1075,13 +1102,30 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                   | EngineVolume[]
                   | { readonly Volumes?: ReadonlyArray<EngineVolume> });
           const volumes = Array.isArray(parsed) ? parsed : (parsed.Volumes ?? []);
-          return volumes
-            .map(
-              (volume) =>
-                volumeInfoFromEngineVolume(volume, filter) ??
-                legacyVolumeInfoFromEngineVolume(volume, filter),
-            )
-            .filter((volume): volume is NonNullable<typeof volume> => volume !== undefined);
+          return Effect.forEach(volumes, (volume) => {
+            const info =
+              volumeInfoFromEngineVolume(volume, filter) ?? legacyVolumeInfoFromEngineVolume(volume, filter);
+            if (info === undefined || volume.Name === undefined) return Effect.succeed(info);
+            const exact = filter.app !== undefined && filter.store !== undefined;
+            return resolveNativeVolumeIdentity(
+              observation,
+              {
+                Name: volume.Name,
+                ...(volume.Driver === undefined ? {} : { Driver: volume.Driver }),
+                ...(volume.Options === undefined ? {} : { Options: volume.Options }),
+                ...(volume.Labels === undefined ? {} : { Labels: volume.Labels }),
+              },
+              exact ? { _tag: "named" } : undefined,
+            ).pipe(
+              Effect.map((resolution) =>
+                resolution.identity === undefined ? info : { ...info, identity: resolution.identity },
+              ),
+            );
+          }).pipe(
+            Effect.map((resolved) =>
+              resolved.filter((volume): volume is NonNullable<typeof volume> => volume !== undefined),
+            ),
+          );
         }),
         Effect.mapError((cause) =>
           volumeError(options, "listVolumes", "Provider volume list failed.", undefined, cause, filter.store),
