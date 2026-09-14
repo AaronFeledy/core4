@@ -6,6 +6,7 @@ type EnvMap = Readonly<Record<string, unknown>> | undefined;
 
 type ServiceEnvSource = {
   readonly environment?: EnvMap;
+  readonly extensions?: Readonly<Record<string, unknown>>;
   readonly password?: string;
 };
 
@@ -24,10 +25,20 @@ const stringEnv = (env: EnvMap): Record<string, string | undefined> | undefined 
   return collected;
 };
 
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 export const collectAppPlanRedactionTokens = (
   plan: Pick<AppPlan, "services"> | { readonly services: Readonly<Record<string, ServiceEnvSource>> },
 ): ReadonlyArray<string> =>
-  Object.values(plan.services).flatMap((service) => collectSecretEnvValues(stringEnv(service?.environment)));
+  Object.values(plan.services).flatMap((service) => {
+    const compose = service?.extensions?.compose;
+    const labels = isRecord(compose) && isRecord(compose.labels) ? compose.labels : undefined;
+    return [
+      ...collectSecretEnvValues(stringEnv(service?.environment)),
+      ...collectSecretEnvValues(stringEnv(labels)),
+    ];
+  });
 
 export const collectLandofileRedactionTokens = (
   landofile: LandofileTokenSource | LandofileShape,

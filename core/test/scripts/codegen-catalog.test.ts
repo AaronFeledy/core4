@@ -90,6 +90,7 @@ const expectedCatalogRows = [
     "repo",
     ["setup-plugin-flags", "mcp-allowlist"],
   ],
+  ["core-service-env-catalog", "derived", "build-core-service-env-catalog.ts", "repo"],
   [
     "command-registry-manifest",
     "derived",
@@ -109,6 +110,7 @@ const expectedCatalogRows = [
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
+      "core-service-env-catalog",
       "command-registry-manifest",
     ],
   ],
@@ -217,6 +219,7 @@ describe("codegen catalog", () => {
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
+      "core-service-env-catalog",
       "command-registry-manifest",
     ] as const;
 
@@ -254,13 +257,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(27);
+    expect(catalog).toHaveLength(28);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(1);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(10);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(16);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(17);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);

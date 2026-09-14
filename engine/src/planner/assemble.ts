@@ -64,6 +64,7 @@ import {
   hostProxyExtensionForCapabilities,
 } from "../subsystems/host-proxy/plan-extension.ts";
 import { CORE_VERSION } from "../version.ts";
+import * as AppDefaults from "./app-defaults.ts";
 import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
@@ -166,6 +167,7 @@ export const planApp = (
                 }),
             ),
           );
+    const appDefaults = AppDefaults.resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
     const configProvider = globalConfig?.defaultProviderId;
     const routerEnabled = routerEnabledFrom(globalConfig?.router, landofile.router);
     const networkPlan = yield* Effect.try({
@@ -251,15 +253,13 @@ export const planApp = (
         config: service.config,
       });
       const hasEnvFiles = topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0;
-      const serviceWithEnvironment: ServiceConfig = !hasEnvFiles
-        ? service
-        : {
-            ...service,
-            environment: {
-              ...topLevelEnvFiles.environment,
-              ...(loadedEnvFiles.environment ?? {}),
-            },
-          };
+      const serviceWithEnvironment = AppDefaults.withUserAppDefaults({
+        service,
+        defaults: appDefaults,
+        topLevelEnvironment: topLevelEnvFiles.environment,
+        serviceEnvironment: loadedEnvFiles.environment,
+        hasEnvFiles,
+      });
       if (
         serviceWithEnvironment.image !== undefined &&
         serviceWithEnvironment.build !== undefined &&
@@ -448,7 +448,7 @@ export const planApp = (
       landofile: { ...landofile, provider },
       providerCapabilities,
       pluginManifests: manifests,
-      config: { routerEnabled, scanner: globalConfig?.scanner ?? null },
+      config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, appDefaults),
       ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
       versionConstraints,
       serviceInputs: {

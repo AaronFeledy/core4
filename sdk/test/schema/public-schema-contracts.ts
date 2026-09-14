@@ -171,6 +171,8 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   IncludeEntry: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   McpConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   AgentEnvConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  AppEnvironmentDefaults: "sdk/test/schema/global-config-app-defaults.test.ts",
+  AppLabelDefaults: "sdk/test/schema/global-config-app-defaults.test.ts",
   NotifyConfig: "sdk/test/events/notify.test.ts",
   RendererCapabilities: "sdk/test/events/notify.test.ts",
   TelemetryConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

@@ -5,6 +5,7 @@
 ## Compatibility notes
 
 - `ServiceConfig` and `ServiceConfigInput` additively accept optional `packageRoot`, an app-root-relative source directory used only by service-type project-file inference. `ServiceType` additively accepts a pure optional `projectFiles(service)` declaration, and `ServiceTypeInput.projectFiles` receives bounded planner-supplied present or absent inputs with content fingerprints. `ServicePlan` additively accepts optional service-type `provenance`; existing explicit service types and plans remain unchanged.
+- `@lando/sdk/schema` additively exports `AppEnvironmentDefaults`, `AppLabelDefaults`, `CORE_SERVICE_ENV_KEYS`, and `isCoreServiceEnvKey`. `GlobalConfig` additively accepts optional `appEnv` and `appLabels` maps for bounded user-app service defaults; service-authored values retain precedence.
 - `ServiceConfig` additively accepts Redis `password` and `persist`, plus Mailpit `mailFrom` (`false` or a service-name list). Persistence defaults to enabled. Omitted Mailpit targets select all resolved PHP services; false selects none; lists retain first-occurrence order.
 - Mailpit parses its SMTP service name during service-type resolution, rejecting whitespace, shell metacharacters, empty names, and leading hyphens before generating PHP mail configuration. The general SDK `ServiceName` contract is unchanged.
 
@@ -194,6 +195,10 @@
 
 ## Additive schema exports
 
+- `AppEnvironmentDefaults`
+- `AppLabelDefaults`
+- `CORE_SERVICE_ENV_KEYS`
+- `isCoreServiceEnvKey`
 - `ScannerConfig`
 - `ScanPlan`
 - `ServiceFileConfig`
