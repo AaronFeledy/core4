@@ -47,6 +47,9 @@ const SampleSchema = Schema.Struct({
   key: Schema.String,
   outcome: OutcomeSchema,
   resetCondition: Schema.String,
+  stagedFixture: Schema.optional(
+    Schema.Struct({ path: Schema.String, bytes: Schema.Number, sha256: Schema.String }),
+  ),
   steps: Schema.Array(StepSchema).pipe(Schema.maxItems(MAX_STEPS)),
   skipReason: Schema.optional(Schema.String),
 });

@@ -1,7 +1,8 @@
-import { mkdir, mkdtempDisposable, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { cleanupWorkflowPerformanceSample } from "./workflow-performance-cleanup.ts";
+import { imagesFor, landofileFor } from "./workflow-performance-sample-config.ts";
+import { acquirePerformanceStores } from "./workflow-performance-stores.ts";
 
 import type {
   WorkflowPerformanceCommand,
@@ -14,28 +15,12 @@ import {
   runUntilFailure,
   validateJourneyResults,
 } from "./workflow-performance-measurement.ts";
-import type { WorkflowPerformanceLaneId, WorkflowPerformanceLanePlan } from "./workflow-performance-plan.ts";
+import type { WorkflowPerformanceLanePlan } from "./workflow-performance-plan.ts";
 import type { WorkflowPerformanceSample } from "./workflow-performance-report.ts";
 import { boundedPerformanceEvidence } from "./workflow-performance-report.ts";
 
-const imagesFor = (laneId: WorkflowPerformanceLaneId): readonly string[] => {
-  if (laneId.startsWith("mysql-")) return ["mysql:8.0"];
-  if (laneId.startsWith("postgres-")) return ["postgres:16"];
-  if (laneId === "drupal-journey") return ["php:8.3-apache-bookworm", "mariadb:11.4", "traefik:v3.3"];
-  if (laneId === "rails-journey") return ["ruby:3.3-slim", "postgres:16", "redis:7", "traefik:v3.3"];
-  return ["node:22"];
-};
-
-const landofileFor = (laneId: WorkflowPerformanceLaneId, name: string): string => {
-  const type = laneId.startsWith("mysql-")
-    ? "mysql:8.0"
-    : laneId.startsWith("postgres-")
-      ? "postgres:16"
-      : "node:22";
-  return `name: ${name}\nruntime: 4\nservices:\n  ${type === "node:22" ? "app" : "database"}:\n    type: ${type}\n`;
-};
-
 type PreparedSample = {
+  readonly stagedFixture?: WorkflowPerformanceSample["stagedFixture"];
   readonly appRoot: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly failure?: WorkflowPerformanceCommandResult;
@@ -61,7 +46,7 @@ const prepareSample = async (
   acquired: (sample: PreparedSample) => void,
   runtimeRoot: string,
 ): Promise<PreparedSample> => {
-  const { lane, binary, rootDir, key, fixturePath, runCommand } = input;
+  const { lane, binary, rootDir, key, runCommand } = input;
   const sampleRoot = join(rootDir, "samples", key);
   const appParent = join(sampleRoot, "apps");
   const appRoot = join(appParent, key);
@@ -69,7 +54,6 @@ const prepareSample = async (
   const storageConfig = join(sampleRoot, "storage.conf");
   const journey = lane.id === "drupal-journey" || lane.id === "rails-journey";
   await mkdir(join(rootDir, "samples"), { recursive: true });
-  await mkdir(sampleRoot);
   await Promise.all([
     mkdir(journey ? appParent : appRoot, { recursive: true }),
     mkdir(runtimeRoot, { recursive: true, mode: 0o700 }),
@@ -95,6 +79,22 @@ const prepareSample = async (
   const cwd = journey ? appParent : appRoot;
   if (!journey) await writeFile(join(appRoot, ".lando.yml"), landofileFor(lane.id, key));
   acquired({ appRoot, env, fileSyncEvidence: "" });
+  let fixturePath: string | undefined;
+  if (input.fixturePath !== undefined) {
+    const contents = await readFile(input.fixturePath);
+    fixturePath = join(await mkdtemp(join(appRoot, ".perf-fixture-")), basename(input.fixturePath));
+    await writeFile(fixturePath, contents, { flag: "wx", mode: 0o600 });
+    acquired({
+      appRoot,
+      env,
+      fileSyncEvidence: "",
+      stagedFixture: {
+        path: fixturePath,
+        bytes: contents.byteLength,
+        sha256: new Bun.CryptoHasher("sha256").update(contents).digest("hex"),
+      },
+    });
+  }
   const setup = await runCommand(
     performanceCommand(
       "prepare:setup",
@@ -172,15 +172,15 @@ export const runWorkflowPerformanceSample = async (
     | { readonly skipReason: string }
   )
 > => {
-  await using runtimeDirectory = await mkdtempDisposable(join(tmpdir(), "lp-"));
+  const stores = await acquirePerformanceStores(input.rootDir, input.key);
   const runCommand = workflowPerformanceDeadlineRunner(input);
   let acquired: PreparedSample | undefined;
   const prepared = await prepareSample(
-    { ...input, runCommand },
+    { ...input, rootDir: join(stores.sampleRoot, "../.."), runCommand },
     (sample) => {
       acquired = sample;
     },
-    runtimeDirectory.path,
+    stores.runtimeRoot,
   ).catch((cause: unknown) => {
     if (acquired === undefined) throw cause;
     return {
@@ -196,7 +196,7 @@ export const runWorkflowPerformanceSample = async (
   });
   if (prepared.skipReason !== undefined) {
     const failures = await cleanupWorkflowPerformanceSample(
-      { binary: input.binary, ...prepared, setupOnly: true },
+      { binary: input.binary, ...prepared, setupOnly: true, stores },
       input.runCommand,
     );
     return {
@@ -218,7 +218,7 @@ export const runWorkflowPerformanceSample = async (
     lane: input.lane,
     binary: input.binary,
     appRoot: prepared.appRoot,
-    ...(input.fixturePath === undefined ? {} : { fixturePath: input.fixturePath }),
+    ...(acquired?.stagedFixture === undefined ? {} : { fixturePath: acquired.stagedFixture.path }),
     env: prepared.env,
   });
   const measured =
@@ -230,6 +230,7 @@ export const runWorkflowPerformanceSample = async (
     results: measured,
   });
   const sample: WorkflowPerformanceSample = {
+    ...(acquired?.stagedFixture === undefined ? {} : { stagedFixture: acquired.stagedFixture }),
     index: input.index,
     key: input.key,
     outcome:
@@ -238,7 +239,7 @@ export const runWorkflowPerformanceSample = async (
     steps,
   };
   const cleanupFailures = await cleanupWorkflowPerformanceSample(
-    { binary: input.binary, ...prepared, setupOnly: false },
+    { binary: input.binary, ...prepared, setupOnly: false, stores },
     input.runCommand,
   );
   return {

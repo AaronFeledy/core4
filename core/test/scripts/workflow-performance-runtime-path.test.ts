@@ -31,11 +31,12 @@ test("keeps rootlessport socket paths short when report roots and sample names a
         return { id: command.id, durationMs: 0, exitCode: 1, stdout: "", stderr: "preparation failed" };
       },
     });
-    // Then the Unix address fits sun_path and the acquired runtime directory is released.
+    // Then the Unix address fits sun_path and failed teardown retains the runtime directory.
     expect(runtimeRoot).not.toBe("");
     expect(socketBytes).toBeLessThan(108);
-    expect(existsSync(runtimeRoot)).toBe(false);
+    expect(existsSync(runtimeRoot)).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
+    if (runtimeRoot) await rm(runtimeRoot, { recursive: true, force: true });
   }
 });
