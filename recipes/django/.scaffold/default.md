@@ -34,6 +34,8 @@ lando pip install -r requirements.txt
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For the day-to-day path (`django-admin`, Postgres host `database`, `runserver` bind), see [Run the Django recipe](/guides/recipes/django-workflow/).
+
 ## 1. scaffold
 
 ```bash
