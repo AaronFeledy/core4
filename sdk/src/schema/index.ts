@@ -137,3 +137,4 @@ export * from "./template.ts";
 export * from "./tool-manifest.ts";
 export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
+export { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";

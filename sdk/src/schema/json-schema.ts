@@ -389,6 +389,7 @@ import {
   UpdateManifestSha256,
 } from "./update-manifest.ts";
 import { VolumeIdentity } from "./volume-identity.ts";
+import { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
 
 const catalogServiceSchemaRegistry = {
   DotnetServiceConfig,
@@ -550,6 +551,8 @@ const basePublicSchemaRegistry = {
   VolumeRef,
   VolumeInfo,
   VolumeIdentity,
+  VolumeCreationFact,
+  VolumeInitializationRecord,
   VolumeFilter,
   VolumeSnapshotSpec,
   VolumeSnapshotRef,
@@ -980,6 +983,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   VolumeRef: "Public Lando schema contract for Volume Ref.",
   VolumeInfo: "Public Lando schema contract for Volume Info.",
   VolumeIdentity: "Owner-bound observed physical volume generation.",
+  VolumeCreationFact: "Daemon-confirmed volume creation during one apply.",
+  VolumeInitializationRecord: "Generation-bound durable initialization claim and outcome.",
   VolumeFilter: "Public Lando schema contract for Volume Filter.",
   VolumeSnapshotSpec: "Public Lando schema contract for Volume Snapshot Spec.",
   VolumeSnapshotRef: "Public Lando schema contract for Volume Snapshot Ref.",

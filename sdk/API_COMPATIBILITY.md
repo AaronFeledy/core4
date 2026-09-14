@@ -4,6 +4,10 @@
 
 ## Compatibility notes
 
+- `SqlSeedStateError.status` additively accepts `unknown`; absent or mismatched initialization records can no longer be reported as fresh.
+
+- `VolumeCreationFact` and `VolumeInitializationRecord` are additive schemas. `ApplyResult.createdVolumes` is optional and reports only a daemon-echoed newly generated creation token with its owner. Engine apply consumers re-observe the mounted generation before persisting freshness. Missing evidence, old volumes, and adoption never imply freshness. `DataMoverShape.volumeInitialization` is an optional shared host-state port with `read`, atomic `begin(operationId)`, and generation/owner/operation-checked `finish`. SQL uses this port rather than plugin-scoped buckets; absence is unknown, and interruption quarantines a claimed generation as failed. Process death leaves in-progress state ineligible for another claim. Whole-lifecycle locking remains separate.
+
 - `@lando/sdk/schema` additively exports `VolumeIdentity`; `VolumeInfo.identity` is optional. Its `coordinationKey` identifies a daemon namespace and native volume name, not an app slug, root, or generation. `generation` changes on recreation. `ownerRoot` binds the generation to a canonical app root. `origin: adopted` must never establish creation history or freshness.
 - Bundled Docker and Podman volume creation requests attach `dev.lando.volume-owner` from `AppPlan.identity.appRoot` alongside the existing random creation label. Plans without canonical identity do not receive an inferred owner label. An idempotent create response does not itself establish freshness; subsequent observation reads the stored labels, not the submitted token.
 - `RuntimeProviderShape.observeVolume(target, destination)` is optional. Bundled providers resolve the existing container identity, inspect its actual mount at the requested destination, then inspect that native volume. Missing containers, missing or ambiguous destinations, bind mounts, malformed responses, and disappeared volumes fail closed. Identity comes from creation/owner labels or a validated in-volume witness. Legacy observations retain legacy provenance without an invented creation ID. A missing method or identity does not authorize recovery. Observation is not a lock or mutation precondition; callers must recheck generation at mutation time.
@@ -179,6 +183,9 @@
 
 
 ## Additive schema exports
+
+- `VolumeCreationFact`
+- `VolumeInitializationRecord`
 
 - `LandofileRecipeField`
 - `LandofileRecipeProvenance`
