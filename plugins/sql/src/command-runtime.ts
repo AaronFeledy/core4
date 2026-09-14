@@ -127,6 +127,18 @@ export const runDbCommand = (input: DbCommandInput) =>
                   PortablePath.make(destination ?? mount.target),
                 );
           },
+          locateVolume: (volume) => provider.locateVolume(volume),
+          adoptVolume: (service, store, destination) => {
+            const mount = planned.services[ServiceName.make(service)]?.storage.find(
+              (entry) => entry.store === store && (destination === undefined || entry.target === destination),
+            );
+            return mount === undefined || provider.adoptVolume === undefined
+              ? Effect.succeed(undefined)
+              : provider.adoptVolume(
+                  { app: planned.id, service: ServiceName.make(service), plan: planned },
+                  PortablePath.make(destination ?? mount.target),
+                );
+          },
           withVolumeLock: (instanceId, body) => stateStore.withLock(physicalVolumeLockKey(instanceId), body),
           initialization: (identity) =>
             mover.volumeInitialization === undefined
