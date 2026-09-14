@@ -106,6 +106,7 @@ export interface ApplyOptions {
 
 export interface ApplyResult {
   readonly changed: boolean;
+  readonly createdVolumes?: readonly import("../schema/volume-initialization.ts").VolumeCreationFact[];
 }
 
 export interface ServiceSelector {
