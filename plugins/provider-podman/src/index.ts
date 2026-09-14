@@ -36,7 +36,7 @@ import {
 } from "@lando/container-runtime/podman/version-floor";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
-import { postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import {
   type ProviderCapabilityError,
@@ -720,6 +720,10 @@ export const makeRuntimeProvider = (
     service: {
       lifecycle: (plan, target, action) =>
         postServiceLifecycle(plan, target, action, { api: podmanApi, ctx: PODMAN_CTX }),
+      resume: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "start", { api: podmanApi, ctx: PODMAN_CTX }),
+      suspend: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "stop", { api: podmanApi, ctx: PODMAN_CTX }),
       waitForExit: (plan, target, waitOptions) =>
         waitForExit(plan, target, {
           api: podmanApi,

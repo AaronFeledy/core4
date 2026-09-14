@@ -68,6 +68,7 @@ import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
 import {
   type ServiceLifecycleOptions,
+  postExactServiceLifecycle as runtimePostExactServiceLifecycle,
   postServiceLifecycle as runtimePostServiceLifecycle,
 } from "@lando/container-runtime/service-lifecycle";
 import {
@@ -749,6 +750,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       service: {
         lifecycle: (plan, target, action) =>
           runtimePostServiceLifecycle(plan, target, action, { ...apiOptions, ctx: LANDO_CTX }),
+        resume: (target, identity) =>
+          runtimePostExactServiceLifecycle(target, identity, "start", { ...apiOptions, ctx: LANDO_CTX }),
+        suspend: (target, identity) =>
+          runtimePostExactServiceLifecycle(target, identity, "stop", { ...apiOptions, ctx: LANDO_CTX }),
         waitForExit: (plan, target, waitOptions) =>
           runtimeWaitForExit(plan, target, {
             ...apiOptions,

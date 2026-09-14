@@ -31,7 +31,7 @@ import {
 } from "@lando/container-runtime/plan";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
-import { postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
 import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import {
   makeAttachDecoder as makeRuntimeAttachDecoder,
@@ -1727,6 +1727,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     service: {
       lifecycle: (plan, target, action) =>
         postServiceLifecycle(plan, target, action, { api: dockerApi, ctx: DOCKER_CTX }),
+      resume: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "start", { api: dockerApi, ctx: DOCKER_CTX }),
+      suspend: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "stop", { api: dockerApi, ctx: DOCKER_CTX }),
       waitForExit: (plan, target, waitOptions) =>
         waitForExit(plan, target, {
           api: dockerApi,
