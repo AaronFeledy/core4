@@ -1,4 +1,5 @@
 import { dirname, join } from "node:path";
+import { childEnv } from "../core/src/cli/commands/bun-self-runner.ts";
 import type {
   WorkflowPerformanceCommand,
   WorkflowPerformanceCommandResult,
@@ -30,7 +31,7 @@ export const cleanupWorkflowPerformanceSample = async (
       "cleanup:runtime",
       [process.execPath, join(import.meta.dir, "workflow-performance-runtime-cleanup.ts")],
       dirname(appRoot),
-      env,
+      childEnv({ ...env }),
     ),
   ];
   const failures: WorkflowPerformanceCommandResult[] = [];
