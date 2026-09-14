@@ -79,6 +79,8 @@ const prepareSample = async (
   );
   const env = {
     ...process.env,
+    BUN_BE_BUN: undefined,
+    LANDO_DISALLOW_BUN_BE_BUN_REENTRY: undefined,
     LANDO_PROVIDER: "lando",
     CONTAINER_HOST: undefined,
     CONTAINER_CONNECTION: undefined,
