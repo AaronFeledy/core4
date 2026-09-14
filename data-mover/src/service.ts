@@ -1566,6 +1566,7 @@ export const makeDataMoverService = (
           return [];
         }
         return [...infos]
+          .filter((info) => info.metadata?.recoveryReason === undefined)
           .sort(
             (left, right) =>
               Date.parse(DateTime.formatIso(right.createdAt)) -

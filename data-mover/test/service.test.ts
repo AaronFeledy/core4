@@ -1491,6 +1491,76 @@ describe("DataMoverLive", () => {
     });
   });
 
+  test("pruneSnapshots never removes snapshots that carry a recovery reason", async () => {
+    await withTempDir(async (dir) => {
+      const dataRoot = join(dir, "data");
+      await writeFile(join(dir, "seed.txt"), "seed-payload");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const recovery = yield* dataMover.snapshot(
+                { app, store: "data" },
+                {
+                  format: "tar",
+                  metadata: {
+                    sourceRoot: AbsolutePath.make(dir),
+                    service: ServiceName.make("database"),
+                    volumeInstanceId: "00000000-0000-4000-8000-000000000001",
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "sha256:mysql-runtime",
+                    recoveryReason: "reset",
+                  },
+                },
+              );
+              const ordinary = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "ordinary" },
+              );
+              const pruned = yield* dataMover.pruneSnapshots({
+                filter: { app, store: "data" },
+                keepLatest: 0,
+              });
+              const listed = yield* dataMover.listSnapshots({ app, store: "data" });
+              return { recovery, ordinary, pruned, listed };
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                listVolumes: ({ store }) =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: store ?? "data" },
+                      instanceId: "00000000-0000-4000-8000-000000000001",
+                      provenance: "known",
+                    },
+                  ]),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(result.pruned).toEqual([result.ordinary.id]);
+        expect(result.listed.map((entry) => entry.id)).toEqual([result.recovery.id]);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
   test("persists native snapshot refs in the sidecar without writing an archive", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
