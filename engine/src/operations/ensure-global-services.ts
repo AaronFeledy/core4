@@ -101,6 +101,24 @@ export type EnsureGlobalServicesServices =
 export const requiredGlobalServicesForPlan = (plan: Pick<AppPlan, "requires">): ReadonlyArray<string> =>
   plan.requires?.globalServices ?? [];
 
+export const includeAvailableDependencies = (
+  requested: Iterable<string>,
+  services: ReadonlyArray<{
+    readonly name: unknown;
+    readonly dependsOn: ReadonlyArray<{ readonly service: unknown }>;
+  }>,
+): Set<string> => {
+  const byName = new Map(services.map((service) => [String(service.name), service]));
+  const selected = new Set(requested);
+  for (const name of selected) {
+    for (const dependency of byName.get(name)?.dependsOn ?? []) {
+      const dependencyName = String(dependency.service);
+      if (byName.has(dependencyName)) selected.add(dependencyName);
+    }
+  }
+  return selected;
+};
+
 const missingServiceError = (
   requested: ReadonlyArray<string>,
   missing: ReadonlyArray<string>,
@@ -148,7 +166,7 @@ export const ensureGlobalServicesRunning = (
       return yield* Effect.fail(missingServiceError(requested, missing, available));
     }
 
-    const requestedSet = new Set(requested);
+    const requestedSet = includeAvailableDependencies(requested, planServices);
     const selected = planServices.filter((service) => requestedSet.has(String(service.name)));
     const planToApply =
       selected.length === planServices.length
