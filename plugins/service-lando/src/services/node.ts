@@ -60,7 +60,16 @@ type ParsedNvmrc = NodeInferenceSelection & {
 const exactPinRemediation = "Add an exact pin in .nvmrc, or a channel-preserving Node pin, then retry.";
 
 const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: true }): ParsedNvmrc => {
-  const constraint = input.text.trim().toLowerCase();
+  const constraint = input.text
+    .split(/\r?\n/u)
+    .map((line) => line.replace(/#.*$/u, "").trim().toLowerCase())
+    .find((line) => line.length > 0);
+  if (constraint === undefined) {
+    throw new NodeInferenceError(
+      `Unsupported Node version "" in ${input.path}.`,
+      `Use Node ${NODE_MAJOR}, ${NODE_LTS_CODENAME}, lts/*, or an exact Node ${NODE_MAJOR} pin.`,
+    );
+  }
   const major = new RegExp(`^v?${NODE_MAJOR}$`, "u");
   const minor = new RegExp(`^v?${NODE_MAJOR}\\.(\\d+)$`, "u").exec(constraint);
   const exact = new RegExp(`^v?${NODE_MAJOR}\\.(\\d+)\\.(\\d+)$`, "u").exec(constraint);

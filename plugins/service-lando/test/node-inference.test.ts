@@ -29,6 +29,8 @@ describe("bare node version inference", () => {
     ["v22", "node:22", "22"],
     ["jod", "node:22", "22"],
     ["lts/*", "node:lts", "lts/*"],
+    ["22.11.0 # pin", "node:22.11.0", "22.11.0"],
+    ["# comment\n22", "node:22", "22"],
   ] satisfies ReadonlyArray<readonly [string, string, string]>)(
     "preserves the %s constraint as %s",
     (constraint, artifact, normalizedConstraint) => {
@@ -64,6 +66,7 @@ describe("bare node version inference", () => {
 
   test.each([
     ["18", undefined, /unsupported Node version/i],
+    ["# comment only", undefined, /unsupported Node version/i],
     ["22.011", undefined, /unsupported Node version/i],
     ["22.9007199254740992", undefined, /unsupported Node version/i],
     ["22", JSON.stringify({ engines: { node: ">=22.0.0 <22.12.0" } }), /conflicts with package\.json/i],
