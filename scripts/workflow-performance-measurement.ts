@@ -44,7 +44,7 @@ export const buildMeasuredCommands = (input: {
     ];
   }
   if (lane.id === "unchanged-rebuild") {
-    return [performanceCommand("rebuild", [binary, "rebuild", "-y"], appRoot, env)];
+    return [performanceCommand("rebuild", [binary, "rebuild"], appRoot, env)];
   }
   if (lane.id.endsWith("-import") && fixturePath !== undefined) {
     return [
