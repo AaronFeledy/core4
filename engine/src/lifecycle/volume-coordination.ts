@@ -117,6 +117,17 @@ export const verifyActiveVolumeCoordination = (
     Effect.flatMap((volumes) => verifyLocatedVolumes(volumes, provider)),
   );
 
+export const withVolumeCoordinationLock = <A, E>(
+  stateStore: StateStoreShape,
+  coordinationKey: string,
+  body: Effect.Effect<A, E>,
+): Effect.Effect<A, E | StateStoreError> =>
+  FiberRef.get(heldCoordinationKeys).pipe(
+    Effect.flatMap((held) =>
+      held.has(coordinationKey) ? body : stateStore.withLock(physicalVolumeLockKey(coordinationKey), body),
+    ),
+  );
+
 export const withPlanVolumeCoordination = <A, E>(input: {
   readonly plan: AppPlan;
   readonly provider: Pick<RuntimeProviderShape, "id" | "locateVolume">;

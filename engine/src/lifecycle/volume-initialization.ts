@@ -2,13 +2,9 @@ import { type Context, Effect, Option } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
-import {
-  type ApplyResult,
-  type RuntimeProvider,
-  StateStore,
-  physicalVolumeLockKey,
-} from "@lando/sdk/services";
+import { type ApplyResult, type RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { withVolumeCoordinationLock } from "./volume-coordination.ts";
 
 export const recordCreatedVolumes = (
   provider: Pick<Context.Tag.Service<typeof RuntimeProvider>, "id" | "observeVolume">,
@@ -35,8 +31,9 @@ export const recordCreatedVolumes = (
           identity.ownerRoot !== fact.ownerRoot
         )
           continue;
-        yield* store.value.withLock(
-          physicalVolumeLockKey(identity.coordinationKey),
+        yield* withVolumeCoordinationLock(
+          store.value,
+          identity.coordinationKey,
           Effect.gen(function* () {
             const current = (yield* observe(target, mount.target)).identity;
             if (

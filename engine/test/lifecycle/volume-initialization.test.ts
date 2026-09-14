@@ -16,6 +16,7 @@ import {
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
+import { withPlanVolumeCoordination } from "../../src/lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../../src/lifecycle/volume-initialization.ts";
 
 const identity: VolumeIdentity = {
@@ -104,3 +105,47 @@ test.each(["created", "existing", "adopted", "replaced"] as const)(
     }
   },
 );
+
+test("created-volume persistence reuses the active lifecycle volume lock", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-creation-lock-test-"));
+  try {
+    const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+    let lockCalls = 0;
+    const store: StateStoreShape = {
+      open: (spec) => live.open({ ...spec, root: { path: AbsolutePath.make(root) } }),
+      withLock: (_key, body) =>
+        Effect.sync(() => {
+          lockCalls += 1;
+        }).pipe(Effect.zipRight(body)),
+    };
+    const coordinatedPlan: AppPlan = {
+      ...plan,
+      stores: [{ name: "data", scope: "service", kind: "data" }],
+    };
+    const provider = {
+      id: "test",
+      locateVolume: () =>
+        Effect.succeed({ coordinationKey: identity.coordinationKey, nativeName: identity.nativeName }),
+      observeVolume: () => Effect.succeed({ ref: { app: plan.id, store: "data" }, identity }),
+    };
+
+    await Effect.runPromise(
+      withPlanVolumeCoordination({
+        plan: coordinatedPlan,
+        provider,
+        stateStore: store,
+        body: () =>
+          recordCreatedVolumes(provider, coordinatedPlan, {
+            changed: true,
+            createdVolumes: [identity],
+          }).pipe(Effect.provideService(StateStore, store)),
+      }),
+    );
+
+    expect(lockCalls).toBe(1);
+    const state = await Effect.runPromise(volumeInitialization(store, identity));
+    expect((await Effect.runPromise(state.read))?.state._tag).toBe("fresh");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
