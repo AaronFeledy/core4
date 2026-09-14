@@ -171,6 +171,8 @@
     "./subsystems/scanner/live": "./src/subsystems/scanner/live.ts",
     "./subsystems/ssh/api": "./src/subsystems/ssh/api.ts",
     "./subsystems/ssh/registry": "./src/subsystems/ssh/registry.ts",
+    "./testing/downloader": "./src/testing/downloader.ts",
+    "./testing/live-provider-socket": "./src/testing/live-provider-socket.ts",
     "./testing/state-store": "./src/testing/state-store.ts",
     "./version": "./src/version.ts"
   },

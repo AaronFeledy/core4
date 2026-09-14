@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { resolveLiveProviderSocket, stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { Effect } from "effect";
 
 import { getContainerDiedEvents, makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";

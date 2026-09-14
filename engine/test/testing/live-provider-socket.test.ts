@@ -4,12 +4,12 @@ import { type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { makeLandoPaths } from "@lando/core/paths";
 import {
   LANDO_TEST_PODMAN_SOCKET_ENV,
   hasLiveProviderSocket,
   resolveLiveProviderSocket,
-} from "@lando/core/testing";
+} from "@lando/engine/testing/live-provider-socket";
+import { makeLandoPaths } from "@lando/paths";
 
 const listenOnSocket = (socketPath: string): Promise<Server> =>
   new Promise((resolve, reject) => {
