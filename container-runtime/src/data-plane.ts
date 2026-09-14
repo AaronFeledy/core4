@@ -7,6 +7,7 @@ import {
 } from "./volume-observation.ts";
 import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
 export { volumeCreationOwnerLabels } from "./volume-observation.ts";
+export { volumeCreationFact } from "./volume-creation.ts";
 export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
 
 import { Effect, Fiber, type Scope, Stream } from "effect";
