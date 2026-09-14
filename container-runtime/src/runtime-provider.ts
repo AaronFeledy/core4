@@ -67,6 +67,7 @@ export type ResolvedProviderOps = Pick<
   | "snapshotVolume"
   | "restoreVolume"
   | "listVolumes"
+  | "locateVolume"
   | "observeVolume"
   | "adoptVolume"
   | "removeVolume"
@@ -137,6 +138,10 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     execStream: (target, command) =>
       resolveTargetStream(target, "execStream", (plan) => input.service.execStream(plan, target, command)),
     inspect: (target) => resolveTarget(target, "inspect", (plan) => input.service.inspect(plan, target)),
+    locateVolume: (ref) =>
+      requireDataPlane("locateVolume").pipe(
+        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.locateVolume(ref)))),
+      ),
     observeVolume: (target, destination) =>
       resolveTarget(target, "observeVolume", (plan) =>
         Effect.gen(function* () {
@@ -187,9 +192,11 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       requireDataPlane("listVolumes").pipe(
         Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.listVolumes(filter)))),
       ),
-    removeVolume: (ref) =>
+    removeVolume: (ref, expectedGeneration) =>
       requireDataPlane("removeVolume").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.removeVolume(ref)))),
+        Effect.flatMap((dataPlane) =>
+          before.pipe(Effect.flatMap(() => dataPlane.removeVolume(ref, expectedGeneration))),
+        ),
       ),
     copyToService: (target, spec) =>
       requireDataPlane("copyToService").pipe(

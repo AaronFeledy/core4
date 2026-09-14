@@ -64,6 +64,10 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
 });
 
 const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
+  locateVolume: (ref) => {
+    calls.push({ name: "locateVolume", args: [ref] });
+    return Effect.succeed({ coordinationKey: '["endpoint:test","data"]', nativeName: ref.store });
+  },
   adoptVolume: (target) => {
     calls.push({ name: "adoptVolume", args: [target] });
     return Effect.succeed({ ref: { app: target.app, store: "actual-native-volume" }, provenance: "legacy" });
@@ -294,14 +298,19 @@ describe("resolved provider operations", () => {
     expect(calls.filter((call) => call.name !== "before").every((call) => call.args[0] === plan)).toBe(true);
   });
 
-  test("runs before and delegates all ten data-plane members with their arguments", async () => {
+  test("runs before and delegates all data-plane members with their arguments", async () => {
     // Given
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));
     const runSpec = { image: "alpine", command: ["true"] };
     const volume = { app, store: "data" };
     const snapshotSpec = { volume, snapshotId: "snap" };
-    const restoreSpec = { snapshot: { provider: ProviderId.make("test"), id: "snap" }, target: volume };
+    const generation = "00000000-0000-4000-8000-000000000001";
+    const restoreSpec = {
+      snapshot: { provider: ProviderId.make("test"), id: "snap" },
+      target: volume,
+      expectedTargetGeneration: generation,
+    };
     const copyIn = { sourcePath: AbsolutePath.make("/tmp/in"), targetPath: PortablePath.make("/tmp/out") };
     const copyOut = { sourcePath: PortablePath.make("/tmp/out") };
     const artifact = { providerId: ProviderId.make("test"), ref: "image" };
@@ -313,20 +322,22 @@ describe("resolved provider operations", () => {
     await Effect.runPromise(Effect.scoped(ops.snapshotVolume(snapshotSpec)));
     await Effect.runPromise(Effect.scoped(ops.restoreVolume(restoreSpec)));
     await Effect.runPromise(ops.listVolumes({ app }));
-    await Effect.runPromise(ops.removeVolume(volume));
+    await Effect.runPromise(ops.locateVolume(volume));
+    await Effect.runPromise(ops.removeVolume(volume, generation));
     await Effect.runPromise(Effect.scoped(ops.copyToService(target, copyIn)));
     await Effect.runPromise(Effect.scoped(ops.copyFromService(target, copyOut).pipe(Stream.runDrain)));
     await Effect.runPromise(Effect.scoped(ops.exportArtifact(artifact).pipe(Stream.runDrain)));
     await Effect.runPromise(Effect.scoped(ops.importArtifact(data)));
 
     // Then
-    expect(calls.filter(({ name }) => name === "before")).toHaveLength(10);
+    expect(calls.filter(({ name }) => name === "before")).toHaveLength(11);
     expect(calls.filter(({ name }) => name !== "before").map(({ name }) => name)).toEqual([
       "run",
       "runStream",
       "snapshotVolume",
       "restoreVolume",
       "listVolumes",
+      "locateVolume",
       "removeVolume",
       "copyToService",
       "copyFromService",
@@ -366,10 +377,15 @@ describe("resolved provider operations", () => {
       Effect.scoped(ops.runStream({ image: "alpine", command: ["true"] }).pipe(Stream.runDrain)),
       Effect.scoped(ops.snapshotVolume({ volume })),
       Effect.scoped(
-        ops.restoreVolume({ snapshot: { provider: ProviderId.make("test"), id: "x" }, target: volume }),
+        ops.restoreVolume({
+          snapshot: { provider: ProviderId.make("test"), id: "x" },
+          target: volume,
+          expectedTargetGeneration: "00000000-0000-4000-8000-000000000001",
+        }),
       ),
       ops.listVolumes({ app }),
-      ops.removeVolume(volume),
+      ops.locateVolume(volume),
+      ops.removeVolume(volume, "00000000-0000-4000-8000-000000000001"),
       Effect.scoped(
         ops.copyToService(target, {
           sourcePath: AbsolutePath.make("/tmp/in"),
@@ -389,7 +405,7 @@ describe("resolved provider operations", () => {
     const exits = await Promise.all(failures.map((failure) => Effect.runPromiseExit(failure)));
 
     // Then
-    expect(exits).toHaveLength(10);
+    expect(exits).toHaveLength(11);
     for (const exit of exits) {
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit) || exit.cause._tag !== "Fail")
