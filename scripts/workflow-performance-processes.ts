@@ -1,6 +1,8 @@
 import { readFile, readdir, readlink, stat } from "node:fs/promises";
 import { PerformanceStoreCleanupError } from "./workflow-performance-stores.ts";
 
+export const HOST_PROXY_WORKER_ARGV = "__internal:host-proxy-worker";
+
 export type PerformanceProcess = {
   readonly pid: number;
   readonly uid: number;
@@ -32,15 +34,18 @@ export const readPerformanceProcess = async (pid: number): Promise<PerformancePr
   }
 };
 
-export const isPerformanceRuntimeHelper = (snapshot: PerformanceProcess, root: string): boolean =>
-  (snapshot.executable === `${root}/runtime/bin/podman` && snapshot.argv.length === 1) ||
-  (snapshot.executable === `${root}/runtime/bin/conmon` &&
-    snapshot.argv.some((arg) => arg === "--exec" || arg === "-e") &&
-    snapshot.argv[snapshot.argv.indexOf("-b") + 1]?.startsWith(
-      `${root}/runtime/storage/overlay-containers/`,
-    ) === true) ||
-  (snapshot.executable === `${root}/runtime/bin/fuse-overlayfs` &&
-    snapshot.argv.some((arg) => arg.includes(`${root}/runtime/storage/`)));
+export const environTouchesPerformanceRoot = (environ: string, root: string): boolean =>
+  environ
+    .split("\0")
+    .some((entry) => entry === `LANDO_USER_DATA_ROOT=${root}` || entry === `XDG_RUNTIME_DIR=${root}`);
+
+export const isPerformanceRuntimeHelper = (
+  snapshot: PerformanceProcess,
+  root: string,
+  environ = "",
+): boolean =>
+  snapshot.executable.startsWith(`${root}/runtime/`) ||
+  (snapshot.argv.includes(HOST_PROXY_WORKER_ARGV) && environTouchesPerformanceRoot(environ, root));
 
 export const signalPerformanceProcess = async (
   snapshot: PerformanceProcess,
@@ -59,6 +64,15 @@ export const signalPerformanceProcess = async (
   signal(snapshot.pid);
 };
 
+const readProcessEnviron = async (pid: number): Promise<string> => {
+  try {
+    return await readFile(`/proc/${pid}/environ`, "utf8");
+  } catch (cause) {
+    if (isAbsentProcessError(cause)) return "";
+    throw cause;
+  }
+};
+
 export const stopPerformanceHelpers = async (root: string): Promise<void> => {
   const uid = process.getuid?.();
   if (uid === undefined) throw new PerformanceStoreCleanupError("Cannot establish process ownership");
@@ -67,7 +81,9 @@ export const stopPerformanceHelpers = async (root: string): Promise<void> => {
     try {
       if ((await stat(`/proc/${entry}`)).uid !== uid) continue;
       const snapshot = await readPerformanceProcess(Number(entry));
-      if (snapshot === undefined || !isPerformanceRuntimeHelper(snapshot, root)) continue;
+      if (snapshot === undefined) continue;
+      const environ = await readProcessEnviron(snapshot.pid);
+      if (!isPerformanceRuntimeHelper(snapshot, root, environ)) continue;
       await signalPerformanceProcess(snapshot, readPerformanceProcess, (pid) => {
         try {
           process.kill(pid, "SIGTERM");
