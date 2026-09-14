@@ -174,6 +174,59 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
   }
 };
 
+export const versionCommand = (family: SqlFamily, creds: SqlCommandCreds): ReadonlyArray<string> => {
+  switch (family) {
+    case "mysql":
+    case "mariadb":
+      return mysqlClient(family, creds, ["-N", "-B", "-e", "SELECT VERSION()"]);
+    case "postgres":
+      return postgresClient(creds, ["-tAc", "SHOW server_version"]);
+    case "mongodb":
+      return mongoShell(`--eval=${quoteShell("print(db.version())")}`);
+    case "mssql":
+      return [
+        "sqlcmd",
+        "-U",
+        "sa",
+        "-d",
+        creds.database,
+        "-h",
+        "-1",
+        "-W",
+        "-Q",
+        "SET NOCOUNT ON; SELECT CONVERT(varchar(128), SERVERPROPERTY('ProductVersion'))",
+      ];
+    default:
+      return assertNever(family);
+  }
+};
+
+const FAMILY_MARKERS = {
+  mysql: /mysql/iu,
+  mariadb: /mariadb/iu,
+  postgres: /postgres(?:ql)?/iu,
+  mongodb: /mongo(?:db)?/iu,
+  mssql: /(?:microsoft sql server|mssql)/iu,
+} as const satisfies Record<SqlFamily, RegExp>;
+
+export const parseObservedVersion = (family: SqlFamily, stdout: string): string | undefined => {
+  const version = stdout.trim();
+  if (
+    version.length === 0 ||
+    version.length > 128 ||
+    version.includes("\n") ||
+    version.includes("\r") ||
+    !/^\d+(?:\.\d+)+(?:[ +()A-Za-z0-9._-]*)$/u.test(version)
+  ) {
+    return undefined;
+  }
+  if (family === "mariadb" && !FAMILY_MARKERS.mariadb.test(version)) return undefined;
+  for (const [candidate, marker] of Object.entries(FAMILY_MARKERS)) {
+    if (candidate !== family && marker.test(version)) return undefined;
+  }
+  return version;
+};
+
 export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): ReadonlyArray<string> => {
   switch (family) {
     case "mysql":

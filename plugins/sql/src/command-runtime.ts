@@ -65,16 +65,54 @@ export const runDbCommand = (input: DbCommandInput) =>
                 { command, ...(env === undefined ? {} : { env }) },
               )
               .pipe(Effect.map((result) => ({ ok: result.exitCode === 0, stdout: result.stdout }))),
-          start: (service) =>
-            provider.start({ app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned }),
-          stop: (service) =>
-            provider.stop({ app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned }),
+          resume: (service, identity) => {
+            const resume = provider.resume;
+            return resume === undefined
+              ? Effect.fail(
+                  new SqlRecoveryUnavailableError({
+                    message: `Cannot safely resume ${service} for recovery observation.`,
+                    service,
+                    reason:
+                      "The selected runtime provider cannot resume an exact inspected container identity.",
+                    remediation:
+                      "Start the unchanged database service manually, create a logical export, then retry.",
+                  }),
+                )
+              : resume(
+                  { app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned },
+                  identity,
+                );
+          },
+          suspend: (service, identity) => {
+            const suspend = provider.suspend;
+            return suspend === undefined
+              ? Effect.fail(
+                  new SqlRecoveryUnavailableError({
+                    message: `Cannot safely return ${service} to its prior stopped state.`,
+                    service,
+                    reason:
+                      "The selected runtime provider cannot stop an exact inspected container identity.",
+                    remediation: "Leave the database stopped and create a logical export before recovery.",
+                  }),
+                )
+              : suspend(
+                  { app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned },
+                  identity,
+                );
+          },
           inspect: (service) =>
             provider
               .inspect({ app: AppId.make(plan.id), service: ServiceName.make(service), plan: planned })
               .pipe(
                 Effect.map((info) => ({
+                  status:
+                    info.containerId === undefined
+                      ? "missing"
+                      : info.status === "running" || info.state === "running"
+                        ? "running"
+                        : "stopped",
                   running: info.status === "running" || info.state === "running",
+                  ...(info.containerId === undefined ? {} : { containerId: info.containerId }),
                   ...(info.imageIdentity === undefined ? {} : { imageIdentity: info.imageIdentity }),
                 })),
               ),
