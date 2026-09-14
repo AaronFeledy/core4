@@ -9,6 +9,8 @@ import {
   type PortablePath,
   VolumeIdentity,
   type VolumeInfo,
+  VolumeLocator,
+  type VolumeRef,
 } from "@lando/sdk/schema";
 import type { ExecResult, ProviderError } from "@lando/sdk/services";
 
@@ -105,6 +107,43 @@ const coordinationKey = (provider: VolumeObservationProvider, name: string) =>
     }
     return undefined;
   }).pipe(Effect.mapError(() => failure(provider.providerId)));
+
+export const locateVolume = (
+  provider: VolumeObservationProvider,
+  ref: VolumeRef,
+): Effect.Effect<typeof VolumeLocator.Type, VolumeOperationError> =>
+  Effect.gen(function* () {
+    const endpointNamespace = provider.endpointNamespace;
+    const request = provider.api.request;
+    if (endpointNamespace === undefined || request === undefined) {
+      return yield* Effect.fail(failure(provider.providerId, "locateVolume"));
+    }
+    const key = JSON.stringify([`endpoint:${endpointNamespace}`, ref.store]);
+    const response = yield* request({ method: "GET", path: `/volumes/${encodeURIComponent(ref.store)}` });
+    if (response.status === 404) {
+      return yield* Schema.decodeUnknown(VolumeLocator)({ coordinationKey: key, nativeName: ref.store });
+    }
+    if (response.status !== 200) return yield* Effect.fail(failure(provider.providerId, "locateVolume"));
+    const volume = yield* Schema.decodeUnknown(Schema.parseJson(Volume))(response.body);
+    if (volume.Name !== ref.store) return yield* Effect.fail(failure(provider.providerId, "locateVolume"));
+    const generation = volume.Labels?.["dev.lando.volume-instance"];
+    const ownerRoot = volume.Labels?.["dev.lando.volume-owner"];
+    return yield* Schema.decodeUnknown(VolumeLocator)({
+      coordinationKey: key,
+      nativeName: volume.Name,
+      ...(generation === undefined || ownerRoot === undefined
+        ? {}
+        : {
+            identity: {
+              coordinationKey: key,
+              nativeName: volume.Name,
+              generation,
+              ownerRoot,
+              origin: "created",
+            },
+          }),
+    });
+  }).pipe(Effect.mapError(() => failure(provider.providerId, "locateVolume")));
 
 const runWitness = (
   provider: VolumeObservationProvider,

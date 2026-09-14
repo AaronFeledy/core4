@@ -2,13 +2,49 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { AbsolutePath, AppId, PortablePath } from "@lando/sdk/schema";
-import { observeMountedVolume, volumeCreationOwnerLabels } from "../src/volume-observation.ts";
+import { locateVolume, observeMountedVolume, volumeCreationOwnerLabels } from "../src/volume-observation.ts";
 
 test("binds creation ownership only to canonical app identity", () => {
   expect(volumeCreationOwnerLabels(undefined)).toEqual({});
   expect(
     volumeCreationOwnerLabels({ appRoot: AbsolutePath.make("/canonical/root"), ownerKey: "owner" }),
   ).toEqual({ "dev.lando.volume-owner": "/canonical/root" });
+});
+
+test("keeps the configured endpoint and native name stable before and after creation", async () => {
+  // Given a configured provider endpoint whose volume appears after the first lookup.
+  let created = false;
+  const api = {
+    request: () =>
+      Effect.succeed(
+        created
+          ? {
+              status: 200,
+              body: JSON.stringify({
+                Name: "native-data",
+                Labels: {
+                  "dev.lando.volume-instance": "generation-two",
+                  "dev.lando.volume-owner": "/canonical/root",
+                },
+              }),
+            }
+          : { status: 404, body: "" },
+      ),
+  };
+  const provider = { providerId: "podman", endpointNamespace: "unix:///run/podman.sock", api };
+  const ref = { app: AppId.make("app"), store: "native-data", scope: "app" as const };
+
+  // When locating before creation and after the daemon reports the created generation.
+  const before = await Effect.runPromise(locateVolume(provider, ref));
+  created = true;
+  const after = await Effect.runPromise(locateVolume(provider, ref));
+
+  // Then both observations coordinate on the actual native volume, never app/root hashes.
+  expect(before.coordinationKey).toBe(after.coordinationKey);
+  expect(before.nativeName).toBe("native-data");
+  expect(before.identity).toBeUndefined();
+  expect(after.identity?.generation).toBe("generation-two");
+  expect(after.identity?.coordinationKey).toBe(before.coordinationKey);
 });
 
 test("observes the native volume at the destination rather than the planned store name", async () => {
