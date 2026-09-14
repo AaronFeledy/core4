@@ -14,7 +14,16 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   enabled: true,
   entry: "./src/index.ts",
   contributes: {
-    commands: ["db:import", "db:export", "db:snapshot", "db:snapshots", "db:restore", "db:reset", "db:seed"],
+    commands: [
+      "db:import",
+      "db:export",
+      "db:snapshot",
+      "db:snapshots",
+      "db:snapshots:prune",
+      "db:restore",
+      "db:reset",
+      "db:seed",
+    ],
   },
 });
 
@@ -26,6 +35,7 @@ export const plugin = definePlugin({
     ["db:export", () => import("./commands/export.ts").then((module) => module.spec)],
     ["db:snapshot", () => import("./commands/snapshot.ts").then((module) => module.spec)],
     ["db:snapshots", () => import("./commands/snapshots.ts").then((module) => module.spec)],
+    ["db:snapshots:prune", () => import("./commands/prune.ts").then((module) => module.spec)],
     ["db:restore", () => import("./commands/restore.ts").then((module) => module.spec)],
     ["db:reset", () => import("./commands/reset.ts").then((module) => module.spec)],
     ["db:seed", () => import("./commands/seed.ts").then((module) => module.spec)],
