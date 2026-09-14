@@ -92,6 +92,34 @@ describe("planUpdates", () => {
     expect(plan.hasFailures).toBe(true);
   });
 
+  test("core-only selection still blocks when the current plugin set cannot support the target", () => {
+    const plan = planUpdates({
+      currentCoreVersion: "4.1.0",
+      targetCoreVersion: "5.0.0",
+      selection: "core",
+      plugins: [
+        {
+          name: "installed",
+          currentVersion: "1.0.0",
+          currentRequires: { "@lando/core": "^4.0.0" },
+          requestedSelector: "latest",
+          trusted: true,
+        },
+      ],
+    });
+
+    expect(plan.rows).toEqual([
+      {
+        kind: "core",
+        currentVersion: "4.1.0",
+        targetVersion: "5.0.0",
+        status: "blocked",
+        reason: "plugin-compatibility",
+      },
+    ]);
+    expect(plan.hasFailures).toBe(true);
+  });
+
   test("rejects metadata identity mismatches, downgrades, major upgrades, and incompatible candidates", () => {
     const makePlugin = (
       name: string,

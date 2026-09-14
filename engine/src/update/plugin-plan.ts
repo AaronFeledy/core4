@@ -149,7 +149,7 @@ const planPlugin = (
     return { ...held(plugin, "downgrade"), targetVersion, status: "failed" };
   }
   if (current === targetVersion) {
-    return { ...held(plugin, "up-to-date"), targetVersion, status: "unchanged" };
+    return { ...held(plugin, "up-to-date"), targetVersion: current, status: "unchanged" };
   }
   if (!supportsCore(advertised.requires, currentCoreVersion)) {
     return { ...held(plugin, "current-core-incompatible"), targetVersion };
@@ -169,7 +169,7 @@ const planPlugin = (
 };
 
 export const planUpdates = (input: PlanUpdatesInput): UpdatePlan => {
-  const combined = input.selection === "all" && input.currentCoreVersion !== input.targetCoreVersion;
+  const combined = input.selection !== "plugins" && input.currentCoreVersion !== input.targetCoreVersion;
   const plugins =
     input.selection === "core"
       ? []
