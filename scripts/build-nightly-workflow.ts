@@ -10,6 +10,11 @@ import { CI_PLATFORMS, type CiPlatform, LINUX_X64_CI_RUNNERS } from "./ci-platfo
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
 
+const linuxArm64 = CI_PLATFORMS.find((platform) => platform.id === "linux-arm64");
+if (linuxArm64 === undefined) {
+  throw new Error("CI_PLATFORMS is missing linux-arm64");
+}
+
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/nightly.yml");
 const GENERATED_HEADER =
@@ -289,11 +294,134 @@ ${bunSetupStep}
       - name: Verify committed runtime-bundle manifest resolves live
         run: bun run check:runtime-bundle-manifest --live`;
 
+const mysqlArmClientLinuxArm64Job = `
+  mysql-arm-client-linux-arm64:
+    runs-on: ${linuxArm64.runsOn}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+${bunSetupStep}
+
+${landoRootlessPrereqSteps}
+
+      - name: Build Linux arm64 binary
+        run: |
+          mkdir -p dist
+          bun run --filter='@lando/core' build:manifest
+          bun run --filter='@lando/core' build:log-file-helper
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target ${linuxArm64.bunTarget} --outfile ./dist/${linuxArm64.binaryName} --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/${linuxArm64.binaryName}
+          ./dist/${linuxArm64.binaryName} --version
+          test "$(uname -m)" = aarch64
+
+      - name: Isolate Lando roots
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+
+      - name: Configure rootless overlay storage
+        run: |
+          cat > "$RUNNER_TEMP/lando-storage.conf" <<EOF
+          [storage]
+          driver = "overlay"
+
+          [storage.options.overlay]
+          mount_program = "$RUNNER_TEMP/lando-data/runtime/bin/fuse-overlayfs"
+          EOF
+          echo "CONTAINERS_STORAGE_CONF=$RUNNER_TEMP/lando-storage.conf" >> "$GITHUB_ENV"
+
+      - name: Seed rootless containers user config
+        run: |
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\\n' > "$HOME/.config/containers/registries.conf"
+          fi
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\\n' > "$HOME/.config/containers/policy.json"
+          fi
+
+      - name: Prepare provider via lando setup against the published manifest
+        run: |
+          test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
+          test -z "\${LANDO_RUNTIME_BUNDLE_URL:-}"
+          test -z "\${LANDO_RUNTIME_BUNDLE_SHA256:-}"
+          export XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          dist/${linuxArm64.binaryName} setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Verify the published bundle downloaded, verified, and installed
+        run: |
+          for _ in {1..30}; do
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
+            sleep 1
+          done
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          test -x "$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          if ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
+            echo "::error title=runtime-bundle-portability::managed podman has non-portable or missing shared libraries"
+            ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" || true
+            exit 1
+          fi
+
+      - name: Wrap managed Podman for ARM MySQL client tests
+        run: |
+          wrapper="$RUNNER_TEMP/lando-managed-podman"
+          printf '%s\\n' '#!/bin/sh' 'set -eu' \
+            "export CONTAINERS_CONF=\\"$LANDO_USER_DATA_ROOT/runtime/config/containers.conf\\"" \
+            "exec \\"$LANDO_USER_DATA_ROOT/runtime/bin/podman\\" --root \\"$LANDO_USER_DATA_ROOT/runtime/storage\\" --runroot \\"$LANDO_USER_DATA_ROOT/runtime/run\\" --config \\"$LANDO_USER_DATA_ROOT/runtime/config\\" \\\"\\$@\\\"" \
+            > "$wrapper"
+          chmod 0755 "$wrapper"
+          case "$wrapper" in /*) ;; *) echo "wrapper must be absolute" >&2; exit 1 ;; esac
+          test -x "$wrapper"
+          "$wrapper" --version
+          echo "LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper" >> "$GITHUB_ENV"
+
+      - name: Run native ARM MySQL client tests
+        run: bun test plugins/service-lando/test/mysql-arm-client.integration.test.ts
+        env:
+          LANDO_CONFIG__default_provider_id: lando
+
+      - name: Teardown managed Lando runtime
+        if: always()
+        run: |
+          dist/${linuxArm64.binaryName} poweroff || true
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          if test -x "$LANDO_PODMAN"; then
+            "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-mysql-arm-" | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" rm -f || true
+            "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-mysql-arm-' | xargs -r "$LANDO_PODMAN" "\${LANDO_PODMAN_ARGS[@]}" network rm || true
+          fi
+
+      - name: Collect ARM MySQL client diagnostics
+        if: failure()
+        run: |
+          mkdir -p mysql-arm-client-diagnostics
+          if test -f "$LANDO_USER_DATA_ROOT/runtime/run/service.log"; then
+            cp "$LANDO_USER_DATA_ROOT/runtime/run/service.log" mysql-arm-client-diagnostics/lando-managed-service.log || true
+          fi
+          if test -d "$LANDO_USER_CACHE_ROOT/logs"; then
+            cp -r "$LANDO_USER_CACHE_ROOT/logs" mysql-arm-client-diagnostics/lando-logs || true
+          fi
+          journalctl --no-pager --since "-30 minutes" > mysql-arm-client-diagnostics/journalctl.log 2>&1 || true
+
+      - name: Upload ARM MySQL client diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mysql-arm-client-diagnostics-linux-arm64
+          path: mysql-arm-client-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7`;
+
 export const renderNightlyWorkflow = (): string => {
   const jobsYaml = [
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
     publishedManifestSetupJob,
+    mysqlArmClientLinuxArm64Job,
     nightlyTierUnitTestsJob,
     refreshTestTimingsJob,
     runtimeBundleManifestLiveJob,

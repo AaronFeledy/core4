@@ -275,6 +275,34 @@ describe("ci workflow", () => {
     expect(published).toContain("libgpgme|libassuan|not found");
   });
 
+  test("runs native ARM MySQL client tests on nightly linux-arm64 with managed Podman", async () => {
+    const workflow = await readNightlyWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const arm = findIndentedBlock(jobs, "mysql-arm-client-linux-arm64", 2);
+
+    expect(arm).toContain("    runs-on: ubuntu-24.04-arm");
+    expect(arm).toContain("    timeout-minutes: 90");
+    expect(arm).toContain("      - name: Build Linux arm64 binary");
+    expect(arm).toContain("          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64");
+    expect(arm).toContain('          test "$(uname -m)" = aarch64');
+    expect(arm).toContain("      - name: Isolate Lando roots");
+    expect(arm).toContain("      - name: Prepare provider via lando setup against the published manifest");
+    expect(arm).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
+    expect(arm).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');
+    expect(arm).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_SHA256:-}"');
+    expect(arm).toContain("      - name: Wrap managed Podman for ARM MySQL client tests");
+    expect(arm).toContain('          echo "LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper" >> "$GITHUB_ENV"');
+    expect(arm).toContain(
+      "        run: bun test plugins/service-lando/test/mysql-arm-client.integration.test.ts",
+    );
+    expect(arm).toContain("      - name: Teardown managed Lando runtime");
+    expect(arm).toContain("name=lando-mysql-arm-");
+    expect(arm).not.toContain("podman system prune");
+    expect(arm).not.toContain("LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST");
+    expect(arm.indexOf("Build Linux arm64 binary")).toBeLessThan(arm.indexOf("Wrap managed Podman"));
+    expect(arm.indexOf("Wrap managed Podman")).toBeLessThan(arm.indexOf("Run native ARM MySQL client tests"));
+  });
+
   test("refreshes committed unit-test timings on nightly", async () => {
     const workflow = await readNightlyWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
