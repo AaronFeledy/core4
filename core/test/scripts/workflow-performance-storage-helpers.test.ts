@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { acquirePerformanceStores } from "../../../scripts/workflow-performance-stores.ts";
 
-test.each([0, 1])("keeps helper cleanup before releasing executable roots when exit=%s", async (exitCode) => {
+test.each([
+  [0, 0],
+  [0, 1],
+  [1, 0],
+  [1, 1],
+])("finalizes storage helpers when storage=%s and helper=%s", async (storageExit, helperExit) => {
   // Given an owned store whose namespace deletion can spawn another pause process.
   const root = await mkdtemp(join(tmpdir(), "perf-helper-"));
   const stores = await acquirePerformanceStores(root, "sample");
@@ -21,7 +26,7 @@ test.each([0, 1])("keeps helper cleanup before releasing executable roots when e
         expect(existsSync(bin)).toBe(true);
         return {
           id: command.id,
-          exitCode: command.id === "cleanup:storage-helpers" ? exitCode : 0,
+          exitCode: command.id === "cleanup:storage-helpers" ? helperExit : storageExit,
           durationMs: 0,
           stdout: "",
           stderr: "",
@@ -31,9 +36,12 @@ test.each([0, 1])("keeps helper cleanup before releasing executable roots when e
     );
     // Then helper cleanup is mandatory, and failure retains its executable and runtime roots.
     expect(commands).toEqual(["cleanup:storage", "cleanup:storage-helpers"]);
-    expect(failures.map((failure) => failure.id)).toEqual(exitCode === 0 ? [] : ["cleanup:storage-helpers"]);
-    expect(existsSync(bin)).toBe(exitCode !== 0);
-    expect(existsSync(stores.runtimeRoot)).toBe(exitCode !== 0);
+    expect(failures.map((failure) => failure.id)).toEqual([
+      ...(storageExit === 0 ? [] : ["cleanup:storage"]),
+      ...(helperExit === 0 ? [] : ["cleanup:storage-helpers"]),
+    ]);
+    expect(existsSync(bin)).toBe(storageExit !== 0 || helperExit !== 0);
+    expect(existsSync(stores.runtimeRoot)).toBe(storageExit !== 0 || helperExit !== 0);
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(stores.runtimeRoot, { recursive: true, force: true });

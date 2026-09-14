@@ -87,7 +87,6 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
             storage,
           ],
         });
-        if (result.exitCode !== 0) return [result];
         const helpers = await runCommand({
           ...command,
           id: "cleanup:storage-helpers",
@@ -99,7 +98,8 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
           ],
           env: childEnv({ ...command.env }),
         });
-        if (helpers.exitCode !== 0) return [helpers];
+        const failures = [result, helpers].filter((step) => step.exitCode !== 0);
+        if (failures.length > 0) return failures;
       }
       for (const target of targets.slice(1)) await rm(target, { recursive: true, force: true });
       await rm(runtimeRoot, { recursive: true });
