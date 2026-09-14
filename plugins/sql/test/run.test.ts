@@ -436,7 +436,7 @@ describe("executeDbCommand", () => {
     expect(Exit.isSuccess(allowed)).toBe(true);
     expect(harness.snapshots()).toHaveLength(1);
     expect(harness.snapshots()[0]?.metadata?.recoveryReason).toBe("reset");
-    const exec = harness.execs()[0];
+    const exec = harness.execs().find((entry) => entry.command.join(" ").includes("DROP DATABASE"));
     expect(exec?.command[0]).toBe("mysql");
     expect(exec?.command.slice(0, 3)).toEqual(["mysql", "-u", "root"]);
     expect(exec?.env?.MYSQL_PWD).toBe(rootPassword);
@@ -509,13 +509,56 @@ describe("executeDbCommand", () => {
     expect(metadata?.recoveryReason).toBe("manual");
   });
 
-  test("uses the effective artifact version when the service type is unversioned", async () => {
-    const harness = makeSqlTestDeps({ password: SECRET, type: "mysql", version: "8.0" });
+  test("records the observed database version instead of the planned artifact version", async () => {
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "mysql:8.0",
+      observedVersion: "8.4.1",
+    });
 
     const exit = await run(harness.deps, { action: "snapshot", yes: false });
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(harness.snapshots()[0]?.metadata?.version).toBe("8.0");
+    expect(harness.snapshots()[0]?.metadata?.version).toBe("8.4.1");
+  });
+
+  for (const [type, expectedCommand] of [
+    ["mysql:8.0", "SELECT VERSION()"],
+    ["mariadb:11.4", "SELECT VERSION()"],
+    ["postgres:16", "SHOW server_version"],
+    ["mongodb:7", "db.version()"],
+    ["mssql:2022", "SERVERPROPERTY('ProductVersion')"],
+  ] as const) {
+    test(`observes ${type} with its family-native version query`, async () => {
+      const observedVersion = type.startsWith("mariadb") ? "11.4.3-MariaDB" : "16.0.1";
+      const harness = makeSqlTestDeps({ password: SECRET, type, observedVersion });
+
+      const exit = await run(harness.deps, { action: "snapshot", yes: false });
+
+      expect(Exit.isSuccess(exit)).toBe(true);
+      const query = harness.execs().find((entry) => entry.command.join(" ").includes(expectedCommand));
+      expect(query).toBeDefined();
+      expect(JSON.stringify(query?.command)).not.toContain(SECRET);
+      expect(query?.env).toBeDefined();
+    });
+  }
+
+  test("fails closed when the observed database version is malformed", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, observedVersion: "not-a-version" });
+
+    const exit = await run(harness.deps, { action: "snapshot", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(harness.snapshots()).toEqual([]);
+  });
+
+  test("fails closed when a mysql target reports a MariaDB version", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, observedVersion: "11.4.3-MariaDB" });
+
+    const exit = await run(harness.deps, { action: "snapshot", yes: false });
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(harness.snapshots()).toEqual([]);
   });
 
   test("creates zstd snapshots when explicitly requested", async () => {
@@ -548,7 +591,7 @@ describe("executeDbCommand", () => {
     const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(harness.lifecycle()).toEqual(["lock", "stop", "snapshot", "restore", "start"]);
+    expect(harness.lifecycle()).toEqual(["lock", "suspend", "snapshot", "restore", "resume"]);
     expect(harness.countAttempts()).toBe(2);
   });
 
@@ -565,7 +608,7 @@ describe("executeDbCommand", () => {
       expect(error.cause).toBeInstanceOf(FakeRestoreError);
       expect(error.recoverySnapshotId).toMatch(/^snap-/u);
     }
-    expect(harness.lifecycle()).toEqual(["lock", "stop", "snapshot", "restore"]);
+    expect(harness.lifecycle()).toEqual(["lock", "suspend", "snapshot", "restore"]);
   });
 
   test("does not start a previously stopped service after successful restore", async () => {
@@ -577,7 +620,7 @@ describe("executeDbCommand", () => {
     const exit = await run(harness.deps, { action: "restore", snapshotId: "before-change", yes: true });
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(harness.lifecycle()).toEqual(["lock", "snapshot", "restore"]);
+    expect(harness.lifecycle()).toEqual(["lock", "resume", "suspend", "snapshot", "restore"]);
   });
 
   test("fails closed before restoring a snapshot from another database version", async () => {
@@ -623,7 +666,7 @@ describe("executeDbCommand", () => {
     const exit = await run(harness.deps, { action: "seed", snapshotId: "seed-source", yes: false });
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(harness.lifecycle()).toEqual(["lock", "stop", "restore", "start"]);
+    expect(harness.lifecycle()).toEqual(["lock", "suspend", "restore", "resume"]);
   });
 
   test("quarantines an interrupted seed instead of trusting an empty database", async () => {

@@ -6,7 +6,6 @@ export type SqlTestOptions = {
   readonly password: string;
   readonly rootPassword?: string;
   readonly type?: string;
-  readonly version?: string;
   readonly environment?: Readonly<Record<string, string>>;
   readonly countStdout?: string;
   readonly countFails?: boolean;
@@ -15,7 +14,10 @@ export type SqlTestOptions = {
   readonly restoreFails?: boolean;
   readonly startFails?: boolean;
   readonly initiallyRunning?: boolean;
+  readonly runtimeExists?: boolean;
   readonly omitImageIdentity?: boolean;
+  readonly observedVersion?: string;
+  readonly containerId?: string;
   readonly extraServices?: ReadonlyArray<ExtraSqlService>;
   readonly storage?: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
   readonly seedStatus?: "fresh" | "in-progress" | "seeded" | "failed";
@@ -32,7 +34,7 @@ export type RecordedSnapshot = {
   readonly label?: string;
   readonly metadata?: SnapshotMetadata;
 };
-export type SqlLifecycleStep = "lock" | "snapshot" | "stop" | "restore" | "start";
+export type SqlLifecycleStep = "lock" | "snapshot" | "stop" | "restore" | "start" | "resume" | "suspend";
 export type SqlTestHarness = {
   readonly root: string;
   readonly deps: SqlCommandDeps;

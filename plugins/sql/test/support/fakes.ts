@@ -41,6 +41,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   let countAttempts = 0;
   let seedStatus = options.seedStatus ?? "fresh";
   let seedOperationId = "fixture-operation";
+  let runtimeRunning = options.initiallyRunning !== false;
   const storage = options.storage ?? [
     { store: "sql-app_database_data", target: fixtureDataDestination(options.type ?? "mysql:8.0") },
   ];
@@ -48,7 +49,6 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     database: {
       name: "database",
       type: options.type ?? "mysql:8.0",
-      ...(options.version === undefined ? {} : { version: options.version }),
       environment: options.environment ?? {
         MYSQL_USER: "lando",
         MYSQL_PASSWORD: options.password,
@@ -161,7 +161,16 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       }),
     exec: (_service, command, env) => {
       const joined = command.join(" ");
+      const isVersion =
+        joined.includes("SELECT VERSION()") ||
+        joined.includes("SHOW server_version") ||
+        joined.includes("db.version()") ||
+        joined.includes("SERVERPROPERTY('ProductVersion')");
       const isCount = joined.includes("information_schema") || joined.includes("COUNT(*)");
+      if (isVersion) {
+        execs.push({ command, ...(env === undefined ? {} : { env }) });
+        return Effect.succeed({ ok: true, stdout: options.observedVersion ?? "8.0" });
+      }
       if (isCount) {
         return Effect.sync(() => {
           countAttempts += 1;
@@ -175,20 +184,24 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       return Effect.succeed({ ok: options.execFails !== true, stdout: "" });
     },
     confirm: () => Effect.succeed(false),
-    start: () =>
+    resume: () =>
       Effect.gen(function* () {
-        lifecycle.push("start");
-        if (options.startFails === true) {
-          return yield* Effect.fail(new FakeStartError());
-        }
+        lifecycle.push("resume");
+        if (options.startFails === true) return yield* Effect.fail(new FakeStartError());
+        runtimeRunning = true;
       }),
-    stop: () =>
+    suspend: () =>
       Effect.sync(() => {
-        lifecycle.push("stop");
+        lifecycle.push("suspend");
+        runtimeRunning = false;
       }),
     inspect: () =>
       Effect.succeed({
-        running: options.initiallyRunning !== false,
+        status: options.runtimeExists === false ? "missing" : runtimeRunning ? "running" : "stopped",
+        running: runtimeRunning,
+        ...(options.runtimeExists === false
+          ? {}
+          : { containerId: options.containerId ?? "container:database" }),
         ...(options.omitImageIdentity === true ? {} : { imageIdentity: "sha256:mysql-runtime" }),
       }),
     inspectVolume: (_service, store) =>
