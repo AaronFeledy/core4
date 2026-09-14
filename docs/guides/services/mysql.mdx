@@ -88,6 +88,6 @@ New stores use `<app>-<service>-mysql-data`, independent of the server version. 
 
 Keeping a volume's identity is not an upgrade compatibility check. Existing databases still depend on the SQL recovery guard for changed or unknown initialized series; do not treat a type change as a safe datadir upgrade.
 
-Oracle MySQL clients installed into PHP services are amd64-only for all three series (8.0, 8.4, and 9.7). On arm64, their generated install commands exit non-zero with `Unsupported architecture` before installing anything. This is fail-closed behavior, not arm64 client support. See [Customize PHP](./php-customization.mdx).
+Oracle MySQL clients installed into PHP services use Oracle's signed Bookworm APT repository on amd64 and SHA256-pinned Oracle EL9 RPM payloads on Linux arm64 for all three series (8.0, 8.4, and 9.7). The arm64 support policy covers default `caching_sha2_password` authentication, not LDAP/SASL plugins. Live arm64 build, connection, and dump/restore verification is still pending. See [Customize PHP](./php-customization.mdx).
 
 </Guide>
