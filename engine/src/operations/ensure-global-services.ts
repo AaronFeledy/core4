@@ -164,10 +164,12 @@ export const ensureGlobalServicesRunning = (
     const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
 
     yield* Effect.scoped(
-      provider.apply(builtPlan, {
-        reconcile: false,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      }),
+      provider
+        .apply(builtPlan, {
+          reconcile: false,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        })
+        .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
     );
 
     const servicesStarted = yield* Effect.forEach(selected, (service) =>
@@ -192,3 +194,4 @@ export const ensureGlobalServicesRunning = (
 
     return { app: plan.name, servicesStarted };
   });
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
