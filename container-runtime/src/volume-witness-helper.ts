@@ -38,8 +38,7 @@ try {
       catch (error) { if (error.code === "ENOENT") return null; throw error; }
       try {
         const stat = fs.fstatSync(fd);
-        if (!stat.isFile() || (stat.mode & 4095) !== 384 || stat.uid !== process.getuid() ||
-            stat.gid !== process.getgid() || stat.size < 1 || stat.size > 8192) fail();
+        if (!stat.isFile() || (stat.mode & 4095) !== 384 || stat.size < 1 || stat.size > 8192) fail();
         const record = JSON.parse(fs.readFileSync(fd, "utf8"));
         const current = fs.lstatSync(witnessPath);
         if (current.ino !== stat.ino || current.dev !== stat.dev || !valid(record)) fail();

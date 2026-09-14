@@ -6,9 +6,23 @@ import { join } from "node:path";
 
 import { VOLUME_WITNESS_FILE, volumeWitnessCommand } from "../src/volume-witness-helper.ts";
 
-const invoke = async (root: string, ownerRoot: string, operation: "adopt" | "read" = "adopt") => {
+const invoke = async (
+  root: string,
+  ownerRoot: string,
+  operation: "adopt" | "read" = "adopt",
+  reportedIdentity?: { readonly uid: number; readonly gid: number },
+) => {
   const command = volumeWitnessCommand({ root, ownerRoot, operation, generation: randomUUID() });
-  const child = Bun.spawn([process.execPath, ...command.slice(1)], { stdout: "pipe", stderr: "pipe" });
+  const helperSource = command[2];
+  if (helperSource === undefined) throw new Error("Expected an inline volume witness helper");
+  const source =
+    reportedIdentity === undefined
+      ? helperSource
+      : `process.getuid = () => ${reportedIdentity.uid}; process.getgid = () => ${reportedIdentity.gid};\n${helperSource}`;
+  const child = Bun.spawn([process.execPath, command[1] ?? "-e", source, ...command.slice(3)], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [code, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
@@ -109,6 +123,22 @@ test("read-only observation does not create a missing witness", async () => {
     expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe("null");
     expect(await Bun.file(join(root, VOLUME_WITNESS_FILE)).exists()).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reads a mode-safe witness after a service normalizes its ownership", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-witness-owner-"));
+  try {
+    const adopted = await invoke(root, "/owner");
+    const read = await invoke(root, "/owner", "read", {
+      uid: (process.getuid?.() ?? 0) + 1,
+      gid: (process.getgid?.() ?? 0) + 1,
+    });
+    expect(adopted.code).toBe(0);
+    expect(read.code).toBe(0);
+    expect(read.stdout).toBe(adopted.stdout);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
