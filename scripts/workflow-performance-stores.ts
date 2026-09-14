@@ -101,7 +101,7 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
         const failures = [result, helpers].filter((step) => step.exitCode !== 0);
         if (failures.length > 0) return failures;
       }
-      for (const target of targets.slice(1)) await rm(target, { recursive: true, force: true });
+      for (const target of targets) await rm(target, { recursive: true, force: true });
       await rm(runtimeRoot, { recursive: true });
       return [];
     },

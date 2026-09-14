@@ -41,6 +41,9 @@ test.each([
       ...(helperExit === 0 ? [] : ["cleanup:storage-helpers"]),
     ]);
     expect(existsSync(bin)).toBe(storageExit !== 0 || helperExit !== 0);
+    expect(existsSync(join(stores.sampleRoot, "data/runtime/storage"))).toBe(
+      storageExit !== 0 || helperExit !== 0,
+    );
     expect(existsSync(stores.runtimeRoot)).toBe(storageExit !== 0 || helperExit !== 0);
   } finally {
     await rm(root, { recursive: true, force: true });
