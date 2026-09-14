@@ -60,7 +60,7 @@ const collectSecretStoreValues = (secretStore: Context.Tag.Service<typeof Secret
     const values = yield* Effect.all(
       ids.map((id) => secretStore.get(id).pipe(Effect.catchAll(() => Effect.succeed(undefined)))),
     );
-    return values.filter(nonEmpty);
+    return values.filter((value): value is string => value !== undefined && value.length > 0);
   });
 
 export const collectSecretEnvValues = (
@@ -114,7 +114,8 @@ const makeRedactorOptions = (
   secretValues: Iterable<string>,
   options: RedactionForProfileOptions | undefined,
 ): CreateRedactorOptions => ({
-  values: dedupeValues([...secretValues, ...collectOptionValues(options)]),
+  values: dedupeValues(collectOptionValues(options)),
+  authoritativeValues: [...secretValues],
   ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
 });
 

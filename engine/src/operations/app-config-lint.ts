@@ -1,7 +1,6 @@
 import { dirname } from "node:path";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { Effect, Either } from "effect";
-import { landofileRuntimeInputs } from "../composition.ts";
 import { compileEffectiveTooling } from "../planner/effective-tooling.ts";
 import { unknownEventError, unknownEventName, validEventNames } from "../planner/event-names.ts";
 
@@ -13,7 +12,7 @@ import type {
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import type { LintLandofileOptions } from "@lando/landofile/lint";
-import { lintLandofile } from "../services/landofile-live.ts";
+import { lintLandofile, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
 
@@ -32,8 +31,9 @@ export const appConfigLint = (
   Effect.gen(function* () {
     const result = yield* lintLandofile(options);
     if (!result.valid) return result;
+    const runtimeInputs = yield* scopedLandofileRuntimeInputs;
     const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
-      ...landofileRuntimeInputs(),
+      ...runtimeInputs,
       ...(options.templates === undefined ? {} : { templates: options.templates }),
     }).pipe(Effect.either);
     if (Either.isLeft(loaded)) {

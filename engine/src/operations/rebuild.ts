@@ -31,6 +31,7 @@ import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landof
 import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
@@ -88,6 +89,7 @@ const rebuildSelectedServices = (
       { discard: true },
     );
     const builtPlan = yield* withBuildProvider(builds.build(plan), provider);
+    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
     yield* Effect.scoped(
       provider.apply(builtPlan, {
         reconcile: true,
@@ -96,6 +98,7 @@ const rebuildSelectedServices = (
           services: { ...recordedPlan.services, ...builtPlan.services },
         },
         ...(signal === undefined ? {} : { signal }),
+        serviceEnvironment,
       }),
     );
     yield* withBuildProvider(

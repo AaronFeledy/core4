@@ -33,6 +33,7 @@ describe("npm include recipe-source port", () => {
         stateStore: makeTestLandofileStateStore(),
         ports: {
           resolveUserCacheRoot: () => cacheRoot,
+          resolveUserIncludesDir: () => cacheRoot,
           npmRecipeSource: {
             resolve: async (packageSpec) => {
               packageSpecs.push(packageSpec);

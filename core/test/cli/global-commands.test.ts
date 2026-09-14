@@ -36,6 +36,7 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  SecretStore,
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -140,7 +141,7 @@ const fakeServiceType = makeLegacyServiceTypeFake({
       provider,
       primary,
       artifact: { kind: "ref", ref: "lando-global-service:test" },
-      environment: {},
+      environment: { TOKEN: "${secret:GLOBAL_TOKEN}" },
       workingDirectory: PortablePath.make("/app"),
       appMount: {
         source: AbsolutePath.make(appRoot),
@@ -280,6 +281,12 @@ const makeHarness = async (
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),
+    Layer.succeed(SecretStore, {
+      id: "global-command-test",
+      get: () => Effect.succeed("resolved-global-token"),
+      has: () => Effect.succeed(true),
+      list: Effect.succeed(["GLOBAL_TOKEN"]),
+    }),
     AppPlannerLive.pipe(
       Layer.provide(
         Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
@@ -342,6 +349,18 @@ describe("meta:global command effects", () => {
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
       expect(harness.calls.apply[0]?.plan.root).toBe(AbsolutePath.make(join(harness.dataRoot, "global")));
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
+      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.calls.apply[0]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "${secret:GLOBAL_TOKEN}",
+      });
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {}).sort()).toEqual(["mail", "proxy"]);
       expect(harness.calls.apply.flatMap(({ plan }) => artifactRefs(plan)).sort()).toEqual([
         "built:mail",
@@ -824,6 +843,18 @@ describe("meta:global command effects", () => {
       expect(harness.calls.build).toHaveLength(1);
       expect(harness.calls.apply).toHaveLength(1);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(true);
+      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.calls.apply[0]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "${secret:GLOBAL_TOKEN}",
+      });
       expect(
         Object.values(harness.calls.apply[0]?.plan.services ?? {}).find(
           (service) => String(service.name) === "proxy",

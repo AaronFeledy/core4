@@ -1,6 +1,7 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
+import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
   CapabilityError,
   CommandAliasConflictError,
@@ -21,6 +22,7 @@ import type {
   ProviderUnavailableError,
   PublicationUnsupportedError,
   RouteInputError,
+  SecretNotFoundError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -93,7 +95,8 @@ export type GlobalRebuildError =
   | PluginManifestError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | SecretNotFoundError;
 
 export type GlobalRebuildServices =
   | AppPlanner
@@ -135,10 +138,12 @@ export const globalRebuild = (
     );
 
     const builtPlan = yield* builder.build(loaded.plan);
+    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
     yield* Effect.scoped(
       provider.apply(builtPlan, {
         reconcile: true,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
+        serviceEnvironment,
       }),
     );
 
