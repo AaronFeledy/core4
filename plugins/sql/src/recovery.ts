@@ -1,15 +1,15 @@
 import { Effect, Exit } from "effect";
 
-import { SqlRecoveryOperationError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import { SqlRecoveryOperationError } from "@lando/sdk/errors";
 import type { SnapshotMetadata } from "@lando/sdk/schema";
 
+import { resolveLockedPhysicalTarget } from "./recovery-adoption.ts";
 import {
   type SqlPhysicalContextInput,
   type SqlRecoveryContext,
   resolvePhysicalContext,
   resolvePhysicalTarget,
 } from "./recovery-target.ts";
-import { sameRuntime } from "./runtime-observation.ts";
 
 export type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery-target.ts";
 
@@ -27,27 +27,13 @@ export const withPhysicalVolumeLock = <A, E>(
   resolvePhysicalTarget(input).pipe(
     Effect.flatMap((target) =>
       input.deps.withVolumeLock(
-        target.identity.coordinationKey,
+        target.coordinationKey,
         resolvePhysicalTarget(input).pipe(
-          Effect.flatMap(
-            (lockedTarget): Effect.Effect<A, E | SqlRecoveryUnavailableError | unknown> =>
-              lockedTarget.identity.coordinationKey === target.identity.coordinationKey &&
-              lockedTarget.identity.generation === target.identity.generation &&
-              lockedTarget.identity.ownerRoot === target.identity.ownerRoot &&
-              lockedTarget.volume.ref.store === target.volume.ref.store &&
-              lockedTarget.identity.nativeName === target.identity.nativeName &&
-              sameRuntime(target.runtime, lockedTarget.runtime)
-                ? resolvePhysicalContext(input, lockedTarget).pipe(
-                    Effect.flatMap((context) => Effect.suspend(() => input.body(context))),
-                  )
-                : Effect.fail(
-                    new SqlRecoveryUnavailableError({
-                      message: `The physical volume for ${input.serviceName} changed while acquiring its lock.`,
-                      service: input.serviceName,
-                      reason: "The acquired lock belongs to a different volume or runtime instance.",
-                      remediation: "Retry after the concurrent lifecycle operation completes.",
-                    }),
-                  ),
+          Effect.flatMap((lockedTarget) => resolveLockedPhysicalTarget(input, target, lockedTarget)),
+          Effect.flatMap((identifiedTarget) =>
+            resolvePhysicalContext(input, identifiedTarget).pipe(
+              Effect.flatMap((context) => Effect.suspend(() => input.body(context))),
+            ),
           ),
         ),
       ),
@@ -66,6 +52,7 @@ export const runPhysicalOperation = <A, E>(input: SqlPhysicalOperation<A, E>) =>
     ...(input.label === undefined ? {} : { label: input.label }),
     ...(input.format === undefined ? {} : { format: input.format }),
     ...(input.preflight === undefined ? {} : { preflight: input.preflight }),
+    adoptLegacy: true,
     body: (context) =>
       Effect.gen(function* () {
         if (input.preflight !== undefined) yield* input.preflight(context);
