@@ -20,6 +20,7 @@ export type StageStreamInput<E, R> = {
   readonly scratchDir: string;
   readonly prefix: string;
   readonly expectedSha256?: string;
+  readonly expectedSizeBytes?: number;
 };
 
 export const stageVerifiedStream = <E, R>(
@@ -32,6 +33,7 @@ export const stageVerifiedStream = <E, R>(
       body: input.body,
       destinationPath: path,
       ...(input.expectedSha256 === undefined ? {} : { expectedSha256: input.expectedSha256 }),
+      ...(input.expectedSizeBytes === undefined ? {} : { expectedSizeBytes: input.expectedSizeBytes }),
     });
     return { path, verified };
   });

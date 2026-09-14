@@ -47,6 +47,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
 const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 
 const app = AppId.make("data-app");
@@ -112,18 +113,27 @@ const testTar = (payload: Uint8Array): Uint8Array => {
   return archive;
 };
 
-const compressionStreamFormat = (format: "tar.gz" | "tar.zst") => (format === "tar.gz" ? "gzip" : "zstd");
-
 const compressedTarFixture = async (
   payload: Uint8Array,
   format: "tar.gz" | "tar.zst",
 ): Promise<{ readonly archive: Uint8Array; readonly compressed: Uint8Array }> => {
   const archive = testTar(payload);
-  const compressed = new Uint8Array(
-    await new Response(
-      new Blob([archive]).stream().pipeThrough(new CompressionStream(compressionStreamFormat(format))),
-    ).arrayBuffer(),
+  const chunks = Array.from(
+    await Effect.runPromise(
+      encodeArchiveStream({
+        body: Stream.make(payload),
+        sizeBytes: payload.byteLength,
+        format,
+        path: "fixture",
+      }).pipe(Stream.runCollect),
+    ),
   );
+  const compressed = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    compressed.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
   return { archive, compressed };
 };
 
@@ -1236,7 +1246,10 @@ describe("DataMoverLive", () => {
         expect(result.handle.id).not.toBe("snap-one");
         expect(result.listed[0]?.label).toBe("snap-one");
         expect(result.listed).toHaveLength(1);
-        expect(result.listed[0]?.digest).toBe(sha256("volume-payload"));
+        const archivePath = join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.tar`);
+        const archiveBytes = await readFile(archivePath);
+        expect(result.listed[0]?.digest).toBe(sha256(archiveBytes));
+        expect(result.listed[0]?.sizeBytes).toBe(archiveBytes.byteLength);
         expect(await readFile(restored, "utf8")).toBe("volume-payload");
         expect(await Bun.file(join(dataRoot, "snapshots", String(app), "index.bin")).exists()).toBe(true);
         expect(
@@ -1249,6 +1262,72 @@ describe("DataMoverLive", () => {
             join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.json`),
           ).exists(),
         ).toBe(true);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("rejects a changed snapshot archive before mutating the target volume", async () => {
+    await withTempDir(async (dir) => {
+      // Given: a persisted snapshot whose immutable archive bytes are replaced after creation.
+      const dataRoot = join(dir, "data");
+      const restored = join(dir, "restored.txt");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "seed.txt"), "snapshot-source");
+      await writeFile(join(dir, "changed.txt"), "target-must-survive");
+      try {
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "tamper" },
+                overwrite: true,
+              });
+              const handle = yield* dataMover.snapshot({ app, store: "tamper" }, { format: "tar" });
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "changed.txt")) },
+                to: { _tag: "volume", app, store: "tamper" },
+                overwrite: true,
+              });
+              yield* Effect.promise(async () => {
+                const archivePath = join(dataRoot, "snapshots", String(app), "tamper", `${handle.id}.tar`);
+                const changed = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
+                const lastIndex = changed.byteLength - 1;
+                changed[lastIndex] = (changed[lastIndex] ?? 0) ^ 0xff;
+                await writeFile(archivePath, changed);
+              });
+              yield* dataMover.restore(handle, { app, store: "tamper" });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // When: the failed restore is followed by a normal export of the target.
+        await runDataMover(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "volume", app, store: "tamper" },
+              to: { _tag: "hostPath", path: absolute(restored) },
+              overwrite: true,
+            });
+          }),
+        );
+
+        // Then: archive verification fails and the existing target bytes remain unchanged.
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
+        }
+        expect(await readFile(restored, "utf8")).toBe("target-must-survive");
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1452,7 +1531,13 @@ describe("DataMoverLive", () => {
         const info = listed[0];
         if (info === undefined) throw new Error("expected native snapshot metadata");
         expect(info?.label).toBe("native-one");
-        expect(info.native).toEqual({ provider: "test", id: info.id });
+        expect(info.native).toMatchObject({
+          provider: "test",
+          id: info.id,
+          digest: info.digest,
+          sizeBytes: info.sizeBytes,
+          format: "native",
+        });
         expect(
           await Bun.file(join(dataRoot, "snapshots", String(app), "data", `${info?.id}.tar`)).exists(),
         ).toBe(false);
@@ -1912,6 +1997,37 @@ describe("DataMoverLive", () => {
 });
 
 describe("DataMover helpers", () => {
+  test("stops reading a tar stream after the declared payload ends", async () => {
+    // Given: a complete empty tar followed by producer data that is outside the archive payload.
+    let producedChunks = 0;
+    const source = Stream.fromAsyncIterable(
+      (async function* () {
+        producedChunks += 1;
+        yield testTar(new Uint8Array());
+        producedChunks += 1;
+        yield new Uint8Array(1024 * 1024);
+        producedChunks += 1;
+        yield new Uint8Array(1024 * 1024);
+      })(),
+      (cause) =>
+        new ArchiveFormatError({
+          message: "Archive fixture failed.",
+          format: "tar",
+          cause,
+        }),
+    );
+
+    // When: the production tar decoder drains the declared payload.
+    await Effect.runPromise(
+      decodeArchiveStream({ body: source, format: "tar", path: "fixture.tar", maxPayloadBytes: 1 }).pipe(
+        Stream.runDrain,
+      ),
+    );
+
+    // Then: upstream is cancelled before producing bytes beyond the completed payload.
+    expect(producedChunks).toBe(2);
+  });
+
   test("collectVerifiedStream remains the checksum primitive used by archive tests", async () => {
     const verified = await Effect.runPromise(collectVerifiedStream({ body: Stream.make(bytes("payload")) }));
 
