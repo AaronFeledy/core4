@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   isPerformanceRuntimeHelper,
   signalPerformanceProcess,
+  stopPerformanceHelpers,
 } from "../../../scripts/workflow-performance-processes.ts";
 
 const root = "/private/sample/data";
@@ -66,4 +67,8 @@ test("signals the captured process when its identity still matches", async () =>
   );
   // Then only that PID receives a signal.
   expect(signals).toEqual([123]);
+});
+
+test("continues helper scans when a process executable is unreadable", async () => {
+  await expect(stopPerformanceHelpers("/no-such-performance-root")).resolves.toBeUndefined();
 });

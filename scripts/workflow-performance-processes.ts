@@ -9,6 +9,11 @@ export type PerformanceProcess = {
   readonly argv: readonly string[];
 };
 
+const isAbsentProcessError = (cause: unknown): boolean =>
+  cause instanceof Error &&
+  "code" in cause &&
+  (cause.code === "ENOENT" || cause.code === "EACCES" || cause.code === "EPERM");
+
 export const readPerformanceProcess = async (pid: number): Promise<PerformanceProcess | undefined> => {
   try {
     const before = await readFile(`/proc/${pid}/stat`, "utf8");
@@ -22,7 +27,7 @@ export const readPerformanceProcess = async (pid: number): Promise<PerformancePr
     if (after.slice(after.lastIndexOf(")") + 2).split(" ")[19] !== startTime) return undefined;
     return { pid, uid, startTime, executable, argv };
   } catch (cause) {
-    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return undefined;
+    if (isAbsentProcessError(cause)) return undefined;
     throw cause;
   }
 };
@@ -71,7 +76,7 @@ export const stopPerformanceHelpers = async (root: string): Promise<void> => {
         }
       });
     } catch (cause) {
-      if (!(cause instanceof Error && "code" in cause && cause.code === "ENOENT")) throw cause;
+      if (!isAbsentProcessError(cause)) throw cause;
     }
   }
 };

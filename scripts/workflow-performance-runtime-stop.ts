@@ -1,6 +1,11 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { PerformanceStoreCleanupError } from "./workflow-performance-stores.ts";
 
+const isAbsentProcessError = (cause: unknown): boolean =>
+  cause instanceof Error &&
+  "code" in cause &&
+  (cause.code === "ENOENT" || cause.code === "EACCES" || cause.code === "EPERM");
+
 export const waitForPerformanceRuntimeStop = async (input: {
   readonly terminate: () => Promise<{ readonly terminated: boolean; readonly pid?: number }>;
   readonly stopped: () => Promise<boolean>;
@@ -38,7 +43,7 @@ export const performanceRuntimeStopped = async (roots: readonly string[]): Promi
       const cmdline = await readFile(`/proc/${entry}/cmdline`, "utf8");
       if (roots.some((root) => cmdline.includes(root))) return false;
     } catch (cause) {
-      if (!(cause instanceof Error && "code" in cause && cause.code === "ENOENT")) throw cause;
+      if (!isAbsentProcessError(cause)) throw cause;
     }
   }
   const mounts = await readFile("/proc/self/mountinfo", "utf8");
