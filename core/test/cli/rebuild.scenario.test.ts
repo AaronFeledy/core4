@@ -233,6 +233,7 @@ const makeRebuildLayer = () => {
 
   const layer = Layer.mergeAll(
     PrivateFileAccessLive,
+    StateStoreLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-rebuild", services: {} }) }),
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
