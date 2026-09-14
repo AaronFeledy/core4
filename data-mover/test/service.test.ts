@@ -1491,7 +1491,7 @@ describe("DataMoverLive", () => {
     });
   });
 
-  test("pruneSnapshots never removes snapshots that carry a recovery reason", async () => {
+  test("pruneSnapshots preserves automatic recovery points while pruning manual snapshots", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       await writeFile(join(dir, "seed.txt"), "seed-payload");
@@ -1523,6 +1523,21 @@ describe("DataMoverLive", () => {
                   },
                 },
               );
+              const manual = yield* dataMover.snapshot(
+                { app, store: "data" },
+                {
+                  format: "tar",
+                  metadata: {
+                    sourceRoot: AbsolutePath.make(dir),
+                    service: ServiceName.make("database"),
+                    volumeInstanceId: "00000000-0000-4000-8000-000000000001",
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "sha256:mysql-runtime",
+                    recoveryReason: "manual",
+                  },
+                },
+              );
               const ordinary = yield* dataMover.snapshot(
                 { app, store: "data" },
                 { format: "tar", label: "ordinary" },
@@ -1532,7 +1547,7 @@ describe("DataMoverLive", () => {
                 keepLatest: 0,
               });
               const listed = yield* dataMover.listSnapshots({ app, store: "data" });
-              return { recovery, ordinary, pruned, listed };
+              return { recovery, manual, ordinary, pruned, listed };
             }),
           ).pipe(
             Effect.provide(DataMoverLive),
@@ -1559,7 +1574,7 @@ describe("DataMoverLive", () => {
           ),
         );
 
-        expect(result.pruned).toEqual([result.ordinary.id]);
+        expect([...result.pruned].sort()).toEqual([result.manual.id, result.ordinary.id].sort());
         expect(result.listed.map((entry) => entry.id)).toEqual([result.recovery.id]);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");

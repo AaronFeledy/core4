@@ -1574,7 +1574,10 @@ export const makeDataMoverService = (
           return [];
         }
         return [...infos]
-          .filter((info) => info.metadata?.recoveryReason === undefined)
+          .filter(
+            (info) =>
+              info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual",
+          )
           .sort(
             (left, right) =>
               Date.parse(DateTime.formatIso(right.createdAt)) -
