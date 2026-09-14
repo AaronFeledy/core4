@@ -1,8 +1,9 @@
 import { Effect, Layer } from "effect";
 
-import { AppPlanner } from "@lando/core/services";
-import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import type { LandofileShape } from "@lando/sdk/schema";
+import { AppPlanner } from "@lando/sdk/services";
 
 import { services } from "../../src/index.ts";
 
