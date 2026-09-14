@@ -84,6 +84,7 @@ describe("@lando/service-lando registration", () => {
       "mssql:2022",
       "mysql",
       "nginx",
+      "node",
       "node:lts",
       "node:22",
       "opensearch",
