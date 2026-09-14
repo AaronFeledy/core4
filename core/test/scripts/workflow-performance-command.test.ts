@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { runWorkflowPerformanceCommand } from "../../../scripts/workflow-performance-command.ts";
+import {
+  DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS,
+  runWorkflowPerformanceCommand,
+  timeoutMsForPerformanceCommand,
+  workflowPerformanceDeadlineRunner,
+} from "../../../scripts/workflow-performance-command.ts";
 
 describe("workflow performance command runner", () => {
   test("kills and reaps a stalled child while retaining its failure evidence", async () => {
@@ -49,5 +54,43 @@ describe("workflow performance command runner", () => {
     });
     expect(result.exitCode).toBe(0);
     expect(result.stdout.endsWith("\n[truncated]")).toBe(true);
+  });
+
+  test("assigns bounded phase-specific budgets that fit the 360-minute job", () => {
+    expect(timeoutMsForPerformanceCommand("prepare:setup")).toBe(180_000);
+    expect(timeoutMsForPerformanceCommand("prepare:pre-pull")).toBe(180_000);
+    expect(timeoutMsForPerformanceCommand("prepare:start")).toBe(180_000);
+    expect(timeoutMsForPerformanceCommand("start")).toBe(180_000);
+    expect(timeoutMsForPerformanceCommand("rebuild")).toBe(180_000);
+    expect(timeoutMsForPerformanceCommand("db:import")).toBe(120_000);
+    expect(timeoutMsForPerformanceCommand("prepare:import")).toBe(120_000);
+    expect(timeoutMsForPerformanceCommand("prepare:snapshot")).toBe(120_000);
+    expect(DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS).toBe(900_000);
+    expect(DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS).toBeLessThan(360 * 60_000);
+  });
+
+  test("deadline runner uses the phase budget unless a command timeout is set", async () => {
+    const seen: number[] = [];
+    const run = workflowPerformanceDeadlineRunner({
+      sampleTimeoutMs: 600_000,
+      runCommand: async (command) => {
+        seen.push(command.timeoutMs ?? 0);
+        return { id: command.id, durationMs: 1, exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+    await run({
+      id: "prepare:setup",
+      argv: [process.execPath, "-e", ""],
+      cwd: import.meta.dir,
+      env: process.env,
+    });
+    await run({
+      id: "db:import",
+      argv: [process.execPath, "-e", ""],
+      cwd: import.meta.dir,
+      env: process.env,
+    });
+    expect(seen[0]).toBe(180_000);
+    expect(seen[1]).toBe(120_000);
   });
 });

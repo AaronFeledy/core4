@@ -17,13 +17,28 @@ export type WorkflowPerformanceCommandResult = {
   readonly stderr: string;
 };
 
+export const DEFAULT_WORKFLOW_PERFORMANCE_COMMAND_TIMEOUT_MS = 120_000;
+export const DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS = 900_000;
+
+const PHASE_COMMAND_TIMEOUT_MS: Readonly<Record<string, number>> = {
+  "prepare:setup": 180_000,
+  "prepare:pre-pull": 180_000,
+  "prepare:start": 180_000,
+  start: 180_000,
+  rebuild: 180_000,
+};
+
+export const timeoutMsForPerformanceCommand = (id: string): number =>
+  PHASE_COMMAND_TIMEOUT_MS[id] ?? DEFAULT_WORKFLOW_PERFORMANCE_COMMAND_TIMEOUT_MS;
+
 export const workflowPerformanceDeadlineRunner = (input: {
   readonly runCommand: (command: WorkflowPerformanceCommand) => Promise<WorkflowPerformanceCommandResult>;
   readonly signal?: AbortSignal;
   readonly commandTimeoutMs?: number;
   readonly sampleTimeoutMs?: number;
 }) => {
-  const deadline = performance.now() + (input.sampleTimeoutMs ?? 600_000);
+  const deadline =
+    performance.now() + (input.sampleTimeoutMs ?? DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS);
   return async (command: WorkflowPerformanceCommand): Promise<WorkflowPerformanceCommandResult> => {
     const started = performance.now();
     if (started >= deadline)
@@ -37,7 +52,13 @@ export const workflowPerformanceDeadlineRunner = (input: {
     try {
       return await input.runCommand({
         ...command,
-        timeoutMs: Math.max(1, Math.min(input.commandTimeoutMs ?? 120_000, deadline - performance.now())),
+        timeoutMs: Math.max(
+          1,
+          Math.min(
+            input.commandTimeoutMs ?? command.timeoutMs ?? timeoutMsForPerformanceCommand(command.id),
+            deadline - performance.now(),
+          ),
+        ),
         ...(input.signal === undefined ? {} : { signal: input.signal }),
       });
     } catch (cause) {
@@ -83,7 +104,7 @@ export const runWorkflowPerformanceCommand = async (
     const timer = setTimeout(() => {
       timedOut = true;
       stop();
-    }, command.timeoutMs ?? 120_000);
+    }, command.timeoutMs ?? timeoutMsForPerformanceCommand(command.id));
     command.signal?.addEventListener("abort", abort, { once: true });
     const collect = async (reader: (typeof readers)[number], append: (chunk: string) => void) => {
       const decoder = new TextDecoder();
