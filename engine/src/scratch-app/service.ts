@@ -695,6 +695,7 @@ const makeScratchAppService = (
           ),
       });
       yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false })).pipe(
+        Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result)),
         // A failed start can leave a materialized dir and partial provider state; the scope
         // finalizer only covers a successful start, so reclaim on the failure path too.
         Effect.tapError(() => destroyScratchResources),
@@ -1167,3 +1168,4 @@ export const readScratchLandofile = (
       );
     return yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root);
   });
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
