@@ -68,10 +68,12 @@ const rowFor = (
   if (Either.isLeft(decoded) || !sameSeries(current.series, decoded.right.series)) {
     return { runId: candidate.runId, createdAt: candidate.createdAt, status: "incompatible", medians: {} };
   }
+  const incomplete = decoded.right.status !== undefined && decoded.right.status !== "completed";
   return {
     runId: candidate.runId,
     createdAt: candidate.createdAt,
-    status: decoded.right.lanes.some((lane) => lane.outcome === "failed") ? "failed" : "available",
+    status:
+      incomplete || decoded.right.lanes.some((lane) => lane.outcome === "failed") ? "failed" : "available",
     medians: mediansFor(decoded.right),
   };
 };

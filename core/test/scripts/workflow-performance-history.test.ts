@@ -85,6 +85,21 @@ describe("workflow performance history", () => {
     expect(markdown).toContain("| missing | 2026-09-08T00:00:00.000Z | missing | — | — |");
   });
 
+  test("marks incomplete report status failed even when lanes passed", () => {
+    const current = report("db-v1", [passingLane]);
+    const summary = buildWorkflowPerformanceHistory(
+      current,
+      (["interrupted", "failed", "running"] as const).map((status, index) => ({
+        runId: status,
+        createdAt: `2026-09-10T00:00:0${index}.000Z`,
+        conclusion: "success",
+        report: { ...report("db-v1", [passingLane]), status },
+      })),
+      Date.parse("2026-09-11T00:00:00.000Z"),
+    );
+    expect(summary.rows.map((row) => row.status)).toEqual(["failed", "failed", "failed"]);
+  });
+
   test("limits history to the newest thirty runs", () => {
     const current = report("db-v1", [passingLane]);
     const candidates = Array.from({ length: 35 }, (_, index) => ({
