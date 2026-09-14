@@ -7,6 +7,8 @@ import type {
   ServiceBuildStepIntent,
 } from "@lando/sdk/services";
 
+import { hasCustomPhpImage } from "./php-via.ts";
+
 const PHP_FEATURE_ID = "service-lando.php";
 
 export const PHP_DB_CLIENT_FEATURE_ID = "service-lando.php.db-client" as const;
@@ -250,7 +252,7 @@ const installsFor = (selection: PhpDbClientSelection, views: ReadonlyArray<AppFe
 const applyPhpDbClient = (ctx: AppFeatureContext): void => {
   ctx.forEachSelected((mutator) => {
     if (!mutator.service.featureIds.includes(PHP_FEATURE_ID)) return;
-    if (mutator.service.normalizedConfig.image !== undefined) return;
+    if (hasCustomPhpImage(mutator.service.normalizedConfig)) return;
     const selection = resolvePhpDbClient(mutator.service.normalizedConfig.db_client);
     for (const step of phpDbClientBuildSteps(installsFor(selection, ctx.selected))) {
       mutator.addBuildStep(step);

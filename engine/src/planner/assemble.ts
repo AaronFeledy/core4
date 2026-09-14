@@ -287,7 +287,7 @@ export const planApp = (
       );
       const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
       const pinnedService: ServiceConfig =
-        resolvedArtifactTag === undefined
+        resolvedArtifactTag === undefined || serviceWithEnvironment.image !== undefined
           ? serviceWithEnvironment
           : { ...serviceWithEnvironment, image: resolvedArtifactTag };
       const resolution = yield* serviceType

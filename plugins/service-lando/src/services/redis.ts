@@ -9,6 +9,8 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 const DEFAULT_IMAGE = "redis:7";
+const VERSIONS = ["7"] as const;
+const ARTIFACTS = { "7": DEFAULT_IMAGE } as const;
 const DEFAULT_COMMAND = ["redis-server", "--appendonly", "yes"];
 const EPHEMERAL_COMMAND = ["redis-server", "--appendonly", "no", "--save", ""];
 const AUTH_START =
@@ -95,6 +97,8 @@ export const redisServiceType: ServiceType = {
   id: "redis",
   name: "redis",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {

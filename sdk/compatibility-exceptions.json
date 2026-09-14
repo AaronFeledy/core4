@@ -157,6 +157,12 @@
   },
   {
     "surface": "schema:PhpServiceConfig",
+    "changeKind": "enum-changed",
+    "path": "$.$defs.PhpServiceConfig.type",
+    "justification": "US-618E moves shipped PHP version availability to canonical ServiceType metadata while retaining php:<version> syntax validation"
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
     "justification": "US-615 route shorthand and filters"

@@ -21,6 +21,7 @@ import {
   apacheStartCommand,
   assertPhpViaKeys,
   fpmStartCommand,
+  hasCustomPhpImage,
   phpEndpointProtocol,
   phpImageFor,
   phpListenPort,
@@ -44,6 +45,9 @@ export { PHP_FPM_LOG_SOURCES } from "./php-via.ts";
 
 export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5"] as const;
 export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
+const PHP_ARTIFACTS = Object.fromEntries(
+  SUPPORTED_PHP_VERSIONS.map((version) => [version, phpImageFor(version, "apache")]),
+);
 
 export const PHP_FEATURE_ID = "service-lando.php" as const;
 export const PHP_FEATURE_PRIORITY = 600;
@@ -85,19 +89,19 @@ const configFor = (ctx: ServiceFeatureContext): PhpFeatureConfig => ctx.config a
 
 const applyApacheShape = (ctx: ServiceFeatureContext, webroot: string, allowOverride: boolean): void => {
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
-  if (ctx.normalizedConfig.image === undefined) {
+  if (!hasCustomPhpImage(ctx.normalizedConfig)) {
     ctx.setCommand(apacheStartCommand(webroot, allowOverride));
   }
 };
 
 const applyFpmShape = (ctx: ServiceFeatureContext): void => {
-  if (ctx.normalizedConfig.image === undefined && ctx.normalizedConfig.command === undefined) {
+  if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
     ctx.setCommand(fpmStartCommand(phpListenPort("fpm", ctx.normalizedConfig.port)));
   }
 };
 
 const applyCliShape = (ctx: ServiceFeatureContext): void => {
-  if (ctx.normalizedConfig.image === undefined && ctx.normalizedConfig.command === undefined) {
+  if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
     ctx.setCommand([...PHP_CLI_KEEP_ALIVE]);
   }
 };
@@ -125,16 +129,18 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { allowOverride, version, via, webroot } = configFor(ctx);
   const port = phpListenPort(via, service.port);
+  const customImage = hasCustomPhpImage(service);
+  const artifact = customImage && service.image !== undefined ? service.image : phpImageFor(version, via);
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? phpImageFor(version, via) });
+  ctx.setArtifact({ kind: "ref", ref: artifact });
   const xdebug = resolvePhpXdebug(service.xdebug);
   const composerRelease = resolvePhpComposer(service.composer);
-  if (service.image === undefined) {
+  if (!customImage) {
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
     if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
   }
   const composerPackagesStep = phpComposerPackagesBuildStep(resolvePhpComposerPackages(service.composer), {
-    dependsOnComposerStep: service.image === undefined && composerRelease !== false,
+    dependsOnComposerStep: !customImage && composerRelease !== false,
     composerStepId: PHP_COMPOSER_STEP_ID,
   });
   if (composerPackagesStep !== undefined) ctx.addBuildStep(composerPackagesStep);
@@ -207,6 +213,8 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   id: `php:${version}`,
   name: `php:${version}`,
   base: "lando",
+  versions: SUPPORTED_PHP_VERSIONS,
+  artifacts: PHP_ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: PhpServiceConfig,
   resolve: (input) =>

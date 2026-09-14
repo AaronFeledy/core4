@@ -499,15 +499,22 @@ describe("@lando/service-lando registration", () => {
     ).rejects.toThrow(/Unsupported service type python:3\.11.*Supported alternatives:.*python:3\.12/);
   });
 
-  test("AppPlanner rejects unsupported php versions with PHP-family remediation", async () => {
-    await expect(
-      plan({
-        name: "php-bad",
-        runtime: 4,
-        services: { [ServiceName.make("web")]: { type: "php:9.0" } },
-      }),
-    ).rejects.toThrow(/Unsupported service type php:9\.0.*Supported alternatives:.*php:8\.1.*php:8\.4/);
-  });
+  test.each(["8.0", "9.0"])(
+    "AppPlanner rejects unavailable PHP %s with PHP-family remediation",
+    async (version) => {
+      await expect(
+        plan({
+          name: "php-bad",
+          runtime: 4,
+          services: { [ServiceName.make("web")]: { type: `php:${version}` } },
+        }),
+      ).rejects.toThrow(
+        new RegExp(
+          `Unsupported service type php:${version.replace(".", "\\.")}.*Supported alternatives:.*php:8\\.1.*php:8\\.5`,
+        ),
+      );
+    },
+  );
 
   test("AppPlanner resolves ruby:3.3 through PluginRegistry with rails framework preset", async () => {
     const appPlan = await plan({
