@@ -44,13 +44,13 @@ type RunSampleInput = {
 const prepareSample = async (
   input: RunSampleInput,
   acquired: (sample: PreparedSample) => void,
-  runtimeRoot: string,
+  roots: { readonly runtimeRoot: string; readonly dataRoot: string },
 ): Promise<PreparedSample> => {
   const { lane, binary, rootDir, key, runCommand } = input;
   const sampleRoot = join(rootDir, "samples", key);
   const appParent = join(sampleRoot, "apps");
   const appRoot = join(appParent, key);
-  const dataRoot = join(sampleRoot, "data");
+  const { runtimeRoot, dataRoot } = roots;
   const storageConfig = join(sampleRoot, "storage.conf");
   const journey = lane.id === "drupal-journey" || lane.id === "rails-journey";
   await mkdir(join(rootDir, "samples"), { recursive: true });
@@ -182,7 +182,7 @@ export const runWorkflowPerformanceSample = async (
       (sample) => {
         acquired = sample;
       },
-      stores.runtimeRoot,
+      { runtimeRoot: stores.runtimeRoot, dataRoot: stores.dataRoot },
     ).catch((cause: unknown) => {
       if (acquired === undefined) throw cause;
       return {
