@@ -5,6 +5,7 @@ import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schem
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { landoErrorPageSetupLines, nginxErrorPageConfigLines } from "./http-errors.ts";
 
 export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
 export type SupportedStaticServer = (typeof SUPPORTED_STATIC_SERVERS)[number];
@@ -35,12 +36,15 @@ export const defaultStaticCommand = (
     "sh",
     "-c",
     [
+      "set -eu",
+      ...landoErrorPageSetupLines(),
       "cat > /etc/nginx/conf.d/default.conf <<'LANDO_STATIC_NGINX'",
       "server {",
       `  listen ${port};`,
       "  server_name _;",
       `  root ${nginxRootLiteral(docRoot)};`,
       "  index index.html index.htm;",
+      ...nginxErrorPageConfigLines(),
       "  location / { try_files $uri $uri/ =404; }",
       "}",
       "LANDO_STATIC_NGINX",
@@ -153,6 +157,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     id,
     name: id,
     base: "lando",
+    identity: { defaultUser: "root", homes: { root: "/root" } },
     schema: Schema.Unknown,
     resolve: (input) =>
       Effect.try({

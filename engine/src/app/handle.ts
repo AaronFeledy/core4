@@ -123,6 +123,9 @@ export const makeAppHandle = (
     rebuild: (options?: RebuildAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
+          if (options?.services !== undefined && options.services.length > 0) {
+            return yield* ops.rebuildApp(options, target).pipe(Effect.provide(runtime));
+          }
           const scope = yield* lifecycle.stageFresh;
           return yield* ops
             .rebuildApp(options, target, {

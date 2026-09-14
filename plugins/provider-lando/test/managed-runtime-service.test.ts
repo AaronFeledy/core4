@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect } from "effect";
 
-import { makeLandoPaths } from "@lando/core/paths";
+import { makeLandoPaths } from "@lando/paths";
 import {
   type FsSeam,
   type ManagedRuntimeServiceSpec,

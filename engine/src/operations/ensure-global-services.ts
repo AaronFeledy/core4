@@ -9,6 +9,7 @@ import type {
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
+  HomePathCapabilityError,
   LandofileParseError,
   LandofileUnknownEventError,
   LandofileValidationError,
@@ -19,6 +20,7 @@ import type {
   ProviderUnavailableError,
   PublicationUnsupportedError,
   RouteInputError,
+  SecretNotFoundError,
   ToolingExecError,
 } from "@lando/sdk/errors";
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
@@ -38,6 +40,8 @@ import {
 
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { publishedEndpointUrls } from "./authority-url.ts";
 
 import { globalInstall } from "./global-install.ts";
@@ -65,6 +69,7 @@ export interface EnsureGlobalServicesResult {
 
 export type EnsureGlobalServicesError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
@@ -85,6 +90,7 @@ export type EnsureGlobalServicesError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
+  | SecretNotFoundError
   | ToolingExecError;
 
 export type EnsureGlobalServicesServices =
@@ -98,6 +104,24 @@ export type EnsureGlobalServicesServices =
 
 export const requiredGlobalServicesForPlan = (plan: Pick<AppPlan, "requires">): ReadonlyArray<string> =>
   plan.requires?.globalServices ?? [];
+
+export const includeAvailableDependencies = (
+  requested: Iterable<string>,
+  services: ReadonlyArray<{
+    readonly name: unknown;
+    readonly dependsOn: ReadonlyArray<{ readonly service: unknown }>;
+  }>,
+): Set<string> => {
+  const byName = new Map(services.map((service) => [String(service.name), service]));
+  const selected = new Set(requested);
+  for (const name of selected) {
+    for (const dependency of byName.get(name)?.dependsOn ?? []) {
+      const dependencyName = String(dependency.service);
+      if (byName.has(dependencyName)) selected.add(dependencyName);
+    }
+  }
+  return selected;
+};
 
 const missingServiceError = (
   requested: ReadonlyArray<string>,
@@ -146,7 +170,7 @@ export const ensureGlobalServicesRunning = (
       return yield* Effect.fail(missingServiceError(requested, missing, available));
     }
 
-    const requestedSet = new Set(requested);
+    const requestedSet = includeAvailableDependencies(requested, planServices);
     const selected = planServices.filter((service) => requestedSet.has(String(service.name)));
     const planToApply =
       selected.length === planServices.length
@@ -162,12 +186,14 @@ export const ensureGlobalServicesRunning = (
     const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const builds = yield* BuildOrchestrator;
     const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
     yield* Effect.scoped(
       provider
         .apply(builtPlan, {
           reconcile: false,
           ...(options.signal === undefined ? {} : { signal: options.signal }),
+          serviceEnvironment,
         })
         .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
     );
@@ -194,4 +220,3 @@ export const ensureGlobalServicesRunning = (
 
     return { app: plan.name, servicesStarted };
   });
-import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";

@@ -4,7 +4,12 @@ import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type {
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceImageIdentity,
+  ServiceType,
+} from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
@@ -65,6 +70,11 @@ export const elasticsearchServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
+const IDENTITY: ServiceImageIdentity = {
+  defaultUser: "elasticsearch",
+  homes: { elasticsearch: "/usr/share/elasticsearch", root: "/root" },
+};
+
 const resolveElasticsearchServiceType: ServiceType["resolve"] = (input) =>
   Effect.succeed({
     base: "lando",
@@ -76,6 +86,7 @@ export const elasticsearch8ServiceType: ServiceType = {
   id: "elasticsearch:8",
   name: "elasticsearch",
   base: "lando",
+  identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: resolveElasticsearchServiceType,
 };
@@ -84,6 +95,7 @@ export const elasticsearchServiceType: ServiceType = {
   id: "elasticsearch",
   name: "elasticsearch",
   base: "lando",
+  identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: resolveElasticsearchServiceType,
 };

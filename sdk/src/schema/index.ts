@@ -94,6 +94,7 @@ export * from "./embedding-plugin-policy.ts";
 export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";
 export * from "./http-client.ts";
+export * from "./host-terminal.ts";
 export { BuildStepSkipEvent } from "../events/app.ts";
 export { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "../events/global.ts";
 export { PostHttpCallEvent, PreHttpCallEvent } from "../events/http-call.ts";

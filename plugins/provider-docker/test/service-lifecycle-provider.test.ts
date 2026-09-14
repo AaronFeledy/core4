@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
-import { makePluginStateStore, makeTestStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   type DockerApiClient,
   type DockerHttpRequest,

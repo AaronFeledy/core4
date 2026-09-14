@@ -3,6 +3,7 @@ services:
   web:
     type: compose
     image: traefik/whoami:v1.10
+    home: false
     primary: true
     ports:
       - 0.0.0.0:8080:80

@@ -22,6 +22,7 @@ import {
   RuntimeProviderRegistry,
   type ShellRunner,
   StateStore,
+  UrlScanner,
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
@@ -41,9 +42,11 @@ import {
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
@@ -82,7 +85,8 @@ type StartAppServices =
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner
-  | StateStore;
+  | StateStore
+  | UrlScanner;
 
 type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
 
@@ -158,6 +162,7 @@ const startAppForTargetUncoordinated = (
       use: (applyPlan) =>
         Effect.gen(function* () {
           const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
+          const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
           const serviceList = Object.values(builtPlan.services);
 
           const applyAndInspect = Effect.gen(function* () {
@@ -168,6 +173,7 @@ const startAppForTargetUncoordinated = (
                 .apply(builtPlan, {
                   reconcile: resolvedOptions.reconcile ?? false,
                   ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                  serviceEnvironment,
                 })
                 .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
             );
@@ -229,6 +235,16 @@ const startAppForTargetUncoordinated = (
             ...service,
             endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
           }));
+
+          const scanner = yield* Effect.serviceOption(UrlScanner);
+          if (scanner._tag === "Some") {
+            yield* runPostStartScan({
+              scanner: scanner.value,
+              plan: routedPlan,
+              events,
+              urls: startupScanUrls(routedPlan, servicesStarted),
+            });
+          }
 
           yield* compensateFailure(
             events.publish(

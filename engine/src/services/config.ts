@@ -40,7 +40,11 @@ const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string
     systemPluginRoot: roots.systemPluginRoot,
     defaultProviderId: "lando",
   };
-  return deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);
+  const merged = deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);
+  for (const key of ["appEnv", "appLabels"] as const) {
+    if (Object.hasOwn(overlay, key)) merged[key] = overlay[key];
+  }
+  return merged;
 };
 
 export const loadGlobalConfigSync = (): GlobalConfig => {
@@ -77,11 +81,9 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
   }
 };
 
-const loadConfig = async (): Promise<GlobalConfig> => loadGlobalConfigSync();
-
 const configService: Context.Tag.Service<typeof ConfigService> = {
   load: Effect.tryPromise({
-    try: loadConfig,
+    try: async (): Promise<GlobalConfig> => loadGlobalConfigSync(),
     catch: (cause) =>
       cause instanceof ConfigError
         ? cause

@@ -1,7 +1,6 @@
 /**
  * `LANDO_CONFIG__*` env-overlay machinery and the config-file directory
- * resolver, shared by `ConfigService` (`core/src/services/config.ts`) and the
- * Effect-free cold-start root resolver (`core/src/config/roots.ts`).
+ * resolver, shared by `ConfigService` and the Effect-free cold-start root resolver.
  *
  * `resolveConfigFileRoot` decides WHICH `config.yml` is read. It is the single
  * source of truth so `resolveUserDataRoot` (fast path) and `ConfigService`
@@ -25,6 +24,8 @@ const FRIENDLY_ENV_OVERLAYS = [
   ["LANDO_ROUTER_BIND_ADDRESS", ["router", "bindAddress"]],
   ["LANDO_ROUTER_HTTP_FALLBACKS", ["router", "httpFallbacks"]],
   ["LANDO_ROUTER_HTTPS_FALLBACKS", ["router", "httpsFallbacks"]],
+  ["LANDO_APP_ENV", ["appEnv"]],
+  ["LANDO_APP_LABELS", ["appLabels"]],
 ] as const;
 
 // `default_provider_id` / `DEFAULT_PROVIDER_ID` -> camelCase key `defaultProviderId`.
@@ -80,9 +81,8 @@ export const deepMerge = (
 };
 
 /**
- * Generic `LANDO_CONFIG__path__to__value` overlay: a single delimiter-driven
- * mechanism that can target any config path, replacing the earlier set of
- * single-purpose env vars.
+ * Generic `LANDO_CONFIG__path__to__value` overlays are applied first;
+ * friendly env aliases take precedence.
  */
 export const envOverlay = (
   env: Record<string, string | undefined> = process.env,
@@ -94,6 +94,7 @@ export const envOverlay = (
     const segments = rawPath.split("__").filter((segment) => segment.length > 0);
     if (segments.length === 0) continue;
     const path = segments.map(segmentToKey);
+    if ((path[0] === "appEnv" || path[0] === "appLabels") && path.length !== 1) continue;
     assignDeep(overlay, path, parseOverlayValue(value, path));
   }
   for (const [name, path] of FRIENDLY_ENV_OVERLAYS) {

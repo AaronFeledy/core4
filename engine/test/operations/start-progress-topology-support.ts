@@ -13,6 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  type ApplyOptions,
   BuildOrchestrator,
   EventService,
   FileSyncEngine,
@@ -22,6 +23,8 @@ import {
   RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  SecretStore,
+  type SecretStoreShape,
   type ServiceRuntimeInfo,
   StateStore,
 } from "@lando/sdk/services";
@@ -110,6 +113,8 @@ export const makeHarness = (
     readonly plannedApp?: AppPlan;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     readonly fileSync?: typeof FileSyncEngine.Service;
+    readonly secretStore?: SecretStoreShape;
+    readonly onApply?: (plan: AppPlan, options: ApplyOptions) => void;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -124,7 +129,10 @@ export const makeHarness = (
     id: "lando",
     capabilities,
     isAvailable: Effect.succeed(true),
-    apply: () => options.applyEffect ?? Effect.succeed({ changed: true }),
+    apply: (appliedPlan, applyOptions) =>
+      Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
+        Effect.zipRight(options.applyEffect ?? Effect.succeed({ changed: true })),
+      ),
     inspect: (target) =>
       Effect.succeed<ServiceRuntimeInfo>({
         app: plannedApp.id,
@@ -200,6 +208,7 @@ export const makeHarness = (
       build: (appPlan) => Effect.succeed(appPlan),
       buildApp: () => Effect.void,
     }),
+    ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
   );
   return { layer, events, applyTreeStarted, stateStore };

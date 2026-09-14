@@ -7,7 +7,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { resolveLiveProviderSocket } from "@lando/core/testing";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,

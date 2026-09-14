@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createServer as createHttpServer } from "node:http";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import type {
@@ -8,7 +9,6 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
 import {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
@@ -23,6 +23,7 @@ import {
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
+  type ServiceConfig,
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
@@ -40,6 +41,7 @@ import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
+import { HOST_INTERNAL_ALIAS, HOST_IP_ENV_KEY } from "../../src/subsystems/networking.ts";
 import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
@@ -92,12 +94,14 @@ const landofileFixture: LandofileShape = {
   runtime: 4,
   services: {
     [ServiceName.make("web")]: {
+      home: false,
       image: "node:lts",
       ports: [{ target: 3000, published: 3000, protocol: "tcp" }],
       environment: { NODE_ENV: "development" },
       dependsOn: [{ service: "db" }],
     },
     [ServiceName.make("db")]: {
+      home: false,
       image: "postgres:16",
       ports: [{ target: 5432, published: 5432, protocol: "tcp" }],
       environment: { POSTGRES_PASSWORD: "lando" },
@@ -130,6 +134,15 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLive),
       Effect.provide(PluginRegistryLive),
+    ),
+  );
+
+const planWithFileSystem = (landofile: LandofileShape) =>
+  Effect.runPromise(
+    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+      Effect.provide(AppPlannerLive),
+      Effect.provide(PluginRegistryLive),
+      Effect.provide(FileSystemLive),
     ),
   );
 
@@ -188,12 +201,13 @@ const appMountOnlyServiceType = makeLegacyServiceTypeFake({
 
 const socketOnlyServiceType = makeLegacyServiceTypeFake({
   id: "socket-only",
-  toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+  toServicePlan: ({ name, service, provider = ProviderId.make("lando"), primary = false, metadata }) =>
     Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "socket-only",
       provider,
       primary,
+      ...(service.user === undefined ? {} : { user: service.user }),
       environment: {},
       mounts: [],
       storage: [],
@@ -345,6 +359,150 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  for (const setting of ["router", "scanner"] as const) {
+    test(`invalidates persisted plans when global ${setting} changes`, async () => {
+      await withTempCwd(async (appRoot) => {
+        // Given
+        const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+        process.env.LANDO_USER_CACHE_ROOT = join(appRoot, "cache");
+        let config = Schema.decodeUnknownSync(GlobalConfig)({ telemetry: { enabled: false } });
+        let loads = 0;
+        const load = Effect.sync(() => {
+          loads += 1;
+          return config;
+        });
+        const layer = AppPlannerLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              PluginRegistryLive,
+              CacheServiceLive,
+              Layer.succeed(ConfigService, {
+                load,
+                get: <K extends keyof GlobalConfig>(key: K) =>
+                  Effect.map(load, (value): GlobalConfig[K] => value[key]),
+              }),
+            ),
+          ),
+        );
+        const landofile = Schema.decodeUnknownSync(LandofileShape)({
+          name: "global-plan-cache",
+          runtime: 4,
+          services: { web: { type: "nginx", home: false } },
+        });
+        const execute = () =>
+          Effect.runPromise(
+            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+              Effect.provide(layer),
+            ),
+          );
+        try {
+          await execute();
+          const cachePath = appPlanCachePath(join(appRoot, "cache"), "global-plan-cache", appRoot);
+          const payloadSchema = Schema.Struct({ key: Schema.String });
+          const before = payloadSchema.pipe(Schema.decodeUnknownSync)(
+            deserialize((await readFile(cachePath)).subarray(APP_PLAN_CACHE_HEADER_BYTES)),
+          );
+          config = Schema.decodeUnknownSync(GlobalConfig)({
+            telemetry: { enabled: false },
+            [setting]: setting === "router" ? { enabled: false } : { path: "/global-ready" },
+          });
+          // When
+          const changed = await execute();
+          const cached = await execute();
+          // Then
+          const after = payloadSchema.pipe(Schema.decodeUnknownSync)(
+            deserialize((await readFile(cachePath)).subarray(APP_PLAN_CACHE_HEADER_BYTES)),
+          );
+          expect(after.key).not.toBe(before.key);
+          expect(loads).toBe(3);
+          expect(changed.router?.enabled).toBe(setting !== "router");
+          expect(changed.services[ServiceName.make("web")]?.scanner?.path).toBe(
+            setting === "scanner" ? "/global-ready" : "/",
+          );
+          expect(cached.router).toEqual(changed.router);
+          expect(cached.services[ServiceName.make("web")]?.scanner).toEqual(
+            changed.services[ServiceName.make("web")]?.scanner,
+          );
+        } finally {
+          if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+          else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        }
+      });
+    });
+  }
+
+  for (const enabled of [true, false]) {
+    test(`records router ${enabled} with populated routes`, async () => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "router-plan",
+        runtime: 4,
+        ...(enabled ? {} : { router: { enabled: false } }),
+        services: { web: { type: "nginx", home: false } },
+      });
+      // When
+      const appPlan = await plan(landofile);
+      // Then
+      expect(appPlan.router?.enabled).toBe(enabled);
+      expect(appPlan.routes.length).toBeGreaterThan(0);
+      expect((appPlan.requires?.globalServices ?? []).includes("traefik")).toBe(enabled);
+    });
+  }
+
+  for (const scanner of [{ path: "/ready", okCodes: [204], retries: 0, timeout: 7000 }, false] as const) {
+    test(`records resolved scanner when authored as ${scanner === false ? "false" : "an object"}`, async () => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "scanner-plan",
+        runtime: 4,
+        services: { web: { type: "nginx", home: false, scanner } },
+      });
+      // When
+      const appPlan = await plan(landofile);
+      // Then
+      expect(appPlan.services[ServiceName.make("web")]?.scanner).toEqual(
+        scanner === false
+          ? { enabled: false, path: "/", okCodes: [], retries: 2, timeoutMs: 20000 }
+          : { enabled: true, path: "/ready", okCodes: [204], retries: 0, timeoutMs: 7000 },
+      );
+    });
+  }
+
+  test("reads scanner settings from service-type normalized config", async () => {
+    // Given: the type contributes settings absent from the authored service.
+    const serviceType: ServiceType = {
+      id: "scanner-type",
+      name: "scanner-type",
+      base: "l337",
+      schema: Schema.Unknown,
+      resolve: ({ service }) =>
+        Effect.succeed({
+          base: "l337",
+          normalizedConfig: { ...service, scanner: { path: "/type-ready", retries: 0 } },
+          features: [],
+        }),
+    };
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "scanner-type-plan",
+      runtime: 4,
+      services: { worker: { type: serviceType.id, home: false } },
+    });
+    // When
+    const appPlan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, registryWithServiceType(serviceType))),
+      ),
+    );
+    // Then
+    expect(appPlan.services[ServiceName.make("worker")]?.scanner).toEqual({
+      enabled: true,
+      path: "/type-ready",
+      okCodes: [],
+      retries: 0,
+      timeoutMs: 20000,    });
+  });
+
   test("uses LANDO_PROVIDER when the Landofile does not set provider", async () => {
     const previous = process.env.LANDO_PROVIDER;
     process.env.LANDO_PROVIDER = "docker";
@@ -422,6 +580,7 @@ describe("AppPlannerLive", () => {
                 readonly id: string;
                 readonly phase: string;
                 readonly command: unknown;
+                readonly user?: string;
               }>;
             }
           | undefined
@@ -438,21 +597,25 @@ describe("AppPlannerLive", () => {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
           command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+          user: "root",
         },
         {
           id: "lando-log-redirect:access",
           phase: "build",
           command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
+          user: "root",
         },
         {
           id: "lando-log-redirect-mkdir:error",
           phase: "build",
           command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+          user: "root",
         },
         {
           id: "lando-log-redirect:error",
           phase: "build",
           command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
+          user: "root",
         },
       ]);
     });
@@ -481,21 +644,25 @@ describe("AppPlannerLive", () => {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
           command: ["mkdir", "-p", "/var/log/php-fpm"],
+          user: "root",
         },
         {
           id: "lando-log-redirect:access",
           phase: "build",
           command: ["ln", "-sf", "/dev/stdout", "/var/log/php-fpm/access.log"],
+          user: "root",
         },
         {
           id: "lando-log-redirect-mkdir:error",
           phase: "build",
           command: ["mkdir", "-p", "/var/log/php-fpm"],
+          user: "root",
         },
         {
           id: "lando-log-redirect:error",
           phase: "build",
           command: ["ln", "-sf", "/dev/stderr", "/var/log/php-fpm/error.log"],
+          user: "root",
         },
       ]);
     });
@@ -510,6 +677,7 @@ describe("AppPlannerLive", () => {
         services: {
           worker: {
             type: "socket-only",
+            home: false,
             build: {
               context: "./docker",
               dockerfile: "Containerfile",
@@ -542,7 +710,11 @@ describe("AppPlannerLive", () => {
         name: "inline-compose-build",
         runtime: 4,
         services: {
-          worker: { type: "socket-only", build: { context: ".", dockerfile_inline: specInline } },
+          worker: {
+            type: "socket-only",
+            home: false,
+            build: { context: ".", dockerfile_inline: specInline },
+          },
         },
       });
 
@@ -562,7 +734,9 @@ describe("AppPlannerLive", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "artifact-build-scripts",
         runtime: 4,
-        services: { worker: { type: "socket-only", build: { artifact: "install-dependencies" } } },
+        services: {
+          worker: { type: "socket-only", home: false, build: { artifact: "install-dependencies" } },
+        },
       });
 
       // When
@@ -578,6 +752,118 @@ describe("AppPlannerLive", () => {
             phase: "build",
             command: ["sh", "-lc", "install-dependencies"],
           },
+        ],
+      });
+    });
+  });
+
+  for (const phase of ["artifact", "app"] as const) {
+    for (const scenario of [
+      {
+        name: "inherits the service user for a bare string",
+        user: "node",
+        scripts: "a",
+        entries: [{ run: "a", user: "node" }],
+      },
+      {
+        name: "preserves an explicit root user on an object step",
+        user: "node",
+        scripts: { run: "apt-get update -y", user: "root" },
+        entries: [{ run: "apt-get update -y", user: "root" }],
+      },
+      {
+        name: "omits the user key when no user is configured",
+        user: undefined,
+        scripts: { run: "a" },
+        entries: [{ run: "a" }],
+      },
+      {
+        name: "preserves mixed script order and per-entry users",
+        user: "node",
+        scripts: ["a", { run: "b", user: "root" }, "c"],
+        entries: [
+          { run: "a", user: "node" },
+          { run: "b", user: "root" },
+          { run: "c", user: "node" },
+        ],
+      },
+    ]) {
+      test(`build.${phase} ${scenario.name}`, async () => {
+        await withTempCwd(async () => {
+          // Given
+          const landofile = Schema.decodeUnknownSync(LandofileShape)({
+            name: "build-step-users",
+            runtime: 4,
+            services: {
+              worker: {
+                type: "socket-only",
+                home: false,
+                ...(scenario.user === undefined ? {} : { user: scenario.user }),
+                build: { [phase]: scenario.scripts },
+              },
+            },
+          });
+
+          // When
+          const appPlan = await planWithCustomRegistry(landofile);
+
+          // Then
+          const extension = Schema.decodeUnknownSync(
+            Schema.Struct({ buildSteps: Schema.Array(Schema.Unknown) }),
+          )(appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"]);
+          expect(extension.buildSteps).toStrictEqual(
+            scenario.entries.map((entry, index) => ({
+              id: `authored-${phase}:${index + 1}`,
+              phase: phase === "artifact" ? "build" : "app",
+              command:
+                phase === "artifact" ? ["sh", "-lc", entry.run] : { command: ["sh", "-lc", entry.run] },
+              ...("user" in entry ? { user: entry.user } : {}),
+            })),
+          );
+        });
+      });
+    }
+  }
+
+  test("feature-contributed build steps inherit the composed planned user", async () => {
+    await withTempCwd(async () => {
+      // Given
+      const feature: ServiceFeatureDefinition = {
+        ...socketOnlyServiceType.testFeature,
+        apply: (ctx) =>
+          Effect.gen(function* () {
+            yield* socketOnlyServiceType.testFeature.apply(ctx);
+            ctx.addBuildStep({ id: "feature-build", phase: "build", command: ["sh", "-lc", "a"] });
+            ctx.setUser("node");
+          }),
+      };
+      const registry = {
+        ...customPluginRegistry,
+        loadServiceFeature: (id: string) =>
+          id === feature.id ? Effect.succeed(feature) : customPluginRegistry.loadServiceFeature(id),
+      };
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "feature-build-user",
+        runtime: 4,
+        services: { worker: { type: "socket-only", home: false, build: { artifact: "authored" } } },
+      });
+
+      // When
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+          Effect.provide(AppPlannerLive),
+          Effect.provide(Layer.succeed(PluginRegistry, registry)),
+        ),
+      );
+
+      // Then
+      expect(appPlan.services[ServiceName.make("worker")]?.user).toBe("node");
+      expect(
+        appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"],
+      ).toMatchObject({
+        buildSteps: [
+          { id: "feature-build", phase: "build", command: ["sh", "-lc", "a"], user: "node" },
+          { id: "authored-artifact:1", phase: "build", command: ["sh", "-lc", "authored"], user: "node" },
         ],
       });
     });
@@ -620,6 +906,7 @@ describe("AppPlannerLive", () => {
           worker: {
             type: "socket-only",
             build: { artifact: ["artifact-one", "artifact-two"], app: "app-one" },
+            home: false,
           },
         },
       });
@@ -667,7 +954,7 @@ describe("AppPlannerLive", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "plugin-artifact",
         runtime: 4,
-        services: { worker: { type: "appmount-only", build: "." } },
+        services: { worker: { type: "appmount-only", home: false, build: "." } },
       });
 
       // When
@@ -687,7 +974,7 @@ describe("AppPlannerLive", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "typed-compose-build",
         runtime: 4,
-        services: { worker: { type: "appmount-only", build: "." } },
+        services: { worker: { type: "appmount-only", home: false, build: "." } },
       });
 
       // When
@@ -736,7 +1023,7 @@ describe("AppPlannerLive", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "raw-lando-compose-build",
         runtime: 4,
-        services: { worker: { type: "lando", build: { context: "." } } },
+        services: { worker: { type: "lando", home: false, build: { context: "." } } },
       });
 
       // When
@@ -757,7 +1044,7 @@ describe("AppPlannerLive", () => {
         name: "lando-build-scripts",
         runtime: 4,
         services: {
-          worker: { type: "lando", image: "alpine:3", build: { app: "echo ready" } },
+          worker: { type: "lando", home: false, image: "alpine:3", build: { app: "echo ready" } },
         },
       });
 
@@ -777,6 +1064,33 @@ describe("AppPlannerLive", () => {
           { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "echo ready"] } },
         ],
       });
+    });
+  });
+
+  test("log redirect steps stay root when the service user is not root", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "logs-app",
+          runtime: 4,
+          services: { web: { type: "apache", user: "www-data", home: false } },
+        }),
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      const buildSteps = (
+        web?.extensions["@lando/core/service-features"] as
+          | {
+              readonly buildSteps?: ReadonlyArray<{
+                readonly id: string;
+                readonly user?: string;
+              }>;
+            }
+          | undefined
+      )?.buildSteps;
+      const redirects = buildSteps?.filter((step) => step.id.startsWith("lando-log-redirect")) ?? [];
+      expect(web?.user).toBe("www-data");
+      expect(redirects.length).toBeGreaterThan(0);
+      expect(redirects.every((step) => step.user === "root")).toBe(true);
     });
   });
 
@@ -811,6 +1125,7 @@ describe("AppPlannerLive", () => {
             web: {
               type: "compose",
               image: "docker.io/library/nginx:1.27",
+              home: false,
               appMount: false,
             },
           },
@@ -833,7 +1148,7 @@ describe("AppPlannerLive", () => {
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
-              services: { worker: { type: serviceType.id } },
+              services: { worker: { type: serviceType.id, home: false } },
             }),
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
@@ -866,7 +1181,7 @@ describe("AppPlannerLive", () => {
             Schema.decodeUnknownSync(LandofileShape)({
               name: "logs-app",
               runtime: 4,
-              services: { worker: { type: serviceType.id } },
+              services: { worker: { type: serviceType.id, home: false } },
             }),
             { ...providerLandoCapabilities, serviceLogSources: false },
           ),
@@ -972,6 +1287,7 @@ describe("AppPlannerLive", () => {
         [ServiceName.make("mailpit")]: {
           type: "compose",
           image: "docker.io/axllent/mailpit:v1.30.1",
+          home: false,
           appMount: false,
           hostnames: ["mailpit.global.internal"],
         },
@@ -993,15 +1309,19 @@ describe("AppPlannerLive", () => {
           type: "compose",
           image: "docker.io/axllent/mailpit:v1.30.1",
           appMount: false,
+          home: false,
         },
       },
     });
 
     const mailpit = appPlan.services[ServiceName.make("mailpit")];
+    // Host reachability is provider-capability realization applied to every
+    // service, so LANDO_HOST_IP is not part of the app env layer under test.
     const landoKeys = Object.keys(mailpit?.environment ?? {}).filter(
-      (key) => key === "LANDO" || key.startsWith("LANDO_"),
+      (key) => (key === "LANDO" || key.startsWith("LANDO_")) && key !== HOST_IP_ENV_KEY,
     );
     expect(landoKeys).toEqual([]);
+    expect(mailpit?.environment[HOST_IP_ENV_KEY]).toBe(HOST_INTERNAL_ALIAS);
     expect(mailpit?.environment.LANDO_APP_KIND).toBeUndefined();
     expect(mailpit?.environment.LANDO_MAIL_HOST).toBeUndefined();
     expect(mailpit?.environment.LANDO_MAIL_PORT).toBeUndefined();
@@ -1016,8 +1336,9 @@ describe("AppPlannerLive", () => {
         name: "env-files",
         runtime: 4,
         services: {
-          scalar: { image: "node:lts", env_file: "base.env" },
+          scalar: { image: "node:lts", home: false, env_file: "base.env" },
           list: {
+            home: false,
             image: "node:lts",
             env_file: ["base.env", "override.env"],
             environment: { SHARED: "explicit" },
@@ -1059,6 +1380,7 @@ describe("AppPlannerLive", () => {
           "services:",
           "  web:",
           "    image: node:lts",
+          "    home: false",
           "    env_file: values.env",
           "",
         ].join("\n"),
@@ -1169,9 +1491,10 @@ describe("AppPlannerLive", () => {
         runtime: 4,
         env_file: ["shared.env", "shared.local.env"],
         services: {
-          inherited: { image: "node:lts" },
-          serviceFile: { image: "node:lts", env_file: "service.env" },
+          inherited: { image: "node:lts", home: false },
+          serviceFile: { image: "node:lts", home: false, env_file: "service.env" },
           explicit: {
+            home: false,
             image: "node:lts",
             env_file: "service.env",
             environment: { SHARED: "explicit" },
@@ -1239,9 +1562,9 @@ describe("AppPlannerLive", () => {
       name: "service-labels",
       runtime: 4,
       services: {
-        mapped: { image: "node:lts", labels: { "io.lando.map": "mapped" } },
-        listed: { image: "node:lts", labels: ["io.lando.list=listed", "io.lando.bare"] },
-        empty: { image: "node:lts" },
+        mapped: { image: "node:lts", home: false, labels: { "io.lando.map": "mapped" } },
+        listed: { image: "node:lts", home: false, labels: ["io.lando.list=listed", "io.lando.bare"] },
+        empty: { image: "node:lts", home: false },
       },
     });
 
@@ -1337,7 +1660,7 @@ describe("AppPlannerLive", () => {
       );
       const cachedLandofile: LandofileShape = {
         name: "cached-app",
-        services: { [ServiceName.make("web")]: { type: "cached-type", envFile: ["cache.env"] } },
+        services: { [ServiceName.make("web")]: { type: "cached-type", home: false, envFile: ["cache.env"] } },
       };
 
       try {
@@ -1359,6 +1682,7 @@ describe("AppPlannerLive", () => {
             [ServiceName.make("web")]: {
               type: "cached-type",
               environment: { CACHE_BUSTER: "1" },
+              home: false,
             },
           },
         });
@@ -1457,7 +1781,7 @@ describe("AppPlannerLive", () => {
       const landofile: LandofileShape = {
         name: "env-file-cache-app",
         env_file: ["cache.env"],
-        services: { [ServiceName.make("web")]: { type: "env-file-cache-type" } },
+        services: { [ServiceName.make("web")]: { type: "env-file-cache-type", home: false } },
       };
 
       try {
@@ -1549,6 +1873,7 @@ describe("AppPlannerLive", () => {
             web: {
               type: "compose",
               image: "nginx:1.27",
+              home: false,
               appMount: false,
               endpoints: [
                 { _tag: "internal", name: "primary", protocol: "http", port: 8080 },
@@ -1579,6 +1904,7 @@ describe("AppPlannerLive", () => {
               type: "compose",
               image: "nginx:1.27",
               appMount: false,
+              home: false,
               endpoints: [
                 { _tag: "internal", name: "web", protocol: "http", port: 8080 },
                 { _tag: "internal", name: "web", protocol: "http", port: 8081 },
@@ -1593,6 +1919,17 @@ describe("AppPlannerLive", () => {
       if (failure instanceof LandofileValidationError) {
         expect(failure.issues).toEqual(["services.web.endpoints"]);
       }
+    });
+  });
+
+  test("plans routed apps without shared networking when the router is disabled", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        { ...landofileFixture, router: { enabled: false } },
+        { ...providerLandoCapabilities, sharedCrossAppNetwork: false },
+      );
+      expect(appPlan.router?.enabled).toBe(false);
+      expect(appPlan.routes.length).toBeGreaterThan(0);
     });
   });
 
@@ -1621,6 +1958,7 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("worker")]: {
             image: "node:lts",
             ports: [],
+            home: false,
           },
         },
       });
@@ -1667,7 +2005,7 @@ describe("AppPlannerLive", () => {
             {
               name: "myapp",
               runtime: 4,
-              services: { [ServiceName.make("web")]: { type: "appmount-only" } },
+              services: { [ServiceName.make("web")]: { type: "appmount-only", home: false } },
             },
             providerLandoCapabilities,
           ),
@@ -1718,7 +2056,7 @@ describe("AppPlannerLive", () => {
             {
               name: "myapp",
               runtime: 4,
-              services: { [ServiceName.make("web")]: { type: "appmount-only" } },
+              services: { [ServiceName.make("web")]: { type: "appmount-only", home: false } },
             },
             { ...providerLandoCapabilities, sharedCrossAppNetwork: false },
           ),
@@ -1804,7 +2142,7 @@ describe("AppPlannerLive", () => {
             {
               name: "myapp",
               runtime: 4,
-              services: { [ServiceName.make("web")]: { type: serviceType.id } },
+              services: { [ServiceName.make("web")]: { type: serviceType.id, home: false } },
             },
             providerLandoCapabilities,
           ),
@@ -1894,7 +2232,7 @@ describe("AppPlannerLive", () => {
             {
               name: "myapp",
               runtime: 4,
-              services: { [ServiceName.make("web")]: { type: buildStepServiceType.id } },
+              services: { [ServiceName.make("web")]: { type: buildStepServiceType.id, home: false } },
             },
             providerLandoCapabilities,
           ),
@@ -1960,7 +2298,7 @@ describe("AppPlannerLive", () => {
             {
               name: "myapp",
               runtime: 4,
-              services: { [ServiceName.make("web")]: { type: "appmount-only" } },
+              services: { [ServiceName.make("web")]: { type: "appmount-only", home: false } },
             },
             providerLandoCapabilities,
           ),
@@ -2009,7 +2347,7 @@ describe("AppPlannerLive", () => {
             {
               name: "myapp",
               runtime: 4,
-              services: { [ServiceName.make("web")]: { type: "appmount-only" } },
+              services: { [ServiceName.make("web")]: { type: "appmount-only", home: false } },
             },
             providerLandoCapabilities,
           ),
@@ -2027,8 +2365,8 @@ describe("AppPlannerLive", () => {
       name: "authored-dependencies",
       runtime: 4,
       services: {
-        web: { type: "appmount-only", dependsOn: ["db"] },
-        db: { type: "appmount-only" },
+        web: { type: "appmount-only", home: false, dependsOn: ["db"] },
+        db: { type: "appmount-only", home: false },
       },
     });
 
@@ -2047,8 +2385,8 @@ describe("AppPlannerLive", () => {
       name: "authored-dependency-restart",
       runtime: 4,
       services: {
-        web: { type: "appmount-only", dependsOn: [{ service: "db", restart: false }] },
-        db: { type: "appmount-only" },
+        web: { type: "appmount-only", home: false, dependsOn: [{ service: "db", restart: false }] },
+        db: { type: "appmount-only", home: false },
       },
     });
 
@@ -2112,6 +2450,7 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("proxy")]: {
             type: "compose",
             image: "traefik:v3.3",
+            home: false,
             ports: [
               { target: 80, protocol: "tcp" },
               { target: 443, protocol: "tcp" },
@@ -2137,7 +2476,7 @@ describe("AppPlannerLive", () => {
         runtime: 4,
         services: {
           [ServiceName.make("web")]: { type: "node:22" },
-          [ServiceName.make("worker")]: { image: "node:22-alpine" },
+          [ServiceName.make("worker")]: { image: "node:22-alpine", home: false },
         },
       });
 
@@ -2157,6 +2496,156 @@ describe("AppPlannerLive", () => {
 
       expect(worker?.type).toBe("node:22");
       expect(worker?.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
+    });
+  });
+
+  test("infers bare Node from packageRoot project files and emits content-free provenance", async () => {
+    await withTempCwd(async (appRoot) => {
+      await mkdir(join(appRoot, "apps", "web"), { recursive: true });
+      await writeFile(join(appRoot, "apps", "web", ".nvmrc"), "22.11.0\n");
+      await writeFile(
+        join(appRoot, "apps", "web", "package.json"),
+        JSON.stringify({ engines: { node: "22.11.0" } }),
+      );
+
+      const appPlan = await planWithFileSystem({
+        name: "node-inference",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" },
+        },
+      });
+      const web = appPlan.services[ServiceName.make("web")];
+
+      expect(web?.type).toBe("node:22.11.0");
+      expect(web?.artifact).toEqual({ kind: "ref", ref: "node:22.11.0" });
+      expect(web?.provenance).toMatchObject({
+        node: {
+          sourcePath: "apps/web/.nvmrc",
+          normalizedConstraint: "22.11.0",
+          artifact: "node:22.11.0",
+        },
+      });
+      expect(JSON.stringify(web?.provenance)).not.toContain("engines");
+    });
+  });
+
+  test("tracks present and absent Node inference candidates in a nested package cache", async () => {
+    await withTempCwd(async (appRoot) => {
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-node-inference-cache-")));
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      const packageRoot = join(appRoot, "apps", "web");
+      await mkdir(packageRoot, { recursive: true });
+      const nvmrcPath = join(packageRoot, ".nvmrc");
+      const packageJsonPath = join(packageRoot, "package.json");
+      await writeFile(nvmrcPath, "22.11.0\n");
+      const landofile: LandofileShape = {
+        name: "node-inference-cache",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" } },
+      };
+      const layer = AppPlannerLive.pipe(
+        Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
+      );
+      const runPlan = () =>
+        Effect.runPromise(
+          Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+            Effect.provide(layer),
+          ),
+        );
+
+      try {
+        const initial = await runPlan();
+        expect(initial.services[ServiceName.make("web")]?.type).toBe("node:22.11.0");
+        expect(await runPlan()).toEqual(initial);
+        await writeFile(nvmrcPath, "22.12.0\n");
+        const changedPin = await runPlan();
+        expect(changedPin.services[ServiceName.make("web")]?.type).toBe("node:22.12.0");
+        await writeFile(packageJsonPath, JSON.stringify({ engines: { node: "22" } }));
+        const createdPackage = await runPlan();
+        expect(createdPackage.services[ServiceName.make("web")]?.provenance).not.toEqual(
+          changedPin.services[ServiceName.make("web")]?.provenance,
+        );
+        await writeFile(packageJsonPath, JSON.stringify({ engines: { node: ">=22 <23" } }));
+        const changedPackage = await runPlan();
+        expect(changedPackage.services[ServiceName.make("web")]?.provenance).not.toEqual(
+          createdPackage.services[ServiceName.make("web")]?.provenance,
+        );
+        await rm(nvmrcPath);
+        expect((await runPlan()).services[ServiceName.make("web")]?.type).toBe("node:22");
+        await writeFile(nvmrcPath, "22.11.0\n");
+        expect((await runPlan()).services[ServiceName.make("web")]?.type).toBe("node:22.11.0");
+        await rm(packageJsonPath);
+        expect((await runPlan()).services[ServiceName.make("web")]?.provenance).toEqual(
+          initial.services[ServiceName.make("web")]?.provenance,
+        );
+      } finally {
+        if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        await rm(cacheRoot, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test.each([
+    [
+      { type: "node:22.11.0" },
+      /Unsupported service type node:22\.11\.0.*Supported alternatives: node:22, node:lts/i,
+    ],
+    [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
+    [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
+    [{ type: "php:8.3", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
+    [{ type: "node", packageRoot: "missing" }, /directory does not exist/i],
+    [{ type: "node", packageRoot: "../outside" }, /escapes the app root/i],
+  ] satisfies ReadonlyArray<readonly [ServiceConfig, RegExp]>)(
+    "rejects contradictory or unrelated Node inference config",
+    async (service, pattern) => {
+      await withTempCwd(async () => {
+        const failure = await planWithFileSystem({
+          name: "node-invalid",
+          runtime: 4,
+          services: { [ServiceName.make("web")]: service },
+        }).then(
+          () => undefined,
+          (cause: unknown) => cause,
+        );
+        expect(failure).toBeDefined();
+        expect(String(failure)).toMatch(pattern);
+      });
+    },
+  );
+
+  test("rejects oversized Node inference inputs", async () => {
+    await withTempCwd(async (appRoot) => {
+      await writeFile(join(appRoot, ".nvmrc"), "2".repeat(1_048_577));
+      const failure = await planWithFileSystem({
+        name: "node-oversized",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node" } },
+      }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+      expect(String(failure)).toMatch(/exceeds the 1048576-byte read limit/i);
+    });
+  });
+
+  test("rejects symbolic links used as Node inference inputs", async () => {
+    await withTempCwd(async (appRoot) => {
+      await writeFile(join(appRoot, "node-version"), "22.11.0\n");
+      await symlink(join(appRoot, "node-version"), join(appRoot, ".nvmrc"));
+      const failure = await planWithFileSystem({
+        name: "node-symlink",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node" } },
+      }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+      expect(String(failure)).toMatch(/\.nvmrc is a symbolic link/i);
     });
   });
 
@@ -2276,8 +2765,8 @@ describe("AppPlannerLive", () => {
               name: "slow-sync-app",
               runtime: 4,
               services: {
-                [ServiceName.make("web")]: { type: "accelerated-appmount" },
-                [ServiceName.make("api")]: { type: "accelerated-appmount" },
+                [ServiceName.make("web")]: { type: "accelerated-appmount", home: false },
+                [ServiceName.make("api")]: { type: "accelerated-appmount", home: false },
               },
             },
             slowBindMountCapabilities,
@@ -2342,6 +2831,7 @@ describe("AppPlannerLive", () => {
             [ServiceName.make("worker")]: {
               type: "compose",
               build: { context: "." },
+              home: false,
             },
           },
         },
@@ -2390,7 +2880,7 @@ describe("AppPlannerLive", () => {
         {
           name: "published-app",
           runtime: 4,
-          services: { [ServiceName.make("web")]: { type: "published-endpoint" } },
+          services: { [ServiceName.make("web")]: { type: "published-endpoint", home: false } },
         },
         { ...providerLandoCapabilities, hostPortPublish: "none" },
       );
@@ -2417,6 +2907,7 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("web")]: {
             type: "compose",
             image: "nginx:alpine",
+            home: false,
             ports: [{ target: 80, published: 8080, hostIp: "127.0.0.1", protocol: "tcp" }],
           },
         },
@@ -2458,7 +2949,7 @@ describe("AppPlannerLive", () => {
           name: "socketapp",
           runtime: 4,
           services: {
-            [ServiceName.make("socket")]: { type: "socket-only" },
+            [ServiceName.make("socket")]: { type: "socket-only", home: false },
           },
         },
         { ...providerLandoCapabilities, hostPortPublish: "none" },
@@ -2483,7 +2974,7 @@ describe("AppPlannerLive", () => {
           name: "appmountapp",
           runtime: 4,
           services: {
-            [ServiceName.make("web")]: { type: "appmount-only" },
+            [ServiceName.make("web")]: { type: "appmount-only", home: false },
           },
         },
         {
@@ -2514,8 +3005,8 @@ describe("AppPlannerLive", () => {
         name: "stockapp",
         runtime: 4,
         services: {
-          [ServiceName.make("db")]: { type: "postgres" },
-          [ServiceName.make("cache")]: { type: "redis" },
+          [ServiceName.make("db")]: { type: "postgres", home: false },
+          [ServiceName.make("cache")]: { type: "redis", home: false },
         },
       });
 
@@ -2539,6 +3030,7 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("worker")]: {
             type: "compose",
             image: "alpine:3",
+            home: false,
             volumes: [
               { type: "volume", source: "worker-state", target: "/var/state", readOnly: false },
               { type: "volume", source: "worker-cache", target: "/var/cache", readOnly: false },
@@ -2563,6 +3055,7 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("web")]: {
             type: "compose",
             image: "node:22",
+            home: false,
             storage: [
               {
                 store: "npm-cache",
@@ -2600,6 +3093,7 @@ describe("AppPlannerLive", () => {
             type: "compose",
             image: "node:22",
             volumes: [{ type: "volume", source: "worker-cache", target: "/var/cache", readOnly: false }],
+            home: false,
             storage: [
               {
                 store: "worker-cache",
@@ -2669,6 +3163,7 @@ describe("AppPlannerLive", () => {
           services: {
             [ServiceName.make("db")]: {
               image: "postgres:16",
+              home: false,
               environment: { POSTGRES_PASSWORD: "lando" },
             },
           },
@@ -2700,6 +3195,7 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("worker")]: {
             type: "compose",
             image: "alpine:3",
+            home: false,
             storage: [
               {
                 store: "cross-app-cache",
@@ -2728,7 +3224,7 @@ describe("AppPlannerLive", () => {
         name: "defapp",
         runtime: 4,
         services: {
-          [ServiceName.make("web")]: { type: "appmount-only" },
+          [ServiceName.make("web")]: { type: "appmount-only", home: false },
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
@@ -2744,6 +3240,7 @@ describe("AppPlannerLive", () => {
         services: {
           [ServiceName.make("web")]: {
             type: "appmount-only",
+            home: false,
             appMount: { target: "/app", excludes: ["dist"] },
           },
         },
@@ -2762,6 +3259,7 @@ describe("AppPlannerLive", () => {
           services: {
             [ServiceName.make("web")]: {
               image: "python:3.12",
+              home: false,
               appMount: { target: "/app", excludes: ["dist"] },
             },
           },
@@ -2779,7 +3277,11 @@ describe("AppPlannerLive", () => {
   test("FileSyncPlan session.excludes inherits defaults on slow providers", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
-        { name: "myapp", runtime: 4, services: { [ServiceName.make("web")]: { image: "node:lts" } } },
+        {
+          name: "myapp",
+          runtime: 4,
+          services: { [ServiceName.make("web")]: { image: "node:lts", home: false } },
+        },
         slowBindMountCapabilities,
       );
       const webEntry = appPlan.fileSync.find((e) => String(e.session.service) === "web");
@@ -2798,6 +3300,7 @@ describe("AppPlannerLive", () => {
         services: {
           [ServiceName.make("web")]: {
             type: "appmount-only",
+            home: false,
             appMount: {
               target: "/app",
               excludes: ["node_modules", "vendor"],
@@ -2836,6 +3339,7 @@ describe("AppPlannerLive", () => {
           services: {
             [ServiceName.make("web")]: {
               type: "appmount-only",
+              home: false,
               appMount: { target: "/app", excludes: [exclude] },
             },
           },
@@ -2857,14 +3361,14 @@ describe("AppPlannerLive", () => {
       const bareApp = await plan({
         name: "myapp",
         runtime: 4,
-        services: { [ServiceName.make("db")]: { image: "postgres" } },
+        services: { [ServiceName.make("db")]: { image: "postgres", home: false } },
       });
       expect(bareApp.services[ServiceName.make("db")]?.type).toBe("postgres");
 
       const taggedApp = await plan({
         name: "myapp",
         runtime: 4,
-        services: { [ServiceName.make("db")]: { image: "postgres:16" } },
+        services: { [ServiceName.make("db")]: { image: "postgres:16", home: false } },
       });
       expect(taggedApp.services[ServiceName.make("db")]?.type).toBe("postgres");
     });
@@ -2963,6 +3467,7 @@ describe("AppPlannerLive", () => {
         services: {
           [ServiceName.make("web")]: {
             image: "node:lts",
+            home: false,
             healthcheck: {
               kind: "tcp",
               port: 3000,
@@ -2994,6 +3499,7 @@ describe("AppPlannerLive", () => {
         services: {
           [ServiceName.make("web")]: {
             image: "node:lts",
+            home: false,
             healthcheck: {
               kind: "http",
               url: "http://localhost:3000/health",
@@ -3025,6 +3531,7 @@ describe("AppPlannerLive", () => {
         services: {
           [ServiceName.make("db")]: {
             image: "node:lts",
+            home: false,
             healthcheck: {
               intervalSeconds: 30,
             },
@@ -3043,6 +3550,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           healthcheck: {
             test: ["CMD", "curl", "-f", "http://localhost"],
             interval: "30s",
@@ -3076,6 +3584,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           healthcheck: { test: ["CMD-SHELL", "echo ready"] },
         },
       },
@@ -3098,6 +3607,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           healthcheck: { disable: true },
         },
       },
@@ -3123,6 +3633,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           healthcheck: {
             test: ["CMD", "true"],
             start_interval: "5s",
@@ -3151,6 +3662,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           labels: { "io.lando.role": "web" },
           healthcheck: {
             test: ["CMD", "true"],
@@ -3180,6 +3692,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           healthcheck: { test: ["CMD", "true"] },
         },
       },
@@ -3287,7 +3800,7 @@ describe("AppPlannerLive", () => {
             {
               name: "myapp",
               runtime: 4,
-              services: { [ServiceName.make("web")]: { type: serviceType.id } },
+              services: { [ServiceName.make("web")]: { type: serviceType.id, home: false } },
             },
             providerLandoCapabilities,
           ),
@@ -3366,7 +3879,7 @@ describe("AppPlannerLive", () => {
               name: "myapp",
               runtime: 4,
               services: {
-                [ServiceName.make("api")]: { type: serviceType.id, primary: true },
+                [ServiceName.make("api")]: { type: serviceType.id, primary: true, home: false },
               },
             },
             providerLandoCapabilities,
@@ -3466,7 +3979,7 @@ describe("AppPlannerLive", () => {
             {
               name: "myapp",
               runtime: 4,
-              services: { [ServiceName.make("web")]: { type: serviceType.id } },
+              services: { [ServiceName.make("web")]: { type: serviceType.id, home: false } },
             },
             providerLandoCapabilities,
           ),
@@ -3549,7 +4062,7 @@ describe("AppPlannerLive", () => {
       const landofile: LandofileShape = {
         name: "feature-flip-app",
         runtime: 4,
-        services: { [ServiceName.make("web")]: { type: serviceType.id } },
+        services: { [ServiceName.make("web")]: { type: serviceType.id, home: false } },
       };
 
       try {
@@ -3584,7 +4097,7 @@ describe("AppPlannerLive", () => {
           name: "myapp",
           runtime: 4,
           services: {
-            [ServiceName.make("db")]: { type: "mariadb:10.11" },
+            [ServiceName.make("db")]: { type: "mariadb:10.11", home: false },
           },
         });
         expect(appPlan.services[ServiceName.make("db")]?.artifact).toEqual({
@@ -3622,7 +4135,7 @@ describe("AppPlannerLive", () => {
                   {
                     name: "myapp",
                     runtime: 4,
-                    services: { [ServiceName.make("db")]: { type: `mariadb:${version}` } },
+                    services: { [ServiceName.make("db")]: { type: `mariadb:${version}`, home: false } },
                   },
                   providerLandoCapabilities,
                 ),
@@ -3739,7 +4252,7 @@ describe("AppPlannerLive", () => {
               {
                 name: "myapp",
                 runtime: 4,
-                services: { [ServiceName.make("db")]: { type: "fake-db:1.0" } },
+                services: { [ServiceName.make("db")]: { type: "fake-db:1.0", home: false } },
               },
               providerLandoCapabilities,
             ),
@@ -3756,7 +4269,7 @@ describe("AppPlannerLive", () => {
               {
                 name: "myapp",
                 runtime: 4,
-                services: { [ServiceName.make("db")]: { type: "fake-db:2.0" } },
+                services: { [ServiceName.make("db")]: { type: "fake-db:2.0", home: false } },
               },
               providerLandoCapabilities,
             ),
@@ -3794,6 +4307,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           type: "appmount-only",
+          home: false,
           dependsOn: [{ service: "db", condition: "service_started", required: true }],
         },
       },
@@ -3823,6 +4337,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           type: "appmount-only",
+          home: false,
           dependsOn: [
             {
               service: "db",
@@ -3855,9 +4370,10 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           type: "appmount-only",
+          home: false,
           dependsOn: [{ service: "db", condition: "service_healthy", required: true }],
         },
-        db: { type: "appmount-only" },
+        db: { type: "appmount-only", home: false },
       },
     });
 
@@ -3887,9 +4403,10 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           type: "appmount-only",
+          home: false,
           dependsOn: [{ service: "db", condition: "service_healthy", required: false }],
         },
-        db: { type: "appmount-only", healthcheck: { disable: true } },
+        db: { type: "appmount-only", home: false, healthcheck: { disable: true } },
       },
     });
 
@@ -3919,10 +4436,12 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           type: "appmount-only",
+          home: false,
           dependsOn: [{ service: "db", condition: "service_started", required: true }],
         },
         db: {
           type: "appmount-only",
+          home: false,
           dependsOn: [
             {
               service: "web",
@@ -3960,6 +4479,7 @@ describe("AppPlannerLive", () => {
       services: {
         web: {
           type: "appmount-only",
+          home: false,
           dependsOn: [{ service: "web", condition: "service_started", required: true }],
         },
       },
@@ -3991,7 +4511,7 @@ describe("AppPlannerLive", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: appName,
         runtime: 4,
-        services: { web: { type: "appmount-only" } },
+        services: { web: { type: "appmount-only", home: false } },
       });
       const plannerLayer = AppPlannerLive.pipe(
         Layer.provide(Layer.mergeAll(CacheServiceLive, Layer.succeed(PluginRegistry, customPluginRegistry))),
@@ -4093,7 +4613,7 @@ const allKnobEncodedService = {
 const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
   name: "allknobs",
   runtime: 4,
-  services: { web: allKnobEncodedService },
+  services: { web: { ...allKnobEncodedService, home: false } },
 });
 
 const allKnobServiceConfig = allKnobLandofile.services?.[ServiceName.make("web")] as Record<string, unknown>;
@@ -4138,7 +4658,7 @@ describe("Compose runtime knobs", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "knobapp",
       runtime: 4,
-      services: { web: { image: "node:lts", restart: "unless-stopped", shm_size: "64m" } },
+      services: { web: { image: "node:lts", home: false, restart: "unless-stopped", shm_size: "64m" } },
     });
 
     await withTempCwd(async () => {
@@ -4176,7 +4696,7 @@ describe("Compose runtime knobs", () => {
   const knobLandofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "knobapp",
     runtime: 4,
-    services: { web: { image: "node:lts", restart: "unless-stopped", shm_size: "64m" } },
+    services: { web: { image: "node:lts", home: false, restart: "unless-stopped", shm_size: "64m" } },
   });
 
   test("Given the partial test-provider declaration, when only supported knobs are planned, then planning succeeds", async () => {
@@ -4196,7 +4716,7 @@ describe("Compose runtime knobs", () => {
     const unsupportedKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "knobapp",
       runtime: 4,
-      services: { web: { image: "node:lts", restart: "unless-stopped", read_only: true } },
+      services: { web: { image: "node:lts", home: false, restart: "unless-stopped", read_only: true } },
     });
 
     await withTempCwd(async () => {
@@ -4274,7 +4794,7 @@ describe("Compose runtime knobs", () => {
   const injectedLandofile: LandofileShape = {
     name: "injected-knobs",
     runtime: 4,
-    services: { [ServiceName.make("web")]: { type: "tmpfs-injecting" } },
+    services: { [ServiceName.make("web")]: { type: "tmpfs-injecting", home: false } },
   };
 
   const tmpfsInjectingRegistry = {

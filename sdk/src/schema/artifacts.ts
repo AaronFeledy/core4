@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { AbsolutePath, PortablePath } from "./primitives.ts";
+import { AbsolutePath, ContainerUser, PortablePath } from "./primitives.ts";
 
 /**
  * Reference to a pre-built artifact (image, template, etc.) the provider
@@ -49,6 +49,23 @@ const ArtifactBuildSpecSource = Schema.Union(
 export const ArtifactBuildSpec = ArtifactBuildSpecCommon.pipe(Schema.extend(ArtifactBuildSpecSource));
 export type ArtifactBuildSpec = typeof ArtifactBuildSpec.Type;
 
+/**
+ * One `build.artifact:` / `build.app:` entry. A bare string runs as the
+ * service's planned user; the object form names the user for that step alone.
+ */
+export const BuildScriptStep = Schema.Union(
+  Schema.String,
+  Schema.Struct({
+    run: Schema.String.pipe(Schema.minLength(1)).annotations({
+      description: "Shell command run for this build step.",
+    }),
+    user: Schema.optional(ContainerUser).annotations({
+      description: "Container identity this step runs as. Defaults to the service's planned user.",
+    }),
+  }),
+);
+export type BuildScriptStep = typeof BuildScriptStep.Type;
+
 /** Build script for `build.artifact:` and `build.app:` entries. */
-export const BuildScript = Schema.Union(Schema.String, Schema.Array(Schema.String));
+export const BuildScript = Schema.Union(BuildScriptStep, Schema.Array(BuildScriptStep));
 export type BuildScript = typeof BuildScript.Type;

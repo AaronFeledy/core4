@@ -12,6 +12,7 @@ import {
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
 import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
+import { rememberLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { TestStateStoreLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -61,12 +62,16 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 describe("lando app:config", () => {
   test("returns the discovered Landofile name, recipe, and service list", async () => {
-    const layer = Layer.succeed(LandofileService, {
-      discover: Effect.succeed({
+    const landofile = rememberLandofileIncludeSources(
+      {
         name: "test-app-config",
         recipe: "node",
         services: {},
-      }),
+      },
+      [{ id: "user:corp.yml", sha256: "a".repeat(64) }],
+    );
+    const layer = Layer.succeed(LandofileService, {
+      discover: Effect.succeed(landofile),
     });
 
     const result = await Effect.runPromise(
@@ -77,6 +82,7 @@ describe("lando app:config", () => {
     expect(result.source).toBe("resolved");
     expect(result.landofile?.name).toBe("test-app-config");
     expect(result.landofile?.recipe).toBe("node");
+    expect(result.sources).toEqual([{ id: "user:corp.yml", sha256: "a".repeat(64) }]);
     const table = renderAppConfigResult(result, "table");
     expect(table).toContain("app\ttest-app-config");
     expect(table).toContain("services\t(none)");

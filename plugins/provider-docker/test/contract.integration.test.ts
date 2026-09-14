@@ -8,7 +8,8 @@ import path from "node:path";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Stream } from "effect";
 
-import { makePluginStateStore, makeTestStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
