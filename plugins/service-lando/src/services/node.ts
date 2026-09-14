@@ -9,6 +9,9 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
+const NODE_ARTIFACTS = Object.fromEntries(
+  SUPPORTED_NODE_VERSIONS.map((version) => [version, `node:${version}`]),
+);
 
 export const NODE_FEATURE_ID = "service-lando.node" as const;
 export const NODE_FEATURE_PRIORITY = 600;
@@ -17,6 +20,8 @@ export const NODE_GLOBALS_STEP_ID = "service-lando.node:globals" as const;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
 const DEFAULT_PORT = 3000;
+const NODE_HEALTHCHECK_SCRIPT =
+  'const net=require("node:net");const socket=net.connect(Number(process.argv[1]),"127.0.0.1");socket.once("connect",()=>socket.end());socket.once("error",()=>process.exit(1));';
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.Literal(...SUPPORTED_NODE_VERSIONS),
@@ -75,12 +80,23 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? serviceType });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
+  ctx.addEnv("PORT", String(port));
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   if (service.user !== undefined) ctx.setUser(service.user);
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
 
   addServicePortEndpoints(ctx, { port, protocol: "http" });
+  if (service.command !== undefined) {
+    ctx.setHealthcheck({
+      kind: "command",
+      command: ["node", "-e", NODE_HEALTHCHECK_SCRIPT, String(port)],
+      intervalSeconds: 10,
+      timeoutSeconds: 5,
+      retries: 5,
+      startPeriodSeconds: 10,
+    });
+  }
 
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   const globals = normalizeNpmGlobals(service.globals);
@@ -120,6 +136,8 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
   id: `node:${version}`,
   name: `node:${version}`,
   base: "lando",
+  versions: SUPPORTED_NODE_VERSIONS,
+  artifacts: NODE_ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root", node: "/home/node" } },
   schema: Schema.Unknown,
   resolve: (input) =>
