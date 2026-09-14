@@ -29,8 +29,10 @@ test.each([false, true])(
         runCommand: async (command) => {
           runtimeRoot = command.env.XDG_RUNTIME_DIR ?? "";
           store = join(command.env.LANDO_USER_DATA_ROOT ?? "", "runtime", "storage");
-          await mkdir(store, { recursive: true });
-          await writeFile(join(store, "owned-image"), "image");
+          if (command.id !== "cleanup:storage-helpers") {
+            await mkdir(store, { recursive: true });
+            await writeFile(join(store, "owned-image"), "image");
+          }
           expect(command.signal).toBeUndefined();
           expect(command.timeoutMs).toBe(30_000);
           expect(existsSync(runtimeRoot)).toBe(true);

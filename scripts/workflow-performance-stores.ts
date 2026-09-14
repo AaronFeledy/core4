@@ -1,6 +1,7 @@
 import { lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { childEnv } from "../core/src/cli/commands/bun-self-runner.ts";
 import type {
   WorkflowPerformanceCommand,
   WorkflowPerformanceCommandResult,
@@ -9,6 +10,9 @@ import type {
 export class PerformanceStoreCleanupError extends Error {
   override readonly name = "PerformanceStoreCleanupError";
 }
+
+export const unmountPerformanceOverlay =
+  'status=0; mountpoint -q "$1/overlay" || status=$?; case "$status" in 0) umount "$1/overlay";; 32) :;; *) exit "$status";; esac';
 
 export const acquirePerformanceStores = async (rootDir: string, key: string) => {
   const parent = join(rootDir, "samples");
@@ -68,6 +72,7 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
           ...command,
           id: "cleanup:storage",
           timeoutMs: 30_000,
+          env: { ...command.env, CONTAINERS_CONF: join(sampleRoot, "data/runtime/config/containers.conf") },
           argv: [
             join(sampleRoot, "data/runtime/bin/podman"),
             "--root",
@@ -75,13 +80,26 @@ export const acquirePerformanceStores = async (rootDir: string, key: string) => 
             "--runroot",
             join(sampleRoot, "data/runtime/run"),
             "unshare",
-            "rm",
-            "-rf",
-            "--",
+            "sh",
+            "-ec",
+            `${unmountPerformanceOverlay}; rm -rf -- "$1"`,
+            "sh",
             storage,
           ],
         });
         if (result.exitCode !== 0) return [result];
+        const helpers = await runCommand({
+          ...command,
+          id: "cleanup:storage-helpers",
+          timeoutMs: 30_000,
+          argv: [
+            process.execPath,
+            join(import.meta.dir, "workflow-performance-runtime-cleanup.ts"),
+            "--helpers-only",
+          ],
+          env: childEnv({ ...command.env }),
+        });
+        if (helpers.exitCode !== 0) return [helpers];
       }
       for (const target of targets.slice(1)) await rm(target, { recursive: true, force: true });
       await rm(runtimeRoot, { recursive: true });
