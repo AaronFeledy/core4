@@ -20,6 +20,8 @@
 
 - `@lando/sdk/schema` additively exports `SnapshotMetadata`; `VolumeInfo` additively gains optional physical instance identity and provenance, snapshot options and records additively gain optional recovery metadata, and `ServiceRuntimeInfo` additively gains optional image identity. `@lando/sdk/errors` additively exports `SnapshotOwnershipError`, `SqlRecoveryOperationError`, `SqlRecoveryUnavailableError`, `SqlSeedSourceError`, and `SqlSeedStateError`. `StateStore` additively gains `withLock(key, body)` for host-wide advisory locking of scoped operations.
 
+- The unreleased `VolumeSnapshotRef` contract now requires the provider-observed immutable artifact `digest`, `sizeBytes`, and `format`. `VolumeRestoreSpec` carries the same source identity so bundled providers verify native images or copy archives before mutating a generation-checked target; persisted `SnapshotInfo.native` records retain those values.
+
 - `RouteInput` accepts non-empty shorthand strings or `RouteObjectInput` objects. Objects and `RoutePlan` accept ordered `RouteFilter` arrays; `name` is layer-merge identity, while header filters use `header`. `LandofileService.discover` additively includes `RouteInputError` in its error channel so load and plan callers share one union.
 
 - `AppPlanner.plan` additively includes `RouteInputError` in its error channel: authored routes are normalized (shorthand parsed, filters attached) before planning, and an invalid route fails the plan with its authored key path and remediation. The frozen service signature is updated.
