@@ -11,7 +11,7 @@ describe("workflow performance workflow", () => {
     const workflow = await Bun.file(workflowPath).text();
     expect(workflow).toContain("on:\n  schedule:");
     expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).not.toContain("pull_request:");
+    expect(workflow).toContain("pull_request:");
     for (const cell of WORKFLOW_PERFORMANCE_CELLS) {
       expect(workflow).toContain(`workflow-performance-${cell.id}:`);
       expect(workflow).toContain(`runs-on: ${cell.runsOn}`);
