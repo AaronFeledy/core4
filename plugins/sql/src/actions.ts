@@ -11,7 +11,6 @@ import {
   type SnapshotFilter,
   type SnapshotHandle,
   type SnapshotInfo,
-  type SnapshotMetadata,
   type SnapshotOptions,
   type VolumeRef,
 } from "@lando/sdk/schema";
@@ -186,39 +185,3 @@ export const runReset = (
     Effect.flatMap((result) => requireExecOk(result, service, command)),
   );
 };
-
-export const runSnapshot = (
-  mover: SqlMover,
-  plan: SqlPlan,
-  service: SqlPlanService,
-  name: string,
-  label?: string,
-  metadata?: SnapshotMetadata,
-  format: "tar" | "tar.gz" | "tar.zst" = "tar.gz",
-) =>
-  Effect.gen(function* () {
-    const store = yield* requireVolume(plan, service, name);
-    return yield* mover.snapshot(store, {
-      format,
-      ...(label === undefined ? {} : { label }),
-      ...(metadata === undefined ? {} : { metadata }),
-    });
-  });
-
-export const runRestore = (
-  mover: SqlMover,
-  plan: SqlPlan,
-  service: SqlPlanService,
-  name: string,
-  snapshotId: string,
-  start: (service: string) => Effect.Effect<void, unknown>,
-  stop: (service: string) => Effect.Effect<void, unknown>,
-  inspect: (service: string) => Effect.Effect<{ readonly running: boolean }, unknown>,
-) =>
-  Effect.gen(function* () {
-    const store = yield* requireVolume(plan, service, name);
-    const prior = yield* inspect(name);
-    if (prior.running) yield* stop(name);
-    yield* mover.restore(snapshotId, store);
-    if (prior.running) yield* start(name);
-  });
