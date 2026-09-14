@@ -33,10 +33,18 @@ const dumpNotFound = (path: string, appRoot: string, kind: DumpMiss): SqlDumpNot
   });
 };
 
+export type ReadableDump = {
+  readonly digest: string;
+  readonly gzip: boolean;
+};
+
+const isGzipMagic = (chunk: Uint8Array): boolean =>
+  chunk.length >= 2 && chunk[0] === 0x1f && chunk[1] === 0x8b;
+
 export const ensureReadableDump = (
   path: string,
   appRoot: string,
-): Effect.Effect<string, SqlDumpNotFoundError> =>
+): Effect.Effect<ReadableDump, SqlDumpNotFoundError> =>
   Effect.tryPromise({
     try: async () => {
       const info = await stat(path);
@@ -46,8 +54,16 @@ export const ensureReadableDump = (
       // overwrite confirmation, instead of inside DataMover.
       await access(path, constants.R_OK);
       const hash = new Bun.CryptoHasher("sha256");
-      for await (const chunk of Bun.file(path).stream()) hash.update(chunk);
-      return hash.digest("hex");
+      let gzip = false;
+      let sawPrefix = false;
+      for await (const chunk of Bun.file(path).stream()) {
+        if (!sawPrefix) {
+          gzip = isGzipMagic(chunk);
+          sawPrefix = true;
+        }
+        hash.update(chunk);
+      }
+      return { digest: hash.digest("hex"), gzip };
     },
     catch: (cause) =>
       cause instanceof SqlDumpNotFoundError ? cause : dumpNotFound(path, appRoot, dumpMissKind(cause)),

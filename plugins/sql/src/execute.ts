@@ -74,11 +74,12 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
     const action = input.action;
     let restoreSource: SnapshotInfo | undefined;
     const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
-    const expectedDigest =
+    const dump =
       action === "import" || (action === "seed" && input.snapshotId === undefined)
         ? yield* ensureReadableDump(file, deps.plan.root)
         : undefined;
-    const gzip = isGzipPath(file);
+    const expectedDigest = dump?.digest;
+    const gzip = dump?.gzip ?? isGzipPath(file);
     const steps: DbCommandStep[] = [
       {
         id: action,

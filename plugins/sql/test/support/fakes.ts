@@ -96,7 +96,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   };
 
   for (const name of ["dump.sql.gz", "dump.sql", "dump.bak"] as const) {
-    writeFileSync(join(plan.root, name), "x");
+    writeFileSync(join(plan.root, name), name.endsWith(".gz") ? Buffer.from([0x1f, 0x8b, 0x08, 0x00]) : "x");
   }
 
   const deps: SqlCommandDeps = {
