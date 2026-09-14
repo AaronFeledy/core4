@@ -13,7 +13,6 @@ export type SqlLandofile = {
 export type SqlPlanService = {
   readonly name: string;
   readonly type: string;
-  readonly version?: string;
   readonly environment: Readonly<Record<string, string>>;
   readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
 };
@@ -34,12 +33,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
-
-const versionFromImageRef = (ref: string): string | undefined => {
-  const name = ref.split("@", 1)[0] ?? ref;
-  const separator = name.lastIndexOf(":");
-  return separator > name.lastIndexOf("/") ? name.slice(separator + 1) : undefined;
-};
 
 const authoredCreds = (value: Record<string, unknown>): Partial<SqlCreds> | undefined => {
   const user = asString(value.user);
@@ -107,13 +100,9 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
           return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
         })
       : [];
-    const artifact = isRecord(service.artifact) ? service.artifact : undefined;
-    const artifactRef = artifact?.kind === "ref" ? asString(artifact.ref) : undefined;
-    const version = artifactRef === undefined ? undefined : versionFromImageRef(artifactRef);
     mapped[name] = {
       name: asString(service.name) ?? name,
       type: asString(service.type) ?? name,
-      ...(version === undefined ? {} : { version }),
       environment,
       storage,
     };

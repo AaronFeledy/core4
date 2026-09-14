@@ -32,7 +32,7 @@ describe("toSqlPlan", () => {
     expect(Reflect.get(plan, "identity")).toEqual(planned.identity);
   });
 
-  test("extracts the effective database version from a resolved image artifact", () => {
+  test("does not project a resolved image tag as an observed database version", () => {
     const plan = toSqlPlan({
       id: "app",
       name: "app",
@@ -48,6 +48,6 @@ describe("toSqlPlan", () => {
       },
     });
 
-    expect(plan.services.database?.version).toBe("8.0");
+    expect(Reflect.has(plan.services.database ?? {}, "version")).toBe(false);
   });
 });
