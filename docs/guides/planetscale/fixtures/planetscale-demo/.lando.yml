@@ -1,0 +1,20 @@
+name: planetscale-demo
+env_file:
+  - .env
+services:
+  app:
+    type: "node:22"
+    primary: true
+  db:
+    type: mysql
+    creds:
+      user: lando
+      password: lando
+      database: planetscale_demo
+tooling:
+  npm:
+    service: app
+    cmd: npm
+  node:
+    service: app
+    cmd: node
