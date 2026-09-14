@@ -53,7 +53,7 @@ describe("MySQL PHP client selection", () => {
         family: "mysql",
         version: "9.7",
         source: {
-          architectures: ["amd64"],
+          architectures: ["amd64", "arm64"],
           verification: { kind: "apt-release-signature" },
         },
       },

@@ -1,6 +1,7 @@
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import type { PhpDbClientFamily } from "./php-db-client.ts";
+import { phpMysqlArmSource } from "./php-mysql-arm.ts";
 
 export const PHP_MONGOSH_RELEASE = {
   version: "2.10.0",
@@ -71,27 +72,27 @@ const mysqlComponent = (version: string): string => {
 const mysqlSource = (version: string) => {
   const component = mysqlComponent(version);
   const sourceLine = `deb [signed-by=/etc/apt/keyrings/mysql.gpg] https://repo.mysql.com/apt/debian bookworm ${component}`;
-  const architectureGuard =
-    'arch=$(dpkg --print-architecture) && if [ "$arch" != amd64 ]; then echo "Unsupported architecture $arch for Oracle MySQL clients. Supported: amd64." >&2; exit 1; fi';
+  const { command: armCommand, ...armArtifact } = phpMysqlArmSource(version);
   return {
     kind: "apt" as const,
     package: "mysql-community-client",
     packageVersion: version,
     repository: `https://repo.mysql.com/apt/debian bookworm ${component}`,
     signingKeyFingerprint: MYSQL_KEY.fingerprint,
-    architectures: ["amd64"] as const,
+    architectures: ["amd64", "arm64"] as const,
+    artifacts: { arm64: armArtifact },
     verification: {
       kind: "apt-release-signature" as const,
       signingKeyUrl: MYSQL_KEY.url,
       signingKeyFingerprint: MYSQL_KEY.fingerprint,
     },
-    command: `${architectureGuard} && ${aptCommand({
+    command: `arch=$(dpkg --print-architecture) && case "$arch" in amd64) ${aptCommand({
       listName: "mysql",
       sourceLine,
       keyUrl: MYSQL_KEY.url,
       keyFingerprint: MYSQL_KEY.fingerprint,
       packageName: "mysql-community-client",
-    })}`,
+    })} ;; arm64) ${armCommand} ;; *) echo "Unsupported architecture $arch for Oracle MySQL clients. Supported: amd64, arm64." >&2; exit 1 ;; esac`,
   };
 };
 
