@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 
 import { executeDbCommand } from "../src/execute.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
@@ -34,12 +34,17 @@ test("rejects a replaced volume when replacement occurs while waiting for its lo
   let replaced = false;
   const deps = {
     ...harness.deps,
-    inspectVolume: (_service: string, store: string) =>
-      Effect.sync(() => ({
-        ref: { app: AppId.make(harness.deps.plan.id), store },
-        instanceId: replaced ? "replacement-instance" : "original-instance",
-        provenance: "known" as const,
-      })),
+    inspectVolume: (service: string, store: string) =>
+      harness.deps.inspectVolume(service, store).pipe(
+        Effect.map((volume) =>
+          volume?.identity === undefined
+            ? volume
+            : {
+                ...volume,
+                identity: { ...volume.identity, generation: replaced ? "replacement" : "original" },
+              },
+        ),
+      ),
     withVolumeLock: <A, E>(_instance: string, body: Effect.Effect<A, E>) =>
       Effect.sync(() => {
         replaced = true;
@@ -51,6 +56,7 @@ test("rejects a replaced volume when replacement occurs while waiting for its lo
 
   // Then: no recovery capture or mutation is allowed against the replacement.
   expect(Exit.isFailure(exit)).toBe(true);
+  expect(replaced).toBe(true);
   expect(harness.lifecycle()).toEqual([]);
 });
 
