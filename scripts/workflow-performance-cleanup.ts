@@ -6,6 +6,7 @@ import type {
 } from "./workflow-performance-command.ts";
 import { performanceCommand } from "./workflow-performance-measurement.ts";
 import { boundedPerformanceEvidence } from "./workflow-performance-report.ts";
+import type { PerformanceStores } from "./workflow-performance-stores.ts";
 
 export const cleanupWorkflowPerformanceSample = async (
   context: {
@@ -13,10 +14,25 @@ export const cleanupWorkflowPerformanceSample = async (
     readonly appRoot: string;
     readonly env: WorkflowPerformanceCommand["env"];
     readonly setupOnly: boolean;
+    readonly stores?: PerformanceStores;
   },
   runCommand: (command: WorkflowPerformanceCommand) => Promise<WorkflowPerformanceCommandResult>,
 ): Promise<readonly WorkflowPerformanceCommandResult[]> => {
   const { binary, appRoot, env } = context;
+  const started = performance.now();
+  try {
+    await context.stores?.assertOwned();
+  } catch (cause) {
+    return [
+      {
+        id: "cleanup:ownership",
+        durationMs: performance.now() - started,
+        exitCode: 1,
+        stdout: "",
+        stderr: boundedPerformanceEvidence(cause instanceof Error ? cause.message : String(cause)),
+      },
+    ];
+  }
   const commands = [
     ...(context.setupOnly
       ? []
@@ -43,6 +59,25 @@ export const cleanupWorkflowPerformanceSample = async (
     } catch (cause) {
       failures.push({
         id: command.id,
+        durationMs: performance.now() - started,
+        exitCode: 1,
+        stdout: "",
+        stderr: boundedPerformanceEvidence(cause instanceof Error ? cause.message : String(cause)),
+      });
+    }
+  }
+  if (failures.length === 0 && context.stores !== undefined) {
+    const started = performance.now();
+    try {
+      failures.push(
+        ...(await context.stores.release(
+          runCommand,
+          performanceCommand("cleanup:storage", [], appRoot, env),
+        )),
+      );
+    } catch (cause) {
+      failures.push({
+        id: "cleanup:storage",
         durationMs: performance.now() - started,
         exitCode: 1,
         stdout: "",
