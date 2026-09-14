@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Effect, Exit } from "effect";
+import { DateTime, Effect, Exit } from "effect";
 
 import {
   SqlCommandFailedError,
@@ -14,7 +14,7 @@ import {
   SqlServiceAmbiguousError,
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
 
 import { wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
 import { dbInputFromCommand, executeDbCommand } from "../src/run.ts";
@@ -152,6 +152,95 @@ describe("executeDbCommand", () => {
       SqlRecoveryUnavailableError,
     );
     expect(harness.snapshotFilters()).toEqual([]);
+  });
+
+  test("previews and confirms retention within the current root and service", async () => {
+    // Given: two manual snapshots and an automatic recovery point for the selected database.
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const snapshots = [
+      SnapshotInfo.make({
+        id: "manual-new",
+        store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        digest: "sha256:new",
+        sizeBytes: 12,
+        createdAt: DateTime.unsafeMake("2026-09-11T03:00:00Z"),
+        metadata: {
+          sourceRoot: AbsolutePath.make(harness.root),
+          ownerKey: "owner:sql-app",
+          service: ServiceName.make("database"),
+          volumeInstanceId: "volume-instance:database",
+          family: "mysql",
+          version: "8.0",
+          imageIdentity: "sha256:mysql-runtime",
+          recoveryReason: "manual",
+        },
+      }),
+      SnapshotInfo.make({
+        id: "manual-old",
+        store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        digest: "sha256:old",
+        sizeBytes: 12,
+        createdAt: DateTime.unsafeMake("2026-09-11T01:00:00Z"),
+        metadata: {
+          sourceRoot: AbsolutePath.make(harness.root),
+          ownerKey: "owner:sql-app",
+          service: ServiceName.make("database"),
+          volumeInstanceId: "volume-instance:database",
+          family: "mysql",
+          version: "8.0",
+          imageIdentity: "sha256:mysql-runtime",
+          recoveryReason: "manual",
+        },
+      }),
+      SnapshotInfo.make({
+        id: "reset-recovery",
+        store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        digest: "sha256:recovery",
+        sizeBytes: 12,
+        createdAt: DateTime.unsafeMake("2026-09-11T00:00:00Z"),
+        metadata: {
+          sourceRoot: AbsolutePath.make(harness.root),
+          ownerKey: "owner:sql-app",
+          service: ServiceName.make("database"),
+          volumeInstanceId: "volume-instance:database",
+          family: "mysql",
+          version: "8.0",
+          imageIdentity: "sha256:mysql-runtime",
+          recoveryReason: "reset",
+        },
+      }),
+    ];
+    const policies: unknown[] = [];
+    const deps = {
+      ...harness.deps,
+      listSnapshots: () => Effect.succeed(snapshots),
+      pruneSnapshots: (policy: unknown) =>
+        Effect.sync(() => {
+          policies.push(policy);
+          return ["manual-old"];
+        }),
+    };
+
+    // When: retention is previewed, then explicitly confirmed.
+    const preview = await run(deps, { action: "prune", keepLatest: 1, preview: true, yes: false });
+    const confirmed = await run(deps, { action: "prune", keepLatest: 1, preview: false, yes: true });
+
+    // Then: preview is read-only, confirmed prune uses the same root/service filter, and recovery is excluded.
+    expect(Exit.isSuccess(preview)).toBe(true);
+    expect(Exit.isSuccess(confirmed)).toBe(true);
+    if (Exit.isFailure(preview) || Exit.isFailure(confirmed)) throw new Error("expected retention success");
+    expect(preview.value.pruneCandidates).toEqual(["manual-old"]);
+    expect(preview.value.prunedSnapshotIds).toEqual([]);
+    expect(preview.value.retentionApplied).toBe(false);
+    expect(confirmed.value.pruneCandidates).toEqual(["manual-old"]);
+    expect(confirmed.value.prunedSnapshotIds).toEqual(["manual-old"]);
+    expect(confirmed.value.retentionApplied).toBe(true);
+    expect(policies).toEqual([
+      {
+        filter: { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
+        keepLatest: 1,
+      },
+    ]);
   });
 
   test("exports a single mysql service without --service via serviceCmd to hostPath", async () => {

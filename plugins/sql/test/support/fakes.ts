@@ -148,6 +148,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
               }),
             ];
       }),
+    pruneSnapshots: () => Effect.succeed([]),
     canonicalizeSourcePath: (path) =>
       Effect.try({
         try: () => AbsolutePath.make(realpathSync(path)),

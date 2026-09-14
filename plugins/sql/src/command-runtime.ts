@@ -47,6 +47,7 @@ export const runDbCommand = (input: DbCommandInput) =>
           snapshot: (store, opts) => Effect.scoped(mover.snapshot(store, opts)),
           restore: (id, store) => Effect.scoped(mover.restore(id, store)),
           listSnapshots: (filter) => mover.listSnapshots(filter),
+          pruneSnapshots: (policy) => mover.pruneSnapshots(policy),
           canonicalizeSourcePath: (path) =>
             Effect.tryPromise({
               try: () => realpath(path),

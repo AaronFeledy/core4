@@ -1,9 +1,9 @@
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
 import { SqlRecoveryUnavailableError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
-import type { DataTransferResult, SnapshotInfo } from "@lando/sdk/schema";
+import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import { hostFile, parseCount, secretTokens } from "./command-input.ts";
@@ -137,6 +137,43 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       restoreSource = source;
     }
 
+    let prunePolicy: PrunePolicy | undefined;
+    let pruneCandidates: ReadonlyArray<SnapshotInfo> | undefined;
+    if (action === "prune") {
+      const filter = yield* resolveSnapshotSource({
+        app: deps.plan.id,
+        ...(store === undefined ? {} : { store: store.store }),
+        ...(deps.plan.identity?.ownerKey === undefined ? {} : { ownerKey: deps.plan.identity.ownerKey }),
+        ...(deps.plan.identity?.repoGroupKey === undefined
+          ? {}
+          : { repoGroupKey: deps.plan.identity.repoGroupKey }),
+        service: target.name,
+        ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
+        ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),
+        hostCwd: input.hostCwd ?? process.cwd(),
+        canonicalizePath: deps.canonicalizeSourcePath,
+      });
+      const keepLatest = input.keepLatest ?? 3;
+      const snapshots = yield* deps.listSnapshots(filter);
+      prunePolicy = { filter, keepLatest };
+      pruneCandidates = [...snapshots]
+        .filter((snapshot) => snapshot.metadata?.recoveryReason === "manual")
+        .sort(
+          (left, right) =>
+            Date.parse(DateTime.formatIso(right.createdAt)) - Date.parse(DateTime.formatIso(left.createdAt)),
+        )
+        .slice(keepLatest);
+      if (input.preview !== true) {
+        yield* confirmOrFail(
+          input,
+          deps.confirm,
+          target.name,
+          steps,
+          `Retention will delete ${pruneCandidates.length} snapshot(s) for ${target.name}.`,
+        );
+      }
+    }
+
     const progress = yield* publishTree(deps.publish, `db:${action}`, steps);
 
     const io = {
@@ -151,6 +188,8 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
     };
     let snapshotId: string | undefined;
     let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;
+    let prunedSnapshotIds: ReadonlyArray<SnapshotId> | undefined;
+    let retentionApplied: boolean | undefined;
     let transfer: DataTransferResult | undefined;
     let seedStatus: "seeded" | undefined;
     const runPhysical = <A, E>(
@@ -215,6 +254,17 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         listedSnapshots = yield* deps.listSnapshots(filter);
         break;
       }
+      case "prune": {
+        if (input.preview === true) {
+          prunedSnapshotIds = [];
+          retentionApplied = false;
+          break;
+        }
+        if (prunePolicy === undefined) return yield* Effect.dieMessage("retention policy was not resolved");
+        prunedSnapshotIds = yield* deps.pruneSnapshots(prunePolicy);
+        retentionApplied = true;
+        break;
+      }
       case "restore":
         snapshotId = input.snapshotId ?? "";
         {
@@ -262,6 +312,11 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       ...(action === "import" || action === "export" ? { file } : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
       ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
+      ...(pruneCandidates === undefined
+        ? {}
+        : { pruneCandidates: pruneCandidates.map((snapshot) => snapshot.id) }),
+      ...(prunedSnapshotIds === undefined ? {} : { prunedSnapshotIds }),
+      ...(retentionApplied === undefined ? {} : { retentionApplied }),
       ...(seedStatus === undefined ? {} : { seedStatus }),
       ...(transfer?.accelerated === undefined ? {} : { accelerated: transfer.accelerated }),
       ...(transfer?.sizeBytes === undefined ? {} : { sizeBytes: transfer.sizeBytes }),
