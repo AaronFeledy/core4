@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { cleanupWorkflowPerformanceSample } from "./workflow-performance-cleanup.ts";
+import { recordPerformanceIsolation } from "./workflow-performance-isolation.ts";
 import { imagesFor, landofileFor } from "./workflow-performance-sample-config.ts";
 import { acquirePerformanceStores } from "./workflow-performance-stores.ts";
 
@@ -173,6 +174,12 @@ export const runWorkflowPerformanceSample = async (
   )
 > => {
   const stores = await acquirePerformanceStores(input.rootDir, input.key);
+  const isolationRoots = {
+    sampleRoot: stores.sampleRoot,
+    dataRoot: stores.dataRoot,
+    runtimeRoot: stores.runtimeRoot,
+  };
+  await recordPerformanceIsolation("before-prepare", isolationRoots);
   const runCommand = workflowPerformanceDeadlineRunner(input);
   let acquired: PreparedSample | undefined;
   let prepared: PreparedSample;
@@ -197,16 +204,19 @@ export const runWorkflowPerformanceSample = async (
       };
     });
   } catch (cause) {
+    await recordPerformanceIsolation("after-cleanup", isolationRoots);
     await stores
       .release(input.runCommand, performanceCommand("cleanup:storage", [], stores.sampleRoot, {}))
       .catch(() => undefined);
     throw cause;
   }
+  await recordPerformanceIsolation("after-prepare", isolationRoots);
   if (prepared.skipReason !== undefined) {
     const failures = await cleanupWorkflowPerformanceSample(
       { binary: input.binary, ...prepared, setupOnly: true, stores },
       input.runCommand,
     );
+    await recordPerformanceIsolation("after-cleanup", isolationRoots);
     return {
       fileSyncEvidence: prepared.fileSyncEvidence,
       ...(failures.length === 0
@@ -250,6 +260,7 @@ export const runWorkflowPerformanceSample = async (
     { binary: input.binary, ...prepared, setupOnly: false, stores },
     input.runCommand,
   );
+  await recordPerformanceIsolation("after-cleanup", isolationRoots);
   return {
     sample:
       cleanupFailures.length === 0
