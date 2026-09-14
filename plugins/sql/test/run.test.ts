@@ -255,7 +255,15 @@ describe("executeDbCommand", () => {
     const exit = await run(harness.deps, { action: "export", file: "dump.bak", yes: false });
 
     expect(Exit.isSuccess(exit)).toBe(true);
-    expect(harness.execs()[0]?.command[0]).toBe("sqlcmd");
+    expect(
+      harness
+        .execs()
+        .map(({ command }) => command)
+        .slice(-2),
+    ).toEqual([
+      ["mkdir", "-p", "/var/opt/mssql/backup"],
+      expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
+    ]);
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("servicePath");
     expect(transfer?.to._tag).toBe("hostPath");
@@ -276,7 +284,15 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("hostPath");
     expect(transfer?.to._tag).toBe("servicePath");
-    expect(harness.execs()[0]?.command[0]).toBe("sqlcmd");
+    expect(
+      harness
+        .execs()
+        .map(({ command }) => command)
+        .slice(-2),
+    ).toEqual([
+      ["mkdir", "-p", "/var/opt/mssql/backup"],
+      expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
+    ]);
     expect(exit.value.sizeBytes).toBe(12);
   });
 

@@ -22,6 +22,7 @@ import {
   loadCommand,
   mssqlBackupCommand,
   mssqlBackupServicePath,
+  mssqlPrepareBackupCommand,
   mssqlRestoreCommand,
   resetCommand,
 } from "./families.ts";
@@ -87,6 +88,8 @@ export const runExport = (
     const bak = mssqlBackupServicePath(input.creds.database);
     const backup = mssqlBackupCommand(input.creds.database);
     return Effect.gen(function* () {
+      const prepare = mssqlPrepareBackupCommand();
+      yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
       yield* requireExecOk(yield* exec(input.service, backup, input.env), input.service, backup);
       if (input.gzip) {
         const gzip = ["gzip", bak] as const;
@@ -137,6 +140,8 @@ export const runImport = (
   if (input.family === "mssql") {
     const bak = mssqlBackupServicePath(input.creds.database);
     return Effect.gen(function* () {
+      const prepare = mssqlPrepareBackupCommand();
+      yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
       const transfer = yield* mover.transfer({
         from: { _tag: "hostPath", path, trusted: true },
         to: {
