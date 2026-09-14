@@ -1,4 +1,5 @@
-import { Effect } from "effect";
+import { randomUUID } from "node:crypto";
+import { Effect, Exit } from "effect";
 
 import { SqlSeedStateError } from "@lando/sdk/errors";
 import type { VolumeRef } from "@lando/sdk/schema";
@@ -15,10 +16,22 @@ export const executeSeed = (
   input: Parameters<typeof runImport>[2] & { readonly snapshotId?: string; readonly store: VolumeRef },
 ) =>
   Effect.gen(function* () {
-    const status = yield* deps.getSeedStatus(context.metadata.volumeInstanceId);
+    const reject = (status: SqlSeedStateError["status"]) =>
+      new SqlSeedStateError({
+        message: `Cannot seed ${input.service} from state ${status}.`,
+        service: input.service,
+        status,
+        remediation: "Create a fresh database volume or explicitly import into the existing database.",
+      });
+    const identity = context.volumeIdentity;
+    if (!identity || identity.origin !== "created" || identity.ownerRoot !== context.metadata.sourceRoot)
+      return yield* Effect.fail(reject("unknown"));
+    const state = yield* deps.initialization(identity);
+    const status = (yield* state.read)?.state._tag ?? "unknown";
+    if (status !== "fresh") return yield* Effect.fail(reject(status));
     const counted = yield* deps.exec(input.service, countCommand(input.family, input.creds), input.env);
     const count = counted.ok ? parseCount(counted.stdout) : undefined;
-    if (status !== "fresh" || count !== 0) {
+    if (count !== 0) {
       return yield* Effect.fail(
         new SqlSeedStateError({
           message: `Cannot seed ${input.service} from state ${status}.`,
@@ -35,18 +48,36 @@ export const executeSeed = (
       );
       yield* requireCompatibleSnapshot(source, context);
     }
-    yield* deps.setSeedStatus(context.metadata.volumeInstanceId, "in-progress");
-    const seeded = (
-      seedSnapshotId === undefined
-        ? runImport(deps, deps.exec, input)
-        : Effect.gen(function* () {
-            if (context.running) yield* deps.stop(input.service);
-            yield* deps.restore(seedSnapshotId, input.store);
-            if (context.running) yield* deps.start(input.service);
-            return undefined;
-          })
-    ).pipe(Effect.tapError(() => deps.setSeedStatus(context.metadata.volumeInstanceId, "failed")));
-    const result = yield* seeded;
-    yield* deps.setSeedStatus(context.metadata.volumeInstanceId, "seeded");
-    return result;
+    const operationId = randomUUID();
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        if (!(yield* state.begin(operationId))) return yield* Effect.fail(reject("in-progress"));
+        const seeded = Effect.gen(function* () {
+          const current = (yield* deps.inspectVolume(input.service, input.store.store))?.identity;
+          if (
+            !current ||
+            current.coordinationKey !== identity.coordinationKey ||
+            current.generation !== identity.generation ||
+            current.ownerRoot !== identity.ownerRoot
+          )
+            return yield* Effect.fail(reject("unknown"));
+          return yield* seedSnapshotId === undefined
+            ? runImport(deps, deps.exec, input)
+            : Effect.gen(function* () {
+                if (context.running) yield* deps.stop(input.service);
+                yield* deps.restore(seedSnapshotId, { ...input.store, store: identity.nativeName });
+                if (context.running) yield* deps.start(input.service);
+                return undefined;
+              });
+        });
+        const result = yield* restore(seeded).pipe(Effect.exit);
+        const finished = yield* state.finish({
+          operationId,
+          outcome: Exit.isSuccess(result) ? "seeded" : "failed",
+        });
+        if (Exit.isFailure(result)) return yield* Effect.failCause(result.cause);
+        if (!finished) return yield* Effect.fail(reject("unknown"));
+        return result.value;
+      }),
+    );
   });

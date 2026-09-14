@@ -2,6 +2,8 @@ import { Effect } from "effect";
 
 import { SqlRecoveryOperationError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName, type SnapshotMetadata, type VolumeInfo } from "@lando/sdk/schema";
+import type { VolumeIdentity } from "@lando/sdk/schema";
+import type { VolumeInitialization } from "@lando/sdk/services";
 
 import { type SqlMover, runSnapshot } from "./actions.ts";
 import type { SqlFamily } from "./families.ts";
@@ -18,18 +20,13 @@ export type SqlRecoveryDeps = SqlMover & {
     instanceId: string,
     body: Effect.Effect<A, E>,
   ) => Effect.Effect<A, E | unknown>;
-  readonly getSeedStatus: (
-    instanceId: string,
-  ) => Effect.Effect<"fresh" | "in-progress" | "seeded" | "failed", unknown>;
-  readonly setSeedStatus: (
-    instanceId: string,
-    status: "fresh" | "in-progress" | "seeded" | "failed",
-  ) => Effect.Effect<void, unknown>;
+  readonly initialization: (identity: VolumeIdentity) => Effect.Effect<VolumeInitialization, unknown>;
 };
 
 export type SqlRecoveryContext = {
   readonly running: boolean;
   readonly metadata: SnapshotMetadata;
+  readonly volumeIdentity?: VolumeIdentity;
 };
 
 type SqlPhysicalContextInput = Omit<
@@ -77,6 +74,7 @@ const resolvePhysicalContext = (input: SqlPhysicalContextInput) =>
     }
     return {
       running: runtime.running,
+      ...(volume.identity === undefined ? {} : { volumeIdentity: volume.identity }),
       metadata: {
         sourceRoot: AbsolutePath.make(input.plan.root),
         ...(input.plan.identity?.ownerKey === undefined ? {} : { ownerKey: input.plan.identity.ownerKey }),
@@ -101,11 +99,14 @@ export const withPhysicalVolumeLock = <A, E>(
   resolvePhysicalContext(input).pipe(
     Effect.flatMap((context) =>
       input.deps.withVolumeLock(
-        context.metadata.volumeInstanceId,
+        context.volumeIdentity?.coordinationKey ?? context.metadata.volumeInstanceId,
         resolvePhysicalContext(input).pipe(
           Effect.flatMap(
             (lockedContext): Effect.Effect<A, E | SqlRecoveryUnavailableError> =>
-              lockedContext.metadata.volumeInstanceId === context.metadata.volumeInstanceId
+              lockedContext.metadata.volumeInstanceId === context.metadata.volumeInstanceId &&
+              lockedContext.volumeIdentity?.coordinationKey === context.volumeIdentity?.coordinationKey &&
+              lockedContext.volumeIdentity?.generation === context.volumeIdentity?.generation &&
+              lockedContext.volumeIdentity?.ownerRoot === context.volumeIdentity?.ownerRoot
                 ? Effect.suspend(() => input.body(lockedContext))
                 : Effect.fail(
                     new SqlRecoveryUnavailableError({

@@ -12,6 +12,7 @@ import type {
   SnapshotHandle,
   SnapshotMetadata,
   VolumeInfo,
+  VolumeInitializationRecord,
 } from "@lando/sdk/schema";
 import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
 
@@ -98,6 +99,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   const snapshotFilters: SnapshotFilter[] = [];
   let countAttempts = 0;
   let seedStatus = options.seedStatus ?? "fresh";
+  let seedOperationId = "fixture-operation";
   const storage = options.storage ?? [{ store: "sql-app_database_data" }];
   const services: Record<string, SqlPlan["services"][string]> = {
     database: {
@@ -251,15 +253,40 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         ref: { app: AppId.make("sql-app"), store },
         instanceId: `volume-instance:${store}`,
         provenance: "known",
+        identity: {
+          coordinationKey: `daemon:${store}`,
+          nativeName: store,
+          generation: `volume-instance:${store}`,
+          ownerRoot: AbsolutePath.make(root),
+          origin: "created",
+        },
       } satisfies VolumeInfo),
     withVolumeLock: (_instanceId, body) =>
       Effect.sync(() => {
         lifecycle.push("lock");
       }).pipe(Effect.zipRight(body)),
-    getSeedStatus: () => Effect.succeed(seedStatus),
-    setSeedStatus: (_instanceId, status) =>
-      Effect.sync(() => {
-        seedStatus = status;
+    initialization: (identity) =>
+      Effect.succeed({
+        read: Effect.sync(
+          (): VolumeInitializationRecord => ({
+            identity,
+            state:
+              seedStatus === "fresh" ? { _tag: "fresh" } : { _tag: seedStatus, operationId: seedOperationId },
+          }),
+        ),
+        begin: (operationId) =>
+          Effect.sync(() => {
+            if (seedStatus !== "fresh") return false;
+            seedStatus = "in-progress";
+            seedOperationId = operationId;
+            return true;
+          }),
+        finish: ({ operationId, outcome }) =>
+          Effect.sync(() => {
+            if (seedStatus !== "in-progress" || operationId !== seedOperationId) return false;
+            seedStatus = outcome;
+            return true;
+          }),
       }),
     publish: (event) =>
       Effect.sync(() => {

@@ -17,7 +17,6 @@ import {
 } from "@lando/sdk/services";
 
 import { type DbCommandInput, executeDbCommand } from "./execute.ts";
-import { setSqlSeedStatus, sqlSeedState } from "./seed-state.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { sqlPlanFromLandofile, toSqlLandofile, toSqlPlan } from "./views.ts";
 
@@ -79,17 +78,29 @@ export const runDbCommand = (input: DbCommandInput) =>
                   ...(info.imageIdentity === undefined ? {} : { imageIdentity: info.imageIdentity }),
                 })),
               ),
-          inspectVolume: (_service, store) =>
-            provider
-              .listVolumes({ app: AppId.make(plan.id), store })
-              .pipe(Effect.map((volumes) => volumes.find((volume) => volume.ref.store === store))),
+          inspectVolume: (service, store) => {
+            const mount = planned.services[ServiceName.make(service)]?.storage.find(
+              (entry) => entry.store === store,
+            );
+            return mount === undefined || provider.observeVolume === undefined
+              ? Effect.succeed(undefined)
+              : provider.observeVolume(
+                  { app: planned.id, service: ServiceName.make(service), plan: planned },
+                  mount.target,
+                );
+          },
           withVolumeLock: (instanceId, body) => stateStore.withLock(physicalVolumeLockKey(instanceId), body),
-          getSeedStatus: (instanceId) =>
-            sqlSeedState(stateStore, instanceId).pipe(
-              Effect.flatMap((bucket) => bucket.get),
-              Effect.map((state) => state?.status ?? "fresh"),
-            ),
-          setSeedStatus: (instanceId, status) => setSqlSeedStatus(stateStore, instanceId, status),
+          initialization: (identity) =>
+            mover.volumeInitialization === undefined
+              ? Effect.fail(
+                  new SqlRecoveryUnavailableError({
+                    message: "Shared volume initialization state is unavailable.",
+                    service: earlyTarget.right.name,
+                    reason: "The data mover does not provide initialization state.",
+                    remediation: "Use a data mover that supports generation-bound initialization.",
+                  }),
+                )
+              : mover.volumeInitialization(identity),
           confirm: (message) => Effect.scoped(interaction.confirm({ message, default: false })),
           publish: (event) => events.publish(event),
         },

@@ -78,7 +78,7 @@ export class SqlRecoveryOperationError extends Schema.TaggedError<SqlRecoveryOpe
 export class SqlSeedStateError extends Schema.TaggedError<SqlSeedStateError>()("SqlSeedStateError", {
   message: Schema.String,
   service: Schema.String,
-  status: Schema.Literal("fresh", "in-progress", "seeded", "failed"),
+  status: Schema.Literal("unknown", "fresh", "in-progress", "seeded", "failed"),
   remediation: Schema.String,
 }) {}
 
