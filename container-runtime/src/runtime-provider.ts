@@ -30,6 +30,8 @@ export interface ResolvedProviderOpsInput {
       target: ServiceSelector,
       action: "start" | "stop" | "restart",
     ) => Effect.Effect<void, ProviderError>;
+    readonly resume?: NonNullable<RuntimeProviderShape["resume"]>;
+    readonly suspend?: NonNullable<RuntimeProviderShape["suspend"]>;
     readonly waitForExit: (
       plan: AppPlan,
       target: ServiceSelector,
@@ -58,6 +60,8 @@ export type ResolvedProviderOps = Pick<
   | "start"
   | "stop"
   | "restart"
+  | "resume"
+  | "suspend"
   | "waitForExit"
   | "exec"
   | "execStream"
@@ -131,6 +135,16 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     stop: (target) => resolveTarget(target, "stop", (plan) => input.service.lifecycle(plan, target, "stop")),
     restart: (target) =>
       resolveTarget(target, "restart", (plan) => input.service.lifecycle(plan, target, "restart")),
+    resume: (target, identity) =>
+      resolveTarget(target, "resume", () => {
+        const resume = input.service.resume;
+        return resume === undefined ? Effect.fail(unavailable("resume")) : resume(target, identity);
+      }),
+    suspend: (target, identity) =>
+      resolveTarget(target, "suspend", () => {
+        const suspend = input.service.suspend;
+        return suspend === undefined ? Effect.fail(unavailable("suspend")) : suspend(target, identity);
+      }),
     waitForExit: (target, options) =>
       resolveTarget(target, "waitForExit", (plan) => input.service.waitForExit(plan, target, options)),
     exec: (target, command) =>

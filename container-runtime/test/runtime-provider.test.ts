@@ -259,6 +259,34 @@ describe("resolved provider operations", () => {
     ]);
   });
 
+  test("delegates exact lifecycle transitions with the inspected runtime identity", async () => {
+    const calls: Call[] = [];
+    const input = makeInput(calls);
+    const identity = { containerId: "container:observed", imageIdentity: "sha256:observed" };
+    const ops = makeResolvedProviderOps({
+      ...input,
+      service: {
+        ...input.service,
+        resume: (selector, observed) =>
+          Effect.sync(() => calls.push({ name: "resume", args: [selector, observed] })),
+        suspend: (selector, observed) =>
+          Effect.sync(() => calls.push({ name: "suspend", args: [selector, observed] })),
+      },
+    });
+    if (ops.resume === undefined || ops.suspend === undefined)
+      throw new Error("Expected exact lifecycle adapters");
+
+    await Effect.runPromise(ops.resume(target, identity));
+    await Effect.runPromise(ops.suspend(target, identity));
+
+    expect(calls).toEqual([
+      { name: "before", args: [] },
+      { name: "resume", args: [target, identity] },
+      { name: "before", args: [] },
+      { name: "suspend", args: [target, identity] },
+    ]);
+  });
+
   test("does not run before or delegate when a plan is missing", async () => {
     // Given
     const calls: Call[] = [];
