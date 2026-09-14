@@ -691,3 +691,10 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Learnings: exact registered version ids must also validate; planner-injected PHP pin must not suppress FPM/prerequisites; Node idle command no healthcheck.
 - Verification: parent root typecheck/lint clean; 274 targeted tests across nine files passed; boundaries, codegen:check, schema compatibility (one accepted PhpServiceConfig widening), guide lint/coverage/public transcripts/drift pass. Sandbox fresh compile proved Apache `/app/public` HTTP, Node PORT5173 HTTP+TCP health, PHP8.3.33; php8.0/node999/apache9 fail LandofileValidationError before app registration. Apache2 Node4 PHPmatrix7 guide scenarios pass. Source LSP clean; scoped Oracle acceptance approved. QA three apps purged, temporary binaries/scripts/terminal removed, shared global remains. No full suite run.
 ---
+
+## 2026-09-14 - US-618E Review
+- Apache generated config now overwrites a dedicated include instead of appending to httpd.conf on every start. Recipe database prompts no longer offer `mariadb:10.11`, which the new catalog matrix rejects.
+- Review notes (deferred/rejected): php-db-client 10.6/10.11 stay client-package versions, not service runtimes; php:8.0 still fail-closes via registered family ids rather than a bare `php` matrix; real-runtime HTTP belongs to Verify; full-suite uninstall failures are out of host-safe Review scope.
+- Verification: typecheck and lint passed; Apache, planner-home, app-planner, Node, version-metadata, registration, and five recipe decomposer suites passed; guide-drift passed against origin/main. Post-fix Bugbot found no bugs.
+- **Learnings for future iterations:** Fail-closed ServiceType version matrices must be checked against recipe prompt/snapshot enums in the same story, or init will write Landofiles that cannot plan.
+---
