@@ -304,6 +304,9 @@ ${bunSetupStep}
 
 ${landoRootlessPrereqSteps}
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Build Linux arm64 binary
         run: |
           mkdir -p dist

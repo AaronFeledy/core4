@@ -392,6 +392,9 @@ jobs:
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Build Linux arm64 binary
         run: |
           mkdir -p dist

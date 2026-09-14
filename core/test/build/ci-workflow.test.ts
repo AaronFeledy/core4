@@ -282,6 +282,8 @@ describe("ci workflow", () => {
 
     expect(arm).toContain("    runs-on: ubuntu-24.04-arm");
     expect(arm).toContain("    timeout-minutes: 90");
+    expect(arm).toContain("      - name: Regenerate derived sources");
+    expect(arm).toContain("        run: bun run codegen");
     expect(arm).toContain("      - name: Build Linux arm64 binary");
     expect(arm).toContain("          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64");
     expect(arm).toContain('          test "$(uname -m)" = aarch64');
@@ -299,6 +301,7 @@ describe("ci workflow", () => {
     expect(arm).toContain("name=lando-mysql-arm-");
     expect(arm).not.toContain("podman system prune");
     expect(arm).not.toContain("LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST");
+    expect(arm.indexOf("Regenerate derived sources")).toBeLessThan(arm.indexOf("Build Linux arm64 binary"));
     expect(arm.indexOf("Build Linux arm64 binary")).toBeLessThan(arm.indexOf("Wrap managed Podman"));
     expect(arm.indexOf("Wrap managed Podman")).toBeLessThan(arm.indexOf("Run native ARM MySQL client tests"));
   });
