@@ -10,7 +10,6 @@ import type {
   DataTransferSpec,
   SnapshotFilter,
   SnapshotHandle,
-  SnapshotMetadata,
   VolumeInfo,
   VolumeInitializationRecord,
 } from "@lando/sdk/schema";
@@ -18,75 +17,17 @@ import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schem
 
 import type { SqlCommandDeps } from "../../src/run.ts";
 import type { SqlLandofile, SqlPlan } from "../../src/views.ts";
-
-export type ExtraSqlService = {
-  readonly name: string;
-  readonly type: string;
-};
-
-export type SqlTestOptions = {
-  readonly password: string;
-  readonly rootPassword?: string;
-  readonly type?: string;
-  readonly version?: string;
-  readonly environment?: Readonly<Record<string, string>>;
-  readonly countStdout?: string;
-  readonly countFails?: boolean;
-  readonly countFailuresBeforeSuccess?: number;
-  readonly execFails?: boolean;
-  readonly restoreFails?: boolean;
-  readonly startFails?: boolean;
-  readonly initiallyRunning?: boolean;
-  readonly omitImageIdentity?: boolean;
-  readonly extraServices?: ReadonlyArray<ExtraSqlService>;
-  readonly storage?: ReadonlyArray<{ readonly store: string }>;
-  readonly seedStatus?: "fresh" | "in-progress" | "seeded" | "failed";
-  readonly snapshotVersion?: string;
-  readonly snapshotVolumeInstance?: string;
-};
-
-export type RecordedExec = {
-  readonly command: ReadonlyArray<string>;
-  readonly env?: Readonly<Record<string, string>>;
-};
-
-export type RecordedSnapshot = {
-  readonly store: string;
-  readonly format?: string;
-  readonly label?: string;
-  readonly metadata?: SnapshotMetadata;
-};
-
-export type SqlLifecycleStep = "lock" | "snapshot" | "stop" | "restore" | "start";
-
-export class FakeRestoreError extends Error {
-  readonly _tag = "FakeRestoreError";
-  constructor() {
-    super("restore failed");
-    this.name = "FakeRestoreError";
-  }
-}
-
-export class FakeStartError extends Error {
-  readonly _tag = "FakeStartError";
-  constructor() {
-    super("start failed");
-    this.name = "FakeStartError";
-  }
-}
-
-export type SqlTestHarness = {
-  readonly root: string;
-  readonly deps: SqlCommandDeps;
-  readonly transfers: () => ReadonlyArray<DataTransferSpec>;
-  readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
-  readonly execs: () => ReadonlyArray<RecordedExec>;
-  readonly published: () => ReadonlyArray<string>;
-  readonly lifecycle: () => ReadonlyArray<SqlLifecycleStep>;
-  readonly snapshotFilters: () => ReadonlyArray<SnapshotFilter>;
-  readonly countAttempts: () => number;
-  readonly dispose: () => void;
-};
+import { FakeRestoreError, FakeStartError } from "./errors.ts";
+import {
+  type RecordedExec,
+  type RecordedSnapshot,
+  type SqlLifecycleStep,
+  type SqlTestHarness,
+  type SqlTestOptions,
+  fixtureDataDestination,
+} from "./types.ts";
+export type * from "./types.ts";
+export { FakeRestoreError, FakeStartError } from "./errors.ts";
 
 const liveHarnesses: SqlTestHarness[] = [];
 
@@ -100,7 +41,9 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
   let countAttempts = 0;
   let seedStatus = options.seedStatus ?? "fresh";
   let seedOperationId = "fixture-operation";
-  const storage = options.storage ?? [{ store: "sql-app_database_data" }];
+  const storage = options.storage ?? [
+    { store: "sql-app_database_data", target: fixtureDataDestination(options.type ?? "mysql:8.0") },
+  ];
   const services: Record<string, SqlPlan["services"][string]> = {
     database: {
       name: "database",
@@ -120,7 +63,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       name: extra.name,
       type: extra.type,
       environment: {},
-      storage: [{ store: `sql-app_${extra.name}_data` }],
+      storage: [{ store: `sql-app_${extra.name}_data`, target: fixtureDataDestination(extra.type) }],
     };
   }
 
