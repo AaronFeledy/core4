@@ -57,10 +57,10 @@ export const executeSeed = (
           return yield* seedSnapshotId === undefined
             ? runImport(deps, deps.exec, input)
             : Effect.gen(function* () {
-                if (context.running) yield* deps.stop(input.service);
+                if (context.running) yield* context.suspend;
                 yield* context.verifyVolume;
                 yield* deps.restore(seedSnapshotId, { ...input.store, store: identity.nativeName });
-                if (context.running) yield* deps.start(input.service);
+                if (context.running) yield* context.resume;
                 return undefined;
               });
         });

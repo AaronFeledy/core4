@@ -35,7 +35,7 @@ it("refuses restore when the mounted generation changes during backup", async ()
     Effect.either(executeDbCommand(deps, { action: "restore", snapshotId: "source", yes: true })),
   );
   expect(result._tag).toBe("Left");
-  expect(harness.lifecycle()).toEqual(["lock", "stop", "snapshot"]);
+  expect(harness.lifecycle()).toEqual(["lock", "suspend", "snapshot"]);
 });
 
 it("snapshots the mounted native volume when it differs from the plan", async () => {
