@@ -191,11 +191,19 @@ export type AgentEnvConfig = typeof AgentEnvConfig.Type;
  * unknown tokens fail later at resolve, not at config load.
  */
 export const GlobalConfig = Schema.Struct({
-  userDataRoot: Schema.optional(AbsolutePath),
-  userConfRoot: Schema.optional(AbsolutePath),
-  userCacheRoot: Schema.optional(AbsolutePath),
-  systemPluginRoot: Schema.optional(AbsolutePath),
-  defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
+  userDataRoot: Schema.optional(AbsolutePath).annotations({ description: "Root for durable user data." }),
+  userConfRoot: Schema.optional(AbsolutePath).annotations({
+    description: "Root containing user config files.",
+  }),
+  userCacheRoot: Schema.optional(AbsolutePath).annotations({
+    description: "Root for disposable user caches.",
+  }),
+  systemPluginRoot: Schema.optional(AbsolutePath).annotations({
+    description: "Root for system-installed plugins.",
+  }),
+  defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)).annotations({
+    description: "Default container provider contribution id.",
+  }),
   defaultRouterService: Schema.optional(Schema.String).annotations({
     description: "Globally selected RouterService contribution id.",
   }),
@@ -205,8 +213,12 @@ export const GlobalConfig = Schema.Struct({
   appLabels: Schema.optional(AppLabelDefaults).annotations({
     description: "Container-label defaults applied below each user-app service's authored labels.",
   }),
-  telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }),
-  renderer: Schema.optional(Schema.String),
+  telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }).annotations({
+    description: "CLI telemetry policy.",
+  }),
+  renderer: Schema.optional(Schema.String).annotations({
+    description: "Default CLI renderer contribution id.",
+  }),
   logLevel: Schema.optional(Schema.String).annotations({
     description:
       "Diagnostic log level (none, error, warn, info, debug, trace). Unknown values fail at resolve, not config load.",
@@ -223,7 +235,9 @@ export const GlobalConfig = Schema.Struct({
   loadMaxRecursionDepth: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.positive()), {
     default: () => 4,
   }).annotations({ description: "Maximum nested Landofile load/import call depth." }),
-  network: Schema.optional(NetworkConfig),
+  network: Schema.optional(NetworkConfig).annotations({
+    description: "Outbound proxy and certificate trust policy.",
+  }),
   /**
    * Ingress proxy settings (`proxy.defaultDomain`). Distinct from `network.proxy`
    * (HTTP egress / HTTP_PROXY).
