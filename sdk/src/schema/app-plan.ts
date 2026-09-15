@@ -164,11 +164,25 @@ export const FileSyncPlan = Schema.Struct({
 });
 export type FileSyncPlan = typeof FileSyncPlan.Type;
 
+export const AppIdentity = Schema.Struct({
+  appRoot: AbsolutePath.annotations({ description: "Canonical root that owns this app instance." }),
+  ownerKey: Schema.String.annotations({
+    description: "Stable identity derived from the canonical app root.",
+  }),
+  repoGroupKey: Schema.optional(Schema.String).annotations({
+    description: "Stable identity shared by worktrees from one Git common directory.",
+  }),
+});
+export type AppIdentity = typeof AppIdentity.Type;
+
 export const AppPlan = Schema.Struct({
   id: AppId,
   name: Schema.String,
   slug: Schema.String,
   root: AbsolutePath,
+  identity: Schema.optional(AppIdentity).annotations({
+    description: "Canonical ownership and optional repository grouping identity.",
+  }),
   provider: ProviderId,
   services: Schema.Record({ key: ServiceName, value: ServicePlan }),
   routes: Schema.Array(RoutePlan),

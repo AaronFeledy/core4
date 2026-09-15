@@ -346,6 +346,20 @@ const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("AppPlannerLive", () => {
+  test("records canonical app-root ownership on every planned app", async () => {
+    // Given: an app planned from an existing canonical working directory.
+    await withTempCwd(async (dir) => {
+      // When: the planner resolves the app.
+      const appPlan = await plan(landofileFixture);
+
+      // Then: it carries a stable owner identity distinct from the display app id.
+      expect("identity" in appPlan).toBe(true);
+      if (!("identity" in appPlan) || appPlan.identity === undefined) return;
+      expect(String(appPlan.identity.appRoot)).toBe(dir);
+      expect(appPlan.identity.ownerKey).toMatch(/^[a-f0-9]{64}$/u);
+    });
+  });
+
   for (const setting of ["router", "scanner"] as const) {
     test(`invalidates persisted plans when global ${setting} changes`, async () => {
       await withTempCwd(async (appRoot) => {

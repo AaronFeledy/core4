@@ -134,6 +134,31 @@ export const runStateStoreContract = (
       (cause: unknown): ContractFailure =>
         stateStoreContractFailure(assertion, cause);
 
+    let activeLockBodies = 0;
+    let maximumActiveLockBodies = 0;
+    const lockBody = store.withLock(
+      "shared-volume",
+      Effect.acquireUseRelease(
+        Effect.sync(() => {
+          activeLockBodies += 1;
+          maximumActiveLockBodies = Math.max(maximumActiveLockBodies, activeLockBodies);
+        }),
+        () => Effect.sleep("5 millis"),
+        () =>
+          Effect.sync(() => {
+            activeLockBodies -= 1;
+          }),
+      ),
+    );
+    yield* Effect.all([lockBody, lockBody], { concurrency: "unbounded" }).pipe(
+      Effect.mapError(failWith("named advisory lock bodies resolve")),
+    );
+    yield* requireStateStoreContract(
+      maximumActiveLockBodies === 1,
+      "named advisory locks serialize bodies sharing a key",
+      maximumActiveLockBodies,
+    );
+
     // 1. Codec round-trip: json, binary, and custom raw codec.
     const jsonBucket = yield* store
       .open(stateStoreDocSpec(harness, "codec-json.json"))

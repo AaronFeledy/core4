@@ -21,6 +21,7 @@ import {
   LandofileService,
   RouterService,
   RuntimeProviderRegistry,
+  StateStore,
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
@@ -30,6 +31,8 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
 import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
+import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
@@ -62,7 +65,8 @@ type RebuildAppServices =
   | RouterService
   | RedactionService
   | RuntimeProviderRegistry
-  | ShellRunner;
+  | ShellRunner
+  | StateStore;
 
 const rebuildSelectedServices = (
   plan: AppPlan,
@@ -91,15 +95,17 @@ const rebuildSelectedServices = (
     const builtPlan = yield* withBuildProvider(builds.build(plan), provider);
     const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
     yield* Effect.scoped(
-      provider.apply(builtPlan, {
-        reconcile: true,
-        recordedPlan: {
-          ...recordedPlan,
-          services: { ...recordedPlan.services, ...builtPlan.services },
-        },
-        ...(signal === undefined ? {} : { signal }),
-        serviceEnvironment,
-      }),
+      provider
+        .apply(builtPlan, {
+          reconcile: true,
+          recordedPlan: {
+            ...recordedPlan,
+            services: { ...recordedPlan.services, ...builtPlan.services },
+          },
+          ...(signal === undefined ? {} : { signal }),
+          serviceEnvironment,
+        })
+        .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
     );
     yield* withBuildProvider(
       builds.buildApp(builtPlan, { force: true, ...(signal === undefined ? {} : { signal }) }),
@@ -131,7 +137,6 @@ export const rebuildApp = (
   managed?: StartManagedScope,
 ): Effect.Effect<RebuildAppResult, RebuildAppError, RebuildAppServices> =>
   Effect.gen(function* () {
-    const proxy = yield* RouterService;
     const resolvedTarget =
       target ??
       (yield* Effect.gen(function* () {
@@ -147,40 +152,57 @@ export const rebuildApp = (
     const selectedPlan = yield* selectRebuildPlan(plan, options.services);
     const scoped = options.services !== undefined && options.services.length > 0;
     yield* runAppInitEvents(plan);
-    const events = yield* EventService;
-    const ref: AppRef = resolvedTarget.app;
-    const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
-    const preRebuild = PreRebuildEvent.make({ _tag: "pre-rebuild", app: ref, timestamp: timestamp() });
-    yield* events.publish(preRebuild);
-    yield* runAppEvent(plan, "pre-rebuild", preRebuild);
-    const start = scoped
-      ? {
-          app: plan.name,
-          servicesStarted: yield* rebuildSelectedServices(selectedPlan, plan, options.signal),
-        }
-      : yield* Effect.gen(function* () {
-          yield* stopAppWithPlan({}, resolvedTarget);
-          yield* managed?.onStopped ?? Effect.void;
-          return yield* compensateFailureUnless(
-            startApp(
-              {
-                reconcile: true,
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-              },
-              resolvedTarget,
-              managed,
-              { forceAppBuild: true },
-            ),
-            proxy.removeRoutes(plan.id),
-            isPostStartStepError,
-          );
-        });
-    const postRebuild = PostRebuildEvent.make({ _tag: "post-rebuild", app: ref, timestamp: timestamp() });
-    yield* events.publish(postRebuild);
-    yield* runAppEvent(plan, "post-rebuild", postRebuild);
-    return {
-      app: start.app,
-      servicesRebuilt: start.servicesStarted.map((service) => service.name),
-      servicesStarted: start.servicesStarted,
-    };
+    const context = yield* Effect.context<RebuildAppServices>();
+    const registry = yield* RuntimeProviderRegistry;
+    const stateStore = yield* StateStore;
+    const provider = yield* registry.select(plan);
+    return yield* withPlanVolumeCoordination({
+      plan,
+      provider,
+      stateStore,
+      body: () =>
+        Effect.gen(function* () {
+          const proxy = yield* RouterService;
+          const events = yield* EventService;
+          const ref: AppRef = resolvedTarget.app;
+          const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
+          const preRebuild = PreRebuildEvent.make({ _tag: "pre-rebuild", app: ref, timestamp: timestamp() });
+          yield* events.publish(preRebuild);
+          yield* runAppEvent(plan, "pre-rebuild", preRebuild);
+          const start = scoped
+            ? {
+                app: plan.name,
+                servicesStarted: yield* rebuildSelectedServices(selectedPlan, plan, options.signal),
+              }
+            : yield* Effect.gen(function* () {
+                yield* stopAppWithPlan({}, resolvedTarget);
+                yield* managed?.onStopped ?? Effect.void;
+                return yield* compensateFailureUnless(
+                  startApp(
+                    {
+                      reconcile: true,
+                      ...(options.signal === undefined ? {} : { signal: options.signal }),
+                    },
+                    resolvedTarget,
+                    managed,
+                    { forceAppBuild: true },
+                  ),
+                  proxy.removeRoutes(plan.id),
+                  isPostStartStepError,
+                );
+              });
+          const postRebuild = PostRebuildEvent.make({
+            _tag: "post-rebuild",
+            app: ref,
+            timestamp: timestamp(),
+          });
+          yield* events.publish(postRebuild);
+          yield* runAppEvent(plan, "post-rebuild", postRebuild);
+          return {
+            app: start.app,
+            servicesRebuilt: start.servicesStarted.map((service) => service.name),
+            servicesStarted: start.servicesStarted,
+          };
+        }).pipe(Effect.provide(context)),
+    });
   });

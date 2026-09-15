@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Deferred, Effect, Exit, Fiber, Scope } from "effect";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
-import { RouterService, ToolingEngine } from "@lando/sdk/services";
+import { RouterService, ToolingEngine, physicalVolumeLockKey } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -84,6 +84,46 @@ const startHarness = (failure?: string) => {
 };
 
 describe("restart lifecycle brackets", () => {
+  test("retains physical volume coordination through the stopped callback", async () => {
+    const plannedApp = {
+      ...plan,
+      stores: [{ name: "data", kind: "data" as const, scope: "app" as const }],
+    };
+    const harness = makeHarness({ plannedApp });
+    const callbackEntered = await Effect.runPromise(Deferred.make<void>());
+    const releaseCallback = await Effect.runPromise(Deferred.make<void>());
+    const competingEntered = await Effect.runPromise(Deferred.make<void>());
+    const scope = await Effect.runPromise(Scope.make());
+    const target = {
+      plan: plannedApp,
+      root: plannedApp.root,
+      app: { kind: "user" as const, id: plannedApp.id, root: plannedApp.root },
+    };
+    const operation = restartApp({}, target, {
+      scope,
+      onStopped: Deferred.succeed(callbackEntered, undefined).pipe(
+        Effect.zipRight(Deferred.await(releaseCallback)),
+      ),
+    }).pipe(Effect.provideService(ToolingEngine, recordingEngine([])), Effect.provide(harness.layer));
+    const restart = Effect.runFork(operation);
+    await Effect.runPromise(Deferred.await(callbackEntered).pipe(Effect.timeout("1 second")));
+    const competing = Effect.runFork(
+      harness.stateStore.service.withLock(
+        physicalVolumeLockKey(JSON.stringify(["endpoint:test", "data"])),
+        Deferred.succeed(competingEntered, undefined),
+      ),
+    );
+
+    const beforeRelease = await Effect.runPromise(Deferred.poll(competingEntered));
+    await Effect.runPromise(Deferred.succeed(releaseCallback, undefined));
+    await Effect.runPromise(Fiber.join(restart));
+    await Effect.runPromise(Fiber.join(competing));
+    await Effect.runPromise(Scope.close(scope, Exit.void));
+
+    expect(beforeRelease._tag).toBe("None");
+    expect((await Effect.runPromise(Deferred.poll(competingEntered)))._tag).toBe("Some");
+  });
+
   test("event fixtures leave the shared topology plan without lifecycle hooks", () => {
     // Given a shared plan used by the topology tests
     // When a restart fixture attaches its lifecycle hooks

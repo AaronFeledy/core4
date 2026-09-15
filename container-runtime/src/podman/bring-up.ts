@@ -15,6 +15,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ApplyOptions, ApplyResult, EventService } from "@lando/sdk/services";
 
+import type { VolumeCreationFact } from "@lando/sdk/schema";
 import { libpodWaitDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
@@ -31,6 +32,7 @@ import {
 } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
+import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
@@ -344,35 +346,37 @@ const ensureNetwork = (
   );
 };
 
-const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly<Record<string, string>> => ({
-  "dev.lando.app": plan.id,
+export const podmanVolumeCreationLabels = (
+  plan: AppPlan,
+  store: AppPlan["stores"][number],
+): Readonly<Record<string, string>> => ({
+  ...volumeCreationLabels(plan, store),
   "dev.lando.provider": plan.provider,
-  "dev.lando.store": store.name,
-  "dev.lando.scope": store.scope,
   "dev.lando.volume-selector": volumeSelectorValue({
     providerId: plan.provider,
     appId: plan.id,
     volumeClass: store.kind === "cache" ? "cache" : "data",
   }),
-  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
 });
 
 const ensureVolume = (
   deps: BringUpDeps,
   plan: AppPlan,
   store: AppPlan["stores"][number],
-): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> =>
-  request(deps, {
+): Effect.Effect<readonly VolumeCreationFact[], ProviderUnavailableError | ProviderInternalError> => {
+  const labels = podmanVolumeCreationLabels(plan, store);
+  return request(deps, {
     method: "POST",
     path: "/volumes/create",
     body: {
       Name: store.name,
-      Labels: volumeLabels(plan, store),
+      Labels: labels,
     },
   }).pipe(
     Effect.flatMap((response) => {
-      if (response.status === 201 || response.status === 200) return Effect.succeed(true);
-      if (response.status === 409) return Effect.succeed(false);
+      if (response.status === 201 || response.status === 200)
+        return Effect.succeed(volumeCreationFact({ body: response.body, name: store.name, labels }));
+      if (response.status === 409) return Effect.succeed([]);
       return Effect.fail(
         new ProviderUnavailableError({
           providerId: deps.options.ctx.providerId,
@@ -387,6 +391,7 @@ const ensureVolume = (
       );
     }),
   );
+};
 
 const createContainer = (
   deps: BringUpDeps,
@@ -648,9 +653,9 @@ export const bringUp = (plan: AppPlan, options: BringUpOptions): Effect.Effect<A
         createdNetworks.add(name);
       }
     }
-    let changed = false;
+    const createdVolumes: VolumeCreationFact[] = [];
     for (const store of plan.stores) {
-      changed = (yield* ensureVolume(deps, plan, store)) || changed;
+      createdVolumes.push(...(yield* ensureVolume(deps, plan, store)));
     }
     const touched: TouchedContainer[] = [];
     const result = yield* runServiceStartSchedule(plan, {
@@ -736,5 +741,5 @@ export const bringUp = (plan: AppPlan, options: BringUpOptions): Effect.Effect<A
       );
     }
 
-    return { changed: result.changed || changed };
+    return { changed: result.changed || createdVolumes.length > 0, createdVolumes };
   });

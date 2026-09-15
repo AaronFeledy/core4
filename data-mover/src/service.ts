@@ -1,5 +1,5 @@
-import { createHash, randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { cp, mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
@@ -9,6 +9,7 @@ import type { LandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
+  ArtifactTransferError,
   DataChecksumMismatchError,
   DataEndpointUnsupportedError,
   DataSourceOutsideRootError,
@@ -17,6 +18,7 @@ import {
   ProviderUnavailableError,
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
+  SnapshotOwnershipError,
 } from "@lando/sdk/errors";
 import {
   DataTransferProgressEvent,
@@ -39,23 +41,22 @@ import {
   type SnapshotId,
   type SnapshotInfo,
   SnapshotInfo as SnapshotInfoSchema,
+  type SnapshotMetadata,
+  type VolumeInfo,
   type VolumeRef,
   type VolumeSnapshotRef,
 } from "@lando/sdk/schema";
+import { DataMover, EventService, PathsService, RuntimeProvider, StateStore } from "@lando/sdk/services";
 import {
-  DataMover,
-  EventService,
-  type ExecChunk,
-  PathsService,
-  RuntimeProvider,
-  StateStore,
-} from "@lando/sdk/services";
-import {
-  type VerifiedStreamError,
+  VerifiedStreamError,
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
+import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
+import { execStdoutStream } from "./exec-stream.ts";
 import { providerImages } from "./generated/provider-images.ts";
+import { stageVerifiedStream } from "./staged-stream.ts";
+import { sharedVolumeInitialization } from "./volume-initialization.ts";
 
 interface DataMoverEvents {
   readonly redactText: (text: string) => string;
@@ -165,6 +166,10 @@ const snapshotMatches = (info: SnapshotInfo, filter: SnapshotFilter): boolean =>
   if (filter.id !== undefined && info.id !== filter.id) return false;
   if (filter.app !== undefined && String(info.store.app) !== String(filter.app)) return false;
   if (filter.store !== undefined && info.store.store !== filter.store) return false;
+  if (filter.sourceRoot !== undefined && info.metadata?.sourceRoot !== filter.sourceRoot) return false;
+  if (filter.ownerKey !== undefined && info.metadata?.ownerKey !== filter.ownerKey) return false;
+  if (filter.repoGroupKey !== undefined && info.metadata?.repoGroupKey !== filter.repoGroupKey) return false;
+  if (filter.service !== undefined && info.metadata?.service !== filter.service) return false;
   if (filter.scope !== undefined && info.store.scope !== filter.scope) return false;
   if (filter.label !== undefined && info.label !== filter.label) return false;
   if (filter.labels !== undefined) {
@@ -279,8 +284,6 @@ const rollbackSnapshotPersistence = (
     }
   });
 
-const hashText = (value: string): string => createHash("sha256").update(value).digest("hex");
-
 const endpointName = (endpoint: DataEndpoint): string => {
   switch (endpoint._tag) {
     case "hostPath":
@@ -392,33 +395,6 @@ const MAX_DECOMPRESSED_ARCHIVE_BYTES = 2 * 1024 ** 3;
 
 export const __testOnlyEncodeTarOctal = octal;
 
-const writeAscii = (target: Uint8Array, offset: number, value: string, length: number) => {
-  const bytes = new TextEncoder().encode(value.slice(0, length));
-  target.set(bytes, offset);
-};
-
-const packTar = (payload: Uint8Array): Uint8Array => {
-  const header = new Uint8Array(512);
-  writeAscii(header, 0, "payload", 100);
-  writeAscii(header, 100, `${octal(0o644, 8)}\0`, 8);
-  writeAscii(header, 108, `${octal(0, 8)}\0`, 8);
-  writeAscii(header, 116, `${octal(0, 8)}\0`, 8);
-  writeAscii(header, 124, `${octal(payload.byteLength, 12)}\0`, 12);
-  writeAscii(header, 136, `${octal(0, 12)}\0`, 12);
-  header.fill(0x20, 148, 156);
-  writeAscii(header, 156, "0", 1);
-  writeAscii(header, 257, "ustar", 6);
-  writeAscii(header, 263, "00", 2);
-  const checksum = header.reduce((sum, byte) => sum + byte, 0);
-  writeAscii(header, 148, `${octal(checksum, 7)}\0 `, 8);
-
-  const paddedSize = Math.ceil(payload.byteLength / 512) * 512;
-  const archive = new Uint8Array(512 + paddedSize + 1024);
-  archive.set(header, 0);
-  archive.set(payload, 512);
-  return archive;
-};
-
 const parseOctal = (bytes: Uint8Array): number => {
   const text = new TextDecoder().decode(bytes).replaceAll("\0", "").trim();
   if (text.length === 0) return 0;
@@ -456,9 +432,6 @@ const unpackTar = (archive: Uint8Array, path: string): Uint8Array => {
   }
   return archive.slice(start, end);
 };
-
-const webStreamBytes = async (stream: ReadableStream<Uint8Array>): Promise<Uint8Array> =>
-  new Uint8Array(await new Response(stream).arrayBuffer());
 
 interface CappedWebStreamBytesInput {
   readonly stream: ReadableStream<Uint8Array>;
@@ -501,47 +474,6 @@ const webStreamBytesCapped = async (input: CappedWebStreamBytesInput): Promise<U
 };
 
 const compressionFormat = (format: "tar.gz" | "tar.zst") => (format === "tar.gz" ? "gzip" : "zstd");
-
-const archivePayload = (
-  payload: Uint8Array,
-  format: "tar" | "tar.gz" | "tar.zst",
-): Effect.Effect<Uint8Array, ArchiveFormatError> => {
-  const tar = Effect.try({
-    try: () => packTar(payload),
-    catch: (cause) =>
-      cause instanceof ArchiveFormatError
-        ? cause
-        : new ArchiveFormatError({
-            message: "Failed to encode host archive endpoint.",
-            format: "tar",
-            cause,
-            remediation: "Retry the transfer or choose a different archive format.",
-          }),
-  });
-  switch (format) {
-    case "tar":
-      return tar;
-    case "tar.gz":
-    case "tar.zst":
-      return tar.pipe(
-        Effect.flatMap((archive) =>
-          Effect.tryPromise({
-            try: () =>
-              webStreamBytes(
-                new Blob([archive]).stream().pipeThrough(new CompressionStream(compressionFormat(format))),
-              ),
-            catch: (cause) =>
-              new ArchiveFormatError({
-                message: "Failed to encode host archive endpoint.",
-                format,
-                cause,
-                remediation: "Retry the transfer or choose a different archive format.",
-              }),
-          }),
-        ),
-      );
-  }
-};
 
 interface UnarchivePayloadInput {
   readonly payload: Uint8Array;
@@ -596,13 +528,6 @@ const unarchivePayloadWithCap = (
       });
   }
 };
-
-const unarchivePayload = (
-  payload: Uint8Array,
-  format: "tar" | "tar.gz" | "tar.zst",
-  path: string,
-): Effect.Effect<Uint8Array, ArchiveFormatError> =>
-  unarchivePayloadWithCap({ payload, format, path, maxDecompressedBytes: MAX_DECOMPRESSED_ARCHIVE_BYTES });
 
 export const __testOnlyUnarchivePayloadWithCap = unarchivePayloadWithCap;
 
@@ -779,7 +704,11 @@ const validateHostEndpoints = (spec: DataTransferSpec, scratchDir: string) => {
         }),
     });
     yield* Effect.all(
-      endpoints.map((endpoint) => ensureInsideRoot(endpoint.path, root)),
+      endpoints.map((endpoint) =>
+        endpoint === spec.from && endpoint._tag === "hostPath" && endpoint.trusted === true
+          ? Effect.void
+          : ensureInsideRoot(endpoint.path, root),
+      ),
       { discard: true },
     );
   });
@@ -874,86 +803,29 @@ const hostReadError = (path: string, cause: unknown): DataTransferError => {
 };
 
 const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransferError> =>
-  Stream.unwrap(
-    Effect.tryPromise({
-      try: () => readFile(path),
-      catch: (cause) => hostReadError(path, cause),
-    }).pipe(Effect.map((payload) => Stream.make(new Uint8Array(payload)))),
+  Stream.fromReadableStream({
+    evaluate: () => Bun.file(path).stream(),
+    onError: (cause) => hostReadError(path, cause),
+    releaseLockOnEnd: true,
+  }).pipe(
+    Stream.catchAllCause((cause) =>
+      Option.match(Cause.dieOption(cause), {
+        onNone: () => Stream.failCause(cause),
+        onSome: (died) => Stream.fail(hostReadError(path, died)),
+      }),
+    ),
   );
 
 const byteStreamFromArchive = (
   path: string,
   format: "tar" | "tar.gz" | "tar.zst",
 ): Stream.Stream<Uint8Array, DataTransferError | ArchiveFormatError> =>
-  Stream.unwrap(
-    Effect.tryPromise({
-      try: () => readFile(path),
-      catch: (cause) =>
-        new DataTransferError({
-          message: "Failed to read host archive endpoint.",
-          fromEndpoint: `hostArchive:${format}:${path}`,
-          operation: "read-host-archive",
-          cause,
-        }),
-    }).pipe(
-      Effect.flatMap((payload) => unarchivePayload(new Uint8Array(payload), format, path)),
-      Effect.map((payload) => Stream.make(payload)),
-    ),
-  );
-
-const collectByteStream = <E, R>(stream: Stream.Stream<Uint8Array, E, R>): Effect.Effect<Uint8Array, E, R> =>
-  stream.pipe(
-    Stream.runCollect,
-    Effect.map((chunks) => {
-      const collected = Array.from(chunks);
-      const out = new Uint8Array(collected.reduce((size, chunk) => size + chunk.byteLength, 0));
-      let offset = 0;
-      for (const chunk of collected) {
-        out.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      return out;
-    }),
-  );
-
-const asyncIterableFromBytes = (payload: Uint8Array): AsyncIterable<Uint8Array> => ({
-  async *[Symbol.asyncIterator]() {
-    yield payload;
-  },
-});
-
-const collectExecStdout = <E, R>(
-  stream: Stream.Stream<ExecChunk, E, R>,
-): Effect.Effect<Uint8Array, E | DataTransferError, R> =>
-  stream.pipe(
-    Stream.runCollect,
-    Effect.flatMap((chunks) => {
-      const collected = Array.from(chunks);
-      const exit = collected.find((chunk): chunk is { readonly exitCode: number } => "exitCode" in chunk);
-      if (exit !== undefined && exit.exitCode !== 0) {
-        return Effect.fail(
-          new DataTransferError({
-            message: "Generic helper-container data transfer failed.",
-            operation: "runStream",
-            cause: exit,
-            remediation: "Inspect provider logs and retry after the provider runtime is healthy.",
-          }),
-        );
-      }
-      const total = collected.reduce(
-        (size, chunk) => size + ("kind" in chunk && chunk.kind === "stdout" ? chunk.chunk.byteLength : 0),
-        0,
-      );
-      const out = new Uint8Array(total);
-      let offset = 0;
-      for (const chunk of collected) {
-        if (!("kind" in chunk) || chunk.kind !== "stdout") continue;
-        out.set(chunk.chunk, offset);
-        offset += chunk.chunk.byteLength;
-      }
-      return Effect.succeed(out);
-    }),
-  );
+  decodeArchiveStream({
+    body: byteStreamFromHost(path),
+    format,
+    path,
+    maxPayloadBytes: MAX_DECOMPRESSED_ARCHIVE_BYTES,
+  });
 
 const streamFromEndpoint = (
   provider: Context.Tag.Service<typeof RuntimeProvider>,
@@ -995,20 +867,38 @@ const streamFromEndpoint = (
       }
       return Stream.unwrap(
         resolveDataHelperImage(provider).pipe(
-          Effect.flatMap((image) =>
-            collectExecStdout(
+          Effect.map((image) =>
+            execStdoutStream(
               provider.runStream({
+                owner: { app: endpoint.app },
                 image,
                 command: ["sh", "-c", `cat ${helperPayload}`],
                 mounts: [{ store: endpoint.store, target: helperTarget, readOnly: true }],
                 remove: true,
               }),
+              (exitCode) =>
+                new DataTransferError({
+                  message: "Generic helper-container data transfer failed.",
+                  operation: "runStream",
+                  cause: { exitCode },
+                  remediation: "Inspect provider logs and retry after the provider runtime is healthy.",
+                }),
+            ).pipe(
+              Stream.mapError((cause) =>
+                cause instanceof DataTransferError
+                  ? cause
+                  : new DataTransferError({
+                      message: "Generic helper-container data transfer failed.",
+                      operation: "runStream",
+                      cause,
+                      remediation: "Inspect provider logs and retry after the provider runtime is healthy.",
+                    }),
+              ),
             ),
           ),
           Effect.mapError((cause) =>
             cause instanceof DataTransferError ? cause : providerFailure("runStream", cause),
           ),
-          Effect.map((payload) => Stream.make(payload)),
         ),
       );
     case "artifact":
@@ -1026,17 +916,15 @@ const streamFromEndpoint = (
         .exportArtifact({ providerId: providerId(provider.id), ref: endpoint.ref })
         .pipe(Stream.mapError((cause) => providerFailure("exportArtifact", cause)));
     case "serviceCmd":
-      return Stream.unwrap(
-        collectExecStdout(
-          provider.execStream(
-            { app: endpoint.app, service: endpoint.service },
-            providerCommandSpec(endpoint.command, endpoint.env),
-          ),
-        ).pipe(
-          Effect.mapError((cause) =>
-            cause instanceof DataTransferError ? cause : serviceCommandFailure("execStream", cause),
-          ),
-          Effect.map((payload) => Stream.make(payload)),
+      return execStdoutStream(
+        provider.execStream(
+          { app: endpoint.app, service: endpoint.service },
+          providerCommandSpec(endpoint.command, endpoint.env),
+        ),
+        (exitCode) => serviceCommandFailure("execStream", { exitCode }),
+      ).pipe(
+        Stream.mapError((cause) =>
+          cause instanceof DataTransferError ? cause : serviceCommandFailure("execStream", cause),
         ),
       );
     case "stream":
@@ -1059,63 +947,79 @@ const writeStreamToEndpoint = (
     ArchiveFormatError | DataTransferError | DataEndpointUnsupportedError,
     Scope.Scope
   >,
+  scratchDir: string,
 ): Effect.Effect<DataTransferResult, DataMoverTransferError, Scope.Scope> => {
   const target = spec.to;
   switch (target._tag) {
     case "hostPath":
       return Effect.gen(function* () {
-        const payload = yield* collectByteStream(body);
         const result = yield* persistVerifiedStream({
-          body: Stream.make(payload),
+          body,
           destinationPath: target.path,
           expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
         return { accelerated: false, sizeBytes: result.sizeBytes, digest: result.sha256 };
       });
     case "hostArchive":
       return Effect.gen(function* () {
-        const payload = yield* collectByteStream(body);
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
-        const archive = yield* archivePayload(payload, target.format);
+        const staged = yield* stageVerifiedStream({
+          body,
+          scratchDir,
+          prefix: "archive",
+          ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
         yield* persistVerifiedStream({
-          body: Stream.make(archive),
+          body: encodeArchiveStream({
+            body: byteStreamFromHost(staged.path),
+            sizeBytes: staged.verified.sizeBytes,
+            format: target.format,
+            path: target.path,
+          }),
           destinationPath: target.path,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
-        return { accelerated: false, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
+        return {
+          accelerated: false,
+          sizeBytes: staged.verified.sizeBytes,
+          digest: staged.verified.sha256,
+        };
       });
     case "servicePath":
       if (provider.capabilities.serviceFileCopy !== "native")
         return failUnsupported(spec.from, target, "native service file copy is unavailable");
       return Effect.gen(function* () {
-        const payload = yield* collectByteStream(body);
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
-        const tempPath = `${process.cwd()}/.tmp-data-mover-service-${randomUUID()}`;
-        yield* Effect.addFinalizer(() => Effect.promise(() => unlink(tempPath).catch(() => undefined)));
-        yield* Effect.tryPromise({
-          try: async () => {
-            await mkdir(dirname(tempPath), { recursive: true });
-            await Bun.write(tempPath, payload);
-          },
-          catch: (cause) =>
-            new DataTransferError({
-              message: "Failed to stage service copy payload.",
-              operation: "stage-service-copy",
-              cause,
-            }),
-        });
+        const staged = yield* stageVerifiedStream({
+          body,
+          scratchDir,
+          prefix: "service",
+          ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
         yield* provider
           .copyToService(
             { app: target.app, service: target.service },
-            { sourcePath: absolutePath(tempPath), targetPath: target.path, overwrite: spec.overwrite },
+            { sourcePath: absolutePath(staged.path), targetPath: target.path, overwrite: spec.overwrite },
           )
           .pipe(Effect.mapError((cause) => providerFailure("copyToService", cause)));
-        return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
+        return {
+          accelerated: true,
+          sizeBytes: staged.verified.sizeBytes,
+          digest: staged.verified.sha256,
+        };
       });
     case "volume":
       if (!provider.capabilities.ephemeralMounts)
@@ -1140,18 +1044,24 @@ const writeStreamToEndpoint = (
             );
           }
         }
-        const payload = yield* collectByteStream(body);
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        const staged = yield* stageVerifiedStream({
+          body,
+          scratchDir,
+          prefix: "volume",
+          ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
         const helperImage = yield* resolveDataHelperImage(provider);
         const result = yield* provider
           .run({
+            owner: { app: target.app },
             image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ store: target.store, target: helperTarget, readOnly: false }],
-            stdinStream: asyncIterableFromBytes(payload),
+            stdinStream: Bun.file(staged.path).stream(),
             remove: true,
           })
           .pipe(Effect.mapError((cause) => providerFailure("run", cause)));
@@ -1164,42 +1074,78 @@ const writeStreamToEndpoint = (
             }),
           );
         }
-        return { accelerated: false, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
+        return {
+          accelerated: false,
+          sizeBytes: staged.verified.sizeBytes,
+          digest: staged.verified.sha256,
+        };
       });
     case "artifact":
       if (!provider.capabilities.artifactImport)
         return failUnsupported(spec.from, target, "artifact import is unavailable");
       return Effect.gen(function* () {
-        const payload = yield* collectByteStream(body);
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        const staged = yield* stageVerifiedStream({
+          body,
+          scratchDir,
+          prefix: "artifact",
+          ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
         yield* provider
-          .importArtifact(Stream.make(payload))
+          .importArtifact(
+            byteStreamFromHost(staged.path).pipe(
+              Stream.mapError(
+                (cause) =>
+                  new ArtifactTransferError({
+                    providerId: provider.id,
+                    operation: "importArtifact",
+                    message: "Failed to read the staged artifact payload.",
+                    cause,
+                    remediation: "Retry the transfer after checking available scratch storage.",
+                  }),
+              ),
+            ),
+          )
           .pipe(Effect.mapError((cause) => providerFailure("importArtifact", cause)));
-        return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
+        return {
+          accelerated: true,
+          sizeBytes: staged.verified.sizeBytes,
+          digest: staged.verified.sha256,
+        };
       });
     case "serviceCmd":
       return Effect.gen(function* () {
-        const payload = yield* collectByteStream(body);
-        const verified = yield* collectVerifiedStream({
-          body: Stream.make(payload),
-          expectedSha256: spec.expectedDigest,
-        }).pipe(Effect.mapError((error) => mapVerifiedError(error, spec)));
+        const staged = yield* stageVerifiedStream({
+          body,
+          scratchDir,
+          prefix: "command",
+          ...(spec.expectedDigest === undefined ? {} : { expectedSha256: spec.expectedDigest }),
+        }).pipe(
+          Effect.mapError((error) =>
+            error instanceof VerifiedStreamError ? mapVerifiedError(error, spec) : error,
+          ),
+        );
+        const stdinStream = Bun.file(staged.path).stream();
         const result = yield* provider
           .exec(
             { app: target.app, service: target.service },
             {
               ...providerCommandSpec(target.command, target.env),
-              stdinStream: asyncIterableFromBytes(payload),
+              stdinStream,
             },
           )
           .pipe(Effect.mapError((cause) => serviceCommandFailure("exec", cause)));
         if (result.exitCode !== 0) {
           return yield* Effect.fail(serviceCommandFailure("exec", result));
         }
-        return { accelerated: true, sizeBytes: verified.sizeBytes, digest: verified.sha256 };
+        return {
+          accelerated: true,
+          sizeBytes: staged.verified.sizeBytes,
+          digest: staged.verified.sha256,
+        };
       });
     case "stream":
       return failUnsupported(
@@ -1218,11 +1164,25 @@ const failureDetail = (cause: Cause.Cause<unknown>): string => {
   return "error";
 };
 
+const physicalVolumeGeneration = (volume: VolumeInfo | undefined): string | undefined =>
+  volume?.identity?.generation ?? (volume?.provenance === "known" ? volume.instanceId : undefined);
+
+const matchesSnapshotSource = (volume: VolumeInfo | undefined, metadata: SnapshotMetadata): boolean => {
+  const identity = volume?.identity;
+  return (
+    physicalVolumeGeneration(volume) === metadata.volumeInstanceId &&
+    identity !== undefined &&
+    identity.ownerRoot === metadata.sourceRoot &&
+    identity.nativeName === volume?.ref.store
+  );
+};
+
 export const makeDataMoverService = (
   provider: Context.Tag.Service<typeof RuntimeProvider>,
   events: DataMoverEvents,
   persistence: SnapshotPersistence,
 ): Context.Tag.Service<typeof DataMover> => ({
+  volumeInitialization: (identity) => sharedVolumeInitialization(persistence.stateStore, identity),
   transfer: (spec) => {
     const startedAt = Date.now();
     const fromEndpoint = events.redactText(endpointName(spec.from));
@@ -1261,7 +1221,7 @@ export const makeDataMoverService = (
           (spec.from._tag === "servicePath" &&
             (spec.to._tag === "hostPath" || spec.to._tag === "hostArchive")));
       const body = streamFromEndpoint(provider, spec.from);
-      const result = yield* writeStreamToEndpoint(provider, spec, body);
+      const result = yield* writeStreamToEndpoint(provider, spec, body, persistence.paths.scratchDir);
       const adjusted = nativeServiceCopy ? { ...result, accelerated: true } : result;
       const progress: DataTransferProgress = {
         phase: "completed",
@@ -1332,7 +1292,7 @@ export const makeDataMoverService = (
       ),
     ),
   snapshot: (store, opts) => {
-    const snapshotId = opts?.label ?? `${store.store}-${randomUUID()}`;
+    const snapshotId = randomUUID();
     let rollbackInfo: SnapshotInfo | undefined;
     let rollbackNative: VolumeSnapshotRef | undefined;
     return Effect.gen(function* () {
@@ -1345,6 +1305,27 @@ export const makeDataMoverService = (
         }),
       );
       const createdAt = timestamp();
+      if (opts?.metadata !== undefined) {
+        const sources = yield* provider
+          .listVolumes({ app: store.app, store: store.store })
+          .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+        const source = sources.find(
+          (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
+        );
+        if (!matchesSnapshotSource(source, opts.metadata)) {
+          return yield* Effect.fail(
+            new SnapshotOwnershipError({
+              message: "Physical snapshot source identity changed before creation.",
+              snapshotId,
+              sourceVolumeInstanceId: opts.metadata.volumeInstanceId,
+              ...(physicalVolumeGeneration(source) === undefined
+                ? {}
+                : { targetVolumeInstanceId: physicalVolumeGeneration(source) }),
+              remediation: "Re-observe the database volume and retry the snapshot operation.",
+            }),
+          );
+        }
+      }
       const useNative =
         opts?.volumeSnapshot === "native" ||
         (opts?.volumeSnapshot !== "copy" && provider.capabilities.volumeSnapshot === "native");
@@ -1369,18 +1350,51 @@ export const makeDataMoverService = (
                 overwrite: true,
               },
               streamFromEndpoint(provider, { _tag: "volume", app: store.app, store: store.store }),
+              persistence.paths.scratchDir,
             )
           : undefined;
-      const nativeDigest = native === undefined ? undefined : hashText(JSON.stringify(native));
+      const archiveIntegrity =
+        copyResult === undefined
+          ? undefined
+          : yield* collectVerifiedStream({
+              body: byteStreamFromHost(join(snapshotStoreDir(persistence, store), `${snapshotId}.${format}`)),
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof VerifiedStreamError
+                  ? mapVerifiedError(error, {
+                      from: { _tag: "volume", app: store.app, store: store.store },
+                      to: {
+                        _tag: "hostArchive",
+                        path: absolutePath(
+                          join(snapshotStoreDir(persistence, store), `${snapshotId}.${format}`),
+                        ),
+                        format,
+                      },
+                    })
+                  : error,
+              ),
+            );
+      const digest = native?.digest ?? archiveIntegrity?.sha256;
+      const sizeBytes = native?.sizeBytes ?? archiveIntegrity?.sizeBytes;
+      if (digest === undefined || sizeBytes === undefined) {
+        return yield* Effect.fail(
+          new DataTransferError({
+            message: "Snapshot provider did not return immutable artifact integrity.",
+            operation: "snapshot",
+            remediation: "Retry after checking provider snapshot support with `lando doctor`.",
+          }),
+        );
+      }
       const info: SnapshotInfo = {
         id: snapshotId,
         store,
-        digest: copyResult?.digest ?? nativeDigest ?? hashText(snapshotId),
-        sizeBytes: copyResult?.sizeBytes ?? 0,
+        digest,
+        sizeBytes,
         createdAt,
         ...(native === undefined ? { format } : { native }),
         ...(opts?.label === undefined ? {} : { label: opts.label }),
         ...(opts?.labels === undefined ? {} : { labels: opts.labels }),
+        ...(opts?.metadata === undefined ? {} : { metadata: opts.metadata }),
       };
       rollbackInfo = info;
       yield* writeSnapshotSidecar(persistence, info);
@@ -1424,8 +1438,51 @@ export const makeDataMoverService = (
       typeof handle === "string" ? store : handle.store,
     ).pipe(
       Effect.flatMap((info) =>
-        info.native === undefined
-          ? writeStreamToEndpoint(
+        Effect.gen(function* () {
+          if (info.native === undefined) {
+            if (info.metadata !== undefined) {
+              const targets = yield* provider
+                .listVolumes({ app: store.app, store: store.store })
+                .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+              const target = targets.find(
+                (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
+              );
+              if (!matchesSnapshotSource(target, info.metadata)) {
+                return yield* Effect.fail(
+                  new SnapshotOwnershipError({
+                    message: "Physical snapshot ownership does not match the target volume instance.",
+                    snapshotId: info.id,
+                    sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+                    ...(physicalVolumeGeneration(target) === undefined
+                      ? {}
+                      : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
+                    remediation:
+                      "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
+                  }),
+                );
+              }
+            }
+            const staged = yield* stageVerifiedStream({
+              body: byteStreamFromHost(snapshotArchivePath(persistence, info)),
+              scratchDir: persistence.paths.scratchDir,
+              prefix: "snapshot",
+              expectedSha256: info.digest,
+              expectedSizeBytes: info.sizeBytes,
+            }).pipe(
+              Effect.mapError((error) =>
+                error instanceof VerifiedStreamError
+                  ? mapVerifiedError(error, {
+                      from: {
+                        _tag: "hostArchive",
+                        path: absolutePath(snapshotArchivePath(persistence, info)),
+                        format: info.format ?? "tar",
+                      },
+                      to: { _tag: "volume", app: store.app, store: store.store },
+                    })
+                  : error,
+              ),
+            );
+            return yield* writeStreamToEndpoint(
               provider,
               {
                 from: {
@@ -1434,18 +1491,59 @@ export const makeDataMoverService = (
                   format: info.format ?? "tar",
                 },
                 to: { _tag: "volume", app: store.app, store: store.store },
-                expectedDigest: info.digest,
                 overwrite: true,
               },
               streamFromEndpoint(provider, {
                 _tag: "hostArchive",
-                path: absolutePath(snapshotArchivePath(persistence, info)),
+                path: absolutePath(staged.path),
                 format: info.format ?? "tar",
               }),
-            ).pipe(Effect.asVoid)
-          : provider
-              .restoreVolume({ snapshot: info.native, target: store, overwrite: true })
-              .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause))),
+              persistence.paths.scratchDir,
+            ).pipe(Effect.asVoid);
+          }
+          const targets = yield* provider
+            .listVolumes({ app: store.app, store: store.store })
+            .pipe(Effect.mapError((cause) => providerFailure("listVolumes", cause)));
+          const target = targets.find(
+            (candidate) => candidate.ref.app === store.app && candidate.ref.store === store.store,
+          );
+          const targetGeneration = physicalVolumeGeneration(target);
+          if (targetGeneration === undefined) {
+            return yield* Effect.fail(
+              new SnapshotOwnershipError({
+                message: "Physical restore target identity is unknown.",
+                snapshotId: info.id,
+                sourceVolumeInstanceId: info.metadata?.volumeInstanceId ?? "unknown",
+                remediation:
+                  "Use a logical export and import when the target volume identity cannot be proven.",
+              }),
+            );
+          }
+          if (info.metadata !== undefined) {
+            if (!matchesSnapshotSource(target, info.metadata)) {
+              return yield* Effect.fail(
+                new SnapshotOwnershipError({
+                  message: "Physical snapshot ownership does not match the target volume instance.",
+                  snapshotId: info.id,
+                  sourceVolumeInstanceId: info.metadata.volumeInstanceId,
+                  ...(physicalVolumeGeneration(target) === undefined
+                    ? {}
+                    : { targetVolumeInstanceId: physicalVolumeGeneration(target) }),
+                  remediation:
+                    "Restore only to the original physical volume instance, or use a logical export and import for cross-volume movement.",
+                }),
+              );
+            }
+          }
+          return yield* provider
+            .restoreVolume({
+              snapshot: info.native,
+              target: store,
+              expectedTargetGeneration: targetGeneration,
+              overwrite: true,
+            })
+            .pipe(Effect.mapError((cause) => providerFailure("restoreVolume", cause)));
+        }),
       ),
     ),
   listSnapshots: (filter) => listSnapshotInfos(persistence, filter),
@@ -1485,6 +1583,10 @@ export const makeDataMoverService = (
           return [];
         }
         return [...infos]
+          .filter(
+            (info) =>
+              info.metadata?.recoveryReason === undefined || info.metadata.recoveryReason === "manual",
+          )
           .sort(
             (left, right) =>
               Date.parse(DateTime.formatIso(right.createdAt)) -
@@ -1532,6 +1634,7 @@ export const DataMoverLive: Layer.Layer<
         );
       return {
         transfer: (spec) => service().pipe(Effect.flatMap((mover) => mover.transfer(spec))),
+        volumeInitialization: (identity) => sharedVolumeInitialization(stateStore, identity),
         transferStream: (spec) =>
           Stream.unwrap(service().pipe(Effect.map((mover) => mover.transferStream(spec)))),
         snapshot: (store, opts) => service().pipe(Effect.flatMap((mover) => mover.snapshot(store, opts))),

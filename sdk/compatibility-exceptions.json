@@ -1582,5 +1582,101 @@
     "changeKind": "unsupported-construct",
     "path": "$.composer.anyOf",
     "justification": "Composer selection additively accepts an object carrying a version and global packages; the previously accepted string and false forms remain members of the same union."
+  },
+  {
+    "surface": "command:app:pull",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "command:app:push",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataEndpoint",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataTransferSpec",
+    "changeKind": "unsupported-construct",
+    "path": "$.from.anyOf",
+    "justification": "Host-path source endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataTransferSpec",
+    "changeKind": "unsupported-construct",
+    "path": "$.to.anyOf",
+    "justification": "Host-path target endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:SyncResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.expectedTargetGeneration",
+    "justification": "The unreleased physical restore contract now requires the caller's observed target generation so providers fail before mutating a replaced volume."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.digest",
+    "justification": "The unreleased snapshot contract now binds native restore metadata to the provider-observed immutable artifact digest instead of a synthetic snapshot identifier."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.format",
+    "justification": "The unreleased snapshot contract now records whether provider restore metadata identifies a native artifact or a portable tar archive."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.sizeBytes",
+    "justification": "The unreleased snapshot contract now records provider-observed immutable artifact size so restore rejects replacement artifacts before mutation."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.digest",
+    "justification": "The unreleased provider restore contract now requires the immutable source digest so providers can reject changed snapshot artifacts before target mutation."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.format",
+    "justification": "The unreleased provider restore contract now requires the snapshot artifact format needed to select and verify the restore path."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.sizeBytes",
+    "justification": "The unreleased provider restore contract now requires immutable source size so providers can reject truncated or replaced artifacts before target mutation."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.digest",
+    "justification": "The unreleased snapshot reference now identifies the real immutable provider artifact digest rather than deriving integrity from the snapshot id."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.format",
+    "justification": "The unreleased snapshot reference now distinguishes native provider artifacts from portable tar archives."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.sizeBytes",
+    "justification": "The unreleased snapshot reference now carries provider-observed artifact size for pre-mutation restore verification."
   }
 ]

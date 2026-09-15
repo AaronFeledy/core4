@@ -27,6 +27,7 @@ import type {
   LogSourceId,
   MountPlan,
   NetworkConfig,
+  PortablePath,
   ProviderCapabilities,
   ProviderId,
   ProviderSetupPlan,
@@ -34,7 +35,9 @@ import type {
   ServiceCopyOutSpec,
   ServiceName,
   VolumeFilter,
+  VolumeIdentity,
   VolumeInfo,
+  VolumeLocator,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotRef,
@@ -111,6 +114,7 @@ export type ServiceEnvironmentOverrides = Readonly<
 
 export interface ApplyResult {
   readonly changed: boolean;
+  readonly createdVolumes?: readonly import("../schema/volume-initialization.ts").VolumeCreationFact[];
 }
 
 export interface ServiceSelector {
@@ -159,6 +163,7 @@ export type ExecChunk =
   | { readonly exitCode: number };
 
 export interface EphemeralRunSpec {
+  readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
   readonly mounts?: ReadonlyArray<MountPlan | DataStoreMountPlan>;
@@ -199,8 +204,14 @@ export interface ServiceRuntimeInfo {
   readonly health?: "healthy" | "starting" | "unhealthy";
   readonly state?: string;
   readonly containerId?: string;
+  readonly imageIdentity?: string;
   readonly endpoints?: ReadonlyArray<EndpointInfo>;
   readonly lastStartedAt?: Date;
+}
+
+export interface ServiceRuntimeIdentity {
+  readonly containerId: string;
+  readonly imageIdentity: string;
 }
 
 export interface ListFilter {
@@ -253,6 +264,14 @@ export interface RuntimeProviderShape {
   readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+  readonly resume?: (
+    target: ServiceSelector,
+    identity: ServiceRuntimeIdentity,
+  ) => Effect.Effect<void, ProviderError>;
+  readonly suspend?: (
+    target: ServiceSelector,
+    identity: ServiceRuntimeIdentity,
+  ) => Effect.Effect<void, ProviderError>;
   readonly waitForExit: (
     target: ServiceSelector,
     options?: WaitForExitOptions,
@@ -278,7 +297,19 @@ export interface RuntimeProviderShape {
   ) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
-  readonly removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>;
+  readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+  readonly observeVolume?: (
+    target: ServiceSelector,
+    destination: PortablePath,
+  ) => Effect.Effect<VolumeInfo, ProviderError>;
+  readonly adoptVolume?: (
+    target: ServiceSelector,
+    destination: PortablePath,
+  ) => Effect.Effect<VolumeInfo, ProviderError>;
+  readonly removeVolume: (
+    ref: VolumeRef,
+    expectedGeneration: VolumeIdentity["generation"],
+  ) => Effect.Effect<void, ProviderError>;
   readonly copyToService: (
     target: ExecTarget,
     spec: ServiceCopyInSpec,

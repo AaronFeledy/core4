@@ -94,6 +94,17 @@ export class SnapshotAmbiguousError extends Schema.TaggedError<SnapshotAmbiguous
   },
 ) {}
 
+export class SnapshotOwnershipError extends Schema.TaggedError<SnapshotOwnershipError>()(
+  "SnapshotOwnershipError",
+  {
+    message: Schema.String,
+    snapshotId: Schema.String,
+    sourceVolumeInstanceId: Schema.String,
+    targetVolumeInstanceId: Schema.optional(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
 /**
  * The named volume does not exist on the active provider.
  */

@@ -2,7 +2,12 @@ import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
-import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import {
+  VOLUME_WITNESS_IMAGE,
+  makeProviderDataPlane,
+  volumeCreationFact,
+  volumeCreationLabels,
+} from "@lando/container-runtime/data-plane";
 import { dockerPullDialect, dockerWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineApiClient,
@@ -25,7 +30,7 @@ import {
 } from "@lando/container-runtime/plan";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
-import { postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
 import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import {
   makeAttachDecoder as makeRuntimeAttachDecoder,
@@ -150,6 +155,7 @@ export interface EmitComposeResult {
 
 interface ContainerInspect {
   readonly Id?: string;
+  readonly Image?: string;
   readonly State?: {
     readonly Running?: boolean;
     readonly Status?: string;
@@ -834,25 +840,23 @@ const ensureNetwork = (api: DockerApiClient, name: string) =>
     ),
   );
 
-const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly<Record<string, string>> => ({
-  "dev.lando.app": plan.id,
-  "dev.lando.store": store.name,
-  "dev.lando.scope": store.scope,
-  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
-});
-
-const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) =>
-  request(api, "apply", {
+const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) => {
+  const labels = volumeCreationLabels(plan, store);
+  return request(api, "apply", {
     method: "POST",
     path: "/volumes/create",
     body: {
       Name: store.name,
-      Labels: volumeLabels(plan, store),
+      Labels: labels,
     },
   }).pipe(
     Effect.flatMap((response) =>
       response.status === 201 || response.status === 200 || response.status === 409
-        ? Effect.void
+        ? Effect.succeed(
+            response.status === 409
+              ? []
+              : volumeCreationFact({ body: response.body, name: store.name, labels }),
+          )
         : Effect.fail(
             unavailable(
               "apply.volume",
@@ -862,6 +866,7 @@ const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["store
           ),
     ),
   );
+};
 
 const inspectContainer = (api: DockerApiClient, name: string) =>
   Effect.gen(function* () {
@@ -1140,7 +1145,9 @@ const bringUp = (
 ) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
-    yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
+    const createdVolumes = (yield* Effect.forEach(plan.stores, (store) =>
+      ensureVolume(api, plan, store),
+    )).flat();
     const sharedNetwork = landoSharedNetworkName(plan);
     const touched: TouchedContainer[] = [];
     const schedule = yield* runServiceStartSchedule(plan, {
@@ -1237,7 +1244,7 @@ const bringUp = (
         ),
       );
     }
-    return { changed: schedule.changed };
+    return { changed: schedule.changed, createdVolumes };
   });
 
 interface BringDownOptions {
@@ -1353,6 +1360,9 @@ const inspectService = (
       status,
       state: status,
       ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
+      ...(typeof decoded.Image === "string" && decoded.Image.length > 0
+        ? { imageIdentity: decoded.Image }
+        : {}),
       endpoints: materialized.length > 0 ? materialized : service.endpoints,
       ...(startedAt === undefined || Number.isNaN(startedAt.getTime()) ? {} : { lastStartedAt: startedAt }),
     };
@@ -1686,9 +1696,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   );
   const dataPlane = makeProviderDataPlane({
     providerId: PROVIDER_ID,
+    endpointNamespace: resolvedDockerHost,
+    prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
+      ctx: DOCKER_CTX,
+      dialect: dockerPullDialect,
+    }),
     api: dockerApi,
     snapshotMode: "copy",
     redactDetails,
+    volumeCreationLabels,
   });
 
   const sanitizeAppliedPlan = options.sanitizeAppliedPlan ?? ((plan: AppPlan) => plan);
@@ -1732,6 +1748,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     service: {
       lifecycle: (plan, target, action) =>
         postServiceLifecycle(plan, target, action, { api: dockerApi, ctx: DOCKER_CTX }),
+      resume: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "start", { api: dockerApi, ctx: DOCKER_CTX }),
+      suspend: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "stop", { api: dockerApi, ctx: DOCKER_CTX }),
       waitForExit: (plan, target, waitOptions) =>
         waitForExit(plan, target, {
           api: dockerApi,
