@@ -92,6 +92,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Executable guides are prose-first MDX: Markdown is the reader surface; `<Run>`/`<Verify>` wrap real harness execution only. No documentation-only `<Variable>` scenarios.
 - Use `bun run dev:guides docs/guides/<path>.mdx --once` for a focused guide pass (require success and a positive test count). Full sequence: `docs/contributing/ci.md`.
 - If a guide, recipe README, or guide-owned CLI surface changes, run `bun run lint:guides` and any relevant coverage/transcript/drift gates.
+- `check:guide-drift` fires when a **covered source** path changed and no owned guide was touched — not only when a guide file changed. After `git fetch origin main`, run `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift`. A bare `bun run check:guide-drift` prints `Guide-drift gate skipped` and exits 0; that is not a pass. If no guide update is genuinely needed, record `Guide-Coverage-Skip: <reason>` (≥ 24 characters) for the PR body instead of a token guide edit.
 - `recipes/<id>/README.mdx` feeds both guide-scenario generation and committed scaffold README generation, so it must remain executable-guide-valid, not just readable prose.
 
 ## Working Tree Discipline
