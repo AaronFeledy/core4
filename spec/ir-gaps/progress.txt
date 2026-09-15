@@ -769,3 +769,15 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 79 focused tests across route-identity, route-normalization, route-urls, route-normalize, and route-filter passed.
 - **Learnings for future iterations:** Route-match "port" in this stack means the router listener implied by scheme. Shorthand `:port` is backend selection and must not be re-litigated as a second public listener.
 ---
+## 2026-09-15 16:16 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-15 - US-626 (implementation verified)
+
+- Config view and get now return one curated effective public config projection, including persisted appEnv and appLabels maps; encoded results retain maps, selected keys, roots, and telemetry while omitting internal bookkeeping.
+- Secret-bearing map values and proxy credentials are redacted through the canonical output boundary across renderer/format combinations, including scalar lookups, without changing persisted values. The public schema, result encoding, redaction hook, and regression tests land atomically so no intermediate revision exposes newly visible secrets.
+- Verification: gate:pr passed (typecheck, lint, codegen:check, check:boundaries, and guide drift against origin/main); 491 focused tests, 9 adjacent tests (host CLI case filtered), and 3 executable global-config guide tests passed with zero failures. Schema compatibility and public-transcript gates passed; modified TypeScript LSP diagnostics were clean. Evidence was supplied by implementation session ses_f58dd5c42ffeWLagKvHhrBjcMG.
+- Sandbox acceptance: a relocated compiled binary in lando4-dev with isolated config/data/cache roots passed all 48 redaction combinations plus encoded-map parity, selected-key preservation, roots, telemetry, validation, internal omission, and invalid-map tagged rejection. QA teardown removed owned temporary roots and the relocated binary; no app/provider resources were created.
+- Acceptance approval: reviewer ses_f58c261beffebRyPG4J7ElI3xN approved all criteria unconditionally. This entry records implementation and acceptance evidence only; no completion signal, push, PR, or merge was performed.
+- **Learnings for future iterations:** widening a config result requires both a curated schema projection and output-boundary value tokens; scalar lookups lose their enclosing secret-key context unless tokens come from the full config or selected key. Preserve key metadata while redacting values, and test encoded output rather than only the in-memory operation result.
+---
