@@ -190,6 +190,6 @@ describe("app initialization lifecycle events", () => {
     // Then
     expect(initCalls).toHaveLength(1);
     expect(source).toContain("stopAppWithPlan({}, resolvedTarget)");
-    expect(source).toContain("resolvedTarget,\n        managed,");
+    expect(source).toMatch(/resolvedTarget,\s+managed,/u);
   });
 });
