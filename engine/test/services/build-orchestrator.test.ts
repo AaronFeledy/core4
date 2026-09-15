@@ -385,6 +385,7 @@ describe("BuildOrchestratorLive", () => {
     };
     let cacheOpenCount = 0;
     const failingStateStore = Layer.succeed(StateStore, {
+      withLock: (_key, body) => body,
       open: () => {
         cacheOpenCount += 1;
         return cacheOpenCount === 1 ? Effect.fail(cacheFailure) : Effect.never;
@@ -449,6 +450,7 @@ describe("BuildOrchestratorLive", () => {
     };
     const testStore = makeTestStateStore();
     const failingStateStore = Layer.succeed(StateStore, {
+      withLock: testStore.service.withLock,
       open: (spec) =>
         testStore.service.open(spec).pipe(
           Effect.map((bucket) => ({

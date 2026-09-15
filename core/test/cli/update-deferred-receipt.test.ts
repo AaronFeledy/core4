@@ -13,12 +13,17 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+const isolatedStore = (live: StateStoreShape, cache: AbsolutePath): StateStoreShape => ({
+  ...live,
+  open: (spec) => live.open({ ...spec, root: { path: cache } }),
+});
+
 test("detached helper persists an abort which the next real invocation surfaces once", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-deferred-receipt-"));
   roots.push(root);
   const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
   const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
-  const isolated: StateStoreShape = { open: (spec) => live.open({ ...spec, root: { path: cache } }) };
+  const isolated = isolatedStore(live, cache);
   const handoff = makeUpdateHandoff(isolated);
   const token = await Effect.runPromise(
     handoff.saveDeferred({
@@ -102,7 +107,7 @@ test.each(["json", "yaml", "ndjson"])(
     roots.push(root);
     const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
     const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
-    const handoff = makeUpdateHandoff({ open: (spec) => live.open({ ...spec, root: { path: cache } }) });
+    const handoff = makeUpdateHandoff(isolatedStore(live, cache));
     const token = await Effect.runPromise(
       handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["completed"] }),
     );
@@ -151,7 +156,7 @@ test.each(["missing", "malformed", "invalid-schema"])(
     roots.push(root);
     const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
     const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
-    const handoff = makeUpdateHandoff({ open: (spec) => live.open({ ...spec, root: { path: cache } }) });
+    const handoff = makeUpdateHandoff(isolatedStore(live, cache));
     const token = await Effect.runPromise(
       handoff.saveDeferred({ updatedCore: false, updatedPlugins: ["completed"] }),
     );

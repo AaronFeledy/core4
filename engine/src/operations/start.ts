@@ -21,6 +21,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
   type ShellRunner,
+  StateStore,
   UrlScanner,
 } from "@lando/sdk/services";
 
@@ -34,6 +35,11 @@ import {
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
 import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
+import {
+  verifyActiveVolumeCoordination,
+  withPlanVolumeCoordination,
+} from "../lifecycle/volume-coordination.ts";
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -78,7 +84,8 @@ type StartAppServices =
   | RouterService
   | RedactionService
   | RuntimeProviderRegistry
-  | ShellRunner;
+  | ShellRunner
+  | StateStore;
 
 type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
 
@@ -86,7 +93,7 @@ const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-export const startAppForTarget = (
+const startAppForTargetUncoordinated = (
   options: StartAppOptions | undefined,
   target: ResolvedAppTarget,
   managed?: StartManagedScope,
@@ -159,12 +166,15 @@ export const startAppForTarget = (
 
           const applyAndInspect = Effect.gen(function* () {
             yield* Ref.set(applyStarted, true);
+            yield* verifyActiveVolumeCoordination(provider);
             yield* Effect.scoped(
-              provider.apply(builtPlan, {
-                reconcile: resolvedOptions.reconcile ?? false,
-                ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                serviceEnvironment,
-              }),
+              provider
+                .apply(builtPlan, {
+                  reconcile: resolvedOptions.reconcile ?? false,
+                  ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                  serviceEnvironment,
+                })
+                .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
             );
             return yield* Effect.forEach(serviceList, (service) =>
               provider.inspect({ app: plan.id, service: service.name }).pipe(
@@ -270,6 +280,28 @@ export const startAppForTarget = (
     yield* events.publish(postStart);
     yield* runAppEvent(plan, "post-start", postStart);
     return startedApp;
+  });
+
+export const startAppForTarget = (
+  options: StartAppOptions | undefined,
+  target: ResolvedAppTarget,
+  managed?: StartManagedScope,
+  execution: { readonly forceAppBuild?: boolean } = {},
+): Effect.Effect<StartAppResult, SdkStartAppError, BoundStartAppServices> =>
+  Effect.gen(function* () {
+    const context = yield* Effect.context<BoundStartAppServices>();
+    const guard = yield* ManagedFileTransactionGuard;
+    yield* guard.ensureConsistent(String(target.root));
+    const registry = yield* RuntimeProviderRegistry;
+    const stateStore = yield* StateStore;
+    const provider = yield* registry.select(target.plan);
+    return yield* withPlanVolumeCoordination({
+      plan: target.plan,
+      provider,
+      stateStore,
+      body: () =>
+        startAppForTargetUncoordinated(options, target, managed, execution).pipe(Effect.provide(context)),
+    });
   });
 
 export const startApp = (

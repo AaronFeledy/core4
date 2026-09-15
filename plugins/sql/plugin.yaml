@@ -10,8 +10,11 @@ contributes:
     - db:import
     - db:export
     - db:snapshot
+    - db:snapshots
+    - db:snapshots:prune
     - db:restore
     - db:reset
+    - db:seed
 
 requires:
   "@lando/core": "^4.0.0"

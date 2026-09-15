@@ -1,14 +1,18 @@
 import { Effect } from "effect";
 
-import { SqlCommandFailedError, VolumeNotFoundError } from "@lando/sdk/errors";
+import { SqlCommandFailedError, type VolumeNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type DataTransferResult,
   type DataTransferSpec,
   PortablePath,
+  type PrunePolicy,
   ServiceName,
+  type SnapshotFilter,
   type SnapshotHandle,
+  type SnapshotId,
+  type SnapshotInfo,
   type SnapshotOptions,
   type VolumeRef,
 } from "@lando/sdk/schema";
@@ -20,11 +24,13 @@ import {
   loadCommand,
   mssqlBackupCommand,
   mssqlBackupServicePath,
+  mssqlPrepareBackupCommand,
   mssqlRestoreCommand,
   resetCommand,
 } from "./families.ts";
 import { wrapExportCommand, wrapImportCommand } from "./gzip.ts";
 import type { SqlPlan, SqlPlanService } from "./views.ts";
+import { requireDatabaseMount } from "./volume-target.ts";
 
 export type SqlExec = (
   service: string,
@@ -36,26 +42,18 @@ export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
   readonly restore: (id: string, store: VolumeRef) => Effect.Effect<void, unknown>;
+  readonly listSnapshots: (filter: SnapshotFilter) => Effect.Effect<ReadonlyArray<SnapshotInfo>, unknown>;
+  readonly pruneSnapshots: (policy: PrunePolicy) => Effect.Effect<ReadonlyArray<SnapshotId>, unknown>;
 };
 
-const requireVolume = (
+export const requireVolume = (
   plan: SqlPlan,
   service: SqlPlanService,
-  name: string,
-): Effect.Effect<VolumeRef, VolumeNotFoundError> => {
-  const store = service.storage[0]?.store;
-  if (store === undefined) {
-    return Effect.fail(
-      new VolumeNotFoundError({
-        message: `Service ${name} has no data volume.`,
-        store: name,
-        app: plan.id,
-        remediation: "Add persistent storage to the database service.",
-      }),
-    );
-  }
-  return Effect.succeed({ app: AppId.make(plan.id), store });
-};
+  _name: string,
+): Effect.Effect<VolumeRef, VolumeNotFoundError> =>
+  requireDatabaseMount(service, plan.id).pipe(
+    Effect.map((mount) => ({ app: AppId.make(plan.id), store: mount.store })),
+  );
 
 const requireExecOk = (
   result: { readonly ok: boolean },
@@ -93,6 +91,8 @@ export const runExport = (
     const bak = mssqlBackupServicePath(input.creds.database);
     const backup = mssqlBackupCommand(input.creds.database);
     return Effect.gen(function* () {
+      const prepare = mssqlPrepareBackupCommand();
+      yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
       yield* requireExecOk(yield* exec(input.service, backup, input.env), input.service, backup);
       if (input.gzip) {
         const gzip = ["gzip", bak] as const;
@@ -134,6 +134,7 @@ export const runImport = (
     readonly env: Readonly<Record<string, string>>;
     readonly file: string;
     readonly gzip: boolean;
+    readonly expectedDigest?: string;
   },
 ) => {
   const app = AppId.make(input.plan.id);
@@ -142,8 +143,10 @@ export const runImport = (
   if (input.family === "mssql") {
     const bak = mssqlBackupServicePath(input.creds.database);
     return Effect.gen(function* () {
+      const prepare = mssqlPrepareBackupCommand();
+      yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
       const transfer = yield* mover.transfer({
-        from: { _tag: "hostPath", path },
+        from: { _tag: "hostPath", path, trusted: true },
         to: {
           _tag: "servicePath",
           app,
@@ -151,6 +154,7 @@ export const runImport = (
           path: PortablePath.make(input.gzip ? `${bak}.gz` : bak),
         },
         overwrite: true,
+        ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
       });
       if (input.gzip) {
         const gunzip = ["gunzip", "-f", `${bak}.gz`] as const;
@@ -162,7 +166,7 @@ export const runImport = (
     });
   }
   return mover.transfer({
-    from: { _tag: "hostPath", path },
+    from: { _tag: "hostPath", path, trusted: true },
     to: {
       _tag: "serviceCmd",
       app,
@@ -171,6 +175,7 @@ export const runImport = (
       env: input.env,
     },
     overwrite: true,
+    ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
   });
 };
 
@@ -181,47 +186,10 @@ export const runReset = (
   creds: SqlCreds,
   env: Readonly<Record<string, string>>,
 ) => {
-  const command = resetCommand(family, creds);
-  return exec(service, command, env).pipe(
+  const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
+  const command = resetCommand(family, usesMysqlRoot ? { user: "root", database: creds.database } : creds);
+  const resetEnv = usesMysqlRoot ? { ...env, MYSQL_PWD: creds.rootPassword } : env;
+  return exec(service, command, resetEnv).pipe(
     Effect.flatMap((result) => requireExecOk(result, service, command)),
   );
 };
-
-export const runSnapshot = (
-  mover: SqlMover,
-  plan: SqlPlan,
-  service: SqlPlanService,
-  name: string,
-  label: string | undefined,
-  start: (service: string) => Effect.Effect<void, unknown>,
-  stop: (service: string) => Effect.Effect<void, unknown>,
-) =>
-  Effect.gen(function* () {
-    const store = yield* requireVolume(plan, service, name);
-    yield* stop(name);
-    const snapped = yield* mover
-      .snapshot(store, { format: "tar.gz", ...(label === undefined ? {} : { label }) })
-      .pipe(Effect.exit);
-    const started = yield* start(name).pipe(Effect.either);
-    if (snapped._tag === "Failure") return yield* Effect.failCause(snapped.cause);
-    if (started._tag === "Left") return yield* Effect.fail(started.left);
-    return snapped.value;
-  });
-
-export const runRestore = (
-  mover: SqlMover,
-  plan: SqlPlan,
-  service: SqlPlanService,
-  name: string,
-  snapshotId: string,
-  start: (service: string) => Effect.Effect<void, unknown>,
-  stop: (service: string) => Effect.Effect<void, unknown>,
-) =>
-  Effect.gen(function* () {
-    const store = yield* requireVolume(plan, service, name);
-    yield* stop(name);
-    const restored = yield* mover.restore(snapshotId, store).pipe(Effect.exit);
-    const started = yield* start(name).pipe(Effect.either);
-    if (restored._tag === "Failure") return yield* Effect.failCause(restored.cause);
-    if (started._tag === "Left") return yield* Effect.fail(started.left);
-  });

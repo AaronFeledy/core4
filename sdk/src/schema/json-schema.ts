@@ -171,6 +171,7 @@ import {
   SnapshotInfo,
   VolumeFilter,
   VolumeInfo,
+  VolumeLocator,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotRef,
@@ -366,6 +367,7 @@ import {
   MailpitServiceConfig,
   MinIOServiceConfig,
   MssqlServiceConfig,
+  MysqlServiceConfig,
   PhpMyAdminServiceConfig,
   PhpServiceConfig,
   RabbitMQServiceConfig,
@@ -395,6 +397,8 @@ import {
   UpdateManifestSemver,
   UpdateManifestSha256,
 } from "./update-manifest.ts";
+import { VolumeIdentity } from "./volume-identity.ts";
+import { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
 
 const catalogServiceSchemaRegistry = {
   DotnetServiceConfig,
@@ -403,6 +407,7 @@ const catalogServiceSchemaRegistry = {
   MailpitServiceConfig,
   MinIOServiceConfig,
   MssqlServiceConfig,
+  MysqlServiceConfig,
   PhpMyAdminServiceConfig,
   PhpServiceConfig,
   RabbitMQServiceConfig,
@@ -562,6 +567,10 @@ const basePublicSchemaRegistry = {
   DataEndpoint,
   VolumeRef,
   VolumeInfo,
+  VolumeLocator,
+  VolumeIdentity,
+  VolumeCreationFact,
+  VolumeInitializationRecord,
   VolumeFilter,
   VolumeSnapshotSpec,
   VolumeSnapshotRef,
@@ -996,6 +1005,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   DataEndpoint: "Public Lando schema contract for Data Endpoint.",
   VolumeRef: "Public Lando schema contract for Volume Ref.",
   VolumeInfo: "Public Lando schema contract for Volume Info.",
+  VolumeIdentity: "Owner-bound observed physical volume generation.",
+  VolumeCreationFact: "Daemon-confirmed volume creation during one apply.",
+  VolumeInitializationRecord: "Generation-bound durable initialization claim and outcome.",
   VolumeFilter: "Public Lando schema contract for Volume Filter.",
   VolumeSnapshotSpec: "Public Lando schema contract for Volume Snapshot Spec.",
   VolumeSnapshotRef: "Public Lando schema contract for Volume Snapshot Ref.",
@@ -1210,6 +1222,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HttpResponse: "Public Lando schema contract for Http Response.",
   HttpStreamResponse: "Public Lando schema contract for Http Stream Response.",
   HttpUploadRequest: "Public Lando schema contract for Http Upload Request.",
+  VolumeLocator: "Stable provider locator for one native volume before or after creation.",
   PreHttpCallEvent: "Public Lando schema contract for Pre Http Call Event.",
   PostHttpCallEvent: "Public Lando schema contract for Post Http Call Event.",
 } as const satisfies Record<keyof typeof rawPublicSchemaRegistry, string>;
@@ -1220,6 +1233,7 @@ const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
   MailpitServiceConfig: "Landofile configuration accepted by the Mailpit catalog service.",
   MinIOServiceConfig: "Landofile configuration accepted by the MinIO catalog service.",
   MssqlServiceConfig: "Landofile configuration accepted by the SQL Server catalog service.",
+  MysqlServiceConfig: "Landofile configuration accepted by the MySQL catalog service.",
   PhpMyAdminServiceConfig: "Landofile configuration accepted by the phpMyAdmin catalog service.",
   PhpServiceConfig: "Landofile configuration accepted by the PHP catalog service.",
   RabbitMQServiceConfig: "Landofile configuration accepted by the RabbitMQ catalog service.",

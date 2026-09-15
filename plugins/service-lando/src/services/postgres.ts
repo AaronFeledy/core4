@@ -12,6 +12,8 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "postgres:16";
+const VERSIONS = ["16"] as const;
+const ARTIFACTS = { "16": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 5432;
 const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
@@ -120,6 +122,8 @@ export const postgresServiceType: ServiceType = {
   id: "postgres",
   name: "postgres",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {

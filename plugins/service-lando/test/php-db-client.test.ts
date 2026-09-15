@@ -229,22 +229,26 @@ describe("PHP db_client option", () => {
     expect(detectPhpDbClients([viewOf({ serviceName: "db", serviceType: "mssql" })])).toEqual([]);
   });
 
-  test("Given auto with database siblings, when the AppFeature applies, then PHP receives sorted db-client build steps", () => {
-    const steps = applyFeature([
-      viewOf({
-        serviceName: "web",
-        serviceType: "php:8.2",
-        featureIds: [PHP_FEATURE_ID],
-        db_client: "auto",
-      }),
-      viewOf({ serviceName: "db", serviceType: "mysql" }),
-      viewOf({ serviceName: "pg", serviceType: "postgres" }),
-      viewOf({ serviceName: "mssql", serviceType: "mssql" }),
-    ]);
-    const ids = (steps.get("web") ?? []).map((step) => step.id);
-    expect(ids).toEqual(["service-lando.php:db-client:mysql", "service-lando.php:db-client:postgres"]);
-    expect(steps.get("db")).toEqual([]);
-  });
+  test.each([{}, { image: "php:8.2-apache-bookworm" }])(
+    "Given stock PHP with auto and database siblings, when the AppFeature applies, then PHP receives sorted db-client build steps (%j)",
+    (stockImage) => {
+      const steps = applyFeature([
+        viewOf({
+          serviceName: "web",
+          serviceType: "php:8.2",
+          featureIds: [PHP_FEATURE_ID],
+          ...stockImage,
+          db_client: "auto",
+        }),
+        viewOf({ serviceName: "db", serviceType: "mysql" }),
+        viewOf({ serviceName: "pg", serviceType: "postgres" }),
+        viewOf({ serviceName: "mssql", serviceType: "mssql" }),
+      ]);
+      const ids = (steps.get("web") ?? []).map((step) => step.id);
+      expect(ids).toEqual(["service-lando.php:db-client:mysql", "service-lando.php:db-client:postgres"]);
+      expect(steps.get("db")).toEqual([]);
+    },
+  );
 
   test("Given db_client false, when the AppFeature applies, then it adds no db-client steps", () => {
     const steps = applyFeature([
@@ -283,7 +287,7 @@ describe("PHP db_client option", () => {
         serviceName: "web",
         serviceType: "php:8.2",
         featureIds: [PHP_FEATURE_ID],
-        image: "php:8.2-apache-bookworm",
+        image: "registry.example.com/php:8.2-custom",
         db_client: "auto",
       }),
       viewOf({ serviceName: "db", serviceType: "mysql" }),
@@ -293,7 +297,7 @@ describe("PHP db_client option", () => {
         serviceName: "web",
         serviceType: "php:8.2",
         featureIds: [PHP_FEATURE_ID],
-        image: "php:8.2-apache-bookworm",
+        image: "registry.example.com/php:8.2-custom",
         db_client: "postgres:16",
       }),
     ]);
@@ -355,7 +359,7 @@ describe("PHP db_client option", () => {
     expect(phpDbClientFeature.activatedBy).toEqual({ services: { hasFeature: PHP_FEATURE_ID } });
     expect(phpDbClientFeature.selectors).toEqual({
       hasFeature: [PHP_FEATURE_ID],
-      types: ["mariadb", "mongodb", "mysql", "postgres"],
+      types: ["mariadb", "mongodb", "mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "postgres"],
     });
   });
 });

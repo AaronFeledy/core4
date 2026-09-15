@@ -4,6 +4,26 @@
 
 ## Compatibility notes
 
+- `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
+
+- `RuntimeProviderShape.resume(target, identity)` and `suspend(target, identity)` are additive optional exact-runtime lifecycle methods. Bundled providers address the inspected container ID directly; recovery callers fail closed when a provider cannot preserve that immutable identity across temporary observation.
+
+- `@lando/sdk/schema` additively exports `VolumeLocator`, and `RuntimeProviderShape.locateVolume(ref)` returns its configured-endpoint plus provider-native coordination key before or after creation without inventing generation or ownership. Bundled providers re-read optional generation evidence from the native volume while retaining the same key. Provider restores and removals now require the caller's expected target generation and fail before mutation when the native generation changed. App lifecycle operations coordinate on these physical keys and fail closed when ownership or generation cannot be proven.
+
+- `SqlSeedStateError.status` additively accepts `unknown`; absent or mismatched initialization records can no longer be reported as fresh.
+
+- `VolumeCreationFact` and `VolumeInitializationRecord` are additive schemas. `ApplyResult.createdVolumes` is optional and reports only a daemon-echoed newly generated creation token with its owner. Engine apply consumers re-observe the mounted generation before persisting freshness. Missing evidence, old volumes, and adoption never imply freshness. `DataMoverShape.volumeInitialization` is an optional shared host-state port with `read`, atomic `begin(operationId)`, and generation/owner/operation-checked `finish`. SQL uses this port rather than plugin-scoped buckets; absence is unknown, and interruption quarantines a claimed generation as failed. Process death leaves in-progress state ineligible for another claim. Whole-lifecycle locking remains separate.
+
+- `@lando/sdk/schema` additively exports `VolumeIdentity`; `VolumeInfo.identity` is optional. Its `coordinationKey` identifies a daemon namespace and native volume name, not an app slug, root, or generation. `generation` changes on recreation. `ownerRoot` binds the generation to a canonical app root. `origin: adopted` must never establish creation history or freshness.
+- Bundled Docker and Podman volume creation requests attach `dev.lando.volume-owner` from `AppPlan.identity.appRoot` alongside the existing random creation label. Plans without canonical identity do not receive an inferred owner label. An idempotent create response does not itself establish freshness; subsequent observation reads the stored labels, not the submitted token.
+- `RuntimeProviderShape.observeVolume(target, destination)` is optional. Bundled providers resolve the existing container identity, inspect its actual mount at the requested destination, then inspect that native volume. Missing containers, missing or ambiguous destinations, bind mounts, malformed responses, and disappeared volumes fail closed. Identity comes from creation/owner labels or a validated in-volume witness. Legacy observations retain legacy provenance without an invented creation ID. A missing method or identity does not authorize recovery. Observation is not a lock or mutation precondition; callers must recheck generation at mutation time.
+- `RuntimeProviderShape.adoptVolume(target, destination)` is additive and optional. It requires the plan's canonical `identity.appRoot`, rejects conflicting owner labels, and supports only the local driver without driver options. An existing creation identity is preserved. Otherwise a scoped root-owned Bun helper inherits mounts from the inspected container ID, never a name-based mount that could auto-create a replacement volume. It publishes `.lando-volume-witness.json` by fsync plus atomic no-clobber hard link, then re-reads the token. Same-owner contenders converge; different owners fail. The witness is a version-1 JSON record with a random generation and owner root, a regular owner-only `0600` file, accessed through no-follow directory/file descriptors. Unsafe records are rejected, not repaired or overwritten. Adoption yields `origin: adopted`, not creation history or freshness.
+- Bundled providers use their stable configured endpoint namespace for `coordinationKey`, including Podman endpoints without `/info.ID`; direct adapters without an endpoint may use the observed daemon ID. Neither namespace includes an app slug or owner root. Endpoint configuration must consistently identify the same provider connection; changing that configuration requires re-observation. Deleting and recreating a volume without its witness produces a new generation. Provider snapshots exclude witness records and temporary witness stages; physical restore preserves the target's record and never imports the source's record. Downstream StateStore locking, generation-guarded mutation, lifecycle coordination, and SQL policy remain separate work.
+
+- `@lando/sdk/schema` additively exports `SnapshotMetadata`; `VolumeInfo` additively gains optional physical instance identity and provenance, snapshot options and records additively gain optional recovery metadata, and `ServiceRuntimeInfo` additively gains optional image identity. `@lando/sdk/errors` additively exports `SnapshotOwnershipError`, `SqlRecoveryOperationError`, `SqlRecoveryUnavailableError`, `SqlSeedSourceError`, and `SqlSeedStateError`. `StateStore` additively gains `withLock(key, body)` for host-wide advisory locking of scoped operations.
+
+- The unreleased `VolumeSnapshotRef` contract now requires the provider-observed immutable artifact `digest`, `sizeBytes`, and `format`. `VolumeRestoreSpec` carries the same source identity so bundled providers verify native images or copy archives before mutating a generation-checked target; persisted `SnapshotInfo.native` records retain those values.
+- `PhpServiceConfig.type` now validates `php:<version>` syntax instead of duplicating the bundled version literals. The planner remains the availability boundary and rejects versions absent from the selected ServiceType's shipped metadata before provider action.
 - `ServiceConfig` and `ServiceConfigInput` additively accept optional `packageRoot`, an app-root-relative source directory used only by service-type project-file inference. `ServiceType` additively accepts a pure optional `projectFiles(service)` declaration, and `ServiceTypeInput.projectFiles` receives bounded planner-supplied present or absent inputs with content fingerprints. `ServicePlan` additively accepts optional service-type `provenance`; existing explicit service types and plans remain unchanged.
 - `createRedactor` accepts optional `authoritativeValues`; `createSecretRedactor` accepts them as an optional second argument. Explicit short numeric or control-parameter values suppress the whole affected detail, including bounded output and nested error messages. Existing heuristic `values` filtering is unchanged. `@lando/redaction` supplies authoritative SecretStore values through this canonical primitive.
 - `@lando/sdk/schema` additively exports `AppEnvironmentDefaults`, `AppLabelDefaults`, `CORE_SERVICE_ENV_KEYS`, and `isCoreServiceEnvKey`. `GlobalConfig` additively accepts optional `appEnv` and `appLabels` maps for bounded user-app service defaults; service-authored values retain precedence.
@@ -54,7 +74,7 @@
 
 - `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
 
-- `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
+- `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `MysqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
 - `@lando/sdk/schema` and dedicated service-schema subpaths additively export catalog service config schemas for RabbitMQ, MinIO, LocalStack, Mailpit, and MailHog. They reuse the existing `ServiceConfig` field vocabulary while narrowing each catalog service's `type` value, and each schema is registered for public JSON Schema publication. The MailHog schema is a deprecated compatibility surface (`since` 4.2.0, `removeIn` 5.0.0, replacement `mailpit`).
 - `ServiceType.schema` now accepts any context-free Effect Schema so catalog service configs can be assigned without a type assertion.
 - `@lando/sdk/plugins` additively exports the framework-neutral `ExecutableCommandSpec` family and
@@ -195,6 +215,10 @@
 
 
 ## Additive schema exports
+
+- `VolumeCreationFact`
+- `VolumeInitializationRecord`
+- `VolumeLocator`
 
 - `AppEnvironmentDefaults`
 - `AppLabelDefaults`
@@ -448,6 +472,7 @@
 - `MailpitServiceConfig`
 - `MinIOServiceConfig`
 - `MssqlServiceConfig`
+- `MysqlServiceConfig`
 - `MountInput`
 - `MountPlan`
 - `NetworkCaConfig`
@@ -605,9 +630,11 @@
 - `SnapshotHandle`
 - `SnapshotId`
 - `SnapshotInfo`
+- `SnapshotMetadata`
 - `SnapshotOptions`
 - `VolumeFilter`
 - `VolumeInfo`
+- `VolumeIdentity`
 - `VolumeRef`
 - `VolumeRestoreSpec`
 - `VolumeSnapshotRef`
@@ -625,6 +652,7 @@
 - `McpConfig`
 - `McpServeOptions`
 - `AgentEnvConfig`
+- `AppIdentity`
 - `NotifyConfig`
 - `NotifyCommandId`
 - `RendererCapabilities`
@@ -1047,3 +1075,8 @@
 - `runToolingEngineContractSuite`
 - `runTunnelServiceContract`
 - `SECRET_SOUP_FIXTURE`
+- `SnapshotOwnershipError`
+- `SqlRecoveryUnavailableError`
+- `SqlRecoveryOperationError`
+- `SqlSeedSourceError`
+- `SqlSeedStateError`

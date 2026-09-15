@@ -64,7 +64,7 @@ describe("mysql ServiceType", () => {
     });
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
     expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-mysql-data");
+    expect(plan.storage[0]?.store).toBe("myapp-db-mysql-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3306, protocol: "tcp", name: "db" }]);
   });

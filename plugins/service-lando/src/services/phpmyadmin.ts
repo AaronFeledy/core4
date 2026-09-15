@@ -28,7 +28,7 @@ import {
 } from "./_phpmyadmin-hosts.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
-const DB_TYPES = ["mysql", "mariadb"] as const;
+const DB_TYPES = ["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "mariadb"] as const;
 const VERSIONS = ["5", "latest"] as const;
 const ARTIFACTS = {
   "5": "phpmyadmin:5",
@@ -210,7 +210,7 @@ export const phpMyAdminWireFeature: AppFeatureDefinition = {
   id: PHPMYADMIN_WIRE_FEATURE_ID,
   priority: 100,
   activatedBy: { services: { type: "phpmyadmin" } },
-  selectors: { types: ["phpmyadmin", "mysql", "mariadb"] },
+  selectors: { types: ["phpmyadmin", ...DB_TYPES] },
   apply: (ctx) =>
     Effect.gen(function* () {
       const needsDiscovery = ctx.selected.some(

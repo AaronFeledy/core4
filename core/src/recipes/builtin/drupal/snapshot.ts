@@ -7,7 +7,7 @@ import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const DRUPAL_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CONTENT_DIGEST =
-  "sha256:e19e6e75cb31520601c5c648cd19ee2378a6a05593d42120ed2fcbae91ab8e81";
+  "sha256:233336203ea6f6702b7c60c67478cdd14739ec9dc733145c204d1a44adf0e272";
 
 export const drupalProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -110,7 +110,7 @@ export const drupalSnapshot: RecipeSnapshot = {
     drupal: { kind: "enum", values: ["11", "10"] },
     php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
     webserver: { kind: "enum", values: ["apache", "nginx"] },
-    database: { kind: "enum", values: ["mariadb:11.4", "mariadb:10.11", "mysql:8.0", "postgres:16"] },
+    database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0", "postgres:16"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
   },

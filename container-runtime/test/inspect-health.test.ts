@@ -73,6 +73,7 @@ const plan: AppPlan = {
 const inspectBody = (health?: string): string =>
   JSON.stringify({
     Id: "lando-healthapp-web-id",
+    Image: "sha256:runtime-image",
     State: {
       Running: true,
       Status: "running",
@@ -140,6 +141,7 @@ describe("podman inspect health", () => {
 
     expect(info.health).toBeUndefined();
     expect(info.status).toBe("running");
+    expect(info.imageIdentity).toBe("sha256:runtime-image");
   });
 
   test("leaves health undefined when Podman health status is malformed", async () => {

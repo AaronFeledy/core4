@@ -43,6 +43,12 @@ export const resolvePhpVia = (value: unknown): PhpVia => {
 
 export const phpImageFor = (version: string, via: PhpVia): string => `php:${version}-${via}-bookworm`;
 
+export const hasCustomPhpImage = (service: ServiceConfig): boolean => {
+  if (service.image === undefined) return false;
+  const version = service.type?.startsWith("php:") === true ? service.type.slice("php:".length) : undefined;
+  return version === undefined || service.image !== phpImageFor(version, "apache");
+};
+
 export const phpListenPort = (via: PhpVia, authoredPort: number | undefined): number => {
   if (authoredPort !== undefined) return authoredPort;
   switch (via) {

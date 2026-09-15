@@ -11,6 +11,8 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
+const VERSIONS = ["7"] as const;
+const ARTIFACTS = { "7": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 27017;
 const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
@@ -116,6 +118,8 @@ export const mongodbServiceType: ServiceType = {
   id: "mongodb",
   name: "mongodb",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {

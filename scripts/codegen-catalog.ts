@@ -136,6 +136,12 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "service-type-reference",
+    ownership: "derived",
+    script: "build-service-type-reference.ts",
+    workspace: "repo",
+  },
+  {
     id: "opentui-native-stubs",
     ownership: "derived",
     script: "build-opentui-native-stubs.ts",
