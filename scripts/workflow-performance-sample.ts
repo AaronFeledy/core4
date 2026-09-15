@@ -117,7 +117,7 @@ const prepareSample = async (
     return {
       appRoot,
       env,
-      failure: await withPodmanServiceEvidence(setup, dataRoot),
+      failure: await withPodmanServiceEvidence(setup, dataRoot, env),
       fileSyncEvidence: setup.stderr,
     };
   if (lane.requiresNativeBindMounts && !setup.stdout.includes("already satisfied (native bind mounts)")) {
@@ -156,7 +156,7 @@ const prepareSample = async (
       return {
         appRoot,
         env,
-        failure: await withPodmanServiceEvidence(started, dataRoot),
+        failure: await withPodmanServiceEvidence(started, dataRoot, env),
         fileSyncEvidence: setup.stdout,
       };
   }
