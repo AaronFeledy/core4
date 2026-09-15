@@ -18,7 +18,12 @@ export { memcachedServiceType } from "./memcached.ts";
 export { minioServiceType } from "./minio.ts";
 export { mongodbServiceType } from "./mongodb.ts";
 export { mssql2019ServiceType, mssql2022ServiceType, mssqlServiceType } from "./mssql.ts";
-export { mysqlServiceType } from "./mysql.ts";
+export {
+  mysql80ServiceType,
+  mysql84ServiceType,
+  mysql97ServiceType,
+  mysqlServiceType,
+} from "./mysql.ts";
 export { nginxServiceType } from "./nginx.ts";
 export { node22ServiceType, nodeLtsServiceType, nodeServiceType } from "./node.ts";
 export {
@@ -32,6 +37,7 @@ export {
   php83ServiceType,
   php84ServiceType,
   php85ServiceType,
+  php86ServiceType,
 } from "./php.ts";
 export {
   phpmyadmin5ServiceType,

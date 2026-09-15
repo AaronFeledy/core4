@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   LARAVEL_DATABASES,
+  PHP_VERSIONS,
   SYMFONY_DATABASES,
   WEBROOT_PATTERN,
+  phpPromptYaml,
   renderDatabaseLines,
   renderNginxEdgeLines,
   renderPhpAppserverLines,
@@ -12,6 +14,11 @@ import {
 } from "../../src/recipes/builtin/php-stack.ts";
 
 describe("php-stack helper", () => {
+  test("offers PHP 8.6 as a selectable recipe answer", () => {
+    expect([...PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]);
+    expect(phpPromptYaml).toContain("value: '8.6'");
+  });
+
   test("resolves lamp defaults from empty extras", () => {
     const resolved = resolvePhpStackAnswers(
       {},

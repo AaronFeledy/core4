@@ -27,7 +27,13 @@ import {
   phpListenPort,
   resolvePhpVia,
 } from "./php-via.ts";
-import { phpXdebugBuildStep, phpXdebugConfigEnv, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
+import {
+  assertPhpXdebugSupported,
+  phpXdebugBuildStep,
+  phpXdebugConfigEnv,
+  phpXdebugTooling,
+  resolvePhpXdebug,
+} from "./php-xdebug.ts";
 
 export {
   PHP_APT_PACKAGE_PINS,
@@ -43,7 +49,7 @@ export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
 
 export { PHP_FPM_LOG_SOURCES } from "./php-via.ts";
 
-export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5"] as const;
+export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] as const;
 export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
 const PHP_ARTIFACTS = Object.fromEntries(
   SUPPORTED_PHP_VERSIONS.map((version) => [version, phpImageFor(version, "apache")]),
@@ -222,6 +228,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
         const via = resolvePhpVia(input.service.via);
         assertPhpViaKeys(via, input.service);
         const xdebug = resolvePhpXdebug(input.service.xdebug);
+        assertPhpXdebugSupported(resolvedVersion, xdebug);
         resolvePhpDbClient(input.service.db_client);
         const webroot = Schema.decodeUnknownSync(PhpWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
         const allowOverride = input.service.allowOverride ?? false;
@@ -257,3 +264,4 @@ export const php82ServiceType: ServiceType = makePhpServiceType("8.2");
 export const php83ServiceType: ServiceType = makePhpServiceType("8.3");
 export const php84ServiceType: ServiceType = makePhpServiceType("8.4");
 export const php85ServiceType: ServiceType = makePhpServiceType("8.5");
+export const php86ServiceType: ServiceType = makePhpServiceType("8.6");

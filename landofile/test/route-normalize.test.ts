@@ -60,7 +60,9 @@ describe("route normalization", () => {
       // When
       const result = normalizeRoute(route, { keyPath: "services.web.routes[0]" });
       // Then
-      expect(result).toEqual(Either.right({ ...route, filters: route.filters ?? [] }));
+      expect(result).toEqual(
+        Either.right({ ...route, filters: route.filters ?? [], source: { key: "services.web.routes[0]" } }),
+      );
     },
   );
 
@@ -136,8 +138,8 @@ describe("route normalization", () => {
     // Then
     expect(result).toEqual(
       Either.right([
-        { hostname: "app", endpoint: 1, filters: [] },
-        { hostname: "app", endpoint: 65535, filters: [] },
+        { hostname: "app", endpoint: 1, filters: [], source: { key: "services.web.routes[0]" } },
+        { hostname: "app", endpoint: 65535, filters: [], source: { key: "services.web.routes[1]" } },
       ]),
     );
   });

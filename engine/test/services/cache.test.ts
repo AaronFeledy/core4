@@ -635,6 +635,7 @@ describe("CacheServiceLive", () => {
       routes: [
         {
           hostname: "web.cache-plan.lndo.site",
+          priority: 2,
           scheme: "https" as const,
           service: ServiceName.make("web"),
           backend: { service: ServiceName.make("web"), protocol: "http" as const, port: 8080 },

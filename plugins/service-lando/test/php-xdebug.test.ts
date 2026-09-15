@@ -9,6 +9,7 @@ import {
   php81ServiceType,
   php82ServiceType,
   php85ServiceType,
+  php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -221,6 +222,12 @@ describe("PHP xdebug option", () => {
   test("Given a custom image and invalid xdebug, when planning, then it still fails closed", async () => {
     const planned = composePhpPlan({ image: "registry.example.com/php:8.2-custom", xdebug: "nope" });
     await expectRejectsToThrow(planned, /Unsupported Xdebug mode/);
+  });
+
+  test("Given php:8.6 and xdebug true, when planning, then it fails closed because the shipped pin stops at 8.5", async () => {
+    const planned = composePhpPlan({ xdebug: true }, php86ServiceType);
+    await expectRejectsToThrow(planned, /Xdebug is not available on PHP 8\.6/);
+    await expectRejectsToThrow(planned, /Remove xdebug: or set type to php:8\.5/);
   });
 
   test("Given a custom image and xdebug true, when planning, then it skips the install step without XDEBUG_MODE", async () => {

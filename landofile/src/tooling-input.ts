@@ -8,6 +8,26 @@ export interface ToolingInputValues {
   readonly argv: readonly string[];
 }
 
+export const serializeToolingInput = (
+  declaration: Pick<NormalizedToolingTask, "flags" | "args">,
+  input: {
+    readonly flags: Readonly<Record<string, unknown>>;
+    readonly args: Readonly<Record<string, unknown>>;
+    readonly argv?: readonly string[];
+  },
+): readonly string[] => {
+  const flags = declaration.flags.flatMap((flag) => {
+    const value = input.flags[flag.name];
+    if (flag.boolean) return value === true ? [`--${flag.name}`] : [];
+    return typeof value === "string" ? [`--${flag.name}=${value}`] : [];
+  });
+  const args = declaration.args.flatMap((arg) => {
+    const value = input.args[arg.name];
+    return typeof value === "string" ? [value] : [];
+  });
+  return [...flags, ...(args.length === 0 ? [] : ["--", ...args]), ...(input.argv ?? [])];
+};
+
 export const parseToolingArgv = (
   task: NormalizedToolingTask,
   argv: readonly string[],

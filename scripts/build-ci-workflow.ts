@@ -528,6 +528,8 @@ ${landoManagedPodmanTeardownCommands}
 const landoProviderIntegrationSteps = (platform: CiPlatform): string =>
   `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps(platform)}`;
 
+const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
+
 const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 40
@@ -536,21 +538,40 @@ const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
 
 ${timingStartStep}
 
-${setupBunSteps}
+      - name: Restore assembled Linux x64 runtime bundle
+        id: runtime-bundle-cache
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache}
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
+
+      - name: Setup Bun
+        if: ${linuxRuntimeBundleCacheMiss}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        if: ${linuxRuntimeBundleCacheMiss}
+        run: bun install --frozen-lockfile
 
       - name: Setup Go for Linux Podman source build
+        if: ${linuxRuntimeBundleCacheMiss}
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo}
         with:
           go-version: 1.25.6
 
       - name: Setup Rust for Linux helper source builds
+        if: ${linuxRuntimeBundleCacheMiss}
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
 
       - name: Install Linux Podman source-build prerequisites
+        if: ${linuxRuntimeBundleCacheMiss}
         run: |
           ${RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
 
       - name: Assemble current-commit Linux x64 runtime bundle
+        if: ${linuxRuntimeBundleCacheMiss}
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
 
       - name: Upload current-commit Linux x64 runtime bundle

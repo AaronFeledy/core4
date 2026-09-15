@@ -9,6 +9,7 @@ import {
   PathsService,
   PluginRegistry,
   ProcessRunner,
+  RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { resolveAppIdentity } from "../planner/app-identity.ts";
@@ -21,6 +22,7 @@ import {
 import { attachEffectiveEvents, effectiveEventsForPlan } from "../planner/effective-events.ts";
 import { attachEffectiveTooling, effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { FILE_SYNC_DEFAULT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
+import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 
@@ -38,6 +40,7 @@ export const AppPlannerLive = Layer.effect(
   AppPlanner,
   Effect.gen(function* () {
     const pluginRegistry = yield* PluginRegistry;
+    const providerRegistry = yield* Effect.serviceOption(RuntimeProviderRegistry);
     const cacheService = yield* Effect.serviceOption(CacheService);
     const configService = yield* Effect.serviceOption(ConfigService);
     const fileSystem = yield* Effect.serviceOption(FileSystem);
@@ -61,13 +64,17 @@ export const AppPlannerLive = Layer.effect(
               landofile,
               providerCapabilities,
             ).pipe(
-              Effect.map((plan) => {
+              Effect.flatMap((plan) => {
                 const identified = { ...plan, identity };
                 const tooling = effectiveToolingForPlan(plan);
                 const events = effectiveEventsForPlan(plan);
-                if (tooling !== undefined) attachEffectiveTooling(identified, tooling);
-                if (events !== undefined) attachEffectiveEvents(identified, events);
-                return identified;
+                return adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry)).pipe(
+                  Effect.map((adopted) => {
+                    if (tooling !== undefined) attachEffectiveTooling(adopted, tooling);
+                    if (events !== undefined) attachEffectiveEvents(adopted, events);
+                    return adopted;
+                  }),
+                );
               }),
             ),
           ),

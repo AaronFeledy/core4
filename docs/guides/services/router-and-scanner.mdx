@@ -58,7 +58,34 @@ The rest of the `router:` block works the same whether or not you touch `enabled
 | `httpFallbacks` | Extra HTTP ports to try when `httpPort` is taken. |
 | `httpsFallbacks` | Extra HTTPS ports to try when `httpsPort` is taken. |
 
-## Where `router.enabled` comes from
+## Use the route's scheme on fallback ports
+
+```sh
+lando info
+```
+
+Open the complete URL it prints, including a fallback port such as `:8443`.
+Shorthand routes and object routes without `scheme` publish **HTTPS only**.
+An HTTP request to that hostname on the HTTP listener (for example `:8080`)
+receives the diagnostic HTTP 404 when no HTTP route matches. That is expected,
+not a broken backend. Use the HTTPS URL, or explicitly set `scheme: http` or
+`scheme: both` if the app should accept plain HTTP. Lando does not implicitly
+redirect an HTTPS-only route from HTTP.
+
+```yaml
+services:
+  web:
+    type: nginx
+    routes:
+      - hostname: web.example.lndo.site
+        scheme: both
+```
+
+The HTTP and HTTPS listeners may use different fallback ports. Neither port
+changes the selected backend endpoint. See [route identity and ordering](../proxy/route-shorthand.mdx#choose-which-overlapping-route-wins)
+when the same host serves several backends or paths.
+
+## Resolve `router.enabled`
 
 The value resolves through normal config precedence. Last one wins:
 
