@@ -109,7 +109,7 @@ const prepareSample = async (
         "--skip-file-sync",
       ],
       cwd,
-      env,
+      { ...env, LANDO_RENDERER: "json" },
     ),
   );
   if (setup.exitCode !== 0) return { appRoot, env, failure: setup, fileSyncEvidence: setup.stderr };
