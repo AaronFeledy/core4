@@ -1,13 +1,14 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { PHP_VERSIONS } from "../php-stack.ts";
 import { encodedStringNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND, drupalCmsInstallCommand } from "./commands.ts";
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:6a1842b7f0621316dff93eab77e10e36d5b691d12027b947d1a2cb7052235a46";
+  "sha256:4e5ecb51c17423bef94c4699ecea07a572761fe0ec968d7b73fcd9d8a5e5d492";
 
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -119,7 +120,7 @@ const tool = (description: string, command: string): ExpressionNode => ({
 export const drupalCmsSnapshot: RecipeSnapshot = {
   identity: drupalCmsProducer,
   optionTypes: {
-    php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
+    php: { kind: "enum", values: [...PHP_VERSIONS] },
     webserver: { kind: "enum", values: ["apache", "nginx"] },
     database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0", "postgres:16"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },

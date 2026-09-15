@@ -1,11 +1,12 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { PHP_VERSIONS } from "../php-stack.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const JOOMLA_RECIPE_VERSION = "0.1.0";
 export const JOOMLA_CONTENT_DIGEST =
-  "sha256:603fcbe96962b7785134f5979e74761208b300fb2753c74ee85b9158a77f4ebd";
+  "sha256:f3c7fd97b9914813f0178ddf4507e0db27519ac218c99cf84d254b5aab87bfa8";
 
 export const joomlaProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -47,7 +48,7 @@ const PHP_TOOL_DESCRIPTION = "Run the PHP CLI inside the appserver service.";
 export const joomlaSnapshot: RecipeSnapshot = {
   identity: joomlaProducer,
   optionTypes: {
-    php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
+    php: { kind: "enum", values: [...PHP_VERSIONS] },
     database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0"] },
     composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },

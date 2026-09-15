@@ -312,7 +312,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     expect(result._tag).toBe("Right");
   });
 
-  test.each(["php:8.1", "php:8.2", "php:8.3", "php:8.4", "php:8.5"] as const)(
+  test.each(["php:8.1", "php:8.2", "php:8.3", "php:8.4", "php:8.5", "php:8.6"] as const)(
     "Given PHP type %s, when decoding composer selection, then it succeeds",
     (type) => {
       // Given

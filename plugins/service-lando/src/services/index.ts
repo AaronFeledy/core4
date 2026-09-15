@@ -37,6 +37,7 @@ export {
   php83ServiceType,
   php84ServiceType,
   php85ServiceType,
+  php86ServiceType,
 } from "./php.ts";
 export {
   phpmyadmin5ServiceType,
