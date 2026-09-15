@@ -83,6 +83,7 @@
     "codegen:command-registry-manifest": "bun run scripts/build-command-registry-manifest.ts",
     "codegen:command-reference": "bun run scripts/build-command-reference.ts",
     "codegen:compose-key-matrix": "bun run scripts/build-compose-key-matrix.ts",
+    "codegen:service-type-reference": "bun run scripts/build-service-type-reference.ts",
     "codegen:recipe-readmes": "bun run scripts/build-recipe-readmes.ts",
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
     "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",

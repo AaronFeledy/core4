@@ -14,6 +14,9 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 export const SUPPORTED_GO_VERSIONS = ["1.22", "1.23"] as const;
 export type SupportedGoVersion = (typeof SUPPORTED_GO_VERSIONS)[number];
+const GO_ARTIFACTS = Object.fromEntries(
+  SUPPORTED_GO_VERSIONS.map((version) => [version, `golang:${version}`]),
+);
 
 export const SUPPORTED_GO_FRAMEWORKS = ["none"] as const;
 export type SupportedGoFramework = (typeof SUPPORTED_GO_FRAMEWORKS)[number];
@@ -157,6 +160,8 @@ const makeGoServiceType = (version: SupportedGoVersion): ServiceType => ({
   id: `go:${version}`,
   name: `go:${version}`,
   base: "lando",
+  versions: SUPPORTED_GO_VERSIONS,
+  artifacts: GO_ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>

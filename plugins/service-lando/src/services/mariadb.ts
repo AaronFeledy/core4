@@ -18,6 +18,8 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mariadb:11.4";
+const VERSIONS = ["11.4"] as const;
+const ARTIFACTS = { "11.4": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 3306;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MARIADB_FEATURE_ID = "service-lando.mariadb";
@@ -149,6 +151,8 @@ export const mariadbServiceType: ServiceType = {
   id: "mariadb",
   name: "mariadb",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {

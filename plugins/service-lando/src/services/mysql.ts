@@ -19,6 +19,8 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mysql:8.0";
+const VERSIONS = ["8.0"] as const;
+const ARTIFACTS = { "8.0": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 3306;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MYSQL_FEATURE_ID = "service-lando.mysql";
@@ -141,6 +143,8 @@ export const mysqlServiceType: ServiceType = {
   id: "mysql",
   name: "mysql",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {

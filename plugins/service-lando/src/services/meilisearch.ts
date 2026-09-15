@@ -14,6 +14,8 @@ import type {
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 const DEFAULT_IMAGE = "getmeili/meilisearch:v1.11";
+const VERSIONS = ["1"] as const;
+const ARTIFACTS = { "1": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 7700;
 const DATA_TARGET = PortablePath.make("/meili_data");
 
@@ -98,6 +100,8 @@ export const meilisearch1ServiceType: ServiceType = {
   id: "meilisearch:1",
   name: "meilisearch",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: resolveMeilisearchService,
@@ -108,6 +112,8 @@ export const meilisearchServiceType: ServiceType = {
   id: "meilisearch",
   name: "meilisearch",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: resolveMeilisearchService,

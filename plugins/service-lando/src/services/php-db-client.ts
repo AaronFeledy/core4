@@ -7,6 +7,8 @@ import type {
   ServiceBuildStepIntent,
 } from "@lando/sdk/services";
 
+import { hasCustomPhpImage } from "./php-via.ts";
+
 const PHP_FEATURE_ID = "service-lando.php";
 
 export const PHP_DB_CLIENT_FEATURE_ID = "service-lando.php.db-client" as const;
@@ -85,9 +87,6 @@ export const resolvePhpDbClient = (value: unknown): PhpDbClientSelection => {
   throw new Error(`Unsupported database client ${JSON.stringify(value)}. ${PHP_DB_CLIENT_REMEDIATION}`);
 };
 
-const compareVersions = (left: string, right: string): number =>
-  left.localeCompare(right, undefined, { numeric: true });
-
 const familyFromServiceType = (serviceType: string): ClientInstall | undefined => {
   const separator = serviceType.indexOf(":");
   const family = separator <= 0 ? serviceType : serviceType.slice(0, separator);
@@ -104,7 +103,7 @@ export const detectPhpDbClients = (
     const detected = familyFromServiceType(view.serviceType);
     if (detected === undefined) continue;
     const current = highest.get(detected.family);
-    if (current === undefined || compareVersions(detected.version, current) > 0) {
+    if (current === undefined || detected.version.localeCompare(current, undefined, { numeric: true }) > 0) {
       highest.set(detected.family, detected.version);
     }
   }
@@ -250,7 +249,7 @@ const installsFor = (selection: PhpDbClientSelection, views: ReadonlyArray<AppFe
 const applyPhpDbClient = (ctx: AppFeatureContext): void => {
   ctx.forEachSelected((mutator) => {
     if (!mutator.service.featureIds.includes(PHP_FEATURE_ID)) return;
-    if (mutator.service.normalizedConfig.image !== undefined) return;
+    if (hasCustomPhpImage(mutator.service.normalizedConfig)) return;
     const selection = resolvePhpDbClient(mutator.service.normalizedConfig.db_client);
     for (const step of phpDbClientBuildSteps(installsFor(selection, ctx.selected))) {
       mutator.addBuildStep(step);

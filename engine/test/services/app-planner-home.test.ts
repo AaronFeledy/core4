@@ -85,7 +85,7 @@ describe("AppPlanner home persistence and host reachability", () => {
 
   test("Given a versioned catalog type, When planned, Then the pinned artifact tag does not look like a custom image", async () => {
     await withAppRoot(async (appRoot) => {
-      const appPlan = await plan(appRoot, landofile({ db: { type: "mariadb:10.11" } }));
+      const appPlan = await plan(appRoot, landofile({ db: { type: "mariadb:11.4" } }));
       const db = appPlan.services[ServiceName.make("db")];
       const store = `lando-${appPlan.slug}-db-home`;
       expect(db?.storage).toContainEqual({

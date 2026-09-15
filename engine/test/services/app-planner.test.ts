@@ -16,6 +16,7 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  GlobalConfig,
   LandofileShape,
   LogSource,
   PluginManifest,
@@ -27,7 +28,6 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
-import { GlobalConfig } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/sdk/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -37,6 +37,7 @@ import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import { CacheServiceLive } from "../../src/cache/service.ts";
+import { resolvePinnedArtifactTag } from "../../src/planner/service-types.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
@@ -2064,16 +2065,11 @@ describe("AppPlannerLive", () => {
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(CapabilityError);
-          const error = failure.value as CapabilityError;
-          expect(error.capability).toBe("sharedCrossAppNetwork");
-          expect(error.feature).toBe("test.needs-shared-network");
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure.capability).toBe("sharedCrossAppNetwork");
+        expect(failure.feature).toBe("test.needs-shared-network");
       }
     });
   });
@@ -2592,7 +2588,7 @@ describe("AppPlannerLive", () => {
   test.each([
     [
       { type: "node:22.11.0" },
-      /Unsupported service type node:22\.11\.0.*Supported alternatives: node:22, node:lts/i,
+      /LandofileValidationError: Service web requests version 22\.11\.0 of service type node, but that ServiceType does not publish any supported versions\. Use the bare type node or choose a ServiceType with shipped version metadata\./,
     ],
     [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
     [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
@@ -4079,7 +4075,6 @@ describe("AppPlannerLive", () => {
 
         expect(first.services[ServiceName.make("web")]?.environment.ONE_FEATURE).toBe("1");
         expect(first.services[ServiceName.make("web")]?.environment.TWO_FEATURE).toBeUndefined();
-        // The feature set changed, so the cache key must roll and re-plan.
         expect(second.services[ServiceName.make("web")]?.environment.TWO_FEATURE).toBe("1");
         expect(second.services[ServiceName.make("web")]?.environment.ONE_FEATURE).toBeUndefined();
         expect(resolveCalls).toBe(2);
@@ -4092,20 +4087,87 @@ describe("AppPlannerLive", () => {
   });
 
   describe("service-type version pinning", () => {
-    test("resolves type name:version to name:version by convention when no artifacts entry exists", async () => {
+    const makeMatrixServiceType = (id: string): ServiceType =>
+      makeLegacyServiceTypeFake({
+        id,
+        toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+          Schema.decodeUnknownSync(ServicePlan)({
+            name: ServiceName.make(name),
+            type: id,
+            provider,
+            primary,
+            artifact: { kind: "ref", ref: `${id}:latest` },
+            environment: {},
+            mounts: [],
+            storage: [],
+            endpoints: [],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata,
+            extensions: {},
+          }),
+      });
+
+    test("rejects an unavailable catalog version instead of guessing an image tag", async () => {
+      await withTempCwd(async () => {
+        const exit = await planExit({
+          name: "myapp",
+          runtime: 4,
+          services: { [ServiceName.make("db")]: { type: "mariadb:10.11", home: false } },
+        });
+        const failure = expectSomeFailure(exit);
+        expect(failure).toBeInstanceOf(LandofileValidationError);
+        if (failure instanceof LandofileValidationError) {
+          expect(failure._tag).toBe("LandofileValidationError");
+          expect(failure.issues).toEqual(["services.db.type"]);
+          expect(failure.message).toContain("Supported versions: 11.4");
+        }
+      });
+    });
+
+    test("resolves a catalog version through its published artifact instead of an id convention", async () => {
       await withTempCwd(async () => {
         const appPlan = await plan({
           name: "myapp",
           runtime: 4,
-          services: {
-            [ServiceName.make("db")]: { type: "mariadb:10.11", home: false },
-          },
+          services: { [ServiceName.make("db")]: { type: "mongodb:7", home: false } },
         });
-        expect(appPlan.services[ServiceName.make("db")]?.artifact).toEqual({
-          kind: "ref",
-          ref: "mariadb:10.11",
-        });
+
+        expect(appPlan.services[ServiceName.make("db")]?.artifact).toEqual({ kind: "ref", ref: "mongo:7" });
       });
+    });
+
+    test("rejects a requested version when the ServiceType declares no shipped matrix", async () => {
+      const serviceType = makeMatrixServiceType("matrixless");
+
+      const exit = await Effect.runPromiseExit(resolvePinnedArtifactTag("/app", "db", serviceType, "1.0"));
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure._tag).toBe("LandofileValidationError");
+        expect(failure.issues).toEqual(["services.db.type"]);
+        expect(failure.message).toContain("does not publish any supported versions");
+      }
+    });
+
+    test("rejects a declared version whose ServiceType omits its artifact pin", async () => {
+      const serviceType = {
+        ...makeMatrixServiceType("incomplete-matrix"),
+        versions: ["1.0"],
+        artifacts: {},
+      };
+
+      const exit = await Effect.runPromiseExit(resolvePinnedArtifactTag("/app", "db", serviceType, "1.0"));
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure._tag).toBe("LandofileValidationError");
+        expect(failure.issues).toEqual(["services.db.type"]);
+        expect(failure.message).toContain("does not publish an artifact for supported version 1.0");
+      }
     });
 
     test("resolves a colon-bearing service type id as a whole exact match, not name:version", async () => {
@@ -4136,7 +4198,7 @@ describe("AppPlannerLive", () => {
                   {
                     name: "myapp",
                     runtime: 4,
-                    services: { [ServiceName.make("db")]: { type: `mariadb:${version}`, home: false } },
+                    services: { [ServiceName.make("db")]: { type: `mssql:${version}`, home: false } },
                   },
                   providerLandoCapabilities,
                 ),
@@ -4146,15 +4208,15 @@ describe("AppPlannerLive", () => {
                 Effect.provide(CacheServiceLive),
               ),
             );
-          const first = await runPlan("10.11");
-          const second = await runPlan("11.4");
+          const first = await runPlan("2019");
+          const second = await runPlan("2022");
           expect(first.services[ServiceName.make("db")]?.artifact).toEqual({
             kind: "ref",
-            ref: "mariadb:10.11",
+            ref: "mcr.microsoft.com/mssql/server:2019-latest",
           });
           expect(second.services[ServiceName.make("db")]?.artifact).toEqual({
             kind: "ref",
-            ref: "mariadb:11.4",
+            ref: "mcr.microsoft.com/mssql/server:2022-latest",
           });
         } finally {
           if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
@@ -4204,7 +4266,7 @@ describe("AppPlannerLive", () => {
       });
     });
 
-    test("resolves an exact artifacts entry over the name:version convention", async () => {
+    test("resolves exact artifact pins, preserves image overrides, and rejects incomplete pins", async () => {
       const basePinnedType = makeLegacyServiceTypeFake({
         id: "fake-db",
         toServicePlan: ({ name, service, provider = ProviderId.make("lando"), primary = false, metadata }) =>
@@ -4264,7 +4326,30 @@ describe("AppPlannerLive", () => {
           ref: "registry.example.com/fake-db:1.0-hardened",
         });
 
-        const conventionPin = await Effect.runPromise(
+        const imageOverride = await Effect.runPromise(
+          Effect.flatMap(AppPlanner, (appPlanner) =>
+            appPlanner.plan(
+              {
+                name: "myapp",
+                runtime: 4,
+                services: {
+                  [ServiceName.make("db")]: {
+                    type: "fake-db:1.0",
+                    image: "registry.example.com/fake-db:custom",
+                    home: false,
+                  },
+                },
+              },
+              providerLandoCapabilities,
+            ),
+          ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
+        );
+        expect(imageOverride.services[ServiceName.make("db")]?.artifact).toEqual({
+          kind: "ref",
+          ref: "registry.example.com/fake-db:custom",
+        });
+
+        const missingArtifact = await Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
             appPlanner.plan(
               {
@@ -4276,10 +4361,11 @@ describe("AppPlannerLive", () => {
             ),
           ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
         );
-        expect(conventionPin.services[ServiceName.make("db")]?.artifact).toEqual({
-          kind: "ref",
-          ref: "fake-db:2.0",
-        });
+        const missingArtifactFailure = expectSomeFailure(missingArtifact);
+        expect(missingArtifactFailure).toBeInstanceOf(LandofileValidationError);
+        expect((missingArtifactFailure as LandofileValidationError).message).toContain(
+          "does not publish an artifact for supported version 2.0",
+        );
 
         const unsupported = await Effect.runPromiseExit(
           Effect.flatMap(AppPlanner, (appPlanner) =>
