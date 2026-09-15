@@ -70,20 +70,18 @@ export const makeRouteAccumulator = () => {
             );
           }
         }
-        if (uncovered.length > 0) {
+        const scheme = uncovered.length === 2 ? "both" : uncovered[0];
+        if (scheme !== undefined) {
           const index = routes.length;
-          const scheme = uncovered.length === 2 ? "both" : uncovered[0];
-          if (scheme !== undefined) {
-            routes.push({ ...route, hostname: route.hostname.toLowerCase(), scheme });
-            for (const protocol of uncovered) {
-              matches.set(JSON.stringify([protocol, route.hostname.toLowerCase(), route.pathPrefix ?? "/"]), {
-                index,
-                semantics: execution,
-                source,
-              });
-            }
-            refs.push({ index });
+          routes.push({ ...route, hostname: route.hostname.toLowerCase(), scheme });
+          for (const protocol of uncovered) {
+            matches.set(JSON.stringify([protocol, route.hostname.toLowerCase(), route.pathPrefix ?? "/"]), {
+              index,
+              semantics: execution,
+              source,
+            });
           }
+          refs.push({ index });
         }
         return refs;
       }),

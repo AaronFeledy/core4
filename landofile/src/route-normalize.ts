@@ -49,10 +49,11 @@ export const normalizeRoute = (
   route: RouteInput,
   ctx: { readonly keyPath: string; readonly file?: string },
 ): Either.Either<NormalizedRoute, RouteInputError> => {
+  const source = { key: ctx.keyPath, ...(ctx.file === undefined ? {} : { file: ctx.file }) };
   if (typeof route !== "string")
     return Either.right({
       hostname: route.hostname,
-      source: { key: ctx.keyPath, ...(ctx.file === undefined ? {} : { file: ctx.file }) },
+      source,
       ...(route.scheme === undefined ? {} : { scheme: route.scheme }),
       ...(route.endpoint === undefined ? {} : { endpoint: route.endpoint }),
       ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
@@ -61,12 +62,11 @@ export const normalizeRoute = (
   return Either.mapLeft(
     Either.map(parseRouteShorthand(route), (normalized) => ({
       ...normalized,
-      source: { key: ctx.keyPath, ...(ctx.file === undefined ? {} : { file: ctx.file }) },
+      source,
     })),
     (message) =>
       new RouteInputError({
-        key: ctx.keyPath,
-        ...(ctx.file === undefined ? {} : { file: ctx.file }),
+        ...source,
         message,
         remediation: `Correct ${ctx.keyPath} using hostname[:port][/pathPrefix]. ${message}`,
       }),
