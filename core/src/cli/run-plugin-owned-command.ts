@@ -52,6 +52,7 @@ const pluginFlagDefinitions = (
     flags[name] = {
       name,
       type: definition.type === "boolean" ? "boolean" : "option",
+      ...(definition.valueType === undefined ? {} : { valueType: definition.valueType }),
       ...(definition.description === undefined ? {} : { description: definition.description }),
       ...(definition.multiple === undefined ? {} : { multiple: definition.multiple }),
       ...(definition.options === undefined ? {} : { options: definition.options }),
@@ -104,8 +105,8 @@ export const pluginOwnedCommandInputFromArgv = (
       const value = equalsIndex === -1 ? normalizedArgv[index + 1] : arg.slice(equalsIndex + 1);
       if (value === undefined) continue;
       const specFlag = spec.flags?.[flagName];
-      if (specFlag?.type === "number" || specFlag?.valueType === "integer") {
-        const parsed = specFlag.valueType === "integer" ? Number.parseInt(value, 10) : Number(value);
+      if (specFlag?.type === "number" && specFlag.valueType !== "integer") {
+        const parsed = Number(value);
         if (Number.isFinite(parsed)) flags[flagName] = parsed;
       } else {
         setParsedFlag(flags, flagName, value, definition);

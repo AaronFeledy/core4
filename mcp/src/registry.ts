@@ -54,8 +54,9 @@ export type JsonSchemaObject = Record<string, unknown>;
 const asView = (value: unknown): McpInputMemberView =>
   value !== null && typeof value === "object" ? (value as McpInputMemberView) : {};
 
-const memberType = (view: McpInputMemberView): "string" | "boolean" | "number" => {
-  if (view.type === "option") return view.valueType === "integer" ? "number" : "string";
+const memberType = (view: McpInputMemberView): "string" | "boolean" | "number" | "integer" => {
+  if (view.valueType === "integer") return "integer";
+  if (view.type === "option") return "string";
   return view.type ?? "string";
 };
 
@@ -107,11 +108,13 @@ export interface McpToolInput {
 }
 
 const scalarTypeMatches = (view: McpInputMemberView, value: unknown): boolean => {
-  switch (view.type ?? "string") {
+  switch (memberType(view)) {
     case "boolean":
       return typeof value === "boolean";
     case "number":
-      return typeof value === "number";
+      return typeof value === "number" && Number.isFinite(value);
+    case "integer":
+      return typeof value === "number" && Number.isInteger(value);
     default:
       return typeof value === "string";
   }
