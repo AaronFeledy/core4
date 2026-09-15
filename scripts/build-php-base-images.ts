@@ -8,11 +8,11 @@ import {
   PHP_COMPOSER_COMMAND,
   PHP_PREREQUISITES_COMMAND,
 } from "../plugins/service-lando/src/services/php-prerequisites.ts";
+import { phpImageFor } from "../plugins/service-lando/src/services/php-via.ts";
 import {
   SUPPORTED_PHP_VERSIONS,
   type SupportedPhpVersion,
 } from "../plugins/service-lando/src/services/php.ts";
-import { phpImageFor } from "../plugins/service-lando/src/services/php-via.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GENERATED_HEADER =

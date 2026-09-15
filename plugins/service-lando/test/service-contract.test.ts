@@ -24,7 +24,12 @@ import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "../src/services/opensearch.ts";
-import { php82ServiceType, php83ServiceType, php85ServiceType, php86ServiceType } from "../src/services/php.ts";
+import {
+  php82ServiceType,
+  php83ServiceType,
+  php85ServiceType,
+  php86ServiceType,
+} from "../src/services/php.ts";
 import {
   phpmyadmin5ServiceType,
   phpmyadminLatestServiceType,

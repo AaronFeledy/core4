@@ -5,6 +5,7 @@ import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/sche
 import type { ServiceType } from "@lando/sdk/services";
 
 import { serviceTypes } from "../src/index.ts";
+import { phpImageFor } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
@@ -13,7 +14,6 @@ import {
   php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
-import { phpImageFor } from "../src/services/php-via.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
