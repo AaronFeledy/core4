@@ -607,7 +607,6 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
     Effect.succeed({
       coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
       nativeName: ref.store,
-      identity: volumeInfo(ref).identity,
     }),
   removeVolume: (ref) =>
     Effect.sync(() => {
