@@ -8,7 +8,7 @@ import { AppLockTimeoutError, StateStoreError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PathsService } from "@lando/sdk/services";
-import { peekAdvisoryLockRecord, withAdvisoryLockUsing } from "@lando/state-store/lock";
+import { acquireAdvisoryLockAt, peekAdvisoryLockRecord } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
@@ -97,11 +97,18 @@ export const isSelfOrAncestorPid = (holderPid: number, pid = process.pid, ppid =
   return false;
 };
 
+/** Child of the lock holder, not another fiber in the same process. */
+export const isAncestorPid = (holderPid: number, pid = process.pid, ppid = process.ppid): boolean =>
+  holderPid !== pid && isSelfOrAncestorPid(holderPid, pid, ppid);
+
 const isSameHolder = (key: string, lockPath: string): Effect.Effect<boolean> =>
   Effect.promise(async () => {
     const record = await peekAdvisoryLockRecord(lockPath);
     if (record === null) return false;
-    if (isSelfOrAncestorPid(record.pid)) return true;
+    // Same PID is another fiber in this process: wait on the file lock.
+    // Nested same-process acquires are FiberRef no-ops before this check.
+    if (record.pid === process.pid) return false;
+    if (isAncestorPid(record.pid)) return true;
     return parseHolderEntries(process.env[APP_LOCK_HOLDERS_ENV]).some(
       ([held, token]) => held === key && token === record.token,
     );
@@ -184,29 +191,24 @@ export const withAppMutationLock = <A, E, R>(
     if (yield* isSameHolder(key, lockPath)) return yield* provided;
 
     const timeoutMs = resolveAppLockTimeoutMs();
-    const locked = withAdvisoryLockUsing(privateFileAccess, {
-      expireLiveOwner: false,
-      timeoutMs,
-      onWait: announceWait(),
-    })(
-      resolved.file,
-      "app-mutate",
-      Effect.gen(function* () {
-        const record = yield* Effect.promise(() => peekAdvisoryLockRecord(lockPath));
-        const restore = installHolderEnv(key, record?.token ?? makeFallbackToken());
-        return yield* provided.pipe(Effect.ensuring(Effect.sync(restore)));
-      }),
-    );
-    return yield* locked.pipe(
-      Effect.mapError((cause) =>
-        cause instanceof StateStoreError && cause.reason === "lock"
-          ? timeoutError(String(app.id), timeoutMs, cause)
-          : cause,
+    return yield* Effect.acquireUseRelease(
+      acquireAdvisoryLockAt(lockPath, "app-mutate", {
+        expireLiveOwner: false,
+        timeoutMs,
+        onWait: announceWait(),
+        privateFileAccess,
+      }).pipe(
+        Effect.map((lock) => ({ lock, restore: installHolderEnv(key, lock.token) })),
+        Effect.mapError((cause) =>
+          cause instanceof StateStoreError && cause.reason === "lock"
+            ? timeoutError(String(app.id), timeoutMs, cause)
+            : cause,
+        ),
       ),
+      () => provided,
+      ({ lock, restore }) => Effect.sync(restore).pipe(Effect.zipRight(lock.release)),
     );
   });
-
-const makeFallbackToken = (): string => `${process.pid}-${Date.now()}`;
 
 /** Sync helper for child-process tests that need the same key the parent used. */
 export const canonicalAppRootSync = (root: string): string => {

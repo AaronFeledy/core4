@@ -256,19 +256,35 @@ describe("per-app mutation lock", () => {
     const isolated = await isolate();
     try {
       const app = { id: "handoff", root: isolated.appRoot };
+      let inCritical = 0;
+      let maxInCritical = 0;
       const acquired = await Deferred.make<void>().pipe(Effect.runPromise);
       const release = await Deferred.make<void>().pipe(Effect.runPromise);
+      const enter = Effect.sync(() => {
+        inCritical += 1;
+        maxInCritical = Math.max(maxInCritical, inCritical);
+      });
+      const leave = Effect.sync(() => {
+        inCritical -= 1;
+      });
       const holder = Effect.runFork(
         withAppMutationLock(
           app,
-          Deferred.succeed(acquired, undefined).pipe(Effect.zipRight(Deferred.await(release))),
+          enter.pipe(
+            Effect.zipRight(Deferred.succeed(acquired, undefined)),
+            Effect.zipRight(Deferred.await(release)),
+            Effect.zipRight(leave),
+          ),
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(acquired));
       const waiter = Effect.runFork(
-        withAppMutationLock(app, Effect.succeed("second")).pipe(Effect.provide(isolated.layer)),
+        withAppMutationLock(app, enter.pipe(Effect.as("second"), Effect.zipLeft(leave))).pipe(
+          Effect.provide(isolated.layer),
+        ),
       );
       await Effect.sleep("50 millis").pipe(Effect.runPromise);
+      expect(inCritical).toBe(1);
       await Effect.runPromise(Deferred.succeed(release, undefined));
       const [holderExit, waited] = await Promise.all([
         Effect.runPromise(Fiber.await(holder)),
@@ -276,6 +292,7 @@ describe("per-app mutation lock", () => {
       ]);
       expect(Exit.isSuccess(holderExit)).toBe(true);
       expect(Exit.isSuccess(waited) && waited.value).toBe("second");
+      expect(maxInCritical).toBe(1);
     } finally {
       await rm(isolated.userDataRoot, { recursive: true, force: true });
       await rm(isolated.appRoot, { recursive: true, force: true });
