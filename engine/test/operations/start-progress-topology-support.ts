@@ -115,6 +115,10 @@ export const makeHarness = (
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly secretStore?: SecretStoreShape;
     readonly onApply?: (plan: AppPlan, options: ApplyOptions) => void;
+    readonly listVolumes?: RuntimeProviderShape["listVolumes"];
+    readonly locateVolume?: RuntimeProviderShape["locateVolume"];
+    readonly onVolumeLock?: (key: string) => void;
+    readonly onDestroy?: (...args: Parameters<RuntimeProviderShape["destroy"]>) => void;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -142,34 +146,44 @@ export const makeHarness = (
         state: "running",
         endpoints: plannedApp.services[target.service]?.endpoints ?? [],
       }),
-    destroy: () => Effect.void,
-    locateVolume: (ref) =>
-      Effect.succeed({
-        coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
-        nativeName: ref.store,
-        identity: {
+    destroy: (target, destroyOptions) => Effect.sync(() => options.onDestroy?.(target, destroyOptions)),
+    listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
+    locateVolume:
+      options.locateVolume ??
+      ((ref) =>
+        Effect.succeed({
           coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
           nativeName: ref.store,
-          generation: "00000000-0000-4000-8000-000000000001",
-          ownerRoot: plannedApp.root,
-          origin: "created",
-        },
-      }),
+          identity: {
+            coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
+            nativeName: ref.store,
+            generation: "00000000-0000-4000-8000-000000000001",
+            ownerRoot: plannedApp.root,
+            origin: "created",
+          },
+        })),
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };
+  const runtimeProviderRegistry = {
+    list: Effect.succeed([providerId]),
+    capabilities: Effect.succeed(capabilities),
+    select: () => Effect.succeed(provider),
+  };
   const layer = Layer.mergeAll(
     PrivateFileAccessLive,
-    Layer.succeed(StateStore, stateStore.service),
+    Layer.succeed(StateStore, {
+      ...stateStore.service,
+      withLock: (key, body) =>
+        Effect.sync(() => options.onVolumeLock?.(key)).pipe(
+          Effect.zipRight(stateStore.service.withLock(key, body)),
+        ),
+    }),
     NoopTransactionGuardLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
+    Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistry),
     Layer.succeed(EventService, {
       publish: (event) =>
         Schema.is(LandoEventSchema)(event)
@@ -211,7 +225,7 @@ export const makeHarness = (
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
   );
-  return { layer, events, applyTreeStarted, stateStore };
+  return { layer, events, applyTreeStarted, stateStore, runtimeProviderRegistry };
 };
 
 export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan = plan) =>
