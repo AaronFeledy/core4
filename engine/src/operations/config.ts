@@ -106,8 +106,6 @@ export const ConfigResultSchema = Schema.Struct({
 const translateRemediation =
   "`lando config translate` is app-scoped. Use `lando app config translate` inside an app.";
 
-const unsupportedSubcommands = new Set(["translate"]);
-
 const telemetryConfigPath = (): string =>
   join(resolveConfigFileRoot(resolveUserConfRoot(), envOverlay()), "config.yml");
 
@@ -415,7 +413,7 @@ export const config = (
     if (subcommand === "validate") return yield* metaConfigValidate(options);
     if (subcommand === "edit") return yield* metaConfigEdit(options);
 
-    if (unsupportedSubcommands.has(subcommand)) {
+    if (subcommand === "translate") {
       return yield* Effect.fail(
         new NotImplementedError({
           message: `meta:config ${subcommand} is not available here.`,

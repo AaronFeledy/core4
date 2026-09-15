@@ -1,9 +1,7 @@
 import { Schema } from "effect";
 import { GlobalConfig } from "./config.ts";
 
-// ============================================================================
 // Effective public config, explicitly selected so new loader state stays private.
-// ============================================================================
 export const GlobalConfigView = Schema.typeSchema(
   GlobalConfig.pick(
     "userDataRoot",

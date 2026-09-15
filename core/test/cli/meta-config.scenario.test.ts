@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect, Layer, Schema } from "effect";
@@ -191,7 +191,6 @@ describe("meta:config command", () => {
 
   test("telemetry status reports env override ahead of config", async () => {
     await withTempEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "0" }, async (dir) => {
-      await mkdir(dir, { recursive: true });
       await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: true\n");
 
       const result = await Effect.runPromise(
