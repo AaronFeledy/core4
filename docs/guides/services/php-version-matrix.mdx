@@ -9,23 +9,7 @@ tags: [beta, docs, php, service, runtime]
 
 Set `type: php:<version>` to `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, or `8.6`. Every other version, including `8.0`, fails Landofile validation before any build or container work happens.
 
-## PHP 8.6 gaps (read this first)
-
-`php:8.6` is selectable. It is not feature-complete.
-
-These extensions are **missing** on PHP 8.6:
-
-- **xdebug**: the shipped pin is 3.5.3 and supports PHP 8.0 through 8.5 only. `xdebug: true` fails at plan time on `php:8.6`.
-- **redis**: the PHP redis extension is not in the Lando PHP image.
-- **apcu**: the PHP apcu extension is not in the Lando PHP image.
-
-What does ship: `gd`, `intl`, `mbstring`, `opcache`, `pdo_mysql`, `pdo_pgsql`, `pdo_sqlite`, and `zip`. Same core set as 8.1 through 8.5.
-
-Official Hub currently publishes 8.6 as RC bookworm tags (`php:8.6-rc-apache-bookworm`, `php:8.6-rc-fpm-bookworm`, `php:8.6-rc-cli-bookworm`) until GA. Stock `type: php:8.6` plans those RC tags. Override with `image:` if you need a different tag.
-
-The generated Lando Dockerfile lives at `images/php/8.6/Dockerfile` and is produced by `scripts/build-php-base-images.ts` from the same extension and Composer pins as the other PHP lines.
-
-Each supported version resolves to an official bookworm image. 8.1 through 8.5 use `php:<version>-apache-bookworm`. 8.6 uses `php:8.6-rc-apache-bookworm`:
+Each supported version resolves to an official bookworm image. 8.1 through 8.5 use `php:<version>-apache-bookworm`. 8.6 uses the official RC tag `php:8.6-rc-apache-bookworm` until GA. Stock `type: php:8.6` plans that RC tag. Override with `image:` if you need a different tag:
 
 ```yaml
 name: php-version-matrix-demo

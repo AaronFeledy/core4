@@ -7,7 +7,7 @@ tags: [beta, docs, php, service, runtime]
 
 # Add PHP
 
-Put `type: php:8.3` in your services block. PHP has no bare `type: php` alias, so pin a minor. Lando supports `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, and `8.6`. PHP 8.6 is selectable and missing **xdebug**, **redis**, and **apcu**; see [Pin a PHP version](./php-version-matrix.mdx) before you use it. The default serving mode is Apache with mod_php on port `80`. 8.1 through 8.5 use `php:<version>-apache-bookworm`. 8.6 uses the official RC tag `php:8.6-rc-apache-bookworm` until GA. Your repository is bind-mounted read-write at `/app`:
+Put `type: php:8.3` in your services block. PHP has no bare `type: php` alias, so pin a minor. Lando supports `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, and `8.6`. The default serving mode is Apache with mod_php on port `80`. 8.1 through 8.5 use `php:<version>-apache-bookworm`. 8.6 uses the official RC tag `php:8.6-rc-apache-bookworm` until GA. Your repository is bind-mounted read-write at `/app`:
 
 ```yaml
 name: php-demo
