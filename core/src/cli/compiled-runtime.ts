@@ -80,6 +80,20 @@ export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
   runtime: Layer.Layer<ROut, E, RIn>,
   runtimeForBootstrap: CompiledRuntimeFactory = makeCompiledRuntime,
 ) => {
+  const invocation = getActiveCommandInvocation();
+  if (
+    commandId === "meta:update" &&
+    invocation?.commandId === commandId &&
+    invocation.flags["dry-run"] === true
+  ) {
+    return makeLandoRuntime(
+      cliRuntimeOptions({
+        bootstrap: "plugins",
+        plugins: { policy: "bundled-only" },
+        telemetry: false,
+      }),
+    );
+  }
   const effectiveBootstrap = resolveEffectiveCliBootstrap(commandId, declaredBootstrap);
   return effectiveBootstrap === declaredBootstrap ? runtime : runtimeForBootstrap(effectiveBootstrap);
 };

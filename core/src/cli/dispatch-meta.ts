@@ -7,7 +7,6 @@
  * native dispatcher can fall through to not-implemented / not-found handling.
  */
 import { config } from "@lando/engine/operations/config";
-import { update } from "@lando/engine/operations/update";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeLandoRuntime } from "../runtime/layer";
 import { runDoctor, runSetup } from "./cli-adapters/app-lifecycle";
@@ -46,7 +45,7 @@ import {
   runMetaX,
 } from "./cli-adapters/meta-plugin";
 import { metaConfigOptionsFromInput } from "./command-specs/meta/config";
-import { updateOptionsFromInput } from "./command-specs/meta/update";
+import { renderUpdateResult, runUpdateCommand } from "./command-specs/meta/update";
 import { renderConfigResult } from "./commands/config";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { rejectInvalidInvocation, runCompiledCommand } from "./compiled-runtime";
@@ -117,9 +116,9 @@ export const dispatchMetaCommand = async (argv: ReadonlyArray<string>): Promise<
     if (rejectInvalidInvocation("meta:update", argv.slice(1))) return true;
     const input = compiledCommandInputFromArgv("meta:update", argv.slice(1));
     await runCompiledCommand(
-      update(updateOptionsFromInput(input)),
+      runUpdateCommand(input),
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
-      () => undefined,
+      renderUpdateResult,
     );
     return true;
   }
