@@ -708,3 +708,32 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 202 focused tests pass
 ---
+## 2026-09-14 01:32 - Push
+- [looper] gate skipped Push: gate: phase reviewed is before verified (expected phase at or past verified)
+---
+## 2026-09-14 01:33 - Babysit
+- PR: none (no PR for branch us-618e-catalog-fields-versions; Push was gate-skipped at phase `reviewed`)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge)
+---
+## 2026-09-14 21:16 - Build
+- [looper] gate skipped Build: gate: phase reviewed is at or past implemented (nothing to do)
+---
+## 2026-09-14 21:16 - Review
+- [looper] gate skipped Review: gate: phase reviewed is at or past reviewed (nothing to do)
+---
+## 2026-09-14 21:16 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-14 21:35 - US-618E Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved Apache `webroot: /app/public` (HTTPS body `Apache webroot works`, `APACHE_DOCUMENT_ROOT`/`LANDO_WEBROOT`=/app/public, generated `lando-webroot.conf`) and Node `port: 5173` (HTTPS `PORT=5173`, in-container listen on 5173). `php:8.0`/`node:999`/`apache:9` failed `LandofileValidationError` before provider action; php:8.3 refresh and idle `node:22` (PORT=3000, no server) stayed green. Scenario apps torn down; only global remains.
+- **Out-of-scope finding:** `curl http://web.us618e-apache.lndo.site:8000/` and the Node HTTP twin returned 404 while HTTPS `:4443` served the apps. Same host/WSL 80/443 fallback as prior verifies, not US-618E.
+---
+## 2026-09-14 23:20 - Babysit
+- PR: #991 https://github.com/AaronFeledy/core4/pull/991
+- CI outcome: pass (after two triage rounds; initial push had no Actions runs because the PR was CONFLICTING)
+- Review feedback: fixed (merged origin/main and resolved conflicts; replaced a secret canary that collided with hex in a SHA-256 cache key; made the PHP db-client "custom" image genuinely custom and added stock-image coverage; refreshed stale LAMP producer digests in guide fixtures)
+- Drift check: clean
+- Merge: merged (squash)
+---
