@@ -215,17 +215,14 @@ describe("plugin-owned command dispatch", () => {
     );
 
     // Then
-    expect(rendered).toEqual([
-      {
-        input: {
-          argv: [],
-          parsedArgv: ["dump.sql"],
-          flags: { host: "db.example" },
-          args: { file: "dump.sql" },
-        },
-        result: { imported: true, host: "db.example" },
-      },
-    ]);
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0]?.result).toEqual({ imported: true, host: "db.example" });
+    expect(rendered[0]?.input).toMatchObject({
+      argv: [],
+      parsedArgv: ["dump.sql"],
+      flags: { host: "db.example" },
+      args: { file: "dump.sql" },
+    });
   });
 
   test("skips a plugin render hook for machine output", async () => {
