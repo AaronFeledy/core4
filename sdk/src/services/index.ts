@@ -62,7 +62,9 @@ import type {
   TunnelStatusRequest,
   TunnelStopRequest,
   VolumeFilter,
+  VolumeIdentity,
   VolumeInfo,
+  VolumeLocator,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotRef,
@@ -200,6 +202,7 @@ import type {
   ProviderStatus,
   ProviderVersions,
   ServiceExitResult,
+  ServiceRuntimeIdentity,
   ServiceRuntimeInfo,
   ServiceSelector,
   WaitForExitOptions,
@@ -283,6 +286,14 @@ export interface RuntimeProviderShape {
   readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+  readonly resume?: (
+    target: ServiceSelector,
+    identity: ServiceRuntimeIdentity,
+  ) => Effect.Effect<void, ProviderError>;
+  readonly suspend?: (
+    target: ServiceSelector,
+    identity: ServiceRuntimeIdentity,
+  ) => Effect.Effect<void, ProviderError>;
   readonly waitForExit: (
     target: ServiceSelector,
     options?: WaitForExitOptions,
@@ -308,7 +319,19 @@ export interface RuntimeProviderShape {
   ) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
-  readonly removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>;
+  readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+  readonly observeVolume?: (
+    target: ServiceSelector,
+    destination: PortablePath,
+  ) => Effect.Effect<VolumeInfo, ProviderError>;
+  readonly adoptVolume?: (
+    target: ServiceSelector,
+    destination: PortablePath,
+  ) => Effect.Effect<VolumeInfo, ProviderError>;
+  readonly removeVolume: (
+    ref: VolumeRef,
+    expectedGeneration: VolumeIdentity["generation"],
+  ) => Effect.Effect<void, ProviderError>;
   readonly copyToService: (
     target: ExecTarget,
     spec: ServiceCopyInSpec,
@@ -999,3 +1022,4 @@ export declare class RecipeDecomposer extends Context.Tag("@lando/core/RecipeDec
   RecipeDecomposer,
   RecipeDecomposerShape
 >() {}
+export type { VolumeInitialization } from "./volume-initialization.ts";

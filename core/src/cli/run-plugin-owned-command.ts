@@ -1,5 +1,6 @@
 import { Cause, Context, Effect, Exit, Layer } from "effect";
 
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { RendererIO } from "@lando/renderer/io";
 import {
   type CommandInputValidationError,
@@ -8,6 +9,7 @@ import {
   ToolingCommandLookupError,
 } from "@lando/sdk/errors";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
+import { Renderer } from "@lando/sdk/services";
 
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
@@ -16,6 +18,7 @@ import { builtInCommandEntries } from "./built-in-command-registry";
 import { helpArgToken, helpFlagToken } from "./cli-help";
 import { type OclifFlagDefinition, flagNameByToken, setParsedFlag } from "./compiled-argv";
 import {
+  activeResultFormat,
   emitJsonListModeIfRequested,
   emitResultLine,
   runCompiledCommand,
@@ -162,18 +165,63 @@ const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOw
     : { redactionTokens: (result: unknown) => spec.redactionTokens?.(result) ?? [] }),
 });
 
-const pluginOwnedCommandEffect = <A, E, R>(
-  spec: Pick<ExecutableCommandSpec<A, E, R>, "id" | "flags" | "args" | "strict" | "run">,
+export const pluginOwnedCommandEffect = <A, E, R>(
+  spec: Pick<
+    ExecutableCommandSpec<A, E, R>,
+    "id" | "flags" | "args" | "strict" | "run" | "render" | "redactionTokens" | "successExitCode"
+  >,
   argv: ReadonlyArray<string>,
+  renderResult: boolean,
 ): Effect.Effect<
   A,
   E | CommandInputValidationError | MalformedCliFlagValueError | UnknownCliFlagError,
-  R
+  R | Renderer
 > => {
   const flagError = pluginOwnedCliFlagError(spec, argv);
   if (flagError !== undefined) return Effect.fail(flagError);
   const parsed = pluginOwnedCommandInputFromArgv(spec, argv);
-  return validateEventCommandInput(spec, parsed).pipe(Effect.flatMap((input) => spec.run(input)));
+  return validateEventCommandInput(spec, parsed).pipe(
+    Effect.flatMap((input) =>
+      spec.run(input).pipe(
+        Effect.tap((result) => {
+          if (!renderResult || spec.render === undefined) return Effect.void;
+          const render = spec.render;
+          const redactor = createStandaloneRedactor("secrets", {
+            sourceEnv: process.env,
+            redactionTokens: spec.redactionTokens?.(result) ?? [],
+          });
+          return Renderer.pipe(
+            Effect.flatMap((renderer) =>
+              render({
+                input,
+                result,
+                stdout: "",
+                stderr: "",
+                exitCode: spec.successExitCode?.(result, input) ?? 0,
+              }).pipe(
+                Effect.provideService(Renderer, {
+                  ...renderer,
+                  message: {
+                    info: (body) => renderer.message.info(redactor.redactString(body)),
+                    warn: (body) => renderer.message.warn(redactor.redactString(body)),
+                    error: (body, remediation) =>
+                      renderer.message.error(
+                        redactor.redactString(body),
+                        remediation === undefined ? undefined : redactor.redactString(remediation),
+                      ),
+                  },
+                  output: {
+                    stdout: (chunk) => renderer.output.stdout(redactor.redactString(chunk)),
+                    stderr: (chunk) => renderer.output.stderr(redactor.redactString(chunk)),
+                  },
+                }),
+              ),
+            ),
+          );
+        }),
+      ),
+    ),
+  );
 };
 
 const renderPluginOwnedPreCommandFailure = async (error: unknown, io?: RendererIO): Promise<void> => {
@@ -196,7 +244,7 @@ const runPluginOwnedCommand = (
       return;
     }
     await runCompiledCommand(
-      pluginOwnedCommandEffect(spec, argv),
+      pluginOwnedCommandEffect(spec, argv, activeResultFormat === "text"),
       defaultPluginRuntime(spec.bootstrap),
       () => undefined,
       compiledPluginOptions(spec, options),

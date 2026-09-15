@@ -230,6 +230,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
     restoreVolume: () => die("restoreVolume"),
+    locateVolume: () => die("locateVolume"),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => die("removeVolume"),
     copyToService: () => die("copyToService"),
