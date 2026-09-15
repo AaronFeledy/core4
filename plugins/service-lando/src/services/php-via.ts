@@ -41,7 +41,11 @@ export const resolvePhpVia = (value: unknown): PhpVia => {
   throw new Error(`Unsupported PHP serving mode ${JSON.stringify(value)}. ${VIA_REMEDIATION}`);
 };
 
-export const phpImageFor = (version: string, via: PhpVia): string => `php:${version}-${via}-bookworm`;
+// Official Hub publishes PHP 8.6 as RC bookworm tags until GA. Other minors use the GA tag.
+const phpUpstreamVersion = (version: string): string => (version === "8.6" ? "8.6-rc" : version);
+
+export const phpImageFor = (version: string, via: PhpVia): string =>
+  `php:${phpUpstreamVersion(version)}-${via}-bookworm`;
 
 export const hasCustomPhpImage = (service: ServiceConfig): boolean => {
   if (service.image === undefined) return false;

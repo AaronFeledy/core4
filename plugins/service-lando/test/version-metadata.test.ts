@@ -27,6 +27,7 @@ const EXPECTED_OWNED_MATRICES = {
     "8.3": "php:8.3-apache-bookworm",
     "8.4": "php:8.4-apache-bookworm",
     "8.5": "php:8.5-apache-bookworm",
+    "8.6": "php:8.6-rc-apache-bookworm",
   },
   phpmyadmin: { "5": "phpmyadmin:5", latest: "phpmyadmin:latest" },
   postgres: { "16": "postgres:16" },
