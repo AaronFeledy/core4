@@ -46,8 +46,9 @@ import { appConfig } from "../../src/cli/commands/app-config.ts";
 
 test.each([
   ["canary-956-f6d042c1-opaque-resolved-value", false],
-  ["1234", false],
-  ["1234", true],
+  // Keep the short canary outside the hex alphabet so unrelated cache digests cannot match it.
+  ["s!4?", false],
+  ["s!4?", true],
 ] as const)(
   "keeps user profile secret %s out of config, disk caches, events, transcripts, and errors (failure=%s)",
   async (sentinel, fails) => {
