@@ -7,6 +7,7 @@ import {
   HomePathCapabilityError,
   LandofileValidationError,
   PublicationUnsupportedError,
+  type RouteInputError,
 } from "@lando/sdk/errors";
 import {
   type AppId,
@@ -38,6 +39,7 @@ import { collectFileSyncEntries } from "./file-sync.ts";
 import { applyServiceHome } from "./home.ts";
 import { DEFAULT_PROXY_DOMAIN } from "./naming.ts";
 import { evaluateRouteHostname } from "./route-hostname.ts";
+import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
 import { expandExcludesToShadows } from "./storage.ts";
 
@@ -99,6 +101,7 @@ export const resolveRoute = (
       );
     }
     return {
+      priority: 2,
       hostname,
       scheme: route.scheme ?? "https",
       service: ServiceName.make(serviceName),
@@ -144,14 +147,14 @@ export const finalizeServices = (input: {
   | HomePathCapabilityError
   | PublicationUnsupportedError
   | ConfigExpressionError
+  | RouteInputError
 > =>
   Effect.gen(function* () {
     const services: Record<string, unknown> = {};
     const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
     const stores: Array<FinalizedServices["stores"][number]> = [];
     const fileSync: Array<FileSyncPlan> = [];
-    const routes: Array<RoutePlan> = [];
-    const routeIndexes = new Map<string, number>();
+    const routeAccumulator = makeRouteAccumulator();
     const seenStoreNames = new Set<string>();
 
     const pushStore = (
@@ -163,16 +166,6 @@ export const finalizeServices = (input: {
       if (seenStoreNames.has(name)) return;
       seenStoreNames.add(name);
       stores.push({ name, scope, kind, ...(key === undefined ? {} : { key }) });
-    };
-
-    const pushRoute = (route: RoutePlan): number => {
-      const key = `${route.hostname}\u0000${route.scheme}`;
-      const existing = routeIndexes.get(key);
-      if (existing !== undefined) return existing;
-      const index = routes.length;
-      routes.push(route);
-      routeIndexes.set(key, index);
-      return index;
     };
 
     for (const {
@@ -294,38 +287,45 @@ export const finalizeServices = (input: {
       const routeRefs: Array<ServicePlan["routes"][number]> = [];
       if (authoredRoutes.length > 0) {
         for (const [routeIndex, route] of authoredRoutes.entries()) {
-          routeRefs.push({
-            index: pushRoute(
+          routeRefs.push(
+            ...(yield* routeAccumulator.add(
               yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route, {
                 routeIndex,
                 appName: input.appName,
                 appSlug: input.appSlug,
                 defaultDomain: input.defaultDomain,
               }),
-            ),
-          });
+              route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
+            )),
+          );
         }
       } else {
         const endpoint = servicePlanWithHome.endpoints.find(isRoutableEndpoint);
         if (endpoint !== undefined) {
-          routeRefs.push({
-            index: pushRoute({
-              hostname: `${name}.${input.appSlug}.${DEFAULT_PROXY_DOMAIN}`,
-              scheme: "https",
-              service: ServiceName.make(name),
-              ...(endpoint.name === undefined ? { endpoint: endpoint.port } : { endpoint: endpoint.name }),
-              backend: {
+          routeRefs.push(
+            ...(yield* routeAccumulator.add(
+              {
+                priority: 2,
+                hostname: `${name}.${input.appSlug}.${DEFAULT_PROXY_DOMAIN}`,
+                scheme: "https",
                 service: ServiceName.make(name),
-                protocol: endpoint.protocol,
-                port: endpoint.port,
+                ...(endpoint.name === undefined ? { endpoint: endpoint.port } : { endpoint: endpoint.name }),
+                backend: {
+                  service: ServiceName.make(name),
+                  protocol: endpoint.protocol,
+                  port: endpoint.port,
+                },
               },
-            }),
-          });
+              { key: `services.${name}.endpoints` },
+            )),
+          );
         }
       }
       const servicePlanWithRoutes: ServicePlan = {
         ...servicePlanWithHome,
-        routes: routeRefs,
+        routes: routeRefs.filter(
+          (ref, index) => routeRefs.findIndex((other) => other.index === ref.index) === index,
+        ),
         endpoints: usesManagedProxyNetwork(input.provider)
           ? servicePlanWithHome.endpoints
           : promoteRoutableEndpointsForHostProxy(servicePlanWithHome.endpoints),
@@ -398,5 +398,11 @@ export const finalizeServices = (input: {
     }
 
     yield* validateServiceDependencies(input.appRoot, services);
-    return { services, serviceHostnames, stores, fileSync, routes };
+    return {
+      services,
+      serviceHostnames,
+      stores,
+      fileSync,
+      routes: prioritizeRoutes(routeAccumulator.routes),
+    };
   });

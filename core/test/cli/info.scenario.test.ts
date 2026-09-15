@@ -410,6 +410,7 @@ describe("lando info", () => {
       routes: [
         {
           hostname: "node.test-info.lndo.site",
+          priority: 2,
           scheme: "https",
           service: node.name,
           endpoint: 3000,

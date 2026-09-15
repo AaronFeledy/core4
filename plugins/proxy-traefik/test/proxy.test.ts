@@ -12,6 +12,7 @@ const app = AppId.make("demo");
 const routes = [
   {
     hostname: "api.demo.lndo.site",
+    priority: 3,
     scheme: "https" as const,
     service: ServiceName.make("api"),
     pathPrefix: "/v1",
@@ -19,6 +20,7 @@ const routes = [
   },
   {
     hostname: "web.demo.lndo.site",
+    priority: 2,
     scheme: "http" as const,
     service: ServiceName.make("web"),
     backend: { service: ServiceName.make("web"), protocol: "http" as const, port: 8088 },
@@ -131,6 +133,7 @@ describe("Traefik RouterService", () => {
       [
         {
           hostname: "web.shop.lndo.site",
+          priority: 2,
           scheme: "https" as const,
           service: ServiceName.make("web"),
           backend: {

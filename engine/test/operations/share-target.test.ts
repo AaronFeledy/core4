@@ -16,6 +16,7 @@ const routedPlan: AppPlan = {
   routes: [
     {
       hostname: "share-demo.lndo.site",
+      priority: 2,
       scheme: "https",
       service,
       backend: { service, protocol: "http", port: 8080 },

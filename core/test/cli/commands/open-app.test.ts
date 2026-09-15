@@ -11,6 +11,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { type OpenAppOptions, openForPlan, renderOpenAppResult } from "../../../src/cli/commands/open.ts";
 
 const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
+  priority: 2,
   ...over,
   service: ServiceName.make(over.service),
   backend: { service: ServiceName.make(over.service), protocol: "http", port: 80 },

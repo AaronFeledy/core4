@@ -68,6 +68,7 @@ const app = AppId.make("demo");
 const routes = [
   {
     hostname: "web.demo.lndo.site",
+    priority: 2,
     scheme: "http" as const,
     service: ServiceName.make("web"),
     backend: { service: ServiceName.make("web"), protocol: "http" as const, port: 8088 },
