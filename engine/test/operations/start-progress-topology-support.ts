@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -158,12 +162,13 @@ export const makeHarness = (
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };
+  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
     PrivateFileAccessLive,
     Layer.succeed(StateStore, stateStore.service),
     NoopTransactionGuardLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
-    Layer.succeed(PathsService, makeLandoPaths()),
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -211,7 +216,7 @@ export const makeHarness = (
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
   );
-  return { layer, events, applyTreeStarted, stateStore };
+  return { layer, events, applyTreeStarted, stateStore, userDataRoot };
 };
 
 export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan = plan) =>

@@ -102,6 +102,27 @@ describe("advisory state lock", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+  test("honors a short acquire timeout", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-state-lock-"));
+    const path = join(dir, "held.lock");
+    const record = JSON.stringify({ pid: process.pid, token: "live", createdAt: Date.now() });
+    await writeFile(path, record);
+    try {
+      const started = Date.now();
+      const result = await Effect.runPromiseExit(
+        acquireAdvisoryLockAt(path, "test", {
+          expireLiveOwner: false,
+          timeoutMs: 80,
+          retryMs: 10,
+          privateFileAccess: ownerOnlyFileAccess,
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      expect(Date.now() - started).toBeLessThan(1_500);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
   test("acquisition takes over a fresh lock held by a dead pid", async () => {
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
     try {
