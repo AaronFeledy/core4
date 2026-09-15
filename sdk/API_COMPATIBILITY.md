@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/errors` additively exports `AppLockTimeoutError` (`message`, `app`, `timeoutMs`, `remediation`, optional `cause`) when a mutating app operation waits for the per-app advisory lock and the finite wait expires. It registers no JSON Schema. The type-only `StartAppError` and `StopAppError` unions additively include the tag; restart, rebuild, and destroy inherit it. Override the wait with `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds).
+
 - `RoutePlan.priority` is a planner-assigned integer above the diagnostic priority
   of 1. Standalone schema inputs default to 2; decoded plans always carry it.
   Routers must project this value rather than infer precedence from rule text.
@@ -932,6 +934,7 @@
 - `McpToolInputError`
 - `McpTransportError`
 - `McpAllowlistConflictError`
+- `AppLockTimeoutError`
 
 ## Additive service tags
 
