@@ -138,7 +138,9 @@ const prepareSample = async (
     if (pulled.exitCode !== 0) return { appRoot, env, failure: pulled, fileSyncEvidence: setup.stdout };
   }
   if (lane.id === "warm-stop-start" || lane.id === "unchanged-rebuild" || lane.fixtureFamily !== undefined) {
-    const started = await runCommand(performanceCommand("prepare:start", [binary, "start"], appRoot, env));
+    const started = await runCommand(
+      performanceCommand("prepare:start", [binary, "start"], appRoot, { ...env, LANDO_RENDERER: "json" }),
+    );
     if (started.exitCode !== 0) return { appRoot, env, failure: started, fileSyncEvidence: setup.stdout };
   }
   if (lane.id.endsWith("-snapshot-restore") && fixturePath !== undefined) {
