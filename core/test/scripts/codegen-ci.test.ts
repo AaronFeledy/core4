@@ -515,6 +515,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("id: runtime-bundle-cache");
       expect(workflow).toContain("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830");
       expect(workflow).toContain("key: runtime-bundle-linux-x64-${{ hashFiles(");
+      expect(workflow).toContain("scripts/patches/netavark-v2.0.0-systemd-user-bus.patch");
       expect(workflow).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");
       expect(workflow).toContain("run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64");
     },
