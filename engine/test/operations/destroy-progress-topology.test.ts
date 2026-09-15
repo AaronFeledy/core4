@@ -179,7 +179,7 @@ describe("destroy progress topology", () => {
 
     // Then: provider mutation occurs while holding the shared physical-volume lock.
     expect(destroyObservedLock).toBe(true);
-    expect(lockKeys).toEqual([physicalVolumeLockKey("volume-instance-1")]);
+    expect(lockKeys).toEqual([physicalVolumeLockKey(JSON.stringify(["endpoint:test", "database"]))]);
     expect(lockHeld).toBe(false);
   });
 
