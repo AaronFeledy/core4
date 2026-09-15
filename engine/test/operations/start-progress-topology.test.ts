@@ -71,6 +71,7 @@ describe("start progress topology", () => {
       routes: [
         {
           hostname: "web.test-start.lndo.site",
+          priority: 2,
           scheme: "https",
           service: web.name,
           endpoint: 3000,

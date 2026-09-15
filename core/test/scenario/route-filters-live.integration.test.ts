@@ -53,6 +53,7 @@ const backend = {
 const routes: ReadonlyArray<RoutePlan> = [
   {
     hostname: FILTERED_HOSTNAME,
+    priority: 2,
     scheme: "http",
     service: backend.service,
     pathPrefix: "/api",
@@ -64,6 +65,7 @@ const routes: ReadonlyArray<RoutePlan> = [
   },
   {
     hostname: RAW_HOSTNAME,
+    priority: 2,
     scheme: "http",
     service: backend.service,
     pathPrefix: "/api",

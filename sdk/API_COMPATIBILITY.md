@@ -4,6 +4,13 @@
 
 ## Compatibility notes
 
+- `RoutePlan.priority` is a planner-assigned integer above the diagnostic priority
+  of 1. Standalone schema inputs default to 2; decoded plans always carry it.
+  Routers must project this value rather than infer precedence from rule text.
+  Conflicting route matches now fail with the existing `RouteInputError` and
+  authored source keys. Equivalent ordered filter operations ignore filter merge
+  names; `both` participates in both HTTP and HTTPS conflict checks.
+
 - `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
 
 - `RuntimeProviderShape.resume(target, identity)` and `suspend(target, identity)` are additive optional exact-runtime lifecycle methods. Bundled providers address the inspected container ID directly; recovery callers fail closed when a provider cannot preserve that immutable identity across temporary observation.

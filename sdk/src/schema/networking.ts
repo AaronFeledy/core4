@@ -35,6 +35,12 @@ export type RouteRef = typeof RouteRef.Type;
  * Route plan — host-facing HTTP/TLS mapping.
  */
 export const RoutePlan = Schema.Struct({
+  priority: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(2)), {
+    default: () => 2,
+  }).annotations({
+    description:
+      "Planner-assigned router priority; higher wins. Priority 1 is reserved for diagnostics. Standalone routes default to 2.",
+  }),
   /** Host header pattern (`*.lndo.site`, `app.example.test`, …). */
   hostname: Schema.String,
   /** TLS scheme (`http`, `https`, `both`). */

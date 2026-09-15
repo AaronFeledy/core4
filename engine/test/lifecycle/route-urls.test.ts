@@ -6,7 +6,7 @@ import { proxyUrlsByService } from "../../src/lifecycle/route-urls.ts";
 
 const webRoute = (hostname: string, scheme: RoutePlan["scheme"]): RoutePlan => {
   const service = ServiceName.make("web");
-  return { hostname, scheme, service, backend: { service, protocol: "http", port: 8080 } };
+  return { priority: 2, hostname, scheme, service, backend: { service, protocol: "http", port: 8080 } };
 };
 
 test("brackets IPv6 authorities in route URLs", () => {
@@ -14,6 +14,7 @@ test("brackets IPv6 authorities in route URLs", () => {
   const routes: ReadonlyArray<RoutePlan> = [
     {
       hostname: "2001:db8::1",
+      priority: 2,
       scheme: "https",
       service,
       backend: { service, protocol: "http", port: 8080 },
