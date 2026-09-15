@@ -24,7 +24,11 @@ import {
 } from "@lando/container-runtime/log-file-helper-payloads";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
-import { type BringUpOptions, bringUp } from "@lando/container-runtime/podman/bring-up";
+import {
+  type BringUpOptions,
+  bringUp,
+  podmanVolumeCreationLabels,
+} from "@lando/container-runtime/podman/bring-up";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
@@ -686,6 +690,7 @@ export const makeRuntimeProvider = (
     api: podmanApi,
     snapshotMode: "copy",
     redactDetails,
+    volumeCreationLabels: podmanVolumeCreationLabels,
   });
 
   const resolvePlan = (app: AppId): Effect.Effect<AppPlan | undefined, never> => {

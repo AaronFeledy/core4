@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { type Context, DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
@@ -34,8 +32,7 @@ import {
 } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
-import { volumeCreationFact } from "../volume-creation.ts";
-import { volumeCreationOwnerLabels } from "../volume-observation.ts";
+import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
@@ -349,19 +346,17 @@ const ensureNetwork = (
   );
 };
 
-const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly<Record<string, string>> => ({
-  "dev.lando.app": plan.id,
+export const podmanVolumeCreationLabels = (
+  plan: AppPlan,
+  store: AppPlan["stores"][number],
+): Readonly<Record<string, string>> => ({
+  ...volumeCreationLabels(plan, store),
   "dev.lando.provider": plan.provider,
-  "dev.lando.store": store.name,
-  "dev.lando.scope": store.scope,
-  "dev.lando.volume-instance": randomUUID(),
-  ...volumeCreationOwnerLabels(plan.identity),
   "dev.lando.volume-selector": volumeSelectorValue({
     providerId: plan.provider,
     appId: plan.id,
     volumeClass: store.kind === "cache" ? "cache" : "data",
   }),
-  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
 });
 
 const ensureVolume = (
@@ -369,7 +364,7 @@ const ensureVolume = (
   plan: AppPlan,
   store: AppPlan["stores"][number],
 ): Effect.Effect<readonly VolumeCreationFact[], ProviderUnavailableError | ProviderInternalError> => {
-  const labels = volumeLabels(plan, store);
+  const labels = podmanVolumeCreationLabels(plan, store);
   return request(deps, {
     method: "POST",
     path: "/volumes/create",
