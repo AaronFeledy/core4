@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -98,7 +102,14 @@ export const makeHarness = (
   const layer = Layer.mergeAll(
     PrivateFileAccessLive,
     Layer.succeed(StateStore, options.stateStore ?? makeTestStateStore().service),
-    Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        env: {},
+        platform: "linux",
+        userDataRoot: mkdtempSync(join(tmpdir(), "lando-destroy-harness-")),
+      }),
+    ),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),

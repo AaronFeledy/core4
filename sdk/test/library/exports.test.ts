@@ -366,6 +366,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.GuideFrontmatterValidationError).toBeDefined();
     expect(errors.GuideHiddenScenarioReasonError).toBeDefined();
     expect(errors.AppIdReservedError).toBeDefined();
+    expect(errors.AppLockTimeoutError).toBeDefined();
     expect(errors.AppResolveError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();

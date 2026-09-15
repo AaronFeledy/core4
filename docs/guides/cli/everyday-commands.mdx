@@ -54,6 +54,16 @@ lando rebuild
 
 `restart` cycles running processes. `rebuild` recreates containers. Use `rebuild` after you change service types, images, or build steps.
 
+## Wait for another command to finish
+
+`start`, `stop`, `restart`, `rebuild`, and `destroy` take a per-app advisory lock so two processes cannot apply provider state at the same time. A second command waits and prints that another Lando command holds the app lock. After two minutes it fails. Set `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds) to wait longer or shorter.
+
+Read-only commands (`info`, `logs`, `app:config:lint`) do not take the lock.
+
+The lock key is the stable app id plus the canonical (realpath) app root at acquire time. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
+
+A mutating command that shells out to another `lando` mutate on the same app reuses the lock it already holds. It does not deadlock.
+
 ## Tear down
 
 `destroy` deletes this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.

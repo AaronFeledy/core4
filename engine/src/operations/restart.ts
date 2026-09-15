@@ -31,6 +31,7 @@ import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landof
 import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
+import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
@@ -83,48 +84,51 @@ export const restartApp = (
     const registry = yield* RuntimeProviderRegistry;
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
-    return yield* withPlanVolumeCoordination({
-      plan,
-      provider,
-      stateStore,
-      body: () =>
-        Effect.gen(function* () {
-          const proxy = yield* RouterService;
-          const events = yield* EventService;
-          const preRestart = PreRestartEvent.make({
-            _tag: "pre-restart",
-            scope: "app",
-            app: resolvedTarget.app,
-            plan,
-            triggeredBy: "app:restart",
-            timestamp: DateTime.unsafeMake(new Date().toISOString()),
-          });
-          yield* events.publish(preRestart);
-          yield* runAppEvent(plan, "pre-restart", preRestart);
-          yield* stopAppWithPlan({}, resolvedTarget);
-          yield* managed?.onStopped ?? Effect.void;
-          const result = yield* compensateFailureUnless(
-            startApp(
-              {
-                reconcile: options.reconcile ?? false,
-                ...(options.signal === undefined ? {} : { signal: options.signal }),
-              },
-              resolvedTarget,
-              managed,
-            ),
-            proxy.removeRoutes(plan.id),
-            isPostStartStepError,
-          );
-          const postRestart = PostRestartEvent.make({
-            _tag: "post-restart",
-            scope: "app",
-            app: resolvedTarget.app,
-            plan,
-            timestamp: DateTime.unsafeMake(new Date().toISOString()),
-          });
-          yield* events.publish(postRestart);
-          yield* runAppEvent(plan, "post-restart", postRestart);
-          return result;
-        }).pipe(Effect.provide(context)),
-    });
+    return yield* withAppMutationLock(
+      appLockTarget(plan),
+      withPlanVolumeCoordination({
+        plan,
+        provider,
+        stateStore,
+        body: () =>
+          Effect.gen(function* () {
+            const proxy = yield* RouterService;
+            const events = yield* EventService;
+            const preRestart = PreRestartEvent.make({
+              _tag: "pre-restart",
+              scope: "app",
+              app: resolvedTarget.app,
+              plan,
+              triggeredBy: "app:restart",
+              timestamp: DateTime.unsafeMake(new Date().toISOString()),
+            });
+            yield* events.publish(preRestart);
+            yield* runAppEvent(plan, "pre-restart", preRestart);
+            yield* stopAppWithPlan({}, resolvedTarget);
+            yield* managed?.onStopped ?? Effect.void;
+            const result = yield* compensateFailureUnless(
+              startApp(
+                {
+                  reconcile: options.reconcile ?? false,
+                  ...(options.signal === undefined ? {} : { signal: options.signal }),
+                },
+                resolvedTarget,
+                managed,
+              ),
+              proxy.removeRoutes(plan.id),
+              isPostStartStepError,
+            );
+            const postRestart = PostRestartEvent.make({
+              _tag: "post-restart",
+              scope: "app",
+              app: resolvedTarget.app,
+              plan,
+              timestamp: DateTime.unsafeMake(new Date().toISOString()),
+            });
+            yield* events.publish(postRestart);
+            yield* runAppEvent(plan, "post-restart", postRestart);
+            return result;
+          }).pipe(Effect.provide(context)),
+      }),
+    );
   });
