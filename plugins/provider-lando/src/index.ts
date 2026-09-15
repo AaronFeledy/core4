@@ -26,6 +26,7 @@ import {
 } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
+  podmanVolumeCreationLabels,
   bringUp as runtimeBringUp,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
@@ -628,6 +629,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           api: podmanApi,
           snapshotMode: "native",
           redactDetails,
+          volumeCreationLabels: podmanVolumeCreationLabels,
         });
 
   const resolvePlan = (appId: AppId): Effect.Effect<AppPlan | undefined, never> => {
