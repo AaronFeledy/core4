@@ -79,16 +79,13 @@ const runStreamPull = async (
 ) => {
   const events: ImagePullProgressEvent[] = [];
   const requests: EngineHttpRequest[] = [];
-  let pulled = false;
   const api: EngineHttpApi = {
     stream: (request) => {
-      pulled = true;
       requests.push(request);
       return streamFactory === undefined ? Stream.fromIterable(chunks) : streamFactory(chunks);
     },
     request: (request) => {
       requests.push(request);
-      if (request.method === "GET" && !pulled) return Effect.succeed({ status: 404, body: "" });
       return Effect.succeed(inspectSuccess(reference));
     },
   };
@@ -158,7 +155,6 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
     const reference = "alpine:3.20";
     const calls: EngineHttpRequest[] = [];
     const responses = [
-      { status: 404, body: "" },
       { status: 200, body: '{"status":"Downloading","progressDetail":{"current":1,"total":2}}\n' },
       inspectSuccess(reference),
     ];
@@ -185,27 +181,7 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
     // Then
     expect(result.ref).toBe(reference);
     expect(events).toHaveLength(1);
-    expect(calls[1]).toEqual(dialect.request(reference));
-  });
-
-  test("skips the registry pull when inspect already has the image", async () => {
-    const reference = "alpine:3.20";
-    const streamCalls: EngineHttpRequest[] = [];
-    const api: EngineHttpApi = {
-      stream: (request) => {
-        streamCalls.push(request);
-        return Stream.fromIterable([]);
-      },
-      request: () => Effect.succeed(inspectSuccess(reference)),
-    };
-    const result = await Effect.runPromise(
-      pullImage(api, reference, {
-        ctx: dialect === dockerPullDialect ? dockerCtx : landoCtx,
-        dialect,
-      }),
-    );
-    expect(result).toEqual({ ref: reference, digest: "sha256:test" });
-    expect(streamCalls).toEqual([]);
+    expect(calls[0]).toEqual(dialect.request(reference));
   });
 });
 
@@ -273,7 +249,7 @@ describe("docker image pull dialect", () => {
     );
     const inspectDialect = dockerPullDialect.inspect;
     if (inspectDialect === undefined) throw new Error("Docker pull dialect must define post-pull inspect");
-    expect(requests[2]).toEqual(inspectDialect.request(reference));
+    expect(requests[1]).toEqual(inspectDialect.request(reference));
   });
 
   test("fails when post-pull inspect is non-200", async () => {
