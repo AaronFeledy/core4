@@ -505,7 +505,25 @@ describe("ci workflow codegen", () => {
   );
 
   test(
+    "caches the assembled linux-x64 runtime bundle across unrelated PRs",
+    async () => {
+      await runCodegen();
+
+      const workflow = await readFile(workflowPath, "utf8");
+
+      expect(workflow).toContain("runtime-bundle-linux-x64:");
+      expect(workflow).toContain("id: runtime-bundle-cache");
+      expect(workflow).toContain("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830");
+      expect(workflow).toContain("key: runtime-bundle-linux-x64-${{ hashFiles(");
+      expect(workflow).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");
+      expect(workflow).toContain("run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64");
+    },
+    codegenTestTimeout,
+  );
+
+  test(
     "generates the guide scenario CI gate",
+
     async () => {
       await runCodegen();
 
