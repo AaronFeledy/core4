@@ -807,7 +807,14 @@ const byteStreamFromHost = (path: string): Stream.Stream<Uint8Array, DataTransfe
     evaluate: () => Bun.file(path).stream(),
     onError: (cause) => hostReadError(path, cause),
     releaseLockOnEnd: true,
-  });
+  }).pipe(
+    Stream.catchAllCause((cause) =>
+      Option.match(Cause.dieOption(cause), {
+        onNone: () => Stream.failCause(cause),
+        onSome: (died) => Stream.fail(hostReadError(path, died)),
+      }),
+    ),
+  );
 
 const byteStreamFromArchive = (
   path: string,
