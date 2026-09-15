@@ -781,3 +781,10 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Acceptance approval: reviewer ses_f58c261beffebRyPG4J7ElI3xN approved all criteria unconditionally. This entry records implementation and acceptance evidence only; no completion signal, push, PR, or merge was performed.
 - **Learnings for future iterations:** widening a config result requires both a curated schema projection and output-boundary value tokens; scalar lookups lose their enclosing secret-key context unless tokens come from the full config or selected key. Preserve key metadata while redacting values, and test encoded output rather than only the in-memory operation result.
 ---
+
+## 2026-09-15 - US-626 Review
+- Reviewed redacted config view/get against source ACs. No in-scope product defects; no code changes.
+- Review notes (deferred/rejected): Security HIGH (GITHUB_PAT, short numeric API_TOKEN=1234, username-only proxy userinfo) is out of scope. AC4 requires the canonical RedactionService path, which view/get already use; GITHUB_PAT is outside collectSecretEnvValues vocabulary, short numerics are the existing short-token policy (US-633 keeps it), and username-only proxy matching belongs to redactor URL patterns / proxyUrls, not this story's projection. Goal/QA/quality/context lanes passed. Bugbot did not run (Cursor usage limit).
+- Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 94 focused tests passed across config-view schema, operations, CLI redaction, meta-config scenarios, and adjacent write tests.
+- **Learnings for future iterations:** Newly exposing maps through a curated schema does not expand the secret-key catalog. Token vocabulary and short-token policy stay in @lando/redaction; do not add a config-specific redactor to satisfy a security lane that wants PAT/short-PIN/username-only coverage.
+---
