@@ -82,6 +82,7 @@ describe("ci workflow", () => {
       "rails-journey.yml",
       "release.yml",
       "runtime-bundle.yml",
+      "workflow-performance.yml",
     ]);
   });
 
