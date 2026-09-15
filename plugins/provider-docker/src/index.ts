@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
 
@@ -7,7 +6,7 @@ import {
   VOLUME_WITNESS_IMAGE,
   makeProviderDataPlane,
   volumeCreationFact,
-  volumeCreationOwnerLabels,
+  volumeCreationLabels,
 } from "@lando/container-runtime/data-plane";
 import { dockerPullDialect, dockerWaitDialect } from "@lando/container-runtime/dialect";
 import type {
@@ -841,17 +840,8 @@ const ensureNetwork = (api: DockerApiClient, name: string) =>
     ),
   );
 
-const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly<Record<string, string>> => ({
-  "dev.lando.app": plan.id,
-  "dev.lando.store": store.name,
-  "dev.lando.scope": store.scope,
-  "dev.lando.volume-instance": randomUUID(),
-  ...volumeCreationOwnerLabels(plan.identity),
-  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
-});
-
 const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) => {
-  const labels = volumeLabels(plan, store);
+  const labels = volumeCreationLabels(plan, store);
   return request(api, "apply", {
     method: "POST",
     path: "/volumes/create",
@@ -1714,6 +1704,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     api: dockerApi,
     snapshotMode: "copy",
     redactDetails,
+    volumeCreationLabels,
   });
 
   const sanitizeAppliedPlan = options.sanitizeAppliedPlan ?? ((plan: AppPlan) => plan);

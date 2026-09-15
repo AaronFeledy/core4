@@ -49,8 +49,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const attachFrame = (stream: 1 | 2, text: string) => {
-  const payload = textEncoder.encode(text);
+const attachBytesFrame = (stream: 1 | 2, payload: Uint8Array) => {
   const frame = new Uint8Array(8 + payload.length);
   frame[0] = stream;
   frame[4] = (payload.length >>> 24) & 0xff;
@@ -60,6 +59,7 @@ const attachFrame = (stream: 1 | 2, text: string) => {
   frame.set(payload, 8);
   return frame;
 };
+const attachFrame = (stream: 1 | 2, text: string) => attachBytesFrame(stream, textEncoder.encode(text));
 
 const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoint">> = {}): ServicePlan => ({
   name: serviceName,
@@ -475,6 +475,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
   const calls: DockerHttpRequest[] = [];
   const containers = new Map<string, { readonly body: unknown; stdout: Uint8Array; exitCode: number }>();
   const volumes = new Map<string, Uint8Array>();
+  const volumeLabels = new Map<string, Readonly<Record<string, string>>>();
   const snapshots = new Map<string, Uint8Array>();
   const serviceFiles = new Map<string, Uint8Array>();
   const artifacts = new Map<string, Uint8Array>();
@@ -505,6 +506,23 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           }
           if (container !== undefined && volume !== undefined && command === "tar -C /lando-data -cf - .") {
             container.stdout = volumes.get(volume) ?? new Uint8Array();
+          }
+          const snapshotFile = body?.Cmd?.[2]?.match(/file=\/lando-snapshots\/([^;]+)/u)?.[1];
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            snapshotVolume !== undefined &&
+            snapshotFile
+          ) {
+            const payload = volumes.get(volume) ?? new Uint8Array();
+            snapshots.set(`${snapshotVolume}/${snapshotFile}`, payload);
+            container.stdout = textEncoder.encode(`fake-digest ${payload.byteLength}\n`);
+          }
+          const restoreFile = body?.Cmd?.[3] === "lando-restore" ? body.Cmd[4]?.split("/").at(-1) : undefined;
+          if (volume !== undefined && snapshotVolume !== undefined && restoreFile !== undefined) {
+            const snapshot = snapshots.get(`${snapshotVolume}/${restoreFile}`);
+            if (snapshot === undefined && container !== undefined) container.exitCode = 1;
+            else if (snapshot !== undefined) volumes.set(volume, snapshot);
           }
           const snapshotWrite = command?.match(/tar -C \/lando-data -cf \/lando-snapshots\/([^ ]+) \./u)?.[1];
           if (
@@ -552,6 +570,18 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           snapshots.set(id, await collectAsyncBytes(request.stdin));
           return { status: 201, body: "{}" };
         }
+        if (request.path === "/volumes/create" && request.method === "POST") {
+          const body = request.body as {
+            readonly Name?: string;
+            readonly Labels?: Readonly<Record<string, string>>;
+          };
+          const name = body.Name ?? "";
+          if (volumes.has(name)) return { status: 409, body: "{}" };
+          const labels = body.Labels ?? {};
+          volumes.set(name, new Uint8Array());
+          volumeLabels.set(name, labels);
+          return { status: 201, body: JSON.stringify({ Name: name, Labels: labels }) };
+        }
         if (
           request.path.startsWith("/volumes/") &&
           request.path.includes("/archive?") &&
@@ -566,11 +596,32 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         if (request.path === "/volumes" && request.method === "GET") {
           return {
             status: 200,
-            body: JSON.stringify({ Volumes: Array.from(volumes.keys()).map((Name) => ({ Name })) }),
+            body: JSON.stringify({
+              Volumes: Array.from(volumes.keys()).map((Name) => ({
+                Name,
+                Labels: volumeLabels.get(Name) ?? {},
+              })),
+            }),
           };
         }
+        if (request.path.startsWith("/volumes/") && request.method === "GET") {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          return volumes.has(name)
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Name: name,
+                  Driver: "local",
+                  Options: {},
+                  Labels: volumeLabels.get(name) ?? {},
+                }),
+              }
+            : { status: 404, body: "{}" };
+        }
         if (request.path.startsWith("/volumes/") && request.method === "DELETE") {
-          volumes.delete(decodeURIComponent(request.path.slice("/volumes/".length)));
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          volumes.delete(name);
+          volumeLabels.delete(name);
           return { status: 204, body: "" };
         }
         if (
@@ -607,7 +658,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         const name = decodeURIComponent(
           request.path.slice("/containers/".length, request.path.indexOf("/logs?")),
         );
-        return Stream.make(containers.get(name)?.stdout ?? new Uint8Array());
+        return Stream.make(attachBytesFrame(1, containers.get(name)?.stdout ?? new Uint8Array()));
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
         const name = decodeURIComponent(
@@ -943,10 +994,16 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("ephemeral data-store mounts use the canonical store name", async () => {
     const fake = makeDataPlaneFakeApi();
     const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    const plan = {
+      ...makePlan(),
+      identity: { appRoot: AbsolutePath.make("/canonical/creation-root"), ownerKey: "creation-owner" },
+      stores: [{ name: "cache-data", scope: "app" as const, kind: "data" as const }],
+    };
 
     await Effect.runPromise(
       Effect.scoped(
         provider.run({
+          owner: { app: appId, plan },
           image: "alpine:3.20",
           command: ["sh", "-c", "true"],
           mounts: [{ store: "cache-data", target: PortablePath.make("/data"), readOnly: false }],
@@ -977,8 +1034,8 @@ describe("provider-docker RuntimeProvider contract", () => {
             fake.calls.some(
               (call) =>
                 call.path.startsWith("/containers/create?name=") &&
-                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").startsWith(
-                  "sh -c mkdir -p /lando-snapshots && tar -C /lando-data -cf /lando-snapshots/",
+                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").includes(
+                  "tar -C /lando-data -cf",
                 ),
             ),
           usedNativeServiceFileCopy: () =>
