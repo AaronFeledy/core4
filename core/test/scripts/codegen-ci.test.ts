@@ -179,6 +179,18 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("bun run check:runtime-bundle-manifest --live");
       expect(firstWorkflow).toContain("refresh-test-timings-linux-x64:");
       expect(firstWorkflow).toContain("bun run scripts/update-test-timings.ts");
+      expect(firstWorkflow).toContain("mysql-arm-client-linux-arm64:");
+      expect(firstWorkflow).toContain("runs-on: ubuntu-24.04-arm");
+      expect(firstWorkflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
+      expect(firstWorkflow).toContain("runtime-bundle-linux-arm64-current");
+      expect(firstWorkflow).toContain("--target bun-linux-arm64");
+      expect(firstWorkflow).toContain("Wrap managed Podman for ARM MySQL client tests");
+      expect(firstWorkflow).toContain("LANDO_TEST_MYSQL_ARM64_PODMAN=$wrapper");
+      expect(firstWorkflow).toContain(
+        "bun test plugins/service-lando/test/mysql-arm-client.integration.test.ts",
+      );
+      expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');
+      expect(firstWorkflow).not.toContain("podman system prune");
 
       await runCodegen();
 
@@ -293,7 +305,7 @@ describe("ci workflow codegen", () => {
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(30);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(10);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(11);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");
