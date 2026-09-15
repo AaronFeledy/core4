@@ -4,7 +4,7 @@ import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LAMP_RECIPE_VERSION = "0.1.0";
-export const LAMP_CONTENT_DIGEST = "sha256:c0b2cde89f016351b3fd769068969460e7ebdcc01853ff6e61381f1290853fd8";
+export const LAMP_CONTENT_DIGEST = "sha256:bf832eeeb192425e56f0d69ee1989b7f28b3bcc19a5e3ed95d3ed7dba0f1c2e5";
 export const lampProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-lamp",
@@ -52,7 +52,7 @@ export const lampSnapshot: RecipeSnapshot = {
   identity: lampProducer,
   optionTypes: {
     php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
-    database: { kind: "enum", values: ["mariadb:11.4", "mariadb:10.11", "mysql:8.0"] },
+    database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0"] },
     composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
   },

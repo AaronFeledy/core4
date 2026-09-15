@@ -153,7 +153,7 @@ const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: MysqlServiceConfig,
   resolve: (input) => {
-    if (id !== "mysql" && input.service.image !== undefined) {
+    if (id !== "mysql" && input.service.image !== undefined && input.service.image !== image) {
       return Effect.fail(
         new ServiceTypeError({
           message:

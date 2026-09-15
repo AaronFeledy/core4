@@ -196,6 +196,7 @@ const makeProvider = (
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
     restoreVolume: () => Effect.die("not used"),
+    locateVolume: () => Effect.die("not used"),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => Effect.void,
     copyToService: () => Effect.die("not used"),

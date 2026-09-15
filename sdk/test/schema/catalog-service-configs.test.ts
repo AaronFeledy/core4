@@ -331,6 +331,25 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     },
   );
 
+  test("Given a syntactically valid unshipped PHP version, when decoding, then schema validation defers availability to the planner", () => {
+    // Given / When
+    const result = strictDecode(PhpServiceConfig, { type: "php:9.0" });
+
+    // Then
+    expect(result._tag).toBe("Right");
+  });
+
+  test.each(["php", "php:", "php:8.3:cli"] as const)(
+    "Given malformed PHP type %s, when decoding, then it fails",
+    (type) => {
+      // Given / When
+      const result = strictDecode(PhpServiceConfig, { type });
+
+      // Then
+      expect(result._tag).toBe("Left");
+    },
+  );
+
   test("Given PHP composer false, when decoding, then it succeeds", () => {
     // Given / When
     const result = strictDecode(PhpServiceConfig, { type: "php:8.5", composer: false });

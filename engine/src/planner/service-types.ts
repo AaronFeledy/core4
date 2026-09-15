@@ -62,7 +62,12 @@ export const loadServiceTypeWithVersion = (
   reference: string,
 ): Effect.Effect<LoadedServiceType, PluginLoadError | PluginManifestError | ServiceTypeCollisionError> =>
   pluginRegistry.loadServiceType(reference).pipe(
-    Effect.map((serviceType) => ({ serviceType, version: undefined })),
+    Effect.map((serviceType) => {
+      const lastColon = reference.lastIndexOf(":");
+      const version =
+        lastColon > 0 && serviceType.versions !== undefined ? reference.slice(lastColon + 1) : undefined;
+      return { serviceType, version };
+    }),
     Effect.catchAll((error) => {
       if (error instanceof ServiceTypeCollisionError) return Effect.fail(error);
       const lastColon = reference.lastIndexOf(":");
@@ -83,10 +88,17 @@ export const resolvePinnedArtifactTag = (
   version: string | undefined,
 ): Effect.Effect<string | undefined, LandofileValidationError> => {
   if (version === undefined) return Effect.succeed(undefined);
-  const pinned = serviceType.artifacts?.[version];
-  if (pinned !== undefined) return Effect.succeed(pinned);
   const declaredVersions = serviceType.versions;
-  if (declaredVersions !== undefined && declaredVersions.length > 0 && !declaredVersions.includes(version)) {
+  if (declaredVersions === undefined || declaredVersions.length === 0) {
+    return Effect.fail(
+      new LandofileValidationError({
+        message: `Service ${serviceName} requests version ${version} of service type ${serviceType.id}, but that ServiceType does not publish any supported versions. Use the bare type ${serviceType.id} or choose a ServiceType with shipped version metadata.`,
+        file: `${appRoot}/.lando.yml`,
+        issues: [`services.${serviceName}.type`],
+      }),
+    );
+  }
+  if (!declaredVersions.includes(version)) {
     return Effect.fail(
       new LandofileValidationError({
         message: `Service ${serviceName} requests unsupported version ${version} of service type ${serviceType.id}. Supported versions: ${[...declaredVersions].sort().join(", ")}.`,
@@ -95,7 +107,15 @@ export const resolvePinnedArtifactTag = (
       }),
     );
   }
-  return Effect.succeed(`${serviceType.id}:${version}`);
+  const pinned = serviceType.artifacts?.[version];
+  if (pinned !== undefined) return Effect.succeed(pinned);
+  return Effect.fail(
+    new LandofileValidationError({
+      message: `Service type ${serviceType.id} declares supported version ${version} but does not publish an artifact for supported version ${version}. Fix the ServiceType metadata before using this version.`,
+      file: `${appRoot}/.lando.yml`,
+      issues: [`services.${serviceName}.type`],
+    }),
+  );
 };
 
 export const unsupportedServiceType = (

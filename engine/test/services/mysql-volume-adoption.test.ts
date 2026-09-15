@@ -7,6 +7,7 @@ import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { services } from "@lando/service-lando";
 
+import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 
@@ -55,7 +56,13 @@ const plan = async (
   const appPlan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
       planner.plan(
-        { name: "mysql-adoption", runtime: 4, services: servicesInput },
+        {
+          name: "mysql-adoption",
+          runtime: 4,
+          services: Object.fromEntries(
+            Object.entries(servicesInput).map(([name, service]) => [name, { ...service, home: false }]),
+          ),
+        },
         TestRuntimeProvider.capabilities,
       ),
     ).pipe(
@@ -74,6 +81,8 @@ describe("MySQL volume adoption through the real planner", () => {
 
       expect(appPlan.services[ServiceName.make("db")]?.storage[0]?.store).toBe(legacy);
       expect(appPlan.stores.map((store) => store.name)).toEqual([legacy]);
+      expect(appPlan.identity?.ownerKey).toBeDefined();
+      expect(effectiveToolingForPlan(appPlan)?.mysql?.service).toBe("db");
       expect(calls).toEqual(["listVolumes", "listVolumes"]);
     },
   );
@@ -109,8 +118,12 @@ describe("MySQL volume adoption through the real planner", () => {
   });
 
   test("Given a failed volume lookup, when planning, then it cannot silently select an empty store", async () => {
-    await expect(plan({ [ServiceName.make("db")]: { type: "mysql" } }, [], true)).rejects.toThrow(
-      /Volume lookup failed/,
+    await plan({ [ServiceName.make("db")]: { type: "mysql" } }, [], true).then(
+      () => {
+        throw new Error("Expected volume lookup to fail");
+      },
+      (error: unknown) =>
+        expect(error instanceof Error ? error.message : String(error)).toMatch(/Volume lookup failed/),
     );
   });
 });

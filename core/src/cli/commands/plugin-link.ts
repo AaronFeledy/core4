@@ -17,6 +17,7 @@ import {
   assertInsidePluginsRoot,
   isPluginLinkConflictCause,
 } from "@lando/engine/operations/plugin-link";
+import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { makeLandoPaths } from "@lando/paths";
 
 export class PluginLinkConflictError extends Data.TaggedError("PluginLinkConflictError")<{
@@ -103,36 +104,42 @@ export const pluginLink = (
             }),
     });
 
-    yield* Effect.tryPromise({
-      try: () =>
-        applyPluginLink({
-          pluginsRoot,
-          linkedPath,
-          pluginName: manifest.name,
-          version: manifest.version,
-        }),
-      catch: (cause) => {
-        if (cause instanceof PluginLinkConflictError || cause instanceof PluginManifestError) return cause;
-        if (isPluginLinkConflictCause(cause)) {
-          return new PluginLinkConflictError({
-            message: cause.message,
-            commandId: "meta:plugin:link",
-            pluginName: cause.pluginName,
-            existingPath: cause.existingPath,
-            remediation: conflictRemediation,
-          });
-        }
-        return new NotImplementedError({
-          message: `Plugin link failed for ${manifest.name}: ${String(cause)}`,
-          commandId: "meta:plugin:link",
-          remediation: "Check the plugin authoring path and retry.",
+    yield* withPluginMutationLock(
+      pluginsRoot,
+      "meta:plugin:link",
+      Effect.gen(function* () {
+        yield* Effect.tryPromise({
+          try: () =>
+            applyPluginLink({
+              pluginsRoot,
+              linkedPath,
+              pluginName: manifest.name,
+              version: manifest.version,
+            }),
+          catch: (cause) => {
+            if (cause instanceof PluginLinkConflictError || cause instanceof PluginManifestError)
+              return cause;
+            if (isPluginLinkConflictCause(cause)) {
+              return new PluginLinkConflictError({
+                message: cause.message,
+                commandId: "meta:plugin:link",
+                pluginName: cause.pluginName,
+                existingPath: cause.existingPath,
+                remediation: conflictRemediation,
+              });
+            }
+            return new NotImplementedError({
+              message: `Plugin link failed for ${manifest.name}: ${String(cause)}`,
+              commandId: "meta:plugin:link",
+              remediation: "Check the plugin authoring path and retry.",
+            });
+          },
         });
-      },
-    });
-
-    yield* invalidatePluginCommandCache({
-      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-    });
+        yield* invalidatePluginCommandCache({
+          ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+        });
+      }),
+    );
     return { pluginName: manifest.name, linkedPath, registryEntry };
   });
 

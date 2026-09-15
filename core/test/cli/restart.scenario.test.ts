@@ -23,8 +23,10 @@ import {
   PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
+  StateStore,
   ToolingEngine,
 } from "@lando/core/services";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import type {
   AppSelector,
   DestroyOptions,
@@ -45,6 +47,7 @@ import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 
@@ -221,6 +224,7 @@ const makeRestartLayer = (
 
   const layer = Layer.mergeAll(
     PrivateFileAccessLive,
+    TestStateStoreLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
         name: "test-restart",

@@ -217,6 +217,12 @@ export const makeStateStore = (options: {
     resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
       Effect.map((resolved) => buildBucket(spec, resolved.file, options.privateFileAccess)),
     ),
+  withLock: <A, E>(key: string, body: Effect.Effect<A, E>) =>
+    resolveStatePath("userData", "operation-locks", key, "withLock").pipe(
+      Effect.flatMap((resolved) =>
+        withAdvisoryLockUsing(options.privateFileAccess)(resolved.file, "withLock", body),
+      ),
+    ),
 });
 
 export const StateStoreWithPrivateFileAccessLive: Layer.Layer<StateStore, never, PrivateFileAccessService> =

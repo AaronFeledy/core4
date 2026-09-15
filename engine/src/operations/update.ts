@@ -18,8 +18,28 @@ export {
   updateChannelForVersion,
 } from "../update/manifest.ts";
 export type { UpdateManifestFetcher } from "../update/manifest.ts";
+export { makeUpdateHandoff } from "../update/handoff.ts";
+export { checkCoreReplacement, guardCoreReplacement } from "../update/compatibility.ts";
+export type { StoredUpdateResult, UpdateHandoff } from "../update/handoff.ts";
+export { planUpdates } from "../update/plugin-plan.ts";
+export type {
+  AdvertisedPluginVersion,
+  PlanUpdatesInput,
+  PluginUpdateInventoryItem,
+  PluginUpdateMetadata,
+  PluginUpdatePlanRow,
+  PluginUpdateReason,
+  UpdatePlan,
+  UpdatePlanRow,
+  UpdateSelection,
+} from "../update/plugin-plan.ts";
 export { update } from "../update/operation.ts";
 export type { UpdateOptions, UpdateResult } from "../update/operation.ts";
+export type {
+  PluginUpdateRunner,
+  PluginUpdateRunInput,
+  PluginUpdateRunResult,
+} from "../update/operation.ts";
 export type {
   UpdateExecve,
   UpdateExecveInput,
@@ -33,6 +53,7 @@ export type {
   UpdateManifestSignatureVerifier,
 } from "../update/verify.ts";
 export { buildWindowsReplacementScript, scheduleWindowsReplacement } from "../update/windows.ts";
+export { runWindowsReplacementProcess } from "../update/windows-helper.ts";
 export type {
   UpdateWindowsReplacement,
   UpdateWindowsReplacementInput,

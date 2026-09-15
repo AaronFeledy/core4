@@ -38,6 +38,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -188,11 +189,13 @@ export const ensureGlobalServicesRunning = (
     const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
     yield* Effect.scoped(
-      provider.apply(builtPlan, {
-        reconcile: false,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        serviceEnvironment,
-      }),
+      provider
+        .apply(builtPlan, {
+          reconcile: false,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+          serviceEnvironment,
+        })
+        .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
     );
 
     const servicesStarted = yield* Effect.forEach(selected, (service) =>

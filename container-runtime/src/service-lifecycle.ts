@@ -2,7 +2,7 @@ import { Effect } from "effect";
 
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { ProviderError, ServiceSelector } from "@lando/sdk/services";
+import type { ProviderError, ServiceRuntimeIdentity, ServiceSelector } from "@lando/sdk/services";
 
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi } from "./engine-errors.ts";
@@ -14,6 +14,8 @@ export interface ServiceLifecycleOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
 }
+
+export type ExactServiceLifecycleAction = "start" | "stop";
 
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
@@ -78,6 +80,61 @@ export const postServiceLifecycle = (
           operation: action,
           message: withApiReason(`Container ${action} failed with HTTP ${response.status}.`, response),
           details: { service: service.name, body: response.body },
+          remediation: options.ctx.remediation,
+        }),
+      );
+    }),
+  );
+};
+
+export const postExactServiceLifecycle = (
+  target: ServiceSelector,
+  identity: ServiceRuntimeIdentity,
+  action: ExactServiceLifecycleAction,
+  options: ServiceLifecycleOptions,
+): Effect.Effect<void, ProviderError> => {
+  const request = options.api?.request;
+  if (request === undefined) {
+    return Effect.fail(
+      missingApi(
+        options.ctx,
+        action,
+        `provider-${options.ctx.providerId} ${action} requires a container engine API client.`,
+      ),
+    );
+  }
+  return request({
+    method: "POST",
+    path: `/containers/${encodeURIComponent(identity.containerId)}/${action}`,
+  }).pipe(
+    Effect.mapError(
+      (cause): ProviderUnavailableError =>
+        new ProviderUnavailableError({
+          providerId: options.ctx.providerId,
+          operation: action,
+          message: `provider-${options.ctx.providerId} exact ${action} request failed.`,
+          remediation: options.ctx.remediation,
+          cause,
+        }),
+    ),
+    Effect.flatMap((response): Effect.Effect<void, ProviderError> => {
+      if (response.status === 204 || response.status === 304) return Effect.void;
+      if (response.status === 404) {
+        return Effect.fail(
+          new ServiceNotFoundError({
+            providerId: options.ctx.providerId,
+            operation: action,
+            service: target.service,
+            message: `The inspected runtime for ${target.service} was not found.`,
+          }),
+        );
+      }
+      return Effect.fail(
+        new ProviderUnavailableError({
+          providerId: options.ctx.providerId,
+          operation: action,
+          message: withApiReason(`Exact container ${action} failed with HTTP ${response.status}.`, response),
+          details: { service: target.service, containerId: identity.containerId, body: response.body },
           remediation: options.ctx.remediation,
         }),
       );

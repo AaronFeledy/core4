@@ -67,8 +67,14 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [],
   },
   "@lando/data-mover": {
-    dependencies: ["@lando/sdk", "@lando/paths", "@lando/landofile", "@lando/redaction"],
-    devDependencies: ["@lando/state-store"],
+    dependencies: [
+      "@lando/sdk",
+      "@lando/paths",
+      "@lando/landofile",
+      "@lando/redaction",
+      "@lando/state-store",
+    ],
+    devDependencies: [],
     // Data-mover tests drive the engine `ProcessRunner` Live layer; a `@lando/data-mover/testing` double should replace this.
     testTargets: [
       "@lando/sdk",

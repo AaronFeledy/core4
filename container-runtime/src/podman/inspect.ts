@@ -15,6 +15,7 @@ import { withApiReason } from "../redact.ts";
 
 interface ContainerInspect {
   readonly Id?: string;
+  readonly Image?: string;
   readonly State?: {
     readonly Health?: { readonly Status?: string };
     readonly Running?: boolean;
@@ -154,6 +155,9 @@ export const inspect = (
       state: status,
       ...(health === undefined ? {} : { health }),
       ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
+      ...(typeof decoded.Image === "string" && decoded.Image.length > 0
+        ? { imageIdentity: decoded.Image }
+        : {}),
       endpoints: service.endpoints,
       ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
     };

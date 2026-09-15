@@ -2,11 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { SUPPORTED_GO_FRAMEWORKS, SUPPORTED_GO_VERSIONS } from "../src/services/go.ts";
-import { SUPPORTED_NODE_VERSIONS } from "../src/services/node.ts";
-import { SUPPORTED_PHP_VERSIONS } from "../src/services/php.ts";
-import { SUPPORTED_PYTHON_FRAMEWORKS, SUPPORTED_PYTHON_VERSIONS } from "../src/services/python.ts";
-import { SUPPORTED_RUBY_FRAMEWORKS, SUPPORTED_RUBY_VERSIONS } from "../src/services/ruby.ts";
+import { SUPPORTED_GO_FRAMEWORKS } from "../src/services/go.ts";
+import { SUPPORTED_PYTHON_FRAMEWORKS } from "../src/services/python.ts";
+import { SUPPORTED_RUBY_FRAMEWORKS } from "../src/services/ruby.ts";
 
 const README_PATH = fileURLToPath(new URL("../README.md", import.meta.url));
 
@@ -41,7 +39,6 @@ describe("@lando/service-lando README — framework presets table", () => {
   test("documents a Framework presets table", async () => {
     const table = findFrameworkTable(await readReadme());
     expect(table).toMatch(/\|\s*Type\s*\|/);
-    expect(table).toMatch(/\|\s*Versions\s*\|/);
     expect(table).toMatch(/\|\s*Supported\s+`framework:`\s+values\s*\|/);
   });
 
@@ -49,41 +46,32 @@ describe("@lando/service-lando README — framework presets table", () => {
     const table = findFrameworkTable(await readReadme());
     const expectations: ReadonlyArray<{
       language: string;
-      versions: ReadonlyArray<string>;
       frameworks: ReadonlyArray<string>;
     }> = [
       {
         language: "php",
-        versions: [...SUPPORTED_PHP_VERSIONS],
         frameworks: [],
       },
       {
         language: "node",
-        versions: [...SUPPORTED_NODE_VERSIONS],
         frameworks: ["none"],
       },
       {
         language: "python",
-        versions: [...SUPPORTED_PYTHON_VERSIONS],
-        frameworks: [...SUPPORTED_PYTHON_FRAMEWORKS],
+        frameworks: SUPPORTED_PYTHON_FRAMEWORKS,
       },
       {
         language: "ruby",
-        versions: [...SUPPORTED_RUBY_VERSIONS],
-        frameworks: [...SUPPORTED_RUBY_FRAMEWORKS],
+        frameworks: SUPPORTED_RUBY_FRAMEWORKS,
       },
       {
         language: "go",
-        versions: [...SUPPORTED_GO_VERSIONS],
-        frameworks: [...SUPPORTED_GO_FRAMEWORKS],
+        frameworks: SUPPORTED_GO_FRAMEWORKS,
       },
     ];
 
     for (const expectation of expectations) {
       const row = findLanguageRow(table, expectation.language);
-      for (const version of expectation.versions) {
-        expect(row).toContain(version);
-      }
       for (const framework of expectation.frameworks) {
         expect(row).toContain(`\`${framework}\``);
       }

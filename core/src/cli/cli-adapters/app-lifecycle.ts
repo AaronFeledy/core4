@@ -104,7 +104,8 @@ type DestroyCommandServices =
   | import("@lando/sdk/services").LandofileService
   | import("@lando/sdk/services").PathsService
   | PrivateFileAccessService
-  | import("@lando/sdk/services").RuntimeProviderRegistry;
+  | import("@lando/sdk/services").RuntimeProviderRegistry
+  | import("@lando/sdk/services").StateStore;
 
 interface RunDestroyOptions {
   readonly runtime?: Layer.Layer<DestroyCommandServices, unknown>;
