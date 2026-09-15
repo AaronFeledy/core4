@@ -1,12 +1,13 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { loadLogFileHelperPayloads } from "@lando/engine/providers/log-file-helper-payloads";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -22,7 +23,6 @@ import {
 import type { LogChunk, RuntimeProviderShape } from "@lando/sdk/services";
 
 import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
-import { loadLogFileHelperPayloads } from "@lando/core/testing";
 
 const liveSocket = resolveLiveProviderSocket();
 const providerId = ProviderId.make("lando");

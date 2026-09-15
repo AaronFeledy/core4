@@ -1,4 +1,4 @@
-import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
+import { resolveUserCacheRoot, resolveUserIncludesDir } from "@lando/engine/cache/paths";
 import { type EngineCompositionInputs, installEngineCompositionIfAbsent } from "@lando/engine/composition";
 
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
@@ -13,6 +13,7 @@ export const baseEngineCompositionInputs: EngineCompositionInputs = {
   landofileRuntimeInputs: {
     ports: {
       resolveUserCacheRoot,
+      resolveUserIncludesDir,
       npmRecipeSource: makeNpmRecipeSourcePort(),
       git: defaultGitRecipeCloner,
       tarball: {

@@ -14,6 +14,7 @@ import type {
   PluginRegistry,
   ServiceType,
   ServiceTypeHostFacts,
+  ServiceTypeProjectFileInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 
@@ -183,8 +184,28 @@ export interface ResolvedService {
   }>;
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
+  readonly projectFiles: ReadonlyArray<ServiceTypeProjectFileInput>;
   readonly configSourceInputs: ReadonlyArray<ServiceConfigSource>;
 }
+
+export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
+  name: entry.name,
+  serviceType: entry.serviceType.id,
+  base: entry.resolution.base,
+  normalizedConfig: entry.resolution.normalizedConfig,
+  tooling: entry.resolution.tooling ?? {},
+  logSources: entry.logSources,
+  featureRefs: entry.featureRefs,
+  envFileInputs: entry.envFileInputs,
+  projectFiles: entry.projectFiles.map((file) => ({
+    path: file.path,
+    present: file.present,
+    ...(file.present ? { sha256: file.sha256 } : {}),
+  })),
+  metadata: entry.resolution.metadata ?? {},
+  configSourceInputs: entry.configSourceInputs,
+  ...(entry.resolvedArtifactTag === undefined ? {} : { resolvedArtifactTag: entry.resolvedArtifactTag }),
+});
 
 export type AuthoredStorageInfo = {
   readonly scope: StorageScope;

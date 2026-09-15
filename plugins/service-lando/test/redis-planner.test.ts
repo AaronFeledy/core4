@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";

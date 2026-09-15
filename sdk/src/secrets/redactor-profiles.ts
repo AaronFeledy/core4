@@ -50,6 +50,8 @@ export type RedactionProfile = (typeof REDACTION_PROFILES)[number];
 export interface CreateRedactorOptions {
   /** Known secret values masked by the value layer before any pattern pass. */
   readonly values?: Iterable<string>;
+  /** Explicit secret values; unsafe exact matches suppress the whole affected detail. */
+  readonly authoritativeValues?: Iterable<string>;
   /** Environment roots for the `transcript` profile's literal masking. */
   readonly env?: TranscriptRedactionEnv;
 }
@@ -175,7 +177,7 @@ export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.fr
  * values) is always applied before the profile's pattern layer.
  */
 export const createRedactor = (profile: RedactionProfile, options: CreateRedactorOptions = {}): Redactor => {
-  const valueLayer = createSecretRedactor(options.values ?? []);
+  const valueLayer = createSecretRedactor(options.values ?? [], options.authoritativeValues);
   const env = options.env ?? {};
 
   let patternString: (text: string) => string;

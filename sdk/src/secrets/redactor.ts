@@ -44,13 +44,18 @@ export interface SecretRedactor {
  * whitespace-only values are ignored so the redactor never masks the entire
  * string.
  */
-export const createSecretRedactor = (values: Iterable<string>): SecretRedactor => {
-  const unique = Array.from(new Set(values)).filter(isUsableExactRedactionValue);
+export const createSecretRedactor = (
+  values: Iterable<string>,
+  authoritativeValues: Iterable<string> = [],
+): SecretRedactor => {
+  const authoritative = [...authoritativeValues].filter((value) => value.length > 0);
+  const unsafe = authoritative.filter((value) => !isUsableExactRedactionValue(value));
+  const unique = Array.from(new Set([...values, ...authoritative])).filter(isUsableExactRedactionValue);
   // Longest-first: prevents a substring secret from partially masking a longer
   // secret and leaking its tail.
   unique.sort((a, b) => b.length - a.length);
 
-  if (unique.length === 0) {
+  if (unique.length === 0 && unsafe.length === 0) {
     return {
       redact: (text) => text,
       redactBounded: retainWithinBytes,
@@ -59,6 +64,8 @@ export const createSecretRedactor = (values: Iterable<string>): SecretRedactor =
 
   return {
     redact: (text) => {
+      // Suppress the entire detail rather than corrupt an ANSI sequence with a numeric replacement.
+      if (unsafe.some((value) => text.includes(value))) return REDACTED;
       let result = text;
       for (const value of unique) {
         if (result.includes(value)) {
@@ -68,6 +75,7 @@ export const createSecretRedactor = (values: Iterable<string>): SecretRedactor =
       return result;
     },
     redactBounded: (text, maxBytes) => {
+      if (unsafe.some((value) => text.includes(value))) return retainWithinBytes(REDACTED, maxBytes);
       let result: string | undefined = text;
       for (const value of unique) {
         result = replaceLiteralBounded(result, value, REDACTED, maxBytes);

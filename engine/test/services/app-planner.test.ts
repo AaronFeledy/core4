@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize } from "node:v8";
@@ -24,6 +24,7 @@ import {
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
+  type ServiceConfig,
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
@@ -134,6 +135,15 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLive),
       Effect.provide(PluginRegistryLive),
+    ),
+  );
+
+const planWithFileSystem = (landofile: LandofileShape) =>
+  Effect.runPromise(
+    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+      Effect.provide(AppPlannerLive),
+      Effect.provide(PluginRegistryLive),
+      Effect.provide(FileSystemLive),
     ),
   );
 
@@ -2469,6 +2479,156 @@ describe("AppPlannerLive", () => {
 
       expect(worker?.type).toBe("node:22");
       expect(worker?.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
+    });
+  });
+
+  test("infers bare Node from packageRoot project files and emits content-free provenance", async () => {
+    await withTempCwd(async (appRoot) => {
+      await mkdir(join(appRoot, "apps", "web"), { recursive: true });
+      await writeFile(join(appRoot, "apps", "web", ".nvmrc"), "22.11.0\n");
+      await writeFile(
+        join(appRoot, "apps", "web", "package.json"),
+        JSON.stringify({ engines: { node: "22.11.0" } }),
+      );
+
+      const appPlan = await planWithFileSystem({
+        name: "node-inference",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" },
+        },
+      });
+      const web = appPlan.services[ServiceName.make("web")];
+
+      expect(web?.type).toBe("node:22.11.0");
+      expect(web?.artifact).toEqual({ kind: "ref", ref: "node:22.11.0" });
+      expect(web?.provenance).toMatchObject({
+        node: {
+          sourcePath: "apps/web/.nvmrc",
+          normalizedConstraint: "22.11.0",
+          artifact: "node:22.11.0",
+        },
+      });
+      expect(JSON.stringify(web?.provenance)).not.toContain("engines");
+    });
+  });
+
+  test("tracks present and absent Node inference candidates in a nested package cache", async () => {
+    await withTempCwd(async (appRoot) => {
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-node-inference-cache-")));
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      const packageRoot = join(appRoot, "apps", "web");
+      await mkdir(packageRoot, { recursive: true });
+      const nvmrcPath = join(packageRoot, ".nvmrc");
+      const packageJsonPath = join(packageRoot, "package.json");
+      await writeFile(nvmrcPath, "22.11.0\n");
+      const landofile: LandofileShape = {
+        name: "node-inference-cache",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node", packageRoot: "apps/web" } },
+      };
+      const layer = AppPlannerLive.pipe(
+        Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
+      );
+      const runPlan = () =>
+        Effect.runPromise(
+          Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+            Effect.provide(layer),
+          ),
+        );
+
+      try {
+        const initial = await runPlan();
+        expect(initial.services[ServiceName.make("web")]?.type).toBe("node:22.11.0");
+        expect(await runPlan()).toEqual(initial);
+        await writeFile(nvmrcPath, "22.12.0\n");
+        const changedPin = await runPlan();
+        expect(changedPin.services[ServiceName.make("web")]?.type).toBe("node:22.12.0");
+        await writeFile(packageJsonPath, JSON.stringify({ engines: { node: "22" } }));
+        const createdPackage = await runPlan();
+        expect(createdPackage.services[ServiceName.make("web")]?.provenance).not.toEqual(
+          changedPin.services[ServiceName.make("web")]?.provenance,
+        );
+        await writeFile(packageJsonPath, JSON.stringify({ engines: { node: ">=22 <23" } }));
+        const changedPackage = await runPlan();
+        expect(changedPackage.services[ServiceName.make("web")]?.provenance).not.toEqual(
+          createdPackage.services[ServiceName.make("web")]?.provenance,
+        );
+        await rm(nvmrcPath);
+        expect((await runPlan()).services[ServiceName.make("web")]?.type).toBe("node:22");
+        await writeFile(nvmrcPath, "22.11.0\n");
+        expect((await runPlan()).services[ServiceName.make("web")]?.type).toBe("node:22.11.0");
+        await rm(packageJsonPath);
+        expect((await runPlan()).services[ServiceName.make("web")]?.provenance).toEqual(
+          initial.services[ServiceName.make("web")]?.provenance,
+        );
+      } finally {
+        if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        await rm(cacheRoot, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test.each([
+    [
+      { type: "node:22.11.0" },
+      /LandofileValidationError: Service web requests version 22\.11\.0 of service type node, but that ServiceType does not publish any supported versions\. Use the bare type node or choose a ServiceType with shipped version metadata\./,
+    ],
+    [{ type: "node", image: "node:22" }, /cannot combine bare type: node inference with image/i],
+    [{ type: "node:22", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
+    [{ type: "php:8.3", packageRoot: "apps/web" }, /packageRoot only with bare type: node/i],
+    [{ type: "node", packageRoot: "missing" }, /directory does not exist/i],
+    [{ type: "node", packageRoot: "../outside" }, /escapes the app root/i],
+  ] satisfies ReadonlyArray<readonly [ServiceConfig, RegExp]>)(
+    "rejects contradictory or unrelated Node inference config",
+    async (service, pattern) => {
+      await withTempCwd(async () => {
+        const failure = await planWithFileSystem({
+          name: "node-invalid",
+          runtime: 4,
+          services: { [ServiceName.make("web")]: service },
+        }).then(
+          () => undefined,
+          (cause: unknown) => cause,
+        );
+        expect(failure).toBeDefined();
+        expect(String(failure)).toMatch(pattern);
+      });
+    },
+  );
+
+  test("rejects oversized Node inference inputs", async () => {
+    await withTempCwd(async (appRoot) => {
+      await writeFile(join(appRoot, ".nvmrc"), "2".repeat(1_048_577));
+      const failure = await planWithFileSystem({
+        name: "node-oversized",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node" } },
+      }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+      expect(String(failure)).toMatch(/exceeds the 1048576-byte read limit/i);
+    });
+  });
+
+  test("rejects symbolic links used as Node inference inputs", async () => {
+    await withTempCwd(async (appRoot) => {
+      await writeFile(join(appRoot, "node-version"), "22.11.0\n");
+      await symlink(join(appRoot, "node-version"), join(appRoot, ".nvmrc"));
+      const failure = await planWithFileSystem({
+        name: "node-symlink",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "node" } },
+      }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+      expect(String(failure)).toMatch(/\.nvmrc is a symbolic link/i);
     });
   });
 

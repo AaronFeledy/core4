@@ -1,6 +1,8 @@
 import type { LogSource, ServiceConfig } from "@lando/sdk/schema";
 import { AbsolutePath, LogSourceId } from "@lando/sdk/schema";
 
+import { apacheErrorPageConfigLines, landoErrorPageSetupLines } from "./http-errors.ts";
+
 export const PHP_VIA_MODES = ["apache", "fpm", "cli"] as const;
 export type PhpVia = (typeof PHP_VIA_MODES)[number];
 
@@ -85,6 +87,7 @@ export const apacheStartCommand = (webroot: string, allowOverride: boolean): Rea
     "-c",
     [
       "set -eu",
+      ...landoErrorPageSetupLines(),
       "cat > /etc/apache2/sites-available/000-default.conf <<'LANDO_APACHE_SITE'",
       "<VirtualHost *:80>",
       `  DocumentRoot ${webroot}`,
@@ -93,6 +96,7 @@ export const apacheStartCommand = (webroot: string, allowOverride: boolean): Rea
       `    AllowOverride ${override}`,
       "    Require all granted",
       "  </Directory>",
+      ...apacheErrorPageConfigLines(),
       "</VirtualHost>",
       "LANDO_APACHE_SITE",
       "exec apache2-foreground",

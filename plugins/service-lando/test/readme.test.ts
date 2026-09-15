@@ -78,13 +78,15 @@ describe("@lando/service-lando README — framework presets table", () => {
     }
   });
 
-  test("documents Node framework compatibility as ignored rather than rejected", async () => {
+  test("documents Node inference instead of schema-compatibility ignore", async () => {
     const table = findFrameworkTable(await readReadme());
     const nodeRow = findLanguageRow(table, "node");
 
-    expect(nodeRow).toContain("accepted for schema compatibility");
-    expect(nodeRow).toContain("ignored by the ServiceType");
+    expect(nodeRow).toContain("inferred");
+    expect(nodeRow).toContain("`none`");
+    expect(nodeRow).toContain("packageRoot");
     expect(nodeRow).not.toContain("rejected");
+    expect(nodeRow).not.toContain("accepted for schema compatibility");
   });
 
   test("documents explicit PHP webroot and AllowOverride parameters instead of presets", async () => {

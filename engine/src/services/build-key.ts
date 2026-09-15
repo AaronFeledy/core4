@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { buildContextContentDigest } from "@lando/container-runtime/image-build";
 import { Effect } from "effect";
 
+import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
@@ -39,8 +40,6 @@ interface AppBuildKeyInput {
   readonly user?: string;
 }
 
-const SECRET_REFERENCE_PATTERN = /^\$\{secret:([^}]+)\}$/u;
-
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -62,8 +61,8 @@ const stableHash = (value: unknown): string =>
     .digest("hex");
 
 const secretAwareString = (value: string): unknown => {
-  const match = SECRET_REFERENCE_PATTERN.exec(value);
-  return match === null ? value : { secret: match[1] };
+  const secret = exactSecretReferenceId(value);
+  return secret === undefined ? value : { secret };
 };
 
 const stableStringRecord = (
@@ -137,6 +136,7 @@ export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
     service: {
       name: String(input.service.name),
       artifact: artifactBuildInput(input.service.artifact, undefined),
+      environment: providerEnvironment(input.service.environment),
       appMount:
         input.service.appMount === undefined
           ? undefined

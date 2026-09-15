@@ -38,6 +38,7 @@ export interface PublicationPort {
 
 export interface LandofileRuntimePorts {
   readonly resolveUserCacheRoot: () => string;
+  readonly resolveUserIncludesDir: () => string;
   readonly npmRecipeSource: NpmRecipeSourcePort;
   readonly git: GitAcquisitionPort;
   readonly tarball: TarballAcquisitionPort;

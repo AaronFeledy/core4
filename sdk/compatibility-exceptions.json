@@ -1,5 +1,17 @@
 [
   {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Restart events embed AppPlan; its ServicePlan values additively gain optional service-type provenance for project-file inference and an optional resolved post-start scan block. Existing restart payloads remain valid."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Restart events embed AppPlan; its ServicePlan values additively gain optional service-type provenance for project-file inference and an optional resolved post-start scan block. Existing restart payloads remain valid."
+  },
+  {
     "surface": "command:app:config",
     "changeKind": "unsupported-keyword",
     "path": "$.landofile.proxy.additionalProperties",
@@ -72,12 +84,6 @@
     "justification": "US-615 route shorthand and filters"
   },
   {
-    "surface": "schema:ConfigTranslateEncodeInput",
-    "changeKind": "unsupported-construct",
-    "path": "$.$defs.ConfigTranslateEncodeInput.context.services.anyOf",
-    "justification": "US-615 route shorthand and filters"
-  },
-  {
     "surface": "schema:DatasetContext",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
@@ -105,12 +111,6 @@
     "surface": "schema:LandofileAuthoringShapeWire",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringShapeWire.proxy.anyOf",
-    "justification": "US-615 route shorthand and filters"
-  },
-  {
-    "surface": "schema:LandofileAuthoringShapeWire",
-    "changeKind": "unsupported-construct",
-    "path": "$.$defs.LandofileAuthoringShapeWire.services.anyOf",
     "justification": "US-615 route shorthand and filters"
   },
   {
@@ -1362,6 +1362,24 @@
     "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
   },
   {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.additionalProperties",
+    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block; every previously accepted service remains valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.services.anyOf",
+    "justification": "ServiceConfig additively gains optional packageRoot for Node project-file provenance and optional per-step build user on the build-script object form; every previously accepted service remains valid."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted dataset context remains valid."
+  },
+  {
     "surface": "schema:ToolingFlagShape",
     "changeKind": "property-removed",
     "path": "$.type",
@@ -1390,6 +1408,54 @@
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringShape.tooling.anyOf",
     "justification": "The authoring tooling projection intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.services.anyOf",
+    "justification": "ServiceConfig additively gains optional packageRoot for Node project-file provenance and optional per-step build user on the build-script object form; every previously accepted authoring document remains valid."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted tunnel request remains valid."
   },
   {
     "surface": "schema:LandofileAuthoringShapeWire",
@@ -1504,72 +1570,6 @@
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ServiceConfigInput.build.oneOf",
     "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
-  },
-  {
-    "surface": "schema:AppPlan",
-    "changeKind": "unsupported-keyword",
-    "path": "$.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:DatasetContext",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:PostGlobalRebuildEvent",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:PostGlobalStartEvent",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:PostRestartEvent",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:PostStartEvent",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:PreGlobalRebuildEvent",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:PreGlobalStartEvent",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:PreRestartEvent",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:PreStartEvent",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
-  },
-  {
-    "surface": "schema:TunnelStartRequest",
-    "changeKind": "unsupported-keyword",
-    "path": "$.plan.services.additionalProperties",
-    "justification": "Service plans gained an optional resolved post-start scan block; every previously accepted service plan still validates."
   },
   {
     "surface": "schema:ServicePlan",

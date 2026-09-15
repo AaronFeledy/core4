@@ -24,7 +24,7 @@ import { mongodbServiceType } from "./services/mongodb.ts";
 import { mssql2019ServiceType, mssql2022ServiceType, mssqlServiceType } from "./services/mssql.ts";
 import { mysqlServiceType } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
-import { node22ServiceType, nodeLtsServiceType } from "./services/node.ts";
+import { node22ServiceType, nodeLtsServiceType, nodeServiceType } from "./services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "./services/opensearch.ts";
 import {
   php81ServiceType,
@@ -83,6 +83,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["mssql:2022", mssql2022ServiceType],
   ["mysql", mysqlServiceType],
   ["nginx", nginxServiceType],
+  ["node", nodeServiceType],
   ["node:lts", nodeLtsServiceType],
   ["node:22", node22ServiceType],
   ["opensearch", opensearchServiceType],
