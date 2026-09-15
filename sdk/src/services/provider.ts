@@ -163,6 +163,7 @@ export type ExecChunk =
   | { readonly exitCode: number };
 
 export interface EphemeralRunSpec {
+  readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
   readonly mounts?: ReadonlyArray<MountPlan | DataStoreMountPlan>;

@@ -22,7 +22,7 @@ import {
   type VolumeRef,
   type VolumeSnapshotRef,
 } from "../schema/index.ts";
-import type { ExecChunk, LogChunk, RuntimeProviderShape } from "../services/index.ts";
+import type { AppSelector, ExecChunk, LogChunk, RuntimeProviderShape } from "../services/index.ts";
 import {
   type ContractFailure,
   TEST_APP_ID,
@@ -98,11 +98,13 @@ const dataStoreMount = (store: string): DataStoreMountPlan => ({
 
 const writeMountedVolume = (
   provider: RuntimeProviderShape,
+  owner: AppSelector,
   store: string,
   payload: Uint8Array,
 ): Effect.Effect<void, unknown | ContractFailure, Scope.Scope> =>
   provider
     .run({
+      owner,
       image: "alpine:3.20",
       command: ["sh", "-c", "cat > /data/payload"],
       mounts: [dataStoreMount(store)],
@@ -123,10 +125,12 @@ const writeMountedVolume = (
 
 const readMountedVolume = (
   provider: RuntimeProviderShape,
+  owner: AppSelector,
   store: string,
 ): Effect.Effect<Uint8Array, unknown | ContractFailure, Scope.Scope> =>
   collectStdoutBytes(
     provider.runStream({
+      owner,
       image: "alpine:3.20",
       command: ["sh", "-c", "cat /data/payload"],
       mounts: [dataStoreMount(store)],
@@ -163,10 +167,19 @@ export const runProviderDataPlaneContract = (
           ),
         );
       const store = nextContractRunId();
+      const volumePlan = {
+        ...makeTestAppPlan(ProviderId.make(provider.id)),
+        identity: {
+          appRoot: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
+          ownerKey: "lando-sdk-contract-myapp",
+        },
+        stores: [{ name: store, scope: "app" as const, kind: "data" as const }],
+      };
+      const volumeOwner = { app: TEST_APP_ID, plan: volumePlan };
       const serviceTarget = {
         app: TEST_APP_ID,
         service: TEST_SERVICE_NAME,
-        plan: makeTestAppPlan(ProviderId.make(provider.id)),
+        plan: volumePlan,
       };
       const volumePayload = sampleBytes(0, 1, 2, 3, 128, 255);
       const mutatedPayload = sampleBytes(255, 128, 3, 2, 1, 0);
@@ -219,7 +232,7 @@ export const runProviderDataPlaneContract = (
         ),
       );
 
-      yield* writeMountedVolume(provider, store, volumePayload).pipe(
+      yield* writeMountedVolume(provider, volumeOwner, store, volumePayload).pipe(
         Effect.mapError(
           mapProviderOrContractFailure("volume import via EphemeralRunSpec.stdinStream succeeds"),
         ),
@@ -231,7 +244,7 @@ export const runProviderDataPlaneContract = (
       if (targetGeneration === undefined) {
         return yield* contractFailure("created data-plane volume has a generation", targetVolumes);
       }
-      const exportedVolume = yield* readMountedVolume(provider, store).pipe(
+      const exportedVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
         Effect.mapError(mapProviderFailure("volume export via runStream succeeds")),
       );
       yield* requireContract(
@@ -263,7 +276,7 @@ export const runProviderDataPlaneContract = (
           provider.capabilities,
         );
       }
-      yield* writeMountedVolume(provider, store, mutatedPayload).pipe(
+      yield* writeMountedVolume(provider, volumeOwner, store, mutatedPayload).pipe(
         Effect.mapError(
           mapProviderOrContractFailure("volume mutation via EphemeralRunSpec.stdinStream succeeds"),
         ),
@@ -276,7 +289,7 @@ export const runProviderDataPlaneContract = (
           overwrite: true,
         })
         .pipe(Effect.mapError(mapProviderFailure("restoreVolume succeeds")));
-      const restoredVolume = yield* readMountedVolume(provider, store).pipe(
+      const restoredVolume = yield* readMountedVolume(provider, volumeOwner, store).pipe(
         Effect.mapError(mapProviderFailure("restored volume export via runStream succeeds")),
       );
       yield* requireContract(

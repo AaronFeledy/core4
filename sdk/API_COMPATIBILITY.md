@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
+
 - `RuntimeProviderShape.resume(target, identity)` and `suspend(target, identity)` are additive optional exact-runtime lifecycle methods. Bundled providers address the inspected container ID directly; recovery callers fail closed when a provider cannot preserve that immutable identity across temporary observation.
 
 - `@lando/sdk/schema` additively exports `VolumeLocator`, and `RuntimeProviderShape.locateVolume(ref)` returns its configured-endpoint plus provider-native coordination key before or after creation without inventing generation or ownership. Bundled providers re-read optional generation evidence from the native volume while retaining the same key. Provider restores and removals now require the caller's expected target generation and fail before mutation when the native generation changed. App lifecycle operations coordinate on these physical keys and fail closed when ownership or generation cannot be proven.
