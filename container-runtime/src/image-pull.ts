@@ -157,6 +157,15 @@ export const pullImage = <E = never>(
   options: PullImageOptions<E>,
 ): Effect.Effect<PulledImage, ProviderUnavailableError | ProviderInternalError | E> =>
   Effect.gen(function* () {
+    const inspectExisting = options.dialect.inspect;
+    if (inspectExisting !== undefined && api.request !== undefined) {
+      const existing = yield* api.request(inspectExisting.request(reference));
+      if (existing.status === 200) {
+        const decoded = yield* parseResponseJson(existing, options.ctx);
+        const digest = inspectExisting.decodeDigest(decoded);
+        return { ref: reference, ...(digest === undefined ? {} : { digest }) };
+      }
+    }
     const emitFrame = (line: string): Effect.Effect<void, ProviderUnavailableError | E> => {
       const frame = parseImagePullFrame(line, options.dialect);
       switch (frame.kind) {
@@ -217,15 +226,7 @@ export const pullImage = <E = never>(
     const inspect = options.dialect.inspect;
     if (inspect === undefined) return { ref: reference };
     const request = api.request;
-    if (request === undefined) {
-      return yield* Effect.fail(
-        missingApi(
-          options.ctx,
-          "pullArtifact",
-          `provider-${options.ctx.providerId} pullArtifact inspect requires a container engine API client.`,
-        ),
-      );
-    }
+    if (request === undefined) return { ref: reference };
     const response = yield* request(inspect.request(reference));
     if (response.status !== 200) {
       return yield* Effect.fail(

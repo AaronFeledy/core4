@@ -61,6 +61,15 @@ export const libpodWaitDialect: WaitDialect = {
   decodeExitCode: (json) => (typeof json === "number" ? json : undefined),
 };
 
+const decodeRepoDigest = (json: unknown): string | undefined => {
+  if (typeof json !== "object" || json === null || !("RepoDigests" in json)) return undefined;
+  if (!Array.isArray(json.RepoDigests)) return undefined;
+  const first = json.RepoDigests[0];
+  if (typeof first !== "string") return undefined;
+  const separator = first.indexOf("@");
+  return separator === -1 ? undefined : first.slice(separator + 1);
+};
+
 export const dockerPullDialect: PullDialect = {
   request: (reference) => {
     const parsed = parseImageReference(reference);
@@ -80,14 +89,7 @@ export const dockerPullDialect: PullDialect = {
       method: "GET",
       path: `/images/${encodeURIComponent(reference)}/json`,
     }),
-    decodeDigest: (json) => {
-      if (typeof json !== "object" || json === null || !("RepoDigests" in json)) return undefined;
-      if (!Array.isArray(json.RepoDigests)) return undefined;
-      const first = json.RepoDigests[0];
-      if (typeof first !== "string") return undefined;
-      const separator = first.indexOf("@");
-      return separator === -1 ? undefined : first.slice(separator + 1);
-    },
+    decodeDigest: decodeRepoDigest,
   },
 };
 
@@ -97,4 +99,11 @@ export const libpodPullDialect: PullDialect = {
     path: `/libpod/images/pull?reference=${encodeURIComponent(reference)}&pullProgress=true`,
   }),
   frameError: (frame) => objectString(frame, "error"),
+  inspect: {
+    request: (reference) => ({
+      method: "GET",
+      path: `/libpod/images/${encodeURIComponent(reference)}/json`,
+    }),
+    decodeDigest: decodeRepoDigest,
+  },
 };
