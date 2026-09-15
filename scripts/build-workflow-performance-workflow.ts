@@ -178,7 +178,6 @@ on:
         description: Controlled failure proof (empty, mysql-import, or postgres-import)
         default: ''
         type: string
-  pull_request:
 
 defaults:
   run:
