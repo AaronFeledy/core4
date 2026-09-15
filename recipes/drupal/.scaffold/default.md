@@ -8,7 +8,7 @@ lando start
 lando info
 ```
 
-`--yes` uses Drupal 11, PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Pass `--answer` for nginx plus FPM, another PHP, or another database.
+`--yes` uses Drupal 11, PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Pass `--answer` for nginx plus FPM, another PHP, or another database. PHP 8.6 is a valid `--answer=php=8.6`. It does not include **xdebug**, **redis**, or **apcu**. See [Pin a PHP version](../../docs/guides/services/php-version-matrix.mdx).
 
 ```sh
 lando init --recipe drupal --name=my-drupal-app --yes \

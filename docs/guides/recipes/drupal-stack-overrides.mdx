@@ -9,7 +9,7 @@ tags: [beta, docs, recipes, drupal, php, database]
 
 `lando init --recipe drupal` writes PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Edit `.lando.yml` after that, then `lando rebuild -y`.
 
-Init prompts for Drupal 10 or 11, PHP 8.1 through 8.5, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, and webroot. `--yes` keeps Drupal 11, PHP 8.3, Apache, `mariadb:11.4`, Composer 2, and `/app/web`.
+Init prompts for Drupal 10 or 11, PHP 8.1 through 8.6, Apache or nginx plus FPM, MariaDB, MySQL, or PostgreSQL, Composer, and webroot. `--yes` keeps Drupal 11, PHP 8.3, Apache, `mariadb:11.4`, Composer 2, and `/app/web`. PHP 8.6 is selectable and missing **xdebug**, **redis**, and **apcu**. See [Pin a PHP version](../services/php-version-matrix.mdx).
 
 ## See the generated defaults
 
@@ -29,9 +29,9 @@ The generated Landofile is an Apache-backed `appserver` on `php:8.3`, webroot `/
     </Step>
   </Scenario>
 
-## Pin PHP 8.1 through 8.5
+## Pin PHP 8.1 through 8.6
 
-Init already offers PHP 8.1 through 8.5. You can still edit `services.appserver.type` after the fact and rebuild.
+Init already offers PHP 8.1 through 8.6. You can still edit `services.appserver.type` after the fact and rebuild. PHP 8.6 does not include xdebug, redis, or apcu.
 
 ```yaml
 services:

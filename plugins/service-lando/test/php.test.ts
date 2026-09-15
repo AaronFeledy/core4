@@ -10,6 +10,7 @@ import {
   php82ServiceType,
   php83ServiceType,
   php85ServiceType,
+  php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -59,7 +60,7 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 
 describe("php ServiceType — supported versions and frameworks", () => {
   test("exposes the complete PHP version catalog", () => {
-    expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5"]);
+    expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]);
   });
 });
 
@@ -218,7 +219,7 @@ describe("php:8.3 ServiceType", () => {
 
     await expectRejectsToThrow(
       composePhpPlan(php83ServiceType, { type: "php:9.0" }),
-      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4, php:8.5/,
+      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4, php:8.5, php:8.6/,
     );
   });
 
@@ -264,6 +265,35 @@ describe("php:8.5 ServiceType", () => {
     await expectRejectsToThrow(
       composePhpPlan(php85ServiceType, { type: "php:8.5", composer: "2.7.7" }),
       /cannot run on PHP 8\.5/,
+    );
+  });
+});
+
+describe("php:8.6 ServiceType", () => {
+  test("plans a selectable PHP 8.6 service against the official RC bookworm image", async () => {
+    const plan = await composePhpPlan(php86ServiceType, { type: "php:8.6" });
+
+    expect(plan.type).toBe("php:8.6");
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.6-rc-apache-bookworm" });
+    expect(plan.environment.LANDO_SERVICE_TYPE).toBe("php:8.6");
+    expect(plan.extensions["lando-service-php"]).toMatchObject({ version: "8.6" });
+  });
+
+  test("rejects composer 2.7.7 when planning php:8.6", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php86ServiceType, { type: "php:8.6", composer: "2.7.7" }),
+      /cannot run on PHP 8\.6/,
+    );
+  });
+
+  test("rejects xdebug on php:8.6 because the shipped pin stops at 8.5", async () => {
+    await expectRejectsToThrow(
+      composePhpPlan(php86ServiceType, { type: "php:8.6", xdebug: true }),
+      /Xdebug is not available on PHP 8\.6/,
+    );
+    await expectRejectsToThrow(
+      composePhpPlan(php86ServiceType, { type: "php:8.6", xdebug: true }),
+      /Remove xdebug: or set type to php:8\.5/,
     );
   });
 });

@@ -10,8 +10,10 @@ import {
   SUPPORTED_PHP_VERSIONS,
   php81ServiceType,
   php84ServiceType,
+  php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
+import { phpImageFor } from "../src/services/php-via.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -103,6 +105,7 @@ describe("PHP Wave D planning", () => {
   test.each([
     ["8.1", php81ServiceType],
     ["8.4", php84ServiceType],
+    ["8.6", php86ServiceType],
   ] as const)("plans and registers PHP %s", async (version, serviceType) => {
     // Given
     const type = `php:${version}`;
@@ -114,6 +117,6 @@ describe("PHP Wave D planning", () => {
     expect([...SUPPORTED_PHP_VERSIONS]).toContain(version);
     expect(serviceTypes.get(type)).toBe(serviceType);
     expect(plan.type).toBe(type);
-    expect(plan.artifact).toEqual({ kind: "ref", ref: `${type}-apache-bookworm` });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: phpImageFor(version, "apache") });
   });
 });

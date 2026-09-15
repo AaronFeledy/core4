@@ -32,6 +32,7 @@ import {
   php83ServiceType,
   php84ServiceType,
   php85ServiceType,
+  php86ServiceType,
 } from "./services/php.ts";
 import {
   phpmyadmin5ServiceType,
@@ -93,6 +94,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["php:8.3", php83ServiceType],
   ["php:8.4", php84ServiceType],
   ["php:8.5", php85ServiceType],
+  ["php:8.6", php86ServiceType],
   ["phpmyadmin", phpmyadminServiceType],
   ["phpmyadmin:5", phpmyadmin5ServiceType],
   ["phpmyadmin:latest", phpmyadminLatestServiceType],

@@ -1,11 +1,11 @@
 # laravel
 
-Laravel scaffold with PHP 8.1-8.5, Composer, MariaDB or PostgreSQL, Redis, and
+Laravel scaffold with PHP 8.1-8.6, Composer, MariaDB or PostgreSQL, Redis, and
 an optional `via: cli` queue worker.
 
 ## Generated services
 
-- `appserver` — `php:<8.1-8.5>`, `framework: laravel`, webroot `/app/public`.
+- `appserver` — `php:<8.1-8.6>`, `framework: laravel`, webroot `/app/public`. PHP 8.6 is missing xdebug, redis, and apcu.
 - `database` — `mariadb:11.4` or `postgres:16` (prompt: `database`).
 - `cache` — `redis`.
 - `worker` — additional `php:<version>` with `via: cli` running

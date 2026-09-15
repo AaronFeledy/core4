@@ -55,7 +55,9 @@ canonical `type:` requires a spec amendment, though versions inside an
 existing entry (e.g. adding PHP 8.5) can follow upstream releases without one.
 `@lando/service-lando` ships a subset of that target catalog through Beta:
 
-- PHP ships the complete GA-target version set (8.1-8.5) and uses explicit
+- PHP ships 8.1-8.6. PHP 8.6 is selectable and missing xdebug, redis, and apcu
+  (the shipped Xdebug pin is 3.5.3 and stops at PHP 8.5; official Hub currently
+  publishes 8.6 as RC bookworm tags). PHP uses explicit
   `webroot:` and `allowOverride:` parameters rather than framework-name
   presets.
 - Go framework presets (Echo, Fiber, Gin, Chi) are deferred to post-GA —

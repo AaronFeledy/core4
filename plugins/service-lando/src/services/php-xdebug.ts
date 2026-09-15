@@ -61,6 +61,14 @@ export const resolvePhpXdebug = (value: unknown): PhpXdebug => {
   throw new Error(`Unsupported Xdebug mode ${JSON.stringify(value)}. ${XDEBUG_REMEDIATION}`);
 };
 
+export const assertPhpXdebugSupported = (phpVersion: string, xdebug: PhpXdebug): void => {
+  if (xdebug === false) return;
+  if (phpVersion !== "8.6") return;
+  throw new Error(
+    `Xdebug is not available on PHP 8.6. The shipped pin is ${PHP_XDEBUG_RELEASE.version} and supports PHP 8.0 through 8.5. Remove xdebug: or set type to php:8.5.`,
+  );
+};
+
 export const phpXdebugConfigEnv = (): Readonly<Record<string, string>> => ({
   XDEBUG_CONFIG: `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${String(PHP_XDEBUG_PORT)}`,
 });
