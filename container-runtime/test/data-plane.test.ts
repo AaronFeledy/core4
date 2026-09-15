@@ -509,6 +509,140 @@ describe("provider data plane", () => {
     expect(attachCalled).toBe(false);
   });
 
+  test("creates owned data-store volumes before ephemeral containers", async () => {
+    // Given: an app-owned store and a provider API that records creation order and payloads.
+    const requests: Array<{ readonly path: string; readonly body?: unknown }> = [];
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        requests.push(request);
+        return Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        );
+      },
+      stream: () => Stream.empty,
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+    const ownedPlan = {
+      ...plan,
+      identity: { appRoot: AbsolutePath.make("/canonical/app"), ownerKey: "canonical-app" },
+      stores: [{ name: "data", scope: "app" as const, kind: "data" as const }],
+    } satisfies AppPlan;
+    const spec = {
+      owner: { app: appId, plan: ownedPlan },
+      image: "alpine:3.20",
+      command: ["true"],
+      mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+      remove: true,
+    };
+
+    // When: the external ephemeral run mounts the app-owned store.
+    await Effect.runPromise(Effect.scoped(provider.run(spec)));
+
+    // Then: the store is explicitly created with provenance before the container can auto-create it.
+    const volumeCreateIndex = requests.findIndex((request) => request.path === "/volumes/create");
+    const containerCreateIndex = requests.findIndex((request) =>
+      request.path.startsWith("/containers/create?name="),
+    );
+    expect(volumeCreateIndex).toBeGreaterThanOrEqual(0);
+    expect(volumeCreateIndex).toBeLessThan(containerCreateIndex);
+    expect(requests[volumeCreateIndex]?.body).toMatchObject({
+      Name: "data",
+      Labels: {
+        "dev.lando.app": "app-id",
+        "dev.lando.store": "data",
+        "dev.lando.scope": "app",
+        "dev.lando.volume-instance": expect.any(String),
+        "dev.lando.volume-owner": "/canonical/app",
+      },
+    });
+  });
+
+  test("adopts an existing ephemeral volume without treating submitted labels as observed", async () => {
+    // Given: the daemon reports that the declared volume already exists.
+    const requests: Array<{ readonly path: string; readonly body?: unknown }> = [];
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        requests.push(request);
+        if (request.path === "/volumes/create") return Effect.succeed({ status: 409, body: "{}" });
+        return Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        );
+      },
+      stream: () => Stream.empty,
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+    const ownedPlan = {
+      ...plan,
+      identity: { appRoot: adoptedOwnerRoot, ownerKey: "canonical-app" },
+      stores: [{ name: "data", scope: "app" as const, kind: "data" as const }],
+    } satisfies AppPlan;
+
+    // When: an ephemeral helper mounts the pre-existing declared store.
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.run({
+          owner: { app: appId, plan: ownedPlan },
+          image: "alpine:3.20",
+          command: ["true"],
+          mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+          remove: true,
+        }),
+      ),
+    );
+
+    // Then: 409 remains idempotent legacy adoption and container creation still follows it.
+    expect(requests.map(({ path }) => path)).toContain("/volumes/create");
+    expect(requests.some(({ path }) => path.startsWith("/containers/create?name="))).toBe(true);
+    expect(requests.filter(({ path }) => path === "/volumes/create")).toHaveLength(1);
+  });
+
+  test("rejects data-store mounts without resolved canonical ownership", async () => {
+    // Given: a direct data-plane caller supplies only an app id.
+    const requests: string[] = [];
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api: {
+        request: (request) => {
+          requests.push(request.path);
+          return Effect.succeed({ status: 201, body: "{}" });
+        },
+        stream: () => Stream.empty,
+      },
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+
+    // When: the caller asks to mount a named data store.
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        provider.run({
+          owner: { app: appId },
+          image: "alpine:3.20",
+          command: ["true"],
+          mounts: [{ store: "data", target: PortablePath.make("/data"), readOnly: false }],
+        }),
+      ),
+    );
+
+    // Then: no daemon mutation is attempted without an applied canonical plan.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(requests).toEqual([]);
+  });
+
   test("decodes Docker multiplexed stdout frames with big-endian lengths", async () => {
     const api: DataPlaneApiClient = {
       request: (request) =>

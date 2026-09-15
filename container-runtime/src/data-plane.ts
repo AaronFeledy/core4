@@ -12,7 +12,8 @@ import {
 } from "./volume-observation.ts";
 import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
 export { volumeCreationOwnerLabels } from "./volume-observation.ts";
-export { volumeCreationFact } from "./volume-creation.ts";
+import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
+export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
 export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
 
 import { Effect, Fiber, type Scope, Stream } from "effect";
@@ -63,6 +64,10 @@ export interface ProviderDataPlaneOptions {
   readonly api: DataPlaneApiClient;
   readonly snapshotMode: "copy" | "native";
   readonly redactDetails: (value: unknown) => unknown;
+  readonly volumeCreationLabels?: (
+    plan: AppPlan,
+    store: AppPlan["stores"][number],
+  ) => Readonly<Record<string, string>>;
 }
 
 const textDecoder = new TextDecoder();
@@ -471,6 +476,62 @@ const ensure2xx = (
         ),
       );
 
+const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
+  const mounts = dataStoreMounts(spec);
+  if (mounts.length === 0) return Effect.void;
+  const owner = spec.owner;
+  const plan = owner?.plan;
+  if (owner === undefined || plan === undefined || plan.identity === undefined || plan.id !== owner.app) {
+    return Effect.fail(
+      volumeError(
+        options,
+        "run.volume",
+        "Provider ephemeral data-store mounts require an app plan with canonical ownership identity.",
+        owner,
+        undefined,
+        mounts[0]?.store,
+      ),
+    );
+  }
+  const stores = [...new Set(mounts.map((mount) => mount.store))];
+  return Effect.forEach(stores, (name) => {
+    const store = plan.stores.find((candidate) => candidate.name === name);
+    if (store === undefined) {
+      return Effect.fail(
+        volumeError(
+          options,
+          "run.volume",
+          "Provider ephemeral data-store mount is not declared by the app plan.",
+          { app: plan.id, store: name },
+          undefined,
+          name,
+        ),
+      );
+    }
+    const labels = (options.volumeCreationLabels ?? makeVolumeCreationLabels)(plan, store);
+    return request(options, "run.volume", {
+      method: "POST",
+      path: "/volumes/create",
+      body: { Name: store.name, Labels: labels },
+    }).pipe(
+      Effect.flatMap((response) =>
+        response.status === 200 || response.status === 201 || response.status === 409
+          ? Effect.void
+          : Effect.fail(
+              volumeError(
+                options,
+                "run.volume",
+                `Provider volume create returned HTTP ${response.status}.`,
+                response,
+                undefined,
+                store.name,
+              ),
+            ),
+      ),
+    );
+  }).pipe(Effect.asVoid);
+};
+
 interface WitnessMountSource {
   readonly containerId: string;
   readonly readOnly: boolean;
@@ -860,7 +921,10 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     observeVolume: (target: MountedVolumeTarget) => observeMountedVolume(observation, target),
     adoptVolume: (target: VolumeAdoptionTarget) => adoptMountedVolume(observation, target),
     run: (spec: EphemeralRunSpec): Effect.Effect<ExecResult, ProviderError, Scope.Scope> =>
-      runBytes(options, { ...spec, captureStdout: spec.captureStdout ?? false }).pipe(
+      ensureEphemeralVolumes(options, spec).pipe(
+        Effect.zipRight(
+          Effect.suspend(() => runBytes(options, { ...spec, captureStdout: spec.captureStdout ?? false })),
+        ),
         Effect.map(({ exitCode, stdout, stderr }) => ({
           exitCode,
           stdout: textDecoder.decode(stdout),
@@ -868,7 +932,9 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         })),
       ),
     runStream: (spec: EphemeralRunSpec): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> =>
-      runByteStream(options, spec),
+      Stream.unwrap(
+        ensureEphemeralVolumes(options, spec).pipe(Effect.map(() => runByteStream(options, spec))),
+      ),
     snapshotVolume: ((spec) => {
       const store = spec.volume.store;
       const name = volumeName(store);

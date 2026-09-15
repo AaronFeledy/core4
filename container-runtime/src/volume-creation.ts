@@ -1,6 +1,22 @@
+import { randomUUID } from "node:crypto";
+
 import { Option, Schema } from "effect";
 
-import { AbsolutePath, type VolumeCreationFact } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type VolumeCreationFact } from "@lando/sdk/schema";
+
+import { volumeCreationOwnerLabels } from "./volume-observation.ts";
+
+export const volumeCreationLabels = (
+  plan: AppPlan,
+  store: AppPlan["stores"][number],
+): Readonly<Record<string, string>> => ({
+  "dev.lando.app": plan.id,
+  "dev.lando.store": store.name,
+  "dev.lando.scope": store.scope,
+  "dev.lando.volume-instance": randomUUID(),
+  ...volumeCreationOwnerLabels(plan.identity),
+  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+});
 
 const CreatedVolume = Schema.parseJson(
   Schema.Struct({
