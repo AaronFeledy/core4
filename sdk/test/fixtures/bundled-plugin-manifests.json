@@ -378,7 +378,16 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
-        "commands": ["db:import", "db:export", "db:snapshot", "db:restore", "db:reset"]
+        "commands": [
+          "db:import",
+          "db:export",
+          "db:snapshot",
+          "db:snapshots",
+          "db:snapshots:prune",
+          "db:restore",
+          "db:reset",
+          "db:seed"
+        ]
       },
       "description": "Bundled database import, export, snapshot, restore, and reset commands.",
       "enabled": true,

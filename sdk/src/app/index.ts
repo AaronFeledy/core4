@@ -72,6 +72,7 @@ import type {
   ToolingIncludeCycleError,
   ToolingInputError,
   TunnelProviderUnavailableError,
+  VolumeOperationError,
 } from "../errors/index.ts";
 
 type LandofileNotFoundError = LandofileMissingError | LandofileFormConflictError;
@@ -242,7 +243,9 @@ export type StartAppError =
   | ProxySetupError
   | ProviderUnavailableError
   | RouterPortPinMismatch
-  | RouterPortsExhausted;
+  | RouterPortsExhausted
+  | StateStoreError
+  | VolumeOperationError;
 
 // biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
 export type StopAppOptions = {};
@@ -284,7 +287,9 @@ export type StopAppError =
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | StateStoreError
+  | VolumeOperationError;
 
 export interface RestartAppOptions {
   readonly reconcile?: boolean;
@@ -323,7 +328,7 @@ export interface DestroyAppResult {
   readonly volumesRemoved: boolean;
 }
 
-export type DestroyAppError = StopAppError | ProxyError;
+export type DestroyAppError = StopAppError | ProxyError | StateStoreError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;

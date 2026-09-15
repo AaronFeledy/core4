@@ -7,7 +7,7 @@ import { DRUPAL_CMS_SCAFFOLD_COMMAND, drupalCmsInstallCommand } from "./commands
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:b05a2763a7b31fb2f609f7ec5700432c71a0cd9656f34a228f0ae08a4275edb2";
+  "sha256:6a1842b7f0621316dff93eab77e10e36d5b691d12027b947d1a2cb7052235a46";
 
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -121,7 +121,7 @@ export const drupalCmsSnapshot: RecipeSnapshot = {
   optionTypes: {
     php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
     webserver: { kind: "enum", values: ["apache", "nginx"] },
-    database: { kind: "enum", values: ["mariadb:11.4", "mariadb:10.11", "mysql:8.0", "postgres:16"] },
+    database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0", "postgres:16"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
   },

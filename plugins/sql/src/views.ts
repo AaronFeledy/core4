@@ -14,13 +14,18 @@ export type SqlPlanService = {
   readonly name: string;
   readonly type: string;
   readonly environment: Readonly<Record<string, string>>;
-  readonly storage: ReadonlyArray<{ readonly store: string }>;
+  readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
 };
 
 export type SqlPlan = {
   readonly id: string;
   readonly name: string;
   readonly root: string;
+  readonly identity?: {
+    readonly appRoot: string;
+    readonly ownerKey: string;
+    readonly repoGroupKey?: string;
+  };
   readonly services: Readonly<Record<string, SqlPlanService>>;
 };
 
@@ -65,6 +70,19 @@ export const toSqlLandofile = (value: unknown): SqlLandofile => {
 
 export const toSqlPlan = (value: unknown): SqlPlan => {
   const record = isRecord(value) ? value : {};
+  const identityRecord = isRecord(record.identity) ? record.identity : undefined;
+  const identityAppRoot = identityRecord === undefined ? undefined : asString(identityRecord.appRoot);
+  const identityOwnerKey = identityRecord === undefined ? undefined : asString(identityRecord.ownerKey);
+  const identityRepoGroupKey =
+    identityRecord === undefined ? undefined : asString(identityRecord.repoGroupKey);
+  const identity =
+    identityAppRoot === undefined || identityOwnerKey === undefined
+      ? undefined
+      : {
+          appRoot: identityAppRoot,
+          ownerKey: identityOwnerKey,
+          ...(identityRepoGroupKey === undefined ? {} : { repoGroupKey: identityRepoGroupKey }),
+        };
   const services = isRecord(record.services) ? record.services : {};
   const mapped: Record<string, SqlPlanService> = {};
   for (const [name, service] of Object.entries(services)) {
@@ -78,7 +96,8 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
     const storage = Array.isArray(service.storage)
       ? service.storage.flatMap((entry) => {
           if (!isRecord(entry) || typeof entry.store !== "string") return [];
-          return [{ store: entry.store }];
+          const target = asString(entry.target);
+          return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
         })
       : [];
     mapped[name] = {
@@ -92,6 +111,7 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
     id: asString(record.id) ?? "app",
     name: asString(record.name) ?? "app",
     root: asString(record.root) ?? "/",
+    ...(identity === undefined ? {} : { identity }),
     services: mapped,
   };
 };

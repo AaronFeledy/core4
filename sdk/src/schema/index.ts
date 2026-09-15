@@ -64,6 +64,7 @@ export type { ComposeVolumeEntry } from "./compose-volumes.ts";
 export * from "./config.ts";
 export * from "./config-lint.ts";
 export * from "./data-transfer.ts";
+export * from "./volume-identity.ts";
 export {
   EndpointInfo,
   EndpointMaterialization,
@@ -137,3 +138,4 @@ export * from "./template.ts";
 export * from "./tool-manifest.ts";
 export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
+export { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
