@@ -128,6 +128,15 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     Stream.unwrap(resolveTarget(target, operation, (plan) => Effect.succeed(delegate(plan))));
   const requireDataPlane = (operation: string): Effect.Effect<ProviderDataPlane, ProviderUnavailableError> =>
     input.dataPlane === undefined ? Effect.fail(unavailable(operation)) : Effect.succeed(input.dataPlane);
+  const resolveRunSpec = (
+    spec: Parameters<RuntimeProviderShape["run"]>[0],
+    operation: "run" | "runStream",
+  ): Effect.Effect<Parameters<RuntimeProviderShape["run"]>[0], ProviderError> => {
+    const owner = spec.owner;
+    return owner === undefined
+      ? before.pipe(Effect.as(spec))
+      : resolveTarget(owner, operation, (plan) => Effect.succeed({ ...spec, owner: { ...owner, plan } }));
+  };
 
   return {
     start: (target) =>
@@ -186,12 +195,14 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       ),
     run: (spec) =>
       requireDataPlane("run").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.run(spec)))),
+        Effect.flatMap((dataPlane) => resolveRunSpec(spec, "run").pipe(Effect.flatMap(dataPlane.run))),
       ),
     runStream: (spec) =>
       Stream.unwrap(
         requireDataPlane("runStream").pipe(
-          Effect.flatMap((dataPlane) => before.pipe(Effect.map(() => dataPlane.runStream(spec)))),
+          Effect.flatMap((dataPlane) =>
+            resolveRunSpec(spec, "runStream").pipe(Effect.map(dataPlane.runStream)),
+          ),
         ),
       ),
     snapshotVolume: (spec) =>

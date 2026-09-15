@@ -391,6 +391,39 @@ describe("resolved provider operations", () => {
     ]);
   });
 
+  test("resolves app-only ephemeral owners before run and runStream delegation", async () => {
+    // Given: helper runs identify their app but do not carry an applied plan.
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    const runSpec = { owner: { app }, image: "alpine", command: ["true"] };
+
+    // When: both buffered and streaming helper paths are dispatched.
+    await Effect.runPromise(Effect.scoped(ops.run(runSpec)));
+    await Effect.runPromise(Effect.scoped(ops.runStream(runSpec).pipe(Stream.runDrain)));
+
+    // Then: the resolved applied plan reaches the provider data plane.
+    expect(calls).toEqual([
+      { name: "before", args: [] },
+      { name: "run", args: [{ ...runSpec, owner: { app, plan } }] },
+      { name: "before", args: [] },
+      { name: "runStream", args: [{ ...runSpec, owner: { app, plan } }] },
+    ]);
+  });
+
+  test("rejects app-only ephemeral owners when no applied plan exists", async () => {
+    // Given: a helper run names an app that has no applied plan.
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls, () => Effect.succeed(undefined)));
+    const runSpec = { owner: { app }, image: "alpine", command: ["true"] };
+
+    // When: the helper run is requested.
+    const exit = await Effect.runPromiseExit(Effect.scoped(ops.run(runSpec)));
+
+    // Then: dispatch fails before the data plane can mount or create a volume.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+  });
+
   test("copies through the data plane with a bare target when no plan is applied", async () => {
     // Given: nothing applied, so the data plane owns the missing-plan diagnosis.
     const calls: Call[] = [];
