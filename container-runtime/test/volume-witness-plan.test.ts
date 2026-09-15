@@ -64,17 +64,19 @@ test("pins both adoption helpers to the existing container rather than auto-crea
   expect(helpers).toHaveLength(2);
   const intents = helpers.map((helper) => {
     expect(helper.User).toBe("0:0");
-    expect(helper.HostConfig.VolumesFrom).toEqual(["existing:rw"]);
     expect(helper.HostConfig.Binds).toBeUndefined();
     expect(helper.HostConfig.NetworkMode).toBe("none");
     expect(helper.Cmd.slice(0, 2)).toEqual(["bun", "-e"]);
-    return Schema.decodeUnknownSync(
-      Schema.parseJson(Schema.Struct({ operation: Schema.String, root: Schema.String })),
-    )(helper.Cmd[3]);
+    return {
+      volumesFrom: helper.HostConfig.VolumesFrom,
+      ...Schema.decodeUnknownSync(
+        Schema.parseJson(Schema.Struct({ operation: Schema.String, root: Schema.String })),
+      )(helper.Cmd[3]),
+    };
   });
   expect(intents).toEqual([
-    { operation: "adopt", root: "/data" },
-    { operation: "read", root: "/data" },
+    { volumesFrom: ["existing:rw"], operation: "adopt", root: "/data" },
+    { volumesFrom: ["existing:ro"], operation: "read", root: "/data" },
   ]);
   expect(calls.filter((call) => call.method === "DELETE")).toHaveLength(2);
   expect(calls.some((call) => call.path === "/volumes/create")).toBe(false);
