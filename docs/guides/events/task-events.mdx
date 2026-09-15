@@ -68,6 +68,32 @@ events:
 
 `command: app:lint` re-enters the top-level command path, exactly as if you had typed `lando lint`. That fires `pre-lint` and `post-lint` too.
 
+Pass declared inputs by name. Positional `order` controls the argument sequence,
+not the order of keys in your Landofile:
+
+```yaml
+tooling:
+  compare:
+    service: ":host"
+    cmd: ["printf", "%s\n"]
+    args:
+      destination:
+        order: 2
+      source:
+        order: 1
+events:
+  pre-build:
+    - command: app:compare
+      args:
+        destination: after.txt
+        source: "-before.txt"
+```
+
+The equivalent CLI call is `lando compare -- -before.txt after.txt`. Lando adds
+the positional delimiter for named event and MCP inputs, so a leading hyphen
+stays part of the value. Tasks without declared flags or args keep raw arguments
+unchanged.
+
 Because `command:` re-enters, a `pre-build` step that runs `command: app:build` is a loop. Lando rejects it with `LandofileEventLifecycleReentryError` before anything runs. Nesting is also capped at 16 active event frames; blow past that and you get `LandofileEventInvocationDepthError`. When you want one task to reuse another from inside an event, write `task:` and move on.
 
 ## Restart is bracketed too

@@ -737,3 +737,12 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Drift check: clean
 - Merge: merged (squash)
 ---
+
+## 2026-09-15 13:35 - US-623
+- Tooling events and MCP now share argv serialization from normalized declarations, preserving declared positional order and hyphen-leading arguments. Decoded cross-surface tests compare argv and exit outcomes directly, while undeclared tasks retain exact raw argv bytes.
+- Integer inputs now follow flag metadata rather than the `tail` name. MCP publishes integer schemas and rejects fractional, string, and non-finite values through its existing tagged validator; plugin-owned CLI parsing retains integer metadata instead of truncating fractions. The task-events and MCP guides document the behavior.
+- Verification: gate:pr passed, including typecheck, lint, codegen, boundaries, and guide drift; semantic gates passed; 337 focused tests and both guides passed. Regression failures were captured before fixes. Sandbox CLI checks proved argv equality, raw passthrough, exit 7 preservation, and invalid-tail refusal. Final AC-scoped review approved; owned QA resources cleaned up.
+- **Learnings for future iterations:**
+  - Integer metadata must survive intermediate flag projections, including plugin-owned command definitions; fixing the primary parser alone leaves a second path silently truncating fractional input.
+  - CLI parity fixtures must avoid global flag names such as `verbose`: those tokens belong to the outer CLI, not to the task's structured input contract.
+---

@@ -1,3 +1,4 @@
+import { serializeToolingInput } from "@lando/landofile/tooling-input";
 /**
  * `meta:mcp` (`lando mcp`) command logic.
  *
@@ -86,18 +87,7 @@ export const toolingArgvFromInput = (declaration: ToolingInput, input: unknown):
   if (!Predicate.isRecord(input)) return [];
   const flags = Predicate.isRecord(input.flags) ? input.flags : {};
   const args = Predicate.isRecord(input.args) ? input.args : {};
-  const positionals = declaration.args.flatMap((arg) => {
-    const value = args[arg.name];
-    return typeof value === "string" ? [value] : [];
-  });
-  return [
-    ...declaration.flags.flatMap((flag) => {
-      const value = flags[flag.name];
-      if (flag.boolean) return value === true ? [`--${flag.name}`] : [];
-      return typeof value === "string" ? [`--${flag.name}=${value}`] : [];
-    }),
-    ...(positionals.length === 0 ? [] : ["--", ...positionals]),
-  ];
+  return serializeToolingInput(declaration, { flags, args });
 };
 
 const ToolingMcpResultSchema = Schema.Struct({
