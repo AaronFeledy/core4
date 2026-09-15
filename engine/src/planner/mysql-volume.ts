@@ -1,19 +1,20 @@
 import { type Context, Effect } from "effect";
 
-import { LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError, type ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
+import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 
 /** Select an unambiguous existing identity; never mutate provider storage. */
-export const adoptMysqlVolume = (
+export const resolveMysqlVolume = (
   plan: AppPlan,
-  registry: Context.Tag.Service<typeof RuntimeProviderRegistry> | undefined,
-): Effect.Effect<AppPlan, LandofileValidationError> => {
+  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+): Effect.Effect<AppPlan, LandofileValidationError | ProviderUnavailableError> => {
   const mysqlServices = Object.values(plan.services).filter(
     (service) => service.type === "mysql" || service.type.startsWith("mysql:"),
   );
   const service = mysqlServices[0];
-  if (registry === undefined || mysqlServices.length !== 1 || service === undefined) {
+  if (mysqlServices.length !== 1 || service === undefined) {
     return Effect.succeed(plan);
   }
   const scoped = `${plan.name}-${service.name}-mysql-data`;
@@ -42,16 +43,33 @@ export const adoptMysqlVolume = (
       stores: plan.stores.map((store) => (store.name === scoped ? { ...store, name: legacy } : store)),
     };
   }).pipe(
-    Effect.catchAll((cause) =>
+    Effect.mapError((cause): LandofileValidationError | ProviderUnavailableError =>
       cause._tag === "ProviderUnavailableError"
-        ? Effect.succeed(plan)
-        : Effect.fail(
-            new LandofileValidationError({
-              message: `Cannot select MySQL storage: ${cause.message}. Restore provider access and retry; no volumes have been changed.`,
-              file: `${plan.root}/.lando.yml`,
-              issues: [`services.${service.name}.storage`],
-            }),
-          ),
+        ? cause
+        : new LandofileValidationError({
+            message: `Cannot select MySQL storage: ${cause.message}. Restore provider access and retry; no volumes have been changed.`,
+            file: `${plan.root}/.lando.yml`,
+            issues: [`services.${service.name}.storage`],
+          }),
     ),
   );
 };
+
+/** Keep configuration planning available while the selected runtime is offline. */
+export const adoptMysqlVolume = (
+  plan: AppPlan,
+  registry: Context.Tag.Service<typeof RuntimeProviderRegistry> | undefined,
+): Effect.Effect<AppPlan, LandofileValidationError> =>
+  registry === undefined
+    ? Effect.succeed(plan)
+    : resolveMysqlVolume(plan, registry).pipe(
+        Effect.catchTag("ProviderUnavailableError", () => Effect.succeed(plan)),
+      );
+
+export const resolveMysqlVolumeTarget = (
+  target: ResolvedAppTarget,
+  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+): Effect.Effect<ResolvedAppTarget, LandofileValidationError | ProviderUnavailableError> =>
+  resolveMysqlVolume(target.plan, registry).pipe(
+    Effect.map((plan) => (plan === target.plan ? target : { ...target, plan })),
+  );

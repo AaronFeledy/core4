@@ -30,6 +30,7 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
 import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
@@ -77,10 +78,11 @@ export const restartApp = (
         const plan = yield* planner.plan(landofile, capabilities);
         return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
       }));
-    const plan = resolvedTarget.plan;
+    const registry = yield* RuntimeProviderRegistry;
+    const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
+    const plan = mysqlResolvedTarget.plan;
     yield* runAppInitEvents(plan);
     const context = yield* Effect.context<RestartAppServices>();
-    const registry = yield* RuntimeProviderRegistry;
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
     return yield* withPlanVolumeCoordination({
@@ -94,14 +96,14 @@ export const restartApp = (
           const preRestart = PreRestartEvent.make({
             _tag: "pre-restart",
             scope: "app",
-            app: resolvedTarget.app,
+            app: mysqlResolvedTarget.app,
             plan,
             triggeredBy: "app:restart",
             timestamp: DateTime.unsafeMake(new Date().toISOString()),
           });
           yield* events.publish(preRestart);
           yield* runAppEvent(plan, "pre-restart", preRestart);
-          yield* stopAppWithPlan({}, resolvedTarget);
+          yield* stopAppWithPlan({}, mysqlResolvedTarget);
           yield* managed?.onStopped ?? Effect.void;
           const result = yield* compensateFailureUnless(
             startApp(
@@ -109,7 +111,7 @@ export const restartApp = (
                 reconcile: options.reconcile ?? false,
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
               },
-              resolvedTarget,
+              mysqlResolvedTarget,
               managed,
             ),
             proxy.removeRoutes(plan.id),
@@ -118,7 +120,7 @@ export const restartApp = (
           const postRestart = PostRestartEvent.make({
             _tag: "post-restart",
             scope: "app",
-            app: resolvedTarget.app,
+            app: mysqlResolvedTarget.app,
             plan,
             timestamp: DateTime.unsafeMake(new Date().toISOString()),
           });
