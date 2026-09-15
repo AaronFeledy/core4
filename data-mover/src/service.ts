@@ -870,6 +870,7 @@ const streamFromEndpoint = (
           Effect.map((image) =>
             execStdoutStream(
               provider.runStream({
+                owner: { app: endpoint.app },
                 image,
                 command: ["sh", "-c", `cat ${helperPayload}`],
                 mounts: [{ store: endpoint.store, target: helperTarget, readOnly: true }],
@@ -1056,6 +1057,7 @@ const writeStreamToEndpoint = (
         const helperImage = yield* resolveDataHelperImage(provider);
         const result = yield* provider
           .run({
+            owner: { app: target.app },
             image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
             mounts: [{ store: target.store, target: helperTarget, readOnly: false }],

@@ -262,6 +262,7 @@ describe("DataMoverLive", () => {
       const restored = join(dir, "restored.txt");
       await writeFile(seed, "volume-payload");
       let observedRunStdin: "inherit" | "ignore" | undefined;
+      const observedOwners: unknown[] = [];
 
       const result = await Effect.runPromise(
         Effect.scoped(
@@ -296,7 +297,12 @@ describe("DataMoverLive", () => {
                 Effect.succeed([{ ref: { app, store: store === "restored" ? "other-store" : "data" } }]),
               run: (spec) => {
                 observedRunStdin = spec.stdin;
+                observedOwners.push(spec.owner);
                 return TestRuntimeProvider.run(spec);
+              },
+              runStream: (spec) => {
+                observedOwners.push(spec.owner);
+                return TestRuntimeProvider.runStream(spec);
               },
             }),
           ),
@@ -307,6 +313,7 @@ describe("DataMoverLive", () => {
       expect(result.importResult.accelerated).toBe(false);
       expect(result.exportResult.accelerated).toBe(false);
       expect(observedRunStdin).toBeUndefined();
+      expect(observedOwners).toEqual([{ app }, { app }, { app }, { app }]);
       expect(await readFile(archive, "utf8")).not.toBe("volume-payload");
       expect(await readFile(restored, "utf8")).toBe("volume-payload");
       expect(result.exportResult.digest).toBe(sha256("volume-payload"));
