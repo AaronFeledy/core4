@@ -788,3 +788,11 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 94 focused tests passed across config-view schema, operations, CLI redaction, meta-config scenarios, and adjacent write tests.
 - **Learnings for future iterations:** Newly exposing maps through a curated schema does not expand the secret-key catalog. Token vocabulary and short-token policy stay in @lando/redaction; do not add a config-specific redactor to satisfy a security lane that wants PAT/short-PIN/username-only coverage.
 ---
+## 2026-09-15 18:05 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-15 18:12 - US-626 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, then proved `lando config set/get/view` against the binary: appEnv/appLabels round-trip, JSON/YAML/table parity, secret `DB_PASSWORD` redacted as `[redacted]` in every mode while `config.yml` kept the real value, invalid map writes fail `LandofileWriteValidationError` without changing the file. Started a php:8.3 app; HTTPS and `lando exec` printed `us626-ok`; `printenv TEAM` was `platform`. Adjacent `config validate`, `config get defaultProviderId`, `global:config`, `doctor`, `app:config`, and `logs` stayed green. App destroyed; maps unset; scratch dirs removed.
+- **Out-of-scope finding:** `curl http://appserver.us626-verify.lndo.site:8000/` returned Traefik `404 page not found` after setup warned 80/443 were in use and fell back to 8000/4443; HTTPS `:4443` served the app. Same host/WSL mirrored bind as prior verifies, not US-626.
+- **Out-of-scope finding:** `lando config --format=yaml` emits `DB_PASSWORD: [redacted]` unquoted, which YAML parses as a sequence. JSON keeps the string sentinel. Secret is not leaked; quoting belongs with serializer/redaction encoding, not this view story.
+---
