@@ -10,6 +10,7 @@ import type {
   WorkflowPerformanceCommandResult,
 } from "./workflow-performance-command.ts";
 import { workflowPerformanceDeadlineRunner } from "./workflow-performance-command.ts";
+import { withPodmanServiceEvidence } from "./workflow-performance-failure-evidence.ts";
 import {
   buildMeasuredCommands,
   performanceCommand,
@@ -109,10 +110,16 @@ const prepareSample = async (
         "--skip-file-sync",
       ],
       cwd,
-      { ...env, LANDO_RENDERER: "json" },
+      { ...env, LANDO_DEBUG_CAUSE_CHAIN: "1", LANDO_RENDERER: "json" },
     ),
   );
-  if (setup.exitCode !== 0) return { appRoot, env, failure: setup, fileSyncEvidence: setup.stderr };
+  if (setup.exitCode !== 0)
+    return {
+      appRoot,
+      env,
+      failure: await withPodmanServiceEvidence(setup, dataRoot),
+      fileSyncEvidence: setup.stderr,
+    };
   if (lane.requiresNativeBindMounts && !setup.stdout.includes("already satisfied (native bind mounts)")) {
     const readiness = setup.stdout.match(/file-sync: (?:deferred|installed|unavailable)\b[^\r\n]*/u)?.[0];
     return readiness === undefined
@@ -139,9 +146,19 @@ const prepareSample = async (
   }
   if (lane.id === "warm-stop-start" || lane.id === "unchanged-rebuild" || lane.fixtureFamily !== undefined) {
     const started = await runCommand(
-      performanceCommand("prepare:start", [binary, "start"], appRoot, { ...env, LANDO_RENDERER: "json" }),
+      performanceCommand("prepare:start", [binary, "start"], appRoot, {
+        ...env,
+        LANDO_DEBUG_CAUSE_CHAIN: "1",
+        LANDO_RENDERER: "json",
+      }),
     );
-    if (started.exitCode !== 0) return { appRoot, env, failure: started, fileSyncEvidence: setup.stdout };
+    if (started.exitCode !== 0)
+      return {
+        appRoot,
+        env,
+        failure: await withPodmanServiceEvidence(started, dataRoot),
+        fileSyncEvidence: setup.stdout,
+      };
   }
   if (lane.id.endsWith("-snapshot-restore") && fixturePath !== undefined) {
     const prepared = await runUntilFailure(
