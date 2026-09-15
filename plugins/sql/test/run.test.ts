@@ -52,6 +52,8 @@ describe("executeDbCommand", () => {
         wrapExportCommand(
           [
             "mysqldump",
+            "-h",
+            "127.0.0.1",
             "-u",
             "lando",
             "--single-transaction",
@@ -262,7 +264,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("hostPath");
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(wrapImportCommand(["mysql", "-u", "lando", "sql-app"], true));
+      expect(transfer.to.command).toEqual(
+        wrapImportCommand(["mysql", "-h", "127.0.0.1", "-u", "lando", "sql-app"], true),
+      );
     }
   });
 

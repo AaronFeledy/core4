@@ -63,7 +63,14 @@ const mysqlClient = (
   family: MysqlFamily,
   creds: SqlCommandCreds,
   extra: ReadonlyArray<string>,
-): ReadonlyArray<string> => [mysqlFamilyBinaries(family).client, "-u", creds.user, ...extra];
+): ReadonlyArray<string> => [
+  mysqlFamilyBinaries(family).client,
+  "-h",
+  "127.0.0.1",
+  "-u",
+  creds.user,
+  ...extra,
+];
 
 const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
   "psql",
@@ -90,6 +97,8 @@ export const dumpCommand = (
     case "mysql":
       return [
         mysqlFamilyBinaries(family).dump,
+        "-h",
+        "127.0.0.1",
         "-u",
         creds.user,
         "--single-transaction",
@@ -100,6 +109,8 @@ export const dumpCommand = (
     case "mariadb":
       return [
         mysqlFamilyBinaries(family).dump,
+        "-h",
+        "127.0.0.1",
         "-u",
         creds.user,
         "--single-transaction",
