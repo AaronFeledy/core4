@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { ProviderInternalError } from "@lando/sdk/errors";
+import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { AppId, type LandofileShape, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -18,12 +18,22 @@ const plan = async (
   servicesInput: NonNullable<LandofileShape["services"]>,
   volumes: readonly string[],
   lookupFails = false,
+  unavailable = false,
 ) => {
   const calls: string[] = [];
   const provider = new Proxy(
     {
       ...TestRuntimeProvider,
       listVolumes: (filter: Parameters<typeof TestRuntimeProvider.listVolumes>[0]) => {
+        if (unavailable) {
+          return Effect.fail(
+            new ProviderUnavailableError({
+              message: "Failed to launch the Lando runtime service.",
+              providerId: "test",
+              operation: "listVolumes",
+            }),
+          );
+        }
         if (lookupFails) {
           return Effect.fail(
             new ProviderInternalError({
@@ -125,5 +135,12 @@ describe("MySQL volume adoption through the real planner", () => {
       (error: unknown) =>
         expect(error instanceof Error ? error.message : String(error)).toMatch(/Volume lookup failed/),
     );
+  });
+
+  test("Given an unavailable provider, when planning, then it keeps the scoped identity", async () => {
+    const { appPlan } = await plan({ [ServiceName.make("db")]: { type: "mysql" } }, [legacy], false, true);
+
+    expect(appPlan.services[ServiceName.make("db")]?.storage[0]?.store).toBe(scoped);
+    expect(appPlan.stores.map((store) => store.name)).toEqual([scoped]);
   });
 });

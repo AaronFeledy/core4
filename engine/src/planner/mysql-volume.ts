@@ -42,13 +42,16 @@ export const adoptMysqlVolume = (
       stores: plan.stores.map((store) => (store.name === scoped ? { ...store, name: legacy } : store)),
     };
   }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new LandofileValidationError({
-          message: `Cannot select MySQL storage: ${cause.message}. Restore provider access and retry; no volumes have been changed.`,
-          file: `${plan.root}/.lando.yml`,
-          issues: [`services.${service.name}.storage`],
-        }),
+    Effect.catchAll((cause) =>
+      cause._tag === "ProviderUnavailableError"
+        ? Effect.succeed(plan)
+        : Effect.fail(
+            new LandofileValidationError({
+              message: `Cannot select MySQL storage: ${cause.message}. Restore provider access and retry; no volumes have been changed.`,
+              file: `${plan.root}/.lando.yml`,
+              issues: [`services.${service.name}.storage`],
+            }),
+          ),
     ),
   );
 };
