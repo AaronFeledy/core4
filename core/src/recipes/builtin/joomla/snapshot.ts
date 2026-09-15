@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const JOOMLA_RECIPE_VERSION = "0.1.0";
 export const JOOMLA_CONTENT_DIGEST =
-  "sha256:af4e90c0e6071db054eda4e96805baecd6f363616a67cfa302e2d94c161b1bbc";
+  "sha256:603fcbe96962b7785134f5979e74761208b300fb2753c74ee85b9158a77f4ebd";
 
 export const joomlaProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -48,7 +48,7 @@ export const joomlaSnapshot: RecipeSnapshot = {
   identity: joomlaProducer,
   optionTypes: {
     php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
-    database: { kind: "enum", values: ["mariadb:11.4", "mariadb:10.11", "mysql:8.0"] },
+    database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0"] },
     composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
   },

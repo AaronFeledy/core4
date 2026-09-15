@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `PhpServiceConfig.type` now validates `php:<version>` syntax instead of duplicating the bundled version literals. The planner remains the availability boundary and rejects versions absent from the selected ServiceType's shipped metadata before provider action.
 - `ServiceConfig` and `ServiceConfigInput` additively accept optional `packageRoot`, an app-root-relative source directory used only by service-type project-file inference. `ServiceType` additively accepts a pure optional `projectFiles(service)` declaration, and `ServiceTypeInput.projectFiles` receives bounded planner-supplied present or absent inputs with content fingerprints. `ServicePlan` additively accepts optional service-type `provenance`; existing explicit service types and plans remain unchanged.
 - `createRedactor` accepts optional `authoritativeValues`; `createSecretRedactor` accepts them as an optional second argument. Explicit short numeric or control-parameter values suppress the whole affected detail, including bounded output and nested error messages. Existing heuristic `values` filtering is unchanged. `@lando/redaction` supplies authoritative SecretStore values through this canonical primitive.
 - `@lando/sdk/schema` additively exports `AppEnvironmentDefaults`, `AppLabelDefaults`, `CORE_SERVICE_ENV_KEYS`, and `isCoreServiceEnvKey`. `GlobalConfig` additively accepts optional `appEnv` and `appLabels` maps for bounded user-app service defaults; service-authored values retain precedence.

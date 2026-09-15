@@ -15,6 +15,8 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "solr:9";
+const VERSIONS = ["9"] as const;
+const ARTIFACTS = { "9": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 8983;
 const DATA_TARGET = PortablePath.make("/var/solr");
 const CORE_NAME = /^[A-Za-z0-9._-]+$/;
@@ -117,6 +119,8 @@ export const solr9ServiceType: ServiceType = {
   id: "solr:9",
   name: "solr",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: (input) =>
@@ -131,6 +135,8 @@ export const solrServiceType: ServiceType = {
   id: "solr",
   name: "solr",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
   identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: (input) =>

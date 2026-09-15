@@ -8,6 +8,9 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
 export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
+const PYTHON_ARTIFACTS = Object.fromEntries(
+  SUPPORTED_PYTHON_VERSIONS.map((version) => [version, `python:${version}-slim`]),
+);
 
 export const SUPPORTED_PYTHON_FRAMEWORKS = ["django", "fastapi", "flask", "none"] as const;
 export type SupportedPythonFramework = (typeof SUPPORTED_PYTHON_FRAMEWORKS)[number];
@@ -171,6 +174,8 @@ export const makePythonServiceType = (version: SupportedPythonVersion): ServiceT
   id: `python:${version}`,
   name: `python:${version}`,
   base: "lando",
+  versions: SUPPORTED_PYTHON_VERSIONS,
+  artifacts: PYTHON_ARTIFACTS,
   identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
