@@ -18,7 +18,6 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 
 /** Rules that are narrow by design and deliberately excluded from the shared source-root tiers. */
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
-  ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
 ]);
 

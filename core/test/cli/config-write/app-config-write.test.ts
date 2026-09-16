@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
+import type { StateStore } from "@lando/sdk/services";
+
 import {
   appConfigEdit,
   appConfigSet,
@@ -12,14 +14,17 @@ import {
   appConfigValidate,
 } from "../../../src/cli/commands/app-config.ts";
 import type { EditorRunner } from "../../../src/recipes/prompts/editor-command.ts";
+import { TestStateStoreLive } from "../../_support/landofile-layer.ts";
 
 let dir = "";
 const landofilePath = (): string => join(dir, ".lando.yml");
 
 const seed = (content: string): Promise<void> => writeFile(landofilePath(), content, "utf8");
 const readLandofile = (): Promise<string> => readFile(landofilePath(), "utf8");
-const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
-const runExit = <A, E>(effect: Effect.Effect<A, E, never>) => Effect.runPromiseExit(effect);
+const run = <A, E>(effect: Effect.Effect<A, E, StateStore>): Promise<A> =>
+  Effect.runPromise(effect.pipe(Effect.provide(TestStateStoreLive)));
+const runExit = <A, E>(effect: Effect.Effect<A, E, StateStore>) =>
+  Effect.runPromiseExit(effect.pipe(Effect.provide(TestStateStoreLive)));
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "lando-appcfg-"));

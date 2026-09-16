@@ -11,15 +11,12 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  APP_PLAN_CACHE_HEADER_BYTES,
-  AppPlannerLive,
-  CacheServiceLive,
-  FileSystemLive,
-  PluginRegistryLive,
-  appPlanCachePath,
-  writeCachedAppPlan,
-} from "../../src/testing/engine-layers.ts";
+import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "@lando/engine/cache/app-plan";
+import { appPlanCachePath } from "@lando/engine/cache/paths";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -41,7 +38,7 @@ test("Given a cached plan with configs, when support is omitted, then the cache 
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "cached-project-field",
     runtime: 4,
-    services: { web: { image: "node:lts" } },
+    services: { web: { image: "node:lts", home: false } },
   });
   const plannerLayer = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),

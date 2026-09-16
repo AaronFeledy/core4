@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { stripSecretInitAnswers } from "../../src/cli/commands/init.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -54,6 +55,24 @@ const runCli = async (
 const flatten = (text: string): string => text.replace(/\s+/g, " ").trim();
 
 describe("lando init — answers and prompting", () => {
+  test("public init answers omit collected secret prompt values", () => {
+    const marker = "SECRET_MARKER_9f3a";
+    const result = stripSecretInitAnswers(
+      [
+        { name: "name", type: "text", message: "Name" },
+        {
+          name: "token",
+          type: "secret",
+          message: "Token",
+          disposition: { kind: "secret-store", field: "api.token" },
+        },
+      ],
+      { name: "safe", token: marker },
+    );
+    expect(result).toEqual({ name: "safe" });
+    expect(JSON.stringify(result)).not.toContain(marker);
+  });
+
   test("--answer name=<value> scaffolds without prompting (non-interactive)", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["init", "--full", "--no-interactive", "--answer=name=via-answer"], dir);
@@ -66,7 +85,7 @@ describe("lando init — answers and prompting", () => {
   test("--answers file supplies recipe answers below explicit --answer values", async () => {
     await withTempCwd(async (dir) => {
       const answersFile = join(dir, "answers.json");
-      await writeFile(answersFile, JSON.stringify({ name: "from-file", database: "mysql" }), "utf8");
+      await writeFile(answersFile, JSON.stringify({ name: "from-file" }), "utf8");
 
       const result = await runCli(
         [
@@ -117,6 +136,35 @@ describe("lando init — answers and prompting", () => {
       const stderr = flatten(result.stderr);
       expect(stderr).toContain('Invalid value for prompt "name"');
       expect(stderr).toContain("App name must be lowercase kebab-case.");
+    });
+  });
+
+  test("a zero-option recipe rejects an undeclared answer", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await runCli(
+        ["init", "--recipe=node-ts", "--no-interactive", "--answer=name=zero-options", "--answer=node=22"],
+        dir,
+      );
+      expect(result.exitCode).toBe(1);
+      expect(flatten(result.stderr)).toContain("Recipe initialization blocked at translate");
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(false);
+    });
+  });
+
+  test("a recipe with declared options preserves an intentional extra answer", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await runCli(
+        [
+          "init",
+          "--recipe=lamp",
+          "--no-interactive",
+          "--answer=name=extended-options",
+          "--answer=metadata=kept",
+        ],
+        dir,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(await Bun.file(join(dir, ".lando.yml")).text()).toMatch(/metadata:\s+kept/);
     });
   });
 

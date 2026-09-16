@@ -7,6 +7,7 @@ import {
   webrootPromptYaml,
   webserverPromptYaml,
 } from "../php-stack";
+import { drupalSnapshotYaml } from "./snapshot.ts";
 
 export const DRUPAL_RECIPE_ID = "drupal";
 
@@ -48,4 +49,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start', then scaffold Drupal and project-local Drush with 'lando drupal-scaffold'.
+
+${drupalSnapshotYaml}
 `;

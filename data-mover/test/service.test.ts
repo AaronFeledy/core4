@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer, Queue, Schema, type Scope, Stream } from "effect";
+import { Context, Deferred, Effect, Fiber, Layer, Queue, Schema, type Scope, Stream } from "effect";
 
 import { providerImages } from "@lando/data-mover/provider-images";
 import {
@@ -13,6 +13,7 @@ import {
   __testOnlyUnarchivePayloadWithCap,
 } from "@lando/data-mover/service";
 import { makeTestDataMover } from "@lando/data-mover/testing";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import {
@@ -22,7 +23,6 @@ import {
   DataSourceOutsideRootError,
   DataTargetExistsError,
   ProviderUnavailableError,
-  SnapshotAmbiguousError,
   StateStoreError,
 } from "@lando/sdk/errors";
 import {
@@ -46,7 +46,9 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
-import { StateStoreLive } from "@lando/state-store/service";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");
@@ -111,18 +113,27 @@ const testTar = (payload: Uint8Array): Uint8Array => {
   return archive;
 };
 
-const compressionStreamFormat = (format: "tar.gz" | "tar.zst") => (format === "tar.gz" ? "gzip" : "zstd");
-
 const compressedTarFixture = async (
   payload: Uint8Array,
   format: "tar.gz" | "tar.zst",
 ): Promise<{ readonly archive: Uint8Array; readonly compressed: Uint8Array }> => {
   const archive = testTar(payload);
-  const compressed = new Uint8Array(
-    await new Response(
-      new Blob([archive]).stream().pipeThrough(new CompressionStream(compressionStreamFormat(format))),
-    ).arrayBuffer(),
+  const chunks = Array.from(
+    await Effect.runPromise(
+      encodeArchiveStream({
+        body: Stream.make(payload),
+        sizeBytes: payload.byteLength,
+        format,
+        path: "fixture",
+      }).pipe(Stream.runCollect),
+    ),
   );
+  const compressed = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    compressed.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
   return { archive, compressed };
 };
 
@@ -251,6 +262,7 @@ describe("DataMoverLive", () => {
       const restored = join(dir, "restored.txt");
       await writeFile(seed, "volume-payload");
       let observedRunStdin: "inherit" | "ignore" | undefined;
+      const observedOwners: unknown[] = [];
 
       const result = await Effect.runPromise(
         Effect.scoped(
@@ -285,7 +297,12 @@ describe("DataMoverLive", () => {
                 Effect.succeed([{ ref: { app, store: store === "restored" ? "other-store" : "data" } }]),
               run: (spec) => {
                 observedRunStdin = spec.stdin;
+                observedOwners.push(spec.owner);
                 return TestRuntimeProvider.run(spec);
+              },
+              runStream: (spec) => {
+                observedOwners.push(spec.owner);
+                return TestRuntimeProvider.runStream(spec);
               },
             }),
           ),
@@ -296,6 +313,7 @@ describe("DataMoverLive", () => {
       expect(result.importResult.accelerated).toBe(false);
       expect(result.exportResult.accelerated).toBe(false);
       expect(observedRunStdin).toBeUndefined();
+      expect(observedOwners).toEqual([{ app }, { app }, { app }, { app }]);
       expect(await readFile(archive, "utf8")).not.toBe("volume-payload");
       expect(await readFile(restored, "utf8")).toBe("volume-payload");
       expect(result.exportResult.digest).toBe(sha256("volume-payload"));
@@ -622,6 +640,132 @@ describe("DataMoverLive", () => {
     });
   });
 
+  test("streams large host files to service commands in bounded chunks", async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, "large.sql");
+      const payload = new Uint8Array(5 * 1024 * 1024);
+      payload.fill(97);
+      await writeFile(source, payload);
+      const chunkSizes: number[] = [];
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "hostPath", path: absolute(source) },
+              to: { _tag: "serviceCmd", app, service, command: ["import-db"] },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              exec: (_target, command) =>
+                Effect.promise(async () => {
+                  for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      expect(chunkSizes.length).toBeGreaterThan(1);
+      expect(Math.max(...chunkSizes)).toBeLessThanOrEqual(1024 * 1024);
+      expect(chunkSizes.reduce((total, size) => total + size, 0)).toBe(payload.byteLength);
+    });
+  });
+
+  test("streams large host files to volume helpers in bounded chunks", async () => {
+    await withTempDir(async (dir) => {
+      // Given: a host payload larger than the runtime file-stream chunk size.
+      const source = join(dir, "large-volume.sql");
+      const payload = new Uint8Array(5 * 1024 * 1024);
+      payload.fill(98);
+      await writeFile(source, payload);
+      const chunkSizes: number[] = [];
+
+      // When: the payload is imported through the generic volume helper.
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "hostPath", path: absolute(source) },
+              to: { _tag: "volume", app, store: "bounded-volume" },
+              overwrite: true,
+            });
+          }),
+        ).pipe(
+          Effect.provide(DataMoverLive),
+          Effect.provide(
+            providerLayer({
+              run: (command) =>
+                Effect.promise(async () => {
+                  for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
+                  return { exitCode: 0, stdout: "", stderr: "" };
+                }),
+            }),
+          ),
+          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+        ),
+      );
+
+      // Then: backpressure reaches the helper as bounded file-stream chunks.
+      expect(chunkSizes.length).toBeGreaterThan(1);
+      expect(Math.max(...chunkSizes)).toBeLessThanOrEqual(1024 * 1024);
+      expect(chunkSizes.reduce((total, size) => total + size, 0)).toBe(payload.byteLength);
+    });
+  });
+
+  test("removes a staged volume payload when the helper is interrupted", async () => {
+    await withTempDir(async (dir) => {
+      // Given: a verified payload staged in the configured scratch directory.
+      const source = join(dir, "interrupt-volume.sql");
+      const scratchDir = join(dir, "scratch");
+      await writeFile(source, "interrupt-volume-payload");
+      const helperStarted = await Effect.runPromise(Deferred.make<void>());
+      const paths = { ...makeLandoPaths(), scratchDir };
+      const transfer = Effect.scoped(
+        Effect.gen(function* () {
+          const dataMover = yield* DataMover;
+          yield* dataMover.transfer({
+            from: { _tag: "hostPath", path: absolute(source) },
+            to: { _tag: "volume", app, store: "interrupt-volume" },
+            overwrite: true,
+          });
+        }),
+      ).pipe(
+        Effect.provide(DataMoverLive),
+        Effect.provide(
+          Layer.mergeAll(
+            StateStoreLive,
+            Layer.succeed(PathsService, paths),
+            Layer.succeed(RuntimeProvider, {
+              ...TestRuntimeProvider,
+              pullArtifact: verifyingPullArtifact,
+              run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+            }),
+            captureEvents().layer,
+            redactionLayer,
+          ),
+        ),
+      );
+
+      // When: the transfer is interrupted after the provider helper starts.
+      const fiber = Effect.runFork(transfer);
+      await Effect.runPromise(Deferred.await(helperStarted));
+      expect((await readdir(scratchDir)).some((name) => name.startsWith(".lando-stage-volume-"))).toBe(true);
+      await Effect.runPromise(Fiber.interrupt(fiber));
+
+      // Then: scoped cleanup removes both staged and in-progress files.
+      expect((await readdir(scratchDir)).filter((name) => name.includes("lando-stage-volume"))).toEqual([]);
+    });
+  });
+
   test("verifies target payload digests before mutating provider targets", async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, "source.txt");
@@ -840,6 +984,23 @@ describe("DataMoverLive", () => {
           expect(outsideExit.cause.error).toBeInstanceOf(DataSourceOutsideRootError);
         }
 
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(outside), trusted: true },
+                to: { _tag: "hostPath", path: absolute(target) },
+              });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+        expect(await readFile(target, "utf8")).toBe("outside");
+
         const traversalTarget = `${dir}/missing/../../../host-root-bypass.txt`;
         const escapedTarget = resolve(traversalTarget);
         const traversalExit = await Effect.runPromiseExit(
@@ -1001,7 +1162,8 @@ describe("DataMoverLive", () => {
       "pre-volume-snapshot",
       "post-volume-snapshot",
     ]);
-    expect(capture.events()[1]).toMatchObject({ eventName: "post-volume-snapshot", snapshotId: "snap-one" });
+    expect(capture.events()[1]).toMatchObject({ eventName: "post-volume-snapshot", outcome: "success" });
+    expect(capture.events()[1]?.snapshotId).not.toBe("snap-one");
   });
 
   test("publishes the generated snapshot id when snapshot creation fails", async () => {
@@ -1036,7 +1198,7 @@ describe("DataMoverLive", () => {
     );
 
     expect(exit._tag).toBe("Failure");
-    expect(providerSnapshotId?.startsWith("data-")).toBe(true);
+    expect(providerSnapshotId).toMatch(/^[0-9a-f-]{36}$/u);
     expect(capture.events()[1]).toMatchObject({
       eventName: "post-volume-snapshot",
       outcome: "failure",
@@ -1088,17 +1250,135 @@ describe("DataMoverLive", () => {
           ),
         );
 
-        expect(result.handle.id).toBe("snap-one");
+        expect(result.handle.id).not.toBe("snap-one");
+        expect(result.listed[0]?.label).toBe("snap-one");
         expect(result.listed).toHaveLength(1);
-        expect(result.listed[0]?.digest).toBe(sha256("volume-payload"));
+        const archivePath = join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.tar`);
+        const archiveBytes = await readFile(archivePath);
+        expect(result.listed[0]?.digest).toBe(sha256(archiveBytes));
+        expect(result.listed[0]?.sizeBytes).toBe(archiveBytes.byteLength);
         expect(await readFile(restored, "utf8")).toBe("volume-payload");
         expect(await Bun.file(join(dataRoot, "snapshots", String(app), "index.bin")).exists()).toBe(true);
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "snap-one.tar")).exists(),
+          await Bun.file(
+            join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.tar`),
+          ).exists(),
         ).toBe(true);
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "snap-one.json")).exists(),
+          await Bun.file(
+            join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.json`),
+          ).exists(),
         ).toBe(true);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("rejects a changed snapshot archive before mutating the target volume", async () => {
+    await withTempDir(async (dir) => {
+      // Given: a persisted snapshot whose immutable archive bytes are replaced after creation.
+      const dataRoot = join(dir, "data");
+      const restored = join(dir, "restored.txt");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+      await writeFile(join(dir, "seed.txt"), "snapshot-source");
+      await writeFile(join(dir, "changed.txt"), "target-must-survive");
+      try {
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "tamper" },
+                overwrite: true,
+              });
+              const handle = yield* dataMover.snapshot({ app, store: "tamper" }, { format: "tar" });
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "changed.txt")) },
+                to: { _tag: "volume", app, store: "tamper" },
+                overwrite: true,
+              });
+              yield* Effect.promise(async () => {
+                const archivePath = join(dataRoot, "snapshots", String(app), "tamper", `${handle.id}.tar`);
+                const changed = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
+                const lastIndex = changed.byteLength - 1;
+                changed[lastIndex] = (changed[lastIndex] ?? 0) ^ 0xff;
+                await writeFile(archivePath, changed);
+              });
+              yield* dataMover.restore(handle, { app, store: "tamper" });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // When: the failed restore is followed by a normal export of the target.
+        await runDataMover(
+          Effect.gen(function* () {
+            const dataMover = yield* DataMover;
+            yield* dataMover.transfer({
+              from: { _tag: "volume", app, store: "tamper" },
+              to: { _tag: "hostPath", path: absolute(restored) },
+              overwrite: true,
+            });
+          }),
+        );
+
+        // Then: archive verification fails and the existing target bytes remain unchanged.
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+          expect(exit.cause.error).toBeInstanceOf(DataChecksumMismatchError);
+        }
+        expect(await readFile(restored, "utf8")).toBe("target-must-survive");
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("creates independently addressable snapshots when labels match", async () => {
+    await withTempDir(async (dir) => {
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+      await writeFile(join(dir, "seed.txt"), "same-label-payload");
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const first = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "before-change" },
+              );
+              const second = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "before-change" },
+              );
+              const listed = yield* dataMover.listSnapshots({ app, store: "data", label: "before-change" });
+              return { first, second, listed };
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(providerLayer()),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(result.first.id).not.toBe(result.second.id);
+        expect(result.listed).toHaveLength(2);
+        expect(result.listed.map((entry) => entry.label)).toEqual(["before-change", "before-change"]);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1218,6 +1498,236 @@ describe("DataMoverLive", () => {
     });
   });
 
+  test("pruneSnapshots preserves automatic recovery points while pruning manual snapshots", async () => {
+    await withTempDir(async (dir) => {
+      const dataRoot = join(dir, "data");
+      await writeFile(join(dir, "seed.txt"), "seed-payload");
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = dataRoot;
+
+      try {
+        const result = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* dataMover.transfer({
+                from: { _tag: "hostPath", path: absolute(join(dir, "seed.txt")) },
+                to: { _tag: "volume", app, store: "data" },
+                overwrite: true,
+              });
+              const recovery = yield* dataMover.snapshot(
+                { app, store: "data" },
+                {
+                  format: "tar",
+                  metadata: {
+                    sourceRoot: AbsolutePath.make(dir),
+                    service: ServiceName.make("database"),
+                    volumeInstanceId: "00000000-0000-4000-8000-000000000001",
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "sha256:mysql-runtime",
+                    recoveryReason: "reset",
+                  },
+                },
+              );
+              const manual = yield* dataMover.snapshot(
+                { app, store: "data" },
+                {
+                  format: "tar",
+                  metadata: {
+                    sourceRoot: AbsolutePath.make(dir),
+                    service: ServiceName.make("database"),
+                    volumeInstanceId: "00000000-0000-4000-8000-000000000001",
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "sha256:mysql-runtime",
+                    recoveryReason: "manual",
+                  },
+                },
+              );
+              const ordinary = yield* dataMover.snapshot(
+                { app, store: "data" },
+                { format: "tar", label: "ordinary" },
+              );
+              const pruned = yield* dataMover.pruneSnapshots({
+                filter: { app, store: "data" },
+                keepLatest: 0,
+              });
+              const listed = yield* dataMover.listSnapshots({ app, store: "data" });
+              return { recovery, manual, ordinary, pruned, listed };
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                listVolumes: ({ store }) =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: store ?? "data" },
+                      instanceId: "00000000-0000-4000-8000-000000000001",
+                      identity: {
+                        coordinationKey: "provider:data",
+                        nativeName: "data",
+                        generation: "00000000-0000-4000-8000-000000000001",
+                        ownerRoot: AbsolutePath.make(dir),
+                        origin: "created",
+                      },
+                      provenance: "known",
+                    },
+                  ]),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect([...result.pruned].sort()).toEqual([result.manual.id, result.ordinary.id].sort());
+        expect(result.listed.map((entry) => entry.id)).toEqual([result.recovery.id]);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("accepts a validated adoption witness as the physical snapshot source identity", async () => {
+    // Given: a physical snapshot request whose source was explicitly adopted rather than created by Lando.
+    await withTempDir(async (dir) => {
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+      const generation = "00000000-0000-4000-8000-000000000009";
+
+      try {
+        // When: DataMover rechecks the source through the provider's canonical witness projection.
+        const handle = await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              return yield* dataMover.snapshot(
+                { app, store: "data" },
+                {
+                  volumeSnapshot: "native",
+                  metadata: {
+                    sourceRoot: AbsolutePath.make(dir),
+                    service,
+                    volumeInstanceId: generation,
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "mysql@sha256:adopted",
+                    recoveryReason: "manual",
+                  },
+                },
+              );
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: () =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: "data" },
+                      identity: {
+                        coordinationKey: "provider:data",
+                        nativeName: "data",
+                        generation,
+                        ownerRoot: AbsolutePath.make(dir),
+                        origin: "adopted",
+                      },
+                      provenance: "legacy",
+                    },
+                  ]),
+                snapshotVolume: ({ snapshotId }) =>
+                  Effect.succeed({
+                    provider: ProviderId.make("test"),
+                    id: snapshotId ?? "snapshot",
+                    digest: sha256("adopted-volume"),
+                    sizeBytes: bytes("adopted-volume").byteLength,
+                    format: "native",
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then: snapshot creation proceeds with the witness generation without inventing a creation id.
+        expect(handle.store).toEqual({ app, store: "data" });
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("rejects a matching generation without owner-bound source identity", async () => {
+    await withTempDir(async (dir) => {
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+      const generation = "00000000-0000-4000-8000-000000000009";
+      let snapshotCalls = 0;
+
+      try {
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              return yield* dataMover.snapshot(
+                { app, store: "data" },
+                {
+                  volumeSnapshot: "native",
+                  metadata: {
+                    sourceRoot: AbsolutePath.make(dir),
+                    service,
+                    volumeInstanceId: generation,
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "mysql@sha256:unowned",
+                    recoveryReason: "manual",
+                  },
+                },
+              );
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: () =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: "data" },
+                      instanceId: generation,
+                      provenance: "known",
+                    },
+                  ]),
+                snapshotVolume: () =>
+                  Effect.sync(() => {
+                    snapshotCalls += 1;
+                    return {
+                      provider: ProviderId.make("test"),
+                      id: "snapshot",
+                      digest: sha256("unowned-volume"),
+                      sizeBytes: bytes("unowned-volume").byteLength,
+                      format: "native" as const,
+                    };
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(exit._tag).toBe("Failure");
+        expect(snapshotCalls).toBe(0);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
   test("persists native snapshot refs in the sidecar without writing an archive", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
@@ -1239,19 +1749,98 @@ describe("DataMoverLive", () => {
           ).pipe(
             Effect.provide(DataMoverLive),
             Effect.provide(
-              providerLayer({ capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }) }),
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: ({ store }) =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: store ?? "data" },
+                      instanceId: "00000000-0000-4000-8000-000000000001",
+                      provenance: "known",
+                    },
+                  ]),
+              }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
           ),
         );
 
-        expect(listed[0]?.native).toEqual({ provider: "test", id: "native-one" });
+        const info = listed[0];
+        if (info === undefined) throw new Error("expected native snapshot metadata");
+        expect(info?.label).toBe("native-one");
+        expect(info.native).toMatchObject({
+          provider: "test",
+          id: info.id,
+          digest: info.digest,
+          sizeBytes: info.sizeBytes,
+          format: "native",
+        });
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "native-one.tar")).exists(),
+          await Bun.file(join(dataRoot, "snapshots", String(app), "data", `${info?.id}.tar`)).exists(),
         ).toBe(false);
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "native-one.json")).exists(),
+          await Bun.file(join(dataRoot, "snapshots", String(app), "data", `${info?.id}.json`)).exists(),
         ).toBe(true);
+      } finally {
+        if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+        else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      }
+    });
+  });
+
+  test("rejects restoring a physical snapshot into a foreign volume instance", async () => {
+    await withTempDir(async (dir) => {
+      const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+      process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+      let restoreCalls = 0;
+
+      try {
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              const handle = yield* dataMover.snapshot(
+                { app, store: "source" },
+                {
+                  volumeSnapshot: "native",
+                  metadata: {
+                    sourceRoot: absolute(dir),
+                    service,
+                    volumeInstanceId: "instance-source",
+                    family: "mysql",
+                    version: "8.0",
+                    imageIdentity: "mysql@sha256:source",
+                    recoveryReason: "manual",
+                  },
+                },
+              );
+              yield* dataMover.restore(handle, { app, store: "target" });
+            }),
+          ).pipe(
+            Effect.provide(DataMoverLive),
+            Effect.provide(
+              providerLayer({
+                capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: ({ store }) =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: store ?? "target" },
+                      instanceId: store === "source" ? "instance-source" : "instance-target",
+                      provenance: "known",
+                    },
+                  ]),
+                restoreVolume: () =>
+                  Effect.sync(() => {
+                    restoreCalls += 1;
+                  }),
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        expect(exit._tag).toBe("Failure");
+        expect(restoreCalls).toBe(0);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1291,12 +1880,13 @@ describe("DataMoverLive", () => {
 
         expect(listed).toHaveLength(2);
         expect(new Set(listed.map((entry) => entry.store.store))).toEqual(new Set(["data-a", "data-b"]));
-        expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data-a", "shared-label.tar")).exists(),
-        ).toBe(true);
-        expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data-b", "shared-label.tar")).exists(),
-        ).toBe(true);
+        for (const info of listed) {
+          expect(
+            await Bun.file(
+              join(dataRoot, "snapshots", String(app), info.store.store, `${info.id}.tar`),
+            ).exists(),
+          ).toBe(true);
+        }
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1304,7 +1894,7 @@ describe("DataMoverLive", () => {
     });
   });
 
-  test("removeSnapshot without store fails when the same id exists on multiple stores", async () => {
+  test("removes one of two same-label snapshots by its opaque id", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -1313,7 +1903,7 @@ describe("DataMoverLive", () => {
       await writeFile(join(dir, "right.txt"), "right-payload");
 
       try {
-        const exit = await Effect.runPromiseExit(
+        const result = await Effect.runPromise(
           Effect.scoped(
             Effect.gen(function* () {
               const dataMover = yield* DataMover;
@@ -1325,7 +1915,12 @@ describe("DataMoverLive", () => {
                 });
                 yield* dataMover.snapshot({ app, store }, { format: "tar", label: "dup-id" });
               }
-              yield* dataMover.removeSnapshot("dup-id");
+              const before = yield* dataMover.listSnapshots({ app, label: "dup-id" });
+              const selected = before[0];
+              if (selected === undefined) return { before, after: before };
+              yield* dataMover.removeSnapshot(selected.id);
+              const after = yield* dataMover.listSnapshots({ app, label: "dup-id" });
+              return { before, after };
             }),
           ).pipe(
             Effect.provide(DataMoverLive),
@@ -1334,10 +1929,9 @@ describe("DataMoverLive", () => {
           ),
         );
 
-        expect(exit._tag).toBe("Failure");
-        if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-          expect(exit.cause.error).toBeInstanceOf(SnapshotAmbiguousError);
-        }
+        expect(result.before).toHaveLength(2);
+        expect(result.after).toHaveLength(1);
+        expect(result.after[0]?.id).not.toBe(result.before[0]?.id);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1358,16 +1952,18 @@ describe("DataMoverLive", () => {
           Effect.scoped(
             Effect.gen(function* () {
               const dataMover = yield* DataMover;
+              const handles = [];
               for (const store of ["keep", "drop"] as const) {
                 yield* dataMover.transfer({
                   from: { _tag: "hostPath", path: absolute(join(dir, `${store}.txt`)) },
                   to: { _tag: "volume", app, store },
                   overwrite: true,
                 });
-                yield* dataMover.snapshot({ app, store }, { format: "tar", label: "same-id" });
+                handles.push(yield* dataMover.snapshot({ app, store }, { format: "tar", label: "same-id" }));
               }
-              yield* dataMover.removeSnapshot("same-id", { app, store: "drop" });
-              return yield* dataMover.listSnapshots({ app, id: "same-id" });
+              const drop = handles.find((handle) => handle.store.store === "drop");
+              if (drop !== undefined) yield* dataMover.removeSnapshot(drop.id, drop.store);
+              return yield* dataMover.listSnapshots({ app, label: "same-id" });
             }),
           ).pipe(
             Effect.provide(DataMoverLive),
@@ -1378,12 +1974,9 @@ describe("DataMoverLive", () => {
 
         expect(listed).toHaveLength(1);
         expect(listed[0]?.store.store).toBe("keep");
-        expect(await Bun.file(join(dataRoot, "snapshots", String(app), "drop", "same-id.tar")).exists()).toBe(
-          false,
-        );
-        expect(await Bun.file(join(dataRoot, "snapshots", String(app), "keep", "same-id.tar")).exists()).toBe(
-          true,
-        );
+        expect(
+          await Bun.file(join(dataRoot, "snapshots", String(app), "keep", `${listed[0]?.id}.tar`)).exists(),
+        ).toBe(true);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1419,6 +2012,14 @@ describe("DataMoverLive", () => {
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
+                listVolumes: ({ store }) =>
+                  Effect.succeed([
+                    {
+                      ref: { app, store: store ?? "data" },
+                      instanceId: "00000000-0000-4000-8000-000000000001",
+                      provenance: "known",
+                    },
+                  ]),
                 snapshotVolume: (spec) =>
                   Effect.gen(function* () {
                     const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
@@ -1454,11 +2055,11 @@ describe("DataMoverLive", () => {
           Effect.scoped(
             Effect.gen(function* () {
               const dataMover = yield* DataMover;
-              yield* dataMover.snapshot(
+              const handle = yield* dataMover.snapshot(
                 { app, store: "data" },
                 { volumeSnapshot: "native", label: "native-remove" },
               );
-              yield* dataMover.removeSnapshot("native-remove", { app, store: "data" });
+              yield* dataMover.removeSnapshot(handle.id, handle.store);
               return yield* dataMover.listSnapshots({ app, store: "data" });
             }),
           ).pipe(
@@ -1483,10 +2084,8 @@ describe("DataMoverLive", () => {
 
         expect(listed).toHaveLength(0);
         expect(removeNativeCalls).toBe(1);
-        expect(removedIds).toEqual(["native-remove"]);
-        expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "native-remove.json")).exists(),
-        ).toBe(false);
+        expect(removedIds).toHaveLength(1);
+        expect(removedIds[0]).toMatch(/^[0-9a-f-]{36}$/u);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
@@ -1635,6 +2234,37 @@ describe("DataMoverLive", () => {
 });
 
 describe("DataMover helpers", () => {
+  test("stops reading a tar stream after the declared payload ends", async () => {
+    // Given: a complete empty tar followed by producer data that is outside the archive payload.
+    let producedChunks = 0;
+    const source = Stream.fromAsyncIterable(
+      (async function* () {
+        producedChunks += 1;
+        yield testTar(new Uint8Array());
+        producedChunks += 1;
+        yield new Uint8Array(1024 * 1024);
+        producedChunks += 1;
+        yield new Uint8Array(1024 * 1024);
+      })(),
+      (cause) =>
+        new ArchiveFormatError({
+          message: "Archive fixture failed.",
+          format: "tar",
+          cause,
+        }),
+    );
+
+    // When: the production tar decoder drains the declared payload.
+    await Effect.runPromise(
+      decodeArchiveStream({ body: source, format: "tar", path: "fixture.tar", maxPayloadBytes: 1 }).pipe(
+        Stream.runDrain,
+      ),
+    );
+
+    // Then: upstream is cancelled before producing bytes beyond the completed payload.
+    expect(producedChunks).toBe(2);
+  });
+
   test("collectVerifiedStream remains the checksum primitive used by archive tests", async () => {
     const verified = await Effect.runPromise(collectVerifiedStream({ body: Stream.make(bytes("payload")) }));
 
@@ -1642,6 +2272,29 @@ describe("DataMover helpers", () => {
     expect(verified.sha256).toHaveLength(64);
     expect(text(bytes("payload"))).toBe("payload");
     expect(String(portable("/data/payload"))).toBe("/data/payload");
+  });
+
+  test("verifies a synthetic stream larger than two GiB without retaining its payload", async () => {
+    // Given: 2,049 references to one reusable one-MiB chunk.
+    const chunk = new Uint8Array(1024 * 1024);
+    chunk.fill(99);
+    const chunkCount = 2049;
+    const expectedSize = chunk.byteLength * chunkCount;
+    const body = Stream.fromIterable(Array.from({ length: chunkCount })).pipe(Stream.map(() => chunk));
+
+    // When: the same incremental verifier used by staged DataMover targets consumes the source.
+    const verified = await Effect.runPromise(
+      collectVerifiedStream({
+        body,
+        expectedSha256: "a93bfd141a88143cf07a5e26c3bea7f09b11129fb5584d5319a58e5ca5168ad4",
+        expectedSizeBytes: expectedSize,
+      }),
+    );
+
+    // Then: byte counts exceed the signed 32-bit boundary and the digest is exact.
+    expect(verified.sizeBytes).toBe(expectedSize);
+    expect(verified.sizeBytes).toBeGreaterThan(2 * 1024 * 1024 * 1024);
+    expect(verified.sha256).toBe("a93bfd141a88143cf07a5e26c3bea7f09b11129fb5584d5319a58e5ca5168ad4");
   });
 });
 

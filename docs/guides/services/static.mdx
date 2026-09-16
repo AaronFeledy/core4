@@ -25,6 +25,16 @@ tooling:
       - curl
 ```
 
+
+## Read missing paths and directories
+
+On a matched host with default `static:nginx`:
+
+- Missing file → **`404 · Lando web server`** / "Page not found"
+- Directory without an index → **`403 · Lando web server`** / "Access denied"
+
+Wrong hostname? You get the proxy page (`404 · Lando proxy`) instead. See [Use the Traefik proxy](../subsystems/proxy-traefik.mdx).
+
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">

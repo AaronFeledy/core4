@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   WORKSPACE_EDGE_TABLE,
   isWorkspaceRuntimeTargetAllowed,
+  isWorkspaceTestTargetAllowed,
 } from "../../../scripts/boundary/rules/package-dag-policy.ts";
 
 describe("workspace package DAG policy", () => {
@@ -20,7 +21,7 @@ describe("workspace package DAG policy", () => {
     expect(enginePolicy?.devDependencies).not.toContain("@lando/managed-file");
   });
 
-  test("allows only approved engine composers to depend on engine", () => {
+  test("allows only approved engine composers to depend on engine at runtime", () => {
     // Given
     const engineComposers = ["@lando/core", "@lando/renderer", "@lando/mcp"];
     const policies = Object.entries(WORKSPACE_EDGE_TABLE);
@@ -28,12 +29,40 @@ describe("workspace package DAG policy", () => {
     // When
     const nonComposerPolicies = policies.filter(([packageName]) => !engineComposers.includes(packageName));
 
-    // Then
+    // Then: engine is a test-time seam for plugins (engine/testing/*), never a runtime edge
     expect(WORKSPACE_EDGE_TABLE["@lando/core"]?.dependencies).toBe("workspace");
     for (const [, policy] of nonComposerPolicies) {
       expect(policy.dependencies).not.toContain("@lando/engine");
-      expect(policy.devDependencies).not.toContain("@lando/engine");
     }
+  });
+
+  test("keeps every plugin testable without @lando/core", () => {
+    // Given
+    const pluginPolicies = Object.entries(WORKSPACE_EDGE_TABLE).filter(
+      ([packageName, policy]) =>
+        packageName !== "@lando/core" &&
+        policy.dependencies !== "workspace" &&
+        policy.dependencies.includes("@lando/container-runtime") &&
+        !["@lando/engine", "@lando/renderer", "@lando/mcp", "@lando/data-mover"].includes(packageName),
+    );
+
+    // When / Then: no plugin devDependency, source, or test edge may reach core
+    expect(pluginPolicies.length).toBeGreaterThan(0);
+    for (const [packageName, policy] of pluginPolicies) {
+      expect(policy.devDependencies).not.toContain("@lando/core");
+      expect(isWorkspaceRuntimeTargetAllowed(packageName, "@lando/core")).toBe(false);
+      expect(isWorkspaceTestTargetAllowed(packageName, "@lando/core")).toBe(false);
+    }
+    expect(isWorkspaceTestTargetAllowed("@lando/provider-lando", "@lando/engine")).toBe(true);
+  });
+
+  test("isWorkspaceTestTargetAllowed defaults to dependencies plus devDependencies", () => {
+    // Given / When / Then: sdk tests may reach core only through the explicit library-parity allowance
+    expect(isWorkspaceTestTargetAllowed("@lando/paths", "@lando/sdk")).toBe(true);
+    expect(isWorkspaceTestTargetAllowed("@lando/paths", "@lando/engine")).toBe(false);
+    expect(isWorkspaceTestTargetAllowed("@lando/sdk", "@lando/core")).toBe(true);
+    expect(isWorkspaceTestTargetAllowed("@lando/sdk", "@lando/engine")).toBe(false);
+    expect(isWorkspaceTestTargetAllowed("@lando/unknown", "@lando/sdk")).toBe(false);
   });
 
   test("limits non-core source imports of core to the private docs build host", () => {

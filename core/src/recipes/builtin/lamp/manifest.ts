@@ -5,6 +5,7 @@ import {
   phpPromptYaml,
   webrootPromptYaml,
 } from "../php-stack";
+import { lampSnapshotYaml } from "./snapshot.ts";
 
 export const LAMP_RECIPE_ID = "lamp";
 
@@ -39,4 +40,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring the LAMP stack up.
+
+${lampSnapshotYaml}
 `;

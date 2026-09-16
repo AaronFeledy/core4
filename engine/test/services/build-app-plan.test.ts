@@ -171,4 +171,47 @@ describe("appSteps", () => {
     // Then
     expect(steps.map(({ step }) => step.id)).toEqual(["web:app:install"]);
   });
+
+  test("copies resolved container user onto the app BuildStep", () => {
+    // Given
+    const plan = planWithSteps([
+      { id: "install", phase: "app", command: { command: ["npm", "install"] }, user: "node" },
+    ]);
+
+    // When
+    const step = appSteps(plan)[0]?.step;
+
+    // Then
+    expect(step?.user).toBe("node");
+  });
+
+  test("omits BuildStep.user when the intent has no resolved user", () => {
+    // Given
+    const plan = planWithSteps([{ id: "install", phase: "app", command: { command: ["npm", "install"] } }]);
+
+    // When
+    const step = appSteps(plan)[0]?.step;
+
+    // Then
+    expect(step).toBeDefined();
+    if (step === undefined) throw new TypeError("app step is missing");
+    expect("user" in step).toBe(false);
+  });
+
+  test("gives otherwise-identical steps different cache identities when users differ", () => {
+    // Given
+    const asNode = planWithSteps([
+      { id: "install", phase: "app", command: { command: ["npm", "install"] }, user: "node" },
+    ]);
+    const asWww = planWithSteps([
+      { id: "install", phase: "app", command: { command: ["npm", "install"] }, user: "www-data" },
+    ]);
+
+    // When
+    const nodeKey = appSteps(asNode)[0]?.step.buildKey;
+    const wwwKey = appSteps(asWww)[0]?.step.buildKey;
+
+    // Then
+    expect(nodeKey).not.toBe(wwwKey);
+  });
 });

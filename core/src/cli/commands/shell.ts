@@ -14,6 +14,7 @@ import {
   type ConfigError,
   type ConfigExpressionError,
   type DeprecatedSurfaceError,
+  type HomePathCapabilityError,
   type LandofileFormConflictError,
   type LandofileIncludeError,
   type LandofileLoadExpressionError,
@@ -25,11 +26,13 @@ import {
   type LandofileUnknownEventError,
   type LandofileValidationError,
   type LandofileVersionConstraintError,
+  type ManagedFileTransactionError,
   type NoProviderInstalledError,
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
   type PublicationUnsupportedError,
+  type RouteInputError,
   type ShellExecError,
   ShellRequiresTtyError,
   ToolingExecError,
@@ -124,9 +127,11 @@ export interface ShellAppResult {
 }
 
 export type ShellAppError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | ComposeKeyRejectedError
   | PublicationUnsupportedError
@@ -139,6 +144,7 @@ export type ShellAppError =
   | LandofileTimeoutError
   | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | LandofileIncludeError
   | LandofileLockMismatchError
   | LandofileLoadExpressionError

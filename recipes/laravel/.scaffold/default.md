@@ -8,7 +8,7 @@ lando start
 lando info
 ```
 
-`--yes` uses PHP 8.3, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Pass `--answer` to change those.
+`--yes` uses PHP 8.3, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe laravel --name=my-laravel-app --yes \

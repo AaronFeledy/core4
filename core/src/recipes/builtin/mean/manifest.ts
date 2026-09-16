@@ -1,3 +1,5 @@
+import { meanSnapshotYaml } from "./snapshot.ts";
+
 export const MEAN_RECIPE_ID = "mean";
 
 export const meanRecipeSource = `${MEAN_RECIPE_ID}/recipe.yml`;
@@ -43,4 +45,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring the MEAN stack up.
+
+${meanSnapshotYaml}
 `;

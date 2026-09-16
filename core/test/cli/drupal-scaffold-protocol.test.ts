@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, stat, unlink, writeFile } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DRUPAL_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal/render.ts";
+import { DRUPAL_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
 
 interface RunResult {
   readonly exitCode: number;

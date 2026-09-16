@@ -22,8 +22,8 @@ import * as sdkTest from "@lando/sdk/test";
  *     of a real built-in invocation.
  *
  * `defaultPolicy: "none-bundled"` is a principled exception, not a loophole:
- * core ships no bundled implementation for that abstraction (e.g. `ConfigTranslator`),
- * so the SDK self-test is the only coverage that can exist until a plugin ships one.
+ * core ships no bundled implementation for that abstraction, so the SDK
+ * self-test is the only coverage that can exist until a plugin ships one.
  * The gate still requires its suite exports.
  */
 
@@ -49,8 +49,8 @@ interface CoverageEntry {
   /** How the built-in coverage is provided. */
   readonly defaultPolicy: DefaultPolicy;
   /**
-   * The `core/test/**` files (repo-relative) that invoke the suite against the
-   * built-in(s). Empty only for `none-bundled`.
+   * Repo-relative files in `core/test/**` or `engine/test/**` that invoke the
+   * suite against the built-in(s). Empty only for `none-bundled`.
    */
   readonly invocationFiles: ReadonlyArray<string>;
 }
@@ -74,7 +74,7 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     abstraction: "RouteFilter",
     makeExport: "makeRouteFilterContractSuite",
     runExport: "runRouteFilterContractSuite",
-    defaultPolicy: "reference-mirror",
+    defaultPolicy: "built-in",
     invocationFiles: ["engine/test/subsystems/proxy/route-filter-contract.test.ts"],
   },
   {
@@ -95,8 +95,43 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     abstraction: "ConfigTranslator",
     makeExport: "makeConfigTranslatorContractSuite",
     runExport: "runConfigTranslatorContractSuite",
-    defaultPolicy: "none-bundled",
-    invocationFiles: [],
+    defaultPolicy: "built-in",
+    invocationFiles: [
+      "core/test/contract/lando4-config-translator-contract.test.ts",
+      "core/test/contract/recipe-config-translator-contract.test.ts",
+    ],
+  },
+  {
+    abstraction: "RecipeDecomposer",
+    makeExport: "makeRecipeDecomposerContractSuite",
+    runExport: "runRecipeDecomposerContractSuite",
+    defaultPolicy: "built-in",
+    invocationFiles: [
+      "core/test/recipes/lamp.decomposer.test.ts",
+      "core/test/recipes/lemp.decomposer.test.ts",
+      "core/test/recipes/wordpress.decomposer.test.ts",
+      "core/test/recipes/laravel.decomposer.test.ts",
+      "core/test/recipes/symfony.decomposer.test.ts",
+      "core/test/recipes/drupal.decomposer.test.ts",
+      "core/test/recipes/drupal-cms.decomposer.test.ts",
+      "core/test/recipes/backdrop.decomposer.test.ts",
+      "core/test/recipes/joomla.decomposer.test.ts",
+      "core/test/recipes/node-postgres.decomposer.test.ts",
+      "core/test/recipes/node-api.decomposer.test.ts",
+      "core/test/recipes/mean.decomposer.test.ts",
+      "core/test/recipes/node-ts.decomposer.test.ts",
+      "core/test/recipes/astro.decomposer.test.ts",
+      "core/test/recipes/sveltekit.decomposer.test.ts",
+      "core/test/recipes/nextjs.decomposer.test.ts",
+      "core/test/recipes/django.decomposer.test.ts",
+      "core/test/recipes/fastapi.decomposer.test.ts",
+      "core/test/recipes/rails.decomposer.test.ts",
+      "core/test/recipes/jekyll.decomposer.test.ts",
+      "core/test/recipes/hugo.decomposer.test.ts",
+      "core/test/recipes/eleventy.decomposer.test.ts",
+      "core/test/recipes/empty.decomposer.test.ts",
+      "core/test/recipes/toolbox.decomposer.test.ts",
+    ],
   },
   {
     abstraction: "PluginSource",
@@ -136,8 +171,8 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
 ];
 
 /**
- * Standalone contract suites that ship from `@lando/sdk/test` but are not part of
- * the six-abstraction plugin-abstraction kit (or its freeze-surface siblings).
+ * Standalone contract suites that ship from `@lando/sdk/test` but are outside
+ * the plugin-abstraction contract kit.
  * They must remain published without requiring a core built-in kit invocation.
  */
 const STANDALONE_MAKE_SUITE_EXPORTS = new Set(["makeRendererPanelContractSuite"]);
@@ -149,15 +184,9 @@ const publishedMakeSuiteExports = (): ReadonlyArray<string> =>
       name.startsWith("make") && name.endsWith("ContractSuite") && !STANDALONE_MAKE_SUITE_EXPORTS.has(name),
   );
 
-const kitMakeSuiteExports = (): ReadonlySet<string> =>
-  new Set(COVERAGE_MANIFEST.map((entry) => entry.makeExport));
-
-const readInvocationSource = (repoRelative: string): string =>
-  readFileSync(resolve(REPO_ROOT, repoRelative), "utf8");
-
 const fileCallsExport = (repoRelative: string, exportName: string): boolean => {
   const file = resolve(REPO_ROOT, repoRelative);
-  const source = ts.createSourceFile(file, readInvocationSource(repoRelative), ts.ScriptTarget.Latest, true);
+  const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
   let found = false;
   const visit = (node: ts.Node): void => {
     if (found) return;
@@ -186,12 +215,11 @@ describe("plugin-abstraction contract-kit layer coverage", () => {
 
   test("every published make*ContractSuite export is enumerated in the manifest", () => {
     const manifestMakeExports = new Set(COVERAGE_MANIFEST.map((entry) => entry.makeExport));
-    const KIT_MAKE_EXPORTS = kitMakeSuiteExports();
     const published = publishedMakeSuiteExports();
     for (const exportName of published) {
       expect(manifestMakeExports.has(exportName)).toBe(true);
     }
-    for (const exportName of KIT_MAKE_EXPORTS) {
+    for (const exportName of manifestMakeExports) {
       expect(published.includes(exportName)).toBe(true);
     }
   });

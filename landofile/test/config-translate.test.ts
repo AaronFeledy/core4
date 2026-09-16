@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { ConfigTranslateError, ConfigTranslatorConflictError } from "@lando/sdk/errors";
-import type { AbsolutePath, LandofileShape } from "@lando/sdk/schema";
+import { ConfigTranslateSourceId } from "@lando/sdk/schema";
 import type {
   ConfigTranslateDetectInput,
   ConfigTranslateInput,
@@ -14,10 +14,10 @@ import type {
 import {
   detectConfigTranslators,
   resolveConfigTranslators,
-  runConfigTranslators,
+  runConfigTranslator,
 } from "../src/config-translate.ts";
 
-const appRoot = "/tmp/app" as AbsolutePath;
+const sourceId = ConfigTranslateSourceId.make("compose.yml");
 
 const makeTranslator = (
   id: string,
@@ -26,20 +26,31 @@ const makeTranslator = (
   id,
   summary: `${id} translator`,
   inputKinds: [id],
-  detect: () => Effect.succeed([{ translator: id, files: [], confidence: "likely" as const }]),
+  detect: () => Effect.succeed([{ translator: id, sourceIds: [sourceId], confidence: "likely" as const }]),
   translate: () =>
     Effect.succeed<ConfigTranslateResult>({
-      fragment: { name: id } as Partial<LandofileShape>,
-      diagnostics: [{ kind: "generated", message: `${id} generated`, path: id }],
+      outputs: [{ targetLayer: "canonical", fragment: { name: id }, sourceIds: [sourceId] }],
+      diagnostics: [{ kind: "generated", message: `${id} generated`, sourceId, keyPath: [] }],
+      deletions: [],
     }),
   ...overrides,
 });
 
 const baseInput: ConfigTranslateInput = {
-  appRoot,
-  files: [],
-  current: { name: "app" } as LandofileShape,
-  options: {},
+  _tag: "landofile-document-set",
+  documents: [
+    {
+      sourceId,
+      layerId: "canonical",
+      mediaType: "application/yaml",
+      contentDigest: `sha256:${"0".repeat(64)}`,
+      bytes: new Uint8Array(),
+    },
+  ],
+  mode: "full",
+  selectedSourceIds: [sourceId],
+  currentLowerV4Fragments: [],
+  writableLayerIds: ["canonical"],
 };
 
 describe("resolveConfigTranslators", () => {
@@ -68,35 +79,32 @@ describe("resolveConfigTranslators", () => {
   });
 });
 
-describe("runConfigTranslators", () => {
-  test("runs translators in declared order, aggregating diagnostics and ordered-merging fragments", async () => {
-    const result = await Effect.runPromise(
-      runConfigTranslators([makeTranslator("a"), makeTranslator("b")], baseInput),
-    );
-    expect(result.fragment).toEqual({ name: "b" });
-    expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
-      "a generated",
-      "b generated",
-    ]);
+describe("runConfigTranslator", () => {
+  test("returns validated outputs when the translator respects input ownership", async () => {
+    const result = await Effect.runPromise(runConfigTranslator(makeTranslator("a"), baseInput));
+    expect(result.outputs[0]?.fragment).toEqual({ name: "a" });
+    expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual(["a generated"]);
   });
 
   test("propagates a translator's ConfigTranslateError", async () => {
     const failing = makeTranslator("x", {
       translate: () => Effect.fail(new ConfigTranslateError({ message: "boom", translator: "x" })),
     });
-    const exit = await Effect.runPromiseExit(runConfigTranslators([failing], baseInput));
+    const exit = await Effect.runPromiseExit(runConfigTranslator(failing, baseInput));
     expect(exit._tag).toBe("Failure");
   });
 
-  test("surfaces the conflict before running any translator", async () => {
+  test("rejects invalid input before running the translator", async () => {
     let ran = false;
     const spy = makeTranslator("dup", {
       translate: () => {
         ran = true;
-        return Effect.succeed<ConfigTranslateResult>({ fragment: {}, diagnostics: [] });
+        return Effect.succeed<ConfigTranslateResult>({ outputs: [], diagnostics: [], deletions: [] });
       },
     });
-    const exit = await Effect.runPromiseExit(runConfigTranslators([spy, makeTranslator("dup")], baseInput));
+    const exit = await Effect.runPromiseExit(
+      runConfigTranslator(spy, { ...baseInput, writableLayerIds: [] }),
+    );
     expect(exit._tag).toBe("Failure");
     expect(ran).toBe(false);
   });
@@ -104,10 +112,49 @@ describe("runConfigTranslators", () => {
 
 describe("detectConfigTranslators", () => {
   test("aggregates detect matches in declared order", async () => {
-    const detectInput: ConfigTranslateDetectInput = { appRoot };
+    const detectInput: ConfigTranslateDetectInput = { documents: baseInput.documents };
     const matches = await Effect.runPromise(
       detectConfigTranslators([makeTranslator("a"), makeTranslator("b")], detectInput),
     );
     expect(matches.map((match) => match.translator)).toEqual(["a", "b"]);
   });
 });
+
+test("rejects foreign output source identities with producing translator attribution", async () => {
+  const translator = makeTranslator("foreign", {
+    translate: () =>
+      Effect.succeed({
+        outputs: [
+          { targetLayer: "canonical", fragment: {}, sourceIds: [ConfigTranslateSourceId.make("other")] },
+        ],
+        diagnostics: [],
+        deletions: [],
+      }),
+  });
+  const result = await Effect.runPromise(Effect.either(runConfigTranslator(translator, baseInput)));
+  expect(result._tag).toBe("Left");
+  if (result._tag === "Left") expect(result.left.translator).toBe("foreign");
+});
+
+test.each(["source", "translator", "empty"])(
+  "rejects a detection match with foreign %s identity",
+  async (kind) => {
+    const translator = makeTranslator("a", {
+      detect: () =>
+        Effect.succeed([
+          {
+            translator: kind === "translator" ? "other" : "a",
+            sourceIds:
+              kind === "empty" ? [] : [kind === "source" ? ConfigTranslateSourceId.make("other") : sourceId],
+            confidence: "exact",
+          },
+        ]),
+    });
+    const result = await Effect.runPromise(
+      Effect.either(detectConfigTranslators([translator], { documents: baseInput.documents })),
+    );
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left")
+      expect(result.left).toMatchObject({ _tag: "ConfigTranslateError", translator: "a" });
+  },
+);

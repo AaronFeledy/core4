@@ -17,33 +17,37 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
-import { makeLandoPaths } from "@lando/paths";
-import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
-import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
-import { DataMoverLive } from "../../src/testing/engine-layers.ts";
-import { makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { DataMoverLive } from "@lando/data-mover/service";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import {
   type ScratchRegistryEntry,
   ScratchRegistryLive,
   makeScratchRegistry,
-} from "../../src/testing/engine-layers.ts";
-import { ScratchResourceScanner } from "../../src/testing/engine-layers.ts";
-import { ScratchInitAppPort, makeScratchAppServiceLive } from "../../src/testing/engine-layers.ts";
-import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
-import { EventServiceLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { makeEngineLandofileServiceLive } from "../../src/testing/engine-layers.ts";
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
-import { SecretStoreLive } from "../../src/testing/engine-layers.ts";
+} from "@lando/engine/scratch-app/registry";
+import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
+import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import { makeLandoPaths } from "@lando/paths";
+import { type RedactionService, RedactionServiceLive } from "@lando/redaction/service";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
 
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
+    resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
       resolve: (packageSpec) =>
         Promise.resolve({
@@ -226,8 +230,12 @@ describe("ScratchAppServiceLive gc", () => {
       const unsafeLabel = "../scratch-unsafe";
       await mkdir(join(scratchBase, directoryOrphan, "root"), { recursive: true });
       await mkdir(join(scratchBase, deadOwner, "root"), { recursive: true });
-      await Effect.runPromise(makeScratchRegistry().upsert(registryEntry(cacheRoot, deadOwner)));
-      await Effect.runPromise(makeScratchRegistry().upsert(registryEntry(cacheRoot, registryStaleWithLabel)));
+      await Effect.runPromise(
+        makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(cacheRoot, deadOwner)),
+      );
+      await Effect.runPromise(
+        makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(cacheRoot, registryStaleWithLabel)),
+      );
 
       const pruned: string[] = [];
       const layer = makeLayer([labelOrphan, registryStaleWithLabel, unsafeLabel], pruned);
@@ -252,7 +260,9 @@ describe("ScratchAppServiceLive gc", () => {
         errors: [`${unsafeLabel}: unsafe scratch id`],
       });
       expect(pruned).toEqual([deadOwner, directoryOrphan, labelOrphan, registryStaleWithLabel]);
-      await expect(Effect.runPromise(makeScratchRegistry().get(deadOwner))).resolves.toBeUndefined();
+      await expect(
+        Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).get(deadOwner)),
+      ).resolves.toBeUndefined();
       expect(await readdir(scratchBase)).toEqual(["registry.bin"]);
 
       const second = await Effect.runPromise(
@@ -271,7 +281,7 @@ describe("ScratchAppServiceLive gc", () => {
       const root = join(cacheRoot, "scratch", id, "root");
       await mkdir(root, { recursive: true });
       await Effect.runPromise(
-        makeScratchRegistry().upsert({ ...registryEntry(cacheRoot, id), detached: true }),
+        makeScratchRegistry(ownerOnlyFileAccess).upsert({ ...registryEntry(cacheRoot, id), detached: true }),
       );
       const pruned: string[] = [];
       const layer = makeLayer([], pruned);
@@ -310,11 +320,13 @@ describe("ScratchAppServiceLive gc", () => {
       );
       expect(stopped).toEqual(handle);
       expect(pruned).toEqual([id]);
-      await expect(Effect.runPromise(makeScratchRegistry().get(id))).resolves.toBeUndefined();
+      await expect(
+        Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).get(id)),
+      ).resolves.toBeUndefined();
 
       await mkdir(root, { recursive: true });
       await Effect.runPromise(
-        makeScratchRegistry().upsert({ ...registryEntry(cacheRoot, id), detached: true }),
+        makeScratchRegistry(ownerOnlyFileAccess).upsert({ ...registryEntry(cacheRoot, id), detached: true }),
       );
       const destroyed = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.destroy(id)).pipe(

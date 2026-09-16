@@ -9,6 +9,7 @@ import type { LandofileShape } from "@lando/sdk/schema";
 import type { LandofileService } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../../src/landofile/app-resolution.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 test("loadUserLandofile resolves toolingIncludes-only injected services", async () => {
   // Given an injected Landofile service whose only include surface is toolingIncludes
@@ -27,7 +28,9 @@ test("loadUserLandofile resolves toolingIncludes-only injected services", async 
     >;
 
     // When the user Landofile is loaded through the injected service path
-    const resolved = await Effect.runPromise(loadUserLandofile(service));
+    const resolved = await Effect.runPromise(
+      loadUserLandofile(service).pipe(Effect.provide(makeTestStateStore().layer)),
+    );
 
     // Then the tooling include is resolved instead of returning the injected shape untouched
     expect(resolved.tooling?.["docs:build"]?.cmd).toBe("make");

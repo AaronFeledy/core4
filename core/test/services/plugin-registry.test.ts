@@ -10,13 +10,13 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { PluginLoadError } from "@lando/core/errors";
 import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import type { ServiceTypeInput } from "@lando/core/services";
-import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
-import { PluginManifest } from "@lando/sdk/schema";
-import { PluginRegistryLive, makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive, makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import {
   collectGlobalServiceContributions,
   defaultGlobalServiceModuleLoader,
-} from "../../src/testing/engine-layers.ts";
+} from "@lando/engine/services/global-services";
+import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-lando",
@@ -32,6 +32,7 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/template-handlebars",
   "@lando/template-mustache",
   "@lando/sql",
+  "@lando/lando4",
 ];
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

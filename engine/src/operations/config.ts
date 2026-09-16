@@ -11,8 +11,8 @@ import {
   NotImplementedError,
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
-import { GlobalConfig } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
+import { GlobalConfig, GlobalConfigView } from "@lando/sdk/schema";
+import type { ConfigService } from "@lando/sdk/services";
 
 import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
@@ -29,6 +29,7 @@ import {
 import { findAgentEnvPatternNames } from "../config/agent-env";
 import { resolveUserConfRoot } from "../config/roots";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../runtime/cli-options";
+import { loadGlobalConfigView } from "../services/config.ts";
 
 // allow: SIZE_OK — this behavior-preserving extraction keeps one config operation on one engine seam.
 
@@ -60,7 +61,7 @@ export interface ConfigOptions {
 }
 
 export interface ConfigResult {
-  readonly config?: GlobalConfig;
+  readonly config?: GlobalConfigView;
   readonly subcommand?: string;
   readonly key?: string;
   readonly value?: unknown;
@@ -77,39 +78,8 @@ export interface ConfigResult {
   readonly configPath?: string;
 }
 
-const ResultGlobalConfigSchema = Schema.Struct({
-  userDataRoot: Schema.optional(Schema.String),
-  userConfRoot: Schema.optional(Schema.String),
-  userCacheRoot: Schema.optional(Schema.String),
-  systemPluginRoot: Schema.optional(Schema.String),
-  defaultProviderId: Schema.optional(Schema.Union(Schema.String, Schema.Literal(null))),
-  telemetry: Schema.optional(
-    Schema.Struct({
-      enabled: Schema.optional(Schema.Boolean),
-    }),
-  ),
-  renderer: Schema.optional(Schema.String),
-  network: Schema.optional(
-    Schema.Struct({
-      proxy: Schema.optional(
-        Schema.Struct({
-          http: Schema.optional(Schema.Union(Schema.String, Schema.Literal(null))),
-          https: Schema.optional(Schema.Union(Schema.String, Schema.Literal(null))),
-          noProxy: Schema.optional(Schema.Array(Schema.String)),
-        }),
-      ),
-      ca: Schema.optional(
-        Schema.Struct({
-          trustHost: Schema.optional(Schema.Boolean),
-          certs: Schema.optional(Schema.Array(Schema.String)),
-        }),
-      ),
-    }),
-  ),
-});
-
 export const ConfigResultSchema = Schema.Struct({
-  config: Schema.optional(ResultGlobalConfigSchema),
+  config: Schema.optional(GlobalConfigView),
   subcommand: Schema.optional(Schema.String),
   key: Schema.optional(Schema.String),
   value: Schema.optional(Schema.Unknown),
@@ -135,8 +105,6 @@ export const ConfigResultSchema = Schema.Struct({
 
 const translateRemediation =
   "`lando config translate` is app-scoped. Use `lando app config translate` inside an app.";
-
-const unsupportedSubcommands = new Set(["translate"]);
 
 const telemetryConfigPath = (): string =>
   join(resolveConfigFileRoot(resolveUserConfRoot(), envOverlay()), "config.yml");
@@ -445,7 +413,7 @@ export const config = (
     if (subcommand === "validate") return yield* metaConfigValidate(options);
     if (subcommand === "edit") return yield* metaConfigEdit(options);
 
-    if (unsupportedSubcommands.has(subcommand)) {
+    if (subcommand === "translate") {
       return yield* Effect.fail(
         new NotImplementedError({
           message: `meta:config ${subcommand} is not available here.`,
@@ -466,15 +434,7 @@ export const config = (
       );
     }
 
-    const configService = yield* ConfigService;
-    const userDataRoot = yield* configService.get("userDataRoot");
-    const userConfRoot = yield* configService.get("userConfRoot");
-    const defaultProviderId = yield* configService.get("defaultProviderId");
-    const merged = {
-      userDataRoot,
-      userConfRoot,
-      defaultProviderId,
-    } as GlobalConfig;
+    const merged = yield* loadGlobalConfigView;
 
     const key = options.key ?? options.path;
     const value = key === undefined ? undefined : getAtPath(merged, key);

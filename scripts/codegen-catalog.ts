@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 
-/** Ordered source of truth for codegen execution and output ownership. */
 export type CodegenOwnership = "committed-pin" | "committed-workflow" | "derived";
 export type CodegenWorkspace = "repo" | "core";
 
@@ -17,6 +16,7 @@ export type CodegenCommand = {
   readonly cwd: string;
 };
 
+/** Ordered source of truth for codegen execution and output ownership. */
 export const CODEGEN_CATALOG = [
   {
     id: "build-guide-scenarios",
@@ -31,6 +31,11 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Imports every bundled plugin, and `@lando/file-sync-mutagen` statically
+    // imports `mutagen-versions.json`. Without this edge both run in the same
+    // wave and the import can observe the file mid-truncation (`Bun.write` is
+    // not atomic), which surfaces as `JSON Parse error: Unexpected EOF`.
+    dependsOn: ["mutagen-versions"],
     id: "bundled-plugins",
     ownership: "derived",
     script: "build-bundled-plugins.ts",
@@ -67,6 +72,8 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Also imports every bundled plugin; see `bundled-plugins`.
+    dependsOn: ["mutagen-versions"],
     id: "setup-plugin-flags",
     ownership: "derived",
     script: "build-setup-plugin-flags.ts",
@@ -87,6 +94,12 @@ export const CODEGEN_CATALOG = [
     dependsOn: ["setup-plugin-flags", "mcp-allowlist"],
   },
   {
+    id: "core-service-env-catalog",
+    ownership: "derived",
+    script: "build-core-service-env-catalog.ts",
+    workspace: "repo",
+  },
+  {
     id: "command-registry-manifest",
     ownership: "derived",
     script: "build-command-registry-manifest.ts",
@@ -105,6 +118,7 @@ export const CODEGEN_CATALOG = [
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
+      "core-service-env-catalog",
       "command-registry-manifest",
     ],
   },
@@ -119,6 +133,12 @@ export const CODEGEN_CATALOG = [
     id: "compose-key-matrix",
     ownership: "derived",
     script: "build-compose-key-matrix.ts",
+    workspace: "repo",
+  },
+  {
+    id: "service-type-reference",
+    ownership: "derived",
+    script: "build-service-type-reference.ts",
     workspace: "repo",
   },
   {

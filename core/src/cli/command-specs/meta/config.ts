@@ -9,6 +9,7 @@ import {
 
 import { createDefaultEditorRunner } from "../../../recipes/prompts/editor-command";
 import { renderConfigResult } from "../../commands/config";
+import { configRedactionTokens } from "../../commands/config-redaction.ts";
 import type { LandoCommandSpec } from "../../spec/command-base";
 
 const isValueType = (s: unknown): s is NonNullable<ConfigOptions["type"]> =>
@@ -58,6 +59,7 @@ export const metaConfigOptionsFromInput = (input: unknown): ConfigOptions => {
 
 export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   resultSchema: ConfigResultSchema,
+  redactionTokens: configRedactionTokens,
   id: "meta:config",
   summary: "Read or write the global Lando config.",
   description: "Read or write the global Lando config.",

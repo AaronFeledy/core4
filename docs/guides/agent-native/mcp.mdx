@@ -20,6 +20,17 @@ Audit the effective catalog without starting the long-running server with
 JSON-RPC: write one complete JSON-RPC object followed by a newline for every
 request or notification.
 
+Send integer flags as JSON numbers without a fractional part. For example, the
+`app:logs` tool declares `flags.tail` as `integer`:
+
+```json
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"app:logs","arguments":{"flags":{"tail":20}}}}
+```
+
+`20.5` and `"20"` are rejected with `McpToolInputError` naming `flags.tail`.
+For tooling tasks, send positional arguments by name in `args`; Lando applies
+their declared `order`, just as the CLI does. Hyphen-leading values stay positional.
+
 <Guide>
   <Scenario id="stdio-conversation" render>
     <Step name="call-a-read-only-tool">

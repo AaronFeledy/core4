@@ -28,11 +28,12 @@ import {
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
+import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
-import { registerBuiltInContractDeprecations } from "../../src/testing/engine-layers.ts";
-import { DeprecationServiceLive } from "../../src/testing/engine-layers.ts";
+
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

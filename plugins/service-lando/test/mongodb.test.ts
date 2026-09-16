@@ -3,7 +3,12 @@ import { Effect, Schema } from "effect";
 
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 
-import { MONGODB_FEATURE_ID, mongodbServiceFeature, mongodbServiceType } from "../src/services/mongodb.ts";
+import {
+  MONGODB_CONFIG_TARGET,
+  MONGODB_FEATURE_ID,
+  mongodbServiceFeature,
+  mongodbServiceType,
+} from "../src/services/mongodb.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 
@@ -63,6 +68,8 @@ describe("mongodb ServiceType", () => {
     expect(String(plan.storage[0]?.target)).toBe("/data/db");
     expect(plan.storage[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 27017, protocol: "tcp", name: "db" }]);
+    expect(plan.mounts.find((m) => String(m.target) === MONGODB_CONFIG_TARGET)).toBeUndefined();
+    expect(plan.command).toBeUndefined();
   });
 
   test("database defaults to appRoot basename when no explicit appName is provided", async () => {
@@ -222,5 +229,38 @@ describe("mongodb ServiceType", () => {
     expect(resolution.normalizedConfig.environment?.LANDO_DB_NAME).toBeUndefined();
     expect(resolution.normalizedConfig.environment?.LANDO_DB_ROOT_PASSWORD).toBeUndefined();
     expect(resolution.normalizedConfig.creds).toEqual(creds);
+  });
+
+  test("mounts config.server read-only and sets mongod --config when no authored command", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      config: { server: "config/mongod.conf" },
+    });
+
+    expect(plan.mounts).toContainEqual({
+      type: "bind",
+      source: "/srv/apps/myapp/config/mongod.conf",
+      target: MONGODB_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+    });
+    expect(plan.command).toEqual(["mongod", "--config", "/etc/lando/mongod.conf"]);
+  });
+
+  test("mounts config.server but keeps an authored command", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      config: { server: "config/mongod.conf" },
+      command: ["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"],
+    });
+
+    expect(plan.mounts).toContainEqual({
+      type: "bind",
+      source: "/srv/apps/myapp/config/mongod.conf",
+      target: MONGODB_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+    });
+    expect(plan.command).toEqual(["mongod", "--auth", "--wiredTigerCacheSizeGB", "0.5"]);
   });
 });

@@ -1,3 +1,5 @@
+import { emptySnapshotYaml } from "./snapshot.ts";
+
 export const EMPTY_RECIPE_ID = "empty";
 
 export const emptyRecipeSource = `${EMPTY_RECIPE_ID}/recipe.yml`;
@@ -24,4 +26,6 @@ files:
 postInit:
   - type: message
     text: Edit the generated .lando.yml to declare services for your stack.
+
+${emptySnapshotYaml}
 `;

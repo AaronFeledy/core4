@@ -29,6 +29,7 @@ import {
   type NetworkTrustPlan,
   type ResolvedNetworkTrust,
   resolveNetworkTrustPlan,
+  shouldBypassProxy,
 } from "@lando/sdk/network-trust";
 import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
 
@@ -40,6 +41,17 @@ export {
 } from "@lando/sdk/network-trust";
 export { resolveNetworkTrustPlan };
 export type { NetworkTrustPlan };
+
+/**
+ * Direct endpoint policy is lexical, not DNS- or caller-based: exact localhost,
+ * IPv4 127/8 and IPv6 ::1, or an explicit resolved NO_PROXY match. Unspecified
+ * addresses (0.0.0.0), lndo.site and absent proxy settings grant no exemption.
+ */
+export const usesDirectEndpoint = (url: URL, trust: ResolvedNetworkTrust | undefined): boolean =>
+  url.hostname === "localhost" ||
+  url.hostname === "[::1]" ||
+  /^127\.\d+\.\d+\.\d+$/u.test(url.hostname) ||
+  (trust !== undefined && shouldBypassProxy(url.href, trust.proxy.noProxy));
 
 export class CaPemLoadError extends Schema.TaggedError<CaPemLoadError>()("CaPemLoadError", {
   message: Schema.String,

@@ -62,7 +62,9 @@ import type {
   TunnelStatusRequest,
   TunnelStopRequest,
   VolumeFilter,
+  VolumeIdentity,
   VolumeInfo,
+  VolumeLocator,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotRef,
@@ -77,12 +79,14 @@ import type {
   ComposeKeyRejectedError,
   ConfigError,
   ConfigExpressionError,
+  ConfigTranslatorConflictError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
+  HomePathCapabilityError,
   HttpClientUnavailableError,
   HttpRequestError,
   HttpTrustError,
@@ -101,8 +105,10 @@ import type {
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
+  PluginDescriptorMismatchError,
   PluginLoadError,
   PluginManifestError,
   ProcessExecError,
@@ -118,6 +124,7 @@ import type {
   RecipeManifestParseError,
   RecipeManifestValidationError,
   RecipeSourceError,
+  RouteInputError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
   ScratchAppError,
@@ -149,7 +156,11 @@ import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
-import type { ManagedFileApplyOptions, ManagedFileSelector } from "./managed-file.ts";
+import type {
+  ManagedFileApplyOptions,
+  ManagedFileSelector,
+  ManagedFileTransactionPendingReport,
+} from "./managed-file.ts";
 import type { LandoPaths } from "./paths.ts";
 import type {
   CertificateAuthorityShape,
@@ -191,10 +202,12 @@ import type {
   ProviderStatus,
   ProviderVersions,
   ServiceExitResult,
+  ServiceRuntimeIdentity,
   ServiceRuntimeInfo,
   ServiceSelector,
   WaitForExitOptions,
 } from "./provider.ts";
+import type { RecipeDecomposerShape } from "./recipe-decomposer.ts";
 import type { DatasetServiceError, RemoteSourceError } from "./remote-sync.ts";
 import type {
   ScratchAcquireInput,
@@ -236,6 +249,7 @@ export * from "./plugins.ts";
 export * from "./plugin-trust.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
+export * from "./recipe-decomposer.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./scratch.ts";
@@ -272,6 +286,14 @@ export interface RuntimeProviderShape {
   readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+  readonly resume?: (
+    target: ServiceSelector,
+    identity: ServiceRuntimeIdentity,
+  ) => Effect.Effect<void, ProviderError>;
+  readonly suspend?: (
+    target: ServiceSelector,
+    identity: ServiceRuntimeIdentity,
+  ) => Effect.Effect<void, ProviderError>;
   readonly waitForExit: (
     target: ServiceSelector,
     options?: WaitForExitOptions,
@@ -297,7 +319,19 @@ export interface RuntimeProviderShape {
   ) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
-  readonly removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>;
+  readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+  readonly observeVolume?: (
+    target: ServiceSelector,
+    destination: PortablePath,
+  ) => Effect.Effect<VolumeInfo, ProviderError>;
+  readonly adoptVolume?: (
+    target: ServiceSelector,
+    destination: PortablePath,
+  ) => Effect.Effect<VolumeInfo, ProviderError>;
+  readonly removeVolume: (
+    ref: VolumeRef,
+    expectedGeneration: VolumeIdentity["generation"],
+  ) => Effect.Effect<void, ProviderError>;
   readonly copyToService: (
     target: ExecTarget,
     spec: ServiceCopyInSpec,
@@ -328,9 +362,9 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | LandofileNotFoundError
       | LandofileParseError
       | LandofileValidationError
+      | RouteInputError
       | LandofileSandboxError
       | LandofileTimeoutError
-      | LandofileUnknownEventError
       | LandofileFormConflictError
       | LandofileIncludeError
       | LandofileLockMismatchError
@@ -340,7 +374,20 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | ToolingIncludeCycleError
       | NotImplementedError
       | ComposeKeyRejectedError
+      | ManagedFileTransactionError
     >;
+  }
+>() {}
+
+export declare class ManagedFileTransactionGuard extends Context.Tag(
+  "@lando/core/ManagedFileTransactionGuard",
+)<
+  ManagedFileTransactionGuard,
+  {
+    readonly ensureConsistent: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
+    readonly pending: (
+      appRoot: string,
+    ) => Effect.Effect<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError>;
   }
 >() {}
 
@@ -555,11 +602,14 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     ) => Effect.Effect<
       AppPlan,
       | LandofileValidationError
+      | RouteInputError
       | CapabilityError
       | NotImplementedError
+      | HomePathCapabilityError
       | PublicationUnsupportedError
       | CommandAliasConflictError
       | ConfigExpressionError
+      | LandofileUnknownEventError
     >;
   }
 >() {}
@@ -956,3 +1006,20 @@ export declare class ConfigTranslator extends Context.Tag("@lando/core/ConfigTra
   ConfigTranslator,
   ConfigTranslatorShape
 >() {}
+
+export declare class ConfigTranslatorRegistry extends Context.Tag("@lando/core/ConfigTranslatorRegistry")<
+  ConfigTranslatorRegistry,
+  {
+    readonly list: Effect.Effect<
+      ReadonlyArray<ConfigTranslatorShape>,
+      ConfigTranslatorConflictError | PluginDescriptorMismatchError | PluginLoadError,
+      never
+    >;
+  }
+>() {}
+
+export declare class RecipeDecomposer extends Context.Tag("@lando/core/RecipeDecomposer")<
+  RecipeDecomposer,
+  RecipeDecomposerShape
+>() {}
+export type { VolumeInitialization } from "./volume-initialization.ts";

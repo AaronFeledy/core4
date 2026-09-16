@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
+
 export const DbCommandStep = Schema.Struct({
   id: Schema.String,
   label: Schema.String,
@@ -13,6 +15,11 @@ export const DbCommandResult = Schema.Struct({
   family: Schema.optional(Schema.String),
   file: Schema.optional(Schema.String),
   snapshotId: Schema.optional(Schema.String),
+  snapshots: Schema.optional(Schema.Array(SnapshotInfo)),
+  pruneCandidates: Schema.optional(Schema.Array(SnapshotId)),
+  prunedSnapshotIds: Schema.optional(Schema.Array(SnapshotId)),
+  retentionApplied: Schema.optional(Schema.Boolean),
+  seedStatus: Schema.optional(Schema.Literal("seeded")),
   accelerated: Schema.optional(Schema.Boolean),
   sizeBytes: Schema.optional(Schema.Number),
   steps: Schema.Array(DbCommandStep),

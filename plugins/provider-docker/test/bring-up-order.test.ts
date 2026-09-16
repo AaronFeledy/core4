@@ -106,7 +106,12 @@ const makeFakeApi = (
       return { status: 200, body: JSON.stringify({ ExitCode: healthExitCode }) };
     }
     if (path.endsWith("/stop")) return { status: 204, body: "" };
-    if (method === "DELETE") return { status: 204, body: "" };
+    if (method === "DELETE") {
+      if (path.startsWith("/containers/")) {
+        existingNames.delete(path.slice("/containers/".length).split("?")[0] ?? "");
+      }
+      return { status: 204, body: "" };
+    }
     return { status: 500, body: '{"message":"unexpected request"}' };
   };
   const api: DockerApiClient = {
@@ -117,16 +122,19 @@ const makeFakeApi = (
     },
     stream: ({ method, path }) => {
       requests.push(`${method} ${path}`);
+      if (method === "POST" && path.startsWith("/images/create?")) {
+        responseFor(method, path);
+      }
       return Stream.empty;
     },
   };
   return { api, requests };
 };
 
-const apply = async (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) => {
+const apply = async (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal, reconcile = false) => {
   const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
   return Effect.runPromise(
-    Effect.scoped(provider.apply(plan, { reconcile: false, ...(signal === undefined ? {} : { signal }) })),
+    Effect.scoped(provider.apply(plan, { reconcile, ...(signal === undefined ? {} : { signal }) })),
   );
 };
 
@@ -136,6 +144,38 @@ const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
 };
 
 describe("provider-docker bringUp dependency order", () => {
+  test("deletes then creates a pre-existing stopped container when reconcile is true", async () => {
+    // Given
+    const name = "lando-bring-up-order-app-web";
+    const fake = makeFakeApi(0, [name]);
+    const plan = planWith([service("web", { dependsOn: [], healthcheck: undefined })]);
+
+    // When
+    await apply(plan, fake.api, undefined, true);
+
+    // Then
+    const removed = fake.requests.indexOf(`DELETE /containers/${name}?force=true`);
+    const created = fake.requests.indexOf(`POST /containers/create?name=${name}`);
+    expect(removed).toBeGreaterThan(-1);
+    expect(created).toBeGreaterThan(removed);
+    expect(fake.requests.indexOf(`POST /containers/${name}/start`)).toBeGreaterThan(created);
+  });
+
+  test("starts a pre-existing stopped container without deleting it when reconcile is false", async () => {
+    // Given
+    const name = "lando-bring-up-order-app-web";
+    const fake = makeFakeApi(0, [name]);
+    const plan = planWith([service("web", { dependsOn: [], healthcheck: undefined })]);
+
+    // When
+    await apply(plan, fake.api, undefined, false);
+
+    // Then
+    expect(fake.requests).toContain(`POST /containers/${name}/start`);
+    expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
+    expect(fake.requests.filter((request) => request.startsWith("POST /containers/create?"))).toEqual([]);
+  });
+
   test("starts a service_healthy dependency and probes it before starting the dependent", async () => {
     // Given
     const web = service("web", {

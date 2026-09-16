@@ -156,11 +156,15 @@ describe("Landofile package seam", () => {
     expect(Object.keys(coreModule).sort()).toEqual(Object.keys(sdkModule).sort());
     expect(Object.keys(coreModule).sort()).toEqual(
       [
+        "LANDOFILE_LEADING_COMMENT_BLOCKS",
         "LandofileEmitError",
+        "declaredConfigTranslateSourceIds",
         "detectLandofileTags",
         "emitLandofileYaml",
         "emitLandofileYamlEither",
         "parseLandofile",
+        "validateConfigTranslateInput",
+        "validateConfigTranslateResult",
       ].sort(),
     );
   });

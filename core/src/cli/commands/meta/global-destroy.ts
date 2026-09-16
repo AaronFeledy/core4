@@ -6,13 +6,16 @@ import {
   type ConfigExpressionError,
   type GlobalAppError,
   GlobalDestroyConfirmationError,
+  type HomePathCapabilityError,
   type LandofileParseError,
+  type LandofileUnknownEventError,
   type LandofileValidationError,
   type NoProviderInstalledError,
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
   type PublicationUnsupportedError,
+  type RouteInputError,
 } from "@lando/sdk/errors";
 import {
   type AppPlanner,
@@ -47,6 +50,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
 
 type GlobalDestroyError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
@@ -54,7 +58,9 @@ type GlobalDestroyError =
   | GlobalAppError
   | GlobalDestroyConfirmationError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError

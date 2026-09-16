@@ -78,7 +78,6 @@ export interface SocketHttpClientOptions {
   readonly hostHeader?: string;
   readonly defaultHeaders?: Readonly<Record<string, string>>;
   readonly operation?: string;
-  readonly mapTransportError?: (cause: unknown) => unknown;
 }
 
 export interface SocketHttpClient {
@@ -134,9 +133,6 @@ const fail = (
     ...(details === undefined ? {} : { details }),
     ...(cause === undefined ? {} : { cause }),
   });
-
-const mapError = (options: SocketHttpClientOptions, cause: unknown): unknown =>
-  options.mapTransportError === undefined ? cause : options.mapTransportError(cause);
 
 const requestBody = (request: SocketHttpRequest): string | undefined =>
   request.body === undefined ? undefined : JSON.stringify(request.body);
@@ -280,15 +276,12 @@ const connect = async (
   try {
     return await options.connect();
   } catch (cause) {
-    throw mapError(
-      options,
-      fail(
-        "connect",
-        options.operation ?? "container-transport",
-        "Failed to connect to the container runtime socket.",
-        { method: request.method, path: request.path },
-        cause,
-      ),
+    throw fail(
+      "connect",
+      options.operation ?? "container-transport",
+      "Failed to connect to the container runtime socket.",
+      { method: request.method, path: request.path },
+      cause,
     );
   }
 };
@@ -310,15 +303,12 @@ const writeRequest = (
     );
     if (stdinPayload !== undefined) connection.write(stdinPayload);
   } catch (cause) {
-    throw mapError(
-      options,
-      fail(
-        "write",
-        options.operation ?? "container-transport",
-        "Failed to write the container runtime HTTP request.",
-        { method: request.method, path: request.path },
-        cause,
-      ),
+    throw fail(
+      "write",
+      options.operation ?? "container-transport",
+      "Failed to write the container runtime HTTP request.",
+      { method: request.method, path: request.path },
+      cause,
     );
   }
 };
@@ -327,10 +317,12 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
   const operation = options.operation ?? "container-transport";
 
   const request = async (input: SocketHttpRequest): Promise<SocketHttpResponse> => {
-    const connection = await connect(options, input);
+    // Collect the request body before opening a socket so a rejecting or interrupted
+    // stdin never leaves a connected socket behind.
     const stdinPayload = input.stdin === undefined ? undefined : await collectBytes(input.stdin);
-    writeRequest(connection, input, options, stdinPayload);
+    const connection = await connect(options, input);
     try {
+      writeRequest(connection, input, options, stdinPayload);
       const responseBytes = await collectBytes(connection);
       const parsed = parseHttpHead(responseBytes, operation);
       const bodyBytes =
@@ -344,8 +336,6 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
             )
           : parsed.bodyStart;
       return { status: parsed.status, body: textDecoder.decode(bodyBytes) };
-    } catch (cause) {
-      throw mapError(options, cause);
     } finally {
       connection.destroy();
     }
@@ -353,11 +343,21 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
 
   async function* stream(input: SocketHttpRequest): AsyncGenerator<Bytes> {
     const connection = await connect(options, input);
-    writeRequest(connection, input, options);
+    const hasConnectionHeader = Object.keys(input.headers ?? {}).some(
+      (key) => key.toLowerCase() === "connection",
+    );
+    const request =
+      input.stdin === undefined || hasConnectionHeader
+        ? input
+        : { ...input, headers: { ...input.headers, Connection: "Upgrade", Upgrade: "tcp" } };
     let stdinPump: Promise<void> | undefined;
     let stdinIterator: AsyncIterator<Bytes> | undefined;
     let stdinReady = false;
     let stdinExhausted = false;
+    let stopStdinPump: (() => void) | undefined;
+    const stdinStopped = new Promise<void>((resolve) => {
+      stopStdinPump = resolve;
+    });
     const pendingStdin: Bytes[] = [];
     const abort = () => connection.destroy();
     input.signal?.addEventListener("abort", abort, { once: true });
@@ -379,7 +379,12 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       stdinIterator = iterator;
       stdinPump = (async () => {
         while (true) {
-          const next = await iterator.next();
+          const outcome = await Promise.race([
+            iterator.next().then((next) => ({ kind: "next", next }) as const),
+            stdinStopped.then(() => ({ kind: "stopped" }) as const),
+          ]);
+          if (outcome.kind === "stopped") return;
+          const next = outcome.next;
           if (next.done === true) {
             stdinExhausted = true;
             maybeEndStdin();
@@ -391,6 +396,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       stdinPump.catch(() => connection.destroy());
     };
     try {
+      writeRequest(connection, request, options);
       startStdinPump();
       const initialChunks: Bytes[] = [];
       let parsed: ParsedHttpHead | undefined;
@@ -404,6 +410,9 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           if (indexOfBytes(merged, headerSeparator) === -1) continue;
           parsed = parseHttpHead(merged, operation);
           if (parsed.status !== 101 && (parsed.status < 200 || parsed.status >= 300)) {
+            // Fail immediately rather than draining the error body: hijacked (`Connection: Upgrade`)
+            // requests declare no body end and the engine can hold the socket open after an error
+            // status. Consumers classify from `status` in the details instead.
             throw fail(
               "http",
               operation,
@@ -446,13 +455,12 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       if (chunkedBody && bodyBuffer.length > 0) {
         for (const bodyChunk of flushChunkedBufferAtEnd(bodyBuffer)) yield bodyChunk;
       }
-    } catch (cause) {
-      throw mapError(options, cause);
     } finally {
       input.signal?.removeEventListener("abort", abort);
+      stopStdinPump?.();
+      await stdinPump?.catch(() => undefined);
       void stdinIterator?.return?.();
       connection.destroy();
-      void stdinPump?.catch(() => undefined);
     }
   }
 

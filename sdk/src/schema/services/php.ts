@@ -37,9 +37,16 @@ export const PhpServiceConfig = Schema.extend(
     "providers",
   ),
   Schema.Struct({
-    type: Schema.optional(Schema.Literal("php:8.1", "php:8.2", "php:8.3", "php:8.4", "php:8.5")).annotations({
-      description: "PHP catalog service type. PHP has no bare type: php alias; pin a supported minor.",
-    }),
+    type: Schema.optional(
+      Schema.String.pipe(
+        Schema.pattern(/^php:[^:\s]+$/u, {
+          message: () => "PHP service types use php:<version> syntax.",
+        }),
+      ).annotations({
+        description:
+          "PHP catalog service type. PHP has no bare type: php alias; the planner validates the requested version against shipped ServiceType metadata.",
+      }),
+    ),
   }),
 ).annotations({
   identifier: "PhpServiceConfig",

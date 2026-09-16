@@ -11,6 +11,7 @@ services:
   database:
     type: postgres
     image: postgres:15
+    home: false
 tooling:
   composer:
     service: appserver

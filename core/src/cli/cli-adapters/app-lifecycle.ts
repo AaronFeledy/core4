@@ -24,9 +24,12 @@ import { startApp } from "@lando/engine/operations/start";
 import { stopApp } from "@lando/engine/operations/stop";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import type { RendererIO } from "@lando/renderer/io";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { appConfigOptionsFromInput } from "../command-specs/app/config";
+import { infoOptionsFromInput } from "../command-specs/app/info";
 import { logsFollowFromInput, logsOptionsFromInput } from "../command-specs/app/logs";
+import { rebuildOptionsFromInput } from "../command-specs/app/rebuild";
 import {
   remoteAddOptionsFromInput,
   remoteEnvListOptionsFromInput,
@@ -100,7 +103,9 @@ type DestroyCommandServices =
   | import("@lando/sdk/services").AppPlanner
   | import("@lando/sdk/services").LandofileService
   | import("@lando/sdk/services").PathsService
-  | import("@lando/sdk/services").RuntimeProviderRegistry;
+  | PrivateFileAccessService
+  | import("@lando/sdk/services").RuntimeProviderRegistry
+  | import("@lando/sdk/services").StateStore;
 
 interface RunDestroyOptions {
   readonly runtime?: Layer.Layer<DestroyCommandServices, unknown>;
@@ -120,7 +125,11 @@ export const runStop = (): Promise<void> =>
   runCompiledCommand(stopApp(), appRuntimeLayer(), renderStopAppResult);
 
 export const runInfo = (argv: ReadonlyArray<string>): Promise<void> =>
-  runCompiledCommand(infoApp({ deep: argv.includes("--deep") }), appRuntimeLayer(), renderInfoAppResult);
+  runCompiledCommand(
+    infoApp(infoOptionsFromInput(compiledCommandInputFromArgv("app:info", argv))),
+    appRuntimeLayer(),
+    renderInfoAppResult,
+  );
 
 export const runOpen = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:open", argv)) return Promise.resolve();
@@ -212,10 +221,13 @@ export const runRestart = (): Promise<void> =>
     ),
   );
 
-export const runRebuild = (): Promise<void> =>
+export const runRebuild = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
-      Effect.zipRight(refreshAppCache(), rebuildApp({ signal })),
+      Effect.zipRight(
+        refreshAppCache(),
+        rebuildApp(rebuildOptionsFromInput({ ...compiledCommandInputFromArgv("app:rebuild", argv), signal })),
+      ),
       appRuntimeLayer(),
       renderRebuildAppResult,
     ),
@@ -397,12 +409,14 @@ export const parseAppConfigTranslateArgv = (
   readonly list: boolean;
   readonly detect: boolean;
   readonly from: string | undefined;
+  readonly to: string | undefined;
   readonly files: ReadonlyArray<string>;
 } => {
   let write = false;
   let list = false;
   let detect = false;
   let from: string | undefined;
+  let to: string | undefined;
   const files: Array<string> = [];
   let i = 0;
   while (i < argv.length) {
@@ -432,6 +446,12 @@ export const parseAppConfigTranslateArgv = (
       i += fromMatch.consumed;
       continue;
     }
+    const toMatch = parseStringFlag(argv, i, "to");
+    if (toMatch !== undefined) {
+      to = toMatch.value;
+      i += toMatch.consumed;
+      continue;
+    }
     const fileMatch = parseStringFlag(argv, i, "file");
     if (fileMatch !== undefined) {
       files.push(fileMatch.value);
@@ -445,21 +465,26 @@ export const parseAppConfigTranslateArgv = (
     }
     i += 1;
   }
-  return { write, list, detect, from, files };
+  return { write, list, detect, from, to, files };
 };
 
 export const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:config:translate", argv)) return Promise.resolve();
-  const { write, list, detect, from, files } = parseAppConfigTranslateArgv(argv);
+  const { write, list, detect, from, to, files } = parseAppConfigTranslateArgv(argv);
   return runCompiledCommand(
-    appConfigTranslate({
-      write,
-      list,
-      detect,
-      ...(from === undefined ? {} : { from }),
-      ...(files.length === 0 ? {} : { files }),
+    Effect.gen(function* () {
+      const privateFileAccess = yield* PrivateFileAccessService;
+      return yield* appConfigTranslate({
+        write,
+        list,
+        detect,
+        privateFileAccess,
+        ...(from === undefined ? {} : { from }),
+        ...(to === undefined ? {} : { to }),
+        ...(files.length === 0 ? {} : { files }),
+      });
     }),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
     (value) => renderConfigTranslateResult(value),
   );
 };

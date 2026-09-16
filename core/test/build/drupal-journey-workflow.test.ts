@@ -286,4 +286,47 @@ describe("drupal-journey workflow", () => {
       expect(job).not.toContain("&& dist/");
     }
   });
+
+  test("exports LANDO_USER roots from RUNNER_TEMP via GITHUB_ENV after checkout", async () => {
+    // Given / When
+    const linuxX64 = jobBlock(await readWorkflow(), "linux-x64");
+    const checkout = linuxX64.indexOf("actions/checkout@v5");
+    const isolate = linuxX64.indexOf("Isolate Lando roots");
+
+    // Then: job-level env cannot use the runner context; roots are exported from a step.
+    expect(checkout).toBeGreaterThan(-1);
+    expect(isolate).toBeGreaterThan(checkout);
+    expect(linuxX64).toContain('echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"');
+    expect(linuxX64).toContain('echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"');
+    expect(linuxX64).toContain('echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"');
+    expect(linuxX64).not.toContain("LANDO_USER_CONF_ROOT: ${{ runner.temp }}");
+  });
+
+  test("regenerates derived sources and the command registry before compiling", async () => {
+    // Given / When
+    const linuxX64 = jobBlock(await readWorkflow(), "linux-x64");
+    const codegen = linuxX64.indexOf("bun run codegen");
+    const manifest = linuxX64.indexOf("build:manifest");
+    const compile = linuxX64.indexOf("build-compiled-binary.ts");
+
+    // Then
+    expect(codegen).toBeGreaterThan(-1);
+    expect(manifest).toBeGreaterThan(codegen);
+    expect(compile).toBeGreaterThan(manifest);
+  });
+
+  test("copies host-proxy shim and log-file helper into dist before the compiled binary", async () => {
+    // Given / When
+    const linuxX64 = jobBlock(await readWorkflow(), "linux-x64");
+    const shim = linuxX64.indexOf("build:host-proxy-shim");
+    const logHelper = linuxX64.indexOf("build:log-file-helper");
+    const compile = linuxX64.indexOf("build-compiled-binary.ts");
+
+    // Then
+    expect(shim).toBeGreaterThan(-1);
+    expect(logHelper).toBeGreaterThan(shim);
+    expect(compile).toBeGreaterThan(logHelper);
+    expect(linuxX64).toContain("dist/host-proxy");
+    expect(linuxX64).toContain("dist/log-file-access");
+  });
 });

@@ -12,6 +12,8 @@ const sshAgentServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   api: 4,
   type: "lando",
   image: "alpine:3.20",
+  // The sidecar keeps no per-user state, so there is no home to persist.
+  home: false,
   command: [
     "sh",
     "-c",

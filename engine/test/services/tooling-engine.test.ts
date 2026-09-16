@@ -267,6 +267,107 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(provider.calls[0]?.command.cwd).toBe("/app");
   });
 
+  test("maps a host cwd under the app mount to the matching container path", async () => {
+    const service = {
+      ...baseServicePlan("appserver", true),
+      workingDirectory: PortablePath.make("/app/web"),
+      appMount: {
+        source: AbsolutePath.make("/workspace/drupal"),
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "passthrough",
+        excludes: [],
+        includes: [],
+      },
+    } satisfies ServicePlan;
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "drush",
+      service: "appserver",
+      cwd: "/workspace/drupal/web",
+      commands: [["drush", "status"]],
+    };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.cwd).toBe("/app/web");
+  });
+
+  test("keeps an explicit container dir that is not under a host mount", async () => {
+    const service = {
+      ...baseServicePlan("appserver", true),
+      appMount: {
+        source: AbsolutePath.make("/workspace/drupal"),
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "passthrough",
+        excludes: [],
+        includes: [],
+      },
+    } satisfies ServicePlan;
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "drush",
+      service: "appserver",
+      cwd: "/app/web",
+      commands: [["drush", "status"]],
+    };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.cwd).toBe("/app/web");
+  });
+
+  test("host cwd outside every mount falls back to the app mount target", async () => {
+    // Given: appserver is mounted at /workspace/drupal → /app, and process.cwd()
+    // is outside every bind mount (app targeting from outside the app root).
+    const service = {
+      ...baseServicePlan("appserver", true),
+      workingDirectory: PortablePath.make("/app/web"),
+      appMount: {
+        source: AbsolutePath.make("/workspace/drupal"),
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "passthrough",
+        excludes: [],
+        includes: [],
+      },
+    } satisfies ServicePlan;
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "drush",
+      service: "appserver",
+      commands: [["drush", "status"]],
+    };
+
+    // When: provider-exec tooling runs with no explicit cwd.
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then: execution falls back to the app mount target, not the raw host path.
+    expect(provider.calls[0]?.command.cwd).toBe("/app");
+  });
+
+  test("unmappable host cwd without an app mount falls back to the working directory", async () => {
+    const service = {
+      ...baseServicePlan("appserver", true),
+      workingDirectory: PortablePath.make("/srv/worker"),
+    };
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "drush",
+      service: "appserver",
+      commands: [["drush", "status"]],
+    };
+
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    expect(provider.calls[0]?.command.cwd).toBe("/srv/worker");
+  });
+
   test("defaults provider exec cwd to the service working directory without an app mount", async () => {
     // Given: a service has no app mount and declares its only meaningful working directory.
     const service = {
@@ -518,7 +619,7 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(provider.calls[0]?.command.terminalSize).toBeUndefined();
   });
 
-  test("allocates a PTY with inherited stdin when a stream sink and host TTY are present", async () => {
+  test("a stream sink alone never allocates a PTY or strips CI", async () => {
     const plan = makePlan([baseServicePlan("web", true)]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
     const invocation: ToolingInvocation = {
@@ -527,26 +628,82 @@ describe("ProviderExecToolingEngineLive", () => {
       env: { CI: "true" },
     };
     const sink = { emit: () => Effect.void };
-    const stdoutDesc = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
-    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
-    try {
-      await withHostEnv({ CI: "true", CLAUDECODE: undefined, OPENCODE: undefined, AGENT: undefined }, () =>
-        Effect.runPromise(
-          runEngine(invocation, plan, provider).pipe(Effect.provideService(StreamFrameSink, sink)),
-        ),
-      );
-    } finally {
-      if (stdoutDesc === undefined) {
-        Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: undefined });
-      } else {
-        Object.defineProperty(process.stdout, "isTTY", stdoutDesc);
-      }
-    }
+    await withHostEnv({ CI: "true", CLAUDECODE: undefined, OPENCODE: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(
+        runEngine(invocation, plan, provider).pipe(Effect.provideService(StreamFrameSink, sink)),
+      ),
+    );
 
-    expect(provider.calls[0]?.command.tty).toBe(true);
-    expect(provider.calls[0]?.command.stdin).toBe("inherit");
-    expect(provider.calls[0]?.command.env?.CI).toBeUndefined();
+    expect(provider.calls[0]?.command.tty).toBeUndefined();
+    expect(provider.calls[0]?.command.stdin).toBeUndefined();
+    expect(provider.calls[0]?.command.env?.CI).toBe("true");
     expect(provider.calls[0]?.command.terminalSize).toBeUndefined();
+  });
+
+  test("explicit PTY intent with attached facts allocates a PTY and strips CI", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "composer",
+      commands: [["composer", "install"]],
+      tty: true,
+      hostTerminal: { term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 },
+      env: { CI: "true" },
+    };
+
+    // When
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then
+    expect(provider.calls[0]?.command).toMatchObject({
+      tty: true,
+      stdin: "inherit",
+      env: { TERM: "dumb", COLORTERM: "truecolor", COLUMNS: "132", LINES: "43" },
+    });
+    expect(provider.calls[0]?.command.env?.CI).toBeUndefined();
+  });
+
+  test("forced PTY without attachment preserves CI and invents no terminal identity", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "composer",
+      commands: [["composer", "install"]],
+      tty: true,
+      env: { CI: "true" },
+    };
+
+    // When
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then
+    expect(provider.calls[0]?.command.env).toMatchObject({ COLUMNS: "80", LINES: "24", CI: "true" });
+    expect(provider.calls[0]?.command.env).not.toHaveProperty("TERM");
+    expect(provider.calls[0]?.command.env).not.toHaveProperty("COLORTERM");
+    expect(provider.calls[0]?.command.tty).toBe(true);
+  });
+
+  test("agent forwarding opt-out does not disable attached terminal forwarding", async () => {
+    // Given
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "ok", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "composer",
+      commands: [["composer"]],
+      tty: true,
+      hostTerminal: { term: "xterm-test", columns: 90, rows: 30 },
+      agentEnvAllowlist: [],
+    };
+
+    // When
+    await withHostEnv({ CI: "true", CLAUDECODE: "1", OPENCODE: undefined, AGENT: undefined }, () =>
+      Effect.runPromise(runEngine(invocation, plan, provider)),
+    );
+
+    // Then
+    expect(provider.calls[0]?.command.env).toEqual({ COLUMNS: "90", LINES: "30", TERM: "xterm-test" });
   });
 
   describe("host agent-context env forwarding", () => {

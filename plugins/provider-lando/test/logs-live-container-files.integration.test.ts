@@ -1,12 +1,13 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { loadLogFileHelperPayloads } from "@lando/engine/providers/log-file-helper-payloads";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
 
-import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { makePodmanApiClient, makeRuntimeProvider } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -21,8 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import type { LogChunk, RuntimeProviderShape } from "@lando/sdk/services";
 
-import { loadLogFileHelperPayloads } from "@lando/core/testing";
-import type { PodmanHttpResponse } from "../src/capabilities.ts";
+import type { EngineHttpResponse } from "@lando/container-runtime/engine-api";
 
 const liveSocket = resolveLiveProviderSocket();
 const providerId = ProviderId.make("lando");
@@ -341,7 +341,7 @@ describe("provider-lando live container-file logs", () => {
         await rm(appRoot, { recursive: true, force: true });
       }
 
-      const inspectAfterDestroy: PodmanHttpResponse = await Effect.runPromise(
+      const inspectAfterDestroy: EngineHttpResponse = await Effect.runPromise(
         api.request?.({ method: "GET", path: `/containers/${containerName}/json` }) ??
           Effect.succeed({ status: 500, body: "missing request client" }),
       );

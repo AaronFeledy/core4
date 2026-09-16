@@ -204,10 +204,11 @@ export const deprecateField = <S extends Schema.Annotable.All>(schema: S, notice
 
 export const getSchemaDeprecation = (annotated: AST.Annotated): DeprecationNotice | undefined => {
   const notice = annotated.annotations[SchemaDeprecationAnnotationId];
-  return Schema.is(DeprecationNotice)(notice) ? notice : undefined;
+  return notice !== undefined && Schema.is(DeprecationNotice)(notice) ? notice : undefined;
 };
 
 export const validateDeprecationNotice = (notice: unknown): notice is DeprecationNotice =>
+  notice !== undefined &&
   Either.isRight(Schema.decodeUnknownEither(DeprecationNotice)(notice, { onExcessProperty: "error" }));
 
 export const DeprecationUse = Schema.Struct({

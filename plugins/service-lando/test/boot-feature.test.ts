@@ -4,7 +4,7 @@ import { Effect, Schema } from "effect";
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
-import { composeService } from "@lando/core/testing";
+import { composeService } from "@lando/engine/services/feature";
 import { serviceFeatures } from "../src/features/index.ts";
 
 const FeatureExtension = Schema.Struct({
@@ -14,7 +14,7 @@ const FeatureExtension = Schema.Struct({
         id: Schema.optional(Schema.String),
         phase: Schema.String,
         command: Schema.Unknown,
-        privileged: Schema.optional(Schema.Boolean),
+        user: Schema.optional(Schema.String),
       }),
     ),
   ),
@@ -52,15 +52,20 @@ const buildStepsFor = (plan: ServicePlan) =>
 describe("lando.boot feature", () => {
   test("emits only the idempotent artifact scaffold step", async () => {
     const plan = await composeBootPlan();
+    const steps = buildStepsFor(plan);
+    const rawSteps =
+      (plan.extensions["@lando/core/service-features"] as { buildSteps?: ReadonlyArray<object> } | undefined)
+        ?.buildSteps ?? [];
 
-    expect(buildStepsFor(plan)).toEqual([
+    expect(steps).toEqual([
       {
         id: "lando.boot:scaffold",
         phase: "build",
         command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
-        privileged: true,
+        user: "root",
       },
     ]);
+    expect("privileged" in (rawSteps[0] ?? {})).toBe(false);
     expect(plan.mounts).toEqual([]);
     expect(plan.environment).toEqual({});
   });

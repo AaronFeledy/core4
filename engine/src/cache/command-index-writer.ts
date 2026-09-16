@@ -163,10 +163,18 @@ const realpathIfPresent = async (path: string): Promise<string | undefined> => {
 const localIncludePath = async (
   appRoot: string,
   source: string,
+  allowOutsideRoot: boolean,
 ): Promise<{ readonly filePath: string; readonly relativePath: string } | undefined> => {
   if (isRemoteInclude(source)) return undefined;
   const candidate = isAbsolute(source) ? source : resolve(appRoot, source);
-  if (!pathIsUnderRoot(appRoot, candidate)) return undefined;
+  if (!pathIsUnderRoot(appRoot, candidate)) {
+    if (!allowOutsideRoot || !isAbsolute(source)) return undefined;
+    const realCandidate = await realpathIfPresent(candidate);
+    return {
+      filePath: realCandidate ?? candidate,
+      relativePath: `external:${createHash("sha256").update(candidate).digest("hex")}`,
+    };
+  }
 
   const realRoot = await realpath(appRoot);
   const realCandidate = await realpathIfPresent(candidate);
@@ -186,10 +194,11 @@ const localIncludePath = async (
 const localIncludeSourcesFor = async (
   appRoot: string,
   paths: ReadonlyArray<string>,
+  allowOutsideRoot: boolean,
 ): Promise<ReadonlyArray<LocalIncludeSource>> => {
   const sources: LocalIncludeSource[] = [];
   for (const source of [...new Set(paths)].sort((left, right) => left.localeCompare(right))) {
-    const includePath = await localIncludePath(appRoot, source);
+    const includePath = await localIncludePath(appRoot, source, allowOutsideRoot);
     if (includePath === undefined) continue;
     sources.push({
       relativePath: includePath.relativePath,
@@ -291,11 +300,12 @@ const sourceContentHash = async (
   source: AppCommandCacheSource,
   appRoot: string,
   localIncludePaths: ReadonlyArray<string>,
+  allowOutsideRoot = false,
 ): Promise<string> =>
   sourceHashFor(
     source.landofileSources,
     source.includeLockfileBytes,
-    await localIncludeSourcesFor(appRoot, localIncludePaths),
+    await localIncludeSourcesFor(appRoot, localIncludePaths, allowOutsideRoot),
     source.scripts,
   );
 
@@ -322,7 +332,12 @@ const writeAppCommandCacheTask = async (
   if (hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)) return undefined;
   const sourceLocalIncludePaths = localIncludePathsForLandofile(options.landofile);
   const sourceReferencedFiles = getLandofileReferencedFiles(options.landofile);
-  const contentHash = await sourceContentHash(source, appRoot, sourceLocalIncludePaths);
+  const contentHash = await sourceContentHash(
+    source,
+    appRoot,
+    sourceLocalIncludePaths,
+    getLocalIncludePaths(options.landofile).length > 0,
+  );
   const cached = await readAppCommandCacheTask({
     ...options,
     cacheRoot,
@@ -459,7 +474,15 @@ const readAppCommandCacheTask = async (
     if (!pathsEqual(payload.sourceLocalIncludePaths, sourceLocalIncludePaths)) return null;
     if (!referencedFilesEqual(payload.sourceReferencedFiles, getLandofileReferencedFiles(options.landofile)))
       return null;
-    if (payload.sourceContentHash !== (await sourceContentHash(source, appRoot, sourceLocalIncludePaths)))
+    if (
+      payload.sourceContentHash !==
+      (await sourceContentHash(
+        source,
+        appRoot,
+        sourceLocalIncludePaths,
+        getLocalIncludePaths(options.landofile).length > 0,
+      ))
+    )
       return null;
     if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
     if (
@@ -503,7 +526,7 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
     if (!(await referencedFilesFresh(payload.sourceReferencedFiles))) return null;
     if (
       payload.sourceContentHash !==
-      (await sourceContentHash(source, appRoot, payload.sourceLocalIncludePaths))
+      (await sourceContentHash(source, appRoot, payload.sourceLocalIncludePaths, true))
     )
       return null;
     if (payload.sourceMtimeMs !== source.stats.mtimeMs || payload.sourceSize !== source.stats.size)

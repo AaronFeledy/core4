@@ -10,7 +10,9 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { AppPlannerLive, FileSystemLive, PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "lando-compose-project-field-")));
@@ -52,7 +54,7 @@ describe("Compose project field capabilities", () => {
       configs,
       secrets,
       "x-project": extension,
-      services: { web: { image: "node:lts" } },
+      services: { web: { image: "node:lts", home: false } },
     });
     const capabilities = {
       ...TestRuntimeProvider.capabilities,
@@ -80,7 +82,7 @@ describe("Compose project field capabilities", () => {
         name: `${field}-field`,
         runtime: 4,
         [field]: { app: { file: `./${field}.txt` } },
-        services: { web: { image: "node:lts" } },
+        services: { web: { image: "node:lts", home: false } },
       });
 
       await withTempCwd(async () => {
@@ -115,7 +117,7 @@ describe("Compose project field capabilities", () => {
       name: "project-extension",
       runtime: 4,
       "x-project": extension,
-      services: { web: { image: "node:lts" } },
+      services: { web: { image: "node:lts", home: false } },
     });
 
     await withTempCwd(async () => {

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gzipSync } from "node:zlib";
+import { gzipSync, zstdCompressSync } from "node:zlib";
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -14,6 +14,8 @@ import {
   NFT_WRAPPER_SCRIPT,
   bundledLoaderDepsSatisfied,
   collectNftDebPayload,
+  decompressDebDataTar,
+  decompressXz,
   ensureManagedNft,
   extractNftFromDeb,
   hasUsableManagedNft,
@@ -153,6 +155,70 @@ const makeSyntheticNftDeb = (): Uint8Array => {
   ]);
 };
 
+const withFakeDecompressCommands = async <T>(
+  mode: "oversize" | "stall" | "xz-oversize",
+  run: (pidFile: string) => Promise<T>,
+): Promise<T> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-nft-decompress-"));
+  const command = join(root, "decompress");
+  const pidFile = join(root, "pid");
+  const previousPath = process.env.PATH;
+  const previousPidFile = process.env.LANDO_NFT_TEST_PID_FILE;
+  const previousMode = process.env.LANDO_NFT_TEST_MODE;
+  await writeFile(
+    command,
+    `#!/bin/sh
+printf '%s' "$$" > "$LANDO_NFT_TEST_PID_FILE"
+if [ "$LANDO_NFT_TEST_MODE" = xz-oversize ] && [ "$(basename "$0")" = python3 ]; then
+  exit 1
+fi
+if [ "$LANDO_NFT_TEST_MODE" = oversize ] || [ "$LANDO_NFT_TEST_MODE" = xz-oversize ]; then
+  i=0
+  while [ "$i" -lt 8192 ]; do printf 'bounded-stderr' >&2; i=$((i + 1)); done
+  while :; do printf '0123456789abcdef'; done
+fi
+exec sleep 30
+`,
+    { mode: 0o755 },
+  );
+  await Bun.write(join(root, "python3"), Bun.file(command));
+  await Bun.write(join(root, "xz"), Bun.file(command));
+  await chmod(join(root, "python3"), 0o755);
+  await chmod(join(root, "xz"), 0o755);
+  process.env.PATH = `${root}:${previousPath ?? ""}`;
+  process.env.LANDO_NFT_TEST_PID_FILE = pidFile;
+  process.env.LANDO_NFT_TEST_MODE = mode;
+  try {
+    return await run(pidFile);
+  } finally {
+    if (previousPath === undefined) Reflect.deleteProperty(process.env, "PATH");
+    else process.env.PATH = previousPath;
+    if (previousPidFile === undefined) Reflect.deleteProperty(process.env, "LANDO_NFT_TEST_PID_FILE");
+    else process.env.LANDO_NFT_TEST_PID_FILE = previousPidFile;
+    if (previousMode === undefined) Reflect.deleteProperty(process.env, "LANDO_NFT_TEST_MODE");
+    else process.env.LANDO_NFT_TEST_MODE = previousMode;
+    await rm(root, { recursive: true, force: true });
+  }
+};
+
+const expectReaped = async (pidFile: string): Promise<void> => {
+  const pid = Number.parseInt(await readFile(pidFile, "utf8"), 10);
+  expect(Number.isSafeInteger(pid)).toBe(true);
+  expect(() => process.kill(pid, 0)).toThrow();
+};
+
+const expectRejectedMessage = async (action: () => Promise<unknown>, message: string): Promise<void> => {
+  let caught: unknown;
+  try {
+    await action();
+  } catch (cause) {
+    caught = cause;
+  }
+  expect(caught).toBeInstanceOf(Error);
+  if (!(caught instanceof Error)) throw new Error("expected rejection");
+  expect(caught.message).toContain(message);
+};
+
 describe("resolveNftHostKey", () => {
   test("maps linux/wsl x64 and arm64 only", () => {
     expect(resolveNftHostKey("linux", "x64")).toBe("linux-x64");
@@ -219,6 +285,152 @@ describe("deb extraction", () => {
       "libtinfo.so.6.5",
     ]);
   });
+
+  test.each([
+    { name: "data.tar.gz", compress: gzipSync },
+    { name: "data.tar.zst", compress: zstdCompressSync },
+  ])("bounds $name decompression while preserving payloads below the cap", async ({ name, compress }) => {
+    // Given: a highly compressible tar payload and a cap smaller than its decompressed bytes.
+    const payload = Buffer.alloc(64 * 1024, 0x61);
+    const compressed = new Uint8Array(compress(payload));
+
+    // When/Then: the cap rejects the oversized route, while an exact-size cap preserves bytes.
+    await expectRejectedMessage(
+      () => decompressDebDataTar(name, compressed, { maxDecompressedBytes: 1024 }),
+      "decompressed-size cap",
+    );
+    expect(
+      await decompressDebDataTar(name, compressed, { maxDecompressedBytes: payload.byteLength }),
+    ).toEqual(payload);
+  });
+
+  test.skipIf(process.platform !== "linux" || Bun.which("python3") === null)(
+    "real Python aborts over-cap expansion within a smaller address-space limit",
+    async () => {
+      // Given: 128 MiB of expansion, but only 64 MiB of child address space and a 1 KiB output cap.
+      const python = Bun.which("python3");
+      if (python === null) throw new Error("python3 unavailable");
+      const fixture = Bun.spawnSync([
+        python,
+        "-c",
+        `import lzma,sys
+c = lzma.LZMACompressor()
+for _ in range(128):
+    sys.stdout.buffer.write(c.compress(b'a' * (1024 * 1024)))
+sys.stdout.buffer.write(c.flush())`,
+      ]);
+      expect(fixture.exitCode).toBe(0);
+      const root = await mkdtemp(join(tmpdir(), "lando-nft-real-python-"));
+      const previousPath = process.env.PATH;
+      try {
+        // Execute the production -c program in real Python; no xz fallback is available.
+        await writeFile(
+          join(root, "python3"),
+          `#!/bin/sh
+exec '${python}' -c "import resource
+resource.setrlimit(resource.RLIMIT_AS, (64 * 1024**2, 64 * 1024**2))
+$2" "$3"
+`,
+          { mode: 0o755 },
+        );
+        process.env.PATH = root;
+
+        // When/Then: Python reports the cap, not MemoryError or fallback failure.
+        await expectRejectedMessage(
+          () => decompressXz(fixture.stdout, { maxDecompressedBytes: 1024 }),
+          "decompressed-size cap",
+        );
+        const small = Bun.spawnSync([
+          python,
+          "-c",
+          "import lzma,sys; sys.stdout.buffer.write(lzma.compress(b'a' * 1024))",
+        ]);
+        expect(small.exitCode).toBe(0);
+        expect(await decompressXz(small.stdout, { maxDecompressedBytes: 1024 })).toEqual(
+          Buffer.alloc(1024, 0x61),
+        );
+      } finally {
+        if (previousPath === undefined) Reflect.deleteProperty(process.env, "PATH");
+        else process.env.PATH = previousPath;
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  // PATH-selected shell executables and POSIX signal probes are unavailable on Windows.
+  test.skipIf(process.platform === "win32")(
+    "kills and reaps a Python child after its streamed output exceeds the cap",
+    async () => {
+      // Given: a decompressor that fills stderr before streaming stdout forever.
+      await withFakeDecompressCommands("oversize", async (pidFile) => {
+        // When: bounded xz decompression exceeds its stdout allowance.
+        await expectRejectedMessage(
+          () => decompressXz(Buffer.from("input"), { maxDecompressedBytes: 1024, timeoutMs: 2_000 }),
+          "decompressed-size cap",
+        );
+
+        // Then: completion is bounded and the child has been reaped without pipe deadlock.
+        await expectReaped(pidFile);
+      });
+    },
+  );
+
+  test.skipIf(process.platform === "win32")("bounds the xz fallback output and reaps the child", async () => {
+    // Given: an unavailable Python route and an xz fallback that streams output forever.
+    await withFakeDecompressCommands("xz-oversize", async (pidFile) => {
+      // When: fallback decompression exceeds its stdout allowance.
+      await expectRejectedMessage(
+        () => decompressXz(Buffer.from("input"), { maxDecompressedBytes: 1024, timeoutMs: 2_000 }),
+        "decompressed-size cap",
+      );
+
+      // Then: the fallback child is killed and reaped.
+      await expectReaped(pidFile);
+    });
+  });
+
+  test.skipIf(process.platform === "win32")("kills and reaps a stalled xz child on timeout", async () => {
+    // Given: a decompressor that neither reads stdin nor produces output.
+    await withFakeDecompressCommands("stall", async (pidFile) => {
+      // When: the decompression deadline expires while stdin is pipe-blocked.
+      await expectRejectedMessage(
+        () =>
+          decompressXz(Buffer.alloc(8 * 1024 * 1024), {
+            maxDecompressedBytes: 1024,
+            timeoutMs: 50,
+          }),
+        "timed out",
+      );
+
+      // Then: the blocked child is killed and reaped.
+      await expectReaped(pidFile);
+    });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "kills and reaps a full-pipe xz child on cancellation",
+    async () => {
+      // Given: a child blocked without reading a large stdin payload and a caller cancellation signal.
+      await withFakeDecompressCommands("stall", async (pidFile) => {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 50);
+
+        // When: the caller cancels decompression while the input pipe is full.
+        await expectRejectedMessage(
+          () =>
+            decompressXz(Buffer.alloc(8 * 1024 * 1024), {
+              maxDecompressedBytes: 1024,
+              timeoutMs: 2_000,
+              signal: controller.signal,
+            }),
+          "cancelled",
+        );
+
+        // Then: the blocked child is killed and reaped.
+        await expectReaped(pidFile);
+      });
+    },
+  );
 });
 
 describe("bundled loader deps", () => {
@@ -438,6 +650,23 @@ describe("NFT_MANIFEST", () => {
     expect(NFT_WRAPPER_SCRIPT).toContain("/nft");
     expect(NFT_WRAPPER_SCRIPT).not.toContain("pasta");
     expect(NFT_WRAPPER_SCRIPT).not.toContain("network_backend");
+  });
+
+  test("default decompression budget accommodates a conservative expansion of the largest pinned package", async () => {
+    // Given: a synthetic payload sized from the largest pinned artifact with a 32x expansion allowance.
+    // This checks synthetic gzip budget headroom, not actual pinned-package expansion or extraction
+    // compatibility without dpkg-deb; the real pinned assets are not downloaded by this test.
+    const largestPinnedBytes = Math.max(
+      ...Object.values(NFT_MANIFEST.packages).flatMap((packages) => packages.map((pkg) => pkg.sizeBytes)),
+    );
+    const payload = Buffer.alloc(largestPinnedBytes * 32, 0x61);
+    const compressed = new Uint8Array(gzipSync(payload));
+
+    // When: the default nft decompression policy expands that representative payload.
+    const decompressed = await decompressDebDataTar("data.tar.gz", compressed);
+
+    // Then: the pinned-asset-derived budget passes byte-for-byte.
+    expect(decompressed).toEqual(payload);
   });
 });
 

@@ -1,3 +1,5 @@
+import { nodeApiSnapshotYaml } from "./snapshot.ts";
+
 export const NODE_API_RECIPE_ID = "node-api";
 
 export const nodeApiRecipeSource = `${NODE_API_RECIPE_ID}/recipe.yml`;
@@ -47,4 +49,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring the Node API up.
+
+${nodeApiSnapshotYaml}
 `;

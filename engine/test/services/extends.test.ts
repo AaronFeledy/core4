@@ -3,7 +3,13 @@ import { Effect, Exit, Schema } from "effect";
 
 import { ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
-import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
+import type {
+  FeatureRef,
+  ServiceImageIdentity,
+  ServiceType,
+  ServiceTypeInput,
+  ServiceTypeResolution,
+} from "@lando/sdk/services";
 
 import {
   MAX_SERVICE_TYPE_EXTENDS_DEPTH,
@@ -19,6 +25,7 @@ const makeType = (
     readonly extends?: string;
     readonly base?: "l337" | "lando";
     readonly artifacts?: Record<string, string>;
+    readonly identity?: ServiceImageIdentity;
     readonly versions?: ReadonlyArray<string>;
     readonly resolution?: (input: ServiceTypeInput) => ServiceTypeResolution;
     readonly marker?: boolean;
@@ -32,6 +39,7 @@ const makeType = (
     schema: Schema.Unknown,
     ...(options.extends === undefined ? {} : { extends: options.extends }),
     ...(options.artifacts === undefined ? {} : { artifacts: options.artifacts }),
+    ...(options.identity === undefined ? {} : { identity: options.identity }),
     ...(options.versions === undefined ? {} : { versions: options.versions }),
     resolve: (input: ServiceTypeInput): Effect.Effect<ServiceTypeResolution, never> =>
       Effect.succeed(options.resolution?.(input) ?? { base, normalizedConfig: input.service, features: [] }),
@@ -106,6 +114,77 @@ describe("composeExtendedServiceType", () => {
     expect(typeof composed.privateMarker).toBe("function");
     expect(composed.artifacts).toEqual({ "10.11": "drupal/mariadb:10.11", "10.5": "mariadb:10.5" });
     expect(composed.versions).toEqual(["10.11", "10.5"]);
+  });
+
+  test("inherits parent-only identity onto the composed type", async () => {
+    const parent = makeType("mariadb", {
+      identity: {
+        defaultUser: "mysql",
+        homes: { mysql: "/var/lib/mysql", root: "/root" },
+      },
+    });
+    const child = makeType("drupal-mariadb", { extends: "mariadb" });
+    const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
+
+    const composed = await Effect.runPromise(composeExtendedServiceType(child, lookup));
+
+    expect(composed.identity).toEqual({
+      defaultUser: "mysql",
+      homes: { mysql: "/var/lib/mysql", root: "/root" },
+    });
+  });
+
+  test("preserves child-only identity when the parent declares none", async () => {
+    const parent = makeType("mariadb");
+    const child = makeType("drupal-mariadb", {
+      extends: "mariadb",
+      identity: {
+        defaultUser: "www-data",
+        homes: { "www-data": "/var/www" },
+      },
+    });
+    const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
+
+    const composed = await Effect.runPromise(composeExtendedServiceType(child, lookup));
+
+    expect(composed.identity).toEqual({
+      defaultUser: "www-data",
+      homes: { "www-data": "/var/www" },
+    });
+  });
+
+  test("merges identity with child defaultUser and child-precedence homes when both declare it", async () => {
+    const parent = makeType("mariadb", {
+      identity: {
+        defaultUser: "mysql",
+        homes: { mysql: "/var/lib/mysql", root: "/root" },
+      },
+    });
+    const child = makeType("drupal-mariadb", {
+      extends: "mariadb",
+      identity: {
+        defaultUser: "drupal",
+        homes: { mysql: "/home/mysql", drupal: "/home/drupal" },
+      },
+    });
+    const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
+
+    const composed = await Effect.runPromise(composeExtendedServiceType(child, lookup));
+
+    expect(composed.identity).toEqual({
+      defaultUser: "drupal",
+      homes: { mysql: "/home/mysql", root: "/root", drupal: "/home/drupal" },
+    });
+  });
+
+  test("omits the identity key when neither side declares it", async () => {
+    const parent = makeType("mariadb");
+    const child = makeType("drupal-mariadb", { extends: "mariadb" });
+    const lookup = (id: string): ServiceType | undefined => (id === "mariadb" ? parent : undefined);
+
+    const composed = await Effect.runPromise(composeExtendedServiceType(child, lookup));
+
+    expect(Object.hasOwn(composed, "identity")).toBe(false);
   });
 
   test("rejects an extends chain deeper than the maximum depth", async () => {

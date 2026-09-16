@@ -10,8 +10,8 @@ import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/c
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "lando-compose-field-capability-")));
@@ -48,7 +48,7 @@ describe("Compose service field capabilities", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "network-field",
       runtime: 4,
-      services: { web: { image: "node:lts", networks: ["frontend"] } },
+      services: { web: { image: "node:lts", home: false, networks: ["frontend"] } },
     });
 
     await withTempCwd(async () => {
@@ -80,7 +80,7 @@ describe("Compose service field capabilities", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "labels-field",
       runtime: 4,
-      services: { web: { image: "node:lts", labels: { "example.com/role": "web" } } },
+      services: { web: { image: "node:lts", home: false, labels: { "example.com/role": "web" } } },
     });
 
     await withTempCwd(async () => {
@@ -108,7 +108,7 @@ describe("Compose service field capabilities", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "portable-label-field",
       runtime: 4,
-      services: { web: { image: "node:lts", labels: { "example.com/role": "web" } } },
+      services: { web: { image: "node:lts", home: false, labels: { "example.com/role": "web" } } },
     });
     const capabilities: ProviderCapabilities = {
       ...TestRuntimeProvider.capabilities,
@@ -136,7 +136,7 @@ describe("Compose service field capabilities", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "inert-extension-field",
       runtime: 4,
-      services: { web: { image: "node:lts", "x-foo": extension } },
+      services: { web: { image: "node:lts", home: false, "x-foo": extension } },
     });
 
     await withTempCwd(async () => {

@@ -204,6 +204,51 @@ describe("platform-readiness workflow", () => {
     expect(workflow).not.toContain("advisory-skip");
   });
 
+  test("exports LANDO_USER roots via GITHUB_ENV after checkout, not job-level runner context", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+
+    // Then
+    for (const id of PLATFORM_IDS) {
+      const job = jobBlock(workflow, id);
+      const checkout = job.indexOf("actions/checkout@v5");
+      const isolate = job.indexOf("Isolate Lando roots");
+      expect(checkout).toBeGreaterThan(-1);
+      expect(isolate).toBeGreaterThan(checkout);
+      expect(job).toContain('echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"');
+      expect(job).toContain('echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"');
+      expect(job).toContain('echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"');
+      expect(job).not.toContain("LANDO_USER_CONF_ROOT: ${{ runner.temp }}");
+    }
+  });
+
+  test("regenerates derived sources and the command registry before compiling", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+
+    // Then
+    for (const id of PLATFORM_IDS) {
+      const job = jobBlock(workflow, id);
+      const install = job.indexOf("bun install --frozen-lockfile");
+      const codegen = job.indexOf("bun run codegen");
+      const manifest = job.indexOf("bun run --filter='@lando/core' build:manifest");
+      const compile = job.indexOf(`Build ${id} binary`);
+      expect(install).toBeGreaterThan(-1);
+      expect(codegen).toBeGreaterThan(install);
+      expect(manifest).toBeGreaterThan(codegen);
+      expect(compile).toBeGreaterThan(manifest);
+    }
+  });
+
+  test("does not build host-proxy or log-file sidecars for the doctor binary", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+
+    // Then
+    expect(workflow).not.toContain("build:host-proxy-shim");
+    expect(workflow).not.toContain("build:log-file-helper");
+  });
+
   test("runs setup before the doctor gate on every cell", async () => {
     // Given / When
     const workflow = await readWorkflow();

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
+import { ConfigResultSchema, config } from "@lando/engine/operations/config";
+import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
-import { ConfigResultSchema, config } from "../../src/testing/engine-layers";
 
 import { renderConfigResult } from "../../src/cli/commands/config.ts";
 
@@ -29,12 +30,13 @@ const runCli = async (
   return { exitCode, stdout, stderr };
 };
 
-const fakeConfigService = (overrides: Partial<{ userDataRoot: string; userConfRoot: string }>) =>
-  Layer.succeed(ConfigService, {
-    get: <K extends string>(key: K) =>
-      Effect.succeed((overrides as Record<string, unknown>)[key as string] as never),
-    load: Effect.succeed({} as never),
-  } as never);
+const fakeConfigService = (overrides: typeof GlobalConfig.Encoded) => {
+  const loaded = Schema.decodeUnknownSync(GlobalConfig)(overrides);
+  return Layer.succeed(ConfigService, {
+    get: (key) => Effect.succeed(loaded[key]),
+    load: Effect.succeed(loaded),
+  });
+};
 
 const withTempEnv = async <T>(vars: Record<string, string>, run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-"));
@@ -87,8 +89,8 @@ describe("meta:config command", () => {
 
   test("--path resolves bracket array indices the same way write paths do", async () => {
     const result = await Effect.runPromise(
-      config({ path: "userDataRoot[1]", format: "json" }).pipe(
-        Effect.provide(fakeConfigService({ userDataRoot: ["a", "b"] as never })),
+      config({ path: "network.proxy.noProxy[1]", format: "json" }).pipe(
+        Effect.provide(fakeConfigService({ network: { proxy: { noProxy: ["a", "b"] } } })),
       ),
     );
     expect(result.value).toBe("b");
@@ -189,7 +191,6 @@ describe("meta:config command", () => {
 
   test("telemetry status reports env override ahead of config", async () => {
     await withTempEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "0" }, async (dir) => {
-      await mkdir(dir, { recursive: true });
       await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: true\n");
 
       const result = await Effect.runPromise(
