@@ -807,7 +807,7 @@ describe("EventCommandExecutorLive", () => {
         inspect: {
           cmd: "inspect",
           arguments: false,
-          flags: { verbose: { type: "boolean" } },
+          flags: { verbose: { boolean: true } },
         },
       },
     );
@@ -846,6 +846,8 @@ describe("EventCommandExecutorLive", () => {
     expect(invocations[0]).toMatchObject({
       commands: [["sh", "-c", 'inspect "$@"', "lando-tooling", "--verbose"]],
     });
+    expect(invocations[0]?.tty).toBeUndefined();
+    expect(invocations[0]?.hostTerminal).toBeUndefined();
   });
 
   test("redacts flag-shaped raw argv from nested lifecycle events without changing target argv", async () => {
@@ -1245,6 +1247,7 @@ describe("EventCommandExecutorLive", () => {
     expect(input).toEqual({
       argv: ["--", "tail"],
       parsedArgv: ["app", "a", "b", "--", "tail"],
+      interaction: "non-interactive",
       flags: { decimal: 1.25, integer: 4, enabled: false, mode: "SAFE", labels: ["[one]", "[two]"] },
       args: { target: "app", paths: ["a", "b"] },
     });

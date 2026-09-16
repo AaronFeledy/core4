@@ -5,7 +5,8 @@ import { Effect, Layer, Schema } from "effect";
 import { type LandoEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive, createBufferedRendererIO } from "@lando/core/testing";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { createRecordingStdout } from "./live-region-test-kit.ts";

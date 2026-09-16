@@ -1,0 +1,12 @@
+name: scoped-services
+services:
+  frontend:
+    type: "node:22"
+    primary: true
+  database:
+    type: postgres
+  api:
+    type: "node:22"
+    dependsOn:
+      database:
+        condition: service_started

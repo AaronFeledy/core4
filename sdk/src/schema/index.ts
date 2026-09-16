@@ -2,6 +2,7 @@ export * from "./app-plan.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";
+export * from "./config-view.ts";
 export * from "./certificate-authority-contribution.ts";
 export {
   ComposeProjectFieldCapabilities,
@@ -64,6 +65,7 @@ export type { ComposeVolumeEntry } from "./compose-volumes.ts";
 export * from "./config.ts";
 export * from "./config-lint.ts";
 export * from "./data-transfer.ts";
+export * from "./volume-identity.ts";
 export {
   EndpointInfo,
   EndpointMaterialization,
@@ -93,6 +95,7 @@ export * from "./embedding-plugin-policy.ts";
 export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";
 export * from "./http-client.ts";
+export * from "./host-terminal.ts";
 export { BuildStepSkipEvent } from "../events/app.ts";
 export { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "../events/global.ts";
 export { PostHttpCallEvent, PreHttpCallEvent } from "../events/http-call.ts";
@@ -109,6 +112,7 @@ export * from "./managed-file.ts";
 export * from "./mcp.ts";
 export * from "./mounts.ts";
 export * from "./networking.ts";
+export * from "./route-filter.ts";
 export * from "./notify-config.ts";
 export * from "./plugin.ts";
 export * from "./plugin-doctor.ts";
@@ -135,3 +139,4 @@ export * from "./template.ts";
 export * from "./tool-manifest.ts";
 export * from "./tunnel.ts";
 export * from "./update-manifest.ts";
+export { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";

@@ -157,7 +157,7 @@ describe("lando app:includes:verify (source dispatch)", () => {
           "    cmd: echo hi",
           "    args:",
           "      target:",
-          "        description: Deployment target",
+          "        type: string",
           "",
         ].join("\n"),
       );
@@ -172,9 +172,7 @@ describe("lando app:includes:verify (source dispatch)", () => {
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
           expect((failure.value as { _tag: string; message: string })._tag).toBe("NotImplementedError");
-          expect((failure.value as { message: string }).message).toContain(
-            'Tooling args field "description"',
-          );
+          expect((failure.value as { message: string }).message).toContain('Tooling args field "type"');
         }
       }
     });

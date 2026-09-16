@@ -37,9 +37,26 @@ describe("ensureReadableDump", () => {
   test("passes for a readable dump file", async () => {
     const path = join(appRoot, "ok.sql.gz");
     await writeFile(path, "x");
-    const exit = await Effect.runPromiseExit(ensureReadableDump(path, appRoot));
+    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
 
-    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(dump.gzip).toBe(false);
+    expect(dump.digest).toHaveLength(64);
+  });
+
+  test("detects gzip from magic bytes even without a .gz suffix", async () => {
+    const path = join(appRoot, "dump.sql");
+    await writeFile(path, Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x00]));
+    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
+
+    expect(dump.gzip).toBe(true);
+  });
+
+  test("does not treat a .gz suffix as gzip without the magic bytes", async () => {
+    const path = join(appRoot, "plain.sql.gz");
+    await writeFile(path, "not-gzip");
+    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
+
+    expect(dump.gzip).toBe(false);
   });
 
   test("fails with SqlDumpNotFoundError when the dump file exists but is not readable", async () => {

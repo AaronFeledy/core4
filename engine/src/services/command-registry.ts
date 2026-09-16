@@ -56,6 +56,7 @@ const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): Readon
     id: entry.id,
     summary: entry.summary,
     hidden: entry.hidden,
+    ...(entry.input === undefined ? {} : { input: entry.input }),
   }));
 
 const writeCachesForLandofile = (

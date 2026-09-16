@@ -74,6 +74,7 @@ export interface LandoPaths {
   // userConf-scoped
   readonly configFile: string;
   readonly configDir: string;
+  readonly userIncludesDir: string;
   readonly globalConfigFile: string;
   readonly pluginTrustFile: string;
 }

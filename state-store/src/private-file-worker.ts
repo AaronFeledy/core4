@@ -76,6 +76,7 @@ export interface PrivateFileAccessWorkerOptions {
   readonly systemRoot: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly spawn: PrivateFileAccessSpawn;
+  readonly timeoutMs?: number;
 }
 
 type WorkerOperation = "enforce" | "verify";
@@ -116,6 +117,23 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
   let queue = Promise.resolve();
   let closed = false;
 
+  const bounded = async <A>(work: Promise<A>): Promise<A> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new TypeError("Private file ACL worker timed out.")),
+            options.timeoutMs ?? 15_000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   const closeProcess = async (): Promise<void> => {
     const current = processHandle;
     processHandle = undefined;
@@ -123,8 +141,7 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
     lineState.buffer = "";
     if (current === undefined) return;
     if (current.exitCode === null) current.kill();
-    await current.exited;
-    await stderrDrained;
+    await bounded(Promise.all([current.exited, stderrDrained]));
     stderrDrained = undefined;
   };
 
@@ -166,12 +183,16 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
     const id = String(sequence);
     try {
       const pathBase64 = Buffer.from(path, "utf16le").toString("base64");
-      await child.stdin.write(`${JSON.stringify({ id, operation, pathBase64 })}\n`);
-      await child.stdin.flush();
-      const result = await Promise.race([
-        readLine(stdout, lineState).then((line) => ({ kind: "response" as const, line })),
-        child.exited.then((exitCode) => ({ kind: "exit" as const, exitCode })),
-      ]);
+      const result = await bounded(
+        (async () => {
+          await child.stdin.write(`${JSON.stringify({ id, operation, pathBase64 })}\n`);
+          await child.stdin.flush();
+          return Promise.race([
+            readLine(stdout, lineState).then((line) => ({ kind: "response" as const, line })),
+            child.exited.then((exitCode) => ({ kind: "exit" as const, exitCode })),
+          ]);
+        })(),
+      );
       if (result.kind === "exit")
         throw new TypeError(`Private file ACL worker exited with ${result.exitCode}.`);
       const response = decodeResponse(JSON.parse(result.line));

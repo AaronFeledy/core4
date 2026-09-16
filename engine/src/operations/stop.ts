@@ -17,13 +17,20 @@ import {
   LandofileService,
   PathsService,
   RuntimeProviderRegistry,
+  StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
+import {
+  verifyActiveVolumeCoordination,
+  withPlanVolumeCoordination,
+} from "../lifecycle/volume-coordination.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -40,14 +47,15 @@ type StopAppServices =
   | LandofileService
   | PathsService
   | PrivateFileAccessService
-  | RuntimeProviderRegistry;
+  | RuntimeProviderRegistry
+  | StateStore;
 type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-const stopAppWithResolvedPlan = (
+const stopAppWithResolvedPlanUncoordinated = (
   _options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.Effect<
@@ -91,11 +99,10 @@ const stopAppWithResolvedPlan = (
 
     yield* terminateFileSyncSessions(ref);
 
-    yield* provider
-      .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
-      .pipe(
-        Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
-      );
+    yield* verifyActiveVolumeCoordination(provider).pipe(
+      Effect.zipRight(provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false })),
+      Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
+    );
 
     for (const service of services) {
       yield* events.publish(
@@ -119,13 +126,39 @@ const stopAppWithResolvedPlan = (
     );
     const postStop = PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() });
     yield* events.publish(postStop);
-    yield* runPostAppEvent(plan, "post-stop", postStop);
+    yield* runAppEvent(plan, "post-stop", postStop);
 
     return {
       result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },
       plan,
     };
   });
+
+const stopAppWithResolvedPlan = (
+  options: StopAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<
+  { readonly result: StopAppResult; readonly plan: AppPlan },
+  SdkStopAppError,
+  BoundStopAppServices
+> =>
+  withAppMutationLock(
+    appLockTarget(target.plan),
+    Effect.gen(function* () {
+      const context = yield* Effect.context<BoundStopAppServices>();
+      const registry = yield* RuntimeProviderRegistry;
+      const stateStore = yield* StateStore;
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const provider = yield* registry.select(resolvedTarget.plan);
+      return yield* withPlanVolumeCoordination({
+        plan: resolvedTarget.plan,
+        provider,
+        stateStore,
+        body: () =>
+          stopAppWithResolvedPlanUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
+      });
+    }),
+  );
 
 export const stopAppWithPlan = (
   options: StopAppOptions = {},

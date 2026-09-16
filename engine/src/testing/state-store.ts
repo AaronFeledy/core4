@@ -189,6 +189,8 @@ const makeInMemoryStateStore = (files: Map<string, Uint8Array>): StateStoreShape
     resolveStatePath(spec.root, spec.namespace, spec.key, "open").pipe(
       Effect.map((resolved) => buildInMemoryBucket(spec, resolved.file, files)),
     ),
+  withLock: <A, E>(key: string, body: Effect.Effect<A, E>) =>
+    withInMemoryAdvisoryLock(`operation-locks/${key}`, body),
 });
 
 export interface TestStateStore {

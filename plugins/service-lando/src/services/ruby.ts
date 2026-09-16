@@ -8,6 +8,9 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 export const SUPPORTED_RUBY_VERSIONS = ["3.3"] as const;
 export type SupportedRubyVersion = (typeof SUPPORTED_RUBY_VERSIONS)[number];
+const RUBY_ARTIFACTS = Object.fromEntries(
+  SUPPORTED_RUBY_VERSIONS.map((version) => [version, `ruby:${version}-slim`]),
+);
 
 export const SUPPORTED_RUBY_FRAMEWORKS = ["rails", "none"] as const;
 export type SupportedRubyFramework = (typeof SUPPORTED_RUBY_FRAMEWORKS)[number];
@@ -159,6 +162,9 @@ export const makeRubyServiceType = (version: SupportedRubyVersion): ServiceType 
   id: `ruby:${version}`,
   name: `ruby:${version}`,
   base: "lando",
+  versions: SUPPORTED_RUBY_VERSIONS,
+  artifacts: RUBY_ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.try({

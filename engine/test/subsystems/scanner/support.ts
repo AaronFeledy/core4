@@ -1,14 +1,20 @@
 import { expect } from "bun:test";
-import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option, TestClock, TestContext } from "effect";
+import {
+  Cause,
+  Clock,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Stream,
+  TestClock,
+  TestContext,
+} from "effect";
 
 import { HttpRequestError, type ScannerError } from "@lando/sdk/errors";
-import {
-  AppId,
-  type HttpRequest,
-  type HttpResponse,
-  type PublishedEndpoint,
-  type ServiceName,
-} from "@lando/sdk/schema";
+import { AppId, type HttpRequest, type PublishedEndpoint, type ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
 import type { HttpClientShape } from "@lando/http-client/service";
@@ -102,10 +108,10 @@ export const httpSleep = (duration: Duration.DurationInput, status: number): Scr
 
 export interface FakeHttp {
   readonly requests: HttpRequest[];
-  readonly request: HttpClientShape["request"];
+  readonly stream: HttpClientShape["stream"];
 }
 
-const response = (status: number): HttpResponse => ({ status, headers: [] });
+const response = (status: number) => ({ status, headers: [], body: Stream.empty });
 
 const urlOrigin = (url: string): string => {
   try {
@@ -122,7 +128,7 @@ export const requestSequence = (
   const requests: HttpRequest[] = [];
   return {
     requests,
-    request: (req) => {
+    stream: (req) => {
       requests.push(req);
       const scripted = results[Math.min(attempt, results.length - 1)] ?? results[0];
       attempt += 1;
@@ -144,13 +150,13 @@ export const asHttpClient = (fake: FakeHttp): HttpClientShape => ({
   id: "test-scanner-http",
   capabilities: {
     schemes: ["https", "http"],
-    streaming: false,
+    streaming: true,
     upload: false,
     customCa: true,
     proxyAware: true,
   },
-  request: fake.request,
-  stream: () => Effect.die("scanner tests do not stream"),
+  request: () => Effect.die("scanner must not buffer response bodies"),
+  stream: fake.stream,
   upload: () => Effect.die("scanner tests do not upload"),
 });
 

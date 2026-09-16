@@ -35,11 +35,32 @@ export type CommandHelpOptions = {
   readonly aliasPolicy?: HelpAliasPolicy;
 };
 
+export type ToolingHelpInput = {
+  readonly flags: readonly {
+    readonly name: string;
+    readonly alias?: string;
+    readonly boolean: boolean;
+    readonly choices?: readonly string[];
+    readonly default?: string | boolean;
+    readonly required: boolean;
+    readonly description?: string;
+  }[];
+  readonly args: readonly {
+    readonly name: string;
+    readonly order: number;
+    readonly choices?: readonly string[];
+    readonly default?: string;
+    readonly required: boolean;
+    readonly description?: string;
+  }[];
+};
+
 export type ToolingHelpEntry = {
   readonly id: string;
   readonly summary: string;
   readonly hidden?: boolean;
   readonly service?: string;
+  readonly input?: ToolingHelpInput;
 };
 
 type HelpStyle = {
@@ -161,15 +182,55 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
   ].join("\n");
 };
 
+type HelpItemMeta = {
+  readonly description?: string;
+  readonly choices?: readonly string[];
+  readonly default?: string | boolean;
+  readonly required: boolean;
+};
+
+const helpItemMeta = (item: HelpItemMeta): string => {
+  const description = item.description === undefined ? "" : ` ${item.description}`;
+  const choices =
+    item.choices === undefined || item.choices.length === 0 ? "" : ` (${item.choices.join(", ")})`;
+  const defaultText = item.default === undefined ? "" : ` [default: ${String(item.default)}]`;
+  const requiredText = item.required ? " [required]" : "";
+  return `${description}${choices}${defaultText}${requiredText}`;
+};
+
+const toolingSection = (title: string, rows: readonly string[], style: HelpStyle): readonly string[] =>
+  rows.length === 0 ? [] : ["", style.heading(title), ...rows];
+
 export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelpOptions): string => {
   const style = helpStyle(options?.styled === true);
   const names = typeableFor(entry.id, [], options?.aliasPolicy, true);
+  const input = entry.input;
+  const usage =
+    input === undefined
+      ? `lando ${names.primary} [args...]`
+      : `lando ${names.primary}${input.flags.length === 0 ? "" : " [flags]"}${
+          input.args.length === 0
+            ? ""
+            : ` ${input.args
+                .map((arg) => (arg.required ? `<${arg.name.toUpperCase()}>` : `[${arg.name.toUpperCase()}]`))
+                .join(" ")}`
+        }`;
+  const flagRows =
+    input === undefined
+      ? []
+      : input.flags.map((flag) => {
+          const alias = flag.alias === undefined ? "" : `, -${flag.alias}`;
+          return `  --${flag.name}${alias}${helpItemMeta(flag)}`;
+        });
+  const argRows = input === undefined ? [] : input.args.map((arg) => `  ${arg.name}${helpItemMeta(arg)}`);
   const lines = [
     entry.summary,
     "",
     style.heading("USAGE"),
-    `  ${style.command(`lando ${names.primary} [args...]`)}`,
+    `  ${style.command(usage)}`,
     ...aliasLines(names.extras, style),
+    ...toolingSection("FLAGS", flagRows, style),
+    ...toolingSection("ARGUMENTS", argRows, style),
   ];
   if (entry.service !== undefined) lines.push("", `Runs in service ${entry.service}`);
   return lines.join("\n");

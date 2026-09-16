@@ -1,7 +1,43 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { attachExecHostIo, withInheritedStdinRawMode } from "../../src/cli/exec-host-io.ts";
+import {
+  attachExecHostIo,
+  attachedHostTerminal,
+  withInheritedStdinRawMode,
+} from "../../src/cli/exec-host-io.ts";
+
+describe("attachedHostTerminal", () => {
+  test("returns terminal facts only for an attached output TTY", () => {
+    // Given
+    const output = { isTTY: true, columns: 132, rows: 43 };
+
+    // When
+    const terminal = attachedHostTerminal(output, { TERM: "dumb", COLORTERM: "truecolor" });
+
+    // Then
+    expect(terminal).toEqual({ term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 });
+  });
+
+  test("returns no descriptor for a pipe even when terminal env is present", () => {
+    // When
+    const terminal = attachedHostTerminal(
+      { isTTY: false, columns: 132, rows: 43 },
+      { TERM: "xterm-256color", COLORTERM: "truecolor" },
+    );
+
+    // Then
+    expect(terminal).toBeUndefined();
+  });
+
+  test("omits absent, empty, and invalid attached facts without synthesizing values", () => {
+    // When
+    const terminal = attachedHostTerminal({ isTTY: true, columns: 0 }, { TERM: "", COLORTERM: undefined });
+
+    // Then
+    expect(terminal).toEqual({});
+  });
+});
 
 describe("attachExecHostIo", () => {
   test("wraps inherited stdin so exec cleanup cannot destroy the host stream", () => {
@@ -21,7 +57,7 @@ describe("attachExecHostIo", () => {
     };
 
     // When
-    const attached = attachExecHostIo(options, stdin);
+    const attached = attachExecHostIo(options, stdin, { isTTY: false });
     attached.stdinStream?.[Symbol.asyncIterator]();
 
     // Then
@@ -30,7 +66,7 @@ describe("attachExecHostIo", () => {
     expect(destroyOnReturn).toBe(false);
   });
 
-  test("disables the container TTY when interactive stdin is piped", () => {
+  test("preserves explicit PTY intent when interactive stdin is piped", () => {
     // Given
     const options = { command: ["cat"], interactive: true, tty: true } as const;
     const stdin = {
@@ -43,10 +79,32 @@ describe("attachExecHostIo", () => {
     };
 
     // When
-    const attached = attachExecHostIo(options, stdin);
+    const attached = attachExecHostIo(options, stdin, { isTTY: false });
 
     // Then
-    expect(attached.tty).toBe(false);
+    expect(attached.tty).toBe(true);
+    expect(attached.hostTerminal).toBeUndefined();
+    expect(attached.terminalResize).toBeUndefined();
+  });
+
+  test("preserves forced PTY intent on a pipe without inventing attached facts", () => {
+    // Given
+    const options = { command: ["sh", "-l"], tty: true } as const;
+    const stdin = {
+      isTTY: false,
+      readableFlowing: null,
+      resume: () => {},
+      pause: () => {},
+      [Symbol.asyncIterator]: () => ({ next: () => new Promise<IteratorResult<Uint8Array>>(() => {}) }),
+      iterator: () => stdin[Symbol.asyncIterator](),
+    };
+
+    // When
+    const attached = attachExecHostIo(options, stdin, { isTTY: false });
+
+    // Then
+    expect(attached.tty).toBe(true);
+    expect(attached.hostTerminal).toBeUndefined();
     expect(attached.terminalResize).toBeUndefined();
   });
 });

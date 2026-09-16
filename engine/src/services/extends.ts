@@ -2,7 +2,13 @@ import { Effect } from "effect";
 
 import { ServiceTypeCollisionError } from "@lando/sdk/errors";
 import type { ServiceConfig } from "@lando/sdk/schema";
-import type { FeatureRef, ServiceType, ServiceTypeInput, ServiceTypeResolution } from "@lando/sdk/services";
+import type {
+  FeatureRef,
+  ServiceImageIdentity,
+  ServiceType,
+  ServiceTypeInput,
+  ServiceTypeResolution,
+} from "@lando/sdk/services";
 
 import { mergeValues } from "@lando/landofile/merge";
 
@@ -184,6 +190,26 @@ const mergeArtifacts = (chain: ReadonlyArray<ServiceType>): Readonly<Record<stri
   return merged;
 };
 
+/**
+ * Identity merges root-to-leaf: sole declaration wins; when both sides declare,
+ * the child's `defaultUser` wins and `homes` shallow-merge with child keys overriding.
+ */
+const mergeIdentity = (chain: ReadonlyArray<ServiceType>): ServiceImageIdentity | undefined => {
+  let merged: ServiceImageIdentity | undefined;
+  for (const type of chain) {
+    if (type.identity === undefined) continue;
+    if (merged === undefined) {
+      merged = type.identity;
+      continue;
+    }
+    merged = {
+      defaultUser: type.identity.defaultUser,
+      homes: { ...merged.homes, ...type.identity.homes },
+    };
+  }
+  return merged;
+};
+
 const mergeVersions = (chain: ReadonlyArray<ServiceType>): ReadonlyArray<string> | undefined => {
   const ordered: Array<string> = [];
   const seen = new Set<string>();
@@ -205,6 +231,7 @@ export const composeExtendedServiceType = (
   return Effect.gen(function* () {
     const chain = yield* resolveExtendsChain(leaf, lookup);
     const mergedArtifacts = mergeArtifacts(chain);
+    const mergedIdentity = mergeIdentity(chain);
     const mergedVersions = mergeVersions(chain);
     const resolve = (input: ServiceTypeInput): ReturnType<ServiceType["resolve"]> =>
       Effect.gen(function* () {
@@ -223,6 +250,7 @@ export const composeExtendedServiceType = (
       ...leaf,
       resolve,
       ...(mergedArtifacts === undefined ? {} : { artifacts: mergedArtifacts }),
+      ...(mergedIdentity === undefined ? {} : { identity: mergedIdentity }),
       ...(mergedVersions === undefined ? {} : { versions: mergedVersions }),
     } satisfies ServiceType;
   });

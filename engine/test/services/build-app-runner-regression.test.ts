@@ -6,7 +6,7 @@ import { Cause, Effect, Exit, Fiber, Queue, Stream } from "effect";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 import { BuildOrchestrator, EventService } from "@lando/sdk/services";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
+import type { ExecTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeLayer, planWith, providerId, withTempRoots } from "./build-app-runner-test-support.ts";
 
@@ -226,5 +226,50 @@ test("bounds unterminated task detail while preserving the raw transcript", asyn
     const start = result.find((event) => event._tag === "task.start");
     if (start?._tag !== "task.start") throw new TypeError("task start event is missing");
     expect(await readFile(String(start.transcriptPath), "utf8")).toBe(output);
+  });
+});
+
+test("forwards BuildStep.user on the execStream ExecTarget and omits it when absent", async () => {
+  await withTempRoots(async () => {
+    // Given
+    const targets: Array<ExecTarget> = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      execStream: (target: ExecTarget) => {
+        targets.push(target);
+        return Stream.make({ exitCode: 0 });
+      },
+    } satisfies RuntimeProviderShape;
+    const withUser = planWith({
+      web: [{ id: "install", phase: "app", command: { command: ["install"] }, user: "node" }],
+    });
+    const withoutUser = planWith({
+      node: [{ id: "install", phase: "app", command: { command: ["install"] } }],
+    });
+
+    // When
+    await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.buildApp(withUser)).pipe(
+        Effect.provide(makeLayer(provider)),
+      ),
+    );
+    await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.buildApp(withoutUser)).pipe(
+        Effect.provide(makeLayer(provider)),
+      ),
+    );
+
+    // Then
+    expect(targets).toHaveLength(2);
+    expect(targets[0]).toMatchObject({
+      app: withUser.id,
+      service: ServiceName.make("web"),
+      user: "node",
+    });
+    expect(targets[1]).toMatchObject({
+      app: withoutUser.id,
+      service: ServiceName.make("node"),
+    });
+    expect("user" in (targets[1] ?? {})).toBe(false);
   });
 });

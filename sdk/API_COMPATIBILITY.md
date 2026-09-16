@@ -4,6 +4,62 @@
 
 ## Compatibility notes
 
+- `GlobalConfigView` is the additive curated effective-config schema used by config view and get. It explicitly selects public settings from `GlobalConfig`, including both app-default maps, without exposing loader bookkeeping.
+
+- `@lando/sdk/errors` additively exports `AppLockTimeoutError` (`message`, `app`, `timeoutMs`, `remediation`, optional `cause`) when a mutating app operation waits for the per-app advisory lock and the finite wait expires. It registers no JSON Schema. The type-only `StartAppError` and `StopAppError` unions additively include the tag; restart, rebuild, and destroy inherit it. Override the wait with `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds).
+
+- `RoutePlan.priority` is a planner-assigned integer above the diagnostic priority
+  of 1. Standalone schema inputs default to 2; decoded plans always carry it.
+  Routers must project this value rather than infer precedence from rule text.
+  Conflicting route matches now fail with the existing `RouteInputError` and
+  authored source keys. Equivalent ordered filter operations ignore filter merge
+  names; `both` participates in both HTTP and HTTPS conflict checks.
+
+- `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
+
+- `RuntimeProviderShape.resume(target, identity)` and `suspend(target, identity)` are additive optional exact-runtime lifecycle methods. Bundled providers address the inspected container ID directly; recovery callers fail closed when a provider cannot preserve that immutable identity across temporary observation.
+
+- `@lando/sdk/schema` additively exports `VolumeLocator`, and `RuntimeProviderShape.locateVolume(ref)` returns its configured-endpoint plus provider-native coordination key before or after creation without inventing generation or ownership. Bundled providers re-read optional generation evidence from the native volume while retaining the same key. Provider restores and removals now require the caller's expected target generation and fail before mutation when the native generation changed. App lifecycle operations coordinate on these physical keys and fail closed when ownership or generation cannot be proven.
+
+- `SqlSeedStateError.status` additively accepts `unknown`; absent or mismatched initialization records can no longer be reported as fresh.
+
+- `VolumeCreationFact` and `VolumeInitializationRecord` are additive schemas. `ApplyResult.createdVolumes` is optional and reports only a daemon-echoed newly generated creation token with its owner. Engine apply consumers re-observe the mounted generation before persisting freshness. Missing evidence, old volumes, and adoption never imply freshness. `DataMoverShape.volumeInitialization` is an optional shared host-state port with `read`, atomic `begin(operationId)`, and generation/owner/operation-checked `finish`. SQL uses this port rather than plugin-scoped buckets; absence is unknown, and interruption quarantines a claimed generation as failed. Process death leaves in-progress state ineligible for another claim. Whole-lifecycle locking remains separate.
+
+- `@lando/sdk/schema` additively exports `VolumeIdentity`; `VolumeInfo.identity` is optional. Its `coordinationKey` identifies a daemon namespace and native volume name, not an app slug, root, or generation. `generation` changes on recreation. `ownerRoot` binds the generation to a canonical app root. `origin: adopted` must never establish creation history or freshness.
+- Bundled Docker and Podman volume creation requests attach `dev.lando.volume-owner` from `AppPlan.identity.appRoot` alongside the existing random creation label. Plans without canonical identity do not receive an inferred owner label. An idempotent create response does not itself establish freshness; subsequent observation reads the stored labels, not the submitted token.
+- `RuntimeProviderShape.observeVolume(target, destination)` is optional. Bundled providers resolve the existing container identity, inspect its actual mount at the requested destination, then inspect that native volume. Missing containers, missing or ambiguous destinations, bind mounts, malformed responses, and disappeared volumes fail closed. Identity comes from creation/owner labels or a validated in-volume witness. Legacy observations retain legacy provenance without an invented creation ID. A missing method or identity does not authorize recovery. Observation is not a lock or mutation precondition; callers must recheck generation at mutation time.
+- `RuntimeProviderShape.adoptVolume(target, destination)` is additive and optional. It requires the plan's canonical `identity.appRoot`, rejects conflicting owner labels, and supports only the local driver without driver options. An existing creation identity is preserved. Otherwise a scoped root-owned Bun helper inherits mounts from the inspected container ID, never a name-based mount that could auto-create a replacement volume. It publishes `.lando-volume-witness.json` by fsync plus atomic no-clobber hard link, then re-reads the token. Same-owner contenders converge; different owners fail. The witness is a version-1 JSON record with a random generation and owner root, a regular owner-only `0600` file, accessed through no-follow directory/file descriptors. Unsafe records are rejected, not repaired or overwritten. Adoption yields `origin: adopted`, not creation history or freshness.
+- Bundled providers use their stable configured endpoint namespace for `coordinationKey`, including Podman endpoints without `/info.ID`; direct adapters without an endpoint may use the observed daemon ID. Neither namespace includes an app slug or owner root. Endpoint configuration must consistently identify the same provider connection; changing that configuration requires re-observation. Deleting and recreating a volume without its witness produces a new generation. Provider snapshots exclude witness records and temporary witness stages; physical restore preserves the target's record and never imports the source's record. Downstream StateStore locking, generation-guarded mutation, lifecycle coordination, and SQL policy remain separate work.
+
+- `@lando/sdk/schema` additively exports `SnapshotMetadata`; `VolumeInfo` additively gains optional physical instance identity and provenance, snapshot options and records additively gain optional recovery metadata, and `ServiceRuntimeInfo` additively gains optional image identity. `@lando/sdk/errors` additively exports `SnapshotOwnershipError`, `SqlRecoveryOperationError`, `SqlRecoveryUnavailableError`, `SqlSeedSourceError`, and `SqlSeedStateError`. `StateStore` additively gains `withLock(key, body)` for host-wide advisory locking of scoped operations.
+
+- The unreleased `VolumeSnapshotRef` contract now requires the provider-observed immutable artifact `digest`, `sizeBytes`, and `format`. `VolumeRestoreSpec` carries the same source identity so bundled providers verify native images or copy archives before mutating a generation-checked target; persisted `SnapshotInfo.native` records retain those values.
+- `PhpServiceConfig.type` now validates `php:<version>` syntax instead of duplicating the bundled version literals. The planner remains the availability boundary and rejects versions absent from the selected ServiceType's shipped metadata before provider action.
+- `ServiceConfig` and `ServiceConfigInput` additively accept optional `packageRoot`, an app-root-relative source directory used only by service-type project-file inference. `ServiceType` additively accepts a pure optional `projectFiles(service)` declaration, and `ServiceTypeInput.projectFiles` receives bounded planner-supplied present or absent inputs with content fingerprints. `ServicePlan` additively accepts optional service-type `provenance`; existing explicit service types and plans remain unchanged.
+- `createRedactor` accepts optional `authoritativeValues`; `createSecretRedactor` accepts them as an optional second argument. Explicit short numeric or control-parameter values suppress the whole affected detail, including bounded output and nested error messages. Existing heuristic `values` filtering is unchanged. `@lando/redaction` supplies authoritative SecretStore values through this canonical primitive.
+- `@lando/sdk/schema` additively exports `AppEnvironmentDefaults`, `AppLabelDefaults`, `CORE_SERVICE_ENV_KEYS`, and `isCoreServiceEnvKey`. `GlobalConfig` additively accepts optional `appEnv` and `appLabels` maps for bounded user-app service defaults; service-authored values retain precedence.
+- `ServiceConfig` additively accepts Redis `password` and `persist`, plus Mailpit `mailFrom` (`false` or a service-name list). Persistence defaults to enabled. Omitted Mailpit targets select all resolved PHP services; false selects none; lists retain first-occurrence order.
+- Mailpit parses its SMTP service name during service-type resolution, rejecting whitespace, shell metacharacters, empty names, and leading hyphens before generating PHP mail configuration. The general SDK `ServiceName` contract is unchanged.
+
+- `@lando/sdk/schema` additively exports `ScannerConfig` (`false` or optional `path`, `okCodes`, `retries`, `timeout`) and `ScanPlan` (resolved `enabled`, `path`, `okCodes`, `retries`, `timeoutMs`). Retries are a budget after the first attempt; timeouts are overall deadlines in milliseconds.
+- `ServiceConfig.scanner` and `GlobalConfig.scanner` additively accept optional `ScannerConfig`. `ServicePlan.scanner` additively accepts optional `ScanPlan`.
+- `@lando/sdk/schema` additively exports `ServiceFileConfig` (optional `server` and `dir` app-relative paths). `ServiceConfig.config` additively accepts optional `ServiceFileConfig` for file-backed catalog service configuration mounted read-only into the container.
+- `@lando/sdk/schema` additively exports `PhpComposerConfig` (optional `version` and `packages`). `ServiceConfig.composer` additively accepts it beside the previously accepted string and `false` forms, and `ServiceConfig.globals` additively accepts a package-name-to-version-specifier map for global npm installs.
+- `AppPlan.router` additively accepts `{ enabled: boolean }`. It stays optional only because persisted cached plans predate the field.
+- `UrlScanner.scan` additively accepts optional `{ plan?: AppPlan; urls?: ReadonlyArray<{ service: ServiceName; url: string }> }`. Per-service settings come from `plan.services[name].scanner`; omitting the plan uses the scanner's own defaults. When `urls` is present, those host-facing URLs are probed instead of rediscovering endpoints. `makeTestUrlScanner` records supplied options alongside the app id while preserving calls without options.
+
+- `@lando/sdk/schema` additively exports the `HostTerminal` schema for attached output-terminal facts. `ToolingOptions` and `ToolingInvocation` add optional PTY intent, while `ToolingInvocation` can separately carry an attached `HostTerminal`; omission remains noninteractive for existing embedding, event, and MCP callers.
+
+- `RouteInput` accepts non-empty shorthand strings or `RouteObjectInput` objects. Objects and `RoutePlan` accept ordered `RouteFilter` arrays; `name` is layer-merge identity, while header filters use `header`. `LandofileService.discover` additively includes `RouteInputError` in its error channel so load and plan callers share one union.
+
+- `AppPlanner.plan` additively includes `RouteInputError` in its error channel: authored routes are normalized (shorthand parsed, filters attached) before planning, and an invalid route fails the plan with its authored key path and remediation. The frozen service signature is updated.
+
+- The type-only `ToolingError` union additively includes `LandofileEventStepFailedError`, `LandofileEventLifecycleReentryError`, and `LandofileEventInvocationDepthError`. Top-level tooling runs now bracket `pre-<task>` and `post-<task>` events, so a bracket failure reaches tooling callers with its event identity and redacted output tail instead of being remapped to `ToolingExecError`. The three error schemas already existed, so no JSON Schema list changes.
+
+- US-614 moves `LandofileUnknownEventError` from `LandofileService.discover` to `AppPlanner.plan`: event names are validated against resolved effective tooling, not individual source files. Provider-free config lint uses resolved layered/included tooling through the same validator. The frozen service signatures are updated.
+
+- `ToolingFlagShape.boolean` replaces the unreleased `type` field without an alias. Flags add optional `alias`, `choices`, and `required`; arguments add optional `choices` and non-negative integer `order`. `ToolingTaskShape` adds optional `user` and `disabled`, and `cmds` accepts strings or `ToolingStepShape` command objects. `ToolingCompileError` adds optional `{ path, task }` source metadata. The new `ToolingInputError` and `ToolingDisabledError` exports carry tooling identity, source metadata, and remediation.
+
 - `ConfigTranslateSecretReference` is narrowed before first release to three mutually exclusive shapes: `secret-store` carries one canonical `${secret:...}` reference, `postInit.stdin` carries only its disposition, and `postInit.secretEnv` carries its disposition and environment variable name. Raw secret strings and generic reference payloads are not accepted. This contract applies to `ConfigTranslateRecipeRequestInput.secretAnswers` and `RecipeDecomposeInput.secrets`; init-only secret bytes remain outside translation and are delivered only to their declared post-init sink.
 
 - `LandofileService.discover` additively exposes `ManagedFileTransactionError` without adding an Effect context requirement. The frozen service-surface fixture matches the expanded error union. `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` preserve the same failure through app operations; restart, rebuild, and destroy inherit it. The additive `ManagedFileTransactionGuard` service provides `ensureConsistent(appRoot)` and `pending(appRoot)` and is included in `LandoRuntimeServices`.
@@ -23,11 +79,13 @@
 
 - `AppPlanner.plan`'s error channel additively gains `CommandAliasConflictError` for plan-time rejection of surviving service-type reserved tooling names; the frozen service-surface fixture is updated to match. The type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions additively include the same tag because those App-handle methods plan through `AppPlanner`.
 
+- `@lando/sdk/errors` additively exports `HomePathCapabilityError` (`message`, `service`, `serviceType`, optional `user`, `remediation`) when a service persists its home but the planner cannot know the destination. `AppPlanner.plan`'s error channel additively includes the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match. `ServiceConfig` additively accepts optional `home` (`false` or `{ path? }`). `ServiceType` additively accepts optional `identity` (`ServiceImageIdentity`).
+
 - `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, `SqlCommandFailedError`, and `SqlDumpNotFoundError` (`message`, `path`, `appRoot`, `remediation`) for database helper target selection, confirmation, failed in-service dump/load/reset commands, and missing/unreadable import dump files.
 
 - `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
 
-- `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
+- `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `MysqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
 - `@lando/sdk/schema` and dedicated service-schema subpaths additively export catalog service config schemas for RabbitMQ, MinIO, LocalStack, Mailpit, and MailHog. They reuse the existing `ServiceConfig` field vocabulary while narrowing each catalog service's `type` value, and each schema is registered for public JSON Schema publication. The MailHog schema is a deprecated compatibility surface (`since` 4.2.0, `removeIn` 5.0.0, replacement `mailpit`).
 - `ServiceType.schema` now accepts any context-free Effect Schema so catalog service configs can be assigned without a type assertion.
 - `@lando/sdk/plugins` additively exports the framework-neutral `ExecutableCommandSpec` family and
@@ -50,9 +108,15 @@
 - `RouterServiceContributionLayer` additively requires the existing `CertificateAuthority` service so proxy plugins can terminate TLS with the selected active CA; core supplies a deferred resolver-backed implementation to selected proxy contributions.
 - `@lando/sdk/services` additively exports the runtime `ServiceCaFileDescriptor` Effect Schema and
   its inferred type. `ServiceBuildStepIntent` additively accepts optional `caFiles` so derived
-  artifact builders can verify and pack host CA inputs without adding provider-specific intent,
-  and optional `privileged` so a step can request temporary build-time privilege while the
-  artifact realizer restores the parent image's exact inherited user afterward.
+  artifact builders can verify and pack host CA inputs without adding provider-specific intent.
+- `ServiceBuildStepIntent.privileged` changes pre-ship to `user`. The flag only ever meant "run as
+  root", which the resolved identity states directly, and two authorities would have needed a
+  precedence rule. Planning resolves an omitted step user to the service's planned user, so a
+  consumer never re-resolves one. `@lando/sdk/schema` additively exports `ContainerUser`,
+  `CONTAINER_USER_PATTERN`, `isContainerUser`, and `BuildScriptStep`; `BuildScript` additively
+  accepts `{ run, user? }` alongside the string and string-array forms, and `BuildStep` additively
+  gains optional `user`. Artifact realizers switch `USER` only when a step's resolved user differs
+  from the active one and restore the final service `USER` afterward.
 - `LandofileService.discover`'s error channel additively gains `LandofileImportRefMisuseError`,
   `LandofileLoadLimitError`, and `LandofileLoadOutsideRootError` for production `load()` / `import()`
   evaluation; the frozen service-surface fixture is updated to match.
@@ -149,7 +213,8 @@
 - `LandofileService.discover`'s error channel additively gains `ComposeKeyRejectedError`; the frozen surface fixture is updated to match. `@lando/sdk/errors` additively exports `ComposeKeyRejectedError`, carrying `{ source, service?, keyPath, remediation }`; it registers no JSON Schema and widens no frozen schema list. `@lando/sdk/landofile` additively exports the pure helper `detectLandofileTags` plus the type-only `LandofileTag` / `LandofileTagOccurrence`. `IncludeEntry.kind` additively accepts `"compose"`, and the top-level Compose `include:` key normalizes to `kind: compose` entries appended after authored `includes:` entries.
 - The Compose service-key vocabulary wave's additive SDK surface, consolidated: `@lando/sdk/schema` accepts Compose spellings and alternate scalar/list forms on `ServiceConfig` (`environment` as a map or `KEY=value` list, `labels` as a map or Compose list, `dependsOn` canonicalized to `ServiceDependency[]` with the `ServiceDependencyCondition` vocabulary, `envFile`, and the authoring cross-key spellings `working_dir` / `env_file` / `depends_on`); canonical `ports` / `expose` / `volumes` entry lists (`ComposePortEntry`, `ComposeVolumeEntry`); the Compose `healthcheck` authoring shape; the per-container runtime-knob field schemas (`ComposeDeploy`, `ComposeLogging`, and the rest of the `Compose*Field` family); `ComposeKeyRejectedError`; `IncludeEntry.kind: "compose"`; `ServiceDependency` / `ServiceDependencyCondition`; and `ComposeServiceFieldKey` / `ComposeServiceFieldCapabilities` / `ComposeProjectFieldKey` / `ComposeProjectFieldCapabilities` / `ComposeServiceKnobKey` / `ComposeKnobCapabilities`. In the same wave, `ServiceConfig.composeBuild` is removed pre-release with no compatibility shim, replaced by a shape-discriminated `ServiceConfig.build` that rejects mixing the Lando build-script family (`artifact` / `app`) with the Compose image-build family (`context` / `dockerfile` / `dockerfile_inline` / `args` / `target`); it accepts a bare-string short form, defaults an omitted `context` to `"."`, and its canonical `dockerfileInline` field encodes back to `dockerfile_inline`, with `ArtifactBuildSpec.specInline` carrying the inlined Dockerfile into the provider-neutral artifact model. `COMPOSE_TOP_LEVEL_KEYS` gains `name` per the committed disposition matrix; top-level `configs`, `secrets`, and `x-*` preserve under `AppPlan.extensions.compose`; `ServiceConfig.build` now publishes a `description` in the JSON Schema artifact instead of sitting in the `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS` list.
 - Unified tooling-fragment includes: `IncludeEntry.kind` additively accepts `"tooling"`, and the `IncludeEntry` object form additively accepts the tooling-include fields `namespace`, `flatten`, `internal`, `optional`, `aliases`, `excludes`, and `vars` (rejected at load time on non-tooling includes). `LandofileShape` additively accepts the `toolingIncludes:` shorthand map, whose entries are the new `ToolingIncludeShape` export (`file`, `optional`, `flatten`, `internal`, `aliases`, `excludes`, `vars`; deliberately no `dir` or `checksum` because tooling fragments are local-file only). `@lando/sdk/errors` additively exports `ToolingIncludeCycleError` (`{ message, source, remediation }`), and `LandofileService.discover`'s error channel additively gains it; the frozen surface fixture is updated to match. `ToolingIncludeShape` registers a JSON Schema and is included in the schema artifact set.
-- Events-as-tasks additively exports the ten-name `AppLifecycleEventName` (including `pre-init` / `post-init`), strict mutually-exclusive `EventStep` variants, `EventForSelector`, `EventDeferStep`, `EventForStep`, and `LandofileEvents`; `LandofileShape.events` is an optional addition. Event steps add optional `if` / `silent`, task-call literal `vars`, canonical-command `raw` / `ignoreError`, deferred sibling actions, explicit-list / variable / matrix / sources / generates loop selectors, and `dir` on every `cmd` variant. `EventCommandStep.flags` / `.args` values use the additive `EventCommandInputValue` union (`ToolingVarLiteral | string[] | number[] | boolean[]`) so repeatable/multiple inputs can be authored as homogeneous scalar arrays. `@lando/sdk/expressions` additively exposes `event`, `item`, and `key` context scopes. `@lando/sdk/errors` additively exports `LandofileUnknownEventError`, `LandofileEventStepFailedError`, `LandofileEventLifecycleReentryError`, `ToolingStepSelectorUnavailableError`, `ToolingStepConditionError`, `ToolingCommandLookupError` (unresolved canonical `command:` target, carrying `targetKind` and close-match remediation), and `CommandInputValidationError` (target-spec `flags` / `args` / `raw` mismatch). `LandofileService.discover`'s error channel additively gains `LandofileUnknownEventError`; the frozen service-surface fixture is updated to match.
+- Events-as-tasks additively exports the twelve-name `AppLifecycleEventName` (including `pre-init` / `post-init` and `pre-restart` / `post-restart`), strict mutually-exclusive `EventStep` variants, `EventForSelector`, `EventDeferStep`, `EventForStep`, and `LandofileEvents`; `LandofileShape.events` is an optional addition. Event steps add optional `if` / `silent`, task-call literal `vars`, canonical-command `raw` / `ignoreError`, deferred sibling actions, explicit-list / variable / matrix / sources / generates loop selectors, and `dir` on every `cmd` variant. `EventCommandStep.flags` / `.args` values use the additive `EventCommandInputValue` union (`ToolingVarLiteral | string[] | number[] | boolean[]`) so repeatable/multiple inputs can be authored as homogeneous scalar arrays. `@lando/sdk/expressions` additively exposes `event`, `item`, and `key` context scopes. `@lando/sdk/errors` additively exports `LandofileUnknownEventError`, `LandofileEventStepFailedError`, `LandofileEventLifecycleReentryError`, `ToolingStepSelectorUnavailableError`, `ToolingStepConditionError`, `ToolingCommandLookupError` (unresolved canonical `command:` target, carrying `targetKind` and close-match remediation), and `CommandInputValidationError` (target-spec `flags` / `args` / `raw` mismatch). `LandofileUnknownEventError` moved from `LandofileService.discover` to `AppPlanner.plan` in US-614 so validation uses resolved effective tooling; the frozen service-surface fixture matches that ownership.
+- US-614 adds `ToolingEventName` and `LandofileEventName` for `pre-<task>` / `post-<task>` names. `LandofileEvents` has twelve optional lifecycle fields and a plain string index signature so semantic validation can report the complete valid set after tooling resolution. `PreRestartEvent` / `PostRestartEvent` mirror the start payloads, including `triggeredBy` only on pre. `LandofileEventInvocationDepthError` carries required `message`, `event`, `chain`, `depth`, `limit`, and `remediation` fields. `LandofileEventLifecycleReentryError.chain` is now required. App operation error unions that carry event failures also include the depth error.
 - `RecipeManifest` additively accepts optional `extends` (a parent recipe id or path). Flatten-before-validate merges the parent into the child and strips `extends` and authoring-only `drop` before `RecipeManifest` decode. `@lando/sdk/schema` additively exports `RecipePromptDrop`. `@lando/sdk/errors` additively exports `RecipeExtendsError` (`kind`: `cycle` | `depth` | `parent-not-found`). `RecipeManifestService.parse` additively includes `RecipeExtendsError` and `RecipeSourceError` in its error channel.
 
 
@@ -157,10 +222,28 @@
 - The pre-release authoring projection now preserves structural refinements instead of replacing them with their input schemas. Complete `LandofileAuthoringShape` and `LandofileAuthoringShapeWire` roots accept only Landofile objects; fragments keep their document-level expression alternative. Nested object and array value sites still accept typed expressions, including recipe-provenance values, but those alternatives now sit beside refined definition references instead of inside the definitions. Scalar refinements still validate every literal. Container semantic predicates validate all-literal subtrees and defer when an unresolved expression prevents a truthful result. The same projection change appears in config-translator fragment schemas and `RecipeDecomposeResult.fragment`; no compatibility shim preserves expression-only complete Landofiles because they were not valid runtime documents.
 
 - `@lando/sdk/expressions` additively exports `expressionInterpolationsTouchOnlyScopes`, a second scope predicate that asks whether every `{{ ... }}` interpolation reads only the given context scopes through pure helpers while treating `${VAR}` and `${secret:...}` text as inert. It is for a caller that replays that shell and secret text verbatim instead of evaluating it; `expressionTouchesOnlyScopes` keeps its stricter meaning and still reports such a template as unanalyzable. Same contracts-only tier as the rest of `@lando/sdk/expressions`: pure, no Effect runtime, no Bun, no IO, and no schema or service-tag freeze.
+- `RebuildAppOptions` additively gains optional `services?: ReadonlyArray<ServiceName>` for scoped rebuilds. `InfoAppOptions.service` is replaced pre-ship by `services?: ReadonlyArray<ServiceName>` without an alias. `ApplyOptions` additively gains optional `recordedPlan?: AppPlan` so a provider can persist the full app plan while applying a selected subplan. These are type-only interface changes with no JSON Schema artifact or frozen service-tag signature change.
 
 
 ## Additive schema exports
 
+- `VolumeCreationFact`
+- `VolumeInitializationRecord`
+- `VolumeLocator`
+
+- `AppEnvironmentDefaults`
+- `GlobalConfigView`
+- `AppLabelDefaults`
+- `CORE_SERVICE_ENV_KEYS`
+- `isCoreServiceEnvKey`
+- `ScannerConfig`
+- `ScanPlan`
+- `ServiceFileConfig`
+- `PhpComposerConfig`
+- `ABSOLUTE_CONTAINER_PATH_PATTERN`
+- `AbsoluteContainerPath`
+- `isAbsoluteContainerPath`
+- `HostTerminal`
 - `LandofileRecipeField`
 - `LandofileRecipeProvenance`
 - `RecipeContentDigest`
@@ -236,10 +319,16 @@
 - `BuildPhase`
 - `BuildPlan`
 - `BuildScript`
+- `BuildScriptStep`
+- `ContainerUser`
+- `CONTAINER_USER_PATTERN`
+- `isContainerUser`
 - `BuildStepSkipEvent`
 - `BuildStep`
 - `BunShellScriptFrontMatter`
-- `AppLifecycleEventName`
+- `AppLifecycleEventName` (twelve names, including pre-restart and post-restart)
+- `ToolingEventName`
+- `LandofileEventName`
 - `EventCmdStep`
 - `EventCommandStep`
 - `EventCommandInputValue`
@@ -248,7 +337,7 @@
 - `EventForStep`
 - `EventStep`
 - `EventTaskStep`
-- `LandofileEvents`
+- `LandofileEvents` (named lifecycle fields plus a string index signature for pre-task and post-task brackets; name validation follows tooling resolution)
 - `CertificatePlan`
 - `CommandResultEnvelope`
 - `CommandResultFormat`
@@ -395,6 +484,7 @@
 - `MailpitServiceConfig`
 - `MinIOServiceConfig`
 - `MssqlServiceConfig`
+- `MysqlServiceConfig`
 - `MountInput`
 - `MountPlan`
 - `NetworkCaConfig`
@@ -449,6 +539,9 @@
 - `RecipeRequires`
 - `RecipeVersion`
 - `RouteInput`
+- `RouteObjectInput`
+- `RouteFilter`
+- `RouteFilterType`
 - `RoutePlan`
 - `RouteRef`
 - `RunProps`
@@ -475,6 +568,7 @@
 - `ToolingDefaultsShape`
 - `ToolingFlagShape`
 - `ToolingIncludeShape`
+- `ToolingStepShape`
 - `ToolingTaskShape`
 - `ToolingVar`
 - `ToolingVarDefault`
@@ -548,9 +642,11 @@
 - `SnapshotHandle`
 - `SnapshotId`
 - `SnapshotInfo`
+- `SnapshotMetadata`
 - `SnapshotOptions`
 - `VolumeFilter`
 - `VolumeInfo`
+- `VolumeIdentity`
 - `VolumeRef`
 - `VolumeRestoreSpec`
 - `VolumeSnapshotRef`
@@ -568,6 +664,7 @@
 - `McpConfig`
 - `McpServeOptions`
 - `AgentEnvConfig`
+- `AppIdentity`
 - `NotifyConfig`
 - `NotifyCommandId`
 - `RendererCapabilities`
@@ -654,6 +751,8 @@
 - `LandoPaths.managedFileLedger`
 - `LandoPaths.shellHistoryFile`
 - `LandoPaths.systemPluginsDir`
+- `LandoPaths.userIncludesDir`
+- `ApplyOptions.serviceEnvironment`
 
 ## Additive Beta schema fields
 
@@ -731,6 +830,8 @@
 
 ## Additive Alpha errors
 
+- `RouteInputError`
+
 - `PluginDescriptorMismatchError`
 - `NoCertificateAuthorityError`
 - `AmbiguousCertificateAuthoritiesError`
@@ -745,6 +846,8 @@
 - `CommandAliasTargetError`
 - `CommandInputValidationError`
 - `ToolingCommandLookupError`
+- `ToolingInputError`
+- `ToolingDisabledError`
 - `DataChecksumMismatchError`
 - `DataEndpointUnsupportedError`
 - `DataSourceOutsideRootError`
@@ -765,6 +868,7 @@
 - `HttpRequestError`
 - `HttpTrustError`
 - `HttpUploadError`
+- `HomePathCapabilityError`
 - `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
 - `DeprecationContradictionError`
@@ -833,6 +937,7 @@
 - `McpToolInputError`
 - `McpTransportError`
 - `McpAllowlistConflictError`
+- `AppLockTimeoutError`
 
 ## Additive service tags
 
@@ -983,3 +1088,8 @@
 - `runToolingEngineContractSuite`
 - `runTunnelServiceContract`
 - `SECRET_SOUP_FIXTURE`
+- `SnapshotOwnershipError`
+- `SqlRecoveryUnavailableError`
+- `SqlRecoveryOperationError`
+- `SqlSeedSourceError`
+- `SqlSeedStateError`

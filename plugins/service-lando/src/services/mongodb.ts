@@ -8,12 +8,16 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
+const VERSIONS = ["7"] as const;
+const ARTIFACTS = { "7": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 27017;
 const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
+export const MONGODB_CONFIG_TARGET = PortablePath.make("/etc/lando/mongod.conf");
 
 const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string => {
   if (input.appName !== undefined && input.appName.length > 0) return input.appName;
@@ -66,6 +70,19 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   });
   addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
+  const server = service.config?.server;
+  if (server !== undefined && server.length > 0) {
+    ctx.addMount({
+      type: "bind",
+      source: resolveBindSource(server, ctx.appRoot),
+      target: MONGODB_CONFIG_TARGET,
+      readOnly: true,
+    });
+    if (service.command === undefined && service.entrypoint === undefined) {
+      ctx.setCommand(["mongod", "--config", MONGODB_CONFIG_TARGET]);
+    }
+  }
+
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
@@ -101,6 +118,9 @@ export const mongodbServiceType: ServiceType = {
   id: "mongodb",
   name: "mongodb",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input, input.service);

@@ -103,6 +103,7 @@ export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider>
   list: () => Effect.succeed([]),
   snapshotVolume: () => Effect.die("runtime provider stub cannot snapshot volumes"),
   restoreVolume: () => Effect.die("runtime provider stub cannot restore volumes"),
+  locateVolume: () => Effect.die("runtime provider stub cannot locate volumes"),
   listVolumes: () => Effect.die("runtime provider stub cannot list volumes"),
   removeVolume: () => Effect.die("runtime provider stub cannot remove volumes"),
   copyToService: () => Effect.die("runtime provider stub cannot copy to services"),

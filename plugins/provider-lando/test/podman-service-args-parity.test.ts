@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { makeLandoPaths } from "@lando/core/paths";
+import { makeLandoPaths } from "@lando/paths";
 import { buildManagedRuntimeServiceSpec, managedRuntimePodmanArgv0 } from "../src/managed-runtime-service.ts";
 
 import { buildPodmanServiceArgs } from "../src/podman-service-runner.ts";

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {

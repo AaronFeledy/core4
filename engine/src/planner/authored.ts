@@ -1,10 +1,11 @@
-import { type Context, Effect } from "effect";
+import { type Context, Effect, Either } from "effect";
 
-import type { LandofileValidationError } from "@lando/sdk/errors";
+import { type NormalizedRoute, normalizeRoutes } from "@lando/landofile/route-normalize";
+import type { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
 import {
+  type LandofileShape,
   PortablePath,
   type ProviderId,
-  type RouteInput,
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
@@ -23,8 +24,8 @@ import {
   toAppFeatureDraft,
 } from "./extensions.ts";
 import { mergeDefaultExcludes } from "./file-sync.ts";
-import type { PlannedServiceDraft, ResolvedService } from "./service-types.ts";
-import { servicePlanError } from "./service-types.ts";
+import { serviceHomeIntent } from "./home.ts";
+import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
 import { applyAuthoredStorage } from "./storage.ts";
 
 export const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
@@ -94,6 +95,22 @@ export const applyAuthoredDependencies = (servicePlan: ServicePlan, service: Ser
   };
 };
 
+export const normalizeAuthoredRoutes = (input: {
+  readonly name: string;
+  readonly service: ServiceConfig;
+  readonly landofile: LandofileShape;
+}): Effect.Effect<ReadonlyArray<NormalizedRoute>, RouteInputError> => {
+  const serviceRoutes = normalizeRoutes(input.service.routes ?? [], {
+    keyPath: `services.${input.name}.routes`,
+  });
+  if (Either.isLeft(serviceRoutes)) return Effect.fail(serviceRoutes.left);
+  const proxyRoutes = normalizeRoutes(input.landofile.proxy?.[ServiceName.make(input.name)] ?? [], {
+    keyPath: `proxy.${input.name}`,
+  });
+  if (Either.isLeft(proxyRoutes)) return Effect.fail(proxyRoutes.left);
+  return Effect.succeed([...serviceRoutes.right, ...proxyRoutes.right]);
+};
+
 export const planServiceDrafts = (input: {
   readonly pluginRegistry: Context.Tag.Service<typeof PluginRegistry>;
   readonly resolvedServices: ReadonlyArray<ResolvedService>;
@@ -101,7 +118,6 @@ export const planServiceDrafts = (input: {
   readonly appName: string;
   readonly appRoot: string;
   readonly host: ServiceTypeHostFacts | undefined;
-  readonly landofileProxy: Readonly<Record<string, ReadonlyArray<RouteInput>>> | undefined;
 }): Effect.Effect<ReadonlyArray<PlannedServiceDraft>, LandofileValidationError> =>
   Effect.gen(function* () {
     const plannedServiceDrafts: PlannedServiceDraft[] = [];
@@ -114,6 +130,9 @@ export const planServiceDrafts = (input: {
       logSources,
       baseDefaultIds,
       featureRefs,
+      routes,
+      resolvedArtifactTag,
+      configSourceInputs,
     } of input.resolvedServices) {
       const rawPlan = yield* Effect.gen(function* () {
         const configuredFeatureRefs = featureRefs.filter(
@@ -190,12 +209,14 @@ export const planServiceDrafts = (input: {
                     ...artifactScripts.map((script, index) => ({
                       id: `authored-artifact:${index + 1}`,
                       phase: "build" as const,
-                      command: ["sh", "-lc", script],
+                      command: ["sh", "-lc", script.run],
+                      ...(script.user === undefined ? {} : { user: script.user }),
                     })),
                     ...appScripts.map((script, index) => ({
                       id: `authored-app:${index + 1}`,
                       phase: "app" as const,
-                      command: { command: ["sh", "-lc", script] },
+                      command: { command: ["sh", "-lc", script.run] },
+                      ...(script.user === undefined ? {} : { user: script.user }),
                     })),
                   ],
                 },
@@ -206,10 +227,27 @@ export const planServiceDrafts = (input: {
         hostnames: service.hostnames ?? [],
         authoredArtifact,
         authored,
+        homeIntent: serviceHomeIntent({
+          service: { ...service, home: resolution.normalizedConfig.home ?? service.home },
+          serviceTypeId: serviceType.id,
+          identity: serviceType.identity,
+          pinnedArtifactTag: resolvedArtifactTag,
+        }),
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,
-        routes: [...(service.routes ?? []), ...(input.landofileProxy?.[ServiceName.make(name)] ?? [])],
-        extensions: servicePlan.extensions,
+        routes,
+        extensions:
+          configSourceInputs.length === 0
+            ? servicePlan.extensions
+            : {
+                ...servicePlan.extensions,
+                [SERVICE_FEATURES_EXTENSION_KEY]: {
+                  ...serviceFeatureExtension(servicePlan.extensions),
+                  configSources: [...configSourceInputs].sort((left, right) =>
+                    left.key.localeCompare(right.key),
+                  ),
+                },
+              },
       });
     }
     return plannedServiceDrafts;

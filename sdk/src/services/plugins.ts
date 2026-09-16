@@ -7,6 +7,8 @@ import type {
   ServiceTypeError,
 } from "../errors/index.ts";
 import type {
+  AbsoluteContainerPath,
+  ContainerUser,
   LogSource,
   PlanMetadata,
   PluginManifest,
@@ -45,6 +47,25 @@ export interface ServiceTypeHostFacts {
   readonly arch: string;
 }
 
+/** One bounded app-root-relative file a service type asks the planner to read. */
+export interface ServiceTypeProjectFileDeclaration {
+  readonly path: string;
+  readonly maxBytes: number;
+}
+
+/** Planner-supplied file state. Missing files are retained so cache keys track creation and deletion. */
+export type ServiceTypeProjectFileInput =
+  | {
+      readonly path: string;
+      readonly present: false;
+    }
+  | {
+      readonly path: string;
+      readonly present: true;
+      readonly text: string;
+      readonly sha256: string;
+    };
+
 /** Input handed to {@link ServiceType.resolve} for one service in the resolved Landofile. */
 export interface ServiceTypeInput {
   readonly name: string;
@@ -56,6 +77,7 @@ export interface ServiceTypeInput {
   readonly metadata: typeof PlanMetadata.Encoded;
   readonly host?: ServiceTypeHostFacts | undefined;
   readonly capabilities?: ProviderCapabilities;
+  readonly projectFiles?: ReadonlyArray<ServiceTypeProjectFileInput>;
   readonly parentResolution?: ServiceTypeResolution | undefined;
 }
 
@@ -89,6 +111,20 @@ export interface ServiceTypeResolution {
 }
 
 /**
+ * What a service type knows about the identities inside the image it ships.
+ * Planning reads this to place the planned user's home on a persistent store
+ * without guessing a path. It describes the type's OWN image only: a service
+ * that supplies its own `image:` or Compose `build:` is a custom image and this
+ * metadata no longer applies to it.
+ */
+export interface ServiceImageIdentity {
+  /** The identity the image runs as when the Landofile names none. */
+  readonly defaultUser: ContainerUser;
+  /** Home directory per user principal, keyed without any `:group` suffix. */
+  readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
+}
+
+/**
  * Normative service-type contract: a resolver that turns
  * `type: <name>` into a {@link ServiceTypeResolution} of normalized config plus
  * the features to compose onto a declared `base`. It chooses base/features/
@@ -101,14 +137,41 @@ export interface ServiceType {
   readonly versions?: ReadonlyArray<string>;
   readonly extends?: string;
   readonly artifacts?: Readonly<Record<string, string>>;
+  readonly identity?: ServiceImageIdentity;
+  readonly projectFiles?: (service: ServiceConfig) => ReadonlyArray<ServiceTypeProjectFileDeclaration>;
   readonly schema: Schema.Schema.AnyNoContext;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
+}
+
+/** Normalized flag metadata carried alongside a registered tooling command. */
+export interface RegisteredCommandFlag {
+  readonly name: string;
+  readonly alias?: string;
+  readonly boolean: boolean;
+  readonly choices?: ReadonlyArray<string>;
+  readonly default?: string | boolean;
+  readonly required: boolean;
+  readonly description?: string;
+}
+
+/** Normalized positional-argument metadata carried alongside a registered tooling command. */
+export interface RegisteredCommandArg {
+  readonly name: string;
+  readonly order: number;
+  readonly choices?: ReadonlyArray<string>;
+  readonly default?: string;
+  readonly required: boolean;
+  readonly description?: string;
 }
 
 export interface RegisteredCommand {
   readonly id: string;
   readonly summary: string;
   readonly hidden: boolean;
+  readonly input?: {
+    readonly flags: ReadonlyArray<RegisteredCommandFlag>;
+    readonly args: ReadonlyArray<RegisteredCommandArg>;
+  };
 }
 
 export class CommandRegistry extends Context.Tag("@lando/core/CommandRegistry")<
