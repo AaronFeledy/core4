@@ -167,6 +167,30 @@ describe("workflow performance report", () => {
       failureKind: "generic" as const,
       transportKind: "connect" as const,
     },
+    ...(
+      [
+        "toomanyrequests",
+        "denied",
+        "manifest-unknown",
+        "name-unknown",
+        "no-such-host",
+        "connection-refused",
+        "timeout",
+        "tls",
+        "unknown",
+      ] as const
+    ).map((signature) => ({
+      domain: "image-pull" as const,
+      failureKind: "generic" as const,
+      source: "stream-frame" as const,
+      signature,
+    })),
+    ...(["ECONNABORTED", "ECONNRESET", "EPIPE", "ETIMEDOUT"] as const).map((systemCode) => ({
+      domain: "image-pull" as const,
+      failureKind: "generic" as const,
+      transportKind: "read" as const,
+      systemCode,
+    })),
   ])("retains the closed image-pull diagnostic after durable write and read %#", async (diagnostic) => {
     // Given a failed step carries the safe diagnosis needed for the next run.
     const input = reportWithDiagnostic(diagnostic);
@@ -190,10 +214,53 @@ describe("workflow performance report", () => {
     { failureKind: "generic", transportKind: "custom-nonenv-secret-989", httpStatus: 401 },
     { failureKind: "generic", transportKind: "connect", httpStatus: 99 },
     { failureKind: "generic", transportKind: "connect", httpStatus: 600 },
+    { failureKind: "generic", source: "private-source", signature: "unknown" },
+    { failureKind: "generic", source: "stream-frame", signature: "private-signature" },
+    { failureKind: "generic", transportKind: "read", systemCode: "PRIVATE_CODE" },
   ])("rejects an unrecognized or invalid image-pull diagnostic %#", (diagnostic) => {
     expect(() =>
       decodeWorkflowPerformanceReport(reportWithDiagnostic({ domain: "image-pull", ...diagnostic })),
     ).toThrow();
+  });
+
+  test("omits free-form diagnostic fields during an actual durable write and read", async () => {
+    // Given a valid closed diagnostic is surrounded by untrusted frame, reference, path, and code fields.
+    const root = await mkdtemp(join(tmpdir(), "workflow-performance-diagnostic-omission-"));
+    const retainedPath = join(root, "report.json");
+    const secret = "private-registry.example/team/private-image:latest";
+    const input = reportWithDiagnostic({
+      domain: "image-pull",
+      failureKind: "generic",
+      source: "stream-frame",
+      signature: "unknown",
+      message: `opaque failure for ${secret}`,
+      reference: secret,
+      registryHost: "private-registry.example",
+      path: "/private/socket",
+      code: "PRIVATE_CODE",
+    });
+
+    try {
+      // When the report crosses the real decoder, durable writer, and reader.
+      await writeWorkflowPerformanceReport(decodeWorkflowPerformanceReport(input), retainedPath);
+      const decoded = decodeWorkflowPerformanceReport(await Bun.file(retainedPath).json());
+      const serialized = JSON.stringify(decoded);
+
+      // Then the closed unknown origin remains and every free-form field is absent.
+      expect(decoded.lanes[0]?.samples[0]?.steps[0]?.diagnostic).toEqual({
+        domain: "image-pull",
+        failureKind: "generic",
+        source: "stream-frame",
+        signature: "unknown",
+      });
+      expect(serialized).not.toContain("opaque failure");
+      expect(serialized).not.toContain(secret);
+      expect(serialized).not.toContain("private-registry.example");
+      expect(serialized).not.toContain("/private/socket");
+      expect(serialized).not.toContain("PRIVATE_CODE");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("omits every free-form diagnostic before retaining the report", async () => {
