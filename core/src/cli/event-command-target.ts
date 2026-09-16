@@ -1,23 +1,28 @@
 import { Context, Effect, Option, Schema } from "effect";
 
-import { PluginDescriptorMismatchError, PluginLoadError, ToolingCommandLookupError } from "@lando/sdk/errors";
+import {
+  PluginDescriptorMismatchError,
+  PluginLoadError,
+  ToolingCommandLookupError,
+  type ToolingCompileError,
+} from "@lando/sdk/errors";
 import type {
-  ExecutableCommandInput,
   ExecutableCommandLoader,
   ExecutableCommandNamespace,
   ExecutableCommandSpec,
 } from "@lando/sdk/plugins";
-import {
-  type AppPlan,
-  BootstrapLevel,
-  type ToolingArgShape,
-  type ToolingFlagShape,
-  type ToolingTaskShape,
-} from "@lando/sdk/schema";
+import { type AppPlan, BootstrapLevel, type ToolingTaskShape } from "@lando/sdk/schema";
 
 import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-command";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { serializeToolingInput } from "@lando/landofile/tooling-input";
+import {
+  type NormalizedToolingArg,
+  type NormalizedToolingFlag,
+  type NormalizedToolingTask,
+  normalizeToolingTask,
+} from "@lando/landofile/tooling-normalize";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import type { LandoCommandSpec } from "./spec/command-spec";
 
@@ -81,46 +86,33 @@ const loadPluginSpec = (
           }),
   });
 
-const toolingFlag = (definition: ToolingFlagShape) =>
+const toolingFlag = (definition: NormalizedToolingFlag) =>
   ({
-    type: definition.type ?? "option",
+    type: definition.boolean === true ? "boolean" : "option",
     ...(definition.default === undefined ? {} : { default: definition.default }),
   }) satisfies NonNullable<ExecutableCommandSpec["flags"]>[string];
 
-const toolingArg = (definition: ToolingArgShape) => ({
+const toolingArg = (definition: NormalizedToolingArg) => ({
   type: "option" as const,
   ...(definition.required === undefined ? {} : { required: definition.required }),
   ...(definition.default === undefined ? {} : { default: definition.default }),
 });
 
-const toolingArgv = (task: ToolingTaskShape, input: ExecutableCommandInput): ReadonlyArray<string> => {
-  const flags = Object.entries(input.flags).flatMap(([name, value]) =>
-    typeof value === "boolean" ? (value ? [`--${name}`] : []) : [`--${name}=${String(value)}`],
-  );
-  const args = Object.keys(task.args ?? {}).flatMap((name) => {
-    const value = input.args[name];
-    return value === undefined ? [] : [String(value)];
-  });
-  return [...flags, ...args, ...input.argv];
-};
-
 const toolingSpec = (
-  id: string,
-  name: string,
+  declaration: NormalizedToolingTask,
   task: ToolingTaskShape,
   plan: AppPlan,
 ): ExecutableCommandSpec => ({
-  id,
-  summary: task.summary ?? task.description ?? `Run ${name} tooling.`,
+  id: `app:${declaration.name}`,
+  summary: declaration.summary ?? `Run ${declaration.name} tooling.`,
   namespace: "app",
   bootstrap: "tooling",
-  flags: Object.fromEntries(
-    Object.entries(task.flags ?? {}).map(([key, value]) => [key, toolingFlag(value)]),
-  ),
-  args: Object.fromEntries(Object.entries(task.args ?? {}).map(([key, value]) => [key, toolingArg(value)])),
+  flags: Object.fromEntries(declaration.flags.map((value) => [value.name, toolingFlag(value)])),
+  args: Object.fromEntries(declaration.args.map((value) => [value.name, toolingArg(value)])),
   strict: task.arguments === false,
   resultSchema: Schema.Unknown,
-  run: (input) => runEventToolingCommand(plan, name, task, toolingArgv(task, input)),
+  run: (input) =>
+    runEventToolingCommand(plan, declaration.name, task, serializeToolingInput(declaration, input)),
   successExitCode: (result) =>
     typeof result === "object" &&
     result !== null &&
@@ -202,7 +194,7 @@ export const resolveEventCommandTarget = (
   plan?: AppPlan,
 ): Effect.Effect<
   EventCommandTarget,
-  PluginDescriptorMismatchError | PluginLoadError | ToolingCommandLookupError
+  PluginDescriptorMismatchError | PluginLoadError | ToolingCommandLookupError | ToolingCompileError
 > => {
   const graph = Context.getOption(runtimeContext, PluginContributionGraph);
   const tooling = plan === undefined ? undefined : effectiveToolingForPlan(plan);
@@ -224,12 +216,15 @@ export const resolveEventCommandTarget = (
   const toolingName = isToolingTarget(command) ? command.slice(4) : undefined;
   const task = toolingName === undefined ? undefined : tooling?.[toolingName];
   if (task !== undefined && plan !== undefined && toolingName !== undefined) {
-    return Effect.succeed({
-      kind: "tooling",
-      spec: toolingSpec(`app:${toolingName}`, toolingName, task, plan),
-      toolingName,
-      toolingTask: task,
-    });
+    return Effect.map(
+      normalizeToolingTask(toolingName, task, { path: plan.metadata.source }),
+      (declaration): EventCommandTarget => ({
+        kind: "tooling",
+        spec: toolingSpec(declaration, task, plan),
+        toolingName,
+        toolingTask: task,
+      }),
+    );
   }
   return Effect.fail(lookupFailure({ command, builtIns, graph, tooling }));
 };

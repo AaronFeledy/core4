@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import { providerStatePath } from "@lando/provider-lando";
 import type { PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 
 import { manifest, plugin } from "../src/index.ts";
+import { providerLandoSetupStatePath } from "../src/provider-lando-state.ts";
 
 const contributionIds = (
   entries: ReadonlyArray<string | { readonly id: string }> | undefined,
@@ -77,7 +77,7 @@ describe("@lando/provider-podman plugin descriptor", () => {
     // Given
     const stateDir = await makeStateDir();
     const socketPath = "/run/user/1000/podman/podman.sock";
-    const statePath = providerStatePath(stateDir);
+    const statePath = providerLandoSetupStatePath(stateDir);
     await mkdir(join(stateDir, "provider-lando"), { recursive: true });
     await writeFile(statePath, JSON.stringify({ socketPath }), "utf8");
 
@@ -129,7 +129,7 @@ describe("@lando/provider-podman plugin descriptor", () => {
     const stateDir = await makeStateDir();
     await mkdir(join(stateDir, "provider-lando"), { recursive: true });
     await writeFile(
-      providerStatePath(stateDir),
+      providerLandoSetupStatePath(stateDir),
       JSON.stringify({ socketPath: "/run/user/1000/podman/other.sock" }),
       "utf8",
     );

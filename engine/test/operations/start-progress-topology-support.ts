@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -13,18 +17,23 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  type ApplyOptions,
   BuildOrchestrator,
   EventService,
   FileSyncEngine,
   LandofileService,
   PathsService,
   PluginRegistry,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  SecretStore,
+  type SecretStoreShape,
   type ServiceRuntimeInfo,
+  StateStore,
 } from "@lando/sdk/services";
-import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -34,6 +43,8 @@ import { startApp } from "../../src/operations/start.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { makeShellRunnerLive } from "../../src/services/shell-runner.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { NoopTransactionGuardLive } from "../services/landofile-layer.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -106,9 +117,16 @@ export const makeHarness = (
     readonly plannedApp?: AppPlan;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     readonly fileSync?: typeof FileSyncEngine.Service;
+    readonly secretStore?: SecretStoreShape;
+    readonly onApply?: (plan: AppPlan, options: ApplyOptions) => void;
+    readonly listVolumes?: RuntimeProviderShape["listVolumes"];
+    readonly locateVolume?: RuntimeProviderShape["locateVolume"];
+    readonly onVolumeLock?: (key: string) => void;
+    readonly onDestroy?: (...args: Parameters<RuntimeProviderShape["destroy"]>) => void;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
+  const stateStore = makeTestStateStore();
   const events: LandoEvent[] = [];
   let signalApplyTreeStart = (): void => undefined;
   const applyTreeStarted = new Promise<void>((resolve) => {
@@ -119,7 +137,10 @@ export const makeHarness = (
     id: "lando",
     capabilities,
     isAvailable: Effect.succeed(true),
-    apply: () => options.applyEffect ?? Effect.succeed({ changed: true }),
+    apply: (appliedPlan, applyOptions) =>
+      Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
+        Effect.zipRight(options.applyEffect ?? Effect.succeed({ changed: true })),
+      ),
     inspect: (target) =>
       Effect.succeed<ServiceRuntimeInfo>({
         app: plannedApp.id,
@@ -129,19 +150,45 @@ export const makeHarness = (
         state: "running",
         endpoints: plannedApp.services[target.service]?.endpoints ?? [],
       }),
-    destroy: () => Effect.void,
+    destroy: (target, destroyOptions) => Effect.sync(() => options.onDestroy?.(target, destroyOptions)),
+    listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
+    locateVolume:
+      options.locateVolume ??
+      ((ref) =>
+        Effect.succeed({
+          coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
+          nativeName: ref.store,
+          identity: {
+            coordinationKey: JSON.stringify(["endpoint:test", ref.store]),
+            nativeName: ref.store,
+            generation: "00000000-0000-4000-8000-000000000001",
+            ownerRoot: plannedApp.root,
+            origin: "created",
+          },
+        })),
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };
+  const runtimeProviderRegistry = {
+    list: Effect.succeed([providerId]),
+    capabilities: Effect.succeed(capabilities),
+    select: () => Effect.succeed(provider),
+  };
+  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
-    Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
-    Layer.succeed(RuntimeProviderRegistry, {
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
+    PrivateFileAccessLive,
+    Layer.succeed(StateStore, {
+      ...stateStore.service,
+      withLock: (key, body) =>
+        Effect.sync(() => options.onVolumeLock?.(key)).pipe(
+          Effect.zipRight(stateStore.service.withLock(key, body)),
+        ),
     }),
+    NoopTransactionGuardLive,
+    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
+    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
+    Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistry),
     Layer.succeed(EventService, {
       publish: (event) =>
         Schema.is(LandoEventSchema)(event)
@@ -172,7 +219,7 @@ export const makeHarness = (
     ConfigServiceLive,
     FileSystemLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-    Layer.succeed(ProxyService, TestProxyService),
+    Layer.succeed(RouterService, TestRouterService),
     makeShellRunnerLive(() => {
       throw new TypeError("Interactive shell IO is not used by start progress topology tests.");
     }),
@@ -180,9 +227,10 @@ export const makeHarness = (
       build: (appPlan) => Effect.succeed(appPlan),
       buildApp: () => Effect.void,
     }),
+    ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
   );
-  return { layer, events, applyTreeStarted };
+  return { layer, events, applyTreeStarted, stateStore, runtimeProviderRegistry, userDataRoot };
 };
 
 export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan = plan) =>

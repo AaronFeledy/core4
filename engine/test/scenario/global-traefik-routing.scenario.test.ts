@@ -31,7 +31,7 @@ const traefikGlobalManifest = Schema.decodeSync(PluginManifest)({
         module: "./src/global-services/traefik.ts",
         enabledByDefault: true,
         requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
-        summary: "Global Traefik reverse proxy",
+        summary: "Global Traefik router",
       },
     ],
   },
@@ -84,7 +84,7 @@ const planApp = (
 };
 
 const planUserApp = (capabilities: ProviderCapabilities): Promise<AppPlan> =>
-  planApp({ name: "shop", services: { web: { image: "nginx:1.27", port: 80 } } }, capabilities);
+  planApp({ name: "shop", services: { web: { image: "nginx:1.27", port: 80, home: false } } }, capabilities);
 
 const canReachSharedAlias = (source: AppPlan, targets: ReadonlyArray<AppPlan>, alias: string): boolean => {
   const sourceNetwork = source.networking?.sharedNetworkMembership?.name;
@@ -223,7 +223,7 @@ describe("sharedCrossAppNetwork capability and provider-side wiring", () => {
   });
 });
 
-describe("per-app NetworkingPlan + cross-app reachability (US-109)", () => {
+describe("per-app NetworkingPlan + cross-app reachability", () => {
   test("emits a per-app bridge plus shared cross-app membership for a service app", async () => {
     const plan = await planUserApp(baseCapabilities({ sharedCrossAppNetwork: true }));
     expect(plan.networking?.perAppBridge.name).toBe("lando-shop");
@@ -246,10 +246,16 @@ describe("per-app NetworkingPlan + cross-app reachability (US-109)", () => {
   test("two apps and the global Traefik proxy all join the shared network and resolve each other", async () => {
     const capabilities = baseCapabilities({ sharedCrossAppNetwork: true });
     const [shop, blog, global] = await Promise.all([
-      planApp({ name: "shop", services: { web: { image: "nginx:1.27", port: 80 } } }, capabilities),
-      planApp({ name: "blog", services: { web: { image: "nginx:1.27", port: 80 } } }, capabilities),
       planApp(
-        { name: "lando-global", services: { traefik: { image: "nginx:1.27", port: 80 } } },
+        { name: "shop", services: { web: { image: "nginx:1.27", port: 80, home: false } } },
+        capabilities,
+      ),
+      planApp(
+        { name: "blog", services: { web: { image: "nginx:1.27", port: 80, home: false } } },
+        capabilities,
+      ),
+      planApp(
+        { name: "lando-global", services: { traefik: { image: "nginx:1.27", port: 80, home: false } } },
         capabilities,
       ),
     ]);
@@ -287,7 +293,7 @@ describe("per-app NetworkingPlan + cross-app reachability (US-109)", () => {
   test("publishes docker-app HTTP backends so managed Traefik can reach them on the host", async () => {
     const capabilities = dockerCapabilitiesForPlatform("linux");
     const dockerApp = await planApp(
-      { name: "shop", provider: "docker", services: { web: { image: "nginx:1.27", port: 80 } } },
+      { name: "shop", provider: "docker", services: { web: { image: "nginx:1.27", port: 80, home: false } } },
       capabilities,
     );
     const web = dockerApp.services[ServiceName.make("web")];

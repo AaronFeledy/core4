@@ -20,6 +20,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./service": "./src/service.ts",
+    "./transaction": "./src/transaction.ts",
     "./marker": "./src/marker.ts",
     "./codecs": "./src/codecs.ts",
     "./testing": "./src/testing.ts"

@@ -33,28 +33,49 @@ export const isSqlServiceType = (type: string): boolean => familyFromServiceType
 
 export const mssqlBackupServicePath = (database: string): string => `/var/opt/mssql/backup/${database}.bak`;
 
-export const mssqlBackupCommand = (database: string): ReadonlyArray<string> => [
-  "sqlcmd",
+const mssqlClient = (extra: ReadonlyArray<string>): ReadonlyArray<string> => [
+  "/opt/mssql-tools18/bin/sqlcmd",
+  "-S",
+  "localhost",
   "-U",
   "sa",
-  "-Q",
-  `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}' WITH INIT`,
-];
-
-export const mssqlRestoreCommand = (database: string): ReadonlyArray<string> => [
-  "sqlcmd",
-  "-U",
-  "sa",
-  "-Q",
-  `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
-];
-
-const mysqlClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
-  "mysql",
-  "-u",
-  creds.user,
+  "-C",
   ...extra,
 ];
+
+export const mssqlPrepareBackupCommand = (): ReadonlyArray<string> => [
+  "mkdir",
+  "-p",
+  "/var/opt/mssql/backup",
+];
+
+export const mssqlBackupCommand = (database: string): ReadonlyArray<string> =>
+  mssqlClient([
+    "-Q",
+    `BACKUP DATABASE [${database}] TO DISK = '${mssqlBackupServicePath(database)}' WITH INIT`,
+  ]);
+
+export const mssqlRestoreCommand = (database: string): ReadonlyArray<string> =>
+  mssqlClient([
+    "-Q",
+    `RESTORE DATABASE [${database}] FROM DISK = '${mssqlBackupServicePath(database)}' WITH REPLACE`,
+  ]);
+
+type MysqlFamily = "mysql" | "mariadb";
+
+const MYSQL_FAMILY_BINARIES = {
+  mysql: { client: "mysql", dump: "mysqldump" },
+  mariadb: { client: "mariadb", dump: "mariadb-dump" },
+} as const satisfies Record<MysqlFamily, { readonly client: string; readonly dump: string }>;
+
+const mysqlFamilyBinaries = (family: MysqlFamily): (typeof MYSQL_FAMILY_BINARIES)[MysqlFamily] =>
+  MYSQL_FAMILY_BINARIES[family];
+
+const mysqlClient = (
+  family: MysqlFamily,
+  creds: SqlCommandCreds,
+  extra: ReadonlyArray<string>,
+): ReadonlyArray<string> => [mysqlFamilyBinaries(family).client, "-u", creds.user, ...extra];
 
 const postgresClient = (creds: SqlCommandCreds, extra: ReadonlyArray<string>): ReadonlyArray<string> => [
   "psql",
@@ -73,14 +94,38 @@ const mongoTool = (program: string, extra: string): ReadonlyArray<string> => [
   `${program} --uri="$MONGO_URI" ${extra}`,
 ];
 
+const mongoShell = (extra: string): ReadonlyArray<string> => [
+  "sh",
+  "-c",
+  `mongosh "$MONGO_URI" --quiet ${extra}`,
+];
+
 export const dumpCommand = (
   family: Exclude<SqlFamily, "mssql">,
   creds: SqlCommandCreds,
 ): ReadonlyArray<string> => {
   switch (family) {
     case "mysql":
+      return [
+        mysqlFamilyBinaries(family).dump,
+        "-u",
+        creds.user,
+        "--single-transaction",
+        "--quick",
+        "--set-gtid-purged=OFF",
+        "--no-tablespaces",
+        creds.database,
+      ];
     case "mariadb":
-      return ["mysqldump", "-u", creds.user, creds.database];
+      return [
+        mysqlFamilyBinaries(family).dump,
+        "-u",
+        creds.user,
+        "--single-transaction",
+        "--quick",
+        "--no-tablespaces",
+        creds.database,
+      ];
     case "postgres":
       return ["pg_dump", "-U", creds.user, "-d", creds.database];
     case "mongodb":
@@ -94,7 +139,7 @@ export const loadCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonly
   switch (family) {
     case "mysql":
     case "mariadb":
-      return mysqlClient(creds, [creds.database]);
+      return mysqlClient(family, creds, [creds.database]);
     case "postgres":
       return postgresClient(creds, []);
     case "mongodb":
@@ -110,7 +155,7 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
   switch (family) {
     case "mysql":
     case "mariadb":
-      return mysqlClient(creds, [
+      return mysqlClient(family, creds, [
         "-D",
         creds.database,
         "-N",
@@ -123,29 +168,69 @@ export const countCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
       ]);
     case "mongodb":
-      return mongoTool("mongosh --quiet", `--eval=${quoteShell("db.getCollectionNames().length")}`);
+      return mongoShell(`--eval=${quoteShell("db.getCollectionNames().length")}`);
     case "mssql":
-      return [
-        "sqlcmd",
-        "-U",
-        "sa",
-        "-d",
-        creds.database,
-        "-Q",
-        "SELECT COUNT(*) FROM sys.tables",
-        "-h",
-        "-1",
-      ];
+      return mssqlClient(["-d", creds.database, "-Q", "SELECT COUNT(*) FROM sys.tables", "-h", "-1"]);
     default:
       return assertNever(family);
   }
+};
+
+export const versionCommand = (family: SqlFamily, creds: SqlCommandCreds): ReadonlyArray<string> => {
+  switch (family) {
+    case "mysql":
+    case "mariadb":
+      return mysqlClient(family, creds, ["-N", "-B", "-e", "SELECT VERSION()"]);
+    case "postgres":
+      return postgresClient(creds, ["-tAc", "SHOW server_version"]);
+    case "mongodb":
+      return mongoShell(`--eval=${quoteShell("print(db.version())")}`);
+    case "mssql":
+      return mssqlClient([
+        "-d",
+        creds.database,
+        "-h",
+        "-1",
+        "-W",
+        "-Q",
+        "SET NOCOUNT ON; SELECT CONVERT(varchar(128), SERVERPROPERTY('ProductVersion'))",
+      ]);
+    default:
+      return assertNever(family);
+  }
+};
+
+const FAMILY_MARKERS = {
+  mysql: /mysql/iu,
+  mariadb: /mariadb/iu,
+  postgres: /postgres(?:ql)?/iu,
+  mongodb: /mongo(?:db)?/iu,
+  mssql: /(?:microsoft sql server|mssql)/iu,
+} as const satisfies Record<SqlFamily, RegExp>;
+
+export const parseObservedVersion = (family: SqlFamily, stdout: string): string | undefined => {
+  const version = stdout.trim();
+  if (
+    version.length === 0 ||
+    version.length > 128 ||
+    version.includes("\n") ||
+    version.includes("\r") ||
+    !/^\d+(?:\.\d+)+(?:[ +()A-Za-z0-9._-]*)$/u.test(version)
+  ) {
+    return undefined;
+  }
+  if (family === "mariadb" && !FAMILY_MARKERS.mariadb.test(version)) return undefined;
+  for (const [candidate, marker] of Object.entries(FAMILY_MARKERS)) {
+    if (candidate !== family && marker.test(version)) return undefined;
+  }
+  return version;
 };
 
 export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): ReadonlyArray<string> => {
   switch (family) {
     case "mysql":
     case "mariadb":
-      return mysqlClient(creds, [
+      return mysqlClient(family, creds, [
         "-e",
         `DROP DATABASE IF EXISTS \`${creds.database}\`; CREATE DATABASE \`${creds.database}\`;`,
       ]);
@@ -155,15 +240,12 @@ export const resetCommand = (family: SqlFamily, creds: SqlCommandCreds): Readonl
         `DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ${creds.user};`,
       ]);
     case "mongodb":
-      return mongoTool("mongosh", `--eval=${quoteShell("db.dropDatabase()")}`);
+      return mongoShell(`--eval=${quoteShell("db.dropDatabase()")}`);
     case "mssql":
-      return [
-        "sqlcmd",
-        "-U",
-        "sa",
+      return mssqlClient([
         "-Q",
         `ALTER DATABASE [${creds.database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [${creds.database}]; CREATE DATABASE [${creds.database}];`,
-      ];
+      ]);
     default:
       return assertNever(family);
   }

@@ -149,6 +149,10 @@ prompts:
   - name: dbPassword
     type: secret
     message: Database password?
+    disposition:
+      kind: init-only
+      sink:
+        kind: stdin
   - name: docroot
     type: path
     message: Docroot?
@@ -227,12 +231,18 @@ files:
 title: Post init
 description: One of each supported post-init action.
 version: 0.0.1
+prompts:
+  - name: start
+    type: confirm
+    message: Start services?
+    default: false
 postInit:
   - type: gitInit
   - type: message
     text: Done!
   - type: command
     cmd: app:start
+    when: "{{ options.start }}"
     args:
       - --yes
   - type: bun

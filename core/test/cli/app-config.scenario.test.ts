@@ -12,6 +12,8 @@ import {
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
 import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
+import { rememberLandofileIncludeSources } from "@lando/landofile/include-provenance";
+import { TestStateStoreLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -60,20 +62,27 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 describe("lando app:config", () => {
   test("returns the discovered Landofile name, recipe, and service list", async () => {
-    const layer = Layer.succeed(LandofileService, {
-      discover: Effect.succeed({
+    const landofile = rememberLandofileIncludeSources(
+      {
         name: "test-app-config",
         recipe: "node",
         services: {},
-      }),
+      },
+      [{ id: "user:corp.yml", sha256: "a".repeat(64) }],
+    );
+    const layer = Layer.succeed(LandofileService, {
+      discover: Effect.succeed(landofile),
     });
 
-    const result = await Effect.runPromise(appConfig().pipe(Effect.provide(layer)));
+    const result = await Effect.runPromise(
+      appConfig().pipe(Effect.provide(Layer.merge(layer, TestStateStoreLive))),
+    );
 
     expect(result.app).toBe("test-app-config");
     expect(result.source).toBe("resolved");
     expect(result.landofile?.name).toBe("test-app-config");
     expect(result.landofile?.recipe).toBe("node");
+    expect(result.sources).toEqual([{ id: "user:corp.yml", sha256: "a".repeat(64) }]);
     const table = renderAppConfigResult(result, "table");
     expect(table).toContain("app\ttest-app-config");
     expect(table).toContain("services\t(none)");
@@ -95,7 +104,9 @@ describe("lando app:config", () => {
     });
 
     const result = await Effect.runPromise(
-      appConfig({ subcommand: "get", key: "services.web.type" }).pipe(Effect.provide(layer)),
+      appConfig({ subcommand: "get", key: "services.web.type" }).pipe(
+        Effect.provide(Layer.merge(layer, TestStateStoreLive)),
+      ),
     );
 
     expect(result).toMatchObject({
@@ -137,7 +148,9 @@ describe("lando app:config", () => {
     });
 
     const exit = await Effect.runPromiseExit(
-      appConfig({ subcommand: "bogus" as never }).pipe(Effect.provide(layer)),
+      appConfig({ subcommand: "bogus" as never }).pipe(
+        Effect.provide(Layer.merge(layer, TestStateStoreLive)),
+      ),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);

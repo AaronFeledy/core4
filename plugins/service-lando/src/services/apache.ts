@@ -9,6 +9,7 @@ import { addServicePortEndpoints } from "./_port-helpers.ts";
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
+const DEFAULT_WEBROOT = "/app";
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -34,12 +35,41 @@ const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
 export const APACHE_FEATURE_ID = "service-lando.apache" as const;
 export const APACHE_FEATURE_PRIORITY = 600;
 
+const apacheConfigPath = (webroot: string): string => {
+  if (/\r|\n/u.test(webroot)) {
+    throw new Error("Apache webroot must not contain line breaks.");
+  }
+  return webroot.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+};
+
+const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
+  const path = apacheConfigPath(webroot);
+  return [
+    "sh",
+    "-c",
+    [
+      "set -eu",
+      "cat > /usr/local/apache2/conf/extra/lando-webroot.conf <<'LANDO_APACHE_WEBROOT'",
+      `DocumentRoot "${path}"`,
+      `<Directory "${path}">`,
+      "  Options -Indexes +FollowSymLinks",
+      "  AllowOverride None",
+      "  Require all granted",
+      "</Directory>",
+      "LANDO_APACHE_WEBROOT",
+      "exec httpd-foreground -c 'Include conf/extra/lando-webroot.conf'",
+    ].join("\n"),
+  ];
+};
+
 const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const port = service.port ?? DEFAULT_PORT;
+  const webroot = service.webroot ?? DEFAULT_WEBROOT;
+  const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.addEnv("APACHE_DOCUMENT_ROOT", "/app");
+  ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   if (service.user !== undefined) ctx.setUser(service.user);
   const appMount = {
@@ -69,6 +99,9 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 10,
   });
 
+  if (service.command === undefined && service.entrypoint === undefined) {
+    ctx.setCommand(apacheStartCommand(documentRoot));
+  }
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
 };
@@ -93,18 +126,22 @@ export const apacheServiceType: ServiceType = {
   id: "apache",
   name: "apache",
   base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
-    Effect.succeed({
-      base: "lando" as const,
-      normalizedConfig: { ...input.service, type: "apache" },
-      logSources: APACHE_LOG_SOURCES,
-      features: [
-        { id: APACHE_FEATURE_ID },
-        {
-          id: "lando.env",
-          config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot: "/app" },
-        },
-      ],
+    Effect.sync(() => {
+      const webroot = input.service.webroot ?? DEFAULT_WEBROOT;
+      return {
+        base: "lando" as const,
+        normalizedConfig: { ...input.service, type: "apache" },
+        logSources: APACHE_LOG_SOURCES,
+        features: [
+          { id: APACHE_FEATURE_ID },
+          {
+            id: "lando.env",
+            config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot },
+          },
+        ],
+      };
     }),
 };

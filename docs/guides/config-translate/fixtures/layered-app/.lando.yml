@@ -1,0 +1,6 @@
+name: translate-layered
+runtime: 4
+services:
+  web:
+    type: node:lts
+    primary: true

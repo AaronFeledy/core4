@@ -14,7 +14,7 @@ import type { RegisteredCommand } from "@lando/sdk/services";
 
 import {
   canonicalSubscriberCommandIds as canonicalEngineSubscriberCommandIds,
-  makeSubscriberRuntimeLive as makeEngineSubscriberRuntimeLive,
+  makeSubscriberRuntimeWithPrivateFileAccessLive as makeEngineSubscriberRuntimeLive,
 } from "@lando/engine/lifecycle/subscribers";
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
 import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled";

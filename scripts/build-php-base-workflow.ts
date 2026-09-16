@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
 
+import { SUPPORTED_PHP_VERSIONS } from "../plugins/service-lando/src/services/php.ts";
+
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/php-base-images.yml");
 const GENERATED_HEADER =
@@ -30,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        php: [8.1, 8.2, 8.3, 8.4, 8.5]
+        php: [${SUPPORTED_PHP_VERSIONS.join(", ")}]
     steps:
       - uses: ${CHECKOUT_ACTION} # v5.0.0
         with:

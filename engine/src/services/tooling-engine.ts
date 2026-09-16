@@ -13,7 +13,9 @@ import {
 } from "@lando/sdk/services";
 
 import { withAgentContextEnv } from "../config/agent-env.ts";
+import { withTerminalEnv } from "../config/terminal-env.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "../operations/stream-frame-sink.ts";
+import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 
 const findPrimary = (services: AppPlan["services"]): ReadonlyArray<ServicePlan> =>
   Object.values(services).filter((service) => service.primary === true);
@@ -84,37 +86,28 @@ const idleStdin = (): AsyncIterable<Uint8Array> => ({
   },
 });
 
-const envOrFallback = (name: "COLUMNS" | "LINES" | "TERM", fallback: string): string => {
-  const value = process.env[name];
-  return value !== undefined && value !== "" ? value : fallback;
-};
-
-const hostTerm = (): string => {
-  const term = envOrFallback("TERM", "xterm-256color");
-  return term === "dumb" ? "xterm-256color" : term;
-};
-
 const execSpec = (input: {
   readonly command: ReadonlyArray<string>;
   readonly cwd: string | undefined;
   readonly env: Readonly<Record<string, string>> | undefined;
   readonly tty: boolean;
+  readonly hostTerminal: ToolingInvocation["hostTerminal"];
+  readonly serviceEnv: ServicePlan["environment"];
 }): CommandSpec => {
   // Podman rejects POST /exec/{id}/resize until the session has started, so
   // tooling never sends terminalSize. A PTY still needs stdin attached or PHP
   // will not see a TTY and Composer will print progress on new lines.
-  const ttyEnv = input.tty
-    ? {
-        COLUMNS: envOrFallback("COLUMNS", "80"),
-        LINES: envOrFallback("LINES", "24"),
-        TERM: hostTerm(),
-      }
-    : undefined;
-  const merged = input.env === undefined && ttyEnv === undefined ? undefined : { ...ttyEnv, ...input.env };
+  const merged = withTerminalEnv({
+    tty: input.tty,
+    hostEnv: process.env,
+    ...(input.hostTerminal === undefined ? {} : { hostTerminal: input.hostTerminal }),
+    serviceEnv: input.serviceEnv,
+    ...(input.env === undefined ? {} : { env: input.env }),
+  });
   const env =
     merged === undefined
       ? undefined
-      : input.tty
+      : input.tty && input.hostTerminal !== undefined
         ? Object.fromEntries(Object.entries(merged).filter(([name]) => name !== "CI"))
         : merged;
   return {
@@ -179,13 +172,13 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
       return yield* Effect.fail(noCommandsError(invocation.tool));
     }
     const service = yield* resolveService(invocation, plan);
-    const cwd = invocation.cwd ?? service.appMount?.target ?? service.workingDirectory;
+    const cwd = resolveContainerCwd(service, invocation.cwd, process.cwd());
     const env = withAgentContextEnv(invocation.env, process.env, {
       lowerThanEnv: service.environment,
       ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
     });
     const sink = yield* Effect.serviceOption(StreamFrameSink);
-    const tty = Option.isSome(sink);
+    const tty = invocation.tty === true;
     let exitCode = 0;
     let stdout = "";
     let stderr = "";
@@ -197,7 +190,17 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
         ...(invocation.user === undefined ? {} : { user: invocation.user }),
       };
       const result = yield* collectExecStream(
-        provider.execStream(target, execSpec({ command, cwd, env, tty })),
+        provider.execStream(
+          target,
+          execSpec({
+            command,
+            cwd,
+            env,
+            tty,
+            hostTerminal: invocation.hostTerminal,
+            serviceEnv: service.environment,
+          }),
+        ),
         sink,
       );
       stdout += result.stdout;

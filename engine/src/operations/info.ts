@@ -21,7 +21,7 @@ import {
   AppPlanner,
   type ConfigService,
   LandofileService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -34,6 +34,7 @@ import {
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
+import { selectInfoPlan } from "./service-selection.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
@@ -186,7 +187,7 @@ export const infoForPlan = (
 ): Effect.Effect<InfoAppResult, InfoAppError, RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const registry = yield* RuntimeProviderRegistry;
-    const proxy = yield* Effect.serviceOption(ProxyService);
+    const proxy = yield* Effect.serviceOption(RouterService);
     const provider = yield* registry.select(plan);
     const routedUrls =
       proxy._tag === "Some"
@@ -242,7 +243,8 @@ export const infoApp = (
       plan = yield* planner.plan(landofile, capabilities);
     }
 
-    const result = yield* infoForPlan(plan);
+    const selectedPlan = yield* selectInfoPlan(plan, options?.services);
+    const result = yield* infoForPlan(selectedPlan);
     if (options?.deep !== true) return result;
     const agentEnv = yield* resolveAgentEnvAudit(landofile?.agentEnv, process.env);
     return { ...result, agentEnv };

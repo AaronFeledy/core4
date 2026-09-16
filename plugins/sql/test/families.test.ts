@@ -10,6 +10,7 @@ import {
   loadCommand,
   mssqlBackupCommand,
   mssqlBackupServicePath,
+  mssqlPrepareBackupCommand,
   resetCommand,
 } from "../src/families.ts";
 import { isGzipPath, wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
@@ -67,6 +68,16 @@ describe("family command builders", () => {
     }
   });
 
+  test("loadCommand uses mariadb for mariadb family and mysql for mysql family", () => {
+    expect(loadCommand("mariadb", creds)[0]).toBe("mariadb");
+    expect(loadCommand("mysql", creds)[0]).toBe("mysql");
+  });
+
+  test("dumpCommand uses mariadb-dump for mariadb family and mysqldump for mysql family", () => {
+    expect(dumpCommand("mariadb", creds)[0]).toBe("mariadb-dump");
+    expect(dumpCommand("mysql", creds)[0]).toBe("mysqldump");
+  });
+
   test("loadCommand never puts the password on argv", () => {
     for (const family of families) {
       expect(argvHasSecret(loadCommand(family, creds))).toBe(false);
@@ -85,8 +96,29 @@ describe("family command builders", () => {
     }
   });
 
-  test("mysql dump uses mysqldump and the user without -p", () => {
-    expect(dumpCommand("mysql", creds)).toEqual(["mysqldump", "-u", "alice", "appdb"]);
+  test("mysql dump uses restore-oriented mysqldump flags without -p", () => {
+    expect(dumpCommand("mysql", creds)).toEqual([
+      "mysqldump",
+      "-u",
+      "alice",
+      "--single-transaction",
+      "--quick",
+      "--set-gtid-purged=OFF",
+      "--no-tablespaces",
+      "appdb",
+    ]);
+  });
+
+  test("mariadb dump uses restore-oriented mariadb-dump flags without GTID", () => {
+    expect(dumpCommand("mariadb", creds)).toEqual([
+      "mariadb-dump",
+      "-u",
+      "alice",
+      "--single-transaction",
+      "--quick",
+      "--no-tablespaces",
+      "appdb",
+    ]);
   });
 
   test("postgres dump uses pg_dump -U and -d", () => {
@@ -120,14 +152,19 @@ describe("family command builders", () => {
 
   test("mssql load is sqlcmd without -P", () => {
     const argv = loadCommand("mssql", creds);
-    expect(argv[0]).toBe("sqlcmd");
+    expect(argv.slice(0, 6)).toEqual(["/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-C"]);
     expect(argv).not.toContain("-P");
     expect(argv.some((part) => part.includes("WITH REPLACE"))).toBe(true);
   });
 
   test("mssql backup overwrites an existing bak file", () => {
     const argv = mssqlBackupCommand("appdb");
+    expect(argv[0]).toBe("/opt/mssql-tools18/bin/sqlcmd");
     expect(argv.some((part) => part.includes("WITH INIT"))).toBe(true);
+  });
+
+  test("mssql prepares the server-owned backup directory", () => {
+    expect(mssqlPrepareBackupCommand()).toEqual(["mkdir", "-p", "/var/opt/mssql/backup"]);
   });
 
   test("countCommand uses family-specific emptiness probes", () => {
@@ -152,12 +189,16 @@ describe("family command builders", () => {
     ]);
     const mongoCount = countCommand("mongodb", creds);
     expect(mongoCount[0]).toBe("sh");
-    expect(mongoCount[2]).toContain('mongosh --quiet --uri="$MONGO_URI"');
+    expect(mongoCount[2]).toContain('mongosh "$MONGO_URI" --quiet');
+    expect(mongoCount[2]).not.toContain("--uri");
     expect(mongoCount[2]).toContain("db.getCollectionNames().length");
     expect(countCommand("mssql", creds)).toEqual([
-      "sqlcmd",
+      "/opt/mssql-tools18/bin/sqlcmd",
+      "-S",
+      "localhost",
       "-U",
       "sa",
+      "-C",
       "-d",
       "appdb",
       "-Q",
@@ -186,10 +227,11 @@ describe("family command builders", () => {
     ]);
     const mongoReset = resetCommand("mongodb", creds);
     expect(mongoReset[0]).toBe("sh");
-    expect(mongoReset[2]).toContain('mongosh --uri="$MONGO_URI"');
+    expect(mongoReset[2]).toContain('mongosh "$MONGO_URI" --quiet');
+    expect(mongoReset[2]).not.toContain("--uri");
     expect(mongoReset[2]).toContain("db.dropDatabase()");
     const mssql = resetCommand("mssql", creds);
-    expect(mssql[0]).toBe("sqlcmd");
+    expect(mssql[0]).toBe("/opt/mssql-tools18/bin/sqlcmd");
     expect(mssql).toContain(
       "ALTER DATABASE [appdb] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [appdb]; CREATE DATABASE [appdb];",
     );

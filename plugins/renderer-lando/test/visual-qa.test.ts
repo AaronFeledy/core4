@@ -4,12 +4,9 @@ import { Effect, Layer } from "effect";
 import { EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  EventServiceLive,
-  createBufferedRendererIO,
-  makeJsonRendererLive,
-  renderPlain,
-} from "@lando/core/testing";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { makeJsonRendererLive, renderPlain } from "@lando/renderer/runtime";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { SPINNER_FRAMES, styleFrame } from "../src/task-tree-render.ts";

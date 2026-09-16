@@ -67,6 +67,20 @@ export class CapturingStdout extends EventEmitter {
 
 export const createCapturingStdout = (writes: string[]): CapturingStdout => new CapturingStdout(writes);
 
+export const createRecordingStdout = (
+  columns = 80,
+  rows = 24,
+): { readonly stdout: CapturingStdout; readonly captured: () => string } => {
+  const writes: string[] = [];
+  const stdout = createCapturingStdout(writes);
+  stdout.columns = columns;
+  stdout.rows = rows;
+  return {
+    stdout,
+    captured: () => writes.join(""),
+  };
+};
+
 export const makeLiveRegionFixture = (onCall: (call: string) => void = () => {}) => {
   const calls: string[] = [];
   const commits: string[] = [];

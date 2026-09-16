@@ -1,17 +1,18 @@
 import { Either } from "effect";
 
-import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
+import { ConfigTranslatorConflictError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { PluginManifest } from "@lando/sdk/schema";
 
 type MapSlot =
   | "runtimeProviders"
   | "commands"
+  | "configTranslators"
   | "renderers"
   | "fileSyncEngines"
   | "templateEngines"
   | "certificateAuthorities"
-  | "proxyServices"
+  | "routerServices"
   | "sshServices"
   | "globalServices"
   | "serviceTypes"
@@ -29,11 +30,12 @@ type DoctorCheck = NonNullable<LandoPluginModule["doctorChecks"]>[number];
 export interface PluginCapabilityIndex {
   readonly runtimeProviders: SlotMap<"runtimeProviders">;
   readonly commands: SlotMap<"commands">;
+  readonly configTranslators: SlotMap<"configTranslators">;
   readonly renderers: SlotMap<"renderers">;
   readonly fileSyncEngines: SlotMap<"fileSyncEngines">;
   readonly templateEngines: SlotMap<"templateEngines">;
   readonly certificateAuthorities: SlotMap<"certificateAuthorities">;
-  readonly proxyServices: SlotMap<"proxyServices">;
+  readonly routerServices: SlotMap<"routerServices">;
   readonly sshServices: SlotMap<"sshServices">;
   readonly globalServices: SlotMap<"globalServices">;
   readonly serviceTypes: SlotMap<"serviceTypes">;
@@ -45,6 +47,13 @@ export interface PluginCapabilityIndex {
   readonly doctorChecks: ReadonlyMap<string, DoctorCheck>;
   readonly manifests: ReadonlyArray<PluginManifest>;
 }
+
+/**
+ * Index failures: manifest/descriptor disagreement or a duplicate contribution
+ * id. Config translator duplicates are reported as `ConfigTranslatorConflictError`
+ * naming both producing plugins; no producer wins.
+ */
+export type PluginCapabilityIndexError = PluginDescriptorMismatchError | ConfigTranslatorConflictError;
 
 interface ContributionRefLike {
   readonly id: string;
@@ -102,6 +111,12 @@ const descriptorMismatch = (module: LandoPluginModule): PluginDescriptorMismatch
       keysOf(module.runtimeProviders),
     ),
     validateDescriptorIds(module, "commands", idsOf(contributes?.commands), keysOf(module.commands)),
+    validateDescriptorIds(
+      module,
+      "configTranslators",
+      idsOf(contributes?.configTranslators),
+      keysOf(module.configTranslators),
+    ),
     validateDescriptorIds(module, "renderers", idsOf(contributes?.renderers), keysOf(module.renderers)),
     validateDescriptorIds(
       module,
@@ -123,9 +138,9 @@ const descriptorMismatch = (module: LandoPluginModule): PluginDescriptorMismatch
     ),
     validateDescriptorIds(
       module,
-      "proxyServices",
-      idsOf(contributes?.proxyServices),
-      keysOf(module.proxyServices),
+      "routerServices",
+      idsOf(contributes?.routerServices),
+      keysOf(module.routerServices),
     ),
     validateDescriptorIds(
       module,
@@ -175,14 +190,35 @@ const addContributions = <Key, Value>(
   return undefined;
 };
 
+const addConfigTranslators = (
+  target: Map<string, MapValue<SlotMap<"configTranslators">>>,
+  owners: Map<string, string>,
+  module: LandoPluginModule,
+): ConfigTranslatorConflictError | undefined => {
+  for (const [id, loader] of module.configTranslators ?? []) {
+    const owner = owners.get(id);
+    if (owner !== undefined) {
+      return new ConfigTranslatorConflictError({
+        message: `Config translator id ${id} is contributed by both ${owner} and ${module.name}.`,
+        id,
+        translators: [owner, module.name],
+        remediation: `Remove or rename the translator ${id} in one of ${owner} or ${module.name}; neither takes precedence.`,
+      });
+    }
+    owners.set(id, module.name);
+    target.set(id, loader);
+  }
+  return undefined;
+};
+
 const capabilityIndexCache = new WeakMap<
   ReadonlyArray<LandoPluginModule>,
-  Either.Either<PluginCapabilityIndex, PluginDescriptorMismatchError>
+  Either.Either<PluginCapabilityIndex, PluginCapabilityIndexError>
 >();
 
 export const makePluginCapabilityIndex = (
   modules: ReadonlyArray<LandoPluginModule>,
-): Either.Either<PluginCapabilityIndex, PluginDescriptorMismatchError> => {
+): Either.Either<PluginCapabilityIndex, PluginCapabilityIndexError> => {
   const cached = capabilityIndexCache.get(modules);
   if (cached !== undefined) return cached;
   const computed = computePluginCapabilityIndex(modules);
@@ -192,14 +228,16 @@ export const makePluginCapabilityIndex = (
 
 const computePluginCapabilityIndex = (
   modules: ReadonlyArray<LandoPluginModule>,
-): Either.Either<PluginCapabilityIndex, PluginDescriptorMismatchError> => {
+): Either.Either<PluginCapabilityIndex, PluginCapabilityIndexError> => {
   const runtimeProviders = mutableMapFor<"runtimeProviders">();
   const commands = mutableMapFor<"commands">();
+  const configTranslators = mutableMapFor<"configTranslators">();
+  const configTranslatorOwners = new Map<string, string>();
   const renderers = mutableMapFor<"renderers">();
   const fileSyncEngines = mutableMapFor<"fileSyncEngines">();
   const templateEngines = mutableMapFor<"templateEngines">();
   const certificateAuthorities = mutableMapFor<"certificateAuthorities">();
-  const proxyServices = mutableMapFor<"proxyServices">();
+  const routerServices = mutableMapFor<"routerServices">();
   const sshServices = mutableMapFor<"sshServices">();
   const globalServices = mutableMapFor<"globalServices">();
   const serviceTypes = mutableMapFor<"serviceTypes">();
@@ -227,7 +265,7 @@ const computePluginCapabilityIndex = (
       add(fileSyncEngines, module.fileSyncEngines ?? [], "fileSyncEngines"),
       add(templateEngines, module.templateEngines ?? [], "templateEngines"),
       add(certificateAuthorities, module.certificateAuthorities ?? [], "certificateAuthorities"),
-      add(proxyServices, module.proxyServices ?? [], "proxyServices"),
+      add(routerServices, module.routerServices ?? [], "routerServices"),
       add(sshServices, module.sshServices ?? [], "sshServices"),
       add(globalServices, module.globalServices ?? [], "globalServices"),
       add(serviceTypes, module.serviceTypes ?? [], "serviceTypes"),
@@ -248,16 +286,19 @@ const computePluginCapabilityIndex = (
     ];
     const duplicate = additions.find((error) => error !== undefined);
     if (duplicate !== undefined) return Either.left(duplicate);
+    const translatorConflict = addConfigTranslators(configTranslators, configTranslatorOwners, module);
+    if (translatorConflict !== undefined) return Either.left(translatorConflict);
   }
 
   return Either.right({
     runtimeProviders,
     commands,
+    configTranslators,
     renderers,
     fileSyncEngines,
     templateEngines,
     certificateAuthorities,
-    proxyServices,
+    routerServices,
     sshServices,
     globalServices,
     serviceTypes,

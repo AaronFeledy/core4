@@ -1,24 +1,19 @@
 /**
- * `@lando/proxy-traefik` — Traefik-backed ProxyService + bundled global service.
- *
- * Contributes:
- *   - `proxies: ["traefik"]` — the Traefik-backed `ProxyService` id.
- *   - `globalServices: ["traefik"]` — the bundled global reverse-proxy service
- *     materialized into the global app's `.lando.dist.yml`.
- *   - `doctorChecks: ["proxy-tls", "proxy-loopback-ports", "preferred-host-ports"]` —
- *     HTTPS TLS material, leftover Traefik loopback ports, and preferred 80/443 occupancy.
+ * `@lando/proxy-traefik` — Traefik-backed RouterService + bundled global service.
  *
  * The `globalServices` map is the compiled-binary-safe contribution surface:
  * `meta:global:install`'s bundled-first loader reads it instead of dynamically
  * importing the manifest `module:` path (which cannot resolve in a
  * `bun build --compile` binary).
  */
-import { type Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { definePlugin } from "@lando/sdk/plugins";
-import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
+import { type GlobalServiceContributionEffect, definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 
+import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
+import diagnosticsGlobalService from "./global-services/diagnostics.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 import { preferredHostPortsCheck } from "./preferred-host-ports.ts";
@@ -26,15 +21,31 @@ import { proxy } from "./proxy.ts";
 
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
-export { makeTraefikProxyService, proxy, renderTraefikDynamicConfig } from "./proxy.ts";
+export { makeTraefikRouterService, proxy, renderTraefikDynamicConfig } from "./proxy.ts";
+export { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
-export const proxyServices = new Map([["traefik", proxy]]);
+export {
+  TRAEFIK_DIAGNOSTICS_COMMAND,
+  TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
+  TRAEFIK_DIAGNOSTICS_IMAGE,
+} from "./global-services/diagnostics.ts";
+export {
+  TRAEFIK_DIAGNOSTICS_CONTAINER_DIR,
+  TRAEFIK_DIAGNOSTICS_HOSTNAME,
+  TRAEFIK_DIAGNOSTICS_ID,
+  TRAEFIK_DIAGNOSTICS_PORT,
+  renderTraefikDiagnosticHtml,
+  renderTraefikDiagnosticNginxConfig,
+  renderTraefikFallbackConfig,
+} from "./diagnostics.ts";
+export const routerServices = new Map([["traefik", proxy]]);
 
-export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
+export const globalServices: ReadonlyMap<string, GlobalServiceContributionEffect> = new Map([
   ["traefik", traefikGlobalService],
+  ["traefik-diagnostics", diagnosticsGlobalService],
 ]);
 
 export const manifest = Schema.decodeSync(PluginManifest)({
@@ -42,10 +53,10 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   version: "0.0.0",
   api: 4,
   requires: { "@lando/core": "^4.0.0" },
-  description: "Traefik-backed `ProxyService` and bundled global reverse proxy.",
+  description: "Traefik-backed `RouterService` contributing routerServices: [traefik].",
   enabled: true,
   contributes: {
-    proxyServices: [
+    routerServices: [
       {
         id: "traefik",
         module: "./src/proxy.ts",
@@ -58,7 +69,14 @@ export const manifest = Schema.decodeSync(PluginManifest)({
         module: "./src/global-services/traefik.ts",
         enabledByDefault: true,
         requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
-        summary: "Global Traefik reverse proxy",
+        summary: "Global Traefik router",
+      },
+      {
+        id: "traefik-diagnostics",
+        module: "./src/global-services/diagnostics.ts",
+        enabledByDefault: true,
+        requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
+        summary: "Unmatched route diagnostics",
       },
     ],
   },
@@ -69,7 +87,12 @@ export const plugin = definePlugin({
   name: manifest.name,
   manifest,
   layer: proxy,
-  proxyServices,
+  routerServices,
   globalServices,
-  doctorChecks: [proxyTlsDoctorCheck, leftoverProxyPortsCheck, preferredHostPortsCheck],
+  doctorChecks: [
+    proxyTlsDoctorCheck,
+    leftoverProxyPortsCheck,
+    preferredHostPortsCheck,
+    advertisedProxyPortsCheck,
+  ],
 });

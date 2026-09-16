@@ -88,6 +88,7 @@ const makeTomcatServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: TomcatServiceConfig,
   resolve: (input) => {
     const appName = appNameFor(input);

@@ -15,6 +15,7 @@ import type {
   ServiceConfig,
 } from "../schema/index.ts";
 import type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
+import type { ConfigTranslatorShape } from "../services/config-translator.ts";
 import type { LogFileHelperAssets } from "../services/host-assets.ts";
 import type {
   AppFeatureDefinition,
@@ -25,7 +26,7 @@ import type {
   GlobalAppService,
   PathsService,
   ProcessRunner,
-  ProxyService,
+  RouterService,
   RuntimeProviderShape,
   ServiceFeatureDefinition,
   ServiceType,
@@ -90,14 +91,21 @@ export interface PluginDoctorCheckContribution {
 
 export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
 
+/**
+ * Lazy `ConfigTranslator` factory. Plugins wrap a dynamic import so the
+ * translator implementation loads only for an explicit conversion request;
+ * the loader closes over any injected SDK ports such as `RecipeDecomposer`.
+ */
+export type ConfigTranslatorLoader = () => Promise<ConfigTranslatorShape>;
+
 export type FileSyncEngineContribution = Layer.Layer<FileSyncEngine, unknown, unknown>;
 export type CertificateAuthorityContributionLayer = Layer.Layer<
   CertificateAuthority,
   never,
   PathsService | Downloader | ProcessRunner
 >;
-export type ProxyServiceContributionLayer = Layer.Layer<
-  ProxyService,
+export type RouterServiceContributionLayer = Layer.Layer<
+  RouterService,
   ProxyError,
   CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
@@ -116,10 +124,11 @@ export interface LandoPluginModule {
   readonly runtimeProviders?: ReadonlyMap<ProviderId, RuntimeProviderContribution>;
   readonly renderers?: ReadonlyMap<string, RendererContribution>;
   readonly commands?: ReadonlyMap<string, ExecutableCommandLoader>;
+  readonly configTranslators?: ReadonlyMap<string, ConfigTranslatorLoader>;
   readonly fileSyncEngines?: ReadonlyMap<string, FileSyncEngineContribution>;
   readonly certificateAuthorities?: ReadonlyMap<string, CertificateAuthorityContributionLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
-  readonly proxyServices?: ReadonlyMap<string, ProxyServiceContributionLayer>;
+  readonly routerServices?: ReadonlyMap<string, RouterServiceContributionLayer>;
   readonly sshServices?: ReadonlyMap<string, SshServiceContributionLayer>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceContributionEffect>;
   readonly serviceTypes?: ReadonlyMap<string, ServiceType>;

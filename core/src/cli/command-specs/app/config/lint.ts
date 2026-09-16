@@ -20,6 +20,7 @@ export const appConfigLintSpec: LandoCommandSpec<ConfigLintResult> = {
   summary: "Validate the current app's Landofile against the canonical schema.",
   namespace: "app",
   topLevelAlias: false,
+  aliases: ["config:lint"],
   bootstrap: "minimal",
   flags: {
     format: Flags.string({

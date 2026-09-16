@@ -23,7 +23,7 @@ import { Effect, Layer } from "effect";
 import {
   HealthcheckRunner,
   HostProxyService,
-  ProxyService,
+  RouterService,
   RuntimeProvider,
   SshService,
   UrlScanner,
@@ -32,7 +32,7 @@ import {
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
 import { HealthcheckRunnerLive } from "@lando/engine/subsystems/healthcheck/live";
 import { HostProxyServiceDisabledLive } from "@lando/engine/subsystems/host-proxy/api";
-import { ProxyServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
+import { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api";
 import { UrlScannerLive } from "@lando/engine/subsystems/scanner/live";
 import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
 import { HttpClientLive } from "@lando/http-client/live";
@@ -91,9 +91,9 @@ const UrlScannerDoctorLive = UrlScannerLive.pipe(
 );
 
 export const DefaultSubsystemDoctorLayer: Layer.Layer<
-  ProxyService | SshService | HealthcheckRunner | UrlScanner | HostProxyService
+  RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService
 > = Layer.mergeAll(
-  ProxyServiceUnavailableLive,
+  RouterServiceUnavailableLive,
   SshServiceUnavailableLive,
   HealthcheckRunnerDoctorLive,
   UrlScannerDoctorLive,
@@ -105,11 +105,11 @@ export const subsystemDoctor = (
 ): Effect.Effect<
   SubsystemDoctorResult,
   never,
-  ProxyService | SshService | HealthcheckRunner | UrlScanner | HostProxyService
+  RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService
 > =>
   Effect.gen(function* () {
     const fix = options.fix === true;
-    const proxy = yield* ProxyService;
+    const proxy = yield* RouterService;
     const ssh = yield* SshService;
     const healthcheck = yield* HealthcheckRunner;
     const scanner = yield* UrlScanner;

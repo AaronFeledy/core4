@@ -13,6 +13,21 @@ type CodegenCatalogModule = {
 
 const derivedTypeScriptPolicies = [
   {
+    ids: ["command-registry-manifest"],
+    ignoreProbe: "core/src/cli/allowlists/recipe-post-init.ts",
+    trackingPath: "core/src/cli/allowlists/recipe-post-init.ts",
+  },
+  {
+    ids: ["command-registry-manifest"],
+    ignoreProbe: "docs/reference/recipe-post-init.mdx",
+    trackingPath: "docs/reference/recipe-post-init.mdx",
+  },
+  {
+    ids: ["service-type-reference"],
+    ignoreProbe: "docs/reference/service-types.mdx",
+    trackingPath: "docs/reference/service-types.mdx",
+  },
+  {
     ids: ["command-registry-manifest", "setup-plugin-flags"],
     ignoreProbe: "core/src/cli/generated/command-ids.ts",
     trackingPath: "core/src/cli/generated",

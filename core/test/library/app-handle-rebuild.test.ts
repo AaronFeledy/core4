@@ -6,10 +6,10 @@ import { expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { openLandoRuntime } from "@lando/core";
-import { ProviderId } from "@lando/core/schema";
-import { EventService, ProxyService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
+import { ProviderId, ServiceName } from "@lando/core/schema";
+import { EventService, RouterService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { TestProxyService } from "@lando/sdk/test";
+import { TestRouterService } from "@lando/sdk/test";
 
 const providerLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
@@ -18,7 +18,7 @@ const providerLayers = [
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(TestRuntimeProvider),
   }),
-  Layer.succeed(ProxyService, TestProxyService),
+  Layer.succeed(RouterService, TestRouterService),
 ];
 
 test("App.rebuild delegates to the rebuild lifecycle and runs pre/post rebuild events", async () => {
@@ -35,6 +35,8 @@ services:
   cache:
     type: redis
     primary: true
+  queue:
+    type: redis
 events:
   pre-rebuild:
     - cmd: printf pre-rebuild >> ${marker}
@@ -48,17 +50,18 @@ events:
 
   try {
     // When
-    await Effect.runPromise(
+    const result = await Effect.runPromise(
       Effect.scoped(
         openLandoRuntime({ plugins: { policy: "bundled-only", layers: providerLayers } }).pipe(
           Effect.flatMap((runtime) => runtime.app()),
-          Effect.flatMap((app) => app.rebuild()),
+          Effect.flatMap((app) => app.rebuild({ services: [ServiceName.make("cache")] })),
         ),
       ),
     );
 
     // Then
     expect(await readFile(marker, "utf8")).toBe("pre-rebuildpost-rebuild");
+    expect(result.servicesRebuilt).toEqual(["cache"]);
   } finally {
     process.chdir(originalCwd);
     await rm(root, { recursive: true, force: true });

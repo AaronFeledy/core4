@@ -1,0 +1,14 @@
+name: route-order
+services:
+  web:
+    type: nginx
+    routes:
+      - app.route-order.lndo.site
+  api:
+    type: nginx
+    routes:
+      - app.route-order.lndo.site/api
+  wild:
+    type: nginx
+    routes:
+      - "*.route-order.lndo.site"

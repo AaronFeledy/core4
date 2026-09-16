@@ -1,0 +1,7 @@
+name: node-globals-invalid
+services:
+  app:
+    type: "node:22"
+    primary: true
+    globals:
+      Gulp-CLI: "latest"

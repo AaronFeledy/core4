@@ -1,0 +1,4 @@
+runtime: 4
+services:
+  web:
+    port: 8080

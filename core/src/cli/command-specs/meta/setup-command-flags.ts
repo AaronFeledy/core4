@@ -27,7 +27,10 @@ export const SETUP_BUILTIN_FLAGS = {
     description: "Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection.",
   }),
   "skip-provider": Flags.boolean({ default: false }),
-  "skip-proxy": Flags.boolean({ default: false }),
+  "skip-proxy": Flags.boolean({
+    description: "Skip router setup.",
+    default: false,
+  }),
   "skip-install-ca": Flags.boolean({ default: false }),
   "skip-shell-integration": Flags.boolean({ default: false }),
   "skip-file-sync": Flags.boolean({

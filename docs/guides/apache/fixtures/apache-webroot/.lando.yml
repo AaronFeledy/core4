@@ -1,0 +1,5 @@
+name: apache-webroot
+services:
+  web:
+    type: apache
+    webroot: /app/public

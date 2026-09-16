@@ -7,7 +7,7 @@ import { Duration, Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 
-import type { PodmanApiClient } from "../src/capabilities.ts";
+import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { ensureRuntime } from "../src/ensure-runtime.ts";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
 

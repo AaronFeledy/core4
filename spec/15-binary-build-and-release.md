@@ -349,18 +349,20 @@ The manifest URL host (`update.lando.dev`) is a project-controlled redirector. I
 
 #### 17.6.2 Atomic replace and rollback
 
-**POSIX (macOS, Linux).** `rename(2)` is atomic across the same filesystem. The update writes the new binary to `<install-dir>/.lando.<version>.tmp`, `chmod 0755`s it, verifies it can launch (`./.lando.<version>.tmp --version` returns the expected version), then `rename`s it over `<install-dir>/lando`. The replaced file's prior contents are kept in `<install-dir>/.lando.<previous-version>.bak` for a single rollback. The running process re-execs into the new binary using `execve(2)` so the user does not need to retype the command.
+The update protocol MUST resolve the v4 install record first and reject a foreign-owned target (§17.7). It MUST operate only on the v4-owned executable, `lando4` on POSIX or `lando4.exe` on Windows, and its recorded staging and rollback siblings. Any foreign `lando` or `lando.exe` at the destination MUST NOT be renamed, replaced, chmod'ed, shimmed, removed, or rewritten.
 
-**Windows.** A running `.exe` cannot be renamed on top of itself by the same process. The update writes `lando.${version}.exe` next to the running binary, verifies it, then schedules the swap via two paths:
+**POSIX (macOS, Linux).** `rename(2)` is atomic across the same filesystem. The update writes the new binary to `<install-dir>/.lando4.<version>.tmp`, `chmod 0755`s it, verifies it can launch (`./.lando4.<version>.tmp --version` returns the expected version), then `rename`s it over `<install-dir>/lando4`. The replaced file's prior contents are kept in `<install-dir>/.lando4.<previous-version>.bak` for a single rollback. The running process re-execs into the new binary using `execve(2)` so the user does not need to retype the command.
+
+**Windows.** A running `.exe` cannot be renamed on top of itself by the same process. Running-executable rename and rollback MUST touch only the v4-owned `lando4.exe` and its versioned siblings. The update writes `lando4.${version}.exe` next to the running binary, verifies it, then schedules the swap via two paths:
 
 1. **Preferred:** `MoveFileExW(.., MOVEFILE_DELAY_UNTIL_REBOOT)` plus an immediate spawn-and-exit pattern — the new binary is launched, the old binary exits, the new binary `MoveFileEx`'s itself over the old path on its first run.
-2. **Fallback:** if scheduled-rename is not available (locked-down environments), the updater prints clear instructions to close all `lando` processes and runs `cmd.exe /c "ping … & del lando.exe & rename lando.${version}.exe lando.exe & lando.exe"`. The fallback is documented and covered by an e2e test on the Windows runner.
+2. **Fallback:** if scheduled-rename is not available (locked-down environments), the updater prints clear instructions to close all `lando4` processes and runs `cmd.exe /c "ping … & del lando4.exe & rename lando4.${version}.exe lando4.exe & lando4.exe"`. The fallback is documented and covered by an e2e test on the Windows runner.
 
-In both cases the prior binary's bytes are preserved at `<install-dir>/lando.${previous-version}.bak.exe` for one update cycle.
+In both cases the prior binary's bytes are preserved at `<install-dir>/lando4.${previous-version}.bak.exe` for one update cycle.
 
-**Rollback.** If the new binary fails to launch (signature ok, but executable startup fails — corrupted download, OS incompatibility, missing platform library), the updater detects the failure within `EXEC_PROBE_TIMEOUT_MS` (default 5s), restores the `.bak` file via the same atomic primitive, and surfaces a tagged `UpdateLaunchProbeError` with remediation telling the user to file an issue with their platform details. `lando update --rollback` lets a user invoke the same flow on a previously-updated install.
+**Rollback.** If the new binary fails to launch (signature ok, but executable startup fails because of a corrupted download, OS incompatibility, or missing platform library), the updater detects the failure within `EXEC_PROBE_TIMEOUT_MS` (default 5s), restores the recorded v4 backup via the same atomic primitive, and surfaces a tagged `UpdateLaunchProbeError` with remediation telling the user to file an issue with their platform details. `lando4 update --rollback` lets a user invoke the same flow on a previously-updated install.
 
-**Permission preservation.** The new binary inherits the prior binary's mode bits (POSIX) or NTFS ACL (Windows). If the binary is on a path requiring elevated privileges to write (e.g., `/usr/local/bin/lando` owned by root), the updater detects the EACCES at the rename step, exits with `UpdatePermissionError`, and prints the exact `sudo` command to retry the operation manually. We do not invoke `sudo`/UAC silently.
+**Permission preservation.** The new binary inherits the prior binary's mode bits (POSIX) or NTFS ACL (Windows). If the binary is on a path requiring elevated privileges to write (e.g., `/usr/local/bin/lando4` owned by root), the updater detects the EACCES at the rename step, exits with `UpdatePermissionError`, and prints the exact `sudo` command to retry the operation manually. We do not invoke `sudo`/UAC silently.
 
 #### 17.6.3 Telemetry of update outcomes
 
@@ -370,11 +372,21 @@ When telemetry is enabled (default; opt-out per §1.4), each update outcome — 
 
 v4.0.0 commits to **two** install surfaces. Everything else is deferred to a future v4.x.
 
+**Side-by-side ownership.** During Alpha and Beta, the installed executable MUST be `lando4` on POSIX and `lando4.exe` on Windows; the npm `package.json#bin` name MUST be `lando4`. The GA executable name is decided at RC. Release asset filenames MUST remain in the `lando-v4-<version>-<platform>` family, with platform ids such as `windows-x64`; asset naming MUST NOT select the installed executable name. Source execution and every relocated compiled artifact MUST dispatch the same native registry as `lando4` (§8.4.1).
+
+Installer, update, uninstall, and shellenv MUST operate only on the v4-owned install record and executable. They MUST reject a destination already owned by another installation, MUST NOT rename, replace, chmod, shim, remove, or rewrite an existing `lando` or `lando.exe` executable, MUST NOT edit Lando 3 state, and MUST leave unrelated PATH entries untouched.
+
+| Situation | Required behavior |
+|---|---|
+| Lando 3 directory and `lando4 <app verb>` | MUST fail with `Lando3LandofileDetected` (§7.1), whose remediation MUST quote `lando4 app:config:translate --from lando3 --write`. |
+| Lando 3 directory and `lando <app verb>` | Lando 3 MUST keep running unchanged. |
+| Converted directory and `lando4 <app verb>` | MUST load, plan, and run as an ordinary v4 app using normal provider precedence. |
+
 **1. GitHub Releases.** The signed binaries, library archive, SBOM, provenance, and signature files are published as a GitHub Release for every tagged version. Users may download the binary directly, verify it with the published cosign command (§17.5), and place it on their PATH. This is the most general, lowest-trust path.
 
-**Zero peer prerequisites.** The compiled `lando` binary embeds a complete Bun runtime (§2.1, §3.4 `BunSelfRunner`). A user installing only the Lando binary needs no separate Bun installation, no Node, and no system package manager. Plugin install (§9.6), recipe `bun: { verb: create | install }` (§8.8.8), `lando bun` / `lando x` (§8.2.4), and `includes:` registry materialization (§7.7) all self-spawn the running binary with `BUN_BE_BUN=1`. The `@lando/core` library form is the one exception (§1.4): it does not ship an embedded Bun and assumes the consuming Bun program already provides the runtime. The §13.1 plugin-install contract suite includes an end-to-end test that performs `lando plugin add <spec>` on a clean container with **no** prior Bun, Node, npm, or yarn installations, and the §13.6 release-blocking nightly matrix runs the `lando init` canonical-recipe set on the same clean baseline.
+**Zero peer prerequisites.** The compiled `lando4` binary embeds a complete Bun runtime (§2.1, §3.4 `BunSelfRunner`). A user installing only the Lando binary needs no separate Bun installation, no Node, and no system package manager. Plugin install (§9.6), recipe `bun: { verb: create | install }` (§8.8.8), `lando4 bun` / `lando4 x` (§8.2.4), and `includes:` registry materialization (§7.7) all self-spawn the running binary with `BUN_BE_BUN=1`. The `@lando/core` library form is the one exception (§1.4): it does not ship an embedded Bun and assumes the consuming Bun program already provides the runtime. The §13.1 plugin-install contract suite includes an end-to-end test that performs `lando4 plugin add <spec>` on a clean container with **no** prior Bun, Node, npm, or yarn installations, and the §13.6 release-blocking nightly matrix runs the `lando4 init` canonical-recipe set on the same clean baseline.
 
-The Mutagen host CLI and per-platform agent binaries used by the bundled `@lando/file-sync-mutagen` engine (§10.6.2) are **not** embedded in the compiled `lando` binary. They are downloaded by `lando setup` against the plugin's pinned `mutagen-versions.json` manifest and live under `<userDataRoot>/bin/` (§12.4). On `bindMountPerformance: "native"` providers (§5.4) `lando setup` skips the download entirely, so a Linux-native user pays no Mutagen bytes on disk. On macOS and Windows users running `lando setup` once acquire all required Mutagen binaries; subsequent invocations reuse the cached copies and only re-download when the plugin's pinned version bumps in a Lando release.
+The Mutagen host CLI and per-platform agent binaries used by the bundled `@lando/file-sync-mutagen` engine (§10.6.2) are **not** embedded in the compiled `lando4` binary. They are downloaded by `lando4 setup` against the plugin's pinned `mutagen-versions.json` manifest and live under `<userDataRoot>/bin/` (§12.4). On `bindMountPerformance: "native"` providers (§5.4) `lando4 setup` skips the download entirely, so a Linux-native user pays no Mutagen bytes on disk. On macOS and Windows users running `lando4 setup` once acquire all required Mutagen binaries; subsequent invocations reuse the cached copies and only re-download when the plugin's pinned version bumps in a Lando release.
 
 **2. Curl-pipe installer.** A small POSIX shell script (`scripts/install.sh`) and a Windows PowerShell script (`scripts/install.ps1`) are published at stable URLs:
 
@@ -388,8 +400,8 @@ The scripts:
 - Fetch the update manifest (§17.6.1).
 - Download the platform binary + checksum manifest + signature.
 - Verify the checksum and the signature using a vendored copy of the project's GPG public key (POSIX) or cosign public key (Windows). The trust root is checked into the installer script source and rotated explicitly when keys rotate.
-- Install to `${LANDO_INSTALL_DIR:-<userDataRoot>/bin}` by default — the same path `lando shellenv` advertises (§10.8) and the same path `lando setup` uses for provider helper binaries (§13.5). `<userDataRoot>` follows §7.5: `${XDG_DATA_HOME:-$HOME/.local/share}/lando/bin` on Linux, `$HOME/Library/Application Support/Lando/bin` on macOS, `%LOCALAPPDATA%\Lando\Data\bin` on Windows. The installer creates the directory if absent. The installer offers to update PATH via `lando shellenv` immediately after install; the snippet `lando shellenv` prints points at the same `<userDataRoot>/bin` so the two surfaces are guaranteed to agree.
-- Optionally run `lando setup` if `LANDO_AUTO_SETUP=1` or the user passes `--setup`.
+- Install `lando4` (`lando4.exe` on Windows) into `${LANDO_INSTALL_DIR:-<userDataRoot>/bin}`, giving `<userDataRoot>/bin/lando4` on POSIX by default. This is the same directory `lando4 shellenv` advertises (§10.8) and `lando4 setup` uses for provider helper binaries (§13.5). `<userDataRoot>` follows §7.5: `${XDG_DATA_HOME:-$HOME/.local/share}/lando/bin` on Linux, `$HOME/Library/Application Support/Lando/bin` on macOS, `%LOCALAPPDATA%\Lando\Data\bin` on Windows. The installer creates the directory if absent. The installer offers to update PATH via `lando4 shellenv` immediately after install; its snippet MUST point at the same `<userDataRoot>/bin` and preserve unrelated PATH entries.
+- Optionally run `lando4 setup` if `LANDO_AUTO_SETUP=1` or the user passes `--setup`.
 
 The installer scripts are themselves signed (the URL serves the script and a sibling `.sig`); the website documents how to verify the script before piping it. Yes, this is the standard "curl | sh" tradeoff. The script source is short, auditable, and covered by an e2e test that pipes the published URL into a clean container per supported OS on every release.
 
@@ -403,9 +415,9 @@ The installer scripts are themselves signed (the URL serves the script and a sib
 
 The installation surface is intentionally small for v4.0.0. The reference installer + GitHub Releases covers macOS, Linux, and Windows for every supported platform target; the deferred channels add convenience for specific user populations and can be added without spec changes.
 
-**First-run UX.** When the binary is launched for the first time and detects no prior Lando state under `<userDataRoot>/`, it prints a single-line invitation to run `lando setup` and exits with code 0. It does not auto-run setup. Users running the installer with `--setup` get the auto-setup path.
+**First-run UX.** When the binary is launched for the first time and detects no prior v4 state under `<userDataRoot>/`, it prints a single-line invitation to run `lando4 setup` and exits with code 0. It does not auto-run setup. Users running the installer with `--setup` get the auto-setup path.
 
-**Uninstall.** `lando meta uninstall` (canonical id `meta:uninstall`, top-level alias `lando uninstall`) removes the binary, the user data root, and the user cache root after a confirm prompt. It does not remove any container runtime, image, or volume — those are owned by the runtime provider. Each provider's docs document its own cleanup.
+**Uninstall.** `lando4 meta uninstall` (canonical id `meta:uninstall`, top-level alias `lando4 uninstall`) MUST remove only entries in the v4 install record after a confirm prompt and MUST be idempotent. Unrecorded contents of the user data and cache roots MUST remain untouched. It MUST NOT remove any container runtime, image, or volume; those are owned by the runtime provider. Each provider's docs document its own cleanup. Lando 3 executables and state MUST remain unchanged.
 
 ### 17.8 CI release workflow
 

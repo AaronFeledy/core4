@@ -40,33 +40,35 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
+  StateStore,
   ToolingEngine,
 } from "@lando/core/services";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
+import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { attachEffectiveEvents, effectiveEventsForPlan } from "@lando/engine/planner/effective-events";
+import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  ConfigServiceLive,
-  EventCommandExecutor,
-  FileSystemLive,
-  GlobalAppServiceLive,
-  attachEffectiveEvents,
-  attachEffectiveTooling,
-  effectiveEventsForPlan,
-  makeShellRunnerLive,
-  stripHostProxyRunLando,
-} from "../../src/testing/engine-layers.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 const providerId = ProviderId.make("lando");
+const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 
 interface RunResult {
   readonly exitCode: number;
@@ -281,6 +283,8 @@ const emptyPluginRegistry = {
 };
 
 const unusedGlobalServicesLayer = Layer.mergeAll(
+  PrivateFileAccessLive,
+  NoopTransactionGuardLive,
   ConfigServiceLive,
   FileSystemLive,
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
@@ -288,7 +292,7 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   Layer.succeed(RedactionService, {
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
-  Layer.succeed(ProxyService, TestProxyService),
+  Layer.succeed(RouterService, TestRouterService),
   makeShellRunnerLive(() => {
     throw new TypeError("Interactive shell IO is not used by start scenarios.");
   }),
@@ -345,7 +349,7 @@ const makeStartLayer = (
     readonly removeState: boolean;
   }> = [];
   const proxy = {
-    ...TestProxyService,
+    ...TestRouterService,
     id: "recording",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () =>
@@ -454,6 +458,8 @@ const makeStartLayer = (
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
+    TestStateStoreLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
         name: "test-start",
@@ -523,7 +529,7 @@ const makeStartLayer = (
       query: () => Effect.succeed([]),
     }),
     unusedGlobalServicesLayer,
-    Layer.succeed(ProxyService, proxy),
+    Layer.succeed(RouterService, proxy),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => Effect.sync(() => void buildOrder.push("artifact")).pipe(Effect.as(appPlan)),
       buildApp: () =>
@@ -721,6 +727,9 @@ const makeAutoStartLayer = async (options: {
   };
   const plannedGlobal = globalPlan(options.globalServiceIds);
   const layer = Layer.mergeAll(
+    TestStateStoreLive,
+    PrivateFileAccessLive,
+    NoopTransactionGuardLive,
     ConfigServiceLive,
     FileSystemLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
@@ -755,7 +764,7 @@ const makeAutoStartLayer = async (options: {
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
-    Layer.succeed(ProxyService, TestProxyService),
+    Layer.succeed(RouterService, TestRouterService),
     Layer.succeed(RedactionService, {
       forProfile: (profile, redactionOptions) =>
         Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
@@ -938,7 +947,7 @@ describe("lando start", () => {
     });
   });
 
-  test("a post-start event failure warns, exits successfully, and does not roll back", async () => {
+  test("a post-start event failure is fatal without destroying the app or removing routes", async () => {
     // Given
     const failedPlan = {
       ...plan,
@@ -948,12 +957,15 @@ describe("lando start", () => {
     const harness = makeStartLayer({ plannedApp: failedPlan });
 
     // When
-    const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
 
     // Then
-    expect(result.app).toBe("test-start");
-    expect(harness.events).toContain("message.warn");
+    expect(failureOf(exit)).toMatchObject({ _tag: "LandofileEventStepFailedError", event: "post-start" });
+    expect(harness.events).not.toContain("message.warn");
     expect(harness.destroyCalls).toHaveLength(0);
+    expect(harness.buildOrder).toContain("apply");
+    expect(harness.buildOrder).toContain("proxy-apply");
+    expect(harness.buildOrder).not.toContain("proxy-remove");
     expect(
       harness.taskEvents
         .filter((event) => event._tag === "task.detail")
@@ -1026,6 +1038,7 @@ describe("lando start", () => {
       routes: [
         {
           hostname: "web.test-start.lndo.site",
+          priority: 2,
           scheme: "https",
           service: web.name,
           endpoint: 3000,
@@ -1958,6 +1971,8 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const fullLayer = Layer.mergeAll(
+      PrivateFileAccessLive,
+      TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2086,6 +2101,8 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const fullLayer = Layer.mergeAll(
+      PrivateFileAccessLive,
+      TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2208,6 +2225,8 @@ describe("lando start", () => {
     };
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
+      TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2333,6 +2352,8 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
+      TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2456,6 +2477,8 @@ describe("lando start", () => {
     };
     const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
+      TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2608,6 +2631,8 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
+      TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -2752,6 +2777,8 @@ describe("lando start", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      PrivateFileAccessLive,
+      TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),

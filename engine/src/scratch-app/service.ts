@@ -31,7 +31,7 @@ import {
   DataMover,
   FileSystem,
   LandofileService,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   type ScratchAcquireInput,
   ScratchAppService,
@@ -50,10 +50,13 @@ import { decodeOrFail } from "@lando/landofile/decode";
 import { parseLandofile } from "@lando/landofile/parser";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { makeLandoPaths } from "@lando/paths";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
-import { resolveRouterConfigForApp } from "../config/router-config.ts";
+import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
 import { loadUserLandofile, makeEngineUserAppResolution } from "../landofile/app-resolution.ts";
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -484,7 +487,7 @@ const makeScratchAppService = (
   scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
   dataMover: Context.Tag.Service<typeof DataMover>,
   buildOrchestrator: Option.Option<Context.Tag.Service<typeof BuildOrchestrator>>,
-  proxy: Option.Option<Context.Tag.Service<typeof ProxyService>>,
+  proxy: Option.Option<Context.Tag.Service<typeof RouterService>>,
   initAppPort: Context.Tag.Service<typeof ScratchInitAppPort>,
   loadCurrentLandofile: UserAppResolution["loadUserLandofile"],
 ): Context.Tag.Service<typeof ScratchAppService> => {
@@ -571,7 +574,7 @@ const makeScratchAppService = (
     );
 
   const applyScratchRoutes = (plan: AppPlan, landofileRouter?: RouterConfig): Effect.Effect<void, never> =>
-    plan.routes.length === 0
+    plan.routes.length === 0 || !routerEnabled(plan)
       ? Effect.void
       : Option.match(proxy, {
           onNone: () => Effect.void,
@@ -587,7 +590,7 @@ const makeScratchAppService = (
               // Ephemeral scratch acquisition must survive an unavailable proxy; routes still apply when it is reachable.
               Effect.catchAllCause((cause) =>
                 Effect.logWarning(
-                  `Unable to apply proxy routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
+                  `Unable to apply routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
                 ),
               ),
             ),
@@ -693,7 +696,17 @@ const makeScratchAppService = (
             ),
           ),
       });
-      yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false })).pipe(
+      const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan).pipe(
+        Effect.mapError((cause) =>
+          scratchAppError(
+            "start",
+            `Unable to resolve service environment for scratch app ${scratchId}.`,
+            cause,
+          ),
+        ),
+      );
+      yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false, serviceEnvironment })).pipe(
+        Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result)),
         // A failed start can leave a materialized dir and partial provider state; the scope
         // finalizer only covers a successful start, so reclaim on the failure path too.
         Effect.tapError(() => destroyScratchResources),
@@ -853,17 +866,16 @@ const makeScratchAppService = (
       }).pipe(Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })));
 
       const landofilePath = join(scratchPaths.root, ".lando.yml");
-      const content = yield* fileSystem.readText(landofilePath).pipe(
+      const landofile = yield* withProcessCwd(scratchPaths.root, () =>
+        loadCurrentLandofile(landofileService),
+      ).pipe(
         Effect.mapError((cause) =>
           scratchAppError(
             "materialize",
-            `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
+            `Unable to load the rendered scratch Landofile at ${landofilePath}.`,
             cause,
           ),
         ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
-      );
-      const landofile = yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root).pipe(
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
       const recipeLandofile = { ...landofile, name: scratchId };
@@ -1064,7 +1076,7 @@ const makeScratchAppServiceLayer = (loadCurrentLandofile: UserAppResolution["loa
       const scanner = yield* ScratchResourceScanner;
       const dataMover = yield* DataMover;
       const buildOrchestrator = yield* Effect.serviceOption(BuildOrchestrator);
-      const proxy = yield* Effect.serviceOption(ProxyService);
+      const proxy = yield* Effect.serviceOption(RouterService);
       const initAppPort = yield* ScratchInitAppPort;
       return makeScratchAppService(
         fileSystem,
@@ -1095,9 +1107,10 @@ export const ScratchAppServiceLive = makeScratchAppServiceLayer(loadUserLandofil
  */
 export const detachScratchApp = (
   id: string,
+  privateFileAccess: PrivateFileAccess,
 ): Effect.Effect<void, ScratchAppNotFoundError | ScratchAppError> =>
   Effect.gen(function* () {
-    const registry = makeScratchRegistry();
+    const registry = makeScratchRegistry(privateFileAccess);
     const entry = yield* registry.get(id);
     if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
     const { ownerPid: _ownerPid, ...rest } = entry;

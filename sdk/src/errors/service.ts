@@ -85,3 +85,19 @@ export type AppFeatureError =
   | AppFeatureMutationConflictError
   | AppFeatureCycleError
   | PhpMyAdminHostsCredsError;
+
+/**
+ * Raised before any provider action when a service asks for a persistent home
+ * but the planner cannot know where that home is. Carries the service and the
+ * two ways to resolve it.
+ */
+export class HomePathCapabilityError extends Schema.TaggedError<HomePathCapabilityError>()(
+  "HomePathCapabilityError",
+  {
+    message: Schema.String,
+    service: Schema.String,
+    serviceType: Schema.String,
+    user: Schema.optional(Schema.String),
+    remediation: Schema.String,
+  },
+) {}

@@ -2,7 +2,9 @@ import { Effect, Schema } from "effect";
 
 import { PortNumber } from "@lando/sdk/schema";
 
+import { occupiedHopNotices } from "./occupied-port-warning.ts";
 import {
+  type ProbedAcquisition,
   classifyOrFail,
   fingerprintsEqual,
   pinDiffers,
@@ -12,10 +14,17 @@ import {
   resolveTryLists,
   stillOwnPersisted,
 } from "./port-acquisition-helpers.ts";
-import { ACQUISITION_MODES, type AcquisitionDecision, chooseHelperBindPorts } from "./port-acquisition.ts";
+import {
+  ACQUISITION_MODES,
+  type AcquisitionDecision,
+  DESIRED_HTTPS_PORT,
+  DESIRED_HTTP_PORT,
+  chooseHelperBindPorts,
+  isOurSocketHelperHolder,
+} from "./port-acquisition.ts";
 import { acquisitionStateFile, routingStateFile } from "./proxy-paths.ts";
 import type { ProxyFileSystem, ProxyPaths, TraefikProxyDependencies } from "./proxy-types.ts";
-import { isSocketProxyInstalled } from "./socket-proxy-install.ts";
+import { isSocketProxyInstalled, readHelperHopTargets } from "./socket-proxy-install.ts";
 import { resolveNeedsHelper } from "./socket-proxy-setup.ts";
 
 const AcquisitionFingerprintSchema = Schema.Struct({
@@ -58,6 +67,18 @@ export const readAcquisitionState = (
     Effect.catchAll(() => Effect.succeed(undefined)),
   );
 
+const isOurPreferredHolder = (probe: {
+  readonly holder?: string;
+  readonly holderSystemdUnit?: string;
+}): boolean => {
+  if (probe.holder !== undefined && isOurSocketHelperHolder(probe.holder)) return true;
+  const unit = probe.holderSystemdUnit;
+  return unit?.startsWith("lando-proxy-") === true;
+};
+
+const helperOwnsPreferred = (probed: ProbedAcquisition): boolean =>
+  isOurPreferredHolder(probed.http) && isOurPreferredHolder(probed.https);
+
 export const persistPortAcquisition = (
   dependencies: TraefikProxyDependencies,
 ): Effect.Effect<AcquisitionDecision, unknown> =>
@@ -86,33 +107,40 @@ export const persistPortAcquisition = (
         : yield* isSocketProxyInstalled(dependencies.socketProxy);
     const helperInstalled = unitsInstalled || (previous?.helperInstalled ?? false);
     const probed = yield* probeCurrent(dependencies, lists);
-    if (
-      previous !== undefined &&
-      previousPair !== undefined &&
-      fingerprintsEqual(previous.fingerprint, lists.fingerprint) &&
-      (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
-    ) {
-      // Reuse is silent: occupancy fallback warn only on a fresh walk.
-      return {
-        mode: previous.mode,
-        httpPort: previous.httpPort,
-        httpsPort: previous.httpsPort,
-        notices: [],
-        fingerprint: previous.fingerprint,
-      };
+    const linuxLike = dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl";
+    if (linuxLike && helperInstalled && helperOwnsPreferred(probed)) {
+      const fromUnits =
+        dependencies.socketProxy === undefined
+          ? undefined
+          : yield* readHelperHopTargets(dependencies.socketProxy);
+      const bindHttpPort = fromUnits?.httpTarget ?? previous?.bindHttpPort;
+      const bindHttpsPort = fromUnits?.httpsTarget ?? previous?.bindHttpsPort;
+      if (bindHttpPort !== undefined && bindHttpsPort !== undefined) {
+        const decision: AcquisitionDecision = {
+          mode: "socket-helper",
+          httpPort: DESIRED_HTTP_PORT,
+          httpsPort: DESIRED_HTTPS_PORT,
+          notices: [],
+          fingerprint: lists.fingerprint,
+        };
+        yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+          ...decision,
+          helperInstalled: true,
+          socketsActive: true,
+          bindHttpPort,
+          bindHttpsPort,
+        });
+        return decision;
+      }
     }
-    if (
-      (dependencies.paths.platform === "linux" || dependencies.paths.platform === "wsl") &&
-      preferredEacces(probed) &&
-      dependencies.socketProxy !== undefined
-    ) {
+    if (linuxLike && preferredEacces(probed) && dependencies.socketProxy !== undefined) {
       const hops = yield* Effect.try({
         try: () =>
           chooseHelperBindPorts({
             httpBinds: probed.httpBinds,
             httpsBinds: probed.httpsBinds,
-            httpTryList: lists.httpTryList,
-            httpsTryList: lists.httpsTryList,
+            ...(probed.httpHolders === undefined ? {} : { httpHolders: probed.httpHolders }),
+            ...(probed.httpsHolders === undefined ? {} : { httpsHolders: probed.httpsHolders }),
           }),
         catch: (error) => error,
       }).pipe(Effect.either);
@@ -133,6 +161,31 @@ export const persistPortAcquisition = (
           return decision;
         }
       }
+    }
+    if (
+      previous !== undefined &&
+      previousPair !== undefined &&
+      fingerprintsEqual(previous.fingerprint, lists.fingerprint) &&
+      (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
+    ) {
+      const notices =
+        previous.mode === "occupied-hop"
+          ? occupiedHopNotices({
+              preferredHttp: lists.httpTryList[0] ?? previous.httpPort,
+              preferredHttps: lists.httpsTryList[0] ?? previous.httpsPort,
+              httpPort: previous.httpPort,
+              httpsPort: previous.httpsPort,
+              http: probed.http,
+              https: probed.https,
+            })
+          : [];
+      return {
+        mode: previous.mode,
+        httpPort: previous.httpPort,
+        httpsPort: previous.httpsPort,
+        notices,
+        fingerprint: previous.fingerprint,
+      };
     }
     const decision = yield* classifyOrFail({
       platform: dependencies.paths.platform,

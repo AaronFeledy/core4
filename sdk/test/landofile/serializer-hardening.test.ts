@@ -137,6 +137,18 @@ describe("Landofile serializer hardening — non-emittable values", () => {
 });
 
 describe("Landofile serializer hardening — quoted ${…} round-trips as a literal", () => {
+  test("a scalar beginning with @ is quoted into valid YAML", async () => {
+    // Given
+    const value = { package: "@lando/recipe-drupal" };
+
+    // When
+    const yaml = emitLandofileYaml(value);
+
+    // Then
+    expect(yaml).toBe('package: "@lando/recipe-drupal"\n');
+    expect(await roundTrip(value)).toEqual(value);
+  });
+
   test("a quoted ${secret:DB_PASSWORD} round-trips unchanged", async () => {
     const value = { tooling: { migrate: { cmd: "${secret:DB_PASSWORD}" } } };
     expect(await roundTrip(value)).toEqual(value);

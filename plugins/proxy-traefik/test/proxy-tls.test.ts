@@ -6,7 +6,7 @@ import { ServiceName } from "@lando/sdk/schema";
 
 import { app, httpsRoutes, makeHarness } from "./proxy-tls-harness.ts";
 
-describe("Traefik ProxyService TLS", () => {
+describe("Traefik RouterService TLS", () => {
   test("issues exact default and sorted per-app SANs for HTTPS routes", async () => {
     // Given: a configured proxy with no certificate material.
     const harness = makeHarness();
@@ -90,6 +90,7 @@ describe("Traefik ProxyService TLS", () => {
         [
           {
             hostname: "demo.lndo.site",
+            priority: 2,
             scheme: "http",
             service: ServiceName.make("web"),
             backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
@@ -145,6 +146,7 @@ describe("Traefik ProxyService TLS", () => {
         [
           {
             hostname: "demo.lndo.site",
+            priority: 2,
             scheme: "http",
             service: ServiceName.make("web"),
             backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },

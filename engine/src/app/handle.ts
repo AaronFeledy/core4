@@ -22,10 +22,11 @@ import type {
   ToolingOptions,
 } from "@lando/sdk/app";
 import { LogSourceId, ServiceName } from "@lando/sdk/schema";
-import type { BuildOrchestrator, LogChunk, ProxyService, ShellRunner } from "@lando/sdk/services";
+import type { BuildOrchestrator, LogChunk, RouterService, ShellRunner } from "@lando/sdk/services";
 import { EventService, Renderer } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { runAppInitEvents } from "../operations/events.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
@@ -44,7 +45,8 @@ const toLogChunk = (line: LogsAppLine): LogChunk => ({
 export type AppHandleRuntimeServices =
   | LandoRuntimeServices
   | BuildOrchestrator
-  | ProxyService
+  | PrivateFileAccessService
+  | RouterService
   | ShellRunner
   | RedactionService;
 
@@ -121,6 +123,9 @@ export const makeAppHandle = (
     rebuild: (options?: RebuildAppOptions) =>
       lifecycle.serialize(
         Effect.gen(function* () {
+          if (options?.services !== undefined && options.services.length > 0) {
+            return yield* ops.rebuildApp(options, target).pipe(Effect.provide(runtime));
+          }
           const scope = yield* lifecycle.stageFresh;
           return yield* ops
             .rebuildApp(options, target, {

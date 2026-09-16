@@ -1,6 +1,6 @@
 {
   "name": "@lando/proxy-traefik",
-  "description": "Traefik-backed `ProxyService` implementation.",
+  "description": "Traefik-backed `RouterService` implementation contributing `routerServices`.",
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",

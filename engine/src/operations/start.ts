@@ -15,14 +15,18 @@ import {
   type FileSystem,
   type GlobalAppService,
   LandofileService,
+  ManagedFileTransactionGuard,
   type PathsService,
   type PluginRegistry,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
   type ShellRunner,
+  StateStore,
+  UrlScanner,
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import {
   publishedTargetsFromEndpoints,
@@ -31,14 +35,23 @@ import {
 import { compensateFailure } from "../lifecycle/failure-compensation.ts";
 import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
 import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
+import {
+  verifyActiveVolumeCoordination,
+  withPlanVolumeCoordination,
+} from "../lifecycle/volume-coordination.ts";
+import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
+import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   withApplyProgress,
   withGlobalStartProgress,
@@ -66,12 +79,15 @@ type StartAppServices =
   | FileSystem
   | GlobalAppService
   | LandofileService
+  | ManagedFileTransactionGuard
   | PathsService
   | PluginRegistry
-  | ProxyService
+  | PrivateFileAccessService
+  | RouterService
   | RedactionService
   | RuntimeProviderRegistry
-  | ShellRunner;
+  | ShellRunner
+  | StateStore;
 
 type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
 
@@ -79,18 +95,20 @@ const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-export const startAppForTarget = (
+const startAppForTargetUncoordinated = (
   options: StartAppOptions | undefined,
   target: ResolvedAppTarget,
   managed?: StartManagedScope,
   execution: { readonly forceAppBuild?: boolean } = {},
 ): Effect.Effect<StartAppResult, SdkStartAppError, BoundStartAppServices> =>
   Effect.gen(function* () {
+    const guard = yield* ManagedFileTransactionGuard;
+    yield* guard.ensureConsistent(String(target.root));
     const resolvedOptions = options ?? {};
     const registry = yield* RuntimeProviderRegistry;
     const events = yield* EventService;
     const builds = yield* BuildOrchestrator;
-    const proxy = yield* ProxyService;
+    const proxy = yield* RouterService;
 
     const plan = target.plan;
     const provider = yield* registry.select(plan);
@@ -139,21 +157,26 @@ export const startAppForTarget = (
       yield* withGlobalStartProgress({ events, plan, serviceIds: neededGlobalServices, work: ensureGlobals });
     }
 
-    return yield* withStartedHostProxy(plan, ref, provider.capabilities, {
+    const startedApp = yield* withStartedHostProxy(plan, ref, provider.capabilities, {
       platform: provider.platform,
       ...(managed === undefined ? {} : { managed }),
       use: (applyPlan) =>
         Effect.gen(function* () {
           const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
+          const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
           const serviceList = Object.values(builtPlan.services);
 
           const applyAndInspect = Effect.gen(function* () {
             yield* Ref.set(applyStarted, true);
+            yield* verifyActiveVolumeCoordination(provider);
             yield* Effect.scoped(
-              provider.apply(builtPlan, {
-                reconcile: resolvedOptions.reconcile ?? false,
-                ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-              }),
+              provider
+                .apply(builtPlan, {
+                  reconcile: resolvedOptions.reconcile ?? false,
+                  ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                  serviceEnvironment,
+                })
+                .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
             );
             return yield* Effect.forEach(serviceList, (service) =>
               provider.inspect({ app: plan.id, service: service.name }).pipe(
@@ -188,8 +211,9 @@ export const startAppForTarget = (
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
-          yield* startFileSyncSessions(plan, events, managed).pipe((effect) =>
-            compensateFailure(effect, removeRoutesAndDestroyApp(proxy, provider, plan)),
+          yield* compensateFailure(
+            startFileSyncSessions(plan, events, managed),
+            removeRoutesAndDestroyApp(proxy, provider, plan),
           );
 
           const routedPlan = {
@@ -213,6 +237,16 @@ export const startAppForTarget = (
             endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
           }));
 
+          const scanner = yield* Effect.serviceOption(UrlScanner);
+          if (scanner._tag === "Some") {
+            yield* runPostStartScan({
+              scanner: scanner.value,
+              plan: routedPlan,
+              events,
+              urls: startupScanUrls(routedPlan, servicesStarted),
+            });
+          }
+
           yield* compensateFailure(
             events.publish(
               PostAppStartEvent.make({
@@ -224,15 +258,6 @@ export const startAppForTarget = (
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),
           );
-          const postStart = PostStartEvent.make({
-            _tag: "post-start",
-            scope: "app",
-            app: ref,
-            plan,
-            timestamp: now(),
-          });
-          yield* events.publish(postStart);
-          yield* runPostAppEvent(plan, "post-start", postStart);
 
           return { app: plan.name, servicesStarted };
         }),
@@ -240,14 +265,53 @@ export const startAppForTarget = (
       Effect.onInterrupt(() =>
         Effect.all([Ref.get(applyStarted), Ref.get(routesApplied)]).pipe(
           Effect.flatMap(([started, routed]) => {
-            if (routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
-            return started ? removeRoutesAndDestroyApp(proxy, provider, plan) : Effect.void;
+            if (started || routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
+            return Effect.void;
           }),
           Effect.orDie,
         ),
       ),
     );
+    const postStart = PostStartEvent.make({
+      _tag: "post-start",
+      scope: "app",
+      app: ref,
+      plan,
+      timestamp: now(),
+    });
+    yield* events.publish(postStart);
+    yield* runAppEvent(plan, "post-start", postStart);
+    return startedApp;
   });
+
+export const startAppForTarget = (
+  options: StartAppOptions | undefined,
+  target: ResolvedAppTarget,
+  managed?: StartManagedScope,
+  execution: { readonly forceAppBuild?: boolean } = {},
+): Effect.Effect<StartAppResult, SdkStartAppError, BoundStartAppServices> =>
+  withAppMutationLock(
+    appLockTarget(target.plan),
+    Effect.gen(function* () {
+      const context = yield* Effect.context<BoundStartAppServices>();
+      const guard = yield* ManagedFileTransactionGuard;
+      yield* guard.ensureConsistent(String(target.root));
+      const registry = yield* RuntimeProviderRegistry;
+      const stateStore = yield* StateStore;
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const plan = resolvedTarget.plan;
+      const provider = yield* registry.select(plan);
+      return yield* withPlanVolumeCoordination({
+        plan,
+        provider,
+        stateStore,
+        body: () =>
+          startAppForTargetUncoordinated(options, resolvedTarget, managed, execution).pipe(
+            Effect.provide(context),
+          ),
+      });
+    }),
+  );
 
 export const startApp = (
   options: StartAppOptions = {},

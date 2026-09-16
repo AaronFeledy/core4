@@ -2,11 +2,13 @@ import { Effect } from "effect";
 
 import { RouterPortPinMismatch } from "@lando/sdk/errors";
 
-import { identifyLoopbackHolderComm } from "./leftover-proxy-ports-linux.ts";
+import { type OccupiedPortHolderFields, fieldsFromPortHolder } from "./occupied-port-warning.ts";
 import {
   type AcquisitionFingerprint,
   type BindOutcome,
   type ClassifyAcquisitionInput,
+  DEFAULT_BACKEND_HTTPS_TRY_LIST,
+  DEFAULT_BACKEND_HTTP_TRY_LIST,
   DEFAULT_HTTPS_TRY_LIST,
   DEFAULT_HTTP_TRY_LIST,
   DESIRED_HTTPS_PORT,
@@ -16,7 +18,9 @@ import {
   isOurLoopbackForwarder,
   probeBind,
   probeTcpOpen,
+  uniquePorts,
 } from "./port-acquisition.ts";
+import { identifyAnyPortHolder, systemdUnitForPid } from "./preferred-host-ports-linux.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 
 export type ResolvedTryLists = {
@@ -31,6 +35,8 @@ export type ProbedAcquisition = {
   readonly https: ClassifyAcquisitionInput["https"];
   readonly httpBinds: Readonly<Record<number, BindOutcome>>;
   readonly httpsBinds: Readonly<Record<number, BindOutcome>>;
+  readonly httpHolders?: Readonly<Record<number, string>>;
+  readonly httpsHolders?: Readonly<Record<number, string>>;
 };
 
 export type PersistedPair = {
@@ -42,10 +48,17 @@ export type PersistedPair = {
   readonly bindHttpsPort?: number;
 };
 
-const holderFor = (port: number, bind: BindOutcome): Effect.Effect<string | undefined> =>
-  bind.kind === "EADDRINUSE"
-    ? Effect.promise(() => identifyLoopbackHolderComm(port))
-    : Effect.succeed(undefined);
+const holderFieldsFor = (
+  port: number,
+  bind: BindOutcome,
+): Effect.Effect<OccupiedPortHolderFields | undefined> =>
+  bind.kind === "success"
+    ? Effect.succeed(undefined)
+    : Effect.promise(async () => {
+        const found = await identifyAnyPortHolder(port);
+        if (found === undefined) return undefined;
+        return fieldsFromPortHolder(found, await systemdUnitForPid(found.pid));
+      });
 
 export const fingerprintsEqual = (left: AcquisitionFingerprint, right: AcquisitionFingerprint): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
@@ -106,7 +119,13 @@ const completeOverrideBinds = (input: {
   readonly scheme: ClassifyAcquisitionInput["http"];
   readonly binds: Readonly<Record<number, BindOutcome>> | undefined;
 }): Readonly<Record<number, BindOutcome>> => {
-  if (input.binds !== undefined) return input.binds;
+  if (input.binds !== undefined) {
+    const completed: Record<number, BindOutcome> = { ...input.binds };
+    for (const port of input.tryList) {
+      if (completed[port] === undefined) completed[port] = { kind: "success" };
+    }
+    return completed;
+  }
   const preferredBind: BindOutcome =
     input.scheme.forward.kind === "success" ? { kind: "success" } : input.scheme.bind;
   const completed: Record<number, BindOutcome> = {};
@@ -126,13 +145,13 @@ export const probeCurrent = (
       http: override.http,
       https: override.https,
       httpBinds: completeOverrideBinds({
-        tryList: lists.httpTryList,
+        tryList: uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
         preferred: lists.httpTryList[0] ?? DESIRED_HTTP_PORT,
         scheme: override.http,
         binds: override.httpBinds,
       }),
       httpsBinds: completeOverrideBinds({
-        tryList: lists.httpsTryList,
+        tryList: uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
         preferred: lists.httpsTryList[0] ?? DESIRED_HTTPS_PORT,
         scheme: override.https,
         binds: override.httpsBinds,
@@ -141,27 +160,51 @@ export const probeCurrent = (
   }
   return Effect.gen(function* () {
     const probe = dependencies.probeBind ?? probeBind;
-    const httpBinds = yield* probeTryList(lists.bindAddress, lists.httpTryList, probe);
-    const httpsBinds = yield* probeTryList(lists.bindAddress, lists.httpsTryList, probe);
+    const httpBinds = yield* probeTryList(
+      lists.bindAddress,
+      uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
+      probe,
+    );
+    const httpsBinds = yield* probeTryList(
+      lists.bindAddress,
+      uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
+      probe,
+    );
     const preferredHttp = lists.httpTryList[0] ?? DESIRED_HTTP_PORT;
     const preferredHttps = lists.httpsTryList[0] ?? DESIRED_HTTPS_PORT;
     const httpBind = httpBinds[preferredHttp] ?? { kind: "other-error" as const };
     const httpsBind = httpsBinds[preferredHttps] ?? { kind: "other-error" as const };
-    const httpHolder = yield* holderFor(preferredHttp, httpBind);
-    const httpsHolder = yield* holderFor(preferredHttps, httpsBind);
+    const httpHolder = yield* holderFieldsFor(preferredHttp, httpBind);
+    const httpsHolder = yield* holderFieldsFor(preferredHttps, httpsBind);
+    const httpHolders: Record<number, string> = {};
+    const httpsHolders: Record<number, string> = {};
+    for (const port of DEFAULT_BACKEND_HTTP_TRY_LIST) {
+      const bind = httpBinds[port];
+      if (bind === undefined) continue;
+      const fields = yield* holderFieldsFor(port, bind);
+      if (fields !== undefined) httpHolders[port] = fields.holder;
+    }
+    for (const port of DEFAULT_BACKEND_HTTPS_TRY_LIST) {
+      const bind = httpsBinds[port];
+      if (bind === undefined) continue;
+      const fields = yield* holderFieldsFor(port, bind);
+      if (fields !== undefined) httpsHolders[port] = fields.holder;
+    }
     return {
       http: {
         bind: httpBind,
         forward: { kind: "failure" as const },
-        ...(httpHolder === undefined ? {} : { holder: httpHolder }),
+        ...(httpHolder === undefined ? {} : httpHolder),
       },
       https: {
         bind: httpsBind,
         forward: { kind: "failure" as const },
-        ...(httpsHolder === undefined ? {} : { holder: httpsHolder }),
+        ...(httpsHolder === undefined ? {} : httpsHolder),
       },
       httpBinds,
       httpsBinds,
+      ...(Object.keys(httpHolders).length > 0 ? { httpHolders } : {}),
+      ...(Object.keys(httpsHolders).length > 0 ? { httpsHolders } : {}),
     };
   });
 };
@@ -203,8 +246,10 @@ export const stillOwnPersisted = (
     const probe = dependencies.probeBind ?? probeBind;
     const httpBind = yield* probe(bindAddress, previous.httpPort);
     const httpsBind = yield* probe(bindAddress, previous.httpsPort);
-    const httpHolder = yield* holderFor(previous.httpPort, httpBind);
-    const httpsHolder = yield* holderFor(previous.httpsPort, httpsBind);
+    const httpFields = yield* holderFieldsFor(previous.httpPort, httpBind);
+    const httpsFields = yield* holderFieldsFor(previous.httpsPort, httpsBind);
+    const httpHolder = httpFields?.holder;
+    const httpsHolder = httpsFields?.holder;
     const helperOpen = previous.helperInstalled || previous.socketsActive;
     const publicOwned =
       stillOwnPort({
@@ -221,7 +266,8 @@ export const stillOwnPersisted = (
     for (const hop of [previous.bindHttpPort, previous.bindHttpsPort]) {
       if (hop === undefined) continue;
       const hopBind = yield* probe(bindAddress, hop);
-      const hopHolder = yield* holderFor(hop, hopBind);
+      const hopFields = yield* holderFieldsFor(hop, hopBind);
+      const hopHolder = hopFields?.holder;
       if (hopBind.kind === "success") continue;
       if (!stillOwnPort({ bind: hopBind, holder: hopHolder, helperTcpOpen: false })) {
         return false;

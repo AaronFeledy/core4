@@ -200,7 +200,7 @@ describe("solutionsForOccupancyHolder", () => {
     const solutions = solutionsForOccupancyHolder("apache");
     // Then: remediation mentions stopping Apache.
     expect(solutions.every((s) => s.kind === "manual")).toBe(true);
-    expect(solutions.some((s) => /apache/i.test(s.description))).toBe(true);
+    expect(solutions.some((s) => s.command === "sudo systemctl stop apache2")).toBe(true);
   });
 
   test("nginx solutions describe stopping the system nginx service", () => {
@@ -209,7 +209,7 @@ describe("solutionsForOccupancyHolder", () => {
     const solutions = solutionsForOccupancyHolder("nginx");
     // Then: remediation mentions stopping nginx.
     expect(solutions.every((s) => s.kind === "manual")).toBe(true);
-    expect(solutions.some((s) => /nginx/i.test(s.description))).toBe(true);
+    expect(solutions.some((s) => s.command === "sudo systemctl stop nginx")).toBe(true);
   });
 
   test("caddy solutions describe stopping Caddy", () => {
@@ -218,7 +218,7 @@ describe("solutionsForOccupancyHolder", () => {
     const solutions = solutionsForOccupancyHolder("caddy");
     // Then: remediation mentions stopping Caddy.
     expect(solutions.every((s) => s.kind === "manual")).toBe(true);
-    expect(solutions.some((s) => /caddy/i.test(s.description))).toBe(true);
+    expect(solutions.some((s) => s.command === "sudo systemctl stop caddy")).toBe(true);
   });
 
   test("iis solutions describe stopping IIS or HTTP.sys binding", () => {

@@ -12,7 +12,7 @@ import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { AcquisitionState } from "../src/port-acquisition-state.ts";
 import { acquisitionStateFile, routingStateFile } from "../src/proxy-paths.ts";
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 import { PROXYD_CANDIDATES, SOCKET_UNIT_PATHS } from "../src/socket-proxy-install.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
@@ -68,6 +68,7 @@ const app = AppId.make("demo");
 const routes = [
   {
     hostname: "web.demo.lndo.site",
+    priority: 2,
     scheme: "http" as const,
     service: ServiceName.make("web"),
     backend: { service: ServiceName.make("web"), protocol: "http" as const, port: 8088 },
@@ -106,7 +107,7 @@ describe("acquisition authority ports", () => {
   test("status authorities use 80/443 after setup in mocked-direct mode", async () => {
     // Given: classification is forced to a successful privileged bind.
     const store = memoryFiles();
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,
@@ -151,7 +152,7 @@ describe("acquisition authority ports", () => {
     // Given: EACCES on 80/443, proxyd present, elevate and forward succeed.
     const store = memoryFiles();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,
@@ -213,7 +214,7 @@ describe("stale socketsActive restart", () => {
     const runner = makeRunner((input) => (input.cmd === "systemctl" ? ok() : fail(1, "not found")));
     const privilege = makePrivilege();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
-    const service = makeTraefikProxyService({
+    const service = makeTraefikRouterService({
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,
       paths,

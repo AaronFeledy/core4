@@ -45,6 +45,10 @@ const expectedHealthcheck = (healthcheck: NonNullable<ServiceConfig["healthcheck
 });
 
 const expectedEnvironment = (serviceName: string, service: ServiceConfig) => ({
+  // Host reachability is realized for every service from the provider's declared
+  // capability, so the plan carries the host alias variable alongside the
+  // authored environment.
+  LANDO_HOST_IP: "host.lando.internal",
   ...Object.fromEntries((service.envFile ?? []).map((_, index) => fixtureEnvEntry(serviceName, index))),
   ...(service.environment ?? {}),
 });

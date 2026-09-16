@@ -6,13 +6,16 @@ import {
   type ConfigExpressionError,
   GlobalAppError,
   type GlobalDistConflictError,
+  type HomePathCapabilityError,
   type LandofileParseError,
+  type LandofileUnknownEventError,
   type LandofileValidationError,
   type NoProviderInstalledError,
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
   type PublicationUnsupportedError,
+  type RouteInputError,
 } from "@lando/sdk/errors";
 import type { GlobalDistResult } from "@lando/sdk/services";
 import {
@@ -55,6 +58,7 @@ export const GlobalUninstallResultSchema = Schema.Struct({
 
 type GlobalUninstallError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
@@ -62,7 +66,9 @@ type GlobalUninstallError =
   | GlobalAppError
   | GlobalDistConflictError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError

@@ -87,12 +87,12 @@ const registerPluginDeprecations = (manifests: ReadonlyArray<PluginManifest>) =>
           );
         }
       }
-      for (const proxy of manifest.contributes?.proxyServices ?? []) {
+      for (const proxy of manifest.contributes?.routerServices ?? []) {
         if (proxy.deprecated !== undefined) {
           yield* deprecations.register(
             "plugin",
             "provider-extension",
-            `${manifest.name}:proxyServices.${proxy.id}`,
+            `${manifest.name}:routerServices.${proxy.id}`,
             proxy.deprecated,
           );
         }

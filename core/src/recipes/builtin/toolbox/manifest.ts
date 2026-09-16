@@ -1,3 +1,5 @@
+import { toolboxSnapshotYaml } from "./snapshot.ts";
+
 export const TOOLBOX_RECIPE_ID = "toolbox";
 
 export const toolboxRecipeSource = `${TOOLBOX_RECIPE_ID}/recipe.yml`;
@@ -26,4 +28,6 @@ files:
 postInit:
   - type: message
     text: Run \`lando start\` to boot the toolbox service, or run one-shot tools against it.
+
+${toolboxSnapshotYaml}
 `;

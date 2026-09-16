@@ -12,7 +12,7 @@ import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { defaultAcquisitionFingerprint } from "../src/port-acquisition.ts";
 import { acquisitionStateFile } from "../src/proxy-paths.ts";
 import type { SocketProxyDependencies } from "../src/proxy-types.ts";
-import { makeTraefikProxyService } from "../src/proxy.ts";
+import { makeTraefikRouterService } from "../src/proxy.ts";
 
 const ok = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
 
@@ -92,7 +92,7 @@ const makeLifecycleHarness = (input: {
     privilege: privilege.service,
     probeForward: () => Effect.succeed({ kind: "success" }),
   };
-  const service = makeTraefikProxyService({
+  const service = makeTraefikRouterService({
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,

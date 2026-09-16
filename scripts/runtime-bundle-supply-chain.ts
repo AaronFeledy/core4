@@ -6,9 +6,10 @@ export const RUNTIME_BUNDLE_ACTION_PINS = {
   setupGo: "actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
   setupNode: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
   uploadArtifact: "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+  cache: "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830",
 } as const;
 
-export const RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260812T000000Z";
+export const RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260902T000000Z";
 
 export const RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT = [
   "set -euo pipefail",

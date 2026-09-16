@@ -22,21 +22,26 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
-  ProxyService,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
-import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { StateStoreLive } from "@lando/state-store/service";
-import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
-import { BuildOrchestratorLive } from "../../src/testing/engine-layers";
-import { ConfigServiceLive } from "../../src/testing/engine-layers";
-import { FileSystemLive } from "../../src/testing/engine-layers";
-import { makeShellRunnerLive } from "../../src/testing/engine-layers";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+
 import "../../src/runtime/engine-composition.ts";
+import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -89,19 +94,28 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const servicePlan = (name: "web"): ServicePlan => ({
+const servicePlan = (name: string): ServicePlan => ({
   name: ServiceName.make(name),
   type: "node",
   provider: providerId,
-  primary: true,
+  primary: name === "web",
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
   storage: [],
-  endpoints: [
-    { _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } },
-  ],
+  endpoints:
+    name === "web"
+      ? [
+          {
+            _tag: "published",
+            port: 3000,
+            protocol: "http",
+            name: "http",
+            publication: { hostPort: 3000 },
+          },
+        ]
+      : [],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -123,6 +137,26 @@ const plan: AppPlan = {
   fileSync: [],
   metadata,
   extensions: {},
+};
+
+const database = servicePlan("database");
+const api: ServicePlan = {
+  ...servicePlan("api"),
+  dependsOn: [{ service: database.name, condition: "service_started", required: true }],
+};
+const dependent: ServicePlan = {
+  ...servicePlan("dependent"),
+  dependsOn: [{ service: api.name, condition: "service_started", required: true }],
+};
+const unrelated = servicePlan("unrelated");
+const scopedPlan: AppPlan = {
+  ...plan,
+  services: {
+    [api.name]: api,
+    [database.name]: database,
+    [dependent.name]: dependent,
+    [unrelated.name]: unrelated,
+  },
 };
 
 const planWithAppBuild: AppPlan = {
@@ -176,6 +210,8 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 };
 
 const requiredStartServicesLayer = Layer.mergeAll(
+  PrivateFileAccessLive,
+  NoopTransactionGuardLive,
   ConfigServiceLive,
   FileSystemLive,
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
@@ -189,25 +225,42 @@ const requiredStartServicesLayer = Layer.mergeAll(
   Layer.succeed(RedactionService, {
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
-  Layer.succeed(ProxyService, TestProxyService),
+  Layer.succeed(RouterService, TestRouterService),
   shellRunnerLive,
 );
 
-const makeRebuildLayer = () => {
+const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
   const lifecycleOrder: string[] = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
-  const applyCalls: Array<{ readonly reconcile: boolean }> = [];
+  const applyCalls: Array<{
+    readonly reconcile: boolean;
+    readonly services: ReadonlyArray<string>;
+    readonly recordedServices: ReadonlyArray<string>;
+  }> = [];
+  const recordedPlans: AppPlan[] = [];
+  const stopCalls: ServiceName[] = [];
+  const buildAppCalls: Array<{ readonly force: boolean; readonly services: ReadonlyArray<string> }> = [];
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
     capabilities,
-    apply: (_plan, options) =>
+    apply: (appliedPlan, options) =>
       Effect.sync(() => {
         lifecycleOrder.push("apply");
-        applyCalls.push({ reconcile: options.reconcile ?? false });
+        recordedPlans.push(options.recordedPlan ?? appliedPlan);
+        applyCalls.push({
+          reconcile: options.reconcile ?? false,
+          services: Object.keys(appliedPlan.services),
+          recordedServices: Object.keys((options.recordedPlan ?? appliedPlan).services),
+        });
       }).pipe(Effect.as({ changed: true })),
+    stop: (target) =>
+      Effect.sync(() => {
+        lifecycleOrder.push(`stop:${String(target.service)}`);
+        stopCalls.push(target.service);
+      }),
     destroy: (target, options) =>
       Effect.sync(() => {
         lifecycleOrder.push("destroy");
@@ -215,22 +268,41 @@ const makeRebuildLayer = () => {
       }),
     inspect: (target) =>
       Effect.succeed({
-        app: plan.id,
+        app: plannedApp.id,
         service: target.service,
         providerId,
         status: "running",
         state: "running",
-        endpoints: plan.services[target.service]?.endpoints ?? [],
+        endpoints: plannedApp.services[target.service]?.endpoints ?? [],
       }),
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
+    StateStoreLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-rebuild", services: {} }) }),
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(BuildOrchestrator, {
-      build: (appPlan) => Effect.succeed(appPlan),
-      buildApp: () => Effect.void,
+      build: (appPlan) =>
+        Effect.succeed({
+          ...appPlan,
+          services: {
+            ...appPlan.services,
+            ...(appPlan.services[api.name] === undefined
+              ? {}
+              : {
+                  [api.name]: {
+                    ...appPlan.services[api.name],
+                    artifact: { kind: "ref" as const, ref: "api:new-built-artifact" },
+                  },
+                }),
+          },
+        }),
+      buildApp: (appPlan, options) =>
+        Effect.sync(() => {
+          buildAppCalls.push({ force: options?.force === true, services: Object.keys(appPlan.services) });
+        }),
     }),
     requiredStartServicesLayer,
     Layer.succeed(RuntimeProviderRegistry, {
@@ -248,7 +320,7 @@ const makeRebuildLayer = () => {
     }),
   );
 
-  return { layer, destroyCalls, applyCalls, lifecycleOrder };
+  return { layer, destroyCalls, applyCalls, recordedPlans, stopCalls, buildAppCalls, lifecycleOrder };
 };
 
 const makeCachedBuildLayer = () => {
@@ -289,6 +361,7 @@ const makeCachedBuildLayer = () => {
     query: () => Effect.die("not used"),
   });
   const dependencies = Layer.mergeAll(
+    PrivateFileAccessLive,
     paths,
     registry,
     eventService,
@@ -313,7 +386,7 @@ describe("lando rebuild", () => {
 
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
-    expect(harness.applyCalls).toEqual([{ reconcile: true }]);
+    expect(harness.applyCalls).toEqual([{ reconcile: true, services: ["web"], recordedServices: ["web"] }]);
     expect(
       harness.lifecycleOrder.filter((entry) =>
         ["pre-rebuild", "destroy", "apply", "post-rebuild"].includes(entry),
@@ -323,6 +396,96 @@ describe("lando rebuild", () => {
     expect(renderRebuildAppResult(result)).toBe(
       "rebuilt: test-rebuild - web (running) http://localhost:3000",
     );
+  });
+
+  test("rebuilds selected services and transitive prerequisites without touching dependents or unrelated services", async () => {
+    // Given
+    const harness = makeRebuildLayer(scopedPlan);
+
+    // When
+    const result = await Effect.runPromise(
+      rebuildApp({ services: [api.name, api.name] }).pipe(Effect.provide(harness.layer)),
+    );
+
+    // Then
+    expect(harness.destroyCalls).toEqual([]);
+    expect(harness.stopCalls).toEqual([api.name, database.name]);
+    expect(harness.applyCalls).toEqual([
+      {
+        reconcile: true,
+        services: ["database", "api"],
+        recordedServices: ["api", "database", "dependent", "unrelated"],
+      },
+    ]);
+    expect(harness.recordedPlans[0]?.services[api.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "api:new-built-artifact",
+    });
+    expect(harness.recordedPlans[0]?.services[unrelated.name]).toEqual(unrelated);
+    expect(harness.buildAppCalls).toEqual([{ force: true, services: ["database", "api"] }]);
+    expect(result.servicesRebuilt).toEqual(["database", "api"]);
+  });
+
+  test("ignores absent optional prerequisites without hanging", async () => {
+    const optionalPlan: AppPlan = {
+      ...scopedPlan,
+      services: {
+        ...scopedPlan.services,
+        [api.name]: {
+          ...api,
+          dependsOn: [
+            ...api.dependsOn,
+            { service: ServiceName.make("optional-cache"), condition: "service_started", required: false },
+          ],
+        },
+      },
+    };
+    const harness = makeRebuildLayer(optionalPlan);
+
+    const result = await Effect.runPromise(
+      rebuildApp({ services: [api.name] }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(result.servicesRebuilt).toEqual(["database", "api"]);
+  });
+
+  test("validates every requested rebuild service before provider action", async () => {
+    // Given
+    const harness = makeRebuildLayer(scopedPlan);
+
+    // When
+    const error = await Effect.runPromise(
+      rebuildApp({ services: [api.name, ServiceName.make("missing")] }).pipe(
+        Effect.provide(harness.layer),
+        Effect.flip,
+      ),
+    );
+
+    // Then
+    expect(error._tag).toBe("ServiceNotFoundError");
+    expect(harness.destroyCalls).toEqual([]);
+    expect(harness.stopCalls).toEqual([]);
+    expect(harness.applyCalls).toEqual([]);
+    expect(harness.buildAppCalls).toEqual([]);
+  });
+
+  test("rejects an inherited constructor service before provider action", async () => {
+    // Given
+    const harness = makeRebuildLayer(scopedPlan);
+
+    // When
+    const error = await Effect.runPromise(
+      rebuildApp({ services: [ServiceName.make("constructor")] }).pipe(
+        Effect.provide(harness.layer),
+        Effect.flip,
+      ),
+    );
+
+    // Then
+    expect(error._tag).toBe("ServiceNotFoundError");
+    expect(harness.stopCalls).toEqual([]);
+    expect(harness.applyCalls).toEqual([]);
+    expect(harness.destroyCalls).toEqual([]);
   });
 
   test("reruns cached app build steps after a successful start", async () => {

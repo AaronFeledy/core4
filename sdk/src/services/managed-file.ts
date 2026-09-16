@@ -1,6 +1,6 @@
 import { Context, type Effect, type Scope } from "effect";
 
-import type { ManagedFileError } from "../errors/index.ts";
+import type { ManagedFileError, ManagedFileTransactionError } from "../errors/index.ts";
 import type {
   ManagedFile,
   ManagedFileInfo,
@@ -43,3 +43,32 @@ export class ManagedFileService extends Context.Tag("@lando/core/ManagedFileServ
     readonly release: (path: PortablePath) => Effect.Effect<void, ManagedFileError>;
   }
 >() {}
+
+/**
+ * The thin guard consulted by native Landofile loading and by `start` before a
+ * possibly partial file set is read.
+ *
+ * `ensureConsistent` inspects the app-root transaction journal, performs guarded
+ * recovery of an incomplete transaction, cleans up a committed one, and refuses
+ * a `blocked` transaction. It never loads a `ConfigTranslator` and never renders
+ * migration UI. `pending` is the read-only dry run: it reports what recovery
+ * would do without acquiring the write lock and without mutating stages,
+ * journals, backups, targets, or removals.
+ */
+export class ManagedFileTransactionGuard extends Context.Tag("@lando/core/ManagedFileTransactionGuard")<
+  ManagedFileTransactionGuard,
+  {
+    readonly ensureConsistent: (appRoot: string) => Effect.Effect<void, ManagedFileTransactionError>;
+    readonly pending: (
+      appRoot: string,
+    ) => Effect.Effect<ManagedFileTransactionPendingReport | null, ManagedFileTransactionError>;
+  }
+>() {}
+
+/** What `ManagedFileTransactionGuard.pending` reports for one app root. */
+export interface ManagedFileTransactionPendingReport {
+  readonly id: string;
+  readonly state: "prepared" | "committing" | "committed" | "blocked";
+  readonly action: "recover" | "cleanup" | "manual-resolution";
+  readonly targets: ReadonlyArray<string>;
+}

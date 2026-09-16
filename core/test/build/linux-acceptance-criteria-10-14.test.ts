@@ -56,7 +56,7 @@ describe("linux-x64 acceptance criteria 10-14", () => {
     longHarness,
   );
 
-  test("criterion 11: Windows installer harness is platform-gated until RC all-platform acceptance", async () => {
+  test("criterion 11: Windows installer harness is platform-gated until all-platform acceptance", async () => {
     const harnessSource = await readFile(harnessPath, "utf8");
     expect(harnessSource).toContain("platform-gated");
 
@@ -112,7 +112,7 @@ describe("linux-x64 acceptance criteria 10-14", () => {
     "criterion 14: lando setup file-sync behavior for slow, native, and deferred paths on linux-x64",
     async () => {
       const setupSpotChecks: ReadonlyArray<string> = [
-        "runs provider, CA, proxy, shell integration, and file sync in deterministic order",
+        "runs provider, CA, router, shell integration, and file sync in deterministic order",
         "validates network trust before provider and file-sync downloads and honors config proxy precedence",
         "reports file sync as already satisfied for native bind-mount providers",
         "--skip-file-sync records deferred setup for the first accelerated app:start",

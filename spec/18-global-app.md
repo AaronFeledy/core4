@@ -5,12 +5,12 @@
 
 This part defines the **global Lando app**: a reserved, host-level Lando app that runs services shared across every user app on the host. The global app is the canonical home for cross-cutting host services — the Mailpit SMTP server and UI, the Traefik proxy, and any plugin-contributed service that has more affinity with "the host" than with a single project. Plugins contribute services to the global app through a new `globalServices:` manifest surface; user apps automatically discover and depend on them through existing `AppFeature` activations (§6.11.4).
 
-§20 (The Global App) is filed as a single part because every facet of the concept is novel to v4: a reserved app id, a Lando-owned Landofile location, a new manifest contribution surface, a new core service, a new bootstrap level, a new lifecycle event scope, a new CLI namespace, and a refactor of how `ProxyService` realizes its routes. Reading the part top-to-bottom is the fastest way to understand how Lando's "ambient services" model differs from a v3 setup where Traefik is implicit.
+§20 (The Global App) is filed as a single part because every facet of the concept is novel to v4: a reserved app id, a Lando-owned Landofile location, a new manifest contribution surface, a new core service, a new bootstrap level, a new lifecycle event scope, a new CLI namespace, and a refactor of how `RouterService` realizes its routes. Reading the part top-to-bottom is the fastest way to understand how Lando's "ambient services" model differs from a v3 setup where Traefik is implicit.
 
 The motivating user-facing examples:
 
 - A user runs `lando plugin add @lando/service-mailpit`. From that moment, every PHP/Node/Python service in every user app on the host can `mail to mailpit.global.internal:1025` and read captured mail at `https://mailpit.lndo.site`. No per-app Landofile change. No `services: { mailpit: { type: mailpit } }` boilerplate.
-- The Lando proxy (Traefik in the default bundle) is itself a service in the global app. Plugins that need an HTTP proxy contribute routes through `ProxyService` exactly as they do today; the realization is now visible in `lando meta global info` and reuses the same lifecycle, build, healthcheck, and cert machinery user apps use.
+- The Lando proxy (Traefik in the default bundle) is itself a service in the global app. Plugins that need HTTP ingress contribute routes through `RouterService` exactly as they do today; the realization is now visible in `lando meta global info` and reuses the same lifecycle, build, healthcheck, and cert machinery user apps use.
 
 ---
 
@@ -34,7 +34,7 @@ What the global app is **not**:
 
 - Not a daemon. The global app runs services through the active `RuntimeProvider`; Lando itself remains transactional. The deferred persistent agent (§14.2) is a separate concept that may, post-v4.0, hold a warm runtime *for the CLI* — orthogonal to the global app's *services*.
 - Not a multiplexer for user-app services. Plugins MAY contribute *new* services to the global app; they MUST NOT promote a user-defined service into it.
-- Not a replacement for `ProxyService` or `CertificateAuthority`. Those abstractions still exist in §4.2; their default Live Layers (§20.10) now realize their work *through* a service in the global app.
+- Not a replacement for `RouterService` or `CertificateAuthority`. Those abstractions still exist in §4.2; their default Live Layers (§20.10) now realize their work *through* a service in the global app.
 
 ### 20.2 Identity
 
@@ -208,7 +208,7 @@ Required behaviors:
 - **`regenerateDist` is the single writer of `.lando.dist.yml`.** Manifest validation, contribution-module evaluation, conflict detection, capability checks, schema validation of every emitted service, and atomic write all happen here. Other code paths read the file but never write it.
 - **Errors are tagged.** `GlobalServiceCollisionError`, `GlobalServiceCapabilityError`, `GlobalServiceConflictError`, `GlobalServiceConfigError`, `GlobalServiceUnknownTypeError`, `AppIdReservedError`, plus the umbrella `GlobalAppError` for state transitions.
 
-`GlobalAppService` reuses every existing core service: `LandofileService` for parse/merge, `AppPlanner` for plan derivation, `BuildOrchestrator` for build, `ProxyService` and `CertificateAuthority` for routing/certs (with the §20.10 caveat that `ProxyService`'s default Live Layer is *itself* realized by a global service). Treating the global app as "just an app" with one extra orchestrator on top is the design's north star.
+`GlobalAppService` reuses every existing core service: `LandofileService` for parse/merge, `AppPlanner` for plan derivation, `BuildOrchestrator` for build, `RouterService` and `CertificateAuthority` for routing/certs (with the §20.10 caveat that `RouterService`'s default Live Layer is *itself* realized by a global service). Treating the global app as "just an app" with one extra orchestrator on top is the design's north star.
 
 ### 20.6 Lifecycle
 
@@ -495,29 +495,29 @@ dev.lando.storage-global-app: "TRUE"              # additional marker so apps:po
 
 ### 20.10 Proxy and CA realization through the global app
 
-This subsection specifies the §1.3 "full unification" promise: the default `ProxyService` Live Layer in v4 realizes its work through a service in the global app, not through an out-of-band container managed by the proxy plugin.
+This subsection specifies the §1.3 "full unification" promise: the default `RouterService` Live Layer in v4 realizes its work through a service in the global app, not through an out-of-band container managed by the proxy plugin.
 
-#### 20.10.1 Default `ProxyService` Live Layer
+#### 20.10.1 Default `RouterService` Live Layer
 
 ```ts
 // Bundled with @lando/proxy-traefik (§1.4)
-export const ProxyServiceTraefikGlobalAppLive = Layer.effect(
-  ProxyService,
+export const RouterServiceTraefikGlobalAppLive = Layer.effect(
+  RouterService,
   Effect.gen(function* () {
     const global = yield* GlobalAppService;
     // implementation reaches the running `traefik` global service via the active RuntimeProvider's exec/file-write
     // primitives and applies dynamic Traefik config files mounted into the service's appMount tree.
-    return makeProxyServiceImpl({ global, /* ... */ });
+    return makeRouterServiceImpl({ global, /* ... */ });
   }),
 );
 ```
 
 Required behaviors:
 
-- The plugin `@lando/proxy-traefik` contributes BOTH a `globalServices:` entry (id `traefik`, enabledByDefault `true`) AND a `proxyServices:` entry whose Live Layer talks to the `traefik` global service. The two contributions ship together; installing one without the other is rejected at plugin load with `ProxyContributionPairError`.
-- `ProxyService.applyRoutes(routes, app)` writes the dynamic Traefik config under a Lando-managed directory mounted into the `traefik` global service via the standard `mounts:` machinery. The plugin author owns the on-disk format; core only owns the `RoutePlan` schema.
-- `ProxyService.setup` calls `GlobalAppService.ensureRunning(["traefik"])` so the *first* `lando start` automatically brings the proxy up. The recurrent path (proxy already running) is the same warm no-op as any other `ensureRunning` call.
-- The §10.2 proxy interface is unchanged; only the realization moved. Plugin authors who ship an alternative `ProxyService` (for an environment without a global app, e.g., a remote proxy) MAY contribute a Live Layer that does NOT touch `GlobalAppService`. Selection follows the standard §4.3 precedence: explicit Landofile `proxy:`, global config `defaultProxyService:`, plugin `defaultFor:` matchers, sole installed implementation.
+- The plugin package name stays `@lando/proxy-traefik`. It contributes BOTH a `globalServices:` entry (id `traefik`, enabledByDefault `true`) AND a `routerServices:` entry (id `traefik`) whose Live Layer talks to the `traefik` global service. The two contributions ship together; installing one without the other is rejected at plugin load with `ProxyContributionPairError`.
+- `RouterService.applyRoutes(routes, app)` writes the dynamic Traefik config under a Lando-managed directory mounted into the `traefik` global service via the standard `mounts:` machinery. The plugin author owns the on-disk format; core only owns the `RoutePlan` schema.
+- `RouterService.setup` calls `GlobalAppService.ensureRunning(["traefik"])` so the *first* `lando start` automatically brings the proxy up. The recurrent path (proxy already running) is the same warm no-op as any other `ensureRunning` call.
+- The §10.2 router interface is unchanged; only the realization moved. Plugin authors who ship an alternative `RouterService` (for an environment without a global app, e.g., a remote proxy) MAY contribute a Live Layer that does NOT touch `GlobalAppService`. Selection follows the standard §4.3 precedence: explicit Landofile `proxy:` (compat alias for service routes), global config `defaultRouterService:`, plugin `defaultFor:` matchers, sole installed implementation.
 
 #### 20.10.2 `CertificateAuthority` realization
 
@@ -527,15 +527,12 @@ A future plugin MAY contribute a global-app-resident CA service (e.g., for envir
 
 #### 20.10.3 Migration policy
 
-A user who upgrades from a pre-§20 build to a v4 build with §20 implemented:
+`LegacyProxyContainerDetected` MUST remain the single owner of legacy proxy container detection. The preferred-port holder table (§10.2.3) and the `lando3-leftovers` check (§10.9) MUST cross-reference this owner rather than duplicate detection. No plugin MAY add a separate proxy-port check.
 
-- The first `lando start` after the upgrade triggers `meta:setup` (or surfaces a remediation if setup is skipped) which generates `<userDataRoot>/global/.lando.yml` and `<userDataRoot>/global/.lando.dist.yml` from the installed plugin contributions.
-- A previously-running v3-style proxy container (managed out-of-band by the old proxy plugin) is surfaced two ways:
-  - **Read-only doctor diagnostic** `LegacyProxyContainerDetected` (§20.13) — surfaces in `lando doctor` output with remediation pointing at the plugin-supplied `meta:setup --migrate-proxy`. The diagnostic does not block any command on its own.
-  - **Hard error at `meta:setup` and at first `meta:global:start`** as `LegacyProxyContainerConflictError` (§20.13). The global app's `traefik` service refuses to start while a legacy proxy container is present, because both would compete for ports 80/443/8443 and leave the host in a half-migrated state. The user MUST run the plugin-supplied migration (or manually `docker rm` / `podman rm` the legacy container) before the global proxy can come up.
-- The hard error is provider-aware (the diagnostic side scans labels via the active `RuntimeProvider`'s metadata API and matches against an allowlist of v3-era proxy container labels published by the proxy plugin's manifest); core does not know the v3 container labels itself, but the failure path is core-owned so users can never silently end up with two proxies running.
-- The migration command (`meta:setup --migrate-proxy`) is plugin-supplied. Core defines only (a) the diagnostic shape, (b) the hard-error shape, and (c) the contract that `meta:global:start` and `meta:setup` MUST consult the diagnostic before any `traefik` (or otherwise-named) global proxy service starts. Plugin authors who replace `@lando/proxy-traefik` with an alternative proxy MUST publish the same legacy-container detection contract so v3-era containers from any prior proxy plugin are caught.
-- Users on the §20 implementation never see the legacy container after migration; the diagnostic clears once the legacy container is removed.
+- The read-only `lando doctor` diagnostic (§20.13) MUST identify the container and provide remediation; it is informational and MUST NOT block commands by itself.
+- `meta:setup` and first `meta:global:start` MUST consult this same owner before starting a global proxy service. A conflicting legacy container MUST raise `LegacyProxyContainerConflictError` (§20.13), preventing competing proxies.
+- Detection MUST be provider-aware and use the selected provider's bounded metadata inspection through the diagnostic context (§10.9). Proxy plugins supply the recognized legacy name/label metadata; core owns the diagnostic and conflict boundary. Replacement proxy plugins MUST honor the same ownership contract.
+- Diagnosis MUST NOT mutate or remove containers. Remediation MUST tell the user to back up or confirm data before removing resources with Lando 3. The diagnostic clears when the matching container is absent.
 
 ### 20.11 Plugins that contribute to the global app
 
@@ -596,7 +593,7 @@ The user wrote zero Landofile content. The plugin author wrote one `globalServic
 
 #### 20.11.2 Migration of `@lando/proxy-traefik`
 
-The proxy-traefik plugin gains a `globalServices:` entry alongside its existing `proxyServices:` entry per §20.10.1. Users see no change in behavior; `lando meta global info` now shows the `traefik` service alongside any other plugin-contributed global services, and `lando meta global logs traefik --follow` is the canonical way to debug routing issues (replacing the v3-era `docker logs <container-name>`).
+The proxy-traefik plugin gains a `globalServices:` entry alongside its existing `routerServices:` entry per §20.10.1. Users see no change in behavior; `lando meta global info` now shows the `traefik` service alongside any other plugin-contributed global services, and `lando meta global logs traefik --follow` is the canonical way to debug routing issues (replacing the v3-era `docker logs <container-name>`).
 
 ### 20.12 Discovery and resolution rules
 
@@ -615,7 +612,7 @@ A summary of the resolution rules this part establishes; the canonical source fo
 | `LANDO_GLOBAL_<SERVICE>_*` env vars are projected from the user app's `AppFeature.requires.globalServices` set. | §20.8.2 |
 | `globalServices.<name>.*` cross-service expression scope is restricted to the user app's required globals. | §20.8.3 |
 | `scope: global` storage survives `meta:global:destroy --purge`. | §20.9 |
-| Default `ProxyService` Live Layer realizes routes through the `traefik` global service. | §20.10.1 |
+| Default `RouterService` Live Layer realizes routes through the `traefik` global service. | §20.10.1 |
 
 ### 20.13 Errors
 
@@ -630,9 +627,9 @@ Tagged errors specific to the global app live in `@lando/core/errors`:
 - `GlobalServiceMissingError` — a user app's `AppFeature.requires.globalServices` references a global service id that is not in the resolved plan (disabled, unknown, or capability-blocked). Payload: `{ neededBy: AppFeatureId, app: AppRef, missing: ReadonlyArray<string> }`.
 - `GlobalDistReadOnlyError` — a write target that resolves into the generated `dist` layer was attempted via `meta:global:config`. Payload: `{ path }`.
 - `GlobalServiceCommandReferenceError` — a `globalServices:` entry's `commands:` field references a canonical command id that does not appear in the same plugin's `provides.commands` block. Payload: `{ plugin, serviceId, missingCommandId }`. Caught at plugin load; the plugin fails to register until the manifest is consistent.
-- `ProxyContributionPairError` — `@lando/proxy-traefik` (or any plugin replacing it) contributes a `proxyServices:` entry without a paired `globalServices:` entry of the expected id, or vice versa. Payload: `{ plugin, missingSide }`.
-- `LegacyProxyContainerDetected` — Read-only `lando doctor` diagnostic reporting an out-of-band proxy container from a pre-§20 install. Payload: `{ containerId, name, remediation }`. Informational; does not block commands.
-- `LegacyProxyContainerConflictError` — Hard error raised at `meta:setup` and at first `meta:global:start` when the same condition the diagnostic detects is present. Refuses to start the global proxy service to prevent a half-migrated host where the legacy container and the new global-app `traefik` service would compete for ports. Payload: `{ containerId, name, conflictingService, remediation, migrationCommand }`. The migration command is plugin-supplied per §20.10.3.
+- `ProxyContributionPairError` — `@lando/proxy-traefik` (or any plugin replacing it) contributes a `routerServices:` entry without a paired `globalServices:` entry of the expected id, or vice versa. Payload: `{ plugin, missingSide }`.
+- `LegacyProxyContainerDetected`: Read-only `lando doctor` diagnostic reporting an out-of-band legacy proxy container. Payload: `{ containerId, name, remediation }`. Informational; does not block commands. The single detection owner (§20.10.3) MUST be shared by the §10.2.3 holder table and cross-referenced by `lando3-leftovers` (§10.9), never duplicated.
+- `LegacyProxyContainerConflictError`: Hard error raised at `meta:setup` and first `meta:global:start` from the same detection owner (§20.10.3). It MUST refuse to start the global proxy while the conflicting legacy container is present. Payload: `{ containerId, name, conflictingService, remediation }`. Remediation MUST preserve the read-only diagnostic and resource-safety requirements of §10.9.
 - `GlobalAppError` — umbrella for state-transition failures (start failed, stop failed, plan derivation failed). Payload: `{ phase, cause }`.
 
 ### 20.14 Non-goals for v4.0

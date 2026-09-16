@@ -4,6 +4,8 @@
  * Embedded as a string so the compiled `$bunfs` binary does not need a
  * runtime filesystem read.
  */
+import { nodePostgresSnapshotYaml } from "./snapshot.ts";
+
 export const NODE_POSTGRES_RECIPE_ID = "node-postgres";
 
 export const nodePostgresRecipeSource = `${NODE_POSTGRES_RECIPE_ID}/recipe.yml`;
@@ -37,4 +39,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring it up.
+
+${nodePostgresSnapshotYaml}
 `;

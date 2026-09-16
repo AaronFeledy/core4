@@ -62,4 +62,122 @@ describe("mergeLandofiles", () => {
 
     expect(result).toEqual({ name: "final", services: { web: { type: "node" } } });
   });
+
+  test("merges route filters by name then unnamed type identity, preserving first-appearance order", () => {
+    const result = mergeLandofiles<Record<string, unknown>>([
+      {
+        filters: [
+          { type: "requestHeader", header: "X-A", value: "1" },
+          { name: "strip", type: "stripPrefix", prefix: "/a" },
+        ],
+      },
+      {
+        filters: [
+          { name: "strip", type: "stripPrefix", prefix: "/b" },
+          { type: "requestHeader", header: "X-A", value: "2" },
+        ],
+      },
+    ]);
+
+    expect(result).toEqual({
+      filters: [
+        { type: "requestHeader", header: "X-A", value: "2" },
+        { name: "strip", type: "stripPrefix", prefix: "/b" },
+      ],
+    });
+  });
+
+  test("never matches a named filter against an unnamed one", () => {
+    const result = mergeLandofiles<Record<string, unknown>>([
+      { filters: [{ name: "auth", type: "requestHeader", header: "X-A", value: "1" }] },
+      { filters: [{ type: "requestHeader", header: "X-A", value: "2" }] },
+    ]);
+
+    expect(result).toEqual({
+      filters: [
+        { name: "auth", type: "requestHeader", header: "X-A", value: "1" },
+        { type: "requestHeader", header: "X-A", value: "2" },
+      ],
+    });
+  });
+
+  test("replaces a named filter when overlay changes its type", () => {
+    const result = mergeLandofiles<Record<string, unknown>>([
+      { filters: [{ name: "transform", type: "stripPrefix", prefix: "/api" }] },
+      { filters: [{ name: "transform", type: "requestHeader", header: "X-Lando", value: "v4" }] },
+    ]);
+
+    expect(result).toEqual({
+      filters: [{ name: "transform", type: "requestHeader", header: "X-Lando", value: "v4" }],
+    });
+  });
+
+  test("does not collapse mount entries by type", () => {
+    const result = mergeLandofiles<Record<string, unknown>>([
+      {
+        services: {
+          web: {
+            mounts: [
+              { type: "bind", target: "/a" },
+              { type: "volume", target: "/b" },
+            ],
+          },
+        },
+      },
+      { services: { web: { mounts: [{ type: "bind", target: "/c" }] } } },
+    ]);
+
+    expect(result).toEqual({ services: { web: { mounts: [{ type: "bind", target: "/c" }] } } });
+  });
+
+  test("merges filters nested under routes matched by hostname", () => {
+    const result = mergeLandofiles<Record<string, unknown>>([
+      {
+        services: {
+          web: {
+            routes: [
+              {
+                hostname: "app.lndo.site",
+                filters: [
+                  { type: "requestHeader", header: "X-A", value: "1" },
+                  { name: "strip", type: "stripPrefix", prefix: "/a" },
+                ],
+              },
+            ],
+          },
+        },
+      },
+      {
+        services: {
+          web: {
+            routes: [
+              {
+                hostname: "app.lndo.site",
+                filters: [
+                  { name: "strip", type: "stripPrefix", prefix: "/b" },
+                  { type: "requestHeader", header: "X-A", value: "2" },
+                ],
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    expect(result).toEqual({
+      services: {
+        web: {
+          routes: [
+            {
+              hostname: "app.lndo.site",
+              filters: [
+                { type: "requestHeader", header: "X-A", value: "2" },
+                { name: "strip", type: "stripPrefix", prefix: "/b" },
+              ],
+            },
+          ],
+        },
+      },
+    });
+  });
 });

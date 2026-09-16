@@ -1,14 +1,17 @@
 import { RouterPortsExhausted } from "@lando/sdk/errors";
 import type { PortNumber } from "@lando/sdk/schema";
 import { commLooksLikeRootlessport } from "./leftover-proxy-ports-linux.ts";
+import { occupiedHopNotices } from "./occupied-port-warning.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
 
 export const DESIRED_HTTP_PORT = 80;
 export const DESIRED_HTTPS_PORT = 443;
 export const LOOPBACK_HOST = "127.0.0.1" as const;
 
-export const DEFAULT_HTTP_TRY_LIST = [80, 8080, 8000, 8888, 8008, 38080] as const;
-export const DEFAULT_HTTPS_TRY_LIST = [443, 8443, 4443, 4433, 4444, 444, 38443] as const;
+export const DEFAULT_HTTP_TRY_LIST = [80, 8080, 8000, 8888, 8008] as const;
+export const DEFAULT_HTTPS_TRY_LIST = [443, 8443, 4443, 4433, 4444, 444] as const;
+export const DEFAULT_BACKEND_HTTP_TRY_LIST = [38080, 48080, 58080] as const;
+export const DEFAULT_BACKEND_HTTPS_TRY_LIST = [38443, 48443, 58443] as const;
 
 export const ACQUISITION_MODES = ["direct", "occupied-hop", "needs-helper", "socket-helper"] as const;
 export type AcquisitionMode = (typeof ACQUISITION_MODES)[number];
@@ -25,6 +28,9 @@ export type SchemeProbe = {
   readonly bind: BindOutcome;
   readonly forward: ForwardOutcome;
   readonly holder?: string;
+  readonly holderPid?: number;
+  readonly holderCmdline?: string;
+  readonly holderSystemdUnit?: string;
 };
 
 export type AcquisitionFingerprint = {
@@ -58,15 +64,31 @@ const assertNever = (value: never): never => {
   throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
 };
 
+export const isOurSocketHelperHolder = (holder: string): boolean => {
+  const name = holder.toLowerCase();
+  return name.includes("systemd-socket-") || name.startsWith("lando-proxy-");
+};
+
 export const isOurLoopbackForwarder = (holder: string): boolean => {
   const name = holder.toLowerCase();
   return (
     commLooksLikeRootlessport(holder) ||
     name.includes("docker-proxy") ||
     name.includes("rootlesskit") ||
-    name.includes("systemd-socket-proxyd") ||
+    isOurSocketHelperHolder(holder) ||
     name === "traefik"
   );
+};
+
+export const uniquePorts = (left: readonly number[], right: readonly number[]): readonly number[] => {
+  const seen = new Set<number>();
+  const next: number[] = [];
+  for (const port of [...left, ...right]) {
+    if (seen.has(port)) continue;
+    seen.add(port);
+    next.push(port);
+  }
+  return next;
 };
 
 export const defaultAcquisitionFingerprint = (
@@ -121,14 +143,6 @@ const walkProtocol = (
   return { kind: "exhausted" };
 };
 
-export const FALLBACK_RESTORE =
-  "Stop the holder then run `lando global:restart` (or re-run setup) to restore 80/443.";
-
-const occupiedHopNotice = (preferred: number, chosen: number, holder: string | undefined): string => {
-  const who = holder ?? "another process";
-  return `Port ${preferred} is occupied by ${who}; using ${chosen}. ${FALLBACK_RESTORE}`;
-};
-
 const portsExhausted = (input: {
   readonly bindAddress: string;
   readonly httpTried: readonly number[];
@@ -170,10 +184,14 @@ export const classifyAcquisition = (input: ClassifyAcquisitionInput): Acquisitio
       exhausted,
     });
   }
-  const notices = [
-    http.preferredOccupied ? occupiedHopNotice(preferredHttp, http.port, http.holder) : undefined,
-    https.preferredOccupied ? occupiedHopNotice(preferredHttps, https.port, https.holder) : undefined,
-  ].filter((notice): notice is string => notice !== undefined);
+  const notices = occupiedHopNotices({
+    preferredHttp,
+    preferredHttps,
+    httpPort: http.port,
+    httpsPort: https.port,
+    http: input.http,
+    https: input.https,
+  });
   const fallbackChosen = http.port !== preferredHttp || https.port !== preferredHttps;
   return {
     mode: fallbackChosen ? "occupied-hop" : "direct",
@@ -188,22 +206,35 @@ export const classifyAcquisition = (input: ClassifyAcquisitionInput): Acquisitio
   };
 };
 
-const firstHighSuccess = (
+const firstBackendPort = (
   tryList: readonly number[],
-  skip: number,
   binds: Readonly<Record<number, BindOutcome>> | undefined,
-): number | undefined => tryList.find((port) => port !== skip && binds?.[port]?.kind === "success");
+  holders: Readonly<Record<number, string>> | undefined,
+): number | undefined => {
+  for (const port of tryList) {
+    const outcome = binds?.[port];
+    if (outcome === undefined) continue;
+    if (outcome.kind === "success") return port;
+    if (outcome.kind === "EADDRINUSE") {
+      const holder = holders?.[port];
+      if (holder !== undefined && isOurLoopbackForwarder(holder)) return port;
+    }
+  }
+  return undefined;
+};
 
 export const chooseHelperBindPorts = (input: {
   readonly httpBinds?: Readonly<Record<number, BindOutcome>>;
   readonly httpsBinds?: Readonly<Record<number, BindOutcome>>;
   readonly httpTryList?: readonly number[];
   readonly httpsTryList?: readonly number[];
+  readonly httpHolders?: Readonly<Record<number, string>>;
+  readonly httpsHolders?: Readonly<Record<number, string>>;
 }): { readonly bindHttpPort: number; readonly bindHttpsPort: number } => {
-  const httpTryList = input.httpTryList ?? DEFAULT_HTTP_TRY_LIST;
-  const httpsTryList = input.httpsTryList ?? DEFAULT_HTTPS_TRY_LIST;
-  const bindHttpPort = firstHighSuccess(httpTryList, DESIRED_HTTP_PORT, input.httpBinds);
-  const bindHttpsPort = firstHighSuccess(httpsTryList, DESIRED_HTTPS_PORT, input.httpsBinds);
+  const httpTryList = input.httpTryList ?? DEFAULT_BACKEND_HTTP_TRY_LIST;
+  const httpsTryList = input.httpsTryList ?? DEFAULT_BACKEND_HTTPS_TRY_LIST;
+  const bindHttpPort = firstBackendPort(httpTryList, input.httpBinds, input.httpHolders);
+  const bindHttpsPort = firstBackendPort(httpsTryList, input.httpsBinds, input.httpsHolders);
   if (bindHttpPort === undefined || bindHttpsPort === undefined) {
     let exhausted: "http" | "https" | "both";
     if (bindHttpPort === undefined && bindHttpsPort === undefined) {
@@ -224,3 +255,4 @@ export const chooseHelperBindPorts = (input: {
 };
 
 export { probeBind, probeForward, probeTcpOpen } from "./port-acquisition-bind.ts";
+export type { ForwardProbeRole } from "./port-acquisition-bind.ts";

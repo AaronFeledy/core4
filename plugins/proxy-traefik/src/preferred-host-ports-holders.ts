@@ -109,18 +109,22 @@ export const solutionsForOccupancyHolder = (
           command: "fin stop",
         },
       ];
-    case "apache":
+    case "apache": {
+      const apacheUnit = identity?.comm === "httpd" ? "httpd" : "apache2";
       return [
         {
           kind: "manual",
           description: "Stop the system Apache service so it no longer binds 80/443.",
+          command: `sudo systemctl stop ${apacheUnit}`,
         },
       ];
+    }
     case "nginx":
       return [
         {
           kind: "manual",
           description: "Stop the system nginx service so it no longer binds 80/443.",
+          command: "sudo systemctl stop nginx",
         },
       ];
     case "caddy":
@@ -128,6 +132,7 @@ export const solutionsForOccupancyHolder = (
         {
           kind: "manual",
           description: "Stop Caddy so it no longer binds 80/443.",
+          command: "sudo systemctl stop caddy",
         },
       ];
     case "iis":

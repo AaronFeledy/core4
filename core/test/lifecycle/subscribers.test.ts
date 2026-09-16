@@ -10,12 +10,14 @@ import {
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { AbsolutePath, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 
+import { resolveNotifyConfig } from "@lando/engine/lifecycle/subscriber-config";
+import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
+import { makeCachedSubscriberHandler } from "@lando/engine/lifecycle/subscriber-loader";
+import { makeLandoPluginContext } from "@lando/engine/plugins/context";
 import { makeStateStore } from "@lando/state-store/service";
 import { canonicalSubscriberCommandIds } from "../../src/lifecycle/index.ts";
-import { resolveNotifyConfig } from "../../src/testing/engine-layers.ts";
-import { makeSubscriberRegistrationClosure } from "../../src/testing/engine-layers.ts";
-import { makeCachedSubscriberHandler } from "../../src/testing/engine-layers.ts";
-import { makeLandoPluginContext } from "../../src/testing/engine-layers.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const manifest = (subscribers: ReadonlyArray<Record<string, unknown>>) =>
@@ -435,7 +437,8 @@ describe("subscriber runtime", () => {
     const context = makeLandoPluginContext({
       id: "@example/subscriber",
       managedFileService,
-      stateStore: makeStateStore(),
+      stateStore: makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+      privateFileAccess: ownerOnlyFileAccess,
       pluginStateRoot: Schema.decodeUnknownSync(AbsolutePath)("/tmp/lando-subscriber-test"),
       publishRender: () => Effect.void,
     });

@@ -3,57 +3,63 @@ import { describe, expect, test } from "bun:test";
 import { chooseHelperBindPorts } from "../src/port-acquisition.ts";
 
 describe("chooseHelperBindPorts", () => {
-  test("binds HTTP on 8000 when 8080 is occupied", () => {
-    // Given: 8080 occupied and 8000 free; HTTPS 8443 free.
-    // When: chooseHelperBindPorts walks the HTTP try list.
+  test("binds Traefik on 38080/38443 when those ports are free", () => {
+    // Given: backend defaults are free.
     const chosen = chooseHelperBindPorts({
       httpBinds: {
-        8080: { kind: "EADDRINUSE", code: "EADDRINUSE" },
-        8000: { kind: "success" },
+        38080: { kind: "success" },
       },
       httpsBinds: {
-        8443: { kind: "success" },
+        38443: { kind: "success" },
       },
     });
 
-    // Then: bind HTTP is 8000 and HTTPS is 8443.
-    expect(chosen.bindHttpPort).toBe(8000);
-    expect(chosen.bindHttpsPort).toBe(8443);
+    // Then: hops are the stable Traefik backends, not 8080/8443.
+    expect(chosen.bindHttpPort).toBe(38080);
+    expect(chosen.bindHttpsPort).toBe(38443);
   });
 
-  test("uses a pinned preferred high port as the hop target", () => {
-    // Given: try lists start at 8080/8443 and those binds succeed.
+  test("keeps 38080 when it is already owned by our forwarder", () => {
+    // Given: 38080 is in use by rootlessport.
     const chosen = chooseHelperBindPorts({
-      httpTryList: [8080, 8000, 38080],
-      httpsTryList: [8443, 4443, 38443],
       httpBinds: {
-        8080: { kind: "success" },
+        38080: { kind: "EADDRINUSE", code: "EADDRINUSE" },
+        48080: { kind: "success" },
       },
       httpsBinds: {
-        8443: { kind: "success" },
+        38443: { kind: "success" },
+      },
+      httpHolders: {
+        38080: "rootlessport",
       },
     });
 
-    // Then: hops are 8080/8443, not the next fallback.
-    expect(chosen.bindHttpPort).toBe(8080);
-    expect(chosen.bindHttpsPort).toBe(8443);
+    // Then: do not hop Traefik off a port we already own.
+    expect(chosen.bindHttpPort).toBe(38080);
+    expect(chosen.bindHttpsPort).toBe(38443);
   });
 
-  test("skips 80 and 443 even when those binds succeed", () => {
-    // Given: 80/443 and 8080/8443 are all free.
+  test("hops to the next backend pair when 38080 is foreign-occupied", () => {
+    // Given: 38080 is held by nginx; 48080 is free.
     const chosen = chooseHelperBindPorts({
       httpBinds: {
-        80: { kind: "success" },
-        8080: { kind: "success" },
+        38080: { kind: "EADDRINUSE", code: "EADDRINUSE" },
+        48080: { kind: "success" },
       },
       httpsBinds: {
-        443: { kind: "success" },
-        8443: { kind: "success" },
+        38443: { kind: "EADDRINUSE", code: "EADDRINUSE" },
+        48443: { kind: "success" },
+      },
+      httpHolders: {
+        38080: "nginx",
+      },
+      httpsHolders: {
+        38443: "nginx",
       },
     });
 
-    // Then: hops are the first high ports, not the helper listen ports.
-    expect(chosen.bindHttpPort).toBe(8080);
-    expect(chosen.bindHttpsPort).toBe(8443);
+    // Then: backend hops stay on the high-port list.
+    expect(chosen.bindHttpPort).toBe(48080);
+    expect(chosen.bindHttpsPort).toBe(48443);
   });
 });

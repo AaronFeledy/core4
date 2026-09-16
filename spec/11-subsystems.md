@@ -5,7 +5,7 @@
 
 This part defines the cross-cutting subsystems that sit between the core runtime and provider/plugin implementations. Each subsystem owns a small set of responsibilities, exposes a pluggable `Context.Service`, and is realized by one or more plugin implementations.
 
-Covered here: networking intent (no shared bridge in core; `<service>.<app>.internal` aliasing; `host.lando.internal`), `ProxyService` and `RoutePlan` (with the route-filter abstraction replacing Traefik-specific middleware), `CertificateAuthority` (root CA, leaf certs, trust-store install), corporate proxy and custom CA handling for Lando-owned network access, SSH and host identity (with the new SSH-agent sidecar default that eliminates direct host-agent socket mounts), `HealthcheckRunner` and `UrlScanner`, files and performance, SQL helpers (plugin-provided; not in core), `lando setup` and host integration, the per-app `HostProxyService` that lets in-container shims (`xdg-open`, `lando`) call back to the host over a token-authenticated Unix socket, and logs/diagnostics.
+Covered here: networking intent (no shared bridge in core; `<service>.<app>.internal` aliasing; `host.lando.internal`), `RouterService` and `RoutePlan` (with the route-filter abstraction replacing Traefik-specific middleware), `CertificateAuthority` (root CA, leaf certs, trust-store install), corporate proxy and custom CA handling for Lando-owned network access, SSH and host identity (with the new SSH-agent sidecar default that eliminates direct host-agent socket mounts), `HealthcheckRunner` and `UrlScanner`, files and performance, SQL helpers (plugin-provided; not in core), `lando setup` and host integration, the per-app `HostProxyService` that lets in-container shims (`xdg-open`, `lando`) call back to the host over a token-authenticated Unix socket, and logs/diagnostics.
 
 Byte movement is part of this subsystem surface and has two chokepoints, one per direction. **Outbound/remote** bytes go through `HttpClient` (§10.3.2) — the single egress abstraction that centralizes proxy/CA honoring, redaction, streaming request/response and upload, cancellation, and lifecycle events; `Downloader` (§10.3.3) is the verified-artifact specialization layered over it (checksum/size verification, atomic persistence, cache/offline short-circuiting, progress), and the tool-provisioning helper (§10.3.4) extracts and installs pinned host binaries over `Downloader`. **Local/volume/service** bytes go through `DataMover` (§10.11) — the on-host counterpart that moves bytes between host paths/archives, in-process streams, named volumes, service paths/commands, and built artifacts, owning snapshot/restore, verification, and the `Data` lifecycle events. A flow that does both (hosting `pull`/`push`, `image load` from a URL) composes them: `HttpClient` for the remote half, `DataMover` for the local landing half.
 
@@ -31,12 +31,12 @@ There is no built-in concept of a "shared bridge network" in core. Providers tha
 
 ### 10.2 Router and routes
 
-**Ubiquitous language (ingress).** User-facing copy and config use **router** (the host HTTP listener) and **routes** (hostname → service maps). Service `routes:` is the preferred Landofile map; top-level `proxy:` is a compat alias for those maps only. `HostProxyService` (container→host RPC) and `network.proxy` (corporate HTTP proxy) are other bounded contexts and MUST keep those names. Ingress internals still use `ProxyService` / `proxyServices:` / `@lando/proxy-traefik` until US-606 renames them to `RouterService` / `routerServices:` / `@lando/router-traefik`.
+**Ubiquitous language (ingress).** User-facing copy and config use **router** (the host HTTP listener) and **routes** (hostname → service maps). Service `routes:` is the preferred Landofile map; top-level `proxy:` is a compat alias for those maps only. `HostProxyService` (container→host RPC) and `network.proxy` (corporate HTTP proxy) are other bounded contexts and MUST keep those names. Ingress internals use `RouterService` / `routerServices:`. The bundled plugin package name stays `@lando/proxy-traefik` and contributes `routerServices: [traefik]`.
 
-Core owns the `RoutePlan` schema. `ProxyService` plugins own implementation (US-606: `RouterService`).
+Core owns the `RoutePlan` schema. `RouterService` plugins own implementation.
 
 ```ts
-export class ProxyService extends Context.Service<ProxyService, {
+export class RouterService extends Context.Service<RouterService, {
   readonly id: string;
   readonly capabilities: ProxyCapabilities;
   readonly setup: (config: ProxyConfig) => Effect.Effect<void, ProxyError, Scope.Scope>;
@@ -44,7 +44,7 @@ export class ProxyService extends Context.Service<ProxyService, {
   readonly removeRoutes: (app: AppId) => Effect.Effect<void, ProxyError>;
   readonly status: Effect.Effect<ProxyStatus, ProxyError>;
   readonly stop: Effect.Effect<void, ProxyError>;
-}>()("@lando/core/ProxyService") {}
+}>()("@lando/core/RouterService") {}
 ```
 
 **Required behaviors:**
@@ -57,16 +57,18 @@ export class ProxyService extends Context.Service<ProxyService, {
 - `stop` disables routing durably by removing all app route definitions; it does not stop unrelated
   global-app services or require process-local state. `status` reports this durable routing state.
 - Proxy plugins consume `RouteFilter` plugin contributions to translate filters into native middleware.
+- Bundled filters MUST include `stripPrefix`, `addPrefix`, `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `auth.basic`, and `rateLimit` (§6.6). Filters MUST merge by `name`, then type identity when unnamed, across layers and render in authored order. A path route without `stripPrefix` MUST forward the full path; implicit stripping is forbidden.
+- `router.enabled: false`, resolved from global config or Landofile through normal precedence (§7.5, §7.4), MUST prevent router startup and route publication for that app. `lando info` MUST report only published endpoints, not disabled route URLs.
 
 **§10.2.1 Default Live Layer realization through the global app**
 
-The default `ProxyService` Live Layer in v4 — `ProxyServiceTraefikGlobalAppLive`, shipped with `@lando/proxy-traefik` (§1.4) — realizes its work through a `traefik` service running inside the global Lando app (§20). The plugin contributes BOTH a `proxyServices:` entry (the Live Layer) AND a paired `globalServices:` entry (the `traefik` service definition); installing one without the other is rejected at plugin load with `ProxyContributionPairError` (§20.10.1, §20.13).
+The default `RouterService` Live Layer in v4 — `RouterServiceTraefikGlobalAppLive`, shipped with `@lando/proxy-traefik` (§1.4; package name unchanged) — realizes its work through a `traefik` service running inside the global Lando app (§20). The plugin contributes BOTH a `routerServices:` entry (id `traefik`, the Live Layer) AND a paired `globalServices:` entry (the `traefik` service definition); installing one without the other is rejected at plugin load with `ProxyContributionPairError` (§20.10.1, §20.13).
 
 Required behaviors:
 
-- `ProxyService.applyRoutes(routes, app)` writes Traefik dynamic config under a Lando-managed directory mounted into the `traefik` global service via the standard `mounts:` machinery. The `RoutePlan` schema is core's contract; the on-disk format is the proxy plugin's responsibility.
-- `ProxyService.setup` calls `GlobalAppService.ensureRunning(["traefik"])` so the first user-app `lando start` after install brings the proxy up automatically.
-- The §10.2 `ProxyService` interface is unchanged; only the realization moved into the global app. Alternative `ProxyService` plugins (remote proxy, Caddy, etc.) MAY contribute a Live Layer that does NOT touch `GlobalAppService`; selection follows §4.3.
+- `RouterService.applyRoutes(routes, app)` writes Traefik dynamic config under a Lando-managed directory mounted into the `traefik` global service via the standard `mounts:` machinery. The `RoutePlan` schema is core's contract; the on-disk format is the proxy plugin's responsibility.
+- `RouterService.setup` calls `GlobalAppService.ensureRunning(["traefik"])` so the first user-app `lando start` after install brings the proxy up automatically.
+- The §10.2 `RouterService` interface is the ingress contract; only the realization lives in the global app. Alternative `RouterService` plugins (remote proxy, Caddy, etc.) MAY contribute a Live Layer that does NOT touch `GlobalAppService`; selection follows §4.3.
 - A user upgrading from a pre-§20 install whose host still has a v3-style out-of-band Traefik container running gets a `LegacyProxyContainerDetected` doctor diagnostic (§10.9, §20.10.3); migration is plugin-supplied.
 
 ### 10.2.2 Public tunnels and app sharing (`TunnelService`)
@@ -160,7 +162,7 @@ The check MUST identify common holders from process comm/command line when possi
 | Holder (match) | Remediation |
 |---|---|
 | DDEV (`ddev-router`, `ddev`, Traefik started by DDEV) | `ddev poweroff`, or `ddev config global --router-http-port=8080 --router-https-port=8443` then `ddev restart` if the user wants DDEV to keep running on high ports |
-| Lando 3 (`landoproxyhyperion`, `lando` v3 proxy) | `lando poweroff` in the v3 install |
+| Lando 3 (`landoproxyhyperion`, `lando` v3 proxy) | `lando poweroff` in the v3 install; `LegacyProxyContainerDetected` (§20.10.3) is the single owner of legacy proxy container detection. No plugin MUST add a separate proxy-port check. |
 | Docksal (`docksal-vhost-proxy`, `fin`) | Stop Docksal proxy (`fin stop` / stop `docksal-vhost-proxy`) |
 | Apache (`apache2`, `httpd`) | Stop the system Apache service |
 | nginx (`nginx`) | Stop the system nginx service |
@@ -420,10 +422,10 @@ Required behaviors:
 
 **URL scanner behaviors:**
 
-- After start, the active `UrlScanner` probes host-facing URLs.
-- Scanner config: `enabled`, `retry`, `delay`, `timeout`, `path`, `okCodes`, `maxRedirects`.
-- Per-service overrides under `services.<name>.scanner:`.
-- Results are reported as green/yellow/red with optional structured detail. The `retry`/`delay`/`timeout` config resolves to a `RetryPolicy` and the green/yellow/red verdict is the probe primitive's `ProbeOutcome` (§10.5.1); only the probe effect differs between the built-in and plugin scanners.
+- After start, the active `UrlScanner` MUST probe published host-facing URLs through `runProbe` with bounded attempts and an overall deadline.
+- Global and per-service config MUST accept `scanner: false | { path?, okCodes?, retries?, timeout? }` (§7.5). Per-service overrides live under `services.<name>.scanner:`; `false` disables scanning for the resolved scope.
+- `path` selects the probe path, `okCodes` selects acceptable HTTP statuses, `retries` supplies the retry budget, and `timeout` supplies the overall deadline. Omitted fields MUST resolve to finite bounded defaults; `retries` maps to `RetryPolicy.maxAttempts` as the initial attempt plus retries.
+- Results MUST be reported as green/yellow/red with optional structured detail. Every non-green outcome MUST warn and MUST NOT fail `start`. Errors, including `ProbeResult.lastError`, MUST be redacted through `RedactionService` before events, transcripts, info, or readiness summaries (§3.7). Built-in and plugin scanners MUST share these verdict and bound semantics.
 - The default scanner issues its probe through `HttpClient` (§10.3.2) against the resolved host-facing URL, inheriting the canonical proxy/CA resolution, redaction, and cancellation policy rather than calling `fetch` directly. Plugin-supplied scanners MAY use `ShellRunner` (§3.4) for shell-shaped probes — `curl --resolve` for testing custom DNS, `openssl s_client -connect` for TLS handshake details, `dig +short` for record validation — particularly when a project's routing depends on host networking that `fetch` cannot reproduce. Plugin scanners surface the same green/yellow/red verdict shape; only the underlying probe mechanism differs.
 
 ### 10.6 Files and performance
@@ -555,7 +557,7 @@ Required behaviors specific to the Mutagen engine:
 - The plugin MUST honor `network.proxy` and `network.ca` (§10.3.1) for both the binary download path and any registry call Mutagen makes for agent images. Proxy credentials are redacted from logs and the lifecycle event payloads identical to other Lando-owned network access.
 - The plugin's `FileSyncEngineCapabilities` declaration at runtime is fixed: `modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"]`, `remoteAgentDeployment: "auto"`, `exclusionPatterns: true`, `conflictReporting: true`, `progressReporting: true`. The default `mode` for the planner-emitted `bind` realization is `two-way-safe` — Mutagen's safest mode that refuses ambiguous conflicts rather than auto-resolving them.
 
-**v4.0 scope: sync only.** Mutagen also offers TCP/UDP forwarding sessions; these are explicitly out of scope for v4.0 (§14.1). Lando's `RuntimeProvider` host-port and `ProxyService` route stories already cover host-facing networking, and adding forwarding through Mutagen would create two paths for one user-facing concern. A future plugin MAY contribute a `PortForwardingService` abstraction reusing the same daemon; v4.0 does not.
+**v4.0 scope: sync only.** Mutagen also offers TCP/UDP forwarding sessions; these are explicitly out of scope for v4.0 (§14.1). Lando's `RuntimeProvider` host-port and `RouterService` route stories already cover host-facing networking, and adding forwarding through Mutagen would create two paths for one user-facing concern. A future plugin MAY contribute a `PortForwardingService` abstraction reusing the same daemon; v4.0 does not.
 
 #### 10.6.3 Doctor checks
 
@@ -594,7 +596,7 @@ SQL helper behavior is plugin-provided. Core does not ship SQL helpers; the bund
 
 ### 10.8 Setup and host integration
 
-`lando setup` runs provider, CA, proxy, and shell-integration setup through plugin subscribers and direct service calls.
+`lando setup` runs provider, CA, router, and shell-integration setup through plugin subscribers and direct service calls.
 
 ```text
 lando setup [--yes] [--provider=<id>] [--skip-provider]
@@ -630,13 +632,24 @@ Rules:
 
 `lando doctor` is the user-facing diagnostics command. It runs core checks for common app-config and selected-provider issues, then loads plugin-contributed checks declared as `provides.doctorChecks`. Each issue reports severity, context, and a solution. Solutions are either `automatic` tasks that doctor can run with `--fix`, or `manual` instructions when automation is unsafe or impossible.
 
+**Bounded check context.** `DoctorCheckContext` MUST expose optional app identity, optional selected provider identity, a bounded resource name/label inspector, and a bounded path-only executable locator. The locator MUST perform filesystem/PATH resolution only and return the normalized running executable basename plus the resolved candidate `lando` path. It MUST NOT execute a candidate, read executable contents, or read user/Lando state. Basename comparison MUST recognize `lando4` and case-insensitive Windows `lando4.exe` as the v4 basename. Doctor checks MUST NOT import `@lando/container-runtime`; resource inspection MUST use the context port.
+
+The bundled `@lando/lando3` plugin contributes exactly these two read-only checks through `DoctorCheckContext`:
+
+| Check | Required behavior |
+|---|---|
+| `lando3-leftovers` | With app context, derive the Lando 3 project name as `name.toLowerCase().replace(/_|-|\.+/g, "")` and inspect for `<project>_*` volumes or containers labeled `io.lando.root=<root>`. On selected provider `docker` or actual id `podman`, use the bounded inspector. No app context MUST yield an informational skip. Managed provider `lando` MUST skip before any daemon call. A hit MUST name resources and tell the user to back up or confirm data before removal with Lando 3. |
+| `lando3-shadow` | When the normalized running basename is `lando4`, locate a PATH candidate named `lando` without executing it. A distinct path MUST be reported only as an unverified informational potential shadow, recommending continued side-by-side use. The check MUST NOT claim a version or safety verdict. Missing or ambiguous paths MUST be informational. |
+
+Neither check MAY read Lando 3 user state or mutate resources. `LegacyProxyContainerDetected` (§20.10.3) remains the single owner of legacy proxy container detection, cross-referenced by the §10.2.3 holder table and `lando3-leftovers`; the plugin MUST NOT add a proxy-port check or duplicate that detection.
+
 Core doctor coverage MUST include:
 
 - Landofile discovery and clear remediation when no app config is in scope.
-- Detection of removed v3/v4-forbidden top-level wrapper keys such as `compose:`, `recipe:`, and `recipes:`.
+- Detection of removed top-level wrapper keys such as `compose:` and `recipes:`. `recipe:` is an accepted inert declaration (§7.4), not a removed wrapper key.
 - Validation of user-installed plugin registry entries and package manifests. Missing, corrupt, or invalid metadata MUST become an attributed `plugin-metadata` self check with redacted, length-bounded id/path/message context and `lando plugin list` plus reinstall guidance; it MUST NOT abort the rest of the report.
 - Selected Podman provider availability and machine readiness, with an automatic `podman machine start` remediation when applicable.
-- Detection of a pre-§20 out-of-band proxy container left behind by an upgrade (`LegacyProxyContainerDetected`, §20.10.3) — read-only doctor diagnostic. The same condition is independently checked at `meta:setup` and at first `meta:global:start`, where it raises `LegacyProxyContainerConflictError` (§20.13) and refuses to start the global-app proxy service to prevent two proxies competing for the same ports; remediation is plugin-supplied via `meta:setup --migrate-proxy`.
+- Legacy proxy container detection MUST use the single `LegacyProxyContainerDetected` owner (§20.10.3), shared with the §10.2.3 holder table. `meta:setup` and first `meta:global:start` MUST consult that owner rather than implement independent detection; a conflict raises `LegacyProxyContainerConflictError` (§20.13) before starting the global proxy.
 
 Doctor checks are read-only by default. `--fix` runs only explicitly declared automatic solution commands and reports their stdout/stderr and exit code.
 

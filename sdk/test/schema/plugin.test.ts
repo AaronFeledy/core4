@@ -217,7 +217,7 @@ describe("PluginManifest", () => {
     }
   });
 
-  test("strict decoding rejects the unreleased legacy cas contribution", () => {
+  test("strict decoding rejects unknown cas contribution keys", () => {
     const decoded = Schema.decodeUnknownEither(PluginManifest)(
       {
         name: "@lando/legacy-ca",
@@ -229,6 +229,38 @@ describe("PluginManifest", () => {
     );
 
     expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("strict decoding rejects unknown proxyServices contribution keys", () => {
+    const decoded = Schema.decodeUnknownEither(PluginManifest)(
+      {
+        name: "@lando/legacy-proxy",
+        version: "1.0.0",
+        api: 4,
+        contributes: { proxyServices: [{ id: "traefik", module: "./src/proxy.ts" }] },
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("decodes typed routerServices contributions", () => {
+    const encoded = {
+      name: "@lando/router-test",
+      version: "1.0.0",
+      api: 4,
+      contributes: {
+        routerServices: [{ id: "traefik", module: "./src/proxy.ts" }],
+      },
+    };
+
+    const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+
+    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    if (Either.isRight(decoded)) {
+      expect(decoded.right.contributes?.routerServices?.[0]).toEqual(encoded.contributes.routerServices[0]);
+    }
   });
 });
 
@@ -261,5 +293,59 @@ describe("EmbeddingPluginPolicy", () => {
     });
 
     expect(Either.isLeft(decoded)).toBe(true);
+  });
+});
+
+describe("PluginContribution.configTranslators", () => {
+  test("decodes translator contributions with required id, module, and inputKinds", () => {
+    // Given: a manifest contributing one config translator with advisory metadata.
+    const decoded = Schema.decodeUnknownSync(PluginManifest)({
+      name: "@lando/lando3",
+      version: "1.0.0",
+      api: 4,
+      contributes: {
+        configTranslators: [
+          {
+            id: "lando3",
+            module: "./src/translator.ts",
+            inputKinds: ["lando3"],
+            detects: [".lando.yml"],
+            summary: "Decode Lando 3 Landofiles.",
+          },
+        ],
+      },
+    });
+
+    // Then: the contribution survives decoding with its metadata intact.
+    expect(decoded.contributes?.configTranslators).toEqual([
+      {
+        id: "lando3",
+        module: "./src/translator.ts",
+        inputKinds: ["lando3"],
+        detects: [".lando.yml"],
+        summary: "Decode Lando 3 Landofiles.",
+      },
+    ]);
+  });
+
+  test("rejects translator contributions without inputKinds", () => {
+    // Given: a translator entry that omits its inputKinds metadata.
+    const result = Schema.decodeUnknownEither(PluginManifest)({
+      name: "@lando/lando3",
+      version: "1.0.0",
+      api: 4,
+      contributes: { configTranslators: [{ id: "lando3", module: "./src/translator.ts" }] },
+    });
+
+    // Then: the manifest is rejected.
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
+  test("publishes configTranslators in the PluginContribution JSON schema", () => {
+    const jsonSchema = getJsonSchema("PluginContribution") as {
+      readonly properties?: Record<string, unknown>;
+    };
+
+    expect(jsonSchema.properties).toHaveProperty("configTranslators");
   });
 });

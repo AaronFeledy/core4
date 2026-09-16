@@ -7,6 +7,7 @@ import {
   type CompiledBinaryBuildRunner,
   CompiledBinaryVersionError,
   buildCompiledBinary,
+  compiledBinaryBytecode,
   createOpenTuiPruningPlugin,
   parseCompiledBinaryArgs,
   resolveOpenTuiNativeImport,
@@ -14,6 +15,27 @@ import {
 import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/catalog.generated.ts";
 
 const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
+
+describe("compiled bytecode target policy", () => {
+  test.each(releaseTargets)("preserves native bytecode for %s", (target) => {
+    expect(compiledBinaryBytecode(target, target)).toBe(true);
+  });
+
+  test.each([
+    ["windows-x64", "linux-x64", false],
+    ["windows-arm64", "linux-arm64", false],
+    ["windows-x64", "darwin-arm64", false],
+    ["windows-arm64", "darwin-x64", false],
+    ["windows-arm64", "windows-x64", false],
+    ["windows-x64", "windows-arm64", false],
+    ["linux-x64", "windows-x64", true],
+    ["linux-arm64", "linux-x64", true],
+    ["darwin-x64", "linux-x64", true],
+    ["darwin-arm64", "windows-arm64", true],
+  ] as const)("sets bytecode for %s from %s to %s", (target, host, expected) => {
+    expect(compiledBinaryBytecode(target, host)).toBe(expected);
+  });
+});
 
 describe("compiled binary OpenTUI native pruning", () => {
   test.each(releaseTargets)("keeps only the selected native root for %s", (target, selectedRoot) => {
@@ -118,6 +140,30 @@ describe("compiled binary OpenTUI native pruning", () => {
       name: "CompiledBinaryBuildError",
       diagnostics: [diagnostic],
     });
+  });
+
+  test("Windows cross-compilation omits bytecode without changing production bundling", async () => {
+    // Given: a Windows target distinct from this compiler host.
+    const target = process.platform === "win32" && process.arch === "x64" ? "windows-arm64" : "windows-x64";
+    let received: Bun.BuildConfig | undefined;
+    // When: the central builder passes its configuration to Bun.
+    await buildCompiledBinary(
+      { target, outfile: "./dist/lando.exe", version: "4.0.0-dev.953" },
+      async (config) => {
+        received = config;
+        return { success: true, logs: [], outputs: [] };
+      },
+    );
+    // Then: only bytecode is disabled; ESM splitting and native pruning remain.
+    expect(received).toMatchObject({
+      bytecode: false,
+      format: "esm",
+      splitting: true,
+      minify: true,
+      sourcemap: "external",
+    });
+    expect(received?.plugins).toHaveLength(1);
+    expect(received?.compile).toEqual({ target: `bun-${target}`, outfile: "./dist/lando.exe" });
   });
 
   test("CLI accepts the normative Bun build flags and normalizes the target", () => {

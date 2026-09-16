@@ -7,6 +7,7 @@ import {
   webrootPromptYaml,
   webserverPromptYaml,
 } from "../php-stack";
+import { drupalCmsSnapshotYaml } from "./snapshot.ts";
 
 export const DRUPAL_CMS_RECIPE_ID = "drupal-cms";
 
@@ -42,4 +43,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start', then scaffold Drupal CMS with 'lando drupal-cms-scaffold', then install with 'lando drupal-cms-install'.
+
+${drupalCmsSnapshotYaml}
 `;

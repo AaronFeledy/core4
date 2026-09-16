@@ -87,6 +87,16 @@ const extractExtraTagFields = (
     const line = record.line;
     if (typeof line === "number") out.push(["line", String(line)]);
   }
+  if (tag === "SqlDumpNotFoundError") {
+    for (const field of ["path", "appRoot"] as const) {
+      const value = asString(record[field]);
+      if (value !== undefined) out.push([field, value]);
+    }
+  }
+  if (tag === "DataTransferError") {
+    const fromEndpoint = asString(record.fromEndpoint);
+    if (fromEndpoint !== undefined) out.push(["fromEndpoint", fromEndpoint]);
+  }
   if (tag === "AppIdReservedError") {
     const reserved = asString(record.reserved);
     if (reserved !== undefined) out.push(["reserved", reserved]);

@@ -214,6 +214,42 @@ export const containerPortBindings = (
   return Object.fromEntries(grouped);
 };
 
+export const fingerprintPortBindings = (
+  bindings: Record<string, ReadonlyArray<Readonly<Record<string, string>>>>,
+): string => {
+  const parts: string[] = [];
+  for (const [key, list] of Object.entries(bindings)) {
+    for (const item of list) {
+      parts.push(`${key}@${item.HostIp ?? ""}:${item.HostPort ?? ""}`);
+    }
+  }
+  return parts.sort().join("|");
+};
+
+export const fingerprintPlannedPublishPorts = (endpoints: ReadonlyArray<PublishedEndpoint>): string => {
+  if (endpoints.some((endpoint) => endpoint.publication.hostPort === undefined)) return "";
+  return fingerprintPortBindings(containerPortBindings(endpoints));
+};
+
+export const fingerprintInspectPublishPorts = (inspect: unknown): string => {
+  if (typeof inspect !== "object" || inspect === null || !("HostConfig" in inspect)) return "";
+  const hostConfig = inspect.HostConfig;
+  if (typeof hostConfig !== "object" || hostConfig === null || !("PortBindings" in hostConfig)) return "";
+  const bindings = hostConfig.PortBindings;
+  if (typeof bindings !== "object" || bindings === null) return "";
+  const normalized: Record<string, Array<Record<string, string>>> = {};
+  for (const [key, value] of Object.entries(bindings)) {
+    if (!Array.isArray(value)) continue;
+    normalized[key] = value.flatMap((item) => {
+      if (typeof item !== "object" || item === null) return [];
+      const hostIp = "HostIp" in item && typeof item.HostIp === "string" ? item.HostIp : "";
+      const hostPort = "HostPort" in item && typeof item.HostPort === "string" ? item.HostPort : "";
+      return [{ HostIp: hostIp, HostPort: hostPort }];
+    });
+  }
+  return fingerprintPortBindings(normalized);
+};
+
 export const containerExposedPorts = (
   endpoints: ReadonlyArray<PublishedEndpoint | InternalEndpoint>,
 ): Record<string, Record<string, never>> => {
@@ -236,10 +272,12 @@ export const containerHostConfigFragment = (
   );
   const binds = bindMountStrings(plan, service, options);
   const mounts = containerMountObjects(service, options);
+  const extraHosts = service.hostAliases.map(({ hostname, ip }) => `${hostname}:${ip}`);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
     ...(binds.length > 0 ? { Binds: binds } : {}),
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
+    ...(extraHosts.length === 0 ? {} : { ExtraHosts: extraHosts }),
   };
 };
 
@@ -249,6 +287,7 @@ export interface ContainerCreateBodyOptions {
   readonly hostConfig?: Record<string, unknown>;
   readonly networkingConfig?: Record<string, unknown>;
   readonly onMissingArtifact?: (artifact: ServicePlan["artifact"]) => never;
+  readonly environment?: Readonly<Record<string, string>>;
 }
 
 const missingArtifact = (artifact: ServicePlan["artifact"]): never => {
@@ -270,7 +309,7 @@ export const containerCreateBodyFragment = (
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
-    Env: serviceEnv(service),
+    Env: envArrayFromRecord(options.environment ?? service.environment),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,

@@ -35,7 +35,7 @@ Lando v4 is organized into four concentric layers. Code at any layer may depend 
 |  - No implementations — only the shape                   |
 +----------------------------------------------------------+
 |  Plugin Implementations (the "adapters")                 |
-|  - RuntimeProvider, ProxyService, CertificateAuthority,  |
+|  - RuntimeProvider, RouterService, CertificateAuthority,  |
 |    Logger, Renderer, ToolingEngine, etc.                 |
 |  - Each is a Bun-loadable package                        |
 |  - Bundled defaults + third-party additions              |
@@ -87,8 +87,8 @@ The router phase is not a `BootstrapLevel`: it does not parse Landofiles, import
 | Level | Adds | Used by |
 |---|---|---|
 | `none` | Command-base depth: do not pre-build an Effect runtime layer before the command body runs. The **pre-dispatch fast path** (below) is a subset that also skips the dispatcher/Effect entirely; other `none` commands still resolve through the native dispatcher and may build a runtime *inside* their program. | Fast path: `meta:version` (alias `version`), `meta:shellenv` (alias `shellenv`), `meta:recipes:list` (alias `recipes`), top-level `--help` (no command), `--version`, `-V`, `-v`. Dispatcher-routed `none` with in-program runtime: `meta:doctor` (builds `provider` itself per §10.9.1) |
-| `minimal` | Config, env, platform info, cache, logging, event service (lazy per §2.4) | `meta:config`, `meta:plugin:login`, `meta:plugin:logout`, `meta:recipes:describe`, `meta:recipes:validate`, `meta:uninstall`, `meta:events:follow`, `apps:init`, `apps:list` |
-| `plugins` | Plugin discovery, manifest validation, contribution graph | `meta:plugin:add`, `meta:plugin:remove`, `meta:update` |
+| `minimal` | Config, env, platform info, cache, logging, event service (lazy per §2.4) | `meta:config`, `meta:plugin:login`, `meta:plugin:logout`, `meta:recipes:describe`, `meta:recipes:validate`, `meta:uninstall`, `meta:events:follow`, `apps:list` |
+| `plugins` | Plugin discovery, manifest validation, contribution graph | `meta:plugin:add`, `meta:plugin:remove`, `meta:update`, `apps:init`, `app:config:translate`, `app:config:explain`, `app:config:migrate` |
 | `commands` | Lando command registry services and command-cache refresh ability | command-management and docs/reference commands |
 | `tooling` | Commands plus a cache-only app plan / `ToolingProgram` read | Landofile-defined tooling commands that do not need full app planning |
 | `provider` | Provider selection and adapter initialization | `meta:setup`, `apps:poweroff`, `apps:list --all` (also `meta:doctor`, which declares `none` and builds this level itself per §10.9.1) |
@@ -212,7 +212,7 @@ The following services are provided by the Lando runtime. Their `Live` Layers li
 | `TunnelService` | Public app/service sharing (§10.2.2): resolves a `RoutePlan` or service endpoint target, performs provider control-plane calls through `HttpClient`, provisions any connector binary through the tool-provisioning helper over `Downloader`, supervises connector processes through `ProcessRunner`, persists detached session state through `StateStore`, waits for readiness with the probe primitive, publishes tunnel lifecycle events, and composes `InteractionService` + `RedactionService`. It is not a data-transfer primitive and does not use `DataMover` except in higher-level features that also move bytes | No always-on default in v4.0; plugin-contributed `TunnelService` implementations register at level `plugins` and are constructed lazily when `app:share` / `App.share` asks for one (§4.2/§4.3) |
 | `McpService` | The in-process Model Context Protocol server behind `lando mcp` (§10.14, §8.2.6): projects allowlisted `LandoCommandSpec`s as typed MCP tools (input schemas from `FlagSpec`/`ArgSpec`, results as `CommandResultEnvelope`s through `encodeCommandResult`), optionally projects tooling tasks, exposes resolved-config/info/doctor resources, replays the redacted `EventService` history as notifications, dispatches every call through the `@lando/core/cli` operations against a retained runtime, enforces the generated `mcp-allowlist` cache plus `mcp.allow`/`mcp.deny` config, runs non-interactive, caps concurrency, maps MCP cancellation to `Effect.interrupt`, and publishes `pre-mcp-call` / `post-mcp-call` events. **Not a §4.2 plugin abstraction in v4.0** — the pluggable seams are `mcpAllowed:` command flags and the `mcp.*` config keys | `McpServiceLive` (lazy via `Layer.suspend` at level `plugins`; only constructed when `meta:mcp` or a library host requests it) |
 | `GlobalAppService` | The global Lando app: regenerates `<userDataRoot>/global/.lando.dist.yml` from `globalServices:` manifest contributions, manages the `global` app's plan, lifecycle, and auto-start (§20). Reuses the same `RuntimeProvider`, `AppPlanner`, and `BuildOrchestrator` user apps use; only the `<app-id>` is fixed to `global`. | `GlobalAppServiceLive` (constructed at level `global`; `Layer.suspend`-wrapped — `lando info` against an already-running user app whose features require no global services pays zero cost) |
-| `ScratchAppService` | Scratch apps (§21): acquires, starts, stops, destroys, lists, and reaps short-lived Lando apps whose lifetime is bound to an Effect `Scope`. Owns materialization of the scratch root under `<userCacheRoot>/scratch/<id>/`, the scratch registry at `<userCacheRoot>/scratch/registry.bin`, and the orphan-reap protocol that combines the registry walk with a provider-label scan (`dev.lando.scratch: "TRUE"`). Reuses every other core service a normal user app uses — `LandofileService`, `AppPlanner`, `BuildOrchestrator`, `RuntimeProvider`, `ProxyService`, `CertificateAuthority` — with the §21.7–§21.9 plan-time transformations applied (mount isolation, `scope: global` shadowing, hostname auto-suffix). | `ScratchAppServiceLive` (constructed at level `scratch`; `Layer.suspend`-wrapped — `lando info` against a user app pays zero `ScratchAppService` cost) |
+| `ScratchAppService` | Scratch apps (§21): acquires, starts, stops, destroys, lists, and reaps short-lived Lando apps whose lifetime is bound to an Effect `Scope`. Owns materialization of the scratch root under `<userCacheRoot>/scratch/<id>/`, the scratch registry at `<userCacheRoot>/scratch/registry.bin`, and the orphan-reap protocol that combines the registry walk with a provider-label scan (`dev.lando.scratch: "TRUE"`). Reuses every other core service a normal user app uses — `LandofileService`, `AppPlanner`, `BuildOrchestrator`, `RuntimeProvider`, `RouterService`, `CertificateAuthority` — with the §21.7–§21.9 plan-time transformations applied (mount isolation, `scope: global` shadowing, hostname auto-suffix). | `ScratchAppServiceLive` (constructed at level `scratch`; `Layer.suspend`-wrapped — `lando info` against a user app pays zero `ScratchAppService` cost) |
 | `Telemetry` | Core usage stats, enabled by default unless disabled by config/env | `TelemetryLive` (fire-and-forget; never blocks command exit; §2.4) |
 | `RedactionService` | The single owner of secret and PII masking (§3.7). Builds a request-scoped redactor from the active `SecretStore` resolutions, known token env (`BUN_AUTH_TOKEN`, scoped `_authToken`, resolved proxy credentials), and per-call redaction tokens, then exposes `forProfile(profile)` returning a canonical `Redactor`. Consumed by `Logger`, `EventService`, `ProcessRunner` / `ShellRunner` / `BunSelfRunner`, `HttpClient` / `Downloader`, `TunnelService`, `DataMover`, `BuildOrchestrator`, `HostProxyService`, `Telemetry`, the build/doctor/guide transcript writers, and the CLI failure formatter so every surface "observes redacted forms only". **Not a §4.2 plugin abstraction — a non-replaceable security invariant** (like `EmbeddedAssetService`); audited/sandboxed runner, downloader, and tunnel plugins *compose* it, they never replace or weaken it. | `RedactionServiceLive` (constructed eagerly at level `minimal`; backed by the pure, dependency-free `@lando/sdk/secrets` functions so the telemetry hot-enqueue path and the docs build redact without constructing a runtime) |
 
@@ -389,12 +389,12 @@ Tagged errors live in `@lando/core/errors`:
 | `plugins` | `minimal` + `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry` (built-in `passthrough` engine pre-registered); plugin-contributed `TemplateEngine`, `FileSyncEngine`, `HttpClient`, `Downloader`, `TunnelService`, and `InteractionService` impls register here | `minimal`'s lazy + `PrivilegeService` | commands beyond registry, providers, app planner |
 | `commands` | `plugins` + `CommandRegistry` | `plugins`'s lazy | providers, app planner |
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
-| `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService`, `DataMover` (§10.11; forced on first `transfer`/`snapshot`) | full app planner |
+| `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `RouterService`, `DataMover` (§10.11; forced on first `transfer`/`snapshot`) | full app planner |
 | `global` | `provider`'s eager + `GlobalAppService`; the global app's `LandofileService` instance | `provider`'s lazy + `BuildOrchestrator` (lazy per §6.13), `HealthcheckRunner`, `UrlScanner` | full user-app planner |
 | `scratch` | `provider`'s eager + `ScratchAppService`; `LandofileService` constructible against an arbitrary scratch root; the scratch registry reader/writer | `provider`'s lazy + `AppPlanner`, `BuildOrchestrator` (lazy per §6.13), `HealthcheckRunner`, `UrlScanner`, `HostProxyService` (when the resolved scratch plan declares the `lando.host-proxy` feature), `GlobalAppService` (when the scratch's `AppFeature` activations declare `requires.globalServices`) | full user-app planner bound to a discoverable cwd app root |
 | `app` | level `global`'s eager (so `GlobalAppService.ensureRunning` is callable from `pre-start`) + `AppPlanner`, `LandofileService` for the user app | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService`, `TunnelService`, `BuildOrchestrator`, the active `FileSyncEngine` Live Layer (e.g., `FileSyncEngineMutagenLive`) when the resolved app plan contains at least one mount marked `realization: "accelerated"` per §6.4 | *(none — this is the maximal layer)* |
 
-**Cross-table note.** `CertificateAuthority`, `ProxyService`, `TunnelService`, `HealthcheckRunner`, and `UrlScanner` are pluggable abstractions whose canonical declarations live in §4.2 rather than the §3.4 services table above. Their default Live Layers ship in core when applicable (built-in CA stub, default `fetch`-based scanner, default `RuntimeProvider.exec`-backed healthcheck runner; no always-on `TunnelService` default in v4.0) so they are members of the AOT-composed bootstrap layers per the membership-per-level table here. When a plugin contributes an alternate Layer (`@lando/ca-mkcert`, `@lando/proxy-traefik`, `@lando/tunnel-*`, etc.), the contributed Layer replaces the default at the same level. Embedding hosts that need to enumerate every service in the runtime SHOULD treat the §4.2 catalog and the §3.4 services table together as the authoritative service registry.
+**Cross-table note.** `CertificateAuthority`, `RouterService`, `TunnelService`, `HealthcheckRunner`, and `UrlScanner` are pluggable abstractions whose canonical declarations live in §4.2 rather than the §3.4 services table above. Their default Live Layers ship in core when applicable (built-in CA stub, default `fetch`-based scanner, default `RuntimeProvider.exec`-backed healthcheck runner; no always-on `TunnelService` default in v4.0) so they are members of the AOT-composed bootstrap layers per the membership-per-level table here. When a plugin contributes an alternate Layer (`@lando/ca-mkcert`, `@lando/proxy-traefik`, `@lando/tunnel-*`, etc.), the contributed Layer replaces the default at the same level. Embedding hosts that need to enumerate every service in the runtime SHOULD treat the §4.2 catalog and the §3.4 services table together as the authoritative service registry.
 
 The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script), and doesn't construct `BunSelfRunner` unless something at runtime self-spawns Bun (the same caller that runs `lando bun`, `lando x`, plugin install, recipe `bun: { verb: install }`, or `includes:` materialization). The two runner services share the lazy bucket because most level-`minimal` invocations need neither. The active `FileSyncEngine` Live Layer follows the same pattern at level `app`: a `lando start` against an app whose plan contains zero accelerated mounts (every mount is `realization: "passthrough"`) MUST NOT spawn the Mutagen daemon, allocate a sync session, or import the gRPC client; the `Layer.suspend` wrapper holds construction until the planner emits the first `FileSyncEngine.createSession` call. `BuildOrchestrator` follows the same pattern: a `lando info` or a `lando logs` against an already-running app does not need it; the `Layer.suspend` wrapper holds construction until a lifecycle command (`app:start`, `app:rebuild`, `app:cache:refresh --rebuild`) actually drives a build phase.
 
@@ -404,10 +404,12 @@ The "lazy" column lists services that the codegen wraps in `Layer.suspend` so th
 
 Events are typed and validated. Subscribers register through plugin manifests.
 
+`pre-restart` and `post-restart` MUST bracket the stop/start pair; the inner stop/start events MUST still fire. Both restart bracket names MUST be valid Landofile `events:` targets. The valid event-name set MUST be extended with `pre-<tool>` / `post-<tool>` from fully resolved layered/included tooling before semantic validation. Nested command-event recursion MUST be bounded by a visited stack and depth limit, with cycle/depth rejection and the complete valid-name set in validation diagnostics (§8.5.7).
+
 | Scope | Standard events |
 |---|---|
 | Lando | `pre-bootstrap-<level>`, `post-bootstrap-<level>`, `post-bootstrap`, `ready`, `pre-setup`, `post-setup`, `before-exit` |
-| App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
+| App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
 | Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs` |
 | Process / Shell / Network | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec`, `pre-http-call`, `post-http-call`, `pre-download`, `download-progress`, `post-download` |
 | File sync | `pre-file-sync-create`, `post-file-sync-create`, `pre-file-sync-pause`, `post-file-sync-pause`, `pre-file-sync-resume`, `post-file-sync-resume`, `pre-file-sync-terminate`, `post-file-sync-terminate`, `file-sync-conflict-detected`, `file-sync-progress` (published for every `FileSyncEngine` session lifecycle transition and conflict/progress frame; §10.6) |
@@ -587,7 +589,25 @@ export const PreStartEvent = Schema.TaggedStruct("pre-start", {
   timestamp: Schema.DateTimeUtc,
 });
 export type PreStartEvent = Schema.Schema.Type<typeof PreStartEvent>;
+
+export const PreRestartEvent = Schema.TaggedStruct("pre-restart", {
+  app: AppRef,
+  plan: AppPlan,
+  triggeredBy: Schema.String,
+  timestamp: Schema.DateTimeUtc,
+});
+export type PreRestartEvent = Schema.Schema.Type<typeof PreRestartEvent>;
+
+export const PostRestartEvent = Schema.TaggedStruct("post-restart", {
+  app: AppRef,
+  plan: AppPlan,
+  triggeredBy: Schema.String,
+  timestamp: Schema.DateTimeUtc,
+});
+export type PostRestartEvent = Schema.Schema.Type<typeof PostRestartEvent>;
 ```
+
+Restart payloads MUST use the same app/plan/trigger/timestamp shape as start payloads, differing only in their event tags.
 
 `PreScratchStartEvent` illustrates the Scratch-scope payload shape (§21.6.2 is canonical; remaining Scratch-scope events follow the same pattern):
 
@@ -948,6 +968,8 @@ The `pre-global-start` … `post-global-start` block ALWAYS fires inside `pre-st
 The `Build` scope replaces the v1 of this section's "(priority 100) artifact build / (priority 110) per-service app build" prose. The two phases remain ordered (artifact → app, per service) — the priority numbers survive as the *phase boundaries* the event sequence renders — but siblings inside a phase run concurrently per the §6.13 DAG semantics. Within a service the orchestrator still serializes `artifact` → `app` (the `lando.boot` scaffolding lives inside the built artifact). Compose `depends_on:` flows through into app-build ordering so an `npm run seed` step that needs the db waits for `db` to come up before it runs.
 
 `lando stop`, `rebuild`, and `destroy` follow analogous sequences with their own `pre-*`/`post-*` pairs and their own `cli-<canonical-id>-init`/`-run`/`-error` triplet at the same positions relative to bootstrap.
+
+For `lando restart` (§8.2), the app sequence MUST be `pre-restart` → `pre-stop` → stop body → `post-stop` → `pre-start` → start body → `post-start` → `post-restart`. The start body retains the build and readiness sequence above. Brackets follow command failure semantics (§8.5.7); `post-restart` MUST NOT report success after a failed stop/start pair.
 
 ### 11.5 Hot-path events
 

@@ -11,22 +11,32 @@ import {
   PathsService,
   PrivilegeService,
   ProcessRunner,
-  ProxyService,
-  type ProxyServiceShape,
+  RouterService,
+  type RouterServiceShape,
 } from "@lando/sdk/services";
 
+import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
+import { prepareTraefikDiagnostics } from "./global-services/diagnostics.ts";
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
   acquisitionStateFile,
   defaultTlsFile,
+  diagnosticConfigFile,
+  diagnosticHtmlFile,
   dynamicConfigDir,
+  fallbackConfigFile,
   joinFor,
   routeFile,
   routingStateFile,
 } from "./proxy-paths.ts";
-import { advertisedPorts, mapSetupError, publishFallbackWarn } from "./proxy-setup.ts";
+import {
+  advertisedPorts,
+  assertAdvertisedForward,
+  mapSetupError,
+  publishFallbackWarn,
+} from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
 import { DEFAULT_AUTHORITY_PORTS, authoritiesFor, renderTraefikDynamicConfig } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
@@ -60,7 +70,7 @@ const applyError = (app: AppId, cause: unknown): ProxyApplyError =>
 
 const proxyError = (operation: string, cause: unknown): ProxyError =>
   new ProxyError({
-    message: `Traefik proxy ${operation} failed.`,
+    message: `Traefik router ${operation} failed.`,
     proxyId: TRAEFIK_PROXY_ID,
     remediation: "Check the global Traefik service and its route-config directory, then retry.",
     cause,
@@ -106,9 +116,9 @@ const routerPinFromConfig = (pin: NonNullable<ProxyConfig["routerPin"]>): Traefi
   ...(pin.httpsPort === undefined ? {} : { httpsPort: pin.httpsPort }),
 });
 
-export const makeTraefikProxyService = (
+export const makeTraefikRouterService = (
   dependencies: TraefikProxyDependencies,
-): ProxyServiceShape & {
+): RouterServiceShape & {
   readonly readAppliedRoutes: (app: AppId) => Effect.Effect<ReadonlyArray<RoutePlan>>;
 } => {
   const routes = new Map<string, ReadonlyArray<RoutePlan>>();
@@ -134,7 +144,13 @@ export const makeTraefikProxyService = (
         if (decision.notices.length > 0) {
           yield* publishFallbackWarn(dependencies, decision);
         }
-        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
+        yield* prepareTraefikDiagnostics(dependencies);
+        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
+        yield* assertAdvertisedForward(dependencies, advertised);
+        yield* dependencies.fileSystem.writeAtomic(
+          fallbackConfigFile(dependencies.paths),
+          renderTraefikFallbackConfig(),
+        );
         yield* dependencies.fileSystem.writeAtomic(
           routingStateFile(dependencies.paths),
           [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
@@ -198,6 +214,9 @@ export const makeTraefikProxyService = (
       yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(diagnosticHtmlFile(dependencies.paths));
       yield* removeAllCertificates(dependencies);
       routes.clear();
     }).pipe(Effect.mapError((cause) => proxyError("stop", cause))),
@@ -206,7 +225,7 @@ export const makeTraefikProxyService = (
 };
 
 export const proxy = Layer.effect(
-  ProxyService,
+  RouterService,
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem;
     const paths = yield* PathsService;
@@ -214,7 +233,7 @@ export const proxy = Layer.effect(
     const certificateAuthority = yield* CertificateAuthority;
     const events = yield* Effect.serviceOption(EventService);
     const socketProxy = yield* resolveLiveSocketProxy;
-    return makeTraefikProxyService({
+    return makeTraefikRouterService({
       certificateAuthority,
       fileSystem: {
         ...fileSystem,

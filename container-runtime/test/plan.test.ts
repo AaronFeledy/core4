@@ -6,6 +6,8 @@ import {
   containerHostConfigFragment,
   containerPortBindings,
   envArrayFromRecord,
+  fingerprintInspectPublishPorts,
+  fingerprintPlannedPublishPorts,
   mountSuffix,
 } from "@lando/container-runtime/plan";
 import { type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
@@ -52,6 +54,36 @@ const service = {
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {
+  test("omits ExtraHosts when host aliases are empty", () => {
+    // Given
+    const withoutAliases = { ...service, hostAliases: [] };
+    // When
+    const hostConfig = containerHostConfigFragment(plan, withoutAliases);
+    // Then
+    expect(hostConfig).not.toHaveProperty("ExtraHosts");
+  });
+
+  test.each([
+    {
+      aliases: [{ hostname: "host.lando.internal", ip: "host-gateway" }],
+      expected: ["host.lando.internal:host-gateway"],
+    },
+    {
+      aliases: [
+        { hostname: "host.lando.internal", ip: "host-gateway" },
+        { hostname: "api.local", ip: "10.0.0.1" },
+      ],
+      expected: ["host.lando.internal:host-gateway", "api.local:10.0.0.1"],
+    },
+  ])("renders host aliases in order when given $expected", ({ aliases, expected }) => {
+    // Given
+    const withAliases = { ...service, hostAliases: aliases };
+    // When
+    const hostConfig = containerHostConfigFragment(plan, withAliases);
+    // Then
+    expect(hostConfig.ExtraHosts).toEqual(expected);
+  });
+
   test("converts env records and mount read-only suffixes", () => {
     expect(envArrayFromRecord({ FOO: "bar", BAZ: "qux" })).toEqual(["FOO=bar", "BAZ=qux"]);
     expect(mountSuffix(true)).toBe(":ro");
@@ -211,6 +243,21 @@ describe("container plan helpers", () => {
     expect(containerCreateBodyFragment(plan, service)).not.toHaveProperty("User");
   });
 
+  test("uses a transient environment override without changing the service plan", () => {
+    // Given
+    const plannedEnvironment = service.environment;
+
+    // When
+    const body = containerCreateBodyFragment(plan, service, {
+      environment: { TOKEN: "resolved-canary" },
+    });
+
+    // Then
+    expect(body.Env).toEqual(["TOKEN=resolved-canary"]);
+    expect(service.environment).toBe(plannedEnvironment);
+    expect(service.environment).toEqual({ FOO: "bar", BAZ: "qux" });
+  });
+
   test("uses preserved user labels in the default create body with Lando labels winning", () => {
     const serviceWithLabels: ServicePlan = {
       ...service,
@@ -250,5 +297,66 @@ describe("container plan helpers", () => {
         { HostIp: "0.0.0.0", HostPort: "48080" },
       ],
     });
+  });
+});
+
+describe("publish port fingerprints", () => {
+  test("planned and inspect fingerprints match for the same host ports", () => {
+    // Given: a published endpoint on 127.0.0.1:38080.
+    const planned = fingerprintPlannedPublishPorts([
+      {
+        _tag: "published",
+        port: 80,
+        protocol: "tcp",
+        publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
+      },
+    ]);
+    const inspected = fingerprintInspectPublishPorts({
+      HostConfig: {
+        PortBindings: { "80/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
+      },
+    });
+    // Then: fingerprints are equal.
+    expect(planned).toBe(inspected);
+    expect(planned.length).toBeGreaterThan(0);
+  });
+
+  test("detects a host-port mismatch", () => {
+    // Given: plan wants 8080 but inspect has 38080.
+    const planned = fingerprintPlannedPublishPorts([
+      {
+        _tag: "published",
+        port: 80,
+        protocol: "tcp",
+        publication: { bindAddress: "127.0.0.1", hostPort: 8080 },
+      },
+    ]);
+    const inspected = fingerprintInspectPublishPorts({
+      HostConfig: {
+        PortBindings: { "80/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
+      },
+    });
+    // Then: fingerprints differ.
+    expect(planned).not.toBe(inspected);
+  });
+
+  test("unpinned planned host ports produce an empty fingerprint", () => {
+    // Given: a published endpoint with no hostPort pin.
+    const planned = fingerprintPlannedPublishPorts([
+      {
+        _tag: "published",
+        port: 80,
+        protocol: "tcp",
+        publication: { bindAddress: "127.0.0.1" },
+      },
+    ]);
+    const inspected = fingerprintInspectPublishPorts({
+      HostConfig: {
+        PortBindings: { "80/tcp": [{ HostIp: "127.0.0.1", HostPort: "32768" }] },
+      },
+    });
+    // Then: planned fingerprint is empty so bring-up will not recreate.
+    expect(planned).toBe("");
+    expect(inspected.length).toBeGreaterThan(0);
   });
 });

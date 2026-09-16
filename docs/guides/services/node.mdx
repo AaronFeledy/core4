@@ -7,20 +7,79 @@ tags: [beta, docs, node, service, runtime]
 
 # Add Node.js
 
-Put `type: node:22` on the primary service. Node has no bare `type: node` alias, so pin a version.
-Lando currently supports `node:lts` and `node:22`, and derives the default
-image (`node:22`) from the version you pin. Your repository is bind-mounted
-read-write at `/app`, which is also the working directory:
+Put `type: node` on the primary service to use the Node version your project
+already declares. Lando reads `.nvmrc` first, then checks `package.json`
+`engines.node` when it exists. Your repository is bind-mounted read-write at
+`/app`, which is also the working directory:
 
 ```yaml
 name: node-demo
 services:
   app:
-    type: "node:22"
+    type: node
     primary: true
 ```
 
+Add a project constraint next to the Landofile:
+
+```text
+22.11.0
+```
+
+That `.nvmrc` resolves to `node:22.11.0`. A major pin such as `22`, the Node 22
+LTS codename `jod`, or `lts/jod` resolves to `node:22`. The moving `lts/*`
+selector resolves to `node:lts`. If `package.json` also declares
+`engines.node`, its range must include the complete image selection from
+`.nvmrc`; conflicting constraints fail before Lando asks the provider to do
+anything.
+
 <Guide>
+  <Scenario id="infer-exact-version" render>
+    <Step name="start-from-project-pin">
+      <UseFixture name="node-inference" />
+      <Verify file="node-inference/.nvmrc" expect={{ regex: "^22[.]11[.]0\\s*$" }} />
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+The explicit-version example below keeps the version in the Landofile with
+`type: "node:22"`, without consulting project files.
+
+  <Scenario id="install-globals" render>
+    <Step name="scaffold">
+      <UseFixture name="node-globals" />
+    </Step>
+    <Step name="verify-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"gulp-cli\":\\s*\"latest\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: node-globals" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-invalid-global" render={false} reason="Plan-time tagged failure for an unsafe npm package name">
+    <Step name="scaffold">
+      <UseFixture name="node-globals-invalid" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "Unsupported npm package" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="node-demo" />
@@ -51,12 +110,78 @@ lando npm start
 lando exec app -- node server.js
 ```
 
-The default HTTP port the service exposes is `3000`.
+The default HTTP port is `3000`. Lando sets `PORT=3000` but keeps the default command idle, so it does not probe a server you have not started.
 
-## Pin a version
+Set `port:` when your app listens somewhere else. Lando uses it for the internal endpoint, the default `PORT` value, and the generated healthcheck when you also author a server `command:`:
 
-Pin a different supported Node version, or set `image:` to use a custom
-Node base image:
+```yaml
+services:
+  app:
+    type: "node:22"
+    port: 5173
+    command: node server.mjs
+```
+
+An explicit `environment.PORT` still wins for the process environment. The endpoint and generated healthcheck continue to use `port:`, so keep those values aligned unless your command intentionally translates between them.
+
+  <Scenario id="authored-port" render>
+    <Step name="scaffold">
+      <UseFixture name="node-port" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*5173" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: node-port" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+## Install global npm packages
+
+Tools your whole image needs go on `globals`, a map of package name to version specifier:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    globals:
+      yarn: "1.22.4"
+      gulp-cli: "latest"
+```
+
+They install with `npm install -g` while the image is baked, so `gulp` is on `PATH` without an extra `lando npm install -g` every rebuild.
+
+Lando normalizes the map first: names and version specifiers are validated at plan time, and packages install in sorted order. Reordering the YAML does not rebuild the image; adding, removing, or re-pinning a package does, because the normalized list is part of the image build key.
+
+Specifiers are ordinary npm spellings such as `1.22.4`, `^17.0.0`, `>=5 <6`, or a dist-tag like `latest`. Anything else fails at plan time, before any container work, naming the package that broke.
+
+`globals` applies to a custom `image:` too, so the image you bring needs `npm`.
+
+## Read a nested package
+
+Set `packageRoot` when the Node package lives below the app root. This changes
+only where Lando reads `.nvmrc` and `package.json`. It does not change mounts or
+the container working directory.
+
+```yaml
+services:
+  app:
+    type: node
+    packageRoot: apps/web
+```
+
+The directory must exist inside the app root. Lando rejects absolute paths,
+parent traversal, and symbolic links for inference inputs.
+
+## Pin the service type
+
+Use an explicit type when the Landofile, rather than project files, should own
+the version. Lando supports `node:lts` and `node:22` as explicit types:
 
 ```yaml
 services:
@@ -70,5 +195,9 @@ services:
     type: "node:22"
     image: node:22-bookworm
 ```
+
+Custom `image:` values work with explicit Node types. Don't combine `image:`
+with bare `type: node`; inference must choose the image without a second source
+of truth.
 
 </Guide>

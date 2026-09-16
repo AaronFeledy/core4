@@ -6,6 +6,7 @@ import {
   DESIRED_HTTPS_PORT,
   DESIRED_HTTP_PORT,
   type ForwardOutcome,
+  type ForwardProbeRole,
   probeForward,
 } from "./port-acquisition.ts";
 import { ProxydBinaryNotFound } from "./socket-proxy-errors.ts";
@@ -56,7 +57,11 @@ export interface InstallSocketProxyInput extends HostPathAccess {
 export interface StartSocketsInput {
   readonly processRunner: Context.Tag.Service<typeof ProcessRunner>;
   readonly privilege: Context.Tag.Service<typeof PrivilegeService>;
-  readonly probeForward?: (host: string, port: number) => Effect.Effect<ForwardOutcome>;
+  readonly probeForward?: (
+    host: string,
+    port: number,
+    role: ForwardProbeRole,
+  ) => Effect.Effect<ForwardOutcome>;
 }
 
 const SOCKET_UNITS = ["lando-proxy-http.socket", "lando-proxy-https.socket"] as const;
@@ -95,6 +100,30 @@ export const isSocketProxyInstalled = (access: HostPathAccess): Effect.Effect<bo
   });
 
 const hopTargetPattern = (port: number): RegExp => new RegExp(`127\\.0\\.0\\.1:${port}(?!\\d)`, "u");
+
+const hopPortFromUnit = (text: string): number | undefined => {
+  const match = /127\.0\.0\.1:(\d+)/u.exec(text);
+  const raw = match?.[1];
+  if (raw === undefined) return undefined;
+  const port = Number(raw);
+  return Number.isSafeInteger(port) && port > 0 ? port : undefined;
+};
+
+export const readHelperHopTargets = (
+  access: HostPathAccess,
+): Effect.Effect<{ readonly httpTarget: number; readonly httpsTarget: number } | undefined> =>
+  Effect.gen(function* () {
+    const httpUnit = yield* access
+      .readText(HTTP_SERVICE_PATH)
+      .pipe(Effect.catchAll(() => Effect.succeed("")));
+    const httpsUnit = yield* access
+      .readText(HTTPS_SERVICE_PATH)
+      .pipe(Effect.catchAll(() => Effect.succeed("")));
+    const httpTarget = hopPortFromUnit(httpUnit);
+    const httpsTarget = hopPortFromUnit(httpsUnit);
+    if (httpTarget === undefined || httpsTarget === undefined) return undefined;
+    return { httpTarget, httpsTarget };
+  });
 
 const hopsMatchTargets = (
   access: HostPathAccess,
@@ -155,8 +184,8 @@ const controlSockets = (
       return { kind: "failed", exitCode: result.exitCode, stderr: result.stderr };
     }
     const probe = input.probeForward ?? probeForward;
-    const http = yield* probe("127.0.0.1", DESIRED_HTTP_PORT);
-    const https = yield* probe("127.0.0.1", DESIRED_HTTPS_PORT);
+    const http = yield* probe("127.0.0.1", DESIRED_HTTP_PORT, "http");
+    const https = yield* probe("127.0.0.1", DESIRED_HTTPS_PORT, "https");
     return { kind: "started", http, https };
   });
 
