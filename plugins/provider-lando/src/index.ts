@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 
 import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
@@ -963,11 +963,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             yield* teardown;
             return;
           }
-          const teardownExit = yield* Effect.exit(teardown);
+          yield* teardown;
           yield* forgetPlan(target.app);
-          if (Exit.isFailure(teardownExit)) {
-            return yield* Effect.failCause(teardownExit.cause);
-          }
         }),
       logs: (target, logOptions) =>
         Stream.unwrap(
