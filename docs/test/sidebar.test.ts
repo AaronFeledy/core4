@@ -20,6 +20,7 @@ const RECIPE_IDS = [
   "lemp",
   "mean",
   "nextjs",
+  "node-api",
   "rails",
   "sveltekit",
   "symfony",
