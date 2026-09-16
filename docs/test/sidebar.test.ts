@@ -123,6 +123,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/install/wsl");
     expect(slugs).toContain("guides/recipes/lamp-stack-variants");
     expect(slugs).toContain("guides/recipes/django-workflow");
+    expect(slugs).toContain("guides/recipes/symfony-workflow");
     expect(slugs).toContain("guides/recipes/laravel-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
     expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");
