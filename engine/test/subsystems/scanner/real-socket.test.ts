@@ -17,10 +17,20 @@ let port = 0;
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
-    fetch: (request) =>
-      new URL(request.url).pathname === "/healthz"
+    fetch: (request) => {
+      if (new URL(request.url).pathname === "/endless") {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("still streaming"));
+            },
+          }),
+        );
+      }
+      return new URL(request.url).pathname === "/healthz"
         ? new Response(null, { status: 204 })
-        : new Response("boom", { status: 500 }),
+        : new Response("boom", { status: 500 });
+    },
   });
   port = server.port ?? 0;
 });
@@ -77,6 +87,15 @@ const scanAgainst = (hostPort: number, scanner: ScanPlan) =>
   );
 
 describe("post-start URL scan against a real socket", () => {
+  test("accepts real response headers without waiting for an endless body", async () => {
+    // Given: the socket serves a body that never reaches EOF.
+    const settings = { enabled: true, path: "/endless", okCodes: [], retries: 0, timeoutMs: 250 };
+    // When: the live scanner probes that URL.
+    const result = await scanAgainst(port, settings);
+    // Then: receiving headers is sufficient for a green verdict.
+    expect(result.endpoints[0]).toMatchObject({ outcome: "green", statusCode: 200 });
+  });
+
   test("green when the resolved path answers with an accepted status", async () => {
     // Given: a real server answering 204 only on /healthz.
     const result = await scanAgainst(port, {

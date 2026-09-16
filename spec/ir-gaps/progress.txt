@@ -796,3 +796,33 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - **Out-of-scope finding:** `curl http://appserver.us626-verify.lndo.site:8000/` returned Traefik `404 page not found` after setup warned 80/443 were in use and fell back to 8000/4443; HTTPS `:4443` served the app. Same host/WSL mirrored bind as prior verifies, not US-626.
 - **Out-of-scope finding:** `lando config --format=yaml` emits `DB_PASSWORD: [redacted]` unquoted, which YAML parses as a sequence. JSON keeps the string sentinel. Secret is not leaked; quoting belongs with serializer/redaction encoding, not this view story.
 ---
+## 2026-09-15 19:15 - Babysit
+- PR: #998 https://github.com/AaronFeledy/core4/pull/998
+- CI outcome: fail then pass (schema-snapshot check:schema-compatibility; guide-scenarios-linux-x64 and provider-integration-linux-x64 confirm jobs were downstream skips)
+- Review feedback: fixed (recorded the intentional `command:meta:config` -> GlobalConfigView ref change as two justified entries in sdk/compatibility-exceptions.json; local Bugbot found no bugs)
+- Merge: merged (squash)
+---
+
+## 2026-09-15 - US-628
+- Startup URL scans now read only status and headers within a scope, close response streams without buffering bodies, limit concurrent probes to four, and report measured elapsed time for timeout and deadline diagnostics. Failed scans still warn without failing start; interruption propagates.
+- The HTTP trust seam explicitly sends loopback and configured NO_PROXY matches directly, without exempting router domains or callers. A narrow transport adapter avoids Bun's ambient-proxy fallback while preserving custom CA verification, redirects, streaming decompression, cancellation, and paired lifecycle events.
+- Permanent serial live tests prove the actual start CLI probes its published URL, a failing response warns at exit zero, and interrupting a real start aborts its in-flight scan. Explicit matching managed-runtime socket opt-in is required; missing or mismatched opt-in safely skips.
+- Verification: final gate:pr passed, including typecheck, lint, codegen, boundaries, and guide drift; 123 final focused tests passed, the HTTP package's 112 tests passed, and the router-and-scanner guide passed three scenarios. Regression failures were captured before implementation. Changed TypeScript diagnostics were clean; acceptance review approved after fixes and its final gate condition passed.
+- Sandbox verification passed all three permanent live scenarios with three scoped app/volume cleanup receipts. Owned temporary binaries and tmux windows were removed; shared sandbox resources were preserved. No full suite was run.
+- **Learnings for future iterations:**
+  - Bun 1.4 treats empty, null, and false fetch proxy options as ambient-proxy fallback, not explicit direct routing. A direct adapter must also preserve compressed response semantics for non-scanner consumers.
+  - Live tests using the bundled managed provider must require an explicit socket override matching that provider's actual socket; socket existence alone is not safe test opt-in.
+---
+## 2026-09-15 20:51 - US-628 Drift Audit
+- Trigger: 1 cycle, 1587 changed lines, 8 commits
+- Scope: the direct HTTP adapter is this story's trust-seam policy, not absorbed adjacent work; no public SDK surface and no prd.json edits
+- Weakened proofs: fail-first is not in git history (implementation and tests landed together); remaining ACs still have production-path proofs for scoped status reads, concurrency 4, elapsed diagnostics, local-endpoint policy, and env-gated live start
+- Ceremony: new http-client modules are single-importer but own redirect/direct transport, not forwarding facades; left uninlined because live.ts is already over the size ceiling
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 114 focused unit tests pass. Live integration not re-run (host-unsafe).
+---
+## 2026-09-15 21:10 - US-628 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app, and proved post-start scanning against the binary: default `/` scan succeeded with no URL warning; `scanner.path: /nope` warned `URL scan for service appserver at https://appserver.us628-verify.lndo.site:4443/nope answered with an unaccepted status: HTTP 404` while start still exited 0; `scanner: false` emitted no URL-scan warning. HTTPS curl and `lando exec` printed `us628-ok`; `lando info` listed the published HTTPS URL; invalid `retries: -1` failed lint on `services.appserver.scanner.retries`. App destroyed; temp dir removed.
+- **Out-of-scope finding:** setup warned ports 80/443 were in use and fell back to 8000/4443; `curl http://appserver.us628-verify.lndo.site:8000/` returned 404. Same host/WSL mirrored bind as prior verifies; HTTPS-only diagnostic is US-624, not US-628.
+- **Out-of-scope finding:** `lando destroy --yes` against a Landofile with `scanner.retries: -1` failed `LandofileValidationError` before teardown. Restoring a valid Landofile then destroy succeeded. Belongs to US-629 invalid-config teardown, not this scanner story.
+---

@@ -300,7 +300,23 @@ describe("DownloaderLive threads network trust through HttpClient", () => {
         }),
       ).pipe(
         Effect.provideService(NetworkTrust, trust),
-        Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(captureFetch, () => [])))),
+        Effect.provide(
+          DownloaderLive.pipe(
+            Layer.provide(
+              makeHttpClientLive(
+                captureFetch,
+                () => [],
+                (url, init) =>
+                  captureFetch(url.href, {
+                    method: init.method,
+                    headers: init.headers,
+                    signal: init.signal,
+                    ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
+                  }),
+              ),
+            ),
+          ),
+        ),
       ),
     );
     return captured[0] ?? {};
