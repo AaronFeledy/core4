@@ -1,6 +1,6 @@
 # WordPress
 
-`lando init --recipe wordpress` scaffolds PHP, MariaDB, WP-CLI, and Composer.
+`lando init --recipe wordpress` scaffolds PHP, MariaDB, WP-CLI tooling, and Composer.
 
 ```sh
 lando init --recipe wordpress --name=my-wordpress-app --yes

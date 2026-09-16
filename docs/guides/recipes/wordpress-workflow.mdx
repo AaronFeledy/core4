@@ -47,7 +47,7 @@ Refresh the plan and rebuild:
 
 ```sh
 lando app:cache:refresh
-lando rebuild
+lando rebuild -y
 ```
 
 `lando restart` alone reuses the previous image. After rebuild, confirm the tools:
@@ -111,7 +111,7 @@ Core download wants more than the default 128M PHP memory limit. Raise it for th
 lando exec appserver -- php -d memory_limit=512M /usr/local/bin/wp --allow-root core download
 lando wp --allow-root config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database --skip-check
 lando wp --allow-root core install \
-  --url='https://wp-demo.lndo.site:8443' \
+  --url='https://wp-demo.lndo.site' \
   --title='WP Demo' \
   --admin_user=admin \
   --admin_password=admin \
@@ -119,7 +119,7 @@ lando wp --allow-root core install \
   --skip-email
 ```
 
-Match `--url` to the HTTPS endpoint `lando info` prints (including `:8443` when the proxy fell back). Then:
+Match `--url` to the HTTPS endpoint `lando info` prints (add the port when info shows one). Then:
 
 ```sh
 lando wp --allow-root core is-installed
