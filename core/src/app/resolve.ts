@@ -36,7 +36,7 @@ const toAppResolveError = (cause: unknown): AppResolveError => {
   if (tag === "AppIdReservedError") {
     return new AppResolveError({
       message: "The resolved app uses the reserved `global` id and cannot be opened as a user app.",
-      reason: "mismatch",
+      reason: "not-found",
       detail: "reserved-id",
       cause,
     });

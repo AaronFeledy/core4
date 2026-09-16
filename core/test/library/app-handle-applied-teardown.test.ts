@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -48,34 +48,40 @@ const withEmptyAppRoot = async <A>(use: (root: string) => Promise<A>): Promise<A
   }
 };
 
+const makeHarness = (root: string) => {
+  let appliedPlan: AppPlan | undefined = appliedPlanAt(root);
+  const destroyCalls: Array<{ readonly removeState?: boolean; readonly volumes: boolean }> = [];
+  const provider = {
+    ...TestRuntimeProvider,
+    appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
+    destroy: (_target: unknown, options: { readonly removeState?: boolean; readonly volumes: boolean }) =>
+      Effect.sync(() => {
+        destroyCalls.push(options);
+        if (options.removeState !== false) appliedPlan = undefined;
+      }),
+  };
+  const layers = [
+    Layer.succeed(RuntimeProvider, provider),
+    Layer.succeed(RuntimeProviderRegistry, {
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+      resolveAppliedPlan: () => Effect.sync(() => appliedPlan),
+    }),
+    Layer.succeed(RouterService, TestRouterService),
+  ];
+  return { appliedPlan: () => appliedPlan, destroyCalls, layers };
+};
+
 describe("@lando/core applied-state App handle teardown", () => {
   test("a fresh runtime resolves missing desired config and runs stop then destroy from applied state", async () => {
     await withEmptyAppRoot(async (root) => {
-      let appliedPlan: AppPlan | undefined = appliedPlanAt(root);
-      const destroyCalls: Array<{ readonly removeState?: boolean; readonly volumes: boolean }> = [];
-      const provider = {
-        ...TestRuntimeProvider,
-        appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
-        destroy: (_target: unknown, options: { readonly removeState?: boolean; readonly volumes: boolean }) =>
-          Effect.sync(() => {
-            destroyCalls.push(options);
-            if (options.removeState !== false) appliedPlan = undefined;
-          }),
-      };
-      const layers = [
-        Layer.succeed(RuntimeProvider, provider),
-        Layer.succeed(RuntimeProviderRegistry, {
-          list: Effect.succeed([providerId]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-          resolveAppliedPlan: () => Effect.sync(() => appliedPlan),
-        }),
-        Layer.succeed(RouterService, TestRouterService),
-      ];
+      await writeFile(join(root, ".lando.yml"), "name: global\nservices: {}\n");
+      const harness = makeHarness(root);
 
       const result = await Effect.runPromise(
         Effect.scoped(
-          openLandoRuntime({ plugins: { policy: "bundled-only", layers } }).pipe(
+          openLandoRuntime({ plugins: { policy: "bundled-only", layers: harness.layers } }).pipe(
             Effect.flatMap((runtime) => runtime.app()),
             Effect.flatMap((app) =>
               app
@@ -92,11 +98,31 @@ describe("@lando/core applied-state App handle teardown", () => {
 
       expect(result.stopped.app).toBe("library-applied-teardown");
       expect(result.destroyed.app).toBe("library-applied-teardown");
-      expect(destroyCalls).toEqual([
+      expect(harness.destroyCalls).toEqual([
         { removeState: false, volumes: false },
         { removeState: true, volumes: false },
       ]);
-      expect(appliedPlan).toBeUndefined();
+      expect(harness.appliedPlan()).toBeUndefined();
+    });
+  });
+
+  test("a caller selector mismatch remains fail-closed when desired config uses the reserved id", async () => {
+    await withEmptyAppRoot(async (root) => {
+      await writeFile(join(root, ".lando.yml"), "name: global\nservices: {}\n");
+      const harness = makeHarness(root);
+
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          openLandoRuntime({ plugins: { policy: "bundled-only", layers: harness.layers } }).pipe(
+            Effect.flatMap((runtime) => runtime.app({ id: "different-app", root: AbsolutePath.make(root) })),
+            Effect.flatMap((app) => app.destroy()),
+          ),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(harness.destroyCalls).toEqual([]);
+      expect(harness.appliedPlan()).toEqual(appliedPlanAt(root));
     });
   });
 });
