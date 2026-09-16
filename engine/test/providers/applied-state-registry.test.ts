@@ -24,6 +24,7 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
@@ -56,7 +57,7 @@ const unavailable = (providerId: string, operation: string) =>
 const moduleFor = (
   id: string,
   inventory: Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError>,
-  initialize: Effect.Effect<void, ProviderUnavailableError>,
+  initialize: Effect.Effect<RuntimeProviderShape, ProviderUnavailableError>,
 ): LandoPluginModule => {
   const providerId = ProviderId.make(id);
   const manifest = Schema.decodeUnknownSync(PluginManifest)({
@@ -68,7 +69,10 @@ const moduleFor = (
   const contribution = {
     id: providerId,
     appliedPlans: () => inventory,
-    make: () => initialize.pipe(Effect.as({ ...TestRuntimeProvider, id, appliedPlans: inventory })),
+    make: () =>
+      initialize.pipe(
+        Effect.map((provider) => ({ ...TestRuntimeProvider, ...provider, id, appliedPlans: inventory })),
+      ),
   };
   return { name: manifest.name, manifest, runtimeProviders: new Map([[providerId, contribution]]) };
 };
@@ -120,7 +124,7 @@ test("recovers the persisted owner when an unrelated provider cannot initialize"
   // Given: the default is Podman, but Lando owns the saved app; Podman has no saved claim.
   let unrelatedInitializations = 0;
   const modules = [
-    moduleFor("lando", Effect.succeed([plan]), Effect.void),
+    moduleFor("lando", Effect.succeed([plan]), Effect.succeed(TestRuntimeProvider)),
     moduleFor(
       "podman",
       Effect.succeed([]),
@@ -151,7 +155,7 @@ test("propagates another provider's persisted inventory failure even with a matc
   const failure = unavailable("podman", "applied-state.list");
   // When
   const result = await run([
-    moduleFor("lando", Effect.succeed([plan]), Effect.void),
+    moduleFor("lando", Effect.succeed([plan]), Effect.succeed(TestRuntimeProvider)),
     moduleFor("podman", Effect.fail(failure), Effect.fail(unavailable("podman", "select"))),
   ]);
   // Then
@@ -173,7 +177,7 @@ test("rejects a mismatched supplier without initializing its runtime", async () 
 test("rejects conflicting persisted root claims even when one runtime is unavailable", async () => {
   // Given / When
   const result = await run([
-    moduleFor("lando", Effect.succeed([plan]), Effect.void),
+    moduleFor("lando", Effect.succeed([plan]), Effect.succeed(TestRuntimeProvider)),
     moduleFor(
       "podman",
       Effect.succeed([{ ...plan, provider: ProviderId.make("podman") }]),
@@ -189,9 +193,37 @@ test("skips unavailable unused providers when no persisted owner exists", async 
   const failure = unavailable("podman", "select");
   // When
   const result = await run([
-    moduleFor("lando", Effect.succeed([]), Effect.void),
+    moduleFor("lando", Effect.succeed([]), Effect.succeed(TestRuntimeProvider)),
     moduleFor("podman", Effect.succeed([]), Effect.fail(failure)),
   ]);
   // Then
   expect(result).toMatchObject({ _tag: "Right", right: undefined });
 });
+
+test.each([false, true])(
+  "inspects runtime resources only when the daemon is running: %s",
+  async (running) => {
+    // Given: availability means supported, not that the managed daemon is running.
+    const inspected: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      isAvailable: Effect.succeed(true),
+      getStatus: Effect.succeed({ running }),
+      list: () =>
+        Effect.sync(() => {
+          inspected.push("services");
+          return [];
+        }),
+      listVolumes: () =>
+        Effect.sync(() => {
+          inspected.push("volumes");
+          return [];
+        }),
+    };
+    // When
+    const result = await run([moduleFor("lando", Effect.succeed([]), Effect.succeed(provider))]);
+    // Then
+    expect(result).toMatchObject({ _tag: "Right", right: undefined });
+    expect(inspected).toEqual(running ? ["services", "volumes"] : []);
+  },
+);

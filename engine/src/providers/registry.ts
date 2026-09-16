@@ -219,7 +219,15 @@ export const makeRuntimeProviderRegistry = (
                   .appliedPlans(context)
                   .pipe(Effect.provideService(PathsService, paths)),
                 isAvailable: runtime.pipe(
-                  Effect.flatMap((provider) => provider.isAvailable),
+                  Effect.flatMap((provider) =>
+                    provider.isAvailable.pipe(
+                      Effect.flatMap((available) =>
+                        available
+                          ? Effect.map(provider.getStatus, (status) => status.running)
+                          : Effect.succeed(false),
+                      ),
+                    ),
+                  ),
                   Effect.catchAll(() => Effect.succeed(false)),
                 ),
                 list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
