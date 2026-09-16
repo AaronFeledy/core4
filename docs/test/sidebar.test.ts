@@ -19,6 +19,7 @@ const RECIPE_IDS = [
   "laravel",
   "lemp",
   "mean",
+  "nextjs",
   "rails",
   "sveltekit",
   "symfony",
@@ -131,6 +132,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/symfony-workflow");
     expect(slugs).toContain("guides/recipes/laravel-workflow");
     expect(slugs).toContain("guides/recipes/sveltekit-workflow");
+    expect(slugs).toContain("guides/recipes/nextjs-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
     expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");
     expect(slugs).toContain("guides/recipes/programmatic-recipe");
