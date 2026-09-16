@@ -1,10 +1,10 @@
 name: planetscale-demo
-env_file:
-  - .env
 services:
   app:
     type: "node:22"
     primary: true
+    env_file:
+      - .env
   db:
     type: mysql
     creds:
