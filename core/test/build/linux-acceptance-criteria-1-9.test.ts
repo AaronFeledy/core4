@@ -98,7 +98,7 @@ describe("release acceptance criteria 1-9 on linux-x64", () => {
     async () => {
       const updateSpotChecks: ReadonlyArray<string> = [
         "verifies the sibling signature and certificate before parsing or trusting manifest fields",
-        "POSIX self-update replaces the binary atomically and re-execs with preserved argv and env",
+        "POSIX core-only self-update re-execs with a one-shot result handoff",
         "POSIX self-update restores the backup when the replaced binary fails its launch probe",
         "POSIX self-update reports rollback EACCES as UpdatePermissionError",
       ];

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { DateTime, Duration, Effect, Stream } from "effect";
 
 import type { RetryPolicy } from "@lando/sdk/probe";
@@ -333,7 +333,9 @@ describe("provider-lando ensureRuntime factory wiring", () => {
         }),
       );
 
-      await runScopedExit(provider.exec({ app: appId, service: serviceName }, { command: ["echo", "hi"] }));
+      await runScopedExit(
+        provider.exec({ app: appId, service: serviceName, plan }, { command: ["echo", "hi"] }),
+      );
 
       expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
       expect(await readFile(join(tempDir, "run", "podman.pid"), "utf8")).toBe("42");

@@ -81,6 +81,9 @@
       "path": "./plugins/sql"
     },
     {
+      "path": "./plugins/lando4"
+    },
+    {
       "path": "./tsconfig.test.json"
     }
   ]

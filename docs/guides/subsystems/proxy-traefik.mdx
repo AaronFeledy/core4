@@ -71,6 +71,28 @@ lando start
 lando info
 ```
 
+## Read an unmatched host
+
+Hit a hostname the proxy does not know, such as `web.no-such-app.lndo.site`, and you always get HTTP **404**. Which body you see depends on the request:
+
+- Browser GET or HEAD that prefers `text/html` (positive `q` on Accept) → HTML titled **Route not found | Lando**, status line **`404 · Lando proxy`**, and steps that point you at `lando start` → `lando info` → `lando doctor`
+- Default curl, `Accept: application/json`, `text/html;q=0`, or POST (even with `text/html`) → plain `text/plain; charset=utf-8` body exactly `404 page not found` plus a newline
+- HEAD with an HTML Accept → HTML `Content-Type`, empty body
+
+Use the URL from `lando info`. Guessing the hostname is how you land on the proxy page instead of your app. Some services publish **HTTPS-only** routes; HTTP to that hostname can hit this proxy diagnostic even when HTTPS to the same host returns the app (200).
+
+Illustrative checks:
+
+```sh
+curl -i http://web.no-such-app.lndo.site/
+curl -i -H 'Accept: text/html' http://web.no-such-app.lndo.site/
+curl -i -X POST -H 'Accept: text/html' http://web.no-such-app.lndo.site/
+```
+
+Wrong host, stopped app, or HTTPS-only route on HTTP: same proxy rules. Matched HTTPS still returns the app.
+
+When the host *does* match and the request reaches a Lando web server (for example default `static:nginx`), missing files and bare directories look different: **`404 · Lando web server`** / "Page not found", or **`403 · Lando web server`** / "Access denied". Same path on an unmatched host stays **`404 · Lando proxy`**. See [Serve a static site](../services/static.mdx).
+
 ## Verify
 
 ```sh

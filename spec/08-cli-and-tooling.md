@@ -114,16 +114,18 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 |---|---|---|---|
 | `app:cache:refresh` | *(none)* | `app` | Rebuild the app plan, tooling graph, and app command index without starting services |
 | `app:config` | *(none — `config` is reserved by `meta:config`)* | `app` | Read/write the current app's Landofile (§8.2.1) |
-| `app:config:translate` | *(none)* | `app` | Run config translators and optionally apply generated Landofile fragments (§8.2.1) |
+| `app:config:explain` | *(none)* | `plugins` | Report recipe provenance and managed or taken-over value sites; `--format json` (§8.2.1) |
+| `app:config:migrate` | *(none)* | `plugins` | Propose and transactionally commit recipe migration edges; `--yes`, `--dry-run`, `--format json` (§8.2.1) |
+| `app:config:translate` | *(none)* | `plugins` | Explicit conversion with `--from`, `--to`, and optional `--write`; never plans or contacts a provider (§8.2.1) |
 | `app:destroy` | `destroy` | `app` | Destroy the current app's resources |
 | `app:exec` | `exec` | `app` | Execute a command inside a service |
 | `app:includes:update` | *(none)* | `minimal` | Refresh one or more `includes:` lockfile entries (§7.7.4); with no arguments, refreshes all |
 | `app:includes:verify` | *(none)* | `minimal` | Re-check every `includes:` checksum without updating; succeeds without network access on a warm cache (§7.7.4, §15.C) |
-| `app:info` | `info` | `app` | Print app/service runtime information |
+| `app:info` | `info` | `app` | Print app/service runtime information; repeatable `--service/-s` selects services without dependencies |
 | `app:logs` | `logs` | `app` | Stream service logs |
 | `app:open` | `open` | `app` | Open a resolved app URL in the host browser (§8.2.5) |
-| `app:rebuild` | `rebuild` | `app` | Rebuild and restart services |
-| `app:restart` | `restart` | `app` | Stop then start the app |
+| `app:rebuild` | `rebuild` | `app` | Rebuild and restart services; repeatable `--service/-s` selects a prerequisite closure |
+| `app:restart` | `restart` | `app` | Stop then start the app inside `pre-restart` / `post-restart` brackets |
 | `app:shell` | `shell` | `app` | Open an interactive Bun Shell with the current app's `LANDO_*` env, host paths, and provider-exec aliases pre-set (§8.2.3) |
 | `app:share` | `share` | `app` | Start a public tunnel to a resolved app route or service endpoint; `--target`, `--provider`, `--detach`, `--format json` (§10.2.2) |
 | `app:share:list` | *(none)* | `app` | List foreground/detached public tunnel sessions for the current app (§10.2.2) |
@@ -131,7 +133,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `app:ssh` | `ssh` | `app` | Alias of `app:exec` with default `--interactive --tty` |
 | `app:start` | `start` | `app` | Start the current app |
 | `app:stop` | `stop` | `app` | Stop the current app |
-| `apps:init` | `init` | `minimal` | Generate a new Lando app (§8.8) |
+| `apps:init` | `init` | `plugins` | Generate a new Lando app (§8.8) |
 | `apps:list` | `list` | `minimal` | List apps known to Lando |
 | `apps:poweroff` | `poweroff` | `provider` | Stop every Lando-managed service across apps |
 | `apps:scratch:destroy` | `scratch:destroy` | `scratch` | Destroy a scratch app's resources without first stopping; `<id>` required, `--keep-volumes` retains volumes for inspection (§21.10) |
@@ -180,7 +182,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 
 **Command requirements** (canonical ids; the same behaviors apply when invoked through a top-level alias):
 
-- `app:info` supports `--deep`, repeated `--filter`, `--path`, `--service`, `--format json|table|yaml`.
+- `app:info` supports repeatable `--service/-s` (library/MCP `services?: ServiceName[]`) and `--format json|table|yaml`. It MUST deduplicate names on first occurrence and validate all names before inspection. Selection MUST NOT include dependencies. It returns the existing schema-stable info shape in app-plan order for selected services only; an empty selection means all services. It MUST NOT emulate legacy output filters or raw inspect.
 - `app:cache:refresh` performs full app bootstrap, rebuilds the app plan cache, compiled tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.bin`, then exits without contacting the provider unless app materialization needs missing Lando-managed dependencies.
 - `app:includes:update [<source>...]` resolves the named include sources fresh, writes new `<appRoot>/.lando.lock.yml` entries with refreshed refs and checksums, and invalidates the app plan cache. With no positional arguments, refreshes every entry. Supports `--no-network` to fail fast when a refresh would require network and `--check` to report would-be drift without writing. Network access is required by definition.
 - `app:includes:verify` re-reads every entry in `.lando.lock.yml` and re-computes the checksum of the cached fragment under `<userCacheRoot>/includes/`. Succeeds without network access when every entry resolves from the warm cache. Reports drift, missing cache entries, or checksum mismatches as a non-zero exit with `IncludeLockError` and remediation pointing at `app:includes:update`. Supports `--format json|table`.
@@ -188,7 +190,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 - `app:logs` streams app logs and supports `--service`, `--follow`, `--tail`, `--since`.
 - `app:stop` stops the current app.
 - `apps:poweroff` stops every Lando-managed service across apps (across providers when capability allows).
-- `app:restart` is `app:stop` + `app:start`.
+- `app:restart` remains `app:stop` followed by `app:start`. It MUST publish App-scope `pre-restart` before that bracket and `post-restart` after successful completion (§3.5), while preserving the inner stop/start events. Landofile `events:` MAY target both restart events (§8.5.7).
 - `app:exec` runs a command in a service. `app:ssh` is `app:exec` with default `--interactive --tty`. Both forward the host agent-context env allowlist per §6.9.1.
 - `app:open` opens a resolved app URL in the host browser; `--service`, `--route`, `--all`, `--print` (§8.2.5). It is `hostProxyAllowed: true` so `lando open` typed inside a container round-trips through the host proxy's `openUrl` channel (§10.10.2).
 - `meta:mcp` serves MCP over stdio; it is interactive/long-running (exempt from `--format json` in serve mode per §8.11.4) and MUST NOT be on the host-proxy or recipe post-init allowlists (§8.2.6, §10.14).
@@ -196,15 +198,16 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 - `app:shell` requires a TTY; with `--no-interactive` it errors with `ShellRequiresTtyError`. Defaults to host mode (a `Bun.$`-backed REPL via `ShellRunner`) so ad-hoc commands run cross-platform without leaving the project's env; `--service <name>` runs the REPL inside a service via provider exec instead. Behavioral details in §8.2.3.
 - `app:destroy` requires confirmation unless `--yes` is passed.
 - `meta:events:follow` supports `--follow`, `--format json|table`, repeated `--event`, `--scope`, and `--since`; it reads the EventService trace sink used by diagnostics/e2e and does not subscribe to plugin events itself.
-- `meta:uninstall` requires confirmation unless `--yes` is passed, supports `--dry-run`, removes the binary when Lando owns the install path, removes `<userDataRoot>` and `<userCacheRoot>`, and leaves provider-owned runtime resources to provider-specific cleanup docs.
+- `meta:uninstall` requires confirmation unless `--yes` is passed, supports `--dry-run`, and MUST remove only recorded v4-owned entries (the `lando4`/`lando4.exe` binary when Lando owns the install path, plus recorded v4 state). Unrecorded contents of `<userDataRoot>` and `<userCacheRoot>`, Lando 3 executables and state, and foreign installations MUST remain untouched. Provider-owned runtime resources are left to provider-specific cleanup docs (§17.7).
 - `--clear` is accepted at any level and purges relevant caches.
+- `app:rebuild` accepts repeatable `--service/-s` (library/MCP `services?: ServiceName[]`). It MUST deduplicate on first occurrence, validate every name before any provider action, and compute selected services plus transitive `dependsOn` prerequisites in stable topological plan order. It MUST stop, force-build, and restart exactly that closure, including already-running prerequisites; unrelated services and dependents MUST remain untouched. An empty selection retains whole-app behavior.
 - `app:start` and `app:rebuild` materialize app-declared Lando dependencies when needed: app-scoped plugins from `plugins:`, remote includes without warm cache entries, provider artifacts, and provider/runtime metadata. After a successful materialization/build, repeating `app:start` for the same app MUST NOT require network access unless a declared source is missing from the cache, the lockfile changed, or the app's own build/tooling commands require network.
 
 - `apps:poweroff` stops every Lando-managed service across user apps **and** the global app by default; `--keep-global` opts out and reports "kept global app running" in the renderer's final summary (§20.6.4, §20.7).
 - `apps:poweroff` ALSO stops every running scratch Lando app by default; `--keep-scratch` opts out and reports "kept N scratch app(s) running" in the renderer's final summary (§21.6.3, §21.10). `--keep-global` and `--keep-scratch` compose: `apps:poweroff --keep-global --keep-scratch` stops only user apps.
 - `meta:global:start` (and the auto-start path triggered by user-app `AppFeature.requires.globalServices`, §20.6.3) refuses to run when no `globalServices:` contributions are installed; the user is told to install at least one plugin that contributes a global service or to run `meta:setup`.
 - `meta:global:list --format json` is the canonical machine-readable shape of "what's available in the global app on this host"; embedding hosts and CI scripts MUST use it instead of parsing the rendered table.
-- `apps:scratch:start` requires either `--fork` (use the cwd-walk Landofile as the source) or `--from <recipe-ref>` (render a recipe into the scratch root); passing both, or neither, fails fast with `ScratchSourceUnresolvedError`. The default is foreground; `--detach` registers the scratch in `<userCacheRoot>/scratch/registry.bin` and exits 0 (§21.10.1, §21.11).
+- `apps:scratch:start` requires either `--fork` (use the cwd-walk Landofile as the source) or `--from <recipe-ref>` (decompose a recipe and encode its Landofile into the scratch root); passing both, or neither, fails fast with `ScratchSourceUnresolvedError`. The default is foreground; `--detach` registers the scratch in `<userCacheRoot>/scratch/registry.bin` and exits 0 (§21.10.1, §21.11).
 - `apps:scratch:start --fork` materializes the scratch by content-copying the resolved source app root, honoring `scratch.fork.excludes:` plus repeated `--exclude <pattern>` (§21.4.1). The default isolation is `--isolate=full` (the appMount binds the scratch's copy); `--mount-cwd` is sugar for `--isolate=cwd` and overrides the safer default (§21.7).
 - `apps:scratch:start --from <recipe-ref>` runs the recipe pipeline against the scratch root and SKIPS the recipe's `postInit:` actions by default; `--run-post-init` opts back in. The default isolation is `--isolate=baked` (no appMount; an empty `/app` inside the container); `--mount-cwd` switches to bind-mounting the host cwd at the appMount destination (§21.4.2, §21.7).
 - `apps:scratch:start` rewrites every `scope: global` storage entry in the resolved plan to `scope: app` at plan time so a scratch app does NOT touch user-app `scope: global` volumes; `--share-global-storage` opts back into the original semantics (§21.8).
@@ -218,7 +221,7 @@ Commands tolerate apps with no services when the command semantics allow it.
 
 #### 8.2.1 The `app config` command
 
-`lando app config` reads and writes the current Lando app's user-editable Landofile (default `.lando.yml`; basename configurable globally via `landoFile:` in §7.5). The merge layers `lando.base.yml`, `lando.dist.yml`, and `lando.upstream.yml` are read but never written. The lower-precedence `lando.local.yml` and `lando.user.yml` are likewise read-only from this command unless `--target` is given explicitly. The `translate` subcommand has canonical id `app:config:translate` so recipes, tooling `command:` steps, and embedding hosts can target it directly.
+`lando app config` reads and writes the current Lando app's user-editable Landofile (default `.lando.yml`; basename configurable globally via `landoFile:` in §7.5). Ordinary edits leave other merge layers read-only unless `edit --target` explicitly selects an editable layer. Translation and migration use the separate layer-owned transaction rules below. The canonical conversion and provenance ids are `app:config:translate`, `app:config:explain`, and `app:config:migrate` so tooling `command:` steps and embedding hosts can target them directly.
 
 ```text
 lando app config [--format json|yaml|table] [--path <key.path>]
@@ -228,10 +231,12 @@ lando app config unset <key.path>
 lando app config edit [--editor <bin>] [--target user|local|canonical]
 lando app config validate
 lando app:config view [--source raw|merged|resolved] [--format json|yaml]
-lando app config translate [--from <translator-id>] [--file <path>]... [--format yaml|json]
+lando app config translate [--from <translator-id>] [--to <encoder-id>] [--file <layer>] [--format yaml|json]
 lando app config translate --detect [--format table|json]
 lando app config translate --list [--format table|json]
-lando app config translate --write [--target canonical|local|user] [--yes]
+lando app config translate --from lando3 --to lando4 --write [--yes]
+lando app:config:explain [--format json]
+lando app:config:migrate [--yes] [--dry-run] [--format json]
 ```
 
 Subcommands:
@@ -245,20 +250,44 @@ Subcommands:
 | `edit` | Open the target Landofile in `$VISUAL`/`$EDITOR` (or `--editor`); validate before saving. `--target` selects the layer (`canonical` is the default user-editable file; `local` is `.lando.local.yml`; `user` is `.lando.user.yml`). |
 | `validate` | Validate the merged Landofile against the published schema (§7.8). |
 | `view --source` | `raw` is the canonical user-editable file. `merged` is the post-merge tree before expression resolution (§7.2). `resolved` (default) is the fully resolved, post-expression Landofile (§7.3.1). |
-| `translate` | Run an explicit config translator (§7.4.1/§9.5) against external source files and preview the generated Landofile fragment. `--write` applies the fragment to an editable layer after validation. |
-| `translate --detect` | Ask installed translators to detect supported source files under the app root and report matches without generating a patch. |
+| `translate` | Translate one core-ordered source set into authoring fragments and encode with `--to <encoder-id>` (default `lando4`); preview unless `--write` is set (§7.4.1). |
+| `translate --detect` | Invoke translators' `detect` on bounded core-read snapshots and report matches without generating a patch or allowing translator filesystem reads. |
 | `translate --list` | List installed config translators, their input kinds, and any required options. |
+| `explain` | Canonical id `app:config:explain`; read-only, source-aware recipe provenance report with `--format json`. |
+| `migrate` | Canonical id `app:config:migrate`; ordered declarative migration proposals and safe file edits with `--yes`, `--dry-run`, and `--format json`. |
 
 Rules:
 
-- Write operations target the canonical user-editable Landofile (default `.lando.yml`). The six-file merge layers from §7.2 are read but never modified except via `edit --target`.
+- Ordinary `set`, `unset`, and `edit` writes target the canonical user-editable Landofile (default `.lando.yml`); `edit --target` selects another editable layer. Conversion and migration instead use explicit layer ownership and the multi-file transaction in §12.4.
 - Write operations validate the resulting file against the published Landofile schema (§7.8) before persisting. A validation failure aborts the write with no partial change and returns a tagged `LandofileWriteValidationError` with the offending path and remediation.
-- Atomic-write semantics from §12.3 apply. The app-plan cache (§12.1) is invalidated after any successful write.
+- Ordinary edits use §12.3 atomic writes; conversion and migration use §12.4 transactions. The app-plan cache (§12.1) is invalidated after any successful write.
 - `--path <key.path>` is dot-separated (`services.appserver.environment.APP_ENV`); array indexing uses bracket notation (`tooling.test.cmds[0]`).
-- The command refuses to operate when there is no Landofile in scope and prints remediation suggesting `lando apps:init`.
+- Ordinary config edits and provenance operations require a Landofile in scope and otherwise suggest `lando apps:init`. Explicit translation MAY instead consume the supplied foreign source set (§7.4.1).
 - Config-expression strings (§7.3.1) are written through unchanged; `set` does not evaluate expressions, and `view --source resolved` shows their resolved values.
 - Setting a key to a `${secret:...}` reference is allowed; the literal reference is written and resolved at runtime per §7.3.1.
-- `translate` is preview-only unless `--write` is set. Without `--from`, detection MUST produce exactly one `exact` or `likely` match; ambiguous matches fail with remediation listing `--from` choices. `--file` scopes translator input and is required when a translator cannot safely autodetect. Writes use the same target, validation, atomic-write, and cache-invalidation rules as `set`/`unset`.
+- `translate` is preview-only unless `--write` is set. Without `--from`, detection MUST produce exactly one `exact` or `likely` match; ambiguous matches fail with remediation listing `--from` choices. Translators MUST be loaded only after native routing identifies an explicit conversion request, never during ordinary loading, help, or tooling bootstrap. Translation MUST NOT build an `AppPlan` or contact a provider (§7.4.1).
+- `--to <encoder-id>` defaults to `lando4`. Only an encoder with a registered safe target mapping (allowlisted destinations, overwrite policy, and deletion policy) MAY support `--write`. Non-v4 encoders are preview-only until they register such a mapping; none is registered for non-v4 output here. Core MUST NOT guess target filenames or overwrite foreign text merely because it occupies the canonical filename.
+- `--file <layer>` selects single-layer mode. Core MAY read other standard layers as context, but MUST write only that source's authorized target dependency closure. A required lower legacy or nonselected target edit MUST fail closed before staging, with remediation to run full conversion; the write set MUST NOT silently broaden.
+- Conversion writes MUST use the managed-file transaction (§12.4). Identical inputs and options MUST produce identical ordered diagnostics in preview and write reports, with translation diagnostics before encoding diagnostics. `--format json` MUST carry that same redacted diagnostics array. Diagnostic kinds are `generated`, `dropped`, `rewritten`, `unsupported`, `non-portable`, and `needs-review` (§7.4.1); every omitted source path MUST be diagnosed, and unsupported input or unpreservable target loss MUST block writing.
+
+**Provenance explanation.** `app:config:explain` reads the §7.4 recipe object. For every `recipe.options` entry it MUST report the option name, current value, recipe default at `recipe.version`, heuristic `accepted-by-value` (equal to that default) or `chosen-by-value` (unequal), every current site containing `{{ recipe.<option> }}`, and every decomposed site labeled `taken over` where the complete generated expression has been replaced. Equality with a generated literal is not evidence of management or user intent. A composite site remains managed only while its complete parsed expression tree equals the matched snapshot's generated tree.
+
+Before comparison, explain MUST validate exact producer agreement (`id == producer.recipeId`, `version == producer.manifestVersion`, and matched versioned identity) and an injective `recipe.services` map of known generated names to current service names. It MUST apply that map before matching paths. `.lando.ts`, includes, and missing or older provenance without a matching producer snapshot MUST block semantic comparison with manual remediation; the report still contains bounded current facts: recorded identity/version, current options, and current expression references. It MUST NOT rewrite files, execute app or recipe code, follow includes, build an `AppPlan`, or contact a provider. The active renderer and `--format json` expose the same schema-backed, redacted facts.
+
+**Recipe migration.** `app:config:migrate` MUST resolve the target from the already injected declarative-snapshot registry in the recorded producer's `sourceKind + packageName + recipeId` family. The CLI defaults to the bundled registry; local provenance requires matching host-supplied snapshots. Missing targets, cross-family selection, missing or identity-mismatched historical evidence, or invalid chains MUST fail closed. It MUST NOT search remote history, old packages, or local app code. Explain's producer/service-map and opaque-input rules apply equally to migration.
+
+Migration processes edges in order against an in-memory prospective file set. It evaluates the old snapshot with current persistable options, applies selected new defaults or retained values to a prospective option map, evaluates the new snapshot with that map, and validates declared structural hunks against the resulting diff before advancing. Each hunk has the stable identity specified in §8.8.3 and exactly one classification: `already-satisfied`, `selected`, `retained-option`, or `blocking`.
+
+| Hunk class | Decision rule |
+|---|---|
+| Option-default | A chosen option or declined new default MAY retain the current value as `retained-option` and satisfy the edge. A selected default updates intact references without changing taken-over literals. Lower-layer ownership MUST NOT overwrite a higher-layer chosen option. |
+| Structural add/remove/rename/replace | Ownership and exact old presence/value MUST match, or exact after presence/value MUST already be satisfied. An arbitrary equal literal is not managed evidence. Declined, conflicting, or dependency-blocked structural hunks make the entire edge `blocking`. |
+
+Service renames MUST update `recipe.services` and every managed tooling, route, dependency, event, and expression reference atomically within the edge, or block the whole edge. Unknown/missing service-map entries, cycles, and target collisions MUST be rejected. Taken-over literals MUST NOT be overwritten automatically; lossy fallback is forbidden.
+
+Default interactive mode asks once per selectable hunk. `--yes` selects untouched option and structural hunks; chosen options MAY be retained and taken-over sites remain unchanged. `--dry-run` prints the complete ordered hunk set, including blockers, and writes nothing; it MUST NOT acquire a write lock or mutate recovery artifacts. Real writes commit only the longest contiguous fully satisfied edge prefix through §12.4, with final version and producer written once in the same transaction. A blocking edge blocks every later edge; partial-edge commits and durable per-hunk progress bags are forbidden. Completed repeats MUST be byte-identical no-ops. `--format json` exposes the same ordered redacted hunk set and result. Success prints `run \`lando rebuild\``; migrate MUST NOT plan or apply the app.
+
+`lando update` (§17.6) MAY mention pending recipe migrations but MUST NOT run `app:config:migrate` or edit a Landofile. Provider and host diagnostics remain the separate doctor surface (§10.9), not an implicit conversion or migration phase.
 
 #### 8.2.2 The `meta:config` command
 
@@ -494,6 +523,8 @@ Help is a projection of the command registry, not a `LandoCommandSpec`. There is
 
 The canonical Landofile key remains `tooling:` for v4. A tooling entry is also called a **Lando task** when describing dependency graphs and step execution.
 
+Tooling metadata MUST normalize once, after layer/include resolution and before native command creation. The same normalized schema, including `user`, `disabled`, flags, args, and ordered mixed string/object `cmds`, MUST drive native aliases/options/types, CLI help, the machine index, the hot-path cache, and MCP. CLI and MCP MUST have identical validation and execution semantics. A stale cache MUST NOT bypass the current `disabled` precheck. Unknown services, missing dynamic flags, invalid args, disabled direct or stale-cache invocations, and unsupported fields MUST fail before task execution with tagged source-aware errors naming the source, key path, and remediation.
+
 **Tooling tasks register under the `app:` namespace by default** (§8.1.1). A task named `composer` is invoked canonically as `lando app:composer`; setting `topLevelAlias: true` on the task additionally registers `lando composer`. A task MAY opt into a different namespace by setting `namespace:` (rare; documented in §8.5.1). Task names MAY contain `:` for sub-namespaces inside `app:`; for example, `tooling.db:wait` produces canonical id `app:db:wait`.
 
 ```yaml
@@ -609,9 +640,20 @@ tooling:
     deprecated: <DeprecationNotice>      # task-wide deprecation notice; see §18
 
     flags:
-      <name>: <FlagSpec>                 # Effect Schema-defined; FlagSpec accepts `deprecated` per §18.5
+      <name>:                            # FlagSpec; Effect Schema-defined
+        alias: <string>                 # optional native flag alias
+        choices: [<value>]              # optional allowed values
+        boolean: true | false           # boolean switch or value-taking flag
+        default: <value>                # optional; validated against type and choices
+        required: true | false
+        deprecated: <DeprecationNotice> # optional; §18.5
     args:
-      <name>: <ArgSpec>                  # ArgSpec accepts `deprecated` per §18.5
+      <name>:                            # ArgSpec; Effect Schema-defined
+        choices: [<value>]              # optional allowed values
+        default: <value>                # optional; validated against the argument type
+        required: true | false
+        order: <nonnegative-integer>    # positional order; unique within the task
+        deprecated: <DeprecationNotice> # optional; §18.5
 ```
 
 Shorthands:
@@ -619,6 +661,7 @@ Shorthands:
 - `tooling.<name>: <string>` means `{ cmd: <string> }`.
 - `cmd` is a single command shorthand for `cmds: [{ cmd: ... }]`.
 - `cmds: ["a", "b"]` is a sequential command list in the task's resolved service.
+- `cmds` MAY mix strings and step objects (§8.5.2); normalization MUST preserve authored order and per-step overrides. Flag aliases, choices, boolean types, defaults, requiredness, and argument positional order MUST be resolved once into the shared command metadata, not reinterpreted by each consumer.
 - `description` is accepted as an alias for `summary`; generated docs SHOULD render `desc` and `summary` as the preferred names.
 - `tooling.<name>: disabled` and `tooling.<name>: false` disable an inherited or fragment-provided task (§7.7, §8.5.8).
 
@@ -650,7 +693,6 @@ tooling:
       - command: app:info             # invoke another canonical command
         flags:
           format: json
-          deep: true
       - cmd: php artisan cache:warm
         if: "{{ eq .vars.APP_ENV \"prod\" }}"
       - defer: php artisan down --retry=60
@@ -693,7 +735,7 @@ Semantics:
 - **Resolution.** The `<canonical-id>` MUST resolve to a registered command at compile time. Unknown ids fail with `ToolingCommandLookupError` and remediation listing close matches.
 - **Schema validation.** `flags`, `args`, and `raw` are validated against the target command's `LandoCommandSpec` (§8.3) at compile time when the values are literal, and at invocation time when they are expression-resolved. Mismatches surface as `CommandInputValidationError` with the offending key and the expected schema.
 - **No flag passthrough.** The outer task does **not** automatically forward its flags/args to the inner command. Pass values explicitly via expressions: `flags: { rebuild: "{{ .flags.rebuild | default false }}" }`.
-- **Recursion guard.** Direct cycles (`app:my-start` → `command: app:my-start`) are rejected at compile time with `ToolingCommandCycleError`. Indirect cycles are detected at the same pass over the task graph; runtime invocation cannot loop because the cache stores the resolved acyclic graph.
+- **Recursion guard.** Direct cycles (`app:my-start` → `command: app:my-start`) are rejected at compile time with `ToolingCommandCycleError`. Indirect cycles are detected in the same pass over the task graph. Runtime nested command/event invocation MUST also use a visited stack and a bounded depth limit (§8.5.7); an acyclic cached task graph alone cannot prove event recursion safe.
 - **Bootstrap escalation.** A task's effective `bootstrap:` level is the maximum of its declared level and the target of every `command:` step it contains (transitively). A task at `bootstrap: tooling` that contains `command: app:start` is auto-escalated to `bootstrap: app`. The escalation is computed at compile time and stored in the cached `ToolingProgram`; the hot path stays optimal when no `command:` step needs escalation.
 - **Lifecycle events.** The target command publishes its own `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, and `cli-<canonical-id>-error` events (§3.5/§11). Subscribers that watch for `cli-app:start-run` still fire when `app:start` is invoked from inside a wrapper task. Per §11.2's `invocationId`/`parentInvocationId` correlation, a `command:` step's target gets its own fresh `invocationId` and carries the enclosing invocation's id as `parentInvocationId` — it is never the outer, notification-eligible invocation, so a nested `command:` invocation's completion never independently triggers foreground presentation (§8.9.7) even when it succeeds or fails on its own.
 - **Output.** The target's output flows through the same `Renderer` as the parent task. `silent: true` suppresses only the target's renderer events; the target's logs still go through the active `Logger` at their declared level.
@@ -820,10 +862,10 @@ Expressions are evaluated before each command step runs, after flags/args, dynam
 #### 8.5.5 Dynamic service resolution
 
 - `service: <name>` — fixed service.
-- `service: :flag-name` — value from `--flag-name` flag.
+- `service: :flag-name` resolves `:<flag>` from validated flag values only. A missing or invalid value MUST fail with a tagged source-aware error before execution; raw argv MUST NOT be used as a fallback.
 - `service: :host` — bypass the provider, run on host through the bundled `host` ToolingEngine, which is `ShellRunner`-backed (§8.6, §3.4). Multi-line `cmds:` get pipes, redirection, globs, command substitution, and built-in `rm`/`mkdir`/`cat`/`mv`/`which` that work the same on Linux, macOS, and Windows without `cross-env`, `rimraf`, or PowerShell branches.
 
-Command objects MAY override `service`. Host execution is explicit and potentially dangerous; renderers SHOULD show a warning for first-time host tasks unless `silent: true` or non-interactive mode suppresses prompts. Host tasks still flow through `ShellRunner` for redaction, lifecycle events (`pre-shell-exec` / `post-shell-exec`), and cancellation, and through `PrivilegeService` for escalation when the task declares it needs root/admin; they MUST NOT shell out through ad hoc platform APIs. Tasks that need argv-precise execution against an external binary (no shell parsing) SHOULD pick a `ProcessRunner`-backed engine via `engine:` rather than emulating it through a single-string `cmd:` (§3.4).
+Command objects MAY override `service`. Task-level `user` and `dir` establish defaults; step-level `user` and `dir` override them independently. `:host` MUST route through the host engine without provider initialization. Host execution is explicit and potentially dangerous; renderers SHOULD show a warning for first-time host tasks unless `silent: true` or non-interactive mode suppresses prompts. Host tasks still flow through `ShellRunner` for redaction, lifecycle events (`pre-shell-exec` / `post-shell-exec`), and cancellation, and through `PrivilegeService` for escalation when the task declares it needs root/admin; they MUST NOT shell out through ad hoc platform APIs. Tasks that need argv-precise execution against an external binary (no shell parsing) SHOULD pick a `ProcessRunner`-backed engine via `engine:` rather than emulating it through a single-string `cmd:` (§3.4).
 
 #### 8.5.6 Up-to-date checks and run policy
 
@@ -854,11 +896,14 @@ events:
     - command: app:info             # invoke a canonical command from a lifecycle hook
       flags:
         format: json
-        deep: false
       silent: true
 ```
 
 Event entries accept the same step types as `cmds:` (§8.5.2): string, `cmd:`, `task:`, `command:`, `defer:`, `for:`. Event task and command calls execute through the same tooling graph compiler and expression evaluator. Event expressions add `.event` containing the decoded event payload. Event-triggered tasks MUST NOT register router commands; they execute directly through the runtime.
+
+The valid event-name set MUST be extended from fully resolved layered/included tooling before semantic validation. Invalid names MUST report the complete valid set, including App events `pre-restart` / `post-restart` and tooling brackets `pre-<tool>` / `post-<tool>` (§3.5). Event steps MUST preserve authored order; an omitted service defaults to the first primary service in resolved service order.
+
+Nested `command:` event invocations MUST carry a visited stack for cycle rejection and enforce a depth limit, with tagged source-aware errors identifying the invocation chain. Pre/body/post execution MUST follow command semantics: a failed pre-step prevents the body, a failed body prevents success post-steps, and post-steps run in order after success. A post-step failure MUST be fatal and report a redacted output tail, not be downgraded to a warning. Restart brackets MUST retain inner stop/start event order; CLI, MCP, and library invocation MUST preserve the same ordering and failures.
 
 Event subscribers that wrap a CLI command (e.g., adding a banner before `app:start`) SHOULD prefer the wrap pattern in §8.5.2.1 over `events.pre-start:`, because lifecycle events fire on every code path that triggers the lifecycle (including `app:restart`, `app:rebuild`, and embedding-host invocations) while a `commandAliases.custom` override + wrapper task fires only when the user invokes that specific top-level alias.
 
@@ -904,7 +949,7 @@ Rules:
 - `excludes` removes tasks from the include before flattening or namespace registration.
 - A fragment's own `tooling:` entries win over tasks contributed by its `toolingIncludes:` when a task id collides — the same precedence the parent Landofile's own `tooling:` holds over its top-level `includes:`.
 - `checksum:` is not part of the Beta 1 tooling-include shape. Tooling fragments are local-file only, so there is no remote source to pin; a remote-source `checksum:` is reserved for a future release that adds remote tooling includes.
-- `dir:` is likewise not part of the Beta 1 tooling-include shape. Task-level `dir:` is itself rejected in Beta 1 (§8.5.1), so an include-level working directory would be accepted and then ignored; authoring it fails closed as an unsupported key rather than silently having no effect. It is reserved for the release that accepts task-level `dir:`.
+- Include-level `dir:` is not part of the Beta 1 tooling-include shape. Task-level and step-level `dir:` remain valid on the parent Landofile (§8.5.1, §8.5.5); an include-level working directory would be accepted and then ignored, so authoring it fails closed as an unsupported key rather than silently having no effect.
 - Cyclic includes are rejected with a tagged `ToolingIncludeCycleError`.
 
 Per-include `topLevelAlias` settings on individual tasks within an included file behave identically to top-level Landofile-defined tasks (§8.5.1). An include MAY NOT set a single `topLevelAlias` at the include level that applies to all of its tasks; per-task aliases keep collision detection precise.
@@ -1023,9 +1068,19 @@ Provider initialization is the single hot-path cost when a task needs provider e
 
 ### 8.8 `lando apps:init` and the v4 recipe model
 
-`lando apps:init` (default top-level alias `lando init`) scaffolds a new Lando app from a **recipe**. A recipe in v4 is a Yeoman-style scaffolding artifact — a directory of source files plus a Q&A manifest — that produces a real, fully-visible Landofile (and any helper files) the user owns and can edit.
+`lando apps:init` (default top-level alias `lando init`) scaffolds a new Lando app from a **recipe**. A recipe is a versioned decomposer that produces a fully visible Landofile the user owns:
 
-The v3 recipe-as-plugin model is removed. There is no `recipe:` Landofile key (§7.4), no `RecipeDefinition` plugin contract, no `recipes:` plugin manifest contribution, no runtime recipe expansion, and no core migration path. The word "recipe" is preserved as the user-facing term; the implementation is a one-shot scaffold consumed at init time and never referenced again. External config translator plugins MAY provide legacy import flows outside core (§7.4.1).
+```text
+decompose(options) -> LandofileAuthoringFragment
+```
+
+The SDK `RecipeDecomposer` port replaces recipe rendering with `decompose`. Everything the recipe selects MUST be written: every service, route, tooling task, event, and default. Runtime recipe expansion is forbidden and its implementation MUST be removed. `decompose` returns Landofile authoring data only; it MUST NOT write files, run `postInit`, plan, or contact a provider. An option MAY decide whether a key, array item, or service exists at decomposition time; emitted expressions are for values, never structure, and MUST NOT gate existence.
+
+Resolved persistable nonsecret options MUST be written under `recipe.options` in the §7.4 object form with mandatory producer provenance. `RecipeManifest.version` is required. Every generated value site derived from a persistable option MUST use a schema-valid `{{ recipe.<option> }}` expression, with whole-value types and string-only composite interpolation preserved. The generated `recipe` object is **inert at runtime; migratable by file edit**. Its expressions read merged file data, not recipe code. The v3 recipe-as-plugin model, `RecipeDefinition` plugin contract, and `recipes:` plugin contribution remain removed.
+
+`init` MUST use the bundled `recipe` translator and `lando4` encoder (§7.4.1), never build an `AppPlan`, and never contact a provider itself. Foreign translators MUST share `RecipeDecomposer` over their foreign-merged options rather than duplicate recipe services, tooling, or defaults; explicit conversion does not run v3 behavior at runtime.
+
+`files:` and `postInit:` remain init-only. They MUST run only after translation, encoding, validation, and successful managed-file transaction commit (§12.4). A validation or commit failure MUST run no auxiliary action. A later post-init failure MUST report the committed scaffold and failed action without claiming rollback of external side effects. Init MUST print ordered translation diagnostics followed by encoding diagnostics before its summary; machine output carries the same array. Users requiring live code-owned generation import the recipe module from their own `.lando.ts`; the CLI MUST NOT generate that form.
 
 #### 8.8.1 Command surface
 
@@ -1047,12 +1102,12 @@ Behavior:
 - `<destination>` is the output directory. Defaults to `--name` if given, otherwise to the current directory. The destination MAY already contain files. A Landofile dest (`.lando.yml`, `.lando.yaml`, `.lando.ts`, or another Landofile layer basename) that already exists fails closed with `InitTargetExistsError`. Any other recipe dest that already exists is a scaffold conflict: the entire scaffold set is skipped and only free Landofile dests are written. No `--force` / `--full` override is required for a free Landofile write.
 - `--recipe=<ref>` selects a recipe by reference (§8.8.4). When omitted in interactive mode, Lando prompts with the list of canonical recipes shipped in the binary.
 - `--source=<source>` (optional) provides source materials in addition to the recipe. Sources are plugin-contributed (`cwd`, `git`, `tarball`); the recipe's file manifest is layered on top of the source's files. Most users do not pass `--source`.
-- `--answer key=value` (repeatable) provides a value for a single recipe prompt. Bypasses the interactive prompt for that key.
-- `--answers <file>` reads a JSON or YAML map of answers. Combines with `--answer` (later wins).
+- `--answer key=value` (repeatable) provides a value for a single nonsecret recipe prompt. Secret prompt keys MUST be rejected; secret-store prompts accept only an existing `${secret:...}` reference, and init-only secrets MUST NOT arrive through argv.
+- `--answers <file>` reads a JSON or YAML map of nonsecret answers. Combines with `--answer` (later wins). Secret keys MUST be rejected; the file MUST NOT contain raw secret values.
 - `--no-interactive` disables prompting. Every prompt without a default and without an `--answer` value fails fast with `RecipeMissingAnswerError`.
 - `--yes` accepts every prompt's default without asking and is mutually exclusive with `--no-interactive` only when defaults exist; otherwise behaves like `--no-interactive` for unanswered prompts.
 - `--full` accepts the recipe's full default answer set without prompting. It does not change dest write rules.
-- The command runs at bootstrap level `minimal`; no provider is contacted.
+- The command runs at bootstrap level `plugins`; no provider is contacted.
 
 #### 8.8.2 Recipe directory layout
 
@@ -1062,7 +1117,6 @@ A recipe is a directory with this structure:
 <recipe-id>/
 ├── recipe.yml           # Q&A definition + file manifest + post-init (schema below)
 ├── templates/           # source files rendered into the user's project
-│   ├── .lando.yml.tmpl
 │   ├── config/
 │   │   ├── php.ini.tmpl
 │   │   └── …
@@ -1074,7 +1128,7 @@ A recipe is a directory with this structure:
 └── README.md            # human-facing recipe docs; rendered to the docs site
 ```
 
-Files under `templates/` are rendered through the recipe expression engine (§8.8.6). Files under `assets/` are copied byte-for-byte. Files under `fragments/` are copied byte-for-byte and become available to the generated Landofile via `includes:` (§7.7).
+The Landofile is produced by decomposition and encoding, not a file template. Auxiliary files under `templates/` are rendered through `TemplateRenderer` (§8.8.6). Files under `assets/` are copied byte-for-byte. Files under `fragments/` are copied byte-for-byte and become available to the generated Landofile via `includes:` (§7.7).
 
 #### 8.8.3 The `recipe.yml` schema
 
@@ -1083,6 +1137,24 @@ id: <kebab-case-id>                      # required; matches directory name
 title: <string>                          # required; human-facing name
 description: <string>                    # required; one-line summary
 version: <semver>                        # required; recipe version
+snapshot:                                # required for every bundled recipe
+  identity: <versioned-producer-identity>
+  optionTypes: <serializable-schema-descriptors>
+  defaults: <option-default-data>
+  template: <serialized-expression-AST>  # one AST; data scope is options only
+  assets: <asset-metadata-and-digests>
+migrations:                              # optional; ordered declarative edges
+  - from: <exact-versioned-producer-identity>
+    to: <exact-versioned-producer-identity>
+    fromSnapshot: <snapshot>
+    toSnapshot: <snapshot>
+    hunks:
+      - id: <stable-hunk-id>
+        kind: option-default | add | remove | rename | replace
+        layer: <owning-layer>
+        path: <canonical-path>
+        old: <old-presence-and-value>
+        new: <new-presence-and-value>
 authors: [<string>]                      # optional
 tags: [<string>]                         # optional; surfaced in `lando init` listing
 deprecated: <DeprecationNotice>          # optional; recipe-wide deprecation; see §18
@@ -1099,8 +1171,9 @@ fetchAllowlist:                          # optional; URL hosts the recipe may HT
 prompts:                                 # ordered; later prompts may reference earlier answers
   - name: <identifier>
     type: text | select | multiselect | confirm | number | secret | path | editor
+    disposition: <secret-disposition>   # secret only; exactly one named field/sink (§8.8.5)
     message: <string>
-    default: <value | expression>        # optional
+    default: <value | expression>        # optional; secret prompts MUST NOT default a raw value
     when: <expression>                   # optional; skip prompt when falsy
     deprecated: <DeprecationNotice>      # optional; per-prompt deprecation; see §18
     validate:                            # optional; per-type validation
@@ -1117,20 +1190,23 @@ prompts:                                 # ordered; later prompts may reference 
         <flag>: <value | expression>
       map: <expression>                  # optional; transforms command output into the choices array shape
 
-files:                                   # ordered; written in this order
+files:                                   # ordered auxiliary files; post-commit only
   - src: <path-under-templates-or-assets>
     dest: <path-relative-to-destination>
     when: <expression>                   # optional
     mode: <octal>                        # optional; e.g. "0755" for executable scripts
     template: true | false               # default: true for paths under templates/, false for assets/
 
-postInit:                                # optional; declarative actions run after files are written
+postInit:                                # optional; after transaction commit and auxiliary files
   - type: gitInit
   - type: message
     text: <string-with-expressions>
   - type: command
     cmd: <canonical-command-id>          # MUST be a Lando canonical id from the recipe post-init allowlist; arbitrary shell forbidden
     args: [<string>]
+    stdin: <init-only-secret-binding>    # optional named postInit.stdin sink
+    secretEnv:                           # optional named init-only sinks
+      <name>: <init-only-secret-binding>
     when: <expression>
 ```
 
@@ -1138,10 +1214,16 @@ Constraints:
 
 - The schema is published from `@lando/sdk` as `RecipeManifest` and exported as JSON Schema (§13.2). Editor integration validates `recipe.yml` files in real time.
 - `id` MUST match the directory basename. Mismatch is a hard error.
+- `version` MUST be semver and supplies the required `RecipeManifest.version` provenance coordinate. Every bundled recipe MUST publish safely renderable declarative current snapshot data, including recipes implemented programmatically for init. Local programmatic recipes remain init-only unless they separately publish valid snapshots; explain and migrate MUST NOT execute their code.
+- `migrations:` contains declarative ordered edges `{ from, to, fromSnapshot, toSnapshot, hunks }`. Each `snapshot: { identity, optionTypes, defaults, template, assets }` is inert parameterizable data, not one static fragment. Serialized manifests MUST NOT contain callable `apply`. `from` and `to` MUST be exact versioned producer identities in one family. The chain MUST be unique and monotonic, with no gaps, forks, overlap, reverse edges, cycles, or changed content under one versioned identity.
+- Hunks MUST form an ordered union of option-default, add, remove, rename, and replace, carrying old/new presence and values and the owning layer. Stable hunk ids MUST derive from producer family, `from`, `to`, layer, kind, and canonical path. Declared hunks MUST agree with the old/new snapshot diff (§8.2.1).
+- Snapshot `template` MUST be one serialized expression AST over the sole data scope `options`, using the §7.3.1 parser grammar. Evaluation MUST enforce fixed step, output-size, collection-size, and depth budgets. Quoted authoring expressions in the result are data, not recursively evaluated snapshot expressions. Pure path helpers use explicit POSIX roots, never process cwd or host environment. Option schema/default data MUST use the serializable Effect Schema descriptor subset; unsupported refinements make a recipe nonmigratable rather than execute code.
+- The closed pure helper allowlist for snapshots is `default`, `required`, `eq`, `ne`, `lt`, `gt`, `le`, `ge`, `and`, `or`, `not`, `contains`, `startsWith`, `endsWith`, `lower`, `upper`, `trim`, `split`, `join`, `replace`, `regexMatch`, `length`, `slice`, `keys`, `values`, `entries`, `get`, `merge`, `range`, `map`, `filter`, `json`, `fromJson`, `b64encode`, `b64decode`, `shellQuote`, `shellJoin`, `path.join`, `path.dirname`, `path.basename`, `path.extname`, `path.relative`, `path.resolve`, `url.build`, `url.parse`, `semver.satisfies`, and `semver.compare`. Validation MUST reject every other helper, including `load`, `import`, `text`, `bytes`, `hash`, `which`, `glob`, every `fs.*`, and YAML/TOML/JSON5/JSONC/JSONL decoders, plus remote access, commands, and arbitrary JavaScript.
 - A `deprecated:` notice on the recipe records `kind: "recipe"` with `id: <recipe-id>`; a `deprecated:` notice on a prompt records `kind: "recipe-prompt"` with `id: "<recipe-id>.<prompt-name>"`. Both are observed at init time, emit a `message.warn`, and are listed by `lando doctor --deprecations` (§18.4–§18.6).
 - Prompt `name` values MUST be unique within a recipe.
+- Every secret prompt MUST declare exactly one disposition with its named field or sink (§8.8.5); omission or multiple dispositions MUST fail validation before prompting.
 - `default` and `when` strings are recipe expressions (§8.8.6). They MAY reference earlier prompts via `answers.<name>` and the standard recipe context.
-- `postInit` actions are limited to the declarative set above. Recipes MUST NOT execute arbitrary shell. The `command` action MAY only invoke canonical Lando command ids from the recipe post-init allowlist (§8.8.8); the allowlist prevents arbitrary host execution and keeps recipes inert until the user starts the app.
+- `postInit` actions are limited to the declarative set in §8.8.8. The `command` action MAY only invoke canonical Lando command ids from the recipe post-init allowlist. Arbitrary shell is forbidden outside the bounded bundled-script action, and no action runs before commit.
 
 #### 8.8.4 Recipe sources
 
@@ -1166,19 +1248,21 @@ Resolution is content-addressed and cached. Repeated `lando init --recipe wordpr
 | `multiselect` | Array picked from `choices:` | Empty selection allowed unless `validate.min: 1`. |
 | `confirm` | Boolean | TTY shows `(Y/n)` or `(y/N)` based on `default`. |
 | `number` | Integer or float | Validated with `min:` / `max:`. |
-| `secret` | Single-line string, masked input | Never echoed; redacted in logs and error messages per §7.3.1's secret-redaction rules. Stored only in the resolved templates if the recipe author binds it explicitly. |
+| `secret` | Single-line string, masked input | MUST never be echoed and MUST be centrally redacted. Each prompt declares exactly one disposition: `secret-store`, recording an existing `${secret:...}` reference into the named field (`SecretStore` remains resolve-only), or `init-only`, naming one `postInit.stdin` or `postInit.secretEnv.<name>` sink acquired through `InteractionService` (masked TTY or dedicated stdin), never argv, answer files, or recipe defaults. |
 | `path` | Filesystem path with shell completion | `validate.exists: true` requires the path to exist; relative paths are resolved against the destination directory. |
 | `editor` | Multi-line string entered via `$VISUAL` / `$EDITOR` | Falls back to `text` when no editor is configured or when `--no-interactive` is set. |
 
 These prompt types are the published `PromptSpec` vocabulary owned by §8.10; recipe prompts are one consumer. The recipe runtime resolves them through the `InteractionService` (§8.10.2), which owns the answer-source precedence, interactivity-mode resolution, and `secret` redaction for every prompting surface in Lando.
 
+Raw secret answers MUST NOT enter templates, argv, files, provenance, diagnostics, journals, transcripts, renderer events, or telemetry. `decompose` receives only the approved reference or omission. The prompt resolver MAY pass raw bytes directly to the single declared init-only sink after commit; central redaction MUST cover sink failures. Recipes without a secret prompt MUST use the shared negative contract fixture, not a fabricated recipe-specific secret case.
+
 `when:` is honored uniformly across all types. Prompts whose `when:` evaluates falsy are skipped silently and their `name` resolves to `undefined` in subsequent expressions.
 
 #### 8.8.6 Recipe expressions
 
-Recipes render through the `TemplateRenderer` and use the same default `lando` engine as the rest of Lando (§7.3.1, §7.3.2). Templates under `templates/**/` MAY override the engine per file via the `files:` manifest entry (§8.8.3 — set `engine: handlebars` to render a `.hbs` template through the bundled Handlebars engine; see §7.3.2 for the bundled engine list and selection precedence). The `recipe.yml` file itself uses the `lando` engine for its string fields and does not accept an `engine:` override.
+Recipes decompose Landofile data through `RecipeDecomposer`; auxiliary file templates use `TemplateRenderer` and the default `lando` engine (§7.3.1, §7.3.2). Templates under `templates/**/` MAY override the engine per file via `files:` (§8.8.3), for example `engine: handlebars` for a `.hbs` file. The `recipe.yml` file itself uses the `lando` engine for its string fields and does not accept an `engine:` override. Snapshot evaluation uses only the bounded data scope and helper allowlist in §8.8.3.
 
-The `lando` engine accepts the full §7.3.1 grammar: `{{ … }}` interpolation with bracket-or-dotted paths, both pipe and call-style helper forms, native `${VAR}` shell-parameter-expansion, comments, and whitespace trim. Whole-file recipe templates additionally support control-flow blocks:
+The `lando` engine accepts the full §7.3.1 grammar: `{{ … }}` interpolation with bracket-or-dotted paths, both pipe and call-style helper forms, native `${VAR}` shell-parameter-expansion, comments, and whitespace trim. Whole-file auxiliary templates additionally support control-flow blocks:
 
 ```text
 {{ if <expr> }} … {{ else if <expr> }} … {{ else }} … {{ end }}
@@ -1188,11 +1272,11 @@ The `lando` engine accepts the full §7.3.1 grammar: `{{ … }}` interpolation w
 
 Control-flow blocks are valid inside `templates/**/` files but NOT inside `recipe.yml`'s string fields, where only single-expression interpolation is permitted. This keeps `recipe.yml` declarative.
 
-The recipe render context extends the standard `TemplateRenderContext` (§7.3.2) with recipe-specific scopes. Per §7.3.1, all scopes here have an effective bootstrap level of "recipe init"; recipe rendering runs at level `minimal` and never consults a provider:
+The auxiliary-file template context extends `TemplateRenderContext` (§7.3.2) with recipe-specific scopes. Per §7.3.1, all scopes here have an effective bootstrap level of "recipe init"; file templating runs at level `minimal` and never consults a provider. These scopes do not broaden the snapshot evaluator's `options`-only scope:
 
 | Scope | Meaning |
 |---|---|
-| `answers.<name>` | Resolved prompt answers (only those preceding the current evaluation) |
+| `answers.<name>` | Resolved nonsecret answers or approved secret references preceding the current evaluation; raw secret answers are omitted |
 | `recipe.id`, `recipe.title`, `recipe.version` | Recipe metadata |
 | `destination.path`, `destination.basename` | Output directory |
 | `cwd.basename`, `cwd.path` | Initial working directory before `--destination` resolution |
@@ -1220,17 +1304,17 @@ Literal `{{` is escaped as `{{{{`; literal `${` is escaped as `$${`. Inside `tem
 
 #### 8.8.7 File manifest semantics
 
-- Files are written in the order they appear under `files:`. A dest is a Landofile dest when its basename matches a Landofile layer (`.lando.yml`, `.lando.ts`, `.lando.local.yml`, …); every other dest is scaffold. An existing Landofile dest fails closed with `InitTargetExistsError`. If any scaffold dest already exists, every scaffold dest is skipped as a set and only free Landofile dests are written. Intra-manifest duplicate dests still fail closed.
+- Auxiliary files are written in `files:` order only after the encoded Landofile transaction commits (§12.4). Landofile layer basenames are reserved for encoder output; `files:` MUST NOT generate `.lando.ts` or bypass decomposition with a Landofile template. An existing Landofile dest fails closed with `InitTargetExistsError`. If any scaffold dest already exists, every scaffold dest is skipped as a set and only free Landofile dests are written. Intra-manifest duplicate dests still fail closed.
 - A file with `template: false` is copied byte-for-byte (no expression resolution). Files under `assets/` default to `template: false`; files under `templates/` default to `template: true`.
 - `mode:` (octal string) sets file permissions on POSIX hosts. Ignored on Windows. Useful for shell scripts and entrypoints.
 - A file with a falsy `when:` is skipped and reported in the init summary.
 - The destination directory is created on demand. Atomic-write semantics from §12.3 apply per file.
 - Recipe `files:` writes are realized through `ManagedFileService` (§10.13) in whole-file mode (`owner` = recipe id), so scaffolded project files carry the ownership marker, record the `StateStore` ledger, and become updatable/adoptable instead of one-shot host-file writes.
-- `.lando.yml` (or whatever the configured Landofile basename is per §7.5) is validated against the published Landofile schema (§7.8) after rendering and before being written. A validation failure aborts the entire init with `RecipeOutputValidationError` and no partial files; the user sees the failing path with line/column.
+- Decomposed authoring fragments and the complete Landofile MUST validate before encoding and transaction commit (§7.4.1, §12.4). Auxiliary manifests and templates MUST be prevalidated before commit. A validation failure aborts init with `RecipeOutputValidationError` and no partial files, naming the failing path with line/column. An auxiliary failure after commit MUST report the committed scaffold and failed action without claiming rollback.
 
 #### 8.8.8 Post-init actions
 
-After every file is written, `postInit:` actions run in declared order:
+Only after successful translation, encoding, transaction commit (§12.4), and auxiliary file writes MAY `postInit:` actions run in declared order. Validation or commit failure MUST run no auxiliary action. Actions MAY declare `stdin` and `secretEnv.<name>` as the named init-only sinks `postInit.stdin` and `postInit.secretEnv.<name>` (§8.8.5). Bindings identify the prompt and action; they MUST NOT serialize raw answers. Only the prompt resolver may deliver raw bytes directly to the declared sink, and central redaction MUST cover its output and failures.
 
 | Action | Behavior |
 |---|---|
@@ -1245,7 +1329,7 @@ The `bun` action's `verb:` allowlist:
 |---|---|---|
 | `script` | `script: <path>`, `args: [<string>]` | Run a recipe-bundled `.bun.sh` file through `ShellRunner.runScript()`. The script path MUST resolve under the recipe's `templates/` or `assets/` tree; arbitrary host-shipped paths are rejected. Useful for "open the docs URL", "stamp a generated `.gitattributes`", or "print a localized welcome banner" without inflating the canonical-command allowlist. |
 | `install` | *(none)* | Run `bun install` in `cwd:`. Resolves the scaffold's declared `package.json` (or `bun.lock`) and writes `node_modules/`. The user needs no host Bun. Rejected if `cwd:` has no `package.json`. |
-| `add` | `dependencies: [<spec>]`, `devDependencies: [<spec>]`, `peerDependencies: [<spec>]`, `optionalDependencies: [<spec>]` | Add explicit packages. Specs MAY reference `${secret:…}` registry tokens (resolved through `SecretStore`, redacted in events). Useful for stack-pickers that conditionally pull packages. |
+| `add` | `dependencies: [<spec>]`, `devDependencies: [<spec>]`, `peerDependencies: [<spec>]`, `optionalDependencies: [<spec>]` | Add explicit packages. Secret-bearing specs MAY carry only `${secret:...}` references, never raw values; resolution uses `SecretStore` and central redaction. Useful for stack-pickers that conditionally pull packages. |
 | `create` | `template: <name>`, `dest: <path>` | Run `bun create <template> <dest>`. `dest:` MUST resolve under the recipe destination; absolute paths outside the destination are rejected with `BunCreateOutsideDestinationError`. Bridges the `bun create` ecosystem into Lando recipes. |
 | `run` | `script: <name>` | Run a script entry from `cwd:`'s `package.json` via `BunSelfRunner.runScript(scriptName)`. Useful for post-`install` scaffold steps the framework's own `package.json` defines. |
 | `x` | `spec: <package-spec>`, `argv: [<string>]` | Run a one-shot package via `BunSelfRunner.x(spec, argv)`. Useful for generators that publish to npm but do not ship a `bun create` template. The active runtime's offline policy applies (§8.2.4). |
@@ -1257,11 +1341,11 @@ The `bun` action is bounded by construction across every verb:
 - All verbs route through `BunSelfRunner` (§3.4): the same recursion-guarded, redacted, lifecycle-eventing Bun child the rest of core uses. Recipes do NOT spawn `bun` directly, do NOT write a temporary script and shell into it, and do NOT bypass the §3.4 verb-shape contract. A misformed payload (e.g., a `verb: add` spec list containing `--global`) is rejected at `lando meta recipes validate <path>` time with `BunSelfArgvShapeError`.
 - The `cwd:` for any verb defaults to the recipe destination directory and MAY be a declared subdirectory of it. Paths that escape the destination via `..` or symlinks are rejected after realpath resolution with `BunActionOutsideDestinationError`.
 - For `verb: script`, the `script:` field is a path under the recipe's bundled tree (`templates/<…>.bun.sh` or `assets/<…>.bun.sh`); paths outside those bases are rejected with `BunScriptOutsideRecipeError` after realpath resolution. The bundled-recipes generator (§17.2) checksums every script at build time and embeds the checksum into the recipe manifest; runtime execution verifies the checksum before launch and a mismatch fails with `BunScriptChecksumError`.
-- Arguments to `verb: script` are passed via `args: [<string>]` (resolved through the recipe expression engine) and via `LANDO_RECIPE_ANSWER_<NAME>` environment variables (one per resolved prompt answer). `secret`-typed answers are NOT exported as env vars and require explicit `args:` passing through `${secret:…}` reference, which redacts in lifecycle events.
+- Arguments to `verb: script` use `args: [<string>]`; nonsecret answers MAY also be exported as answer environment variables. Secret-bearing `args:` and `add` specs MUST carry only `${secret:...}` references, never raw values. Raw prompt answers MUST NOT enter argv or generic answer exports; init-only secrets use only the declared `stdin` or `secretEnv.<name>` sink (§8.8.5).
 - Each action's redacted argv is published through `pre-bun-self-exec` / `post-bun-self-exec` events with `callerSubsystem: "recipe:bun:<verb>:<recipe-id>"` so subscribers can inspect what a recipe scaffolded.
 - Cancellation: `Effect.interrupt` propagates through `BunSelfRunner` to the embedded Bun child. The recipe init aborts with `RecipeInterruptedError`. `verb: install`-written `node_modules/` directories are NOT auto-removed because they may contain partially extracted artifacts the user wants to inspect; the failure message points at `rm -rf node_modules && lando bun install` for retry.
 - Network: `verb: install`, `add`, `create`, and `x` may contact registries; this is the legitimate exception to the §1.4 "recipes MUST NOT contact the network" rule and is the same exception the existing `--recipe` source resolution already carries. Recipe authors SHOULD scope network-bound actions behind a `when:` expression so users on offline runs can opt out.
-- Failures are reported but do NOT roll back files already written. A recipe author who needs file rollback on a `bun` failure must pre-validate before the file-write phase via `prompts:` `validate.exists` / `validate.pattern` / `validate.message`.
+- A later post-init failure MUST report the committed scaffold plus the failed action with centrally redacted details. It MUST NOT claim rollback of committed files or external side effects; validation before commit cannot guarantee that a later action will succeed.
 - The action MUST NOT install Lando plugins into the user-global plugin set; `lando plugin:add` is the only canonical path for that and is forbidden in `postInit.command`'s allowlist by construction. The action is bounded to the destination directory's package graph.
 
 Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. The action set is intentionally small. New top-level actions require a spec change; new `bun` verbs require updating the verb allowlist and the generated recipe-action docs.
@@ -1273,23 +1357,25 @@ Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. T
 2. Validate recipe.yml against the RecipeManifest schema; reject unknown action types.
 3. Resolve destination; create the directory if missing. Plan writes against existing
    dests: fail on a Landofile dest conflict; skip the entire scaffold set when any
-   scaffold dest already exists; otherwise write every dest.
+   scaffold dest already exists; otherwise retain every auxiliary dest for post-commit work.
 4. Run prompts in order:
      a. Skip if `when:` is falsy.
-     b. Use --answer/--answers value when provided.
-     c. Use the recipe's default when --yes or --no-interactive is set.
+     b. Use --answer/--answers for nonsecret prompts; reject secret keys from argv/files.
+     c. Use the recipe's default when --yes or --no-interactive is set; secret prompts have no raw default.
      d. Otherwise prompt interactively via the renderer (TTY) or fail when --no-interactive.
-5. Render every file under `files:`; validate the generated Landofile against §7.8.
-6. Write files atomically (per §12.3).
-7. Run `postInit:` actions in order. When the scaffold set was skipped, only `message` actions run; file-creating post-init (`gitInit`, `bun`, `command`) is skipped.
-8. Print a final summary including the Next-Steps message from the recipe (or a default).
+5. Translate safe options through `recipe` / `decompose`, validate authoring data,
+   encode through `lando4`, and prevalidate auxiliary manifests/templates (§7.4.1).
+6. Commit the encoded Landofile through the managed-file transaction (§12.4).
+7. After commit, write auxiliary `files:` and run `postInit:` in order. When the
+   scaffold set was skipped, only `message` actions run; file-creating actions skip.
+8. Print translation and encoding diagnostics before the final Next-Steps summary.
 ```
 
 Lifecycle events publish at canonical command id `apps:init` per §11. Init itself does not contact a provider; an explicit, opt-in `postInit.command: app:start` action runs as a separate allowlisted command at its own bootstrap level after scaffolding completes.
 
 #### 8.8.10 Canonical recipes shipped in core
 
-The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each ships its own `recipe.yml` (or `recipe.ts`), templates, and README:
+The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each MUST ship its own `recipe.yml` (or `recipe.ts`), auxiliary templates, README, and safely renderable declarative current snapshot (§8.8.3):
 
 | Recipe id | Stack |
 |---|---|
@@ -1307,6 +1393,8 @@ The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each shi
 | `rails` | Ruby on Rails with PostgreSQL and Redis |
 
 Core ships a canonical recipe set under `recipes/<id>/`. The set is defined at build time via `scripts/build-bundled-recipes.ts`, which generates `core/src/recipes/bundled.ts`; recipes are statically imported into the compiled binary (§13.5). The bundled set MAY grow in any v4.x release; removals require a major version bump and a `DeprecationNotice` per §18.
+
+Generated Landofile artifacts MUST be YAML. A programmatic `.lando.ts` example is documentation only; the CLI MUST NOT auto-generate `.lando.ts`.
 
 Staged catalog growth (planned 4.x additions; not part of the v4.0 bundle): `node-api`, `astro`, `sveltekit`, `nextjs`, `django`, `fastapi`, `jekyll`, `hugo`, `eleventy`, and `empty`, prioritized by adoption signal per the ROADMAP. Out of scope for the v4.0 bundle: hoster recipes (`acquia`, `lagoon`, `pantheon`, `platformsh` — these are 4.1 `RemoteSource` connector work, §10.12) and v3-style recipe compatibility shims (external config translators may provide them; §7.4.1).
 
@@ -1327,11 +1415,11 @@ Recipes are versioned independently of core. Core's canonical recipes live along
 
 #### 8.8.12 Constraints
 
-- Recipes MUST NOT execute arbitrary code at any point. The Q&A, file rendering, and post-init action set are the entire surface.
+- Declarative recipes MUST NOT execute arbitrary code. Their surface is Q&A, decomposition, auxiliary file templates, and bounded post-init actions. Trusted programmatic init uses §8.8.14; automatic translate, explain, and migrate MUST use safe declarative data, never arbitrary recipe code.
 - Recipes MUST NOT install plugins. The generated Landofile MAY declare `plugins:` (§7.4); plugin install happens through the app build/materialization flow when first needed.
 - Recipes MUST NOT mutate global config or `<userConfRoot>`. They write only inside the destination directory.
 - Recipes MUST NOT contact the network outside source resolution (which is cached and lockfile-pinned). An explicit, opt-in `postInit.command: app:start` is a separate Lando command after scaffolding and may perform the normal app materialization/build network operations described elsewhere.
-- Recipes are inert after init: once files are written, the recipe is no longer referenced. Lando reads only the resulting `.lando.yml`.
+- Recipe provenance is inert during ordinary runtime loading: Lando reads the resulting Landofile, not recipe code. Explicit explain and migrate MAY consult matched declarative snapshots (§8.2.1); there is no runtime recipe expansion.
 
 #### 8.8.13 Init sources beyond recipes
 
@@ -1339,9 +1427,9 @@ Recipes are versioned independently of core. Core's canonical recipes live along
 
 1. The source provides initial files (clone, extract, copy).
 2. The recipe's file manifest is layered on top, with recipe files winning on conflict unless `flags.full` triggers per-file prompts.
-3. Both `--source` and `--recipe` must succeed; any failure aborts the init with no partial state.
+3. Source and recipe validation MUST succeed before committing the Landofile. A post-commit auxiliary failure reports committed state rather than claiming rollback (§8.8.8).
 
-Default init sources: `cwd` (use existing directory), `git`, `tarball`. A provider may be required by a specific source (e.g., a hypothetical "lando-template" source that uses ephemeral container exec); core does not require a provider for `apps:init` in general.
+Default init sources: `cwd` (use existing directory), `git`, `tarball`. Init sources MUST NOT build an `AppPlan` or contact a provider; an explicitly opted-in post-init command is a separate invocation (§8.8.8).
 
 #### 8.8.14 Programmatic recipes (`recipe.ts`)
 
@@ -1353,7 +1441,7 @@ The TS form's contract:
 
 - `defineRecipe(value | factory)` is a thin identity helper exported from `@lando/core/schema` (and re-exported from `@lando/sdk`); it pins the argument's TS type to the inferred `RecipeManifest` (or factory) shape so authors get full editor completion. Runtime decode still goes through the canonical schema.
 - The default export MUST be either a static `RecipeManifest` value or an `async (ctx: RecipeContext) => RecipeManifest` factory. The static form is rare; if a recipe does not need TS-driven prompt branching, it should ship YAML.
-- `ctx.prompt(prompt)` is the only way the factory may ask the user a question. It accepts the same prompt schema (§8.8.5) the YAML form uses; under the hood it delegates to the same renderer-aware prompt engine. Each call adds the resolved answer to `ctx.answers.<name>` so subsequent calls can branch on it.
+- `ctx.prompt(prompt)` is the only way the factory may ask the user a question. It accepts the same prompt schema (§8.8.5) as the YAML form and delegates to `InteractionService`. Each call adds only a resolved nonsecret answer or approved secret reference to `ctx.answers.<name>`; init-only raw answers remain in the prompt resolver and are omitted from factory data.
 - `ctx.prompt` honors `--no-interactive` and `--answer key=value` exactly as the YAML form's prompt loop does. A factory that asks a prompt without a default in `--no-interactive` mode aborts with `RecipeMissingAnswerError`.
 - The factory's returned `RecipeManifest` is validated against the published schema (§7.8) before any file is written. A factory that returns an invalid shape aborts with `RecipeOutputValidationError` and points at the offending path.
 - Side effects at module top level are forbidden, identical to the `.lando.ts` rule (§7.1.1). Imports + `defineRecipe(...)` + `export default`. Any I/O the factory needs runs inside the factory body and is bounded by `Effect.timeout` (default 30 s; configurable via global `recipe.tsTimeoutMs:`).

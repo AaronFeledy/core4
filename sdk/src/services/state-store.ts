@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { Context, type Effect, type Schema } from "effect";
 
 import type { StateStoreError } from "../errors/index.ts";
@@ -74,7 +76,13 @@ export interface StateBucket<A> {
 /** The `StateStore` service surface: mint `StateBucket` handles from a spec. */
 export interface StateStoreShape {
   readonly open: <A, I>(spec: StateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
+  /** Serialize an arbitrary scoped operation by a durable, host-wide lock key. */
+  readonly withLock: <A, E>(key: string, body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
 }
+
+/** Stable advisory-lock key shared by every writer of one physical volume. */
+export const physicalVolumeLockKey = (instanceId: string): string =>
+  createHash("sha256").update(instanceId).digest("hex");
 
 /**
  * The single core service for durable, atomic, schema-validated, versioned,

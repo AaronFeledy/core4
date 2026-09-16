@@ -12,6 +12,7 @@ import type {
   CacheService,
   CommandRegistry,
   ConfigService,
+  ConfigTranslatorRegistry,
   DataMover,
   Downloader,
   EventService,
@@ -24,6 +25,7 @@ import type {
   LogFileHelperAssets,
   Logger,
   ManagedFileService,
+  ManagedFileTransactionGuard,
   PathsService,
   PluginRegistry,
   PluginTrustStore,
@@ -73,6 +75,7 @@ import type { EventCommandExecutor } from "@lando/engine/services/event-command-
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
 import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import type { BuiltInCommandCatalog } from "../cli/built-in-command-catalog-service";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service";
@@ -106,10 +109,12 @@ type MinimalRuntimeServices =
   | FileSystem
   | CacheService
   | ManagedFileService
+  | ManagedFileTransactionGuard
   | InteractionService
   | PluginTrustStore
   | PrivilegeService
   | ProcessRunner
+  | PrivateFileAccessService
   | RedactionService
   | SecretStore
   | StateStore
@@ -119,6 +124,7 @@ type MinimalRuntimeServices =
 type PluginRuntimeServices =
   | MinimalRuntimeServices
   | PluginRegistry
+  | ConfigTranslatorRegistry
   | PluginContributionGraph
   | BuiltInCommandCatalog;
 type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;

@@ -4,3 +4,4 @@ services:
   web:
     type: compose
     image: nginx:1.27-alpine
+    home: false

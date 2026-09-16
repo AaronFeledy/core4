@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -6,7 +6,25 @@ import { describe, expect, test } from "bun:test";
 import { collectShardedTestFiles } from "../../scripts/test-shards.ts";
 
 const repositoryRoot = resolve(import.meta.dirname, "../..");
+const engineSourceRoot = resolve(repositoryRoot, "engine/src");
 const packageManifestPath = resolve(repositoryRoot, "engine/package.json");
+const externalEngineConsumerRoots = [
+  "core",
+  "sdk",
+  "plugins",
+  "scripts",
+  "docs",
+  "mcp/src",
+  "renderer/src",
+  "data-mover",
+  "telemetry",
+  "container-runtime",
+  "managed-file",
+  "http-client",
+  "state-store",
+  "landofile",
+  "engine/test",
+] as const;
 
 const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -58,11 +76,18 @@ describe("Engine package seam", () => {
     expect(packageManifest.private).toBe(true);
     expect(packageManifest.main).toBe("./src/index.ts");
     expect(packageManifest.types).toBe("./src/index.ts");
-    expect(exports).toEqual({
-      ".": "./src/index.ts",
-      "./*": "./src/*.ts",
-      "./package.json": "./package.json",
-    });
+    const exportEntries = Object.entries(exports);
+    expect(packageManifest.exports).toEqual(exports);
+    expect(exports["."]).toBe("./src/index.ts");
+    expect(exports["./package.json"]).toBe("./package.json");
+    expect(exportEntries.every(([key]) => !key.includes("*"))).toBe(true);
+    expect(exportEntries.map(([key]) => key)).toEqual(exportEntries.map(([key]) => key).toSorted());
+    for (const [key, target] of exportEntries) {
+      if (key === "./package.json") continue;
+      expect(target).toMatch(/^\.\/src\/.+\.ts$/);
+      expect(target).toBe(key === "." ? "./src/index.ts" : `./src/${key.slice(2)}.ts`);
+      expect(existsSync(resolve(repositoryRoot, "engine", target))).toBe(true);
+    }
     expect(stringArray(rootManifest.workspaces)).toContain("engine");
     expect(projectReferencePaths(rootTsconfig.references)).toContain("./engine");
     expect(scripts).toEqual({
@@ -75,6 +100,39 @@ describe("Engine package seam", () => {
     expect(isJsonObject(packageModule)).toBe(true);
     if (!isJsonObject(packageModule)) throw new TypeError("Expected the Engine entry point to be a module");
     expect(Object.keys(packageModule)).toEqual([]);
+  });
+
+  test("exports every real engine subpath consumed outside engine source", async () => {
+    // Given
+    const packageManifest = await readJsonObject(packageManifestPath);
+    const exports = stringRecord(packageManifest.exports);
+    const consumedSubpaths = new Set<string>();
+    const engineSpecifierPattern = /["']@lando\/engine\/([^"']+)["']/g;
+
+    for (const consumerRoot of externalEngineConsumerRoots) {
+      const absoluteConsumerRoot = resolve(repositoryRoot, consumerRoot);
+      for await (const relativePath of new Bun.Glob("**/*.{ts,tsx}").scan({
+        cwd: absoluteConsumerRoot,
+        onlyFiles: true,
+      })) {
+        if (relativePath.split("/").some((part) => part === "dist" || part === "node_modules")) continue;
+        const source = await Bun.file(resolve(absoluteConsumerRoot, relativePath)).text();
+        for (const match of source.matchAll(engineSpecifierPattern)) {
+          const subpath = match[1];
+          if (subpath === undefined || !existsSync(resolve(engineSourceRoot, `${subpath}.ts`))) continue;
+          consumedSubpaths.add(`./${subpath}`);
+        }
+      }
+    }
+
+    // When
+    const missingExports = [...consumedSubpaths]
+      .filter((subpath) => !(subpath in exports))
+      .sort((left, right) => left.localeCompare(right));
+
+    // Then
+    expect(consumedSubpaths.size).toBeGreaterThan(0);
+    expect(missingExports).toEqual([]);
   });
 
   test("declares only approved seam dependencies", async () => {
@@ -112,7 +170,7 @@ describe("Engine package seam", () => {
       ["@lando/state-store", "workspace:*"],
       ["@lando/telemetry", "workspace:*"],
     ]);
-    expect(workspaceDevDependencies).toEqual([]);
+    expect(workspaceDevDependencies).toEqual([["@lando/service-lando", "workspace:*"]]);
     expect(workspacePeerDependencies).toEqual([]);
     expect(runtimeDependencies).toEqual([
       ["effect", "^3.21.2"],

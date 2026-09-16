@@ -11,6 +11,10 @@ export interface ExpressionContext {
   readonly proxy?: Readonly<Record<string, unknown>> | undefined;
   readonly global?: Readonly<Record<string, unknown>> | undefined;
   readonly vars?: Readonly<Record<string, unknown>> | undefined;
+  /** Already-resolved recipe option values supplied by the caller; performs no lookup and runs no recipe code. */
+  readonly options?: Readonly<Record<string, unknown>> | undefined;
+  /** Recipe option values read from a Landofile's own `recipe.options`; performs no lookup and runs no recipe code. */
+  readonly recipe?: Readonly<Record<string, unknown>> | undefined;
   readonly service?: Readonly<Record<string, unknown>> | undefined;
   readonly services?: Readonly<Record<string, unknown>> | undefined;
   readonly plugin?: Readonly<Record<string, unknown>> | undefined;
@@ -30,6 +34,18 @@ export const ExpressionContext: Schema.Schema<ExpressionContext> = Schema.Struct
   proxy: Schema.optional(UnknownRecord),
   global: Schema.optional(UnknownRecord),
   vars: Schema.optional(UnknownRecord),
+  options: Schema.optional(
+    UnknownRecord.annotations({
+      description:
+        "Already-resolved recipe option values supplied by the caller; performs no lookup and runs no recipe code.",
+    }),
+  ),
+  recipe: Schema.optional(
+    UnknownRecord.annotations({
+      description:
+        "Recipe option values read from a Landofile's own recipe.options; performs no lookup and runs no recipe code.",
+    }),
+  ),
   service: Schema.optional(UnknownRecord),
   services: Schema.optional(UnknownRecord),
   plugin: Schema.optional(UnknownRecord),

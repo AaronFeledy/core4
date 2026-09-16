@@ -18,33 +18,37 @@ import {
 } from "@lando/core/services";
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
-import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
-import { createRedactor } from "@lando/sdk/secrets";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
-import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
-import { CacheServiceLive } from "../../src/testing/engine-layers.ts";
-import { DataMoverLive } from "../../src/testing/engine-layers.ts";
-import { makePluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { DataMoverLive } from "@lando/data-mover/service";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import {
   ScratchRegistry,
   ScratchRegistryLive,
   makeScratchRegistry,
-} from "../../src/testing/engine-layers.ts";
-import { ScratchResourceScannerLive } from "../../src/testing/engine-layers.ts";
-import { ScratchInitAppPort, makeScratchAppServiceLive } from "../../src/testing/engine-layers.ts";
-import { ConfigServiceLive } from "../../src/testing/engine-layers.ts";
-import { EventServiceLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { makeEngineLandofileServiceLive } from "../../src/testing/engine-layers.ts";
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
+} from "@lando/engine/scratch-app/registry";
+import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
+import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
+import { createRedactor } from "@lando/sdk/secrets";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
 
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
+    resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
       resolve: (packageSpec) =>
         Promise.resolve({
@@ -114,11 +118,13 @@ const forkLandofile = [
   "  appserver:",
   "    image: node:20-alpine",
   "    primary: true",
+  "    home: false",
   "    dependsOn:",
   "      - database",
   "  database:",
   "    type: postgres",
   "    image: postgres:16-alpine",
+  "    home: false",
   "    environment:",
   "      POSTGRES_PASSWORD: lando",
   "",
@@ -132,6 +138,23 @@ const routedForkLandofile = [
   "  appserver:",
   "    image: node:20-alpine",
   "    primary: true",
+  "    home: false",
+  "    routes:",
+  "      - hostname: forkme.lndo.site",
+  "",
+].join("\n");
+
+const unroutedForkLandofile = [
+  "name: forkme",
+  "runtime: 4",
+  "provider: lando",
+  "router:",
+  "  enabled: false",
+  "services:",
+  "  appserver:",
+  "    image: node:20-alpine",
+  "    primary: true",
+  "    home: false",
   "    routes:",
   "      - hostname: forkme.lndo.site",
   "",
@@ -250,7 +273,7 @@ const makeScratchForkLayer = (
   });
   const scratchRegistryLive = (() => {
     if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLive;
-    const registry = makeScratchRegistry();
+    const registry = makeScratchRegistry(ownerOnlyFileAccess);
     let upsertCount = 0;
     return Layer.succeed(ScratchRegistry, {
       ...registry,
@@ -402,6 +425,33 @@ describe("ScratchAppServiceLive fork acquire", () => {
 
       expect(routes.applied).toEqual([handleId]);
       expect(routes.removed).toEqual([handleId]);
+    });
+  });
+
+  test("never publishes scratch routes when the plan disables the router", async () => {
+    await withTempProject(unroutedForkLandofile, async () => {
+      // Given: a forked source app that declares a route but disables the router.
+      const appliedPlans: AppPlan[] = [];
+      const routes: RouteRecorder = { applied: [], removed: [] };
+
+      // When
+      const acquired = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          return yield* Effect.scoped(
+            Effect.gen(function* () {
+              const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false });
+              return handle.id;
+            }),
+          );
+        }).pipe(Effect.provide(makeScratchForkLayer(appliedPlans, [], { routes }))),
+      );
+
+      // Then: the route survives on the applied plan, but nothing was handed to the router.
+      expect(appliedPlans[0]?.routes ?? []).toHaveLength(1);
+      expect(appliedPlans[0]?.router?.enabled).toBe(false);
+      expect(routes.applied).toEqual([]);
+      expect(routes.removed).toEqual([acquired]);
     });
   });
 

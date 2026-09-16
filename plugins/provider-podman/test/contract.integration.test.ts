@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, Chunk, DateTime, Effect, Exit, Stream } from "effect";
 
-import { resolveLiveProviderSocket } from "@lando/core/testing";
-import { makePluginStateStore } from "@lando/core/testing";
-import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
+import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
 import { ServiceCopyError } from "@lando/sdk/errors";
 import {
@@ -27,14 +27,14 @@ import {
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("persisted-podman");
 const serviceName = ServiceName.make("web");
 const textEncoder = new TextEncoder();
 
-const attachFrame = (stream: 1 | 2, text: string) => {
-  const payload = textEncoder.encode(text);
+const attachBytesFrame = (stream: 1 | 2, payload: Uint8Array) => {
   const frame = new Uint8Array(8 + payload.length);
   frame[0] = stream;
   frame[4] = (payload.length >>> 24) & 0xff;
@@ -44,6 +44,7 @@ const attachFrame = (stream: 1 | 2, text: string) => {
   frame.set(payload, 8);
   return frame;
 };
+const attachFrame = (stream: 1 | 2, text: string) => attachBytesFrame(stream, textEncoder.encode(text));
 
 const metadata: PlanMetadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-27T00:00:00Z"),
@@ -177,19 +178,19 @@ const makeFakeApi = () => {
   const existing = new Set<string>();
   const execs = new Map<string, number>();
   const containerBinds = new Map<string, ReadonlyArray<string>>();
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
-        if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
+        if (request.path.startsWith("/networks/") && request.method === "DELETE") {
           return { status: 204, body: "" };
         }
         if (request.path.startsWith("/exec/") && request.path.endsWith("/json") && request.method === "GET") {
@@ -295,9 +296,10 @@ const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): 
 };
 
 const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const containers = new Map<string, { readonly body: unknown; stdout: Uint8Array; exitCode: number }>();
   const volumes = new Map<string, Uint8Array>();
+  const volumeLabels = new Map<string, Readonly<Record<string, string>>>();
   const snapshots = new Map<string, Uint8Array>();
   const serviceFiles = new Map<string, Uint8Array>();
   const artifacts = new Map<string, Uint8Array>();
@@ -307,7 +309,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.promise(async (): Promise<PodmanHttpResponse> => {
+      Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
@@ -328,6 +330,23 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
             container.stdout = volumes.get(volume) ?? new Uint8Array();
           if (container !== undefined && volume !== undefined && command === "tar -C /lando-data -cf - .")
             container.stdout = volumes.get(volume) ?? new Uint8Array();
+          const snapshotFile = body?.Cmd?.[2]?.match(/file=\/lando-snapshots\/([^;]+)/u)?.[1];
+          if (
+            container !== undefined &&
+            volume !== undefined &&
+            snapshotVolume !== undefined &&
+            snapshotFile
+          ) {
+            const payload = volumes.get(volume) ?? new Uint8Array();
+            snapshots.set(`${snapshotVolume}/${snapshotFile}`, payload);
+            container.stdout = textEncoder.encode(`fake-digest ${payload.byteLength}\n`);
+          }
+          const restoreFile = body?.Cmd?.[3] === "lando-restore" ? body.Cmd[4]?.split("/").at(-1) : undefined;
+          if (volume !== undefined && snapshotVolume !== undefined && restoreFile !== undefined) {
+            const snapshot = snapshots.get(`${snapshotVolume}/${restoreFile}`);
+            if (snapshot === undefined && container !== undefined) container.exitCode = 1;
+            else if (snapshot !== undefined) volumes.set(volume, snapshot);
+          }
           const snapshotWrite = command?.match(/tar -C \/lando-data -cf \/lando-snapshots\/([^ ]+) \./u)?.[1];
           if (
             container !== undefined &&
@@ -369,6 +388,18 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           snapshots.set(id, await collectAsyncBytes(request.stdin));
           return { status: 201, body: "{}" };
         }
+        if (request.path === "/volumes/create" && request.method === "POST") {
+          const body = request.body as {
+            readonly Name?: string;
+            readonly Labels?: Readonly<Record<string, string>>;
+          };
+          const name = body.Name ?? "";
+          if (volumes.has(name)) return { status: 409, body: "{}" };
+          const labels = body.Labels ?? {};
+          volumes.set(name, new Uint8Array());
+          volumeLabels.set(name, labels);
+          return { status: 201, body: JSON.stringify({ Name: name, Labels: labels }) };
+        }
         if (
           request.path.startsWith("/volumes/") &&
           request.path.includes("/archive?") &&
@@ -383,10 +414,33 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         if (request.path === "/volumes" && request.method === "GET")
           return {
             status: 200,
-            body: JSON.stringify({ Volumes: Array.from(volumes.keys()).map((Name) => ({ Name })) }),
+            body: JSON.stringify({
+              Volumes: Array.from(volumes.keys()).map((Name) => ({
+                Name,
+                Labels: volumeLabels.get(Name) ?? {},
+              })),
+            }),
           };
-        if (request.path.startsWith("/volumes/") && request.method === "DELETE")
+        if (request.path.startsWith("/volumes/") && request.method === "GET") {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          return volumes.has(name)
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Name: name,
+                  Driver: "local",
+                  Options: {},
+                  Labels: volumeLabels.get(name) ?? {},
+                }),
+              }
+            : { status: 404, body: "{}" };
+        }
+        if (request.path.startsWith("/volumes/") && request.method === "DELETE") {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          volumes.delete(name);
+          volumeLabels.delete(name);
           return { status: 204, body: "" };
+        }
         if (
           request.path.startsWith("/containers/") &&
           request.path.includes("/archive?") &&
@@ -421,7 +475,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         const name = decodeURIComponent(
           request.path.slice("/containers/".length, request.path.indexOf("/logs?")),
         );
-        return Stream.make(containers.get(name)?.stdout ?? new Uint8Array());
+        return Stream.make(attachBytesFrame(1, containers.get(name)?.stdout ?? new Uint8Array()));
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
         const name = decodeURIComponent(
@@ -492,13 +546,13 @@ interface FakePodmanApiHooks {
 const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
   const running = new Set<string>();
   const existing = new Set<string>();
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ version: { Version: "6.0.2" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
@@ -640,8 +694,8 @@ describe("provider-podman RuntimeProvider contract", () => {
             fake.calls.some(
               (call) =>
                 call.path.startsWith("/containers/create?name=") &&
-                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").startsWith(
-                  "sh -c mkdir -p /lando-snapshots && tar -C /lando-data -cf /lando-snapshots/",
+                ((call.body as { Cmd?: ReadonlyArray<string> } | undefined)?.Cmd?.join(" ") ?? "").includes(
+                  "tar -C /lando-data -cf",
                 ),
             ),
           usedNativeServiceFileCopy: () =>
@@ -720,7 +774,11 @@ describe("provider-podman RuntimeProvider contract", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-state-"));
     try {
       const firstFake = makeFakeApi();
-      const firstState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const firstState = makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(stateDir),
+        ownerOnlyFileAccess,
+      );
       const firstProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
           Effect.provide(
@@ -737,7 +795,11 @@ describe("provider-podman RuntimeProvider contract", () => {
       await Effect.runPromise(Effect.scoped(firstProvider.apply(plan, { reconcile: true })));
 
       const secondFake = makeFakeApi();
-      const secondState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const secondState = makePluginStateStore(
+        makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+        AbsolutePath.make(stateDir),
+        ownerOnlyFileAccess,
+      );
       const secondProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
           Effect.provide(
@@ -760,6 +822,29 @@ describe("provider-podman RuntimeProvider contract", () => {
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
+  }, 30_000);
+
+  test("destroy and logs honor a caller-supplied plan when no plan is persisted", async () => {
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
+      ),
+    );
+    const containerName = `lando-${plan.slug}-${serviceName}`;
+
+    const chunks = await Effect.runPromise(
+      Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
+    );
+    expect(Chunk.toReadonlyArray(chunks).length).toBeGreaterThan(0);
+    expect(fake.calls.some((call) => call.path.includes(`/containers/${containerName}/logs?`))).toBe(true);
+
+    await Effect.runPromise(provider.destroy({ app: appId, plan }, { volumes: false }));
+    expect(
+      fake.calls.some(
+        (call) => call.method === "DELETE" && call.path === `/containers/${containerName}?force=true`,
+      ),
+    ).toBe(true);
   });
 
   test.skipIf(resolveLiveProviderSocket() === undefined)(

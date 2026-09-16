@@ -9,10 +9,12 @@ import { type Context, Effect, Layer, Schema } from "effect";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService, Renderer } from "@lando/sdk/services";
 
+import { assertLandoVersionConstraint, loadUserLandofile } from "@lando/engine/landofile/app-resolution";
+import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { assertLandoVersionConstraint, loadUserLandofile } from "../../src/testing/engine-layers.ts";
-import { LandofileServiceLive, resolveLandofileIncludes } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const landofile = (lando?: string): LandofileShape => (lando === undefined ? {} : { lando });
 
@@ -197,7 +199,7 @@ describe("loadUserLandofile version-constraint enforcement", () => {
           landofile: { lando: ">=4.1", includes: ["fragment.yml"] },
           appRoot,
           sourcePath: rootPath,
-        }),
+        }).pipe(Effect.provide(makeTestStateStore().layer)),
       );
       const error = await Effect.runPromise(
         Effect.flip(assertLandoVersionConstraint(resolved, { runningVersion: "4.2.0" })),

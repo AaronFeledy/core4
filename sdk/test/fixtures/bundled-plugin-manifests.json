@@ -49,6 +49,32 @@
     "manifest": {
       "api": 4,
       "bootstrap": "app",
+      "contributes": {
+        "configTranslators": [
+          {
+            "detects": ["**/.lando.yml", "**/.lando.*.yml"],
+            "id": "lando4",
+            "inputKinds": ["lando4"],
+            "module": "./src/translator.ts",
+            "summary": "Canonical v4 Landofile YAML decoder and expression-aware encoder."
+          }
+        ]
+      },
+      "description": "Expression-aware canonical v4 Landofile config translator for Lando v4.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/lando4",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/lando4"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
       "description": "Bundled Lando desktop-notification policy plugin.",
       "enabled": true,
       "entry": "./src/index.ts",
@@ -161,6 +187,15 @@
               "providerCapabilities": ["sharedCrossAppNetwork"]
             },
             "summary": "Global Traefik router"
+          },
+          {
+            "enabledByDefault": true,
+            "id": "traefik-diagnostics",
+            "module": "./src/global-services/diagnostics.ts",
+            "requires": {
+              "providerCapabilities": ["sharedCrossAppNetwork"]
+            },
+            "summary": "Unmatched route diagnostics"
           }
         ],
         "routerServices": [
@@ -208,6 +243,7 @@
       "bootstrap": "app",
       "contributes": {
         "appFeatures": [
+          "service-lando.mailpit.wire",
           "service-lando.php.db-client",
           "service-lando.phpmyadmin.wire",
           "service-lando.nginx.php-fpm.wire"
@@ -290,7 +326,11 @@
           "mssql:2019",
           "mssql:2022",
           "mysql",
+          "mysql:8.0",
+          "mysql:8.4",
+          "mysql:9.7",
           "nginx",
+          "node",
           "node:lts",
           "node:22",
           "opensearch",
@@ -300,6 +340,7 @@
           "php:8.3",
           "php:8.4",
           "php:8.5",
+          "php:8.6",
           "phpmyadmin",
           "phpmyadmin:5",
           "phpmyadmin:latest",
@@ -341,7 +382,16 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
-        "commands": ["db:import", "db:export", "db:snapshot", "db:restore", "db:reset"]
+        "commands": [
+          "db:import",
+          "db:export",
+          "db:snapshot",
+          "db:snapshots",
+          "db:snapshots:prune",
+          "db:restore",
+          "db:reset",
+          "db:seed"
+        ]
       },
       "description": "Bundled database import, export, snapshot, restore, and reset commands.",
       "enabled": true,

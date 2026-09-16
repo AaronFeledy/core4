@@ -36,6 +36,7 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  SecretStore,
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -43,6 +44,13 @@ import { PreAppStartEvent } from "@lando/sdk/events";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { parseLandofile } from "@lando/landofile/parser";
 import { globalConfigOptionsFromInput } from "../../src/cli/command-specs/meta/global/config.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
@@ -56,13 +64,6 @@ import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
 import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts";
-import { CacheServiceLive } from "../../src/testing/engine-layers";
-import { GlobalAppServiceLive } from "../../src/testing/engine-layers";
-import { StreamFrameSink } from "../../src/testing/engine-layers";
-import { ConfigServiceLive } from "../../src/testing/engine-layers";
-import { EventServiceLive } from "../../src/testing/engine-layers";
-import { FileSystemLive } from "../../src/testing/engine-layers";
-import { AppPlannerLive } from "../../src/testing/engine-layers";
 
 interface ApplyCall {
   readonly plan: AppPlan;
@@ -140,7 +141,7 @@ const fakeServiceType = makeLegacyServiceTypeFake({
       provider,
       primary,
       artifact: { kind: "ref", ref: "lando-global-service:test" },
-      environment: {},
+      environment: { TOKEN: "${secret:GLOBAL_TOKEN}" },
       workingDirectory: PortablePath.make("/app"),
       appMount: {
         source: AbsolutePath.make(appRoot),
@@ -167,7 +168,7 @@ const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => 
   const modulePath = join(moduleRoot, "fake-global-service.mjs");
   await writeFile(
     modulePath,
-    'import { Effect } from "effect";\nexport default Effect.succeed({ api: 4, type: "lando" });\n',
+    'import { Effect } from "effect";\nexport default Effect.succeed({ api: 4, type: "lando", home: false });\n',
   );
   return modulePath;
 };
@@ -280,6 +281,12 @@ const makeHarness = async (
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),
+    Layer.succeed(SecretStore, {
+      id: "global-command-test",
+      get: () => Effect.succeed("resolved-global-token"),
+      has: () => Effect.succeed(true),
+      list: Effect.succeed(["GLOBAL_TOKEN"]),
+    }),
     AppPlannerLive.pipe(
       Layer.provide(
         Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
@@ -305,7 +312,7 @@ const withHarness = async <T>(
 
 const materializeDist = (
   harness: Harness,
-  services: Record<string, ServiceConfig> = { proxy: { type: "lando" } },
+  services: Record<string, ServiceConfig> = { proxy: { type: "lando", home: false } },
 ) =>
   Effect.runPromise(
     Effect.flatMap(GlobalAppService, (globalApp) => globalApp.regenerateDist({ services })).pipe(
@@ -342,6 +349,18 @@ describe("meta:global command effects", () => {
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
       expect(harness.calls.apply[0]?.plan.root).toBe(AbsolutePath.make(join(harness.dataRoot, "global")));
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
+      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.calls.apply[0]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "${secret:GLOBAL_TOKEN}",
+      });
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {}).sort()).toEqual(["mail", "proxy"]);
       expect(harness.calls.apply.flatMap(({ plan }) => artifactRefs(plan)).sort()).toEqual([
         "built:mail",
@@ -518,8 +537,8 @@ describe("meta:global command effects", () => {
   test("status inspects planned global services and supports a service subset", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness, {
-        proxy: { type: "lando" },
-        mail: { type: "lando" },
+        proxy: { type: "lando", home: false },
+        mail: { type: "lando", home: false },
       });
 
       const result = await Effect.runPromise(
@@ -535,8 +554,8 @@ describe("meta:global command effects", () => {
   test("status with unknown --service fails before rendering an empty table", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness, {
-        proxy: { type: "lando" },
-        mail: { type: "lando" },
+        proxy: { type: "lando", home: false },
+        mail: { type: "lando", home: false },
       });
 
       const exit = await Effect.runPromiseExit(
@@ -565,7 +584,10 @@ describe("meta:global command effects", () => {
   test("status degrades each service to unknown when the provider is unavailable", async () => {
     await withHarness(
       async (harness) => {
-        await materializeDist(harness, { proxy: { type: "lando" }, mail: { type: "lando" } });
+        await materializeDist(harness, {
+          proxy: { type: "lando", home: false },
+          mail: { type: "lando", home: false },
+        });
 
         const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));
 
@@ -742,7 +764,10 @@ describe("meta:global command effects", () => {
 
   test("info inspects the global plan and reuses the app-info service shape", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness, { proxy: { type: "lando" }, mail: { type: "lando" } });
+      await materializeDist(harness, {
+        proxy: { type: "lando", home: false },
+        mail: { type: "lando", home: false },
+      });
 
       const result = await Effect.runPromise(globalInfo().pipe(Effect.provide(harness.layer)));
 
@@ -755,7 +780,10 @@ describe("meta:global command effects", () => {
 
   test("info with --service filters to the selected subset and rejects unknown services", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness, { proxy: { type: "lando" }, mail: { type: "lando" } });
+      await materializeDist(harness, {
+        proxy: { type: "lando", home: false },
+        mail: { type: "lando", home: false },
+      });
 
       const scoped = await Effect.runPromise(
         globalInfo({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
@@ -783,7 +811,10 @@ describe("meta:global command effects", () => {
 
   test("restart stops then starts the global app (stop destroy precedes start apply)", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness, { proxy: { type: "lando" }, mail: { type: "lando" } });
+      await materializeDist(harness, {
+        proxy: { type: "lando", home: false },
+        mail: { type: "lando", home: false },
+      });
 
       const result = await Effect.runPromise(globalRestart().pipe(Effect.provide(harness.layer)));
 
@@ -812,6 +843,18 @@ describe("meta:global command effects", () => {
       expect(harness.calls.build).toHaveLength(1);
       expect(harness.calls.apply).toHaveLength(1);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(true);
+      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("mail")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.calls.apply[0]?.options.serviceEnvironment?.[ServiceName.make("proxy")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.calls.apply[0]?.plan.services[ServiceName.make("proxy")]?.environment).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "${secret:GLOBAL_TOKEN}",
+      });
       expect(
         Object.values(harness.calls.apply[0]?.plan.services ?? {}).find(
           (service) => String(service.name) === "proxy",
@@ -905,7 +948,10 @@ describe("meta:global command effects", () => {
 
   test("restart uses global start's built plan", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness, { proxy: { type: "lando" }, mail: { type: "lando" } });
+      await materializeDist(harness, {
+        proxy: { type: "lando", home: false },
+        mail: { type: "lando", home: false },
+      });
 
       await Effect.runPromise(globalRestart().pipe(Effect.provide(harness.layer)));
 
@@ -919,7 +965,7 @@ describe("meta:global command effects", () => {
 
   test("logs collects provider log lines from the materialized global plan", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness, { proxy: { type: "lando" } });
+      await materializeDist(harness, { proxy: { type: "lando", home: false } });
 
       const result = await Effect.runPromise(globalLogs().pipe(Effect.provide(harness.layer)));
 
@@ -960,7 +1006,7 @@ describe("meta:global command effects", () => {
 
   test("follow logs streams provider chunks through the StreamFrameSink", async () => {
     await withHarness(async (harness) => {
-      await materializeDist(harness, { proxy: { type: "lando" } });
+      await materializeDist(harness, { proxy: { type: "lando", home: false } });
 
       const emitted: Array<{ readonly service?: string; readonly chunk: string }> = [];
       const sinkLayer = Layer.succeed(StreamFrameSink, {

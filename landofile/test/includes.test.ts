@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -7,8 +8,8 @@ import { Effect } from "effect";
 
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 
-import { getLocalIncludePaths } from "../src/include-provenance.ts";
-import { resolveLandofileIncludes } from "../src/includes.ts";
+import { getLandofileIncludeSources, getLocalIncludePaths } from "../src/include-provenance.ts";
+import { resolveLandofileIncludes as resolveLandofileIncludesPackage } from "../src/includes.ts";
 import type {
   GitIncludeCloner,
   NpmIncludeExtractor,
@@ -16,13 +17,31 @@ import type {
   NpmIncludeRecipeSource,
   ResolveIncludesError,
 } from "../src/includes.ts";
-import { makeTestLandofilePorts } from "./support.ts";
+import { loadLandofileLayers } from "../src/service.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
-const resolveEffect = (landofile: LandofileShape, appRoot: string, cacheRoot: string) =>
-  resolveLandofileIncludes({ landofile, appRoot, cacheRoot, ports: makeTestLandofilePorts(cacheRoot) });
+const resolveLandofileIncludes = (options: Parameters<typeof resolveLandofileIncludesPackage>[0]) =>
+  resolveLandofileIncludesPackage({ ...options, stateStore: makeTestLandofileStateStore() });
 
-const runResolve = (landofile: LandofileShape, appRoot: string, cacheRoot: string) =>
-  Effect.runPromise(resolveEffect(landofile, appRoot, cacheRoot));
+const resolveEffect = (
+  landofile: LandofileShape,
+  appRoot: string,
+  cacheRoot: string,
+  userIncludesDir = cacheRoot,
+) =>
+  resolveLandofileIncludes({
+    landofile,
+    appRoot,
+    cacheRoot,
+    ports: makeTestLandofilePorts(cacheRoot, userIncludesDir),
+  });
+
+const runResolve = (
+  landofile: LandofileShape,
+  appRoot: string,
+  cacheRoot: string,
+  userIncludesDir = cacheRoot,
+) => Effect.runPromise(resolveEffect(landofile, appRoot, cacheRoot, userIncludesDir));
 
 const serviceType = (landofile: LandofileShape, name: string) =>
   landofile.services?.[ServiceName.make(name)]?.type;
@@ -51,11 +70,13 @@ const lockfile = (source: string, resolved: string, checksum: string) =>
 describe("resolveLandofileIncludes", () => {
   let appRoot: string;
   let cacheRoot: string;
+  let userIncludesDir: string;
   let previousCacheRoot: string | undefined;
 
   beforeEach(async () => {
     appRoot = await mkdtemp(join(tmpdir(), "lando-includes-app-"));
     cacheRoot = await mkdtemp(join(tmpdir(), "lando-includes-cache-"));
+    userIncludesDir = await mkdtemp(join(tmpdir(), "lando-user-includes-"));
     previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
   });
@@ -64,6 +85,7 @@ describe("resolveLandofileIncludes", () => {
     process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
     await rm(appRoot, { recursive: true, force: true });
     await rm(cacheRoot, { recursive: true, force: true });
+    await rm(userIncludesDir, { recursive: true, force: true });
   });
 
   test("merges a local relative include and does not write a lockfile", async () => {
@@ -84,6 +106,190 @@ describe("resolveLandofileIncludes", () => {
       services: { [ServiceName.make("api")]: { type: "node", primary: true } },
     });
     expect(await exists(join(appRoot, ".lando.lock.yml"))).toBe(false);
+  });
+
+  test("merges explicitly selected nested user profiles before project overrides", async () => {
+    // Given: a user profile with declaring-directory and root-relative nested profiles.
+    await mkdir(join(userIncludesDir, "corp"), { recursive: true });
+    await mkdir(join(userIncludesDir, "shared"), { recursive: true });
+    await writeFile(
+      join(userIncludesDir, "corp", "base.yml"),
+      "services:\n  api:\n    type: node\n    env_file:\n      - ./app.env\n",
+      "utf8",
+    );
+    await writeFile(
+      join(userIncludesDir, "shared", "cache.yaml"),
+      "services:\n  cache:\n    type: redis\n",
+      "utf8",
+    );
+    await writeFile(
+      join(userIncludesDir, "corp", "php.yml"),
+      [
+        "includes:",
+        "  - ./base.yml",
+        "  - user:shared/cache.yaml",
+        "services:",
+        "  api:",
+        "    build:",
+        "      context: ./docker",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    // When: the app explicitly opts into the user profile and overrides its service.
+    const result = await runResolve(
+      {
+        includes: ["user:corp/php.yml"],
+        services: { [ServiceName.make("api")]: { type: "php" } },
+      },
+      appRoot,
+      cacheRoot,
+      userIncludesDir,
+    );
+
+    // Then: nesting and precedence match ordinary includes, while authored paths stay app-relative.
+    expect(result.services?.[ServiceName.make("api")]).toMatchObject({
+      type: "php",
+      envFile: ["./app.env"],
+      build: { context: "./docker" },
+    });
+    expect(serviceType(result, "cache")).toBe("redis");
+    expect(getLandofileIncludeSources(result)).toEqual([
+      {
+        id: "user:corp/base.yml",
+        sha256: createHash("sha256")
+          .update(await readFile(join(userIncludesDir, "corp", "base.yml"), "utf8"))
+          .digest("hex"),
+      },
+      {
+        id: "user:corp/php.yml",
+        sha256: createHash("sha256")
+          .update(await readFile(join(userIncludesDir, "corp", "php.yml"), "utf8"))
+          .digest("hex"),
+      },
+      {
+        id: "user:shared/cache.yaml",
+        sha256: createHash("sha256")
+          .update(await readFile(join(userIncludesDir, "shared", "cache.yaml"), "utf8"))
+          .digest("hex"),
+      },
+    ]);
+  });
+
+  test("does not load user profiles without explicit app opt-in", async () => {
+    // Given: a valid profile exists in the user includes directory.
+    await writeFile(join(userIncludesDir, "implicit.yml"), "services:\n  hidden:\n    type: redis\n", "utf8");
+
+    // When: the app declares no includes.
+    const result = await runResolve({ name: "demo" }, appRoot, cacheRoot, userIncludesDir);
+
+    // Then: the profile has no effect.
+    expect(result.services).toBeUndefined();
+  });
+
+  test("preserves user include provenance through layered Landofile loading", async () => {
+    // Given: the canonical layer explicitly selects a user profile.
+    await writeFile(join(appRoot, ".lando.yml"), "name: layered-user\nincludes:\n  - user:corp.yml\n");
+    await writeFile(join(userIncludesDir, "corp.yml"), "services:\n  api:\n    type: node\n");
+
+    // When: the complete layered loader resolves the app.
+    const landofile = await Effect.runPromise(
+      loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"), {
+        ports: makeTestLandofilePorts(cacheRoot, userIncludesDir),
+        stateStore: makeTestLandofileStateStore(),
+        templates: { modules: [] },
+      }),
+    );
+
+    // Then: public provenance remains logical after the layer merge.
+    expect(getLandofileIncludeSources(landofile)).toEqual([
+      {
+        id: "user:corp.yml",
+        sha256: createHash("sha256").update("services:\n  api:\n    type: node\n").digest("hex"),
+      },
+    ]);
+  });
+
+  test.each([
+    { source: "user:", kind: "subpath-invalid" },
+    { source: "user:../escape.yml", kind: "outside-root" },
+    { source: "user:/absolute.yml", kind: "subpath-invalid" },
+    { source: "user:C:\\absolute.yml", kind: "subpath-invalid" },
+    { source: "user:\\\\server\\share.yml", kind: "subpath-invalid" },
+    { source: "user:profile.json", kind: "subpath-invalid" },
+  ])("rejects invalid user include source $source", async ({ source, kind }) => {
+    // Given/When: an app selects a malformed or escaping user source.
+    const error = await Effect.runPromise(
+      Effect.flip(resolveEffect({ includes: [source] }, appRoot, cacheRoot, userIncludesDir)),
+    );
+
+    // Then: resolution fails with a machine-readable include error.
+    expect(error._tag).toBe("LandofileIncludeError");
+    expect(includeErrorKind(error)).toBe(kind);
+  });
+
+  test("rejects a user profile symlink that resolves outside the user includes root", async () => {
+    // Given: a user include symlink targets a readable profile outside the configured root.
+    const outsideRoot = await mkdtemp(join(tmpdir(), "lando-user-include-outside-"));
+    await writeFile(join(outsideRoot, "escape.yml"), "services:\n  leak:\n    type: node\n", "utf8");
+    await symlink(join(outsideRoot, "escape.yml"), join(userIncludesDir, "escape.yml"));
+    try {
+      // When: the app explicitly selects the symlink.
+      const error = await Effect.runPromise(
+        Effect.flip(resolveEffect({ includes: ["user:escape.yml"] }, appRoot, cacheRoot, userIncludesDir)),
+      );
+
+      // Then: realpath containment rejects it.
+      expect(error._tag).toBe("LandofileIncludeError");
+      expect(includeErrorKind(error)).toBe("outside-root");
+    } finally {
+      await rm(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects remote includes declared by a user profile", async () => {
+    // Given: a user profile attempts to introduce a remote source.
+    await writeFile(
+      join(userIncludesDir, "remote.yml"),
+      "includes:\n  - github:acme/profile/fragment.yml\n",
+      "utf8",
+    );
+
+    // When: the app selects that profile.
+    const error = await Effect.runPromise(
+      Effect.flip(resolveEffect({ includes: ["user:remote.yml"] }, appRoot, cacheRoot, userIncludesDir)),
+    );
+
+    // Then: resolution fails before any acquisition port is called.
+    expect(error._tag).toBe("LandofileIncludeError");
+    expect(includeErrorKind(error)).toBe("source-unresolved");
+  });
+
+  test("rejects file-access expressions declared by a user profile", async () => {
+    // Given: a user profile tries to read an adjacent host file through load().
+    await writeFile(join(userIncludesDir, "corp.pem"), "private material", "utf8");
+    await writeFile(
+      join(userIncludesDir, "file-access.yml"),
+      [
+        "services:",
+        "  api:",
+        "    type: node",
+        "    security:",
+        "      ca:",
+        "        - \"{{ load('./corp.pem') }}\"",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    // When: the app selects that profile.
+    const error = await Effect.runPromise(
+      Effect.flip(resolveEffect({ includes: ["user:file-access.yml"] }, appRoot, cacheRoot, userIncludesDir)),
+    );
+
+    // Then: the file-access expression is rejected rather than evaluated.
+    expect(error._tag).toBe("LandofileParseError");
   });
 
   test("creates a git include lock entry with commit SHA and fragment checksum", async () => {

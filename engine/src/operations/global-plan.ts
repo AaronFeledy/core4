@@ -5,13 +5,16 @@ import {
   type CommandAliasConflictError,
   type ConfigExpressionError,
   GlobalAppError,
+  type HomePathCapabilityError,
   type LandofileParseError,
+  type LandofileUnknownEventError,
   LandofileValidationError,
   type NoProviderInstalledError,
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
   type PublicationUnsupportedError,
+  type RouteInputError,
 } from "@lando/sdk/errors";
 import { type AppPlan, type LandofileShape, LandofileShape as LandofileShapeSchema } from "@lando/sdk/schema";
 import {
@@ -45,11 +48,14 @@ export type LoadGlobalPlanResult = MissingGlobalPlanResult | LoadedGlobalPlanRes
 export type LoadGlobalPlanError =
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError

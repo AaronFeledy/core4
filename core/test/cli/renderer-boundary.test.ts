@@ -5,10 +5,10 @@ import { makeRendererServiceLiveForMode, writeDiagnosticLine, writeResultLine } 
 import { type DeprecationNotice, StreamFrame } from "@lando/sdk/schema";
 import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
+import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
-import { DeprecationServiceLive } from "../../src/testing/engine-layers";
 
 beforeEach(() => {
   process.exitCode = undefined;

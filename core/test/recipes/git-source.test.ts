@@ -7,9 +7,9 @@ import { Cause, Effect, Exit } from "effect";
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { initApp } from "../../src/cli/commands/init.ts";
 import { type GitRecipeCloner, publish, resolveGitRecipeSource } from "../../src/recipes/git-source.ts";
 import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
 const VALID_RECIPE = `id: remote-recipe
 title: Remote Recipe

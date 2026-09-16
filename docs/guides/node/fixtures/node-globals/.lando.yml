@@ -1,0 +1,8 @@
+name: node-globals
+services:
+  app:
+    type: "node:22"
+    primary: true
+    globals:
+      yarn: "1.22.4"
+      gulp-cli: "latest"

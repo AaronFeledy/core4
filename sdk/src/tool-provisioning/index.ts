@@ -189,8 +189,10 @@ const extractTarMember = (tar: Uint8Array, member: string): Uint8Array | undefin
       .toString("ascii")
       .replace(/[^0-7]/gu, "");
     const size = sizeOctal.length > 0 ? Number.parseInt(sizeOctal, 8) : 0;
+    const typeflag = header[156];
     pos += BLOCK;
-    if (entryName === member || basename(entryName) === member) {
+    const isRegular = typeflag === 0 || typeflag === 48;
+    if (isRegular && (entryName === member || basename(entryName) === member)) {
       return tar.subarray(pos, pos + size);
     }
     pos += Math.ceil(size / BLOCK) * BLOCK;
@@ -220,35 +222,61 @@ const ZIP_CENTRAL_HEADER = 0x02014b50;
 const ZIP_EOCD = 0x06054b50;
 
 interface ZipCentralEntry {
+  readonly filename: string;
+  readonly directory: boolean;
   readonly compression: number;
   readonly compressedSize: number;
   readonly uncompressedSize: number;
+  readonly mode: number;
 }
 
-const readZipCentralDirectory = (archive: Uint8Array): Map<number, ZipCentralEntry> => {
+const readZipCentralDirectory = (
+  archive: Uint8Array,
+): { readonly entries: ReadonlyMap<number, ZipCentralEntry>; readonly offset: number } | undefined => {
   const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
   for (let pos = archive.length - 22; pos >= 0; pos--) {
     if (view.getUint32(pos, true) !== ZIP_EOCD) continue;
+    if (pos + 22 + view.getUint16(pos + 20, true) !== archive.length) continue;
     const cdOffset = view.getUint32(pos + 16, true);
     const cdSize = view.getUint32(pos + 12, true);
     const cdEnd = cdOffset + cdSize;
+    const count = view.getUint16(pos + 10, true);
+    if (
+      view.getUint16(pos + 4, true) !== 0 ||
+      view.getUint16(pos + 6, true) !== 0 ||
+      view.getUint16(pos + 8, true) !== count ||
+      cdEnd !== pos
+    )
+      return undefined;
     const entries = new Map<number, ZipCentralEntry>();
     let cd = cdOffset;
     while (cd + 46 <= cdEnd) {
-      if (view.getUint32(cd, true) !== ZIP_CENTRAL_HEADER) break;
+      if (view.getUint32(cd, true) !== ZIP_CENTRAL_HEADER) return undefined;
       const compression = view.getUint16(cd + 10, true);
       const compressedSize = view.getUint32(cd + 20, true);
       const uncompressedSize = view.getUint32(cd + 24, true);
       const filenameLen = view.getUint16(cd + 28, true);
       const extraLen = view.getUint16(cd + 30, true);
       const commentLen = view.getUint16(cd + 32, true);
+      const externalAttributes = view.getUint32(cd + 38, true);
       const localOffset = view.getUint32(cd + 42, true);
-      entries.set(localOffset, { compression, compressedSize, uncompressedSize });
-      cd += 46 + filenameLen + extraLen + commentLen;
+      const next = cd + 46 + filenameLen + extraLen + commentLen;
+      if (next > cdEnd || localOffset + 30 > cdOffset || entries.has(localOffset)) return undefined;
+      const filename = new TextDecoder("utf-8").decode(archive.subarray(cd + 46, cd + 46 + filenameLen));
+      entries.set(localOffset, {
+        filename,
+        directory: (externalAttributes & 0x10) !== 0,
+        compression,
+        compressedSize,
+        uncompressedSize,
+        mode: (externalAttributes >>> 16) & 0xffff,
+      });
+      cd = next;
     }
-    return entries;
+    if (cd !== cdEnd || entries.size !== count) return undefined;
+    return { entries, offset: cdOffset };
   }
-  return new Map();
+  return undefined;
 };
 
 const extractZipMember = (
@@ -258,9 +286,10 @@ const extractZipMember = (
 ): Uint8Array | undefined => {
   const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
   const central = readZipCentralDirectory(archive);
+  if (central === undefined) return undefined;
   let decompressedBytes = 0;
   let pos = 0;
-  while (pos + 30 <= archive.length) {
+  while (pos + 30 <= central.offset) {
     if (view.getUint32(pos, true) !== ZIP_LOCAL_HEADER) break;
     const flags = view.getUint16(pos + 6, true);
     const headerCompression = view.getUint16(pos + 8, true);
@@ -268,41 +297,72 @@ const extractZipMember = (
     const headerUncompressedSize = view.getUint32(pos + 22, true);
     const filenameLen = view.getUint16(pos + 26, true);
     const extraLen = view.getUint16(pos + 28, true);
-    const filename = new TextDecoder("utf-8").decode(archive.subarray(pos + 30, pos + 30 + filenameLen));
     const dataOffset = pos + 30 + filenameLen + extraLen;
-    const indexed = central.get(pos);
-    const compression = indexed?.compression ?? headerCompression;
-    const compressedSize = indexed?.compressedSize ?? headerCompressedSize;
-    const uncompressedSize = indexed?.uncompressedSize ?? headerUncompressedSize;
+    if (dataOffset > central.offset) return undefined;
+    const filename = new TextDecoder("utf-8").decode(archive.subarray(pos + 30, pos + 30 + filenameLen));
+    const indexed = central.entries.get(pos);
+    if (
+      indexed === undefined ||
+      indexed.filename !== filename ||
+      indexed.compression !== headerCompression ||
+      ((flags & 0x08) === 0 &&
+        (indexed.compressedSize !== headerCompressedSize ||
+          indexed.uncompressedSize !== headerUncompressedSize)) ||
+      indexed.compressedSize > central.offset - dataOffset
+    )
+      return undefined;
+    const { compression, compressedSize, uncompressedSize, mode } = indexed;
+    const dataEnd = dataOffset + compressedSize;
+    let recordEnd = dataEnd;
+    if ((flags & 0x08) !== 0) {
+      // Bound the optional signature before reading it, then the entire descriptor.
+      if (central.offset - dataEnd < 12) return undefined;
+      const descriptorSize = view.getUint32(dataEnd, true) === ZIP_DATA_DESCRIPTOR ? 16 : 12;
+      recordEnd += descriptorSize;
+      if (
+        recordEnd > central.offset ||
+        view.getUint32(recordEnd - 8, true) !== compressedSize ||
+        view.getUint32(recordEnd - 4, true) !== uncompressedSize
+      )
+        return undefined;
+    }
+    if (compression === 0 && compressedSize !== uncompressedSize) return undefined;
+    const fileType = mode & 0xf000;
+    const isRegular =
+      !indexed.directory && !filename.endsWith("/") && (fileType === 0 || fileType === 0x8000);
     const remaining = maxDecompressedBytes - decompressedBytes;
     if (remaining <= 0 || uncompressedSize > remaining) {
       throw new DecompressedSizeCapExceeded(decompressedSizeCapMessage());
     }
-    if (filename === member || basename(filename) === member) {
+    if (isRegular && (filename === member || basename(filename) === member)) {
       decompressedBytes += uncompressedSize;
-      if (compression === 0) return archive.subarray(dataOffset, dataOffset + uncompressedSize);
+      if (compression === 0) return archive.subarray(dataOffset, dataEnd);
       if (compression === 8) {
-        return new Uint8Array(
-          inflateRawSync(Buffer.from(archive.subarray(dataOffset, dataOffset + compressedSize)), {
-            maxOutputLength: remaining,
-          }),
-        );
+        try {
+          const bytes = inflateRawSync(Buffer.from(archive.subarray(dataOffset, dataEnd)), {
+            // zlib requires a positive limit, even for a declared empty member.
+            maxOutputLength: Math.min(remaining, Math.max(1, uncompressedSize)),
+          });
+          return bytes.length === uncompressedSize ? new Uint8Array(bytes) : undefined;
+        } catch (cause) {
+          if (
+            cause instanceof Error &&
+            "code" in cause &&
+            (cause.code === "Z_BUF_ERROR" || cause.code === "Z_DATA_ERROR")
+          )
+            return undefined;
+          throw cause;
+        }
       }
       return undefined;
     }
     decompressedBytes += uncompressedSize;
-    const descriptorLength =
-      (flags & 0x08) !== 0 ? zipDescriptorLength(view, archive, dataOffset + compressedSize) : 0;
-    pos = dataOffset + compressedSize + descriptorLength;
+    pos = recordEnd;
   }
   return undefined;
 };
 
 const ZIP_DATA_DESCRIPTOR = 0x08074b50;
-const zipDescriptorLength = (view: DataView, archive: Uint8Array, offset: number): number => {
-  if (offset + 4 > archive.length) return 12;
-  return view.getUint32(offset, true) === ZIP_DATA_DESCRIPTOR ? 16 : 12;
-};
 
 const archiveKindFor = (suffix: string): "tar.gz" | "zip" | undefined => {
   if (suffix === ".tar.gz" || suffix === ".tgz") return "tar.gz";
@@ -541,6 +601,16 @@ export const provisionTool = (
         );
       }
       binaryBytes = extracted.bytes;
+      if (binaryBytes.byteLength === 0) {
+        return yield* Effect.fail(
+          new ToolExtractError({
+            message: `Member "${member}" is empty.`,
+            toolId: input.toolId,
+            member,
+            remediation: "Verify the pinned manifest member path against the upstream archive layout.",
+          }),
+        );
+      }
     }
 
     yield* installBytes(input, installPath, binaryBytes, mode);

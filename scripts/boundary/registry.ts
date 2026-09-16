@@ -1,7 +1,6 @@
 import { envHelperRule } from "./rules/env-helper.ts";
 import { generatedOutputRule } from "./rules/generated-output.ts";
 import { importCycleRule } from "./rules/import-cycle.ts";
-import { libpodPrefixRule } from "./rules/libpod-prefix.ts";
 import { machineOutputRule } from "./rules/machine-output.ts";
 import { managedFileRule } from "./rules/managed-file.ts";
 import { networkRule } from "./rules/network.ts";
@@ -46,10 +45,6 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
     rule: importCycleRule,
     seamJustification:
       "Package-DAG controls allowed package direction, not cycles among modules inside an allowed edge.",
-  },
-  {
-    rule: libpodPrefixRule,
-    seamJustification: "API-version literals are independent of package ownership.",
   },
   {
     rule: machineOutputRule,

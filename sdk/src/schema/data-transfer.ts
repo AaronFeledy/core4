@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { StorageScope } from "./mounts.ts";
 import { AbsolutePath, AppId, CommandSpec, PortablePath, ServiceName } from "./primitives.ts";
+import { VolumeIdentity } from "./volume-identity.ts";
 
 /**
  * Archive container format for `hostArchive` endpoints and `copy`-mode volume
@@ -15,7 +16,10 @@ export type ArchiveFormat = typeof ArchiveFormat.Type;
  * two of these, or a snapshot/restore over a `volume`.
  */
 export const DataEndpoint = Schema.Union(
-  Schema.TaggedStruct("hostPath", { path: AbsolutePath }),
+  Schema.TaggedStruct("hostPath", {
+    path: AbsolutePath,
+    trusted: Schema.optional(Schema.Boolean),
+  }),
   Schema.TaggedStruct("hostArchive", { path: AbsolutePath, format: ArchiveFormat }),
   Schema.TaggedStruct("stream", {}),
   Schema.TaggedStruct("volume", { app: AppId, store: Schema.String }),
@@ -52,11 +56,32 @@ export const VolumeRef = Schema.Struct({
 });
 export type VolumeRef = typeof VolumeRef.Type;
 
+/** Stable provider locator for one native volume, available before creation. */
+export const VolumeLocator = Schema.Struct({
+  coordinationKey: Schema.NonEmptyString.annotations({
+    description: "Opaque configured-endpoint and native-volume key, stable across recreation.",
+  }),
+  nativeName: Schema.NonEmptyString.annotations({ description: "Provider-native volume name." }),
+  identity: Schema.optional(VolumeIdentity).annotations({
+    description: "Observed generation and owner when the volume currently exists with provenance.",
+  }),
+});
+export type VolumeLocator = typeof VolumeLocator.Type;
+
 /**
  * Provider-observed metadata for a named volume.
  */
 export const VolumeInfo = Schema.Struct({
   ref: VolumeRef,
+  identity: Schema.optional(VolumeIdentity).annotations({
+    description: "Owner-bound physical identity; absent facts must not authorize physical recovery.",
+  }),
+  instanceId: Schema.optional(Schema.String).annotations({
+    description: "Provider-observed identity for this physical volume creation.",
+  }),
+  provenance: Schema.optional(Schema.Literal("known", "legacy")).annotations({
+    description: "Whether the provider can prove this volume creation's identity.",
+  }),
   createdAt: Schema.optional(Schema.DateTimeUtc),
   sizeBytes: Schema.optional(Schema.Number),
   labels: Schema.optional(LabelMap),
@@ -80,6 +105,13 @@ export type VolumeFilter = typeof VolumeFilter.Type;
 export const VolumeSnapshotRef = Schema.Struct({
   provider: Schema.String,
   id: Schema.String,
+  digest: Schema.String.annotations({
+    description: "SHA-256 digest or provider-observed immutable artifact identity.",
+  }),
+  sizeBytes: Schema.Number.annotations({ description: "Provider-observed immutable artifact size." }),
+  format: Schema.Literal("tar", "native").annotations({
+    description: "Immutable artifact format used by the provider snapshot.",
+  }),
 });
 export type VolumeSnapshotRef = typeof VolumeSnapshotRef.Type;
 
@@ -100,6 +132,7 @@ export type VolumeSnapshotSpec = typeof VolumeSnapshotSpec.Type;
 export const VolumeRestoreSpec = Schema.Struct({
   snapshot: VolumeSnapshotRef,
   target: VolumeRef,
+  expectedTargetGeneration: VolumeIdentity.fields.generation,
   overwrite: Schema.optional(Schema.Boolean),
 });
 export type VolumeRestoreSpec = typeof VolumeRestoreSpec.Type;
@@ -157,6 +190,27 @@ export const DataTransferProgress = Schema.Struct({
 });
 export type DataTransferProgress = typeof DataTransferProgress.Type;
 
+export const SnapshotMetadata = Schema.Struct({
+  sourceRoot: AbsolutePath.annotations({ description: "Canonical app root that owns the snapshot." }),
+  ownerKey: Schema.optional(Schema.String).annotations({
+    description: "Stable owner identity derived from the canonical app root.",
+  }),
+  repoGroupKey: Schema.optional(Schema.String).annotations({
+    description: "Stable identity shared by snapshots from sibling Git worktrees.",
+  }),
+  service: ServiceName.annotations({ description: "Database service captured by the snapshot." }),
+  volumeInstanceId: Schema.String.annotations({
+    description: "Physical source volume creation identity.",
+  }),
+  family: Schema.String.annotations({ description: "Observed database family." }),
+  version: Schema.String.annotations({ description: "Observed database version." }),
+  imageIdentity: Schema.String.annotations({ description: "Observed immutable runtime image identity." }),
+  recoveryReason: Schema.Literal("manual", "reset", "restore", "import", "seed").annotations({
+    description: "Reason this durable recovery point was created.",
+  }),
+});
+export type SnapshotMetadata = typeof SnapshotMetadata.Type;
+
 /**
  * Options for taking a volume snapshot.
  */
@@ -165,6 +219,9 @@ export const SnapshotOptions = Schema.Struct({
   volumeSnapshot: Schema.optional(Schema.Literal("copy", "native")),
   label: Schema.optional(Schema.String),
   labels: Schema.optional(LabelMap),
+  metadata: Schema.optional(SnapshotMetadata).annotations({
+    description: "Physical ownership and database compatibility metadata supplied by the caller.",
+  }),
 });
 export type SnapshotOptions = typeof SnapshotOptions.Type;
 
@@ -190,6 +247,9 @@ export const SnapshotInfo = Schema.Struct({
   label: Schema.optional(Schema.String),
   labels: Schema.optional(LabelMap),
   native: Schema.optional(VolumeSnapshotRef),
+  metadata: Schema.optional(SnapshotMetadata).annotations({
+    description: "Physical ownership and database compatibility metadata recorded at creation.",
+  }),
 });
 export type SnapshotInfo = typeof SnapshotInfo.Type;
 
@@ -200,6 +260,14 @@ export const SnapshotFilter = Schema.Struct({
   id: Schema.optional(SnapshotId),
   app: Schema.optional(AppId),
   store: Schema.optional(Schema.String),
+  sourceRoot: Schema.optional(AbsolutePath).annotations({ description: "Canonical source app root." }),
+  ownerKey: Schema.optional(Schema.String).annotations({ description: "Canonical source owner identity." }),
+  repoGroupKey: Schema.optional(Schema.String).annotations({
+    description: "Git worktree group identity shared by eligible sources.",
+  }),
+  service: Schema.optional(ServiceName).annotations({
+    description: "Database service captured by the snapshot.",
+  }),
   scope: Schema.optional(StorageScope),
   label: Schema.optional(Schema.String),
   labels: Schema.optional(LabelMap),

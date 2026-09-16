@@ -415,7 +415,7 @@ const renderRun = (
       "      lastFailure = runAttempt.left;",
       "    } else {",
       "      lastRun = runAttempt.right;",
-      `      expect(runAttempt.right.exitCode).toBe(${component.props.expectExit ?? 0});`,
+      `      expect(runAttempt.right.exitCode, \`stdout:\\n\${runAttempt.right.stdout}\\nstderr:\\n\${runAttempt.right.stderr}\`).toBe(${component.props.expectExit ?? 0});`,
       "    }",
     ].join("\n");
   }
@@ -440,7 +440,7 @@ const renderVerify = (
     const command = component.props.command;
     return [
       `    const verifyRun = yield* context.runCli(${quote(interpolate(command, variables))});`,
-      "    expect(verifyRun.exitCode).toBe(0);",
+      "    expect(verifyRun.exitCode, `stdout:\\n${verifyRun.stdout}\\nstderr:\\n${verifyRun.stderr}`).toBe(0);",
       ...(expected === undefined
         ? []
         : [

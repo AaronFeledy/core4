@@ -14,14 +14,19 @@ import {
 } from "@lando/sdk/schema";
 import { CacheService } from "@lando/sdk/services";
 
+import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { presentLandofileLayers } from "@lando/landofile/layers";
-import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
+import {
+  type LandofileReferencedFile,
+  getLandofileReferencedFiles,
+} from "@lando/landofile/load-expression-provenance";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
+import { routerEnabled } from "../config/router-config.ts";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
 import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
@@ -29,7 +34,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 15n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 16n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -58,6 +63,7 @@ export interface AppPlanSourceFingerprint {
   readonly includeLockfileHash: string | null;
   readonly includedFragmentShas: ReadonlyArray<string>;
   readonly referencedFiles: ReadonlyArray<LandofileReferencedFile>;
+  readonly includeSources?: ReadonlyArray<LandofileIncludeSource>;
 }
 
 const sha256 = (payload: Uint8Array | string): Buffer => createHash("sha256").update(payload).digest();
@@ -110,7 +116,7 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
-  referencedFiles: ReadonlyArray<LandofileReferencedFile> = [],
+  landofile?: LandofileShape,
 ): Effect.Effect<AppPlanSourceFingerprint, CacheError> =>
   Effect.tryPromise({
     try: async () => {
@@ -125,7 +131,8 @@ export const readAppPlanSourceFingerprint = (
         ),
         includeLockfileHash: await readOptionalHash(includeLockfilePath),
         includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
-        referencedFiles,
+        referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
+        includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
       };
     },
     catch: (cause) =>
@@ -172,6 +179,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
               referencedFiles: input.sourceFingerprint.referencedFiles
                 .map(({ absolutePath, size, sha256 }) => ({ absolutePath, size, sha256 }))
                 .sort((left, right) => left.absolutePath.localeCompare(right.absolutePath)),
+              includeSources: input.sourceFingerprint.includeSources ?? [],
             },
       includedFragmentShas: [
         ...(input.sourceFingerprint?.includedFragmentShas ?? []),
@@ -211,7 +219,7 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
 };
 
 const withDerivedRouteRequirements = (plan: AppPlan): AppPlan => {
-  if (plan.routes.length === 0) return plan;
+  if (plan.routes.length === 0 || !routerEnabled(plan)) return plan;
 
   const current = plan.requires?.globalServices ?? [];
   if (current.includes("traefik")) return plan;

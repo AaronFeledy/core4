@@ -1,13 +1,20 @@
-import { readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import { Effect, Either, Schema } from "effect";
 
-import { PluginManifestError } from "@lando/sdk/errors";
+import { NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest, type PluginManifest as PluginManifestShape } from "@lando/sdk/schema";
+import { PluginTrustStore } from "@lando/sdk/services";
 
 import { invalidatePluginCommandCache } from "../cache/command-index-writer";
-import { type InstalledPluginRegistryEntry, recordInstalledPlugin } from "../plugins/installed-registry";
+import {
+  type InstalledPluginRegistryEntry,
+  readInstalledPluginRegistry,
+  recordInstalledPlugin,
+} from "../plugins/installed-registry";
+import { withPluginMutationLock } from "../plugins/mutation-lock.ts";
 
 export interface PluginAddResult {
   readonly pluginName: string;
@@ -94,13 +101,111 @@ export interface FinalizePluginInstallOptions {
   readonly pluginsRoot: string;
   readonly entry: InstalledPluginRegistryEntry;
   readonly cacheRoot?: string;
+  readonly expectedActivation?: InstalledPluginRegistryEntry;
+  readonly expectedRegistry?: Readonly<Record<string, InstalledPluginRegistryEntry>>;
+  readonly expectedManifest?: PluginManifestShape;
+  readonly stagedPath?: string;
 }
 
-export const finalizePluginInstall = (options: FinalizePluginInstallOptions): Effect.Effect<void, never> =>
-  Effect.promise(() => recordInstalledPlugin(options.pluginsRoot, options.entry)).pipe(
+export const finalizePluginInstall = (
+  options: FinalizePluginInstallOptions,
+): Effect.Effect<void, NotImplementedError> => {
+  const finalize = Effect.gen(function* () {
+    if (options.expectedActivation !== undefined) {
+      const registry = yield* Effect.promise(() => readInstalledPluginRegistry(options.pluginsRoot));
+      const current = registry[options.entry.name];
+      const expected = options.expectedActivation;
+      if (
+        (options.expectedRegistry !== undefined && !isDeepStrictEqual(registry, options.expectedRegistry)) ||
+        current === undefined ||
+        current.version !== expected.version ||
+        current.source !== expected.source ||
+        current.path !== expected.path ||
+        current.requestedSelector !== expected.requestedSelector ||
+        current.linkedPath !== expected.linkedPath ||
+        current.name !== expected.name
+      ) {
+        return yield* Effect.fail(
+          new NotImplementedError({
+            message: `Plugin ${options.entry.name} changed after update planning; refusing an implicit re-plan.`,
+            commandId: "meta:update",
+            remediation: "Run lando update again against the current installed plugin state.",
+          }),
+        );
+      }
+      const trustStore = yield* Effect.serviceOption(PluginTrustStore);
+      const trusted =
+        trustStore._tag === "Some"
+          ? yield* trustStore.value
+              .isPluginTrusted(options.entry.name)
+              .pipe(Effect.orElseSucceed(() => false))
+          : false;
+      if (!trusted) {
+        return yield* Effect.fail(
+          new NotImplementedError({
+            message: `Plugin ${options.entry.name} is no longer trusted; refusing activation.`,
+            commandId: "meta:update",
+            remediation: "Review plugin trust and run lando update again.",
+          }),
+        );
+      }
+    }
+    if (options.expectedManifest !== undefined) {
+      yield* Effect.tryPromise({
+        try: async () => {
+          const { manifest } = await validatePluginManifest(options.stagedPath ?? options.entry.path);
+          if (!isDeepStrictEqual(manifest, options.expectedManifest)) {
+            throw new PluginManifestError({
+              message: `Plugin ${options.entry.name} manifest changed during installation.`,
+              pluginName: options.entry.name,
+              issues: ["The published manifest must match the validated manifest."],
+            });
+          }
+        },
+        catch: (cause) =>
+          new NotImplementedError({
+            message: `Plugin manifest revalidation failed: ${String(cause)}`,
+            commandId: "meta:plugin:add",
+            remediation: "Inspect the plugin lifecycle scripts and retry with an unchanged manifest.",
+          }),
+      });
+    }
+    if (options.stagedPath !== undefined) {
+      const stagedPath = options.stagedPath;
+      yield* Effect.tryPromise({
+        try: async () => {
+          const exists = await lstat(options.entry.path).then(
+            () => true,
+            (cause: unknown) => {
+              if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return false;
+              throw cause;
+            },
+          );
+          if (exists) throw new Error("Published plugin version directories are immutable.");
+          await rename(stagedPath, options.entry.path);
+        },
+        catch: (cause) =>
+          new NotImplementedError({
+            message: `Could not publish plugin ${options.entry.name}: ${String(cause)}`,
+            commandId: "meta:plugin:add",
+            remediation:
+              "Keep the existing version directory intact and inspect the installed plugin state before retrying.",
+          }),
+      });
+    }
+    yield* Effect.promise(() => recordInstalledPlugin(options.pluginsRoot, options.entry)).pipe(
+      Effect.onError(() =>
+        options.stagedPath === undefined
+          ? Effect.void
+          : Effect.promise(() => rm(options.entry.path, { recursive: true, force: true })),
+      ),
+    );
+  }).pipe(
     Effect.zipRight(
       invalidatePluginCommandCache({
         ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
       }),
     ),
   );
+  return withPluginMutationLock(options.pluginsRoot, "meta:plugin:add", finalize);
+};

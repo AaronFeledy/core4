@@ -17,7 +17,9 @@ const writeAscii = (target: Uint8Array, offset: number, value: string): void => 
 };
 
 /** Build a minimal POSIX (ustar) tar archive from named members. */
-export const makeTar = (members: ReadonlyArray<{ name: string; bytes: Uint8Array }>): Uint8Array => {
+export const makeTar = (
+  members: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array; readonly typeflag?: string }>,
+): Uint8Array => {
   const BLOCK = 512;
   const chunks: Uint8Array[] = [];
   for (const member of members) {
@@ -33,8 +35,7 @@ export const makeTar = (members: ReadonlyArray<{ name: string; bytes: Uint8Array
     writeAscii(header, 124, `${sizeOctal} `);
     // mtime
     writeAscii(header, 136, "00000000000 ");
-    // type flag '0' (regular file)
-    header[156] = 0x30;
+    header[156] = (member.typeflag ?? "0").charCodeAt(0);
     // magic "ustar\0" + version "00"
     writeAscii(header, 257, "ustar\0");
     header[263] = 0x30;
@@ -63,8 +64,9 @@ export const makeTar = (members: ReadonlyArray<{ name: string; bytes: Uint8Array
   return out;
 };
 
-export const makeTarGz = (members: ReadonlyArray<{ name: string; bytes: Uint8Array }>): Uint8Array =>
-  new Uint8Array(gzipSync(Buffer.from(makeTar(members))));
+export const makeTarGz = (
+  members: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array; readonly typeflag?: string }>,
+): Uint8Array => new Uint8Array(gzipSync(Buffer.from(makeTar(members))));
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -106,7 +108,9 @@ const cat = (...parts: Uint8Array[]): Uint8Array => {
 };
 
 /** Build a STORED (uncompressed) zip archive from named members. */
-export const makeZip = (members: ReadonlyArray<{ name: string; bytes: Uint8Array }>): Uint8Array => {
+export const makeZip = (
+  members: ReadonlyArray<{ readonly name: string; readonly bytes: Uint8Array; readonly mode?: number }>,
+): Uint8Array => {
   const locals: Uint8Array[] = [];
   const centrals: Uint8Array[] = [];
   let offset = 0;
@@ -145,7 +149,7 @@ export const makeZip = (members: ReadonlyArray<{ name: string; bytes: Uint8Array
         u16(0),
         u16(0),
         u16(0),
-        u32(0),
+        u32(((m.mode ?? 0o100644) << 16) >>> 0),
         u32(offset),
         name,
       ),

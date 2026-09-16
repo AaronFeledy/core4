@@ -3,8 +3,11 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runTooling } from "@lando/core/cli/operations";
-import { resolveLiveProviderSocket, stripHostProxyRunLando } from "@lando/core/testing";
+import { runTooling } from "@lando/engine/operations/tooling";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -18,9 +21,9 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
-import { EventServiceLive, ProviderExecToolingEngineLive } from "@lando/core/testing";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
@@ -178,7 +181,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
         );
 
         try {
-          const applied = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
+          const applied = await Effect.runPromise(bringUp(plan, { api }));
           expect(applied.changed).toBe(true);
 
           // `go run` needs time to compile before it starts serving; allow generous headroom.
@@ -193,6 +196,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           });
 
           const toolingLayer = Layer.mergeAll(
+            PrivateFileAccessLive,
             Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
             Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
             Layer.succeed(RuntimeProviderRegistry, {
@@ -214,7 +218,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           expect(result.exitCode).toBe(0);
           expect(result.stdout).toMatch(/go version go1\.22/u);
         } finally {
-          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
+          await Effect.runPromise(Effect.either(bringDown(plan, { api })));
         }
       } finally {
         await rm(appRootStr, { recursive: true, force: true });

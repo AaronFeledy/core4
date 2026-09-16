@@ -33,7 +33,6 @@ describe("check-boundaries CLI", () => {
     const expected = [
       "env-helper",
       "import-cycle",
-      "libpod-prefix",
       "machine-output",
       "managed-file",
       "network",

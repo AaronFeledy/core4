@@ -8,7 +8,9 @@
  * from disk. The dispatcher owns signal handling and Effect interruption.
  */
 
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { resolveLandoRoots } from "@lando/paths";
 
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
@@ -62,6 +64,21 @@ const hasAppContext = async (cwd: string): Promise<boolean> => {
 };
 
 const main = async (): Promise<void> => {
+  if (
+    argv[0] === "--lando-update-replacement" &&
+    argv.length === 3 &&
+    argv[1] !== undefined &&
+    argv[2] !== undefined
+  ) {
+    const { runWindowsReplacementProcess } = await import("@lando/engine/operations/update");
+    const { Effect } = await import("effect");
+    process.exitCode = (await Effect.runPromise(runWindowsReplacementProcess(argv[1], argv[2]))) ? 0 : 1;
+    return;
+  }
+  if (existsSync(join(resolveLandoRoots().userCacheRoot, "update-handoff"))) {
+    const { surfaceDeferredUpdateReceipts } = await import("../src/cli/update-receipts.ts");
+    if (await surfaceDeferredUpdateReceipts(argv)) return;
+  }
   // Only single-token forms can be remapped by commandAliases; multi-token
   // registered paths such as `recipes list` stay on the cold path in-app.
   const appSensitiveAlias =
