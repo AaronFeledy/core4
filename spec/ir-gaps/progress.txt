@@ -861,3 +861,11 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - **Out-of-scope finding:** after a volumes-preserving destroy, a later `destroy --volumes` without restart fails `AppResolveError` (`provider-resources`) because applied state is gone while volumes remain. Start then `destroy --volumes` cleans them. Fail-closed by design for this story.
 - **Learnings for future iterations:** bundled unused providers must not be initialized to confirm absence; `isAvailable` false (or make() failing) is not evidence of leftover resources.
 ---
+
+## 2026-09-16 15:15 - Babysit
+- PR: #1003 https://github.com/AaronFeledy/core4/pull/1003
+- CI outcome: fail (unit-tests-linux-x64-shard 1 and 2, guide-scenarios-windows-x64) — residual failures are `lando stop`/`lando destroy` "preserves the missing Landofile error outside an app directory", the three `destroy --purge/--purge-caches/--volumes` flag-parsing scenarios, and compiled app command aliases; all exercise the compiled CLI binary, which the focused source-level spot checks did not cover.
+- Review feedback: fixed (optional identity honored on resolved teardown plans; guide fixture registry no longer reports a false empty applied state; desired-resolution errors now propagate when applied recovery finds no plan; `apps:list` MCP opt-in restored; container label goldens updated for the consumed `dev.lando.app-root` label). First triage round wrongly rejected the MCP, container-label, and missing-Landofile failures as stale expectations — all three were real and were fixed in round two.
+- Drift check: clean (no drift in the five babysit commits; emission goldens remain as strict as at the audit base)
+- Merge: deferred (CI still red after two triage rounds; next Build must fix compiled-CLI teardown so a directory with no Landofile still fails with the `lando init` remediation instead of an idempotent `unchanged`)
+---
