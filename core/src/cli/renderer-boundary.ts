@@ -24,6 +24,7 @@ import {
 } from "./command-lifecycle";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
 import { dimBugReportDetails } from "./diagnostic-text";
+import { renderFailureEvidence } from "./failure-evidence";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
@@ -157,7 +158,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       });
     const renderFailure = (cause: Cause.Cause<unknown>) =>
       Effect.gen(function* () {
-        const error = taggedFailureFromCause(cause);
+        const error = yield* renderFailureEvidence(taggedFailureFromCause(cause));
         if (renderContext.format === "json") {
           const outcome = {
             _tag: "failure",

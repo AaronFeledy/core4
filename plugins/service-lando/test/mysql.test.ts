@@ -145,16 +145,16 @@ describe("mysql ServiceType", () => {
     expect(resolution.tooling?.mysql?.cmd).not.toContain("s3cret");
   });
 
-  test("S6 plans a mysqladmin ping healthcheck", async () => {
+  test("S6 plans a mysqladmin ping healthcheck that authenticates the app user", async () => {
     const plan = await planMysqlService({ type: "mysql" });
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["mysqladmin", "ping", "-h", "127.0.0.1"],
+      command: ["sh", "-c", 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
-      startPeriodSeconds: 30,
+      startPeriodSeconds: 60,
     });
   });
 

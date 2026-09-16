@@ -35,6 +35,8 @@ test("omits MySQL-only GTID flags when building a MariaDB export", () => {
   // Then: MariaDB receives its own supported command-line contract.
   expect(command).toEqual([
     "mariadb-dump",
+    "-h",
+    "127.0.0.1",
     "-u",
     "alice",
     "--single-transaction",

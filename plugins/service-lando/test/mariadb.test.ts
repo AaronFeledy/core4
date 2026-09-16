@@ -185,7 +185,7 @@ describe("mariadb ServiceType", () => {
     });
   });
 
-  test("plans a mariadb-admin ping healthcheck", async () => {
+  test("plans a mariadb-admin ping healthcheck that authenticates the app user", async () => {
     // Given
     const definition = { type: "mariadb" };
 
@@ -195,11 +195,11 @@ describe("mariadb ServiceType", () => {
     // Then
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["mariadb-admin", "ping", "-h", "127.0.0.1"],
+      command: ["sh", "-c", 'mariadb-admin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
-      startPeriodSeconds: 30,
+      startPeriodSeconds: 60,
     });
   });
 
