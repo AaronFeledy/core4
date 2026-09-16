@@ -57,6 +57,7 @@
     "./lifecycle/subscribers": "./src/lifecycle/subscribers.ts",
     "./logging/service": "./src/logging/service.ts",
     "./operations/app-config-lint": "./src/operations/app-config-lint.ts",
+    "./operations/app-mutation-lock": "./src/operations/app-mutation-lock.ts",
     "./operations/applied-state-target": "./src/operations/applied-state-target.ts",
     "./operations/authority-url": "./src/operations/authority-url.ts",
     "./operations/config": "./src/operations/config.ts",
