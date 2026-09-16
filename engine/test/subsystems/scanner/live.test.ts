@@ -49,7 +49,7 @@ describe("makeUrlScanner", () => {
     const http = requestSequence([httpStatus(418)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080), publishedEndpoint(db, "http", 8081)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 1, path: "/default", okCodes: [404] },
     );
     const plan = planWithScanner({
@@ -73,7 +73,7 @@ describe("makeUrlScanner", () => {
     // Given a disabled service alongside an unconfigured service.
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080), publishedEndpoint(db, "http", 8081)]);
-    const scanner = makeUrlScanner({ request: http.request, listEndpoints: source.listEndpoints });
+    const scanner = makeUrlScanner({ stream: http.stream, listEndpoints: source.listEndpoints });
     const plan = planWithScanner({
       enabled: false,
       path: "/ready",
@@ -93,7 +93,7 @@ describe("makeUrlScanner", () => {
     const http = requestSequence([httpStatus(418)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080), publishedEndpoint(db, "http", 8081)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 1, path: "/global", okCodes: [418] },
     );
     // When no plan is supplied.
@@ -108,7 +108,7 @@ describe("makeUrlScanner", () => {
   test("scans http endpoints through the HttpClient chokepoint and resolves green", async () => {
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
-    const scanner = makeUrlScanner({ request: http.request, listEndpoints: source.listEndpoints });
+    const scanner = makeUrlScanner({ stream: http.stream, listEndpoints: source.listEndpoints });
 
     expect(scanner.id).toBe("http-probe");
 
@@ -137,7 +137,7 @@ describe("makeUrlScanner", () => {
     const http = requestSequence([httpStatus(204)]);
     const source = endpointsOf([publishedEndpoint(web, "https", 8443)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { maxRedirects: 3, path: "/healthz", timeoutSeconds: 2 },
     );
 
@@ -152,7 +152,7 @@ describe("makeUrlScanner", () => {
   test("skips published non-http endpoints", async () => {
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(db, "tcp", 5432), publishedEndpoint(web, "http", 8080)]);
-    const scanner = makeUrlScanner({ request: http.request, listEndpoints: source.listEndpoints });
+    const scanner = makeUrlScanner({ stream: http.stream, listEndpoints: source.listEndpoints });
 
     const result = await drive(scanner.scan(appId));
 
@@ -165,7 +165,7 @@ describe("makeUrlScanner", () => {
     // Given: start already knows the host-facing URLs, including router authorities.
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
-    const scanner = makeUrlScanner({ request: http.request, listEndpoints: source.listEndpoints });
+    const scanner = makeUrlScanner({ stream: http.stream, listEndpoints: source.listEndpoints });
     const plan = planWithScanner({
       enabled: true,
       path: "/ready",
@@ -194,7 +194,7 @@ describe("makeUrlScanner", () => {
     const http = requestSequence([httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { enabled: false },
     );
 

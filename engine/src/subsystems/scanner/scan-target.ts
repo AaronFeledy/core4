@@ -1,7 +1,7 @@
 import { Duration, Effect, Ref } from "effect";
 
 import { ScannerError } from "@lando/sdk/errors";
-import { type ProbeOutcome, runProbe } from "@lando/sdk/probe";
+import { type ProbeOutcome, ProbeTimeoutError, runProbe } from "@lando/sdk/probe";
 import type {
   AppId,
   BindAddress,
@@ -67,7 +67,7 @@ export type ScanSourceEndpoint = PublishedEndpoint & {
 };
 
 export interface UrlScannerDeps {
-  readonly request: HttpClientShape["request"];
+  readonly stream: HttpClientShape["stream"];
   readonly listEndpoints: (appId: AppId) => Effect.Effect<ReadonlyArray<ScanSourceEndpoint>, ScannerError>;
 }
 
@@ -121,13 +121,15 @@ const makeAttempt = (
     const completed = yield* Effect.timeoutTo(
       Effect.either(
         Effect.scoped(
-          deps.request({
-            url,
-            method: "GET",
-            timeoutMs,
-            redirect: config.maxRedirects > 0 ? "follow" : "manual",
-            callerId: "url-scanner",
-          }),
+          deps
+            .stream({
+              url,
+              method: "GET",
+              timeoutMs,
+              redirect: config.maxRedirects > 0 ? "follow" : "manual",
+              callerId: "url-scanner",
+            })
+            .pipe(Effect.map((response) => response.status)),
         ),
       ),
       {
@@ -147,8 +149,8 @@ const makeAttempt = (
       return "red";
     }
 
-    yield* Ref.set(status, { _tag: "response", status: completed.right.status });
-    return isAccepted(completed.right.status, config.okCodes) ? "green" : "yellow";
+    yield* Ref.set(status, { _tag: "response", status: completed.right });
+    return isAccepted(completed.right, config.okCodes) ? "green" : "yellow";
   });
 
 const probeRunError = (url: string, cause: unknown, redactor: Redactor): ScannerError =>
@@ -160,10 +162,10 @@ const probeRunError = (url: string, cause: unknown, redactor: Redactor): Scanner
     cause: redactor.redactValue(cause),
   });
 
-const redDetail = (finalStatus: AttemptStatus, timeoutSeconds: number): string => {
+const redDetail = (finalStatus: AttemptStatus, elapsedMs: number): string => {
   switch (finalStatus._tag) {
     case "timeout":
-      return `timeout after ${timeoutSeconds}s`;
+      return `timeout after ${elapsedMs}ms`;
     case "transport":
       return finalStatus.message;
     case "response":
@@ -228,6 +230,11 @@ export const scanTarget = (
       url: target.url,
       reachable: false,
       outcome: "red" as const,
-      detail: redactor.redactString(redDetail(finalStatus, config.timeoutSeconds)),
+      detail: redactor.redactString(
+        result.lastError instanceof ProbeTimeoutError ||
+          (config.deadlineMs !== undefined && result.elapsedMs >= config.deadlineMs)
+          ? `deadline exceeded after ${result.elapsedMs}ms`
+          : redDetail(finalStatus, result.elapsedMs),
+      ),
     };
   });

@@ -34,7 +34,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpStatus(503)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 5, delaySeconds: 1, deadlineMs: 1500 },
     );
     // When the virtual clock advances beyond all possible attempts.
@@ -69,7 +69,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpSleep("30 seconds", 200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 1, timeoutSeconds: 5, deadlineMs: 250 },
     );
     // When scanning under a virtual clock.
@@ -84,7 +84,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpStatus(500), httpFailure("connection refused"), httpStatus(200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 3, delaySeconds: 10, deadlineMs: 30000 },
     );
 
@@ -106,7 +106,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpFailure("connection refused")]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 3, delaySeconds: 10, deadlineMs: 30000 },
     );
 
@@ -129,7 +129,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpSleep("30 seconds", 200)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 2, delaySeconds: 10, timeoutSeconds: 5 },
     );
 
@@ -143,7 +143,7 @@ describe("makeUrlScanner probe behavior", () => {
       url: "http://localhost:8080/",
       reachable: false,
       outcome: "red",
-      detail: "timeout after 5s",
+      detail: "deadline exceeded after 20000ms",
     });
   });
 
@@ -151,7 +151,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpStatus(500)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 1 },
     );
 
@@ -172,7 +172,7 @@ describe("makeUrlScanner probe behavior", () => {
     const redirectSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const yellowRedirect = await drive(
       makeUrlScanner(
-        { request: redirectHttp.request, listEndpoints: redirectSource.listEndpoints },
+        { stream: redirectHttp.stream, listEndpoints: redirectSource.listEndpoints },
         { retry: 1 },
       ).scan(appId),
     );
@@ -183,7 +183,7 @@ describe("makeUrlScanner probe behavior", () => {
     const okSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const green = await drive(
       makeUrlScanner(
-        { request: okHttp.request, listEndpoints: okSource.listEndpoints },
+        { stream: okHttp.stream, listEndpoints: okSource.listEndpoints },
         { retry: 1, okCodes: [301] },
       ).scan(appId),
     );
@@ -196,7 +196,7 @@ describe("makeUrlScanner probe behavior", () => {
     const http = requestSequence([httpFailure(`proxy saw ${secret}`)]);
     const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
-      { request: http.request, listEndpoints: source.listEndpoints },
+      { stream: http.stream, listEndpoints: source.listEndpoints },
       { retry: 1 },
     );
 
@@ -209,7 +209,7 @@ describe("makeUrlScanner probe behavior", () => {
     const fallbackSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const fallback = await drive(
       makeUrlScanner(
-        { request: fallbackHttp.request, listEndpoints: fallbackSource.listEndpoints },
+        { stream: fallbackHttp.stream, listEndpoints: fallbackSource.listEndpoints },
         { retry: 1 },
       ).scan(appId),
     );
@@ -232,7 +232,7 @@ describe("makeUrlScanner probe behavior", () => {
       [appTwo, [publishedEndpoint(web, "http", 8080)]],
     ]);
     const scanner = makeUrlScanner({
-      request: requestSequence([httpStatus(200)]).request,
+      stream: requestSequence([httpStatus(200)]).stream,
       listEndpoints: (app) => Effect.succeed(perApp.get(app) ?? []),
     });
 
@@ -251,7 +251,7 @@ describe("makeUrlScanner probe behavior", () => {
 
   test("satisfies the SDK scanner contract", async () => {
     const scanner = makeUrlScanner({
-      request: requestSequence([httpStatus(200)]).request,
+      stream: requestSequence([httpStatus(200)]).stream,
       listEndpoints: () => Effect.succeed([]),
     });
 

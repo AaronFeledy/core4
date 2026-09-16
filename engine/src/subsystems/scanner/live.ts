@@ -71,7 +71,7 @@ export const makeUrlScanner = (
         const scanned = yield* Effect.forEach(
           targets,
           ({ target, config }) => scanTarget(deps, config, redactor, target),
-          { concurrency: "unbounded" },
+          { concurrency: 4 },
         );
         return { appId, endpoints: scanned };
       }),
@@ -130,7 +130,7 @@ export const UrlScannerLive: Layer.Layer<UrlScanner, never, RuntimeProvider | Ht
     const provider = yield* RuntimeProvider;
     const http = yield* HttpClient;
     return makeUrlScanner({
-      request: http.request,
+      stream: http.stream,
       listEndpoints: listEndpointsFromProvider(provider),
     });
   }),
