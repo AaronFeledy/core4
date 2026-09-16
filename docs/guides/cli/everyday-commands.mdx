@@ -93,6 +93,19 @@ Pruning removes only the applied-plan and directory-cache records reported by
 the command. Missing or unreadable provider state is not enough evidence to
 delete a record.
 
+<Guide>
+  <Scenario id="list-and-prune-empty-inventory" render>
+    <Step name="list-apps">
+      <Run command="lando list" />
+      <Verify command="lando list" expect={{ stdout: { regex: "No Lando apps applied on this host|APP\\s+STATUS" } }} />
+    </Step>
+    <Step name="prune-stale-inventory">
+      <Run command="lando list --prune" />
+      <Verify command="lando list --prune" expect={{ stdout: { regex: "Pruned 0 stale inventory entries" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
 `poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up.
 
 ## Check the host
