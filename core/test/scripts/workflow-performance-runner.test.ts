@@ -36,12 +36,27 @@ const options = () => ({
   heavySampleCount: 1,
 });
 
+const setupStdout = (fileSyncStatus?: "deferred" | "installed" | "satisfied" | "unavailable"): string =>
+  JSON.stringify({
+    apiVersion: "v4",
+    command: "meta:setup",
+    ok: true,
+    result: {
+      providerId: "lando",
+      installDir: "/opt/lando",
+      fileSyncStatus,
+      networkCaInjectionConfigured: false,
+    },
+    warnings: [],
+    deprecations: [],
+  });
+
 describe("workflow performance runner", () => {
   test.each([
-    "deferred until first accelerated app:start",
-    "installed",
-    "unavailable (userDataRoot is not configured)",
-  ])("skips lanes requiring native bind mounts when setup reports %s", async (readiness) => {
+    ["deferred", "file-sync: deferred until first accelerated app:start"],
+    ["installed", "file-sync: installed"],
+    ["unavailable", "file-sync: unavailable (userDataRoot is not configured)"],
+  ] as const)("skips lanes requiring native bind mounts when setup reports %s", async (status, readiness) => {
     // Given a successful setup with an unmet native-bind-mount requirement.
     const commands: WorkflowPerformanceCommand[] = [];
     const report = await runWorkflowPerformance({
@@ -53,7 +68,7 @@ describe("workflow performance runner", () => {
           id: command.id,
           durationMs: 12,
           exitCode: 0,
-          stdout: `file-sync: ${readiness}`,
+          stdout: setupStdout(status),
           stderr: "",
         };
       },
@@ -65,7 +80,7 @@ describe("workflow performance runner", () => {
       expect(lane).toMatchObject({
         outcome: "skipped",
         samples: [],
-        skipReason: `Requires native bind mounts; provider readiness reported file-sync: ${readiness}`,
+        skipReason: `Requires native bind mounts; provider readiness reported ${readiness}`,
       });
       expect(lane?.statistics).toBeUndefined();
       expect(commands.filter((command) => command.cwd.includes(id)).map((command) => command.id)).toEqual([
@@ -84,7 +99,7 @@ describe("workflow performance runner", () => {
         id: command.id,
         durationMs: 12,
         exitCode: 0,
-        stdout: "http://app.test",
+        stdout: setupStdout(),
         stderr: "",
       }),
     });
@@ -104,7 +119,7 @@ describe("workflow performance runner", () => {
           id: command.id,
           durationMs: 12,
           exitCode: command.id === failureId && command.cwd.includes("drupal-journey") ? 9 : 0,
-          stdout: "file-sync: unavailable (userDataRoot is not configured)",
+          stdout: setupStdout("unavailable"),
           stderr: command.id === failureId ? "command failed" : "",
         }),
       });
@@ -163,10 +178,7 @@ describe("workflow performance runner", () => {
           id: command.id,
           durationMs: 12,
           exitCode: initTargetExists ? 1 : 0,
-          stdout:
-            command.id === "prepare:setup"
-              ? "file-sync: already satisfied (native bind mounts)"
-              : "http://app.test",
+          stdout: command.id === "prepare:setup" ? setupStdout("satisfied") : "http://app.test",
           stderr: initTargetExists ? "init destination already exists" : "",
         });
       },
@@ -187,6 +199,7 @@ describe("workflow performance runner", () => {
       eligible: true,
       reason: "Provider readiness reported native bind mounts.",
     });
+    expect(JSON.stringify(report)).not.toContain("/opt/lando");
     const supportedJourney = report.lanes.find((lane) => lane.id === "drupal-journey");
     expect(supportedJourney?.outcome).toBe("passed");
     expect(supportedJourney?.skipReason).toBeUndefined();
@@ -222,7 +235,7 @@ describe("workflow performance runner", () => {
           id: command.id,
           durationMs: 1,
           exitCode: controlledFailure ? 9 : 0,
-          stdout: command.id === "prepare:setup" ? "file-sync: unavailable" : "http://app.test",
+          stdout: command.id === "prepare:setup" ? setupStdout("unavailable") : "http://app.test",
           stderr: controlledFailure ? "invalid SQL fixture" : "",
         });
       },
@@ -243,10 +256,7 @@ describe("workflow performance runner", () => {
           id: command.id,
           durationMs: 1,
           exitCode: 0,
-          stdout:
-            command.id === "prepare:setup"
-              ? "file-sync: already satisfied (native bind mounts)"
-              : "completed without a route",
+          stdout: command.id === "prepare:setup" ? setupStdout("satisfied") : "completed without a route",
           stderr: "",
         }),
     });

@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { FileSyncStatus } from "../core/src/cli/command-specs/meta/setup-inputs.ts";
 import type {
   WorkflowPerformanceCommand,
   WorkflowPerformanceCommandResult,
@@ -75,13 +76,11 @@ export const runWorkflowPerformance = async (
   const mysql = generateDatabaseFixture({ family: "mysql", seed: options.fixtureSeed });
   const postgres = generateDatabaseFixture({ family: "postgres", seed: options.fixtureSeed });
   const lanes: WorkflowPerformanceLaneReport[] = [];
-  const fileSyncEvidence: string[] = [];
+  const fileSyncStatuses: FileSyncStatus[] = [];
   let status: NonNullable<WorkflowPerformanceReport["status"]> = "running";
   let failure: string | undefined;
   const snapshot = (): WorkflowPerformanceReport => {
-    const nativeFileSync = fileSyncEvidence.some((evidence) =>
-      evidence.includes("already satisfied (native bind mounts)"),
-    );
+    const nativeFileSync = fileSyncStatuses.includes("satisfied");
     return {
       schemaVersion: 1,
       status,
@@ -162,7 +161,7 @@ export const runWorkflowPerformance = async (
           ...(options.commandTimeoutMs === undefined ? {} : { commandTimeoutMs: options.commandTimeoutMs }),
           ...(options.sampleTimeoutMs === undefined ? {} : { sampleTimeoutMs: options.sampleTimeoutMs }),
         });
-        fileSyncEvidence.push(result.fileSyncEvidence);
+        if (result.fileSyncStatus !== undefined) fileSyncStatuses.push(result.fileSyncStatus);
         if ("skipReason" in result) {
           skipReason = result.skipReason;
           lanes[laneIndex] = laneReport(lane, samples, skipReason);

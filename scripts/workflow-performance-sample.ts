@@ -5,11 +5,14 @@ import { recordPerformanceIsolation } from "./workflow-performance-isolation.ts"
 import { imagesFor, landofileFor } from "./workflow-performance-sample-config.ts";
 import { acquirePerformanceStores } from "./workflow-performance-stores.ts";
 
+import type { FileSyncStatus } from "../core/src/cli/command-specs/meta/setup-inputs.ts";
+import { fileSyncStatusLine } from "../core/src/cli/command-specs/meta/setup-summary.ts";
 import type {
   WorkflowPerformanceCommand,
   WorkflowPerformanceCommandResult,
 } from "./workflow-performance-command.ts";
 import { workflowPerformanceDeadlineRunner } from "./workflow-performance-command.ts";
+import { setupFileSyncStatusFromStdout } from "./workflow-performance-diagnostic.ts";
 import { withPodmanServiceEvidence } from "./workflow-performance-failure-evidence.ts";
 import {
   buildMeasuredCommands,
@@ -28,7 +31,7 @@ type PreparedSample = {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly failure?: WorkflowPerformanceCommandResult;
   readonly skipReason?: string;
-  readonly fileSyncEvidence: string;
+  readonly fileSyncStatus: FileSyncStatus | undefined;
 };
 
 type RunSampleInput = {
@@ -76,7 +79,7 @@ const prepareSample = async (
     XDG_RUNTIME_DIR: runtimeRoot,
   });
   const cwd = journey ? appParent : appRoot;
-  acquired({ appRoot, env, fileSyncEvidence: "" });
+  acquired({ appRoot, env, fileSyncStatus: undefined });
   await writeFile(
     storageConfig,
     `[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "${join(dataRoot, "runtime/bin/fuse-overlayfs")}"\n`,
@@ -90,7 +93,7 @@ const prepareSample = async (
     acquired({
       appRoot,
       env,
-      fileSyncEvidence: "",
+      fileSyncStatus: undefined,
       stagedFixture: {
         path: fixturePath,
         bytes: contents.byteLength,
@@ -119,22 +122,22 @@ const prepareSample = async (
       appRoot,
       env,
       failure: await withPodmanServiceEvidence(setup),
-      fileSyncEvidence: setup.stderr,
+      fileSyncStatus: undefined,
     };
-  if (lane.requiresNativeBindMounts && !setup.stdout.includes("already satisfied (native bind mounts)")) {
-    const readiness = setup.stdout.match(/file-sync: (?:deferred|installed|unavailable)\b[^\r\n]*/u)?.[0];
-    return readiness === undefined
+  const fileSyncStatus = setupFileSyncStatusFromStdout(setup.stdout);
+  if (lane.requiresNativeBindMounts && fileSyncStatus !== "satisfied") {
+    return fileSyncStatus === undefined
       ? {
           appRoot,
           env,
           failure: { ...setup, exitCode: 1, stderr: "Setup did not report native bind mount readiness." },
-          fileSyncEvidence: setup.stdout,
+          fileSyncStatus,
         }
       : {
           appRoot,
           env,
-          skipReason: `Requires native bind mounts; provider readiness reported ${readiness}`,
-          fileSyncEvidence: setup.stdout,
+          skipReason: `Requires native bind mounts; provider readiness reported ${fileSyncStatusLine(fileSyncStatus)}`,
+          fileSyncStatus,
         };
   }
   const socket = join(dataRoot, "runtime/run/podman.sock");
@@ -143,7 +146,7 @@ const prepareSample = async (
     const pulled = await runCommand(
       performanceCommand("prepare:pre-pull", [podman, "--url", `unix://${socket}`, "pull", image], cwd, env),
     );
-    if (pulled.exitCode !== 0) return { appRoot, env, failure: pulled, fileSyncEvidence: setup.stdout };
+    if (pulled.exitCode !== 0) return { appRoot, env, failure: pulled, fileSyncStatus };
   }
   if (lane.id === "warm-stop-start" || lane.id === "unchanged-rebuild" || lane.fixtureFamily !== undefined) {
     const started = await runCommand(performanceCommand("prepare:start", [binary, "start"], appRoot, env));
@@ -152,7 +155,7 @@ const prepareSample = async (
         appRoot,
         env,
         failure: await withPodmanServiceEvidence(started),
-        fileSyncEvidence: setup.stdout,
+        fileSyncStatus,
       };
   }
   if (lane.id.endsWith("-snapshot-restore") && fixturePath !== undefined) {
@@ -174,15 +177,15 @@ const prepareSample = async (
       runCommand,
     );
     const failure = prepared.find((result) => result.exitCode !== 0);
-    if (failure !== undefined) return { appRoot, env, failure, fileSyncEvidence: setup.stdout };
+    if (failure !== undefined) return { appRoot, env, failure, fileSyncStatus };
   }
-  return { appRoot, env, fileSyncEvidence: setup.stdout };
+  return { appRoot, env, fileSyncStatus };
 };
 
 export const runWorkflowPerformanceSample = async (
   input: RunSampleInput,
 ): Promise<
-  { readonly fileSyncEvidence: string } & (
+  { readonly fileSyncStatus: FileSyncStatus | undefined } & (
     | { readonly sample: WorkflowPerformanceSample }
     | { readonly skipReason: string }
   )
@@ -232,7 +235,7 @@ export const runWorkflowPerformanceSample = async (
     );
     await recordPerformanceIsolation("after-cleanup", isolationRoots);
     return {
-      fileSyncEvidence: prepared.fileSyncEvidence,
+      fileSyncStatus: prepared.fileSyncStatus,
       ...(failures.length === 0
         ? { skipReason: prepared.skipReason }
         : {
@@ -280,6 +283,6 @@ export const runWorkflowPerformanceSample = async (
       cleanupFailures.length === 0
         ? sample
         : { ...sample, outcome: "failed", steps: [...sample.steps, ...cleanupFailures] },
-    fileSyncEvidence: prepared.fileSyncEvidence,
+    fileSyncStatus: prepared.fileSyncStatus,
   };
 };
