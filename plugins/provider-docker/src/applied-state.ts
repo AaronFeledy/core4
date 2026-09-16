@@ -79,10 +79,22 @@ export const loadAppliedPlan = (
     Effect.catchAll(() => Effect.succeed(undefined)),
   );
 
-export const removeAppliedPlan = (stateStore: PluginStateStore, appId: AppId): Effect.Effect<void, never> =>
+export const removeAppliedPlan = (
+  stateStore: PluginStateStore,
+  appId: AppId,
+): Effect.Effect<void, ProviderUnavailableError> =>
   openAppliedPlanBucket(stateStore, appId).pipe(
     Effect.flatMap((bucket) => bucket.remove),
-    Effect.catchAll(() => Effect.void),
+    Effect.mapError(
+      (cause) =>
+        new ProviderUnavailableError({
+          providerId: PROVIDER_ID,
+          operation: "applied-state.remove",
+          message: "Unable to remove provider-docker applied plan state.",
+          remediation: "Check permissions for the provider-docker plugin state directory and retry.",
+          cause,
+        }),
+    ),
   );
 
 export const listAppliedPlans = (

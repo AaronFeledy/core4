@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
 import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
+import { StateStoreError } from "@lando/sdk/errors";
+import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import {
   AbsolutePath,
   AppId,
@@ -22,6 +24,19 @@ const makePluginStateStore = (
   store: Parameters<typeof makePluginStateStoreWithAccess>[0],
   root: Parameters<typeof makePluginStateStoreWithAccess>[1],
 ) => makePluginStateStoreWithAccess(store, root, ownerOnlyFileAccess);
+
+const withFailingRemove = (state: PluginStateStore): PluginStateStore => ({
+  open: <A, I>(spec: PluginStateBucketSpec<A, I>) =>
+    state.open(spec).pipe(
+      Effect.map((bucket) => ({
+        ...bucket,
+        remove: Effect.fail(
+          new StateStoreError({ reason: "io", operation: "remove", path: String(bucket.path) }),
+        ),
+      })),
+    ),
+  withLock: state.withLock,
+});
 
 import {
   appliedPlanPath,
@@ -201,6 +216,19 @@ describe("provider-docker applied state persistence", () => {
       expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toBeUndefined();
 
       await Effect.runPromise(removeAppliedPlan(state, plan.id));
+    });
+  });
+
+  test("removeAppliedPlan propagates state-store failures and retains the plan", async () => {
+    await withStateDir(async (stateDir) => {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      await Effect.runPromise(persistAppliedPlan(state, plan));
+
+      const exit = await Effect.runPromiseExit(removeAppliedPlan(withFailingRemove(state), plan.id));
+
+      expect(exit._tag).toBe("Failure");
+      expect(String(exit)).toContain("applied-state.remove");
+      expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
     });
   });
 

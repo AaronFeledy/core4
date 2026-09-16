@@ -1762,7 +1762,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       : persistAppliedPlan(options.appliedPlanState, persistedPlan).pipe(Effect.asVoid);
   };
 
-  const forgetPlan = (appId: AppId): Effect.Effect<void> => {
+  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
     plans.delete(appId);
     return options.appliedPlanState === undefined
       ? Effect.void
