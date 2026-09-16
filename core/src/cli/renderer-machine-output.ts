@@ -70,13 +70,11 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
     });
   const jsonRedactor = (redactionTokens: ReadonlyArray<string> = []) =>
     Effect.gen(function* () {
-      const redaction = yield* Effect.serviceOption(RedactionService);
-      if (redaction._tag === "Some")
-        return yield* redaction.value.forProfile("secrets", {
-          sourceEnv: process.env,
-          redactionTokens,
-        });
-      return { redactString: (text: string) => text, redactValue: (value: unknown) => value };
+      const redaction = yield* RedactionService;
+      return yield* redaction.forProfile("secrets", {
+        sourceEnv: process.env,
+        redactionTokens,
+      });
     });
   const emitJsonResult = (outcome: CommandResultOutcome, redactionTokens: ReadonlyArray<string> = []) =>
     Effect.gen(function* () {
