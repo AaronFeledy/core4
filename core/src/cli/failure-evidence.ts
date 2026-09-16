@@ -1,10 +1,9 @@
 import { Effect } from "effect";
 
-import { RedactionService } from "@lando/redaction/service";
 import { writeDiagnosticLine } from "@lando/renderer/output";
 
-const FAILURE_FIELDS = ["_tag", "name", "message", "remediation", "providerId", "operation", "kind"] as const;
-const DETAIL_FIELDS = ["status", "body", "method", "path", "reference", "error", "failureKind"] as const;
+const FAILURE_FIELDS = ["_tag", "name", "providerId", "operation", "kind"] as const;
+const DETAIL_FIELDS = ["status", "method", "failureKind"] as const;
 const MAX_CAUSE_DEPTH = 8;
 
 const scalarFields = (
@@ -41,9 +40,7 @@ const taggedCauseEvidence = (error: unknown): readonly unknown[] => {
 export const renderFailureEvidence = (error: unknown) => {
   if (process.env.LANDO_DEBUG_CAUSE_CHAIN !== "1") return Effect.succeed(error);
   return Effect.gen(function* () {
-    const redaction = yield* RedactionService;
-    const redactor = yield* redaction.forProfile("telemetry", { sourceEnv: process.env });
-    const evidence = JSON.stringify(redactor.redactValue(taggedCauseEvidence(error)));
+    const evidence = JSON.stringify(taggedCauseEvidence(error));
     yield* writeDiagnosticLine(`failure-cause-evidence ${evidence}`);
     return error;
   });

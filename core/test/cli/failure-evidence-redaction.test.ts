@@ -4,14 +4,12 @@ import { Effect, Layer } from "effect";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
-test("debug cause evidence redacts authoritative secrets and private paths before rendering", async () => {
-  // Given a gated nested failure containing an opaque SecretStore value and host-private paths.
+test("debug cause evidence omits free-form fields without authoritative application secrets", async () => {
+  // Given a gated nested failure containing a custom non-environment secret and host-private paths.
   const io = createBufferedRendererIO();
-  const secret = "0;1";
+  const secret = "custom-nonenv-secret-989";
   const previousGate = process.env.LANDO_DEBUG_CAUSE_CHAIN;
-  const previousSecret = process.env.LANDO_SECRET_PR989_CAUSE;
   process.env.LANDO_DEBUG_CAUSE_CHAIN = "1";
-  process.env.LANDO_SECRET_PR989_CAUSE = secret;
 
   try {
     // When the real renderer boundary retains private cause evidence.
@@ -36,16 +34,16 @@ test("debug cause evidence redacts authoritative secrets and private paths befor
     );
   } finally {
     process.env.LANDO_DEBUG_CAUSE_CHAIN = previousGate;
-    process.env.LANDO_SECRET_PR989_CAUSE = previousSecret;
   }
 
-  // Then useful tagged/status evidence remains while every sensitive value is absent.
+  // Then allowlisted tagged/status evidence remains while every free-form value is absent.
   const diagnostic = io.stderr();
   expect(diagnostic).toContain("failure-cause-evidence");
   expect(diagnostic).toContain("OuterDiagnosticFailure");
   expect(diagnostic).toContain('"status":503');
-  expect(diagnostic).toContain("[redacted]");
-  expect(diagnostic).toContain("[path]");
+  expect(diagnostic).not.toContain("setup failed with");
+  expect(diagnostic).not.toContain("Inspect");
+  expect(diagnostic).not.toContain("runtime at");
   expect(diagnostic).not.toContain(secret);
   expect(diagnostic).not.toContain("/home/private");
   expect(diagnostic).not.toContain("C:\\Users\\private");
