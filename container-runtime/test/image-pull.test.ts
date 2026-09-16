@@ -20,6 +20,7 @@ import {
 } from "../src/image-pull.ts";
 import type { PullFailureKind } from "../src/image-pull.ts";
 import { makePodmanApiClient } from "../src/podman/api-client.ts";
+import { ContainerTransportError } from "../src/transport.ts";
 
 const dockerCtx = {
   providerId: "docker",
@@ -387,12 +388,18 @@ describe("pull failure handling", () => {
     expect(failure.remediation).toContain("`docker logout`");
   });
 
-  test("preserves stream transport failures", async () => {
-    // Given
+  test("classifies a stream connection failure without changing its provider error class", async () => {
+    // Given a typed transport cause from an image pull.
+    const cause = new ContainerTransportError({
+      kind: "connect",
+      operation: "podman-api",
+      message: "connection failed",
+    });
     const transportError = new ProviderUnavailableError({
       providerId: "lando",
       operation: "podman-api",
       message: "Container runtime stream request failed with HTTP 500.",
+      cause,
     });
 
     // When
@@ -403,8 +410,11 @@ describe("pull failure handling", () => {
       }).pipe(Effect.flip),
     );
 
-    // Then
-    expect(failure).toBe(transportError);
+    // Then the pull classification is closed and the typed cause remains reachable.
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.operation).toBe("pullArtifact");
+    expect(failure.details).toMatchObject({ failureKind: "generic" });
+    expect(failure.cause).toBe(transportError);
   });
 
   test("redacts credentials from socket transport failures", async () => {

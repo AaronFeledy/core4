@@ -143,7 +143,7 @@ export const runWorkflowPerformance = async (
           status = "interrupted";
           return await persist();
         }
-        const key = workflowPerformanceSampleKey(options.runId, lane.id, index);
+        const key = workflowPerformanceSampleKey(lane.id, index);
         const fixturePath =
           lane.fixtureFamily === undefined
             ? undefined

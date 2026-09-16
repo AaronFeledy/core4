@@ -1,21 +1,15 @@
 import { PLATFORM_READINESS_CELLS, type PlatformReadinessCell } from "./ci-platforms.ts";
+import type { WorkflowPerformanceLaneId } from "./workflow-performance-identifiers.ts";
+
+export {
+  WORKFLOW_PERFORMANCE_LANE_IDS,
+  type WorkflowPerformanceLaneId,
+  workflowPerformanceSampleKey,
+} from "./workflow-performance-identifiers.ts";
 
 export const DEFAULT_START_SAMPLE_COUNT = 5;
 export const DEFAULT_HEAVY_SAMPLE_COUNT = 3;
 
-export const WORKFLOW_PERFORMANCE_LANE_IDS = [
-  "cold-first-start",
-  "warm-stop-start",
-  "unchanged-rebuild",
-  "mysql-import",
-  "mysql-snapshot-restore",
-  "postgres-import",
-  "postgres-snapshot-restore",
-  "drupal-journey",
-  "rails-journey",
-] as const;
-
-export type WorkflowPerformanceLaneId = (typeof WORKFLOW_PERFORMANCE_LANE_IDS)[number];
 export type WorkflowPerformanceLaneClass = "start" | "heavy";
 export type WorkflowPerformanceFixtureFamily = "mysql" | "postgres";
 
@@ -126,18 +120,4 @@ export const buildWorkflowPerformancePlan = (
       lane("rails-journey", "heavy", heavySamples, ["setup", "pre-pull"], ["journey:rails"]),
     ],
   };
-};
-
-export const workflowPerformanceSampleKey = (
-  runId: string,
-  laneId: WorkflowPerformanceLaneId,
-  sampleIndex: number,
-): string => {
-  const normalizedRunId = runId
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .slice(0, 40);
-  const runKey = normalizedRunId.length === 0 ? "run" : normalizedRunId;
-  return `perf-${runKey}-${laneId}-${String(sampleIndex + 1)}`;
 };

@@ -91,26 +91,33 @@ export const parseImagePullFrame = (line: string, dialect: PullDialect): ImagePu
   };
 };
 
-const pullFailure = (
-  ctx: ProviderErrorContext,
-  reference: string,
-  message: string,
-  details?: unknown,
-): ProviderUnavailableError => {
-  const failureKind = classifyPullFailure(message);
-  return new ProviderUnavailableError({
-    providerId: ctx.providerId,
-    operation: "pullArtifact",
-    message: redactString(`Container image pull failed: ${message}`),
-    details: redactDetails({
-      reference,
-      error: message,
-      failureKind,
-      ...(details === undefined ? {} : { details }),
-    }),
-    remediation: failureKind === "registry-auth" ? REGISTRY_AUTH_REMEDIATION : ctx.remediation,
-  });
+type PullFailureInput = {
+  readonly ctx: ProviderErrorContext;
+  readonly reference: string;
+  readonly message: string;
+  readonly details?: unknown;
+  readonly cause?: unknown;
 };
+
+const pullFailureFields = (input: PullFailureInput) => {
+  const failureKind = classifyPullFailure(input.message);
+  return {
+    providerId: input.ctx.providerId,
+    operation: "pullArtifact",
+    message: redactString(`Container image pull failed: ${input.message}`),
+    details: redactDetails({
+      reference: input.reference,
+      error: input.message,
+      failureKind,
+      ...(input.details === undefined ? {} : { details: input.details }),
+    }),
+    remediation: failureKind === "registry-auth" ? REGISTRY_AUTH_REMEDIATION : input.ctx.remediation,
+    ...(input.cause === undefined ? {} : { cause: input.cause }),
+  };
+};
+
+const pullFailure = (input: PullFailureInput): ProviderUnavailableError =>
+  new ProviderUnavailableError(pullFailureFields(input));
 
 const httpStatusOf = (details: unknown): number | undefined => {
   if (typeof details !== "object" || details === null || !("status" in details)) return undefined;
@@ -129,9 +136,16 @@ const pullFailureFromTransport = (
   error: ProviderUnavailableError | ProviderInternalError,
 ): ProviderUnavailableError | ProviderInternalError => {
   const status = httpStatusOf(error.details);
-  return status === undefined
-    ? error
-    : pullFailure(ctx, reference, withApiReason(`HTTP ${status}.`, error.details), error.details);
+  const input = {
+    ctx,
+    reference,
+    message: status === undefined ? error.message : withApiReason(`HTTP ${status}.`, error.details),
+    ...(status === undefined ? {} : { details: error.details }),
+    cause: error,
+  };
+  return error instanceof ProviderInternalError
+    ? new ProviderInternalError(pullFailureFields(input))
+    : pullFailure(input);
 };
 
 const parseResponseJson = (
@@ -163,7 +177,7 @@ export const pullImage = <E = never>(
         case "ignore":
           return Effect.void;
         case "error":
-          return Effect.fail(pullFailure(options.ctx, reference, frame.message));
+          return Effect.fail(pullFailure({ ctx: options.ctx, reference, message: frame.message }));
         case "progress":
           return options.publish === undefined
             ? Effect.void
@@ -200,7 +214,12 @@ export const pullImage = <E = never>(
       const response = yield* api.request(buildImagePullRequest(reference, options.dialect));
       if (response.status < 200 || response.status >= 300) {
         return yield* Effect.fail(
-          pullFailure(options.ctx, reference, withApiReason(`HTTP ${response.status}.`, response), response),
+          pullFailure({
+            ctx: options.ctx,
+            reference,
+            message: withApiReason(`HTTP ${response.status}.`, response),
+            details: response,
+          }),
         );
       }
       yield* Effect.forEach(response.body.split("\n"), emitFrame, { discard: true });
@@ -229,7 +248,12 @@ export const pullImage = <E = never>(
     const response = yield* request(inspect.request(reference));
     if (response.status !== 200) {
       return yield* Effect.fail(
-        pullFailure(options.ctx, reference, `post-pull inspect HTTP ${response.status}.`, response),
+        pullFailure({
+          ctx: options.ctx,
+          reference,
+          message: `post-pull inspect HTTP ${response.status}.`,
+          details: response,
+        }),
       );
     }
     const decoded = yield* parseResponseJson(response, options.ctx);

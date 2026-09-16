@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { workflowPerformanceSampleKey } from "../../../scripts/workflow-performance-plan.ts";
 import {
   type WorkflowPerformanceReport,
   type WorkflowPerformanceSample,
@@ -19,7 +20,7 @@ const sample = (
   durationMs: number,
 ): WorkflowPerformanceSample => ({
   index,
-  key: `sample-${String(index)}`,
+  key: workflowPerformanceSampleKey("cold-first-start", index),
   outcome,
   resetCondition: "fresh roots and owned app identity",
   steps: [{ id: "start", durationMs, exitCode: outcome === "passed" ? 0 : 7, stdout: "", stderr: "" }],
@@ -49,6 +50,20 @@ const report = (samples: readonly WorkflowPerformanceSample[]): WorkflowPerforma
     },
   ],
 });
+
+const reportWithDiagnostic = (diagnostic: unknown): unknown => {
+  const valid = report([sample(0, "failed", 10)]);
+  return {
+    ...valid,
+    lanes: valid.lanes.map((lane) => ({
+      ...lane,
+      samples: lane.samples.map((entry) => ({
+        ...entry,
+        steps: entry.steps.map((step) => ({ ...step, diagnostic })),
+      })),
+    })),
+  };
+};
 
 describe("workflow performance report", () => {
   test.each(["running", "interrupted", "failed"] as const)(
@@ -86,6 +101,99 @@ describe("workflow performance report", () => {
       schemaVersion: 1,
     });
     expect(() => decodeWorkflowPerformanceReport({ ...report([]), schemaVersion: 2 })).toThrow();
+    expect(
+      decodeWorkflowPerformanceReport({
+        ...report([sample(0, "passed", 10)]),
+        lanes: [
+          {
+            ...report([sample(0, "passed", 10)]).lanes[0],
+            samples: [
+              {
+                ...sample(0, "passed", 10),
+                key: "perf-42-cold-first-start-1",
+              },
+            ],
+          },
+        ],
+      }).lanes[0]?.samples[0]?.key,
+    ).toBe("perf-42-cold-first-start-1");
+  });
+
+  test.each(["lane", "sample", "step"] as const)("rejects an unknown retained %s identifier", (field) => {
+    // Given one nominal identifier contains an unrecognized custom secret.
+    const secret = `custom-nonenv-secret-989-${field}`;
+    const valid = report([sample(0, "passed", 10)]);
+    const unsafe =
+      field === "lane"
+        ? { ...valid, lanes: [{ ...valid.lanes[0], id: secret }] }
+        : field === "sample"
+          ? {
+              ...valid,
+              lanes: [
+                {
+                  ...valid.lanes[0],
+                  samples: [{ ...valid.lanes[0]?.samples[0], key: secret }],
+                },
+              ],
+            }
+          : {
+              ...valid,
+              lanes: [
+                {
+                  ...valid.lanes[0],
+                  samples: [
+                    {
+                      ...valid.lanes[0]?.samples[0],
+                      steps: [{ ...valid.lanes[0]?.samples[0]?.steps[0], id: secret }],
+                    },
+                  ],
+                },
+              ],
+            };
+
+    // When/Then the report crosses the schema boundary, it fails closed.
+    expect(() => decodeWorkflowPerformanceReport(unsafe)).toThrow();
+  });
+
+  test.each([
+    {
+      domain: "image-pull" as const,
+      failureKind: "registry-auth" as const,
+      httpStatus: 401,
+      transportKind: "http" as const,
+    },
+    {
+      domain: "image-pull" as const,
+      failureKind: "generic" as const,
+      transportKind: "connect" as const,
+    },
+  ])("retains the closed image-pull diagnostic after durable write and read %#", async (diagnostic) => {
+    // Given a failed step carries the safe diagnosis needed for the next run.
+    const input = reportWithDiagnostic(diagnostic);
+
+    const root = await mkdtemp(join(tmpdir(), "workflow-performance-diagnostic-"));
+    const retainedPath = join(root, "report.json");
+    try {
+      // When the report crosses the durable writer and reader boundaries.
+      await writeWorkflowPerformanceReport(decodeWorkflowPerformanceReport(input), retainedPath);
+      const decoded = decodeWorkflowPerformanceReport(await Bun.file(retainedPath).json());
+
+      // Then the closed diagnosis survives without any raw failure text.
+      expect(decoded.lanes[0]?.samples[0]?.steps[0]?.diagnostic).toEqual(diagnostic);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    { failureKind: "custom-nonenv-secret-989", transportKind: "http", httpStatus: 401 },
+    { failureKind: "generic", transportKind: "custom-nonenv-secret-989", httpStatus: 401 },
+    { failureKind: "generic", transportKind: "connect", httpStatus: 99 },
+    { failureKind: "generic", transportKind: "connect", httpStatus: 600 },
+  ])("rejects an unrecognized or invalid image-pull diagnostic %#", (diagnostic) => {
+    expect(() =>
+      decodeWorkflowPerformanceReport(reportWithDiagnostic({ domain: "image-pull", ...diagnostic })),
+    ).toThrow();
   });
 
   test("omits every free-form diagnostic before retaining the report", async () => {

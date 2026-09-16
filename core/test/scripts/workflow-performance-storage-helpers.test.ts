@@ -37,8 +37,8 @@ test.each([
     // Then helper cleanup is mandatory, and failure retains its executable and runtime roots.
     expect(commands).toEqual(["cleanup:storage", "cleanup:storage-helpers"]);
     expect(failures.map((failure) => failure.id)).toEqual([
-      ...(storageExit === 0 ? [] : ["cleanup:storage"]),
-      ...(helperExit === 0 ? [] : ["cleanup:storage-helpers"]),
+      ...(storageExit === 0 ? [] : (["cleanup:storage"] as const)),
+      ...(helperExit === 0 ? [] : (["cleanup:storage-helpers"] as const)),
     ]);
     expect(existsSync(bin)).toBe(storageExit !== 0 || helperExit !== 0);
     expect(existsSync(join(stores.dataRoot, "runtime/storage"))).toBe(storageExit !== 0 || helperExit !== 0);

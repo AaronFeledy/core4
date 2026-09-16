@@ -1,7 +1,10 @@
+import type { ImagePullFailureDiagnostic } from "../core/src/cli/failure-diagnostic.ts";
+import { imagePullDiagnosticFromStderr } from "./workflow-performance-diagnostic.ts";
+import type { WorkflowPerformanceStepId } from "./workflow-performance-identifiers.ts";
 import { boundedPerformanceEvidence } from "./workflow-performance-report.ts";
 
 export type WorkflowPerformanceCommand = {
-  readonly id: string;
+  readonly id: WorkflowPerformanceStepId;
   readonly argv: readonly string[];
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -10,17 +13,18 @@ export type WorkflowPerformanceCommand = {
 };
 
 export type WorkflowPerformanceCommandResult = {
-  readonly id: string;
+  readonly id: WorkflowPerformanceStepId;
   readonly durationMs: number;
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
+  readonly diagnostic?: ImagePullFailureDiagnostic;
 };
 
 export const DEFAULT_WORKFLOW_PERFORMANCE_COMMAND_TIMEOUT_MS = 120_000;
 export const DEFAULT_WORKFLOW_PERFORMANCE_SAMPLE_TIMEOUT_MS = 900_000;
 
-const PHASE_COMMAND_TIMEOUT_MS: Readonly<Record<string, number>> = {
+const PHASE_COMMAND_TIMEOUT_MS: Partial<Readonly<Record<WorkflowPerformanceStepId, number>>> = {
   "prepare:setup": 180_000,
   "prepare:pre-pull": 180_000,
   "prepare:start": 180_000,
@@ -28,7 +32,7 @@ const PHASE_COMMAND_TIMEOUT_MS: Readonly<Record<string, number>> = {
   rebuild: 180_000,
 };
 
-export const timeoutMsForPerformanceCommand = (id: string): number =>
+export const timeoutMsForPerformanceCommand = (id: WorkflowPerformanceStepId): number =>
   PHASE_COMMAND_TIMEOUT_MS[id] ?? DEFAULT_WORKFLOW_PERFORMANCE_COMMAND_TIMEOUT_MS;
 
 export const workflowPerformanceDeadlineRunner = (input: {
@@ -131,6 +135,7 @@ export const runWorkflowPerformanceCommand = async (
       await proc.exited;
       for (const reader of readers) reader.releaseLock();
     }
+    const diagnostic = imagePullDiagnosticFromStderr(stderr);
     return {
       id: command.id,
       durationMs: performance.now() - startedAt,
@@ -139,8 +144,10 @@ export const runWorkflowPerformanceCommand = async (
       stderr: boundedPerformanceEvidence(
         stderr + (timedOut ? "\n[command timeout]" : interrupted ? "\n[interrupted]" : ""),
       ),
+      ...(diagnostic === undefined ? {} : { diagnostic }),
     };
   } catch (cause) {
+    const diagnostic = imagePullDiagnosticFromStderr(stderr);
     return {
       id: command.id,
       durationMs: performance.now() - startedAt,
@@ -149,6 +156,7 @@ export const runWorkflowPerformanceCommand = async (
       stderr: boundedPerformanceEvidence(
         `${stderr}\n[spawn or stream failure] ${cause instanceof Error ? cause.message : String(cause)}`,
       ),
+      ...(diagnostic === undefined ? {} : { diagnostic }),
     };
   }
 };

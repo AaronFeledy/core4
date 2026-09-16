@@ -14,7 +14,7 @@ describe("workflow performance command runner", () => {
     const timer = setTimeout(() => controller.abort(), 100);
     // When its command deadline expires (the external abort bounds the red test).
     const result = await runWorkflowPerformanceCommand({
-      id: "stalled",
+      id: "prepare:start",
       argv: [
         process.execPath,
         "-e",
@@ -35,7 +35,7 @@ describe("workflow performance command runner", () => {
   });
   test("records duration and preserves a nonzero correctness failure", async () => {
     const result = await runWorkflowPerformanceCommand({
-      id: "controlled-failure",
+      id: "prepare:failure",
       argv: [process.execPath, "-e", "process.stderr.write('fixture rejected'); process.exit(7)"],
       cwd: import.meta.dir,
       env: process.env,
@@ -47,13 +47,43 @@ describe("workflow performance command runner", () => {
 
   test("bounds subprocess evidence", async () => {
     const result = await runWorkflowPerformanceCommand({
-      id: "bounded",
+      id: "info",
       argv: [process.execPath, "-e", "process.stdout.write('x'.repeat(13000))"],
       cwd: import.meta.dir,
       env: process.env,
     });
     expect(result.exitCode).toBe(0);
     expect(result.stdout.endsWith("\n[truncated]")).toBe(true);
+  });
+
+  test("captures a closed image-pull diagnostic before raw stderr is omitted", async () => {
+    // Given a child emits one private closed failure-evidence payload and unrelated raw text.
+    const evidence = JSON.stringify({
+      causes: [],
+      imagePull: {
+        domain: "image-pull",
+        failureKind: "registry-auth",
+        httpStatus: 401,
+        transportKind: "http",
+      },
+    });
+
+    // When the real command runner captures the child.
+    const result = await runWorkflowPerformanceCommand({
+      id: "prepare:setup",
+      argv: [
+        process.execPath,
+        "-e",
+        `process.stderr.write(${JSON.stringify(`failure-cause-evidence ${evidence}\nraw secret text`)})`,
+      ],
+      cwd: import.meta.dir,
+      env: process.env,
+    });
+
+    // Then only the closed diagnosis is projected into the structured result.
+    expect(JSON.stringify(result)).toContain(
+      '"diagnostic":{"domain":"image-pull","failureKind":"registry-auth","httpStatus":401,"transportKind":"http"}',
+    );
   });
 
   test("assigns bounded phase-specific budgets that fit the 360-minute job", () => {

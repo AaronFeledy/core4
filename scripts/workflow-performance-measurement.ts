@@ -6,10 +6,11 @@ import type {
   WorkflowPerformanceCommand,
   WorkflowPerformanceCommandResult,
 } from "./workflow-performance-command.ts";
+import type { WorkflowPerformanceStepId } from "./workflow-performance-identifiers.ts";
 import type { WorkflowPerformanceLanePlan } from "./workflow-performance-plan.ts";
 
 export const performanceCommand = (
-  id: string,
+  id: WorkflowPerformanceStepId,
   argv: readonly string[],
   cwd: string,
   env: Readonly<Record<string, string | undefined>>,

@@ -30,6 +30,11 @@ test("failed sample evidence omits free-form diagnostics without authoritative s
             stdout: `setup ${secret} /var/private/lando`,
             stderr:
               "failed at /home/private/runtime C:\\Users\\private\\lando \\\\private-host\\lando$\\runtime",
+            diagnostic: {
+              domain: "image-pull",
+              failureKind: "generic",
+              transportKind: "connect",
+            },
           };
         }
         return { id: command.id, durationMs: 1, exitCode: 0, stdout: "", stderr: "" };
@@ -42,6 +47,11 @@ test("failed sample evidence omits free-form diagnostics without authoritative s
     expect(step).toMatchObject({ id: "prepare:setup", exitCode: 17, durationMs: 12 });
     expect(step?.stdout).toBe("");
     expect(step?.stderr).toBe("[diagnostic evidence omitted]");
+    expect(step?.diagnostic).toEqual({
+      domain: "image-pull",
+      failureKind: "generic",
+      transportKind: "connect",
+    });
     const retained = `${step?.stdout ?? ""}\n${step?.stderr ?? ""}`;
     expect(retained).not.toContain(secret);
     expect(retained).not.toContain("/home/private");

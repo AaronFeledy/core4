@@ -37,12 +37,10 @@ describe("workflow performance plan", () => {
       expect(lane.measuredSteps.length).toBeGreaterThan(0);
       expect(lane.preparation.some((step) => lane.measuredSteps.includes(step))).toBe(false);
     }
-    expect(workflowPerformanceSampleKey("run-42", "cold-first-start", 0)).toBe(
-      "perf-run-42-cold-first-start-1",
+    expect(workflowPerformanceSampleKey("cold-first-start", 0)).toBe("perf-cold-first-start-1");
+    expect(workflowPerformanceSampleKey("cold-first-start", 1)).not.toBe(
+      workflowPerformanceSampleKey("cold-first-start", 0),
     );
-    expect(workflowPerformanceSampleKey("run-42", "cold-first-start", 1)).not.toBe(
-      workflowPerformanceSampleKey("run-42", "cold-first-start", 0),
-    );
-    expect(workflowPerformanceSampleKey("12345.linux-x64", "drupal-journey", 0)).toMatch(/^[a-z][a-z0-9-]*$/);
+    expect(workflowPerformanceSampleKey("drupal-journey", 0)).toBe("perf-drupal-journey-1");
   });
 });

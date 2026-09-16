@@ -3,6 +3,14 @@ import { dirname } from "node:path";
 
 import { Schema } from "effect";
 
+import { ImagePullFailureDiagnosticSchema } from "../core/src/cli/failure-diagnostic.ts";
+import {
+  WORKFLOW_PERFORMANCE_LANE_IDS,
+  WORKFLOW_PERFORMANCE_STEP_IDS,
+  isWorkflowPerformanceSampleKey,
+  workflowPerformanceSampleKey,
+} from "./workflow-performance-identifiers.ts";
+
 const EVIDENCE_LIMIT = 12_000;
 const MAX_LANES = 16;
 const MAX_SAMPLES = 10;
@@ -37,14 +45,15 @@ const FixtureSchema = Schema.Struct({
   sha256: Schema.String,
 });
 const StepSchema = Schema.Struct({
-  id: Schema.String,
+  id: Schema.Literal(...WORKFLOW_PERFORMANCE_STEP_IDS),
   durationMs: Schema.Number,
   exitCode: Schema.Number,
   stdout: Schema.String.pipe(Schema.maxLength(EVIDENCE_LIMIT + "\n[truncated]".length)),
   stderr: Schema.String.pipe(Schema.maxLength(EVIDENCE_LIMIT + "\n[truncated]".length)),
+  diagnostic: Schema.optional(ImagePullFailureDiagnosticSchema),
 });
 const SampleSchema = Schema.Struct({
-  index: Schema.Number,
+  index: Schema.Int.pipe(Schema.between(0, MAX_SAMPLES - 1)),
   key: Schema.String,
   outcome: OutcomeSchema,
   resetCondition: Schema.String,
@@ -62,7 +71,7 @@ const StatisticsSchema = Schema.Struct({
   maxMs: Schema.Number,
 });
 const LaneSchema = Schema.Struct({
-  id: Schema.String,
+  id: Schema.Literal(...WORKFLOW_PERFORMANCE_LANE_IDS),
   class: Schema.Literal("start", "heavy"),
   outcome: OutcomeSchema,
   samples: Schema.Array(SampleSchema).pipe(Schema.maxItems(MAX_SAMPLES)),
@@ -70,7 +79,7 @@ const LaneSchema = Schema.Struct({
   skipReason: Schema.optional(Schema.String),
 });
 
-export const WorkflowPerformanceReportSchema = Schema.Struct({
+const WorkflowPerformanceReportStruct = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   status: Schema.optional(Schema.Literal("running", "completed", "interrupted", "failed")),
   failure: Schema.optional(Schema.String),
@@ -84,6 +93,18 @@ export const WorkflowPerformanceReportSchema = Schema.Struct({
   fixtures: Schema.Array(FixtureSchema).pipe(Schema.maxItems(2)),
   lanes: Schema.Array(LaneSchema).pipe(Schema.maxItems(MAX_LANES)),
 });
+
+export const WorkflowPerformanceReportSchema = WorkflowPerformanceReportStruct.pipe(
+  Schema.filter((report) =>
+    report.lanes.every((lane) =>
+      lane.samples.every((sample) =>
+        isWorkflowPerformanceSampleKey(sample.key, report.run.id, lane.id, sample.index),
+      ),
+    )
+      ? undefined
+      : "sample keys must be derived from their lane and ordinal",
+  ),
+);
 
 export type WorkflowPerformanceReport = typeof WorkflowPerformanceReportSchema.Type;
 export type WorkflowPerformanceLaneReport = typeof LaneSchema.Type;
@@ -134,7 +155,7 @@ const sanitizeWorkflowPerformanceReportForRetention = (
     outcome: lane.outcome,
     samples: lane.samples.map((sample) => ({
       index: sample.index,
-      key: sample.key,
+      key: workflowPerformanceSampleKey(lane.id, sample.index),
       outcome: sample.outcome,
       resetCondition: OMITTED_DIAGNOSTIC,
       ...(sample.stagedFixture === undefined
@@ -152,6 +173,7 @@ const sanitizeWorkflowPerformanceReportForRetention = (
         exitCode: step.exitCode,
         stdout: "",
         stderr: step.stdout.length === 0 && step.stderr.length === 0 ? "" : OMITTED_DIAGNOSTIC,
+        ...(step.diagnostic === undefined ? {} : { diagnostic: step.diagnostic }),
       })),
     })),
     ...(lane.statistics === undefined ? {} : { statistics: lane.statistics }),
