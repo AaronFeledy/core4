@@ -81,9 +81,9 @@ lando npm --version
 lando node --version
 ```
 
-`API_FRAMEWORK` is already `express` on `api`. Swap packages for Fastify or Hono when you picked those at init.
+`API_FRAMEWORK` is already `express` on `api`. When you picked Fastify or Hono at init, install that package instead (`lando npm install fastify` or `lando npm install hono`). The recipe still exposes port `3000` and the same `api` tooling either way.
 
-Drop a minimal `server.js` in the app root that calls `app.listen(process.env.PORT || 3000, "0.0.0.0")`. Point `api` at it permanently:
+Drop a minimal `server.js` in the app root that calls `app.listen(process.env.PORT || 3000, "0.0.0.0")`. Delete the `# lando-generated:...` line at the top of `.lando.yml` so Lando stops managing that file, then point `api` at it permanently:
 
 ```yaml
 services:
@@ -132,7 +132,16 @@ Install a client in the API when you need it from Node:
 lando npm install pg
 ```
 
-## Skip Postgres or pick Hono
+## Pick Fastify, or skip Postgres with Hono
+
+Fastify keeps the default Postgres service and sets `API_FRAMEWORK=fastify` on `api` (still port `3000`):
+
+```sh
+lando init --recipe node-api --name=node-api-fastify --yes \
+  --answer=framework=fastify
+```
+
+Hono without Postgres drops the `database` service entirely and sets `API_FRAMEWORK=hono`:
 
 ```sh
 lando init --recipe node-api --name=node-api-hono --yes \
@@ -140,8 +149,6 @@ lando init --recipe node-api --name=node-api-hono --yes \
   --answer=framework=hono \
   --answer=database=none
 ```
-
-That drops the `database` service entirely and sets `API_FRAMEWORK=hono` on `api`.
 
 ## Destroy the app
 
