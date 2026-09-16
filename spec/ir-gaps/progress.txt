@@ -869,3 +869,23 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Drift check: clean (no drift in the five babysit commits; emission goldens remain as strict as at the audit base)
 - Merge: deferred (CI still red after two triage rounds; next Build must fix compiled-CLI teardown so a directory with no Landofile still fails with the `lando init` remediation instead of an idempotent `unchanged`)
 ---
+## 2026-09-16 15:13 - Babysit
+- [looper] Babysit blocked: CI still red: compiled-CLI teardown must preserve the missing-Landofile error (stop/destroy scenarios + compiled aliases) and guide-scenarios-windows-x64 fails; babysit budget exhausted after two triage rounds
+---
+## 2026-09-16 15:13 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-16 15:13 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-16 - US-629 Drift Audit
+- Trigger: 4 cycles, 2668/241 changed lines, 37 commits
+- Dual path: compiled `apps:list --prune` called read-only list and emitted empty prune receipts
+- Weakened proofs: `listServices({ prune: true })` blessed a fake receipt; source missing-Landofile stop/destroy still fail-closed
+- Ceremony: new modules are real logic, not forwarders; left in place to avoid blowing 250 LOC
+- Collateral: `prd.json` unchanged; no other-story phases
+- Deferred re-exam: ownerKey volume-selector, leftover volumes, onCorrupt — no in-place regression to fix
+- Fixed: compiled list prune uses the mutating path; prune receipts emit only when prune actually ran
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 110 focused tests pass; compiled-binary missing-Landofile CI residual not reproduced on source CLI
+---
