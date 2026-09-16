@@ -81,9 +81,9 @@ lando list
 lando poweroff -y
 ```
 
-`lando list` marks an app as stale when its recorded root no longer exists and
-the provider confirms that no matching containers are running. Remove those
-exact stale records with:
+`lando list` marks an app as stale when its recorded root no longer exists.
+Pruning also requires the provider to confirm that no matching containers or
+volumes remain. Remove those exact stale records with:
 
 ```sh
 lando list --prune
