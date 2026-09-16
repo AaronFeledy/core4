@@ -194,6 +194,7 @@ const destroyAppWithResolvedTarget = (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
   revalidate: boolean,
+  requireAppliedEvidence: boolean,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
   withAppMutationLock(
     appLockTarget(target.plan),
@@ -202,6 +203,17 @@ const destroyAppWithResolvedTarget = (
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
       const validatedTarget = revalidate ? yield* validateResolvedAppTarget(target) : target;
+      if (requireAppliedEvidence && registry.resolveAppliedPlan !== undefined) {
+        const appliedPlan = yield* registry.resolveAppliedPlan(validatedTarget.plan.root);
+        if (appliedPlan === undefined) {
+          return {
+            app: validatedTarget.plan.name,
+            outcome: "unchanged" as const,
+            servicesDestroyed: [],
+            volumesRemoved: false,
+          };
+        }
+      }
       const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
       const provider = yield* registry.select(resolvedTarget.plan);
       return yield* withPlanVolumeCoordination({
@@ -217,7 +229,7 @@ export const destroyAppForTarget = (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
-  destroyAppWithResolvedTarget(options, target, true);
+  destroyAppWithResolvedTarget(options, target, true, target.landofile !== undefined);
 
 export const destroyApp = (
   options: DestroyAppOptions = {},
@@ -236,9 +248,14 @@ export const destroyApp = (
               })
             : (resolved.source === "desired"
                 ? runAppInitEvents(resolved.target.plan).pipe(
-                    Effect.zipRight(destroyAppWithResolvedTarget(options, resolved.target, false)),
+                    Effect.zipRight(destroyAppWithResolvedTarget(options, resolved.target, false, true)),
                   )
-                : destroyAppWithResolvedTarget(options, resolved.target, false)
-              ).pipe(Effect.map((result): DestroyAppResult => ({ ...result, outcome: "destroyed" }))),
+                : destroyAppWithResolvedTarget(options, resolved.target, false, false)
+              ).pipe(
+                Effect.map(
+                  (result): DestroyAppResult =>
+                    result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
+                ),
+              ),
         ),
       );

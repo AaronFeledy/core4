@@ -8,7 +8,7 @@ import { DateTime, Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, type LandofileShape, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
@@ -79,6 +79,7 @@ const withTempRoot = async <A>(use: (root: string) => Promise<A>): Promise<A> =>
 
 const makeLayer = (input: {
   readonly appliedPlan?: AppPlan;
+  readonly desiredPlan?: AppPlan;
   readonly providerId?: string;
   readonly destroy?: () => Effect.Effect<void, ProviderUnavailableError>;
 }) => {
@@ -111,8 +112,18 @@ const makeLayer = (input: {
     PrivateFileAccessLive,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
-    Layer.succeed(LandofileService, { discover: Effect.fail(invalidDesiredConfig) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.die("desired planning must not run") }),
+    Layer.succeed(LandofileService, {
+      discover:
+        input.desiredPlan === undefined
+          ? Effect.fail(invalidDesiredConfig)
+          : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape),
+    }),
+    Layer.succeed(AppPlanner, {
+      plan: () =>
+        input.desiredPlan === undefined
+          ? Effect.die("desired planning must not run")
+          : Effect.succeed(input.desiredPlan),
+    }),
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(EventService, {
       publish: () => Effect.void,
@@ -203,6 +214,26 @@ describe("applied-state teardown", () => {
       expect(harness.destroyCalls).toEqual([]);
     });
   });
+
+  test.each(["stop", "destroy"] as const)(
+    "%s returns unchanged for a valid never-started app without provider mutation",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        const desiredPlan = planAt(root);
+        const harness = makeLayer({ desiredPlan });
+
+        const result =
+          operation === "stop"
+            ? await Effect.runPromise(withResolvedCwd(root, stopApp()).pipe(Effect.provide(harness.layer)))
+            : await Effect.runPromise(
+                withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+              );
+
+        expect(result.outcome).toBe("unchanged");
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    },
+  );
 
   test("clears applied state only after destroy succeeds", async () => {
     await withTempRoot(async (root) => {
