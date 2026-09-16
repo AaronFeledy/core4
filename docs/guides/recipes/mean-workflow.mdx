@@ -9,10 +9,11 @@ tags: [beta, docs, recipes, mean, node, mongodb, redis]
 
 ```sh
 lando init --recipe mean --name=mean-demo --yes
+cd mean-demo
 lando start
 ```
 
-`--yes` is consent on init. It skips prompts. It is not a start flag.
+The named init creates `mean-demo/`. Change into it before app commands. `--yes` is consent on init. It skips prompts. It is not a start flag.
 
 First start builds `api` and `database`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`. Those URLs return HTTP 502 until the scaffold is serving. The next section covers install plus a Landofile `command` or `lando node server.js`.
 
