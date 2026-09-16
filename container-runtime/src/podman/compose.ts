@@ -262,6 +262,7 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
           "dev.lando.volume-selector": volumeSelectorValue({
             providerId: plan.provider,
             appId: plan.id,
+            ownerKey: plan.identity?.ownerKey ?? plan.root,
             volumeClass: store.kind === "cache" ? "cache" : "data",
           }),
           ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),

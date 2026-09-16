@@ -2,6 +2,7 @@ import {
   AppsListResultSchema,
   type ListServicesResult,
   listServices,
+  listServicesWithPrune,
   renderAppsListResult,
 } from "../../commands/list";
 import { Flags } from "../../spec/metadata";
@@ -20,11 +21,17 @@ export const appsListPathFromInput = (input: unknown): string | undefined => {
   return typeof flags?.path === "string" ? flags.path : undefined;
 };
 
+export const appsListPruneFromInput = (input: unknown): boolean => {
+  if (typeof input !== "object" || input === null) return false;
+  const flags = (input as { flags?: { prune?: unknown } }).flags;
+  return flags?.prune === true;
+};
+
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
   resultSchema: AppsListResultSchema,
   id: "apps:list",
-  helpGroup: "common",
   mcpAllowed: true,
+  helpGroup: "common",
   summary: "List Lando apps applied across discovered providers on this host.",
   namespace: "apps",
   topLevelAlias: true,
@@ -33,10 +40,13 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
   flags: {
     format: Flags.string({ description: "Output format.", options: ["json", "table"], default: "table" }),
     path: Flags.string({ description: "Filter apps whose root contains the given substring." }),
+    prune: Flags.boolean({ description: "Remove stale inventory only after provider absence is confirmed." }),
   },
   run: (input) => {
     const path = appsListPathFromInput(input);
-    return listServices(path === undefined ? {} : { path });
+    const prune = appsListPruneFromInput(input);
+    const options = path === undefined ? {} : { path };
+    return prune ? listServicesWithPrune(options) : listServices(options);
   },
   render: (result, input?: unknown) =>
     renderAppsListResult(result as ListServicesResult, extractFormat(input)),

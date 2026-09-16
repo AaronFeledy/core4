@@ -91,6 +91,7 @@ export const commonContainerLabels = (
   return {
     ...userLabels,
     "dev.lando.app": plan.id,
+    "dev.lando.app-root": plan.root,
     "dev.lando.service": service.name,
     ...extra,
   };

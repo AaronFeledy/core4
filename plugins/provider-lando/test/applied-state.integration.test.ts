@@ -210,6 +210,18 @@ describe("provider-lando applied state persistence", () => {
     });
   });
 
+  test("listAppliedPlans fails when the applied-state namespace cannot be read", async () => {
+    await withStateDir(async (stateDir) => {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      await writeFile(join(stateDir, "applied-plans"), "not a directory");
+
+      const result = await Effect.runPromiseExit(listAppliedPlans(state, stateDir));
+
+      expect(result._tag).toBe("Failure");
+      expect(String(result)).toContain("ProviderUnavailableError");
+    });
+  });
+
   test("listAppliedPlans enumerates persisted plans including the global app", async () => {
     await withStateDir(async (stateDir) => {
       const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));

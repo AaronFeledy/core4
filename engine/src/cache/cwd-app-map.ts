@@ -171,3 +171,30 @@ export const deleteCwdAppMapEntry = (input: {
       catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
     });
   });
+
+export const deleteCwdAppMapEntriesForRoot = (input: {
+  readonly cacheRoot: string;
+  readonly appRoot: string;
+}): Effect.Effect<ReadonlyArray<string>, CacheError> =>
+  Effect.gen(function* () {
+    const existing = yield* readCwdAppMap(input.cacheRoot);
+    if (existing === null) return [];
+    const removed = existing.entries
+      .filter((entry) => entry.appRoot === input.appRoot)
+      .map((entry) => entry.cwd);
+    if (removed.length === 0) return [];
+    const entries = existing.entries.filter((entry) => entry.appRoot !== input.appRoot);
+    const path = cachePath(input.cacheRoot);
+    if (entries.length === 0) {
+      yield* Effect.tryPromise({
+        try: () => rm(path, { force: true }),
+        catch: (cause) => cacheError(path, `Failed to delete cwd-app-map cache at ${path}.`, cause),
+      });
+      return removed;
+    }
+    yield* Effect.tryPromise({
+      try: () => writeFileAtomicViaRename(path, encode({ ...existing, entries })),
+      catch: (cause) => cacheError(path, `Failed to write cwd-app-map cache at ${path}.`, cause),
+    });
+    return removed;
+  });

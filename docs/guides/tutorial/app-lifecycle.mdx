@@ -115,6 +115,11 @@ lando rebuild -y
 lando destroy -y
 ```
 
+`stop` and `destroy` use the provider's last applied plan when the Landofile is
+missing or invalid. That means you can still tear down an app after deleting its
+directory or breaking its config. Lando verifies the stored app root, owner, and
+provider before it touches anything.
+
 To see or stop everything Lando is running on this host:
 
 ```sh

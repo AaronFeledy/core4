@@ -1,6 +1,6 @@
 import { type Context, Effect, Option, Schema } from "effect";
 
-import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
+import type { CacheError, ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
@@ -72,7 +72,7 @@ const stopManagedRuntimeService = (
 
 export const poweroff = (
   options: PoweroffOptions = {},
-): Effect.Effect<PoweroffResult, ConfigError | LandoCommandError, ConfigService> =>
+): Effect.Effect<PoweroffResult, CacheError | ConfigError | LandoCommandError, ConfigService> =>
   Effect.gen(function* () {
     const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
     const configService = yield* ConfigService;

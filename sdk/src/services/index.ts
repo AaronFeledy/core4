@@ -72,6 +72,7 @@ import type {
 } from "../schema/index.ts";
 
 import type {
+  AppResolveError,
   BuildPhaseFailedError,
   CacheError,
   CapabilityError,
@@ -265,6 +266,7 @@ export interface RuntimeProviderShape {
   readonly capabilities: ProviderCapabilities;
 
   readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
+  readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
   readonly planSetup: (
     options: ProviderSetupInspectOptions,
   ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
@@ -585,6 +587,9 @@ export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/Ru
       RuntimeProviderShape,
       ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
     >;
+    readonly resolveAppliedPlan?: (
+      root: AbsolutePath,
+    ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
   }
 >() {}
 

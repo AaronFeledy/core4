@@ -415,7 +415,7 @@ describe("provider-lando bringUp", () => {
         "dev.lando.scope": "global",
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
-        "dev.lando.volume-selector": "lando:bringupapp:cache",
+        "dev.lando.volume-selector": "lando:bringupapp:creation-owner:cache",
         "dev.lando.volume-owner": "/canonical/creation-root",
         "dev.lando.volume-instance": expect.stringMatching(/^[0-9a-f-]{36}$/u),
       },

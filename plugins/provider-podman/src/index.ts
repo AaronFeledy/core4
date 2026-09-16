@@ -712,7 +712,7 @@ export const makeRuntimeProvider = (
       : persistAppliedPlan(options.appliedPlanState, plan).pipe(Effect.asVoid)
     ).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))));
 
-  const forgetPlan = (appId: AppId): Effect.Effect<void> =>
+  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> =>
     (options.appliedPlanState === undefined
       ? Effect.void
       : removeAppliedPlan(options.appliedPlanState, appId)
@@ -761,6 +761,10 @@ export const makeRuntimeProvider = (
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
         ),
+        appliedPlans:
+          options.appliedPlanState === undefined
+            ? Effect.succeed([])
+            : listAppliedPlans(options.appliedPlanState),
         planSetup: () => Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
@@ -849,7 +853,13 @@ export const makeRuntimeProvider = (
                   plan,
                   { app: plan.id, service: service.name },
                   { api: podmanApi, ctx: PODMAN_CTX },
-                ).pipe(Effect.map((snapshot) => ({ ...snapshot, providerId: providerIdBranded }))),
+                ).pipe(
+                  Effect.map((snapshot) => ({
+                    ...snapshot,
+                    appRoot: plan.root,
+                    providerId: providerIdBranded,
+                  })),
+                ),
               ),
             );
 
@@ -931,6 +941,7 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
         make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;

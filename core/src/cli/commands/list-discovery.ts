@@ -12,6 +12,14 @@ export interface AppsListEntry {
   readonly providerId: string;
   readonly appRoot: string;
   readonly services: ReadonlyArray<string>;
+  readonly stale?: boolean;
+}
+
+export interface AppsDiscoveryEvidence {
+  readonly apps: ReadonlyArray<AppsListEntry>;
+  readonly providerConfirmed: boolean;
+  readonly confirmedProviderIds: ReadonlyArray<string>;
+  readonly ownedAppIds: ReadonlyArray<string>;
 }
 
 const LEGACY_PROVIDER_DIRS = ["provider-lando", "provider-docker"] as const;
@@ -47,19 +55,16 @@ const providerIdFromPluginRoot = (pluginRoot: string): string =>
 
 const preferProviderId = (left: string, right: string): string => {
   if (left === "cache" && right !== "cache") return right;
-  if (right === "cache" && left !== "cache") return left;
   return left;
 };
 
 const preferName = (left: string, right: string, appId: string): string => {
   if (left === appId && right !== appId) return right;
-  if (right === appId && left !== appId) return left;
   return left;
 };
 
 const preferRoot = (left: string, right: string): string => {
   if (left === "" && right !== "") return right;
-  if (right === "" && left !== "") return left;
   // First nonempty root wins so a longer leftover legacy/cache path cannot replace plugin state.
   return left;
 };
@@ -223,6 +228,24 @@ const stringLabels = (value: unknown): Record<string, string> => {
   );
 };
 
+const labeledResourceEvidence = (
+  resources: unknown,
+): { readonly appIds: ReadonlyArray<string>; readonly providerIds: ReadonlyArray<string> } => {
+  if (!Array.isArray(resources)) return { appIds: [], providerIds: [] };
+  const appIds: string[] = [];
+  const providerIds: string[] = [];
+  for (const resource of resources) {
+    if (!isRecord(resource)) continue;
+    const labels = stringLabels(resource.Labels);
+    const appId = labels[APP_LABEL];
+    if (appId === undefined || appId === "" || labels[SCRATCH_LABEL] === "TRUE") continue;
+    appIds.push(appId);
+    const providerId = labels[PROVIDER_LABEL];
+    if (providerId !== undefined && providerId !== "") providerIds.push(providerId);
+  }
+  return { appIds: uniqueSorted(appIds), providerIds: uniqueSorted(providerIds) };
+};
+
 export const appsFromContainerList = (
   body: unknown,
   options: { readonly globalAppRoot?: string } = {},
@@ -295,13 +318,12 @@ export const containerSocketCandidates = (
   return [...new Set(candidates)];
 };
 
-const listContainersOnSocket = (socketPath: string): Promise<unknown> =>
+const requestJsonOnSocket = (socketPath: string, path: string): Promise<unknown> =>
   new Promise((resolve, reject) => {
-    const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL], status: ["running"] }));
     const req = httpRequest(
       {
         socketPath: httpSocketPath(socketPath),
-        path: `/containers/json?filters=${filters}`,
+        path,
         method: "GET",
         headers: { Host: "localhost" },
       },
@@ -332,10 +354,29 @@ const listContainersOnSocket = (socketPath: string): Promise<unknown> =>
     req.end();
   });
 
-export const discoverRunningAppsFromSockets = async (
+const listContainersOnSocket = (socketPath: string): Promise<unknown> => {
+  const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL] }));
+  return requestJsonOnSocket(socketPath, `/containers/json?all=true&filters=${filters}`);
+};
+
+const listVolumesOnSocket = (socketPath: string): Promise<unknown> => {
+  const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL] }));
+  return requestJsonOnSocket(socketPath, `/volumes?filters=${filters}`);
+};
+
+const providerIdOnSocket = async (socketPath: string, userDataRoot: string): Promise<string> => {
+  const paths = makeLandoPaths({ userDataRoot });
+  const managedSocket =
+    process.platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
+  if (httpSocketPath(socketPath) === httpSocketPath(managedSocket)) return "lando";
+  const version = JSON.stringify(await requestJsonOnSocket(socketPath, "/version")).toLowerCase();
+  return version.includes("podman") ? "podman" : "docker";
+};
+
+export const discoverRunningAppsEvidenceFromSockets = async (
   userDataRoot: string,
   sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
-): Promise<AppsListEntry[]> => {
+): Promise<AppsDiscoveryEvidence> => {
   const paths = makeLandoPaths({ userDataRoot });
   for (const socket of sockets) {
     // Named pipes are not filesystem nodes; fs.access ENOENTs even when the pipe is live.
@@ -347,12 +388,36 @@ export const discoverRunningAppsFromSockets = async (
       }
     }
     try {
-      const body = await listContainersOnSocket(socket);
+      const [containers, volumesBody] = await Promise.all([
+        listContainersOnSocket(socket),
+        listVolumesOnSocket(socket),
+      ]);
+      const volumes = isRecord(volumesBody) ? volumesBody.Volumes : undefined;
+      const apps = appsFromContainerList(containers, { globalAppRoot: paths.globalAppRoot });
+      const containerEvidence = labeledResourceEvidence(containers);
+      const volumeEvidence = labeledResourceEvidence(volumes);
+      const labeledProviderIds = uniqueSorted([
+        ...containerEvidence.providerIds,
+        ...volumeEvidence.providerIds,
+      ]);
+      const confirmedProviderIds =
+        labeledProviderIds.length > 0 ? labeledProviderIds : [await providerIdOnSocket(socket, userDataRoot)];
       // First successful list wins so a live managed socket is not mixed with host Docker/Podman.
-      return appsFromContainerList(body, { globalAppRoot: paths.globalAppRoot });
+      return {
+        apps,
+        providerConfirmed: true,
+        confirmedProviderIds,
+        ownedAppIds: uniqueSorted([...containerEvidence.appIds, ...volumeEvidence.appIds]),
+      };
     } catch {
       // Socket present but not a Docker/Podman compat API, or the daemon is mid-start.
     }
   }
-  return [];
+  return { apps: [], providerConfirmed: false, confirmedProviderIds: [], ownedAppIds: [] };
 };
+
+export const discoverRunningAppsFromSockets = async (
+  userDataRoot: string,
+  sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
+): Promise<ReadonlyArray<AppsListEntry>> =>
+  (await discoverRunningAppsEvidenceFromSockets(userDataRoot, sockets)).apps;

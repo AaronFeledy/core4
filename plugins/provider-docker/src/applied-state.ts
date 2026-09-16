@@ -10,10 +10,8 @@ const PROVIDER_ID = "docker";
 const APPLIED_STATE_VERSION = 1;
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
 
-const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/u, "");
-
 export const appliedPlansDir = (stateDir: string): string =>
-  `${trimTrailingSlashes(stateDir)}/${APPLIED_PLAN_NAMESPACE}`;
+  `${stateDir.replace(/\/+$/u, "")}/${APPLIED_PLAN_NAMESPACE}`;
 
 export const appliedPlanPath = (stateDir: string, appId: AppId): string =>
   `${appliedPlansDir(stateDir)}/${appId}.json`;
@@ -30,6 +28,25 @@ const openAppliedPlanBucket = (stateStore: PluginStateStore, appId: AppId) =>
     onCorrupt: "discard",
     onVersionMismatch: "discard",
   });
+
+const listError = (cause: unknown): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "applied-state.list",
+    message: "Unable to inspect provider-docker applied plan state.",
+    remediation: "Check permissions for the provider-docker plugin state directory and retry.",
+    cause,
+  });
+
+const isMissing = (cause: unknown): boolean =>
+  typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "ENOENT";
+
+const loadAppliedPlanForList = (stateStore: PluginStateStore, appId: AppId) =>
+  openAppliedPlanBucket(stateStore, appId).pipe(
+    Effect.flatMap((bucket) => bucket.get),
+    Effect.map((plan) => plan ?? undefined),
+    Effect.mapError(listError),
+  );
 
 export const persistAppliedPlan = (
   stateStore: PluginStateStore,
@@ -60,17 +77,34 @@ export const loadAppliedPlan = (
     Effect.catchAll(() => Effect.succeed(undefined)),
   );
 
-export const removeAppliedPlan = (stateStore: PluginStateStore, appId: AppId): Effect.Effect<void, never> =>
+export const removeAppliedPlan = (
+  stateStore: PluginStateStore,
+  appId: AppId,
+): Effect.Effect<void, ProviderUnavailableError> =>
   openAppliedPlanBucket(stateStore, appId).pipe(
     Effect.flatMap((bucket) => bucket.remove),
-    Effect.catchAll(() => Effect.void),
+    Effect.mapError(
+      (cause) =>
+        new ProviderUnavailableError({
+          providerId: PROVIDER_ID,
+          operation: "applied-state.remove",
+          message: "Unable to remove provider-docker applied plan state.",
+          remediation: "Check permissions for the provider-docker plugin state directory and retry.",
+          cause,
+        }),
+    ),
   );
 
 export const listAppliedPlans = (
   stateStore: PluginStateStore,
   stateDir: string,
-): Effect.Effect<ReadonlyArray<AppPlan>, never> =>
-  Effect.tryPromise(() => readdir(appliedPlansDir(stateDir))).pipe(
+): Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError> =>
+  Effect.tryPromise({
+    try: () => readdir(appliedPlansDir(stateDir)),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catchIf(isMissing, () => Effect.succeed([])),
+    Effect.mapError(listError),
     Effect.map((entries) =>
       entries.flatMap((entry) => {
         if (!entry.endsWith(".json")) return [];
@@ -81,7 +115,6 @@ export const listAppliedPlans = (
         }
       }),
     ),
-    Effect.flatMap((ids) => Effect.forEach(ids, (id) => loadAppliedPlan(stateStore, id))),
+    Effect.flatMap((ids) => Effect.forEach(ids, (id) => loadAppliedPlanForList(stateStore, id))),
     Effect.map((plans) => plans.filter((plan): plan is AppPlan => plan !== undefined)),
-    Effect.catchAll(() => Effect.succeed([])),
   );
