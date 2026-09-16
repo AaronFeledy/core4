@@ -10,7 +10,7 @@ import type {
   LandoCommandError,
   StateStoreError,
 } from "@lando/sdk/errors";
-import type { LandoPaths, StateStoreShape } from "@lando/sdk/services";
+import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 
 import { deleteCwdAppMapEntriesForRoot, listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
@@ -211,7 +211,7 @@ export const listServicesWithPrune = (
 ): Effect.Effect<
   ListServicesResult,
   AppLockTimeoutError | CacheError | ConfigError | LandoCommandError | StateStoreError,
-  ConfigService | PathsService | PrivateFileAccessService | StateStore
+  ConfigService | FileSystem | PathsService | PrivateFileAccessService | StateStore
 > =>
   Effect.gen(function* () {
     const paths = yield* PathsService;
@@ -238,8 +238,7 @@ export const listServicesWithPrune = (
             const removedState = yield* pruneAppliedPlanState(
               pruneServices.paths,
               pruneServices.stateStore,
-              entry.appId,
-              entry.providerId,
+              entry,
             );
             return removedState || removedCache.length > 0;
           }),
