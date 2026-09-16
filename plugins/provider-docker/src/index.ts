@@ -1974,6 +1974,10 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        appliedPlans: (ctx) =>
+          Effect.flatMap(PathsService, (paths) =>
+            listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
+          ),
         make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;

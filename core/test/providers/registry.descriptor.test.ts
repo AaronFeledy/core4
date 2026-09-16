@@ -161,6 +161,7 @@ describe("RuntimeProviderRegistry descriptor lookup", () => {
           fakeProviderId,
           {
             id: fakeProviderId,
+            appliedPlans: () => Effect.succeed([]),
             make: () => Effect.succeed(fakeProvider),
           },
         ],

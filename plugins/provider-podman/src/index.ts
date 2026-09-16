@@ -941,6 +941,7 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
         make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;
