@@ -16,6 +16,7 @@ import {
   performanceCommand,
   runUntilFailure,
   validateJourneyResults,
+  withWorkflowPerformanceDiagnostics,
 } from "./workflow-performance-measurement.ts";
 import type { WorkflowPerformanceLanePlan } from "./workflow-performance-plan.ts";
 import type { WorkflowPerformanceSample } from "./workflow-performance-report.ts";
@@ -60,7 +61,7 @@ const prepareSample = async (
     mkdir(journey ? appParent : appRoot, { recursive: true }),
     mkdir(runtimeRoot, { recursive: true, mode: 0o700 }),
   ]);
-  const env = {
+  const env = withWorkflowPerformanceDiagnostics({
     ...process.env,
     BUN_BE_BUN: undefined,
     LANDO_DISALLOW_BUN_BE_BUN_REENTRY: undefined,
@@ -73,7 +74,7 @@ const prepareSample = async (
     LANDO_USER_CACHE_ROOT: join(sampleRoot, "cache"),
     CONTAINERS_STORAGE_CONF: storageConfig,
     XDG_RUNTIME_DIR: runtimeRoot,
-  };
+  });
   const cwd = journey ? appParent : appRoot;
   acquired({ appRoot, env, fileSyncEvidence: "" });
   await writeFile(
@@ -110,7 +111,7 @@ const prepareSample = async (
         "--skip-file-sync",
       ],
       cwd,
-      { ...env, LANDO_DEBUG_CAUSE_CHAIN: "1", LANDO_RENDERER: "json" },
+      env,
     ),
   );
   if (setup.exitCode !== 0)
@@ -145,13 +146,7 @@ const prepareSample = async (
     if (pulled.exitCode !== 0) return { appRoot, env, failure: pulled, fileSyncEvidence: setup.stdout };
   }
   if (lane.id === "warm-stop-start" || lane.id === "unchanged-rebuild" || lane.fixtureFamily !== undefined) {
-    const started = await runCommand(
-      performanceCommand("prepare:start", [binary, "start"], appRoot, {
-        ...env,
-        LANDO_DEBUG_CAUSE_CHAIN: "1",
-        LANDO_RENDERER: "json",
-      }),
-    );
+    const started = await runCommand(performanceCommand("prepare:start", [binary, "start"], appRoot, env));
     if (started.exitCode !== 0)
       return {
         appRoot,

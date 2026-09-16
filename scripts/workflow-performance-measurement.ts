@@ -16,6 +16,14 @@ export const performanceCommand = (
   env: Readonly<Record<string, string | undefined>>,
 ): WorkflowPerformanceCommand => ({ id, argv, cwd, env });
 
+export const withWorkflowPerformanceDiagnostics = (
+  env: Readonly<Record<string, string | undefined>>,
+): Readonly<Record<string, string | undefined>> => ({
+  ...env,
+  LANDO_DEBUG_CAUSE_CHAIN: "1",
+  LANDO_RENDERER: "json",
+});
+
 export const runUntilFailure = async (
   commands: readonly WorkflowPerformanceCommand[],
   runCommand: (command: WorkflowPerformanceCommand) => Promise<WorkflowPerformanceCommandResult>,
@@ -37,15 +45,17 @@ export const buildMeasuredCommands = (input: {
   readonly env: Readonly<Record<string, string | undefined>>;
 }): readonly WorkflowPerformanceCommand[] => {
   const { lane, binary, appRoot, fixturePath, env } = input;
-  if (lane.id === "cold-first-start") return [performanceCommand("start", [binary, "start"], appRoot, env)];
+  const diagnosticEnv = withWorkflowPerformanceDiagnostics(env);
+  if (lane.id === "cold-first-start")
+    return [performanceCommand("start", [binary, "start"], appRoot, diagnosticEnv)];
   if (lane.id === "warm-stop-start") {
     return [
-      performanceCommand("stop", [binary, "stop"], appRoot, env),
-      performanceCommand("start", [binary, "start"], appRoot, env),
+      performanceCommand("stop", [binary, "stop"], appRoot, diagnosticEnv),
+      performanceCommand("start", [binary, "start"], appRoot, diagnosticEnv),
     ];
   }
   if (lane.id === "unchanged-rebuild") {
-    return [performanceCommand("rebuild", [binary, "rebuild"], appRoot, env)];
+    return [performanceCommand("rebuild", [binary, "rebuild"], appRoot, diagnosticEnv)];
   }
   if (lane.id.endsWith("-import") && fixturePath !== undefined) {
     return [
@@ -53,7 +63,7 @@ export const buildMeasuredCommands = (input: {
         "db:import",
         [binary, "db:import", fixturePath, "--service", "database", "--yes"],
         appRoot,
-        env,
+        diagnosticEnv,
       ),
     ];
   }
@@ -63,7 +73,7 @@ export const buildMeasuredCommands = (input: {
         "db:restore",
         [binary, "db:restore", "workflow-perf-prepared", "--service", "database", "--yes"],
         appRoot,
-        env,
+        diagnosticEnv,
       ),
     ];
   }
@@ -74,7 +84,7 @@ export const buildMeasuredCommands = (input: {
       : buildRailsJourneyPlan({ binary, name });
   const parent = resolve(appRoot, "..");
   return plan.map((step) =>
-    performanceCommand(step.id, step.argv, step.id === "init" ? parent : appRoot, env),
+    performanceCommand(step.id, step.argv, step.id === "init" ? parent : appRoot, diagnosticEnv),
   );
 };
 
