@@ -4,11 +4,12 @@
 
 ```sh
 lando init --recipe django --name=my-django --yes
+cd my-django
 lando start
 lando info
 ```
 
-`--yes` skips the Celery worker. Pass `--answer` to add it.
+The named init creates `my-django/`. Change into it before app commands. `--yes` skips the Celery worker. Pass `--answer` to add it.
 
 ```sh
 lando init --recipe django --name=my-django --yes \
@@ -33,6 +34,8 @@ lando pip install -r requirements.txt
 `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+For the day-to-day path (`django-admin`, Postgres host `database`, `runserver` bind), see [Run the Django recipe](/guides/recipes/django-workflow/).
 
 ## 1. scaffold
 
