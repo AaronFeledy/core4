@@ -111,7 +111,11 @@ describe("workflow performance runner", () => {
       const lane = report.lanes.find((candidate) => candidate.id === "drupal-journey");
       expect(lane?.outcome).toBe("failed");
       expect(lane?.samples[0]?.steps).toContainEqual(
-        expect.objectContaining({ id: failureId, exitCode: 9, stderr: "command failed" }),
+        expect.objectContaining({
+          id: failureId,
+          exitCode: 9,
+          stderr: failureId === "prepare:setup" ? "[diagnostic evidence omitted]" : "command failed",
+        }),
       );
       expect(lane?.statistics).toBeUndefined();
       expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(1);
