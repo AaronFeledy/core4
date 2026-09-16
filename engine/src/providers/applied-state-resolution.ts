@@ -6,9 +6,11 @@ import { AppResolveError } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 
+export type AppliedStateProvider = Pick<RuntimeProviderShape, "id" | "appliedPlans" | "list" | "listVolumes">;
+
 export const resolveAppliedPlanEvidence = (
   root: AbsolutePath,
-  providers: ReadonlyArray<RuntimeProviderShape>,
+  providers: ReadonlyArray<AppliedStateProvider>,
 ): Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError> =>
   Effect.gen(function* () {
     if (providers.length === 0) {
