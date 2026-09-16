@@ -826,3 +826,27 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - **Out-of-scope finding:** setup warned ports 80/443 were in use and fell back to 8000/4443; `curl http://appserver.us628-verify.lndo.site:8000/` returned 404. Same host/WSL mirrored bind as prior verifies; HTTPS-only diagnostic is US-624, not US-628.
 - **Out-of-scope finding:** `lando destroy --yes` against a Landofile with `scanner.retries: -1` failed `LandofileValidationError` before teardown. Restoring a valid Landofile then destroy succeeded. Belongs to US-629 invalid-config teardown, not this scanner story.
 ---
+## 2026-09-16 - US-629 (in progress, not complete)
+- Stop and destroy now recover validated applied state when desired configuration is unavailable or invalid, including fresh library handles. Provider provenance, canonical root, and ownership checks fail closed; resource-confirmed empty apps return an explicit unchanged outcome. Failed provider teardown or applied-record removal no longer silently discards recovery evidence.
+- Inventory reports stale roots, and bounded pruning rechecks provider resources under the app mutation lock before removing modern applied records. Stop/destroy output and the lifecycle and everyday-command guides describe the new outcomes.
+- Verification: gate:pr, typecheck, lint, boundaries, guide gates, and changed-file diagnostics passed; the final focused safety checks passed 63 tests, and both required executable guides passed one scenario each. Sandbox CLI verification stopped and destroyed an app after invalidating its configuration, removed its volumes, and left only the shared global app in inventory. Owned sandbox fixtures were removed; no full suite was run.
+- Remaining acceptance blocker: stale pruning still leaves legacy provider inventory records that discovery continues to read, allowing a pruned entry to reappear. Remove applicable legacy records through advisory-locked StateStore buckets inside the existing app mutation lock, with legacy-only and duplicate-record regression coverage, before marking the story implemented.
+- **Learnings for future iterations:**
+  - Applied-plan provider identity must be checked against the provider supplying the record, not a provider selected from the record itself.
+  - Empty applied state is not proof of absent resources; include stopped containers and owned volumes, and propagate inspection failures.
+  - Inventory cleanup must cover every representation that discovery reads, including legacy records, and deletion failures must not produce successful prune receipts.
+---
+## 2026-09-16 - US-629 (implemented)
+- Stale inventory pruning now removes matching legacy provider records as well as modern applied state, so legacy-only and duplicate entries stay gone after rediscovery. App, root, and provider mismatches fail closed; deletion failures cannot produce successful prune receipts.
+- Applied ownership discovery now reads persisted provider inventory before initializing a runtime. Invalid-config stop and destroy select the actual owner without failing on an unrelated installed provider's unavailable socket; inventory failures and ownership conflicts still propagate.
+- Verification: gate:pr passed, including typecheck, lint, codegen, boundaries, and guide drift; 135 final focused tests passed. Both required executable guides passed with positive scenario counts, guide gates passed, and changed TypeScript diagnostics were clean. Regression failures were captured before both fixes; independent acceptance review approved without blockers. No full local suite was run.
+- Sandbox verification: legacy-only and duplicate stale records were pruned with exact receipts and remained absent. A live app stopped after config corruption with all four volumes preserved, then restarted and was destroyed after another corruption; containers, volumes, and inventory were empty afterwards. Owned QA roots, daemons, network, and tmux resources were cleaned without touching shared resources.
+- **Learnings for future iterations:**
+  - Persisted ownership discovery must not initialize every installed runtime: an unrelated provider's valid availability check can otherwise block recovery of the actual owner's applied state. Keep inventory reading separate from live provider construction.
+  - Legacy inventory filenames are not authoritative app identities; decode records and validate app, root, and provider before removing them under the existing mutation lock.
+---
+## 2026-09-16 - US-629 Review
+- Prune now rechecks that the candidate root is still missing under the app mutation lock, and deletes modern/Podman applied records only when the persisted root still matches the stale candidate, so a same-id live app at another root cannot be erased.
+- Review notes (deferred/rejected): ownerKey volume-selector dual-path is a pre-ship compatibility shim; onCorrupt discard is the existing applied-state cache-miss contract from #850; live container/network label inspection before name-based bring-down is a pre-existing provider teardown surface, not this story's applied-record checks.
+- Verification: typecheck diagnostics clean on changed files; 38 focused prune tests passed; guide gates and gate:pr were already green before the prune fix.
+---

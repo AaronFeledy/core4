@@ -231,6 +231,15 @@ export const listServicesWithPrune = (
             ) {
               return false;
             }
+            const rootGone = yield* Effect.promise(async () => {
+              try {
+                await access(entry.appRoot);
+                return false;
+              } catch {
+                return true;
+              }
+            });
+            if (!rootGone) return false;
             const removedCache = yield* deleteCwdAppMapEntriesForRoot({
               cacheRoot: userCacheRoot,
               appRoot: entry.appRoot,

@@ -13,6 +13,7 @@ import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
+import { pruneAppliedPlanState } from "../../src/cli/commands/list-prune-state.ts";
 import { listServicesWithPrune } from "../../src/cli/commands/list.ts";
 
 const roots: string[] = [];
@@ -82,7 +83,7 @@ const fixture = async (provider: string) => {
       if (Either.isLeft(result)) throw result.left;
       return result.right;
     });
-  return { root, paths, legacyDir, legacyPath, legacy, plan, run };
+  return { root, paths, legacyDir, legacyPath, legacy, plan, store, run };
 };
 
 test.each(["lando", "docker"])(
@@ -185,4 +186,66 @@ test("keeps adjacent podman record pruning scoped to one app", async () => {
   // Then
   expect(result.pruned?.map((entry) => entry.appId)).toEqual(["alpha"]);
   expect((await readAppliedPlansFromUserData(f.root)).map((entry) => entry.appId)).toEqual(["other"]);
+});
+
+test.each(["lando", "docker"])(
+  "does not delete a live modern %s record for a stale missing-root candidate",
+  async (provider) => {
+    // Given: a missing-root prune candidate and a same-id modern record at a live root.
+    const f = await fixture(provider);
+    const liveRoot = await mkdtemp(join(tmpdir(), "lando-live-prune-"));
+    roots.push(liveRoot);
+    const modern = join(f.paths.pluginStateDir(`@lando/provider-${provider}`), "applied-plans", "alpha.json");
+    await mkdir(join(modern, ".."), { recursive: true });
+    const payload = JSON.stringify({ version: 1, data: { ...f.plan, root: liveRoot } });
+    await writeFile(modern, payload);
+    // When: prune is asked to remove the missing-root identity, not the live root.
+    const removed = await Effect.runPromise(
+      pruneAppliedPlanState(f.paths, f.store, {
+        appId: "alpha",
+        appName: "alpha",
+        providerId: provider,
+        appRoot: f.plan.root,
+        services: [],
+      }).pipe(Effect.provide(FileSystemLive)),
+    );
+    // Then: the live modern record is unchanged.
+    expect(await readFile(modern, "utf8")).toBe(payload);
+    expect(removed).toBe(true);
+  },
+);
+
+test("does not delete a live podman record for a stale missing-root candidate", async () => {
+  // Given: Podman's shared record now belongs to a live root for the same app id.
+  const f = await fixture("podman");
+  const liveRoot = await mkdtemp(join(tmpdir(), "lando-live-prune-"));
+  roots.push(liveRoot);
+  const record = join(f.paths.pluginStateDir("@lando/provider-podman"), "applied-plans.json");
+  await mkdir(join(record, ".."), { recursive: true });
+  const plan = {
+    ...f.plan,
+    root: liveRoot,
+    slug: "alpha",
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    extensions: {},
+    metadata: { resolvedAt: "2026-09-15T00:00:00.000Z", source: "applied-state", runtime: 4 },
+  };
+  const payload = JSON.stringify({ version: 1, data: { alpha: plan } });
+  await writeFile(record, payload);
+  // When
+  const removed = await Effect.runPromise(
+    pruneAppliedPlanState(f.paths, f.store, {
+      appId: "alpha",
+      appName: "alpha",
+      providerId: "podman",
+      appRoot: f.plan.root,
+      services: [],
+    }).pipe(Effect.provide(FileSystemLive)),
+  );
+  // Then
+  expect(removed).toBe(false);
+  expect(await readFile(record, "utf8")).toBe(payload);
 });

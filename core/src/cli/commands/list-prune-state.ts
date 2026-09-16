@@ -10,6 +10,10 @@ import type { AppsListEntry } from "./list-discovery";
 
 const APPLIED_STATE_VERSION = 1;
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
+const AppliedPlanIdentity = Schema.Struct({
+  id: AppId,
+  root: AbsolutePath,
+});
 const AppliedPlans = Schema.Record({ key: AppId, value: AppPlan });
 const LegacyAppliedPlan = Schema.Struct({
   version: Schema.Literal(1),
@@ -59,12 +63,20 @@ export const pruneAppliedPlanState = (
       })
       .pipe(
         Effect.flatMap((bucket) =>
-          bucket.modify((current) => {
-            const plans = current ?? {};
-            if (!(id in plans)) return [false, plans];
-            const { [id]: _removed, ...remaining } = plans;
-            return [true, remaining];
-          }),
+          bucket.get.pipe(
+            Effect.flatMap((current) => {
+              const plans = current ?? {};
+              const plan = plans[id];
+              if (plan === undefined || plan.root !== entry.appRoot) return Effect.succeed(false);
+              return bucket.modify((latest) => {
+                const next = latest ?? {};
+                const currentPlan = next[id];
+                if (currentPlan === undefined || currentPlan.root !== entry.appRoot) return [false, next];
+                const { [id]: _removed, ...remaining } = next;
+                return [true, remaining];
+              });
+            }),
+          ),
         ),
       );
   }
@@ -119,7 +131,7 @@ export const pruneAppliedPlanState = (
         root,
         namespace: APPLIED_PLAN_NAMESPACE,
         key: `${id}.json`,
-        schema: AppPlan,
+        schema: AppliedPlanIdentity,
         version: APPLIED_STATE_VERSION,
         codec: "json",
         mode: 0o600,
@@ -129,10 +141,11 @@ export const pruneAppliedPlanState = (
       })
       .pipe(
         Effect.flatMap((bucket) =>
-          bucket.exists.pipe(
-            Effect.flatMap((exists) =>
-              exists ? bucket.remove.pipe(Effect.as(true)) : Effect.succeed(false),
-            ),
+          bucket.get.pipe(
+            Effect.flatMap((plan) => {
+              if (plan === null || plan.root !== entry.appRoot) return Effect.succeed(false);
+              return bucket.remove.pipe(Effect.as(true));
+            }),
           ),
         ),
       );
