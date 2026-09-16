@@ -30,6 +30,7 @@ export const appsListPruneFromInput = (input: unknown): boolean => {
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
   resultSchema: AppsListResultSchema,
   id: "apps:list",
+  mcpAllowed: true,
   helpGroup: "common",
   summary: "List Lando apps applied across discovered providers on this host.",
   namespace: "apps",
