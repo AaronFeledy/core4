@@ -853,7 +853,13 @@ export const makeRuntimeProvider = (
                   plan,
                   { app: plan.id, service: service.name },
                   { api: podmanApi, ctx: PODMAN_CTX },
-                ).pipe(Effect.map((snapshot) => ({ ...snapshot, providerId: providerIdBranded }))),
+                ).pipe(
+                  Effect.map((snapshot) => ({
+                    ...snapshot,
+                    appRoot: plan.root,
+                    providerId: providerIdBranded,
+                  })),
+                ),
               ),
             );
 

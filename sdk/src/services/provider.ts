@@ -199,6 +199,8 @@ export interface LogChunk {
 
 export interface ServiceRuntimeInfo {
   readonly app: AppId;
+  /** Canonical app root proven by provider-owned runtime metadata. */
+  readonly appRoot?: AbsolutePath;
   readonly service: ServiceName;
   readonly providerId: ProviderId;
   readonly status: string;
