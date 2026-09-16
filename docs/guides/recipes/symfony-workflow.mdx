@@ -9,10 +9,11 @@ tags: [beta, docs, recipes, symfony, php, postgres, redis]
 
 ```sh
 lando init --recipe symfony --name=symfony-demo --yes
+cd symfony-demo
 lando start
 ```
 
-`--yes` keeps PHP 8.3, PostgreSQL 16, Composer 2, and webroot `/app/public`. Init writes `.lando.yml` only. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
+The named init creates `symfony-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, PostgreSQL 16, Composer 2, and webroot `/app/public`. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
 
 Default PHP is 8.3, so `symfony new` / `symfony/skeleton` lands on Symfony 7.4.x. Symfony 8 needs PHP 8.4 or newer; set `--answer=php=8.4` (or newer) on init.
 
