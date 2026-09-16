@@ -15,6 +15,7 @@ import {
   appsFromContainerList,
   containerSocketCandidates,
   decodeAppliedStateFile,
+  discoverRunningAppsEvidenceFromSockets,
   discoverRunningAppsFromSockets,
   isNamedPipeSocketPath,
   mergeAppsListEntries,
@@ -36,6 +37,7 @@ const runList = (
     readonly discoverContainersEvidence?: (root: string) => Promise<{
       readonly apps: ReadonlyArray<AppsListEntry>;
       readonly confirmedProviderIds: ReadonlyArray<string>;
+      readonly ownedAppIds?: ReadonlyArray<string>;
     }>;
     readonly path?: string;
     readonly prune?: boolean;
@@ -377,7 +379,11 @@ describe("apps:list host-wide discovery", () => {
 
       const result = await runList(userDataRoot, {
         prune: true,
-        discoverContainersEvidence: async () => ({ apps: [], confirmedProviderIds: ["lando"] }),
+        discoverContainersEvidence: async () => ({
+          apps: [],
+          confirmedProviderIds: ["lando"],
+          ownedAppIds: [],
+        }),
       });
 
       expect(result.pruned?.map((entry) => entry.appId)).toEqual(["alpha"]);
@@ -387,6 +393,58 @@ describe("apps:list host-wide discovery", () => {
       expect(renderAppsListResult(result)).toContain(
         "Pruned 1 stale inventory entry:\n- alpha (lando) /missing/alpha",
       );
+    });
+  });
+
+  test("does not prune stale state while the provider still owns an app resource", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      await mkdir(join(statePath, ".."), { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({
+          apps: [],
+          confirmedProviderIds: ["lando"],
+          ownedAppIds: ["alpha"],
+        }),
+      });
+
+      expect(result.pruned).toEqual([]);
+      expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
+      expect(await Bun.file(statePath).exists()).toBe(true);
+    });
+  });
+
+  test("fails prune instead of reporting success when cwd inventory mutation fails", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      await mkdir(join(statePath, ".."), { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+      await writeFile(join(userDataRoot, "cwd-app-map.bin"), "corrupt");
+
+      const failed = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({
+          apps: [],
+          confirmedProviderIds: ["lando"],
+          ownedAppIds: [],
+        }),
+      }).then(
+        () => false,
+        () => true,
+      );
+      expect(failed).toBe(true);
+      expect(await Bun.file(statePath).exists()).toBe(true);
     });
   });
 
@@ -468,13 +526,12 @@ describe("apps:list host-wide discovery", () => {
       const socketPath = join(userDataRoot, "podman.sock");
       let requestUrl: string | undefined;
       const server = createServer((request, response) => {
-        requestUrl = request.url;
-        if (request.url?.startsWith("/containers/json") !== true) {
-          response.writeHead(404);
-          response.end();
+        response.writeHead(200, { "content-type": "application/json" });
+        if (request.url?.startsWith("/volumes") === true) {
+          response.end(JSON.stringify({ Volumes: [] }));
           return;
         }
-        response.writeHead(200, { "content-type": "application/json" });
+        requestUrl = request.url;
         response.end(
           JSON.stringify([
             labeled("drupal-cms", "appserver", { "dev.lando.provider": "lando" }),
@@ -495,8 +552,35 @@ describe("apps:list host-wide discovery", () => {
         expect(result.apps.map((app) => app.appName)).toContain("drupal-cms");
         expect(result.apps.map((app) => app.appName)).toContain("global");
         expect(requestUrl).toBeDefined();
-        expect(requestUrl?.includes("all=true")).toBe(false);
-        expect(requestUrl?.includes("running")).toBe(true);
+        expect(requestUrl?.includes("all=true")).toBe(true);
+        expect(requestUrl?.includes("running")).toBe(false);
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+  });
+
+  test("reports stopped containers and labeled volumes as owned resources", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const socketPath = join(userDataRoot, "resources.sock");
+      const server = createServer((request, response) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        if (request.url?.startsWith("/containers/json") === true) {
+          response.end(JSON.stringify([{ ...labeled("stopped", "web"), State: "exited" }]));
+          return;
+        }
+        response.end(
+          JSON.stringify({ Volumes: [{ Name: "alpha-data", Labels: { "dev.lando.app": "volume-only" } }] }),
+        );
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.listen(socketPath, () => resolve());
+        server.on("error", reject);
+      });
+      try {
+        const evidence = await discoverRunningAppsEvidenceFromSockets(userDataRoot, [socketPath]);
+        expect(evidence.apps).toEqual([]);
+        expect(Reflect.get(evidence, "ownedAppIds")).toEqual(["stopped", "volume-only"]);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
@@ -509,10 +593,14 @@ describe("apps:list host-wide discovery", () => {
       const secondPath = join(userDataRoot, "host.sock");
       const hits: string[] = [];
       const listen = async (socketPath: string, appId: string) => {
-        const server = createServer((_request, response) => {
+        const server = createServer((request, response) => {
           hits.push(socketPath);
           response.writeHead(200, { "content-type": "application/json" });
-          response.end(JSON.stringify([labeled(appId, "web", { "dev.lando.provider": "lando" })]));
+          response.end(
+            request.url?.startsWith("/volumes") === true
+              ? JSON.stringify({ Volumes: [] })
+              : JSON.stringify([labeled(appId, "web", { "dev.lando.provider": "lando" })]),
+          );
         });
         await new Promise<void>((resolve, reject) => {
           server.listen(socketPath, () => resolve());
@@ -525,7 +613,7 @@ describe("apps:list host-wide discovery", () => {
       try {
         const discovered = await discoverRunningAppsFromSockets(userDataRoot, [firstPath, secondPath]);
         expect(discovered.map((app) => app.appId)).toEqual(["managed-app"]);
-        expect(hits).toEqual([firstPath]);
+        expect(hits).toEqual([firstPath, firstPath]);
       } finally {
         await new Promise<void>((resolve) => first.close(() => resolve()));
         await new Promise<void>((resolve) => second.close(() => resolve()));
@@ -539,10 +627,14 @@ describe("apps:list host-wide discovery", () => {
       const unixPath = join(userDataRoot, "host.sock");
       expect(isNamedPipeSocketPath(pipePath)).toBe(true);
       const hits: string[] = [];
-      const server = createServer((_request, response) => {
+      const server = createServer((request, response) => {
         hits.push(unixPath);
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify([labeled("managed-app", "web", { "dev.lando.provider": "lando" })]));
+        response.end(
+          request.url?.startsWith("/volumes") === true
+            ? JSON.stringify({ Volumes: [] })
+            : JSON.stringify([labeled("managed-app", "web", { "dev.lando.provider": "lando" })]),
+        );
       });
       await new Promise<void>((resolve, reject) => {
         server.listen(unixPath, () => resolve());
@@ -551,7 +643,7 @@ describe("apps:list host-wide discovery", () => {
       try {
         const discovered = await discoverRunningAppsFromSockets(userDataRoot, [pipePath, unixPath]);
         expect(discovered.map((app) => app.appId)).toEqual(["managed-app"]);
-        expect(hits).toEqual([unixPath]);
+        expect(hits).toEqual([unixPath, unixPath]);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }

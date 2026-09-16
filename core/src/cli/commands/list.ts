@@ -3,7 +3,7 @@ import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
+import type { CacheError, ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
 import { deleteCwdAppMapEntriesForRoot, listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
@@ -43,6 +43,7 @@ export interface ListServicesOptions {
   readonly discoverContainersEvidence?: (userDataRoot: string) => Promise<{
     readonly apps: ReadonlyArray<AppsListEntry>;
     readonly confirmedProviderIds: ReadonlyArray<string>;
+    readonly ownedAppIds?: ReadonlyArray<string>;
   }>;
   readonly prune?: boolean;
   readonly pruneLimit?: number;
@@ -88,7 +89,7 @@ export const renderAppsListResult = (
 
 export const listServices = (
   options: ListServicesOptions = {},
-): Effect.Effect<ListServicesResult, ConfigError | LandoCommandError, ConfigService> =>
+): Effect.Effect<ListServicesResult, CacheError | ConfigError | LandoCommandError, ConfigService> =>
   Effect.gen(function* () {
     const configService = yield* ConfigService;
     const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
@@ -113,6 +114,7 @@ export const listServices = (
         return {
           ...discovered,
           providerConfirmed: discovered.confirmedProviderIds.length > 0,
+          ownedAppIds: discovered.ownedAppIds ?? discovered.apps.map((app) => app.appId),
         };
       }
       if (options.discoverContainers !== undefined) {
@@ -121,11 +123,14 @@ export const listServices = (
           apps,
           providerConfirmed: true,
           confirmedProviderIds: [...new Set(apps.map((app) => app.providerId))],
+          ownedAppIds: apps.map((app) => app.appId),
         };
       }
       return discoverRunningAppsEvidenceFromSockets(userDataRoot);
     }).pipe(
-      Effect.catchAll(() => Effect.succeed({ apps: [], providerConfirmed: false, confirmedProviderIds: [] })),
+      Effect.catchAll(() =>
+        Effect.succeed({ apps: [], providerConfirmed: false, confirmedProviderIds: [], ownedAppIds: [] }),
+      ),
     );
     const running = evidence.apps;
 
@@ -146,24 +151,24 @@ export const listServices = (
 
     const pruned: AppsListEntry[] = [];
     if (options.prune === true && evidence.providerConfirmed) {
-      const runningIds = new Set(running.map((entry) => entry.appId));
+      const ownedAppIds = new Set(evidence.ownedAppIds);
       const confirmedProviderIds = new Set(evidence.confirmedProviderIds);
       const candidates = apps
         .filter(
           (entry) =>
             entry.stale === true &&
             confirmedProviderIds.has(entry.providerId) &&
-            !runningIds.has(entry.appId),
+            !ownedAppIds.has(entry.appId),
         )
         .slice(0, options.pruneLimit ?? 100);
       for (const entry of candidates) {
-        const removedState = yield* Effect.promise(() =>
-          pruneAppliedPlanFromUserData(userDataRoot, entry.appId, entry.providerId),
-        );
         const removedCache = yield* deleteCwdAppMapEntriesForRoot({
           cacheRoot: userCacheRoot,
           appRoot: entry.appRoot,
-        }).pipe(Effect.catchAll(() => Effect.succeed([])));
+        });
+        const removedState = yield* Effect.promise(() =>
+          pruneAppliedPlanFromUserData(userDataRoot, entry.appId, entry.providerId),
+        );
         if (removedState || removedCache.length > 0) pruned.push(entry);
       }
     }
