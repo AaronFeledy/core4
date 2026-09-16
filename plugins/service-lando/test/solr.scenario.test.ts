@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Either, Layer, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { type LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   LandofileShape,
@@ -196,6 +196,35 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     expect(cmd[2]).toContain("solr-foreground");
     expect(cmd).toContain("gettingstarted");
   });
+
+  test.each([[".."], ["nested/core"]])(
+    "AppPlanner refuses core %p with a source-aware Landofile error",
+    async (core) => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: { search: { type: "solr", cores: [core] } },
+      });
+
+      const outcome = await Effect.runPromise(
+        Effect.either(
+          Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+            Effect.provide(Layer.merge(services, AppPlannerLive)),
+            Effect.provide(PluginRegistryLive),
+          ),
+        ),
+      );
+
+      expect(Either.isLeft(outcome)).toBe(true);
+      if (Either.isLeft(outcome)) {
+        expect(outcome.left._tag).toBe("LandofileValidationError");
+        const failure = outcome.left as LandofileValidationError;
+        expect(failure.file.endsWith("/.lando.yml")).toBe(true);
+        expect(failure.issues).toEqual(["services.search"]);
+        expect(failure.message).toContain(`services.search.cores[0] ${JSON.stringify(core)}`);
+        expect(failure.message).toContain("Rename the core to a plain directory name.");
+      }
+    },
+  );
 
   test("`lando solr-admin status` tooling alias routes through provider.exec to the search service", async () => {
     const solrStatusOutput = "Solr is running on port 8983\n";

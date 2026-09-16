@@ -1,0 +1,5 @@
+name: solr-bad-core
+services:
+  search:
+    type: solr
+    cores: ["../escape"]

@@ -6,6 +6,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 - `core/test/cli/fixtures/*.json` is formatted by `bun run lint`. Renderer tests should compare `JSON.parse(output)` to `Bun.file(fixture).json()`, not raw compact JSON strings.
 - Guide TDD specifics live in the root file. Use the core notes here only when changing the guide generator/runtime behavior, not for routine MDX edits.
+- `runScenarioLayerCommand` in `core/src/testing/scenario-context.ts` short-circuits `start`, `destroy`, and `curl` with canned results before the real CLI runs, so a guide `<Run command="lando start" expectExit={1} />` can only fail on the one hardcoded landofile substring it looks for. Prove planner or validation rejections with a command that falls through to `invokeRealCli`, such as `lando app:cache:refresh`.
 - `core/test/tsconfig.json` remains an editor/LSP project. The root aggregate test project owns gate coverage for `core/test/**` and its imports, so `bun run typecheck` is the authoritative test-type gate.
 - `@lando/engine` exposes an explicit export map in `engine/package.json`; core tests import `@lando/engine/<named subpath>` directly. Adding an engine subpath used outside engine requires adding it to the export map, guarded by `engine/test/package-seam.test.ts`. Engine-owned tests live in `engine/test`.
 
