@@ -9,10 +9,11 @@ tags: [beta, docs, recipes, laravel, php, mariadb, redis]
 
 ```sh
 lando init --recipe laravel --name=laravel-demo --yes
+cd laravel-demo
 lando start
 ```
 
-`--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Init writes `.lando.yml` only. Apache is up after start. Drop a Laravel app in so `artisan` exists.
+The named init creates `laravel-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, webroot `/app/public`, and no worker. Apache is up after start. Drop a Laravel app in so `artisan` exists.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
