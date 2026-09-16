@@ -21,7 +21,12 @@ import { appsListPathFromInput, appsListPruneFromInput } from "./command-specs/a
 import { keepVolumesFromInput } from "./command-specs/apps/scratch/destroy";
 import { pruneFromInput } from "./command-specs/apps/scratch/gc";
 import { initApp } from "./commands/init";
-import { listServices, renderAppsListResult } from "./commands/list";
+import {
+  type ListServicesResult,
+  listServices,
+  listServicesWithPrune,
+  renderAppsListResult,
+} from "./commands/list";
 import { poweroff, renderPoweroffResult } from "./commands/poweroff";
 import {
   type ScratchStartOptions,
@@ -72,11 +77,15 @@ const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
   const format = activeTableJsonFormat();
   const path = appsListPathFromArgv(argv);
   const prune = appsListPruneFromInput(compiledCommandInputFromArgv("apps:list", argv));
-  return runCompiledCommand(
-    listServices({ ...(path === undefined ? {} : { path }), ...(prune ? { prune } : {}) }),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
-    (value) => renderAppsListResult(value, format),
+  const options = path === undefined ? {} : { path };
+  const runtime = makeLandoRuntime(
+    cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
   );
+  const render = (value: ListServicesResult) => renderAppsListResult(value, format);
+  if (prune) {
+    return runCompiledCommand(listServicesWithPrune(options), runtime, render);
+  }
+  return runCompiledCommand(listServices(options), runtime, render);
 };
 
 const runAppsPoweroff = async (argv: ReadonlyArray<string>): Promise<void> => {

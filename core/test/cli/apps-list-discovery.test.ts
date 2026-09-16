@@ -381,6 +381,25 @@ describe("apps:list host-wide discovery", () => {
     });
   });
 
+  test("does not report a prune receipt unless the mutating prune path ran", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const result = await Effect.runPromise(
+        listServices({
+          userDataRoot,
+          userCacheRoot: userDataRoot,
+          prune: true,
+          discoverContainersEvidence: async () => ({
+            apps: [],
+            confirmedProviderIds: ["lando"],
+            ownedAppIds: [],
+          }),
+        }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      );
+      expect(result.pruned).toBeUndefined();
+      expect(renderAppsListResult(result)).not.toContain("Pruned");
+    });
+  });
+
   test("prunes only stale records whose exact provider confirms no owned resources", async () => {
     await withTempRoot(async (userDataRoot) => {
       const paths = makeLandoPaths({ userDataRoot });

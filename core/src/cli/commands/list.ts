@@ -197,8 +197,9 @@ const listServicesInternal = <E, R>(
     const pathFilter = options.path;
     const filtered = pathFilter === undefined ? apps : apps.filter((a) => a.appRoot.includes(pathFilter));
     filtered.sort((a, b) => a.appName.localeCompare(b.appName));
-    const visible = options.prune === true ? filtered.filter((entry) => !pruned.includes(entry)) : filtered;
-    return { apps: visible, ...(options.prune === true ? { pruned } : {}) };
+    const visible =
+      pruneCandidate === undefined ? filtered : filtered.filter((entry) => !pruned.includes(entry));
+    return { apps: visible, ...(pruneCandidate === undefined ? {} : { pruned }) };
   });
 
 export const listServices = (
