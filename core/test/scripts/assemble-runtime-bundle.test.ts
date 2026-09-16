@@ -11,6 +11,7 @@ import {
   parseRuntimeBundleSources,
 } from "../../../scripts/assemble-runtime-bundle.ts";
 import { RUNTIME_BUNDLE_PUBLISH_TARGET_KEYS } from "../../../scripts/build-runtime-bundle-workflow.ts";
+import { RUNTIME_BUNDLE_FETCH_ATTEMPTS, fetchOverHttps } from "../../../scripts/runtime-bundle-fetch.ts";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
@@ -334,5 +335,80 @@ describe("committed runtime-bundle-sources.json", () => {
       const podman = group.components.find((component) => component.name === "podman");
       expect(podman?.version.startsWith("6.")).toBe(true);
     }
+  });
+});
+
+describe("fetchOverHttps retry", () => {
+  const url = "https://example.test/artifact";
+  const payload = new TextEncoder().encode("bundle-bytes");
+  const noSleep = async (): Promise<void> => {};
+
+  test("returns the body on the first success", async () => {
+    let calls = 0;
+    const bytes = await fetchOverHttps(url, {
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(payload, { status: 200 });
+      },
+      sleep: noSleep,
+    });
+    expect(calls).toBe(1);
+    expect(bytes).toEqual(payload);
+  });
+
+  test("retries a 500 and then succeeds", async () => {
+    let calls = 0;
+    const bytes = await fetchOverHttps(url, {
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) return new Response("upstream", { status: 500 });
+        return new Response(payload, { status: 200 });
+      },
+      sleep: noSleep,
+    });
+    expect(calls).toBe(2);
+    expect(bytes).toEqual(payload);
+  });
+
+  test("does not retry a 404", async () => {
+    let calls = 0;
+    await expect(
+      fetchOverHttps(url, {
+        fetchImpl: async () => {
+          calls += 1;
+          return new Response("missing", { status: 404 });
+        },
+        sleep: noSleep,
+      }),
+    ).rejects.toMatchObject({ status: 404, name: "RuntimeBundleDownloadError" });
+    expect(calls).toBe(1);
+  });
+
+  test("retries a thrown network error and then succeeds", async () => {
+    let calls = 0;
+    const bytes = await fetchOverHttps(url, {
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) throw new TypeError("socket hang up");
+        return new Response(payload, { status: 200 });
+      },
+      sleep: noSleep,
+    });
+    expect(calls).toBe(2);
+    expect(bytes).toEqual(payload);
+  });
+
+  test("exhausts attempts on repeated 503s", async () => {
+    let calls = 0;
+    await expect(
+      fetchOverHttps(url, {
+        fetchImpl: async () => {
+          calls += 1;
+          return new Response("unavailable", { status: 503 });
+        },
+        sleep: noSleep,
+      }),
+    ).rejects.toMatchObject({ status: 503, name: "RuntimeBundleDownloadError" });
+    expect(calls).toBe(RUNTIME_BUNDLE_FETCH_ATTEMPTS);
   });
 });

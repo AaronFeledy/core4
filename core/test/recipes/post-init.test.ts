@@ -282,7 +282,7 @@ describe("runPostInit — bun.install", () => {
     expect(out).not.toContain("hunter3");
   });
 
-  test("rejects bun action with `when:` set as NotImplementedError", async () => {
+  test("rejects bun action when its condition uses an unavailable scope", async () => {
     await withTempDir(async (dir) => {
       await writePackageJson(dir);
       const { spawner, calls } = makeFakeSpawner(0);
@@ -303,11 +303,9 @@ describe("runPostInit — bun.install", () => {
         caught = err;
       }
 
-      expect(caught).toBeInstanceOf(NotImplementedError);
-      if (caught instanceof NotImplementedError) {
-        expect(caught.message).toContain("when");
-        expect(caught.message).toContain("is not implemented.");
-        expect(caught.remediation).toContain("Remove `when:`");
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("invalid-argv");
       }
       expect(calls.length).toBe(0);
     });
@@ -944,7 +942,7 @@ describe("runPostInit — command", () => {
     await withTempDir(async (dir) => {
       const { runner, calls } = makeCommandRunner();
       const outcome = await runPostInit({
-        actions: [{ type: "command", cmd: "git", args: ["status", "--short"] }],
+        actions: [{ type: "command", cmd: "app:config:translate", args: ["--help"] }],
         destination: dir,
         recipeId: "fixture",
         appName: "fixture",
@@ -954,11 +952,11 @@ describe("runPostInit — command", () => {
       });
 
       expect(outcome.executed).toEqual([{ index: 0, type: "command" }]);
-      expect(calls).toEqual([{ command: "git", args: ["status", "--short"] }]);
+      expect(calls).toEqual([{ command: "app:config:translate", args: ["--help"] }]);
     });
   });
 
-  test("denies command outside an explicit runs allowlist", async () => {
+  test("denies arbitrary command despite host runs authority", async () => {
     await withTempDir(async (dir) => {
       const { runner, calls } = makeCommandRunner();
       let caught: unknown;
@@ -976,20 +974,16 @@ describe("runPostInit — command", () => {
         caught = cause;
       }
 
-      expect(caught).toBeInstanceOf(RecipeRunNotAllowedError);
-      if (caught instanceof RecipeRunNotAllowedError) {
-        expect(caught.commandId).toBe("rm");
-        expect(caught.allowlist).toEqual(["git"]);
-      }
+      expect(caught).toBeInstanceOf(RecipePostInitError);
       expect(calls).toEqual([]);
     });
   });
 
-  test("warns and proceeds for a command outside the default runs allowlist", async () => {
+  test("denies a host command rather than warning and proceeding", async () => {
     await withTempDir(async (dir) => {
       const { runner, calls } = makeCommandRunner();
       const io = makeBufferedIO();
-      const outcome = await runPostInit({
+      const outcome = runPostInit({
         actions: [{ type: "command", cmd: "rsync", args: ["--version"] }],
         destination: dir,
         recipeId: "fixture",
@@ -999,11 +993,9 @@ describe("runPostInit — command", () => {
         commandRunner: runner,
       });
 
-      expect(outcome.executed).toEqual([{ index: 0, type: "command" }]);
-      expect(calls).toEqual([{ command: "rsync", args: ["--version"] }]);
-      expect(io.errLines).toHaveLength(1);
-      expect(io.errLines[0]).toContain("rsync");
-      expect(io.errLines[0]).toContain("outside the default runs allowlist");
+      await expect(outcome).rejects.toBeInstanceOf(RecipePostInitError);
+      expect(calls).toEqual([]);
+      expect(io.errLines).toEqual([]);
     });
   });
 
@@ -1013,7 +1005,7 @@ describe("runPostInit — command", () => {
       let caught: unknown;
       try {
         await runPostInit({
-          actions: [{ type: "command", cmd: "git", args: ["status"] }],
+          actions: [{ type: "command", cmd: "app:config:translate", args: ["--help"] }],
           destination: dir,
           recipeId: "fixture",
           appName: "fixture",

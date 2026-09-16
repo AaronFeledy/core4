@@ -30,11 +30,16 @@ import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { AppPlannerLive } from "@lando/engine/services/planner";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(
+  Layer.provide(Layer.mergeAll(ProcessRunnerLive, PrivateFileAccessLive)),
+);
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { ScratchInitAppPortLive } from "../../src/runtime/scratch-init-port.ts";
 import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
@@ -44,6 +49,7 @@ const providerId = ProviderId.make("lando");
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
+    resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
       resolve: (packageSpec) =>
         Promise.resolve({
@@ -194,6 +200,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
+    PrivateFileAccessLive,
     landofileServiceLive,
     plannerLive,
     registryLive,
@@ -215,7 +222,7 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
   return Layer.mergeAll(
     scratchDeps,
     makeScratchAppServiceLive(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
-  );
+  ).pipe(Layer.provide(PrivateFileAccessLive));
 };
 
 const primaryService = (plan: AppPlan): ServicePlan => {

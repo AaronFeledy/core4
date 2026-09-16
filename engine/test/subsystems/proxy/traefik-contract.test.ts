@@ -97,6 +97,7 @@ test("real filesystem status sees configured routing and stop removes route and 
         [
           {
             hostname: "real-filesystem.lndo.site",
+            priority: 2,
             scheme: "https",
             service: ServiceName.make("web"),
             backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },

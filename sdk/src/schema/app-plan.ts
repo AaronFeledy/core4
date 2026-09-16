@@ -14,6 +14,7 @@ import {
   NetworkingPlan,
   RoutePlan,
   RouteRef,
+  ScanPlan,
 } from "./networking.ts";
 import {
   AbsolutePath,
@@ -47,10 +48,16 @@ export const ServicePlan = Schema.Struct({
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
   healthcheck: Schema.optional(HealthcheckPlan),
+  scanner: Schema.optional(ScanPlan).annotations({
+    description: "Fully resolved settings for this service's post-start URL scan.",
+  }),
   logSources: Schema.optional(Schema.Array(LogSource)),
   certs: Schema.optional(CertificatePlan),
   hostAliases: Schema.Array(HostAliasPlan),
   metadata: PlanMetadata,
+  provenance: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })).annotations({
+    description: "Service-type resolution inputs and selected artifact, excluding source file contents.",
+  }),
   extensions: ProviderExtensionConfig,
 });
 export type ServicePlan = typeof ServicePlan.Type;
@@ -157,11 +164,25 @@ export const FileSyncPlan = Schema.Struct({
 });
 export type FileSyncPlan = typeof FileSyncPlan.Type;
 
+export const AppIdentity = Schema.Struct({
+  appRoot: AbsolutePath.annotations({ description: "Canonical root that owns this app instance." }),
+  ownerKey: Schema.String.annotations({
+    description: "Stable identity derived from the canonical app root.",
+  }),
+  repoGroupKey: Schema.optional(Schema.String).annotations({
+    description: "Stable identity shared by worktrees from one Git common directory.",
+  }),
+});
+export type AppIdentity = typeof AppIdentity.Type;
+
 export const AppPlan = Schema.Struct({
   id: AppId,
   name: Schema.String,
   slug: Schema.String,
   root: AbsolutePath,
+  identity: Schema.optional(AppIdentity).annotations({
+    description: "Canonical ownership and optional repository grouping identity.",
+  }),
   provider: ProviderId,
   services: Schema.Record({ key: ServiceName, value: ServicePlan }),
   routes: Schema.Array(RoutePlan),
@@ -182,6 +203,14 @@ export const AppPlan = Schema.Struct({
   fileSync: Schema.Array(FileSyncPlan),
   metadata: PlanMetadata,
   extensions: ProviderExtensionConfig,
+  router: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.Boolean.annotations({ description: "Whether shared routing is enabled for this app." }),
+    }),
+  ).annotations({
+    description:
+      "Resolved router enablement; optional only because persisted cached plans predate this field.",
+  }),
   /**
    * Global-app services this app depends on at start, aggregated by the planner
    * (e.g. proxy routes require the global `traefik` service). The user-app start

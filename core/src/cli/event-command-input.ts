@@ -220,7 +220,10 @@ export const validateEventCommandInput = (
     readonly args: Readonly<Record<string, unknown>>;
     readonly raw: ReadonlyArray<string>;
   },
-): Effect.Effect<ExecutableCommandInput, CommandInputValidationError> =>
+): Effect.Effect<
+  ExecutableCommandInput & { readonly interaction: "interactive" | "non-interactive" },
+  CommandInputValidationError
+> =>
   Effect.gen(function* () {
     const flags = yield* parseRecord(spec.id, "flag", input.flags, spec.flags ?? {});
     const args = yield* parseRecord(spec.id, "arg", input.args, spec.args ?? {});
@@ -242,5 +245,11 @@ export const validateEventCommandInput = (
       ),
       ...input.raw,
     ];
-    return { argv: input.raw, parsedArgv, flags, args };
+    return {
+      argv: input.raw,
+      parsedArgv,
+      flags,
+      args,
+      interaction: flags.interactive === true ? "interactive" : "non-interactive",
+    };
   });

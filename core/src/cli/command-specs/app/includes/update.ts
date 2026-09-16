@@ -1,6 +1,7 @@
 import { Args, Flags } from "../../../spec/metadata";
 
 import type { IncludeUpdateReport } from "@lando/landofile/includes";
+import type { StateStore } from "@lando/sdk/services";
 import {
   type AppIncludesUpdateError,
   AppIncludesUpdateResultSchema,
@@ -23,7 +24,11 @@ const sourcesFromInput = (input: unknown): ReadonlyArray<string> => {
   return extractSpecParsedArgv(input).filter((value) => !value.startsWith("-"));
 };
 
-export const appIncludesUpdateSpec: LandoCommandSpec<IncludeUpdateReport, AppIncludesUpdateError, never> = {
+export const appIncludesUpdateSpec: LandoCommandSpec<
+  IncludeUpdateReport,
+  AppIncludesUpdateError,
+  StateStore
+> = {
   resultSchema: AppIncludesUpdateResultSchema,
   id: "app:includes:update",
   summary: "Refresh includes lockfile entries; scope to named sources and run offline with --no-network.",

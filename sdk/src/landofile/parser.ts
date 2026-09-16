@@ -378,7 +378,7 @@ export const detectLandofileTags: (options: {
       const sequenceColumn = line.indent + 3;
       occurrences.push(...detectTagsInValue(sequenceValue, { line: line.line, column: sequenceColumn }));
 
-      const mapMatch = sequenceValue.match(/^(?:<<|[A-Za-z0-9_.-]+):/);
+      const mapMatch = sequenceValue.match(/^(?:<<|[A-Za-z0-9_.@/-]+):/);
       if (mapMatch !== null) {
         const colon = sequenceValue.indexOf(":");
         occurrences.push(
@@ -391,7 +391,7 @@ export const detectLandofileTags: (options: {
       continue;
     }
 
-    const mapMatch = line.text.match(/^(?:<<|[A-Za-z0-9_.-]+):/);
+    const mapMatch = line.text.match(/^(?:<<|[A-Za-z0-9_.@/-]+):/);
     if (mapMatch === null) continue;
     const colon = line.text.indexOf(":");
     occurrences.push(
@@ -433,7 +433,7 @@ const parseMap = (
     }
     if (line.text.startsWith("- ")) break;
 
-    const match = line.text.match(/^(<<|[A-Za-z0-9_.-]+):(.*)$/);
+    const match = line.text.match(/^(<<|[A-Za-z0-9_.@/-]+):(.*)$/);
     if (match === null) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
@@ -547,7 +547,7 @@ const parseList = (
       );
     }
 
-    const mapMatch = value.match(/^(<<|[A-Za-z0-9_.-]+):((?:\s+.*)?)$/);
+    const mapMatch = value.match(/^(<<|[A-Za-z0-9_.@/-]+):((?:\s+.*)?)$/);
     if (mapMatch !== null) {
       const [, firstKey, firstRawValue] = mapMatch as [string, string, string];
       const [item, nextIndex] = parseListItemMap(
@@ -649,7 +649,7 @@ const parseListItemMap = (
       );
     }
 
-    const match = line.text.match(/^(<<|[A-Za-z0-9_.-]+):(.*)$/);
+    const match = line.text.match(/^(<<|[A-Za-z0-9_.@/-]+):(.*)$/);
     if (match === null) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }

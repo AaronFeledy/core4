@@ -1,5 +1,22 @@
+const containerUserPattern = "^[A-Za-z0-9_][A-Za-z0-9_.-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*)?$";
+
+const buildScriptStepJsonSchema = {
+  oneOf: [
+    { type: "string" },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["run"],
+      properties: {
+        run: { type: "string", minLength: 1 },
+        user: { type: "string", pattern: containerUserPattern },
+      },
+    },
+  ],
+} as const;
+
 const buildScriptJsonSchema = {
-  oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+  oneOf: [buildScriptStepJsonSchema, { type: "array", items: buildScriptStepJsonSchema }],
 } as const;
 
 export const buildBlockJsonSchema = {

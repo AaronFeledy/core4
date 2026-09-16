@@ -17,14 +17,16 @@ Every `type: lando` service includes `lando.boot`. At priority 100 it adds a pro
 ```
 
 Because the scaffold is not a mount, it does not hide files that higher-priority features add under
-these directories. When a privileged build step targets a referenced parent, the artifact realizer
-first builds a local intermediate base from that parent and then inspects that built artifact to
-learn its inherited effective user, rather than trusting the reference alone. This materialization
-lets an uncached referenced parent follow the same privilege-preserving path. When the inherited
-user is non-root, the realizer grants the scaffold step temporary build-time privilege and restores
-that exact inherited user before later artifact steps and in the final image. A separate service `user:` override
-remains runtime intent recorded on the service plan: it is never baked into the derived artifact,
-and applying it to the running container is a provider concern outside this scaffold.
+these directories. The scaffold step declares `user: root`, the same per-step `user` any build step
+can name (see [Run build steps as root or as your app user](./build-steps.mdx)). Planning resolves
+every step's user before the provider runs, so the provider never re-resolves one. When the base is a
+referenced parent image, the artifact realizer still builds a local intermediate base from that
+parent and inspects the built artifact to learn that image's own effective user, because that
+identity is not knowable at planning time. The realizer then emits a `USER` switch only when a step's
+resolved user differs from the active one and restores the service's final user after the last step.
+That final user is `services.<name>.user` when you set it, otherwise the base image's own user. A
+service `user:` override is therefore both the identity the derived artifact ends on and the identity
+the container runs as.
 
 `lando.certs` mounts service leaf material under the certificate directory. `lando.security`
 creates `/etc/lando/certs` itself when it writes the injected CA bundle described in

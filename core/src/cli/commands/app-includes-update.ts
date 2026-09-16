@@ -9,7 +9,6 @@ import {
   LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
-  type LandofileUnknownEventError,
   type LandofileValidationError,
   type NotImplementedError,
 } from "@lando/sdk/errors";
@@ -20,6 +19,7 @@ import type {
   ManagedFileTransactionError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
+import type { StateStore } from "@lando/sdk/services";
 
 import { loadLandofileFile, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { findLandofilePath } from "@lando/landofile/discovery";
@@ -68,7 +68,6 @@ export type AppIncludesUpdateError =
   | LandofileValidationError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileUnknownEventError
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
@@ -84,7 +83,7 @@ export type AppIncludesUpdateError =
  */
 export const appIncludesUpdate = (
   options: AppIncludesUpdateOptions = {},
-): Effect.Effect<IncludeUpdateReport, AppIncludesUpdateError, never> =>
+): Effect.Effect<IncludeUpdateReport, AppIncludesUpdateError, StateStore> =>
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
     const filePath = yield* Effect.tryPromise({

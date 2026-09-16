@@ -2,7 +2,12 @@ import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
-import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import {
+  VOLUME_WITNESS_IMAGE,
+  makeProviderDataPlane,
+  volumeCreationFact,
+  volumeCreationLabels,
+} from "@lando/container-runtime/data-plane";
 import { dockerPullDialect, dockerWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineApiClient,
@@ -25,7 +30,7 @@ import {
 } from "@lando/container-runtime/plan";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
-import { postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
 import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import {
   makeAttachDecoder as makeRuntimeAttachDecoder,
@@ -67,6 +72,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
+  type ApplyOptions,
   type CommandSpec,
   type ExecChunk,
   type ExecResult,
@@ -149,6 +155,7 @@ export interface EmitComposeResult {
 
 interface ContainerInspect {
   readonly Id?: string;
+  readonly Image?: string;
   readonly State?: {
     readonly Running?: boolean;
     readonly Status?: string;
@@ -734,7 +741,11 @@ const hostConfig = (plan: AppPlan, service: ServicePlan) =>
     },
   });
 
-const createContainerBody = (plan: AppPlan, service: ServicePlan) =>
+const createContainerBody = (
+  plan: AppPlan,
+  service: ServicePlan,
+  environment?: Readonly<Record<string, string>>,
+) =>
   containerCreateBodyFragment(plan, service, {
     labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
     hostConfig: hostConfig(plan, service),
@@ -744,6 +755,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) =>
         artifact,
       });
     },
+    ...(environment === undefined ? {} : { environment }),
   });
 
 export const renderCompose = (plan: AppPlan): string => {
@@ -828,25 +840,23 @@ const ensureNetwork = (api: DockerApiClient, name: string) =>
     ),
   );
 
-const volumeLabels = (plan: AppPlan, store: AppPlan["stores"][number]): Readonly<Record<string, string>> => ({
-  "dev.lando.app": plan.id,
-  "dev.lando.store": store.name,
-  "dev.lando.scope": store.scope,
-  ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
-});
-
-const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) =>
-  request(api, "apply", {
+const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["stores"][number]) => {
+  const labels = volumeCreationLabels(plan, store);
+  return request(api, "apply", {
     method: "POST",
     path: "/volumes/create",
     body: {
       Name: store.name,
-      Labels: volumeLabels(plan, store),
+      Labels: labels,
     },
   }).pipe(
     Effect.flatMap((response) =>
       response.status === 201 || response.status === 200 || response.status === 409
-        ? Effect.void
+        ? Effect.succeed(
+            response.status === 409
+              ? []
+              : volumeCreationFact({ body: response.body, name: store.name, labels }),
+          )
         : Effect.fail(
             unavailable(
               "apply.volume",
@@ -856,6 +866,7 @@ const ensureVolume = (api: DockerApiClient, plan: AppPlan, store: AppPlan["store
           ),
     ),
   );
+};
 
 const inspectContainer = (api: DockerApiClient, name: string) =>
   Effect.gen(function* () {
@@ -898,13 +909,19 @@ const ensureImagePresent = (api: DockerApiClient, imageRef: string) =>
     );
   });
 
-const createContainer = (api: DockerApiClient, plan: AppPlan, service: ServicePlan, name: string) =>
+const createContainer = (
+  api: DockerApiClient,
+  plan: AppPlan,
+  service: ServicePlan,
+  name: string,
+  environment?: Readonly<Record<string, string>>,
+) =>
   Effect.gen(function* () {
     if (service.artifact?.kind === "ref") {
       yield* ensureImagePresent(api, service.artifact.ref);
     }
     const body = yield* Effect.try({
-      try: () => createContainerBody(plan, service),
+      try: () => createContainerBody(plan, service, environment),
       catch: (cause) =>
         cause instanceof ServiceStartError
           ? cause
@@ -1121,20 +1138,31 @@ const rollbackPartialApply = (
     yield* removeNetworkSilent(api, plan);
   });
 
-const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
+const bringUp = (
+  plan: AppPlan,
+  api: DockerApiClient,
+  options: Pick<ApplyOptions, "signal" | "serviceEnvironment" | "reconcile">,
+) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
-    yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
+    const createdVolumes = (yield* Effect.forEach(plan.stores, (store) =>
+      ensureVolume(api, plan, store),
+    )).flat();
     const sharedNetwork = landoSharedNetworkName(plan);
     const touched: TouchedContainer[] = [];
     const schedule = yield* runServiceStartSchedule(plan, {
       startService: (service) =>
         Effect.gen(function* () {
-          if (signal?.aborted === true) {
+          if (options.signal?.aborted === true) {
             return yield* Effect.interrupt;
           }
           const name = containerName(plan, service);
-          const inspected = yield* inspectContainer(api, name);
+          let inspected = yield* inspectContainer(api, name);
+          if (options.reconcile && inspected.exists) {
+            yield* stopContainerSilent(api, name);
+            yield* removeContainerSilent(api, name);
+            inspected = { exists: false, running: false };
+          }
           touched.push({
             name,
             created: !inspected.exists,
@@ -1142,7 +1170,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
           });
           let serviceChanged = false;
           if (!inspected.exists) {
-            yield* createContainer(api, plan, service, name);
+            yield* createContainer(api, plan, service, name, options.serviceEnvironment?.[service.name]);
             serviceChanged = true;
           }
           if (sharedNetwork !== undefined) {
@@ -1154,7 +1182,9 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
           }
           return { changed: serviceChanged };
         }).pipe(
-          Effect.catchAll((error) => (signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
+          Effect.catchAll((error) =>
+            options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error),
+          ),
         ),
       cleanupOptionalStartFailure: (service) =>
         Effect.gen(function* () {
@@ -1169,7 +1199,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
         exec(
           plan,
           { app: plan.id, service: service.name },
-          { command, ...(signal === undefined ? {} : { signal }) },
+          { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
           api,
         ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
       waitForExit: (service) =>
@@ -1180,7 +1210,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
             api,
             ctx: DOCKER_CTX,
             dialect: dockerWaitDialect,
-            ...(signal === undefined ? {} : { signal }),
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
           },
         ),
     }).pipe(
@@ -1214,7 +1244,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
         ),
       );
     }
-    return { changed: schedule.changed };
+    return { changed: schedule.changed, createdVolumes };
   });
 
 interface BringDownOptions {
@@ -1330,13 +1360,22 @@ const inspectService = (
       status,
       state: status,
       ...(typeof decoded.Id === "string" && decoded.Id.length > 0 ? { containerId: decoded.Id } : {}),
+      ...(typeof decoded.Image === "string" && decoded.Image.length > 0
+        ? { imageIdentity: decoded.Image }
+        : {}),
       endpoints: materialized.length > 0 ? materialized : service.endpoints,
       ...(startedAt === undefined || Number.isNaN(startedAt.getTime()) ? {} : { lastStartedAt: startedAt }),
     };
   });
 };
 
-const createExec = (plan: AppPlan, service: ServicePlan, command: CommandSpec, api: DockerApiClient) =>
+const createExec = (
+  plan: AppPlan,
+  service: ServicePlan,
+  command: CommandSpec,
+  api: DockerApiClient,
+  user?: string,
+) =>
   Effect.gen(function* () {
     const response = yield* request(api, "exec", {
       method: "POST",
@@ -1351,6 +1390,7 @@ const createExec = (plan: AppPlan, service: ServicePlan, command: CommandSpec, a
         ...(command.env === undefined
           ? {}
           : { Env: Object.entries(command.env).map(([key, value]) => `${key}=${value}`) }),
+        ...(user === undefined ? {} : { User: user }),
       },
     });
     if (response.status < 200 || response.status >= 300) {
@@ -1426,7 +1466,7 @@ const execStream = (
   if (service === undefined) {
     return Stream.fail(missingService("exec", target));
   }
-  return Stream.fromEffect(createExec(plan, service, command, api)).pipe(
+  return Stream.fromEffect(createExec(plan, service, command, api, target.user)).pipe(
     Stream.flatMap((execId) => {
       const decodeChunk = makeRuntimeAttachDecoder();
       const resizeEvents = command.terminalResize ?? Stream.empty;
@@ -1656,9 +1696,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   );
   const dataPlane = makeProviderDataPlane({
     providerId: PROVIDER_ID,
+    endpointNamespace: resolvedDockerHost,
+    prepareWitnessImage: pullImage(dockerApi, VOLUME_WITNESS_IMAGE, {
+      ctx: DOCKER_CTX,
+      dialect: dockerPullDialect,
+    }),
     api: dockerApi,
     snapshotMode: "copy",
     redactDetails,
+    volumeCreationLabels,
   });
 
   const sanitizeAppliedPlan = options.sanitizeAppliedPlan ?? ((plan: AppPlan) => plan);
@@ -1702,6 +1748,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     service: {
       lifecycle: (plan, target, action) =>
         postServiceLifecycle(plan, target, action, { api: dockerApi, ctx: DOCKER_CTX }),
+      resume: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "start", { api: dockerApi, ctx: DOCKER_CTX }),
+      suspend: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "stop", { api: dockerApi, ctx: DOCKER_CTX }),
       waitForExit: (plan, target, waitOptions) =>
         waitForExit(plan, target, {
           api: dockerApi,
@@ -1743,7 +1793,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           ),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
-          bringUp(plan, dockerApi, applyOptions.signal).pipe(Effect.tap(() => rememberPlan(plan))),
+          bringUp(plan, dockerApi, applyOptions).pipe(
+            Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan)),
+          ),
         ...resolvedOps,
         destroy: (target, destroyOptions) =>
           resolvePlan(target).pipe(
@@ -1784,7 +1836,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                   });
                 }
 
-                // Plan not available - discover container by labels
                 return Stream.fromEffect(
                   discoverContainers(dockerApi, "dev.lando.app").pipe(
                     Effect.flatMap((containers) => {
@@ -1831,7 +1882,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     const isRunning = container.state === "running";
                     const status = isRunning ? "running" : "stopped";
 
-                    // Inspect container to get endpoints
                     const inspectResponse = yield* request(dockerApi, "list", {
                       method: "GET",
                       path: `/containers/${encodeURIComponent(container.name)}/json`,

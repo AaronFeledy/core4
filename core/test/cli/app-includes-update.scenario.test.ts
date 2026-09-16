@@ -11,6 +11,7 @@ import { LandofileFormConflictError } from "@lando/core/errors";
 import type { GitIncludeCloner } from "@lando/landofile/includes";
 import { appIncludesUpdateSpec } from "../../src/cli/command-specs/app/includes/update.ts";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
+import { TestStateStoreLive } from "../_support/landofile-layer.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -61,12 +62,14 @@ test("app:includes:update consumes its structured declared source argument", asy
     try {
       // When
       const exit = await Effect.runPromiseExit(
-        appIncludesUpdateSpec.run({
-          args: { source: "declared-source" },
-          flags: { "no-network": true },
-          argv: [],
-          parsedArgv: ["declared-source"],
-        }),
+        appIncludesUpdateSpec
+          .run({
+            args: { source: "declared-source" },
+            flags: { "no-network": true },
+            argv: [],
+            parsedArgv: ["declared-source"],
+          })
+          .pipe(Effect.provide(TestStateStoreLive)),
       );
 
       // Then
@@ -194,7 +197,9 @@ describe("lando app:includes:update (source dispatch)", () => {
         ].join("\n"),
       );
 
-      const exit = await Effect.runPromiseExit(appIncludesUpdate({ cwd: dir }));
+      const exit = await Effect.runPromiseExit(
+        appIncludesUpdate({ cwd: dir }).pipe(Effect.provide(TestStateStoreLive)),
+      );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
@@ -213,7 +218,9 @@ describe("lando app:includes:update (source dispatch)", () => {
       await writeFile(join(dir, ".lando.yml"), "name: yaml-app\n");
       await writeFile(join(dir, ".lando.ts"), 'export default { name: "ts-app" };\n');
 
-      const exit = await Effect.runPromiseExit(appIncludesUpdate({ cwd: dir }));
+      const exit = await Effect.runPromiseExit(
+        appIncludesUpdate({ cwd: dir }).pipe(Effect.provide(TestStateStoreLive)),
+      );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
@@ -251,7 +258,9 @@ describe("lando app:includes:update (source dispatch)", () => {
         },
       };
       await withUserCacheRoot(join(dir, ".cache"), async () => {
-        const report = await Effect.runPromise(appIncludesUpdate({ cwd: dir, deps: { gitCloner } }));
+        const report = await Effect.runPromise(
+          appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(TestStateStoreLive)),
+        );
 
         expect(report.entries.map((entry) => entry.source).sort()).toEqual([
           "github:acme/base/fragment.yml",
@@ -282,7 +291,9 @@ describe("lando app:includes:update (source dispatch)", () => {
       };
 
       await withUserCacheRoot(join(dir, ".cache"), async () => {
-        const report = await Effect.runPromise(appIncludesUpdate({ cwd: dir, deps: { gitCloner } }));
+        const report = await Effect.runPromise(
+          appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(TestStateStoreLive)),
+        );
 
         expect(report.entries.map((entry) => entry.source)).toEqual(["github:acme/compose/fragment.yml"]);
         expect(cloneUrls).toEqual(["https://github.com/acme/compose.git"]);

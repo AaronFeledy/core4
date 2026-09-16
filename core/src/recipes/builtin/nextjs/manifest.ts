@@ -1,3 +1,5 @@
+import { nextjsSnapshotYaml } from "./snapshot.ts";
+
 export const NEXTJS_RECIPE_ID = "nextjs";
 
 export const nextjsRecipeSource = `${NEXTJS_RECIPE_ID}/recipe.yml`;
@@ -49,4 +51,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Next.js up.
+
+${nextjsSnapshotYaml}
 `;

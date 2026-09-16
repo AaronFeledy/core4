@@ -21,6 +21,7 @@ import {
   type UrlScannerDeps,
   defaultUrlScanConfig,
   publishedHostPort,
+  scanConfigFromPlan,
   scanTarget,
   scanTargets,
 } from "./scan-target.ts";
@@ -47,15 +48,30 @@ export const makeUrlScanner = (
   const config: UrlScanConfig = { ...defaultUrlScanConfig, ...overrides };
   return {
     id: SCANNER_ID,
-    scan: (appId) =>
+    scan: (appId, options) =>
       Effect.gen(function* () {
-        if (!config.enabled) return { appId, endpoints: [] };
+        if (options?.plan === undefined && options?.urls === undefined && !config.enabled) {
+          return { appId, endpoints: [] };
+        }
         const redactor = yield* resolveRedactor;
-        const endpoints = yield* deps.listEndpoints(appId);
+        const targets =
+          options?.urls === undefined
+            ? (yield* deps.listEndpoints(appId)).flatMap((endpoint) => {
+                const scan = options?.plan?.services[endpoint.service]?.scanner;
+                const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
+                return resolved.enabled
+                  ? scanTargets([endpoint], resolved.path).map((target) => ({ target, config: resolved }))
+                  : [];
+              })
+            : options.urls.flatMap((supplied) => {
+                const scan = options.plan?.services[supplied.service]?.scanner;
+                const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
+                return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
+              });
         const scanned = yield* Effect.forEach(
-          scanTargets(endpoints, config.path),
-          (target) => scanTarget(deps, config, redactor, target),
-          { concurrency: "unbounded" },
+          targets,
+          ({ target, config }) => scanTarget(deps, config, redactor, target),
+          { concurrency: 4 },
         );
         return { appId, endpoints: scanned };
       }),
@@ -114,7 +130,7 @@ export const UrlScannerLive: Layer.Layer<UrlScanner, never, RuntimeProvider | Ht
     const provider = yield* RuntimeProvider;
     const http = yield* HttpClient;
     return makeUrlScanner({
-      request: http.request,
+      stream: http.stream,
       listEndpoints: listEndpointsFromProvider(provider),
     });
   }),

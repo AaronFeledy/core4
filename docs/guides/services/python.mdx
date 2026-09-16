@@ -2,14 +2,12 @@
 id: python
 provider: test
 timeout: 90000
-tags: [beta, docs, python, service, runtime]
+tags: [beta, docs, python, service, runtime, fastapi]
 ---
 
 # Add Python
 
-Put `type: python:3.12` on the primary service. Python has no bare `type: python` alias, so pin a version. Lando currently supports `python:3.12`, and the default image is
-`python:3.12-slim`. Your repository is bind-mounted read-write at `/app`,
-which is also the working directory:
+Put `type: python:3.12` on the primary service. Python has no bare `type: python` alias, so pin a version. Lando supports `python:3.12`. The default image is `python:3.12-slim`. Your repo mounts read-write at `/app`.
 
 ```yaml
 name: python-demo
@@ -18,6 +16,44 @@ services:
     type: "python:3.12"
     primary: true
 ```
+
+Add `framework:` when you want FastAPI, Django, or Flask defaults for port and env. Keep-alive still runs until you set `command:` or serve with `lando exec`.
+
+```yaml
+name: python-fastapi
+services:
+  app:
+    type: "python:3.12"
+    framework: fastapi
+    primary: true
+    port: 8000
+tooling:
+  pip:
+    service: app
+    cmd: pip
+  uv:
+    service: app
+    cmd: uv
+  python:
+    service: app
+    cmd: python
+```
+
+| Framework | Default port | Useful bits |
+| --- | --- | --- |
+| `fastapi` | `8000` | Bind Uvicorn to `0.0.0.0:8000` |
+| `django` | `8000` | Sets `DJANGO_SETTINGS_MODULE=config.settings` |
+| `flask` | `5000` | Sets `FLASK_APP=app` |
+| `none` (default) | `8000` | Plain Python service |
+
+Start it:
+
+```sh
+lando start
+lando info
+```
+
+If host ports 80 or 443 are taken, `lando info` shows fallback ports such as `:8080` and `:8443`.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -34,23 +70,117 @@ services:
     </Step>
   </Scenario>
 
-## Run the app
+  <Scenario id="fastapi-framework" render>
+    <Step name="scaffold">
+      <UseFixture name="python-fastapi" />
+    </Step>
+    <Step name="confirm-framework">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"fastapi\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8000" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uv\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
 
-The default keep-alive command holds the container open so you can install
-dependencies and run your app via tooling:
+## Install deps with pip or uv
+
+Declare tooling in the Landofile (see the FastAPI example above), then install into a project venv on `/app` so packages survive rebuilds:
 
 ```sh
-# Declare a pip tooling alias to install dependencies inside the service
-lando pip install -r requirements.txt
-
-# Run a Django/Flask server with lando exec; bind to 0.0.0.0 so the proxy can reach it
-lando exec app -- python manage.py runserver 0.0.0.0:8000
+lando pip install uv
+lando exec app -- uv venv /app/.venv
+lando exec app -- uv pip install --python /app/.venv/bin/python -r requirements.txt
 ```
 
-## Pin a version
+`lando pip install` into the image works for a quick try, but a rebuild drops those packages. A venv under `/app` stays with the app mount.
 
-Set `image:` to use the full (non-slim) or an alternate Python base image
-when `python:3.12-slim` isn't what you want. Slim lacks build tools that some packages need:
+Need a one-shot system install with uv instead of a venv?
+
+```sh
+lando exec app -- uv pip install --system -r requirements.txt
+```
+
+## Serve FastAPI
+
+Keep-alive holds the container open while you install. Then either exec Uvicorn once:
+
+```sh
+lando exec app -- /app/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Or pin it as the service command and restart so the proxy URL stays hot:
+
+```yaml
+services:
+  app:
+    type: "python:3.12"
+    framework: fastapi
+    primary: true
+    port: 8000
+    command:
+      - /app/.venv/bin/uvicorn
+      - main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+```
+
+```sh
+lando restart
+lando info
+```
+
+Open the URL `lando info` prints. A tiny `main.py` that returns JSON is enough to prove the route.
+
+Point tooling at the venv binaries when you want `lando uv` after a rebuild:
+
+```yaml
+tooling:
+  uv:
+    service: app
+    cmd: /app/.venv/bin/uv
+```
+
+Install `uv` into that venv first (`uv pip install --python /app/.venv/bin/python uv`), or bootstrap with `lando pip install uv` on each fresh container.
+
+## Django and Flask
+
+Same service type. Swap the framework and bind the server you actually run:
+
+```yaml
+services:
+  app:
+    type: "python:3.12"
+    framework: django
+    primary: true
+```
+
+```yaml
+services:
+  app:
+    type: "python:3.12"
+    framework: flask
+    primary: true
+```
+
+```sh
+lando exec app -- /app/.venv/bin/python manage.py runserver 0.0.0.0:8000
+lando exec app -- /app/.venv/bin/gunicorn --bind 0.0.0.0:5000 app:app
+```
+
+## Pin an image
+
+Slim is the default. Use the full image when wheels need build tools:
 
 ```yaml
 services:

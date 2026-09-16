@@ -64,6 +64,18 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
 });
 
 const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
+  locateVolume: (ref) => {
+    calls.push({ name: "locateVolume", args: [ref] });
+    return Effect.succeed({ coordinationKey: '["endpoint:test","data"]', nativeName: ref.store });
+  },
+  adoptVolume: (target) => {
+    calls.push({ name: "adoptVolume", args: [target] });
+    return Effect.succeed({ ref: { app: target.app, store: "actual-native-volume" }, provenance: "legacy" });
+  },
+  observeVolume: (target) => {
+    calls.push({ name: "observeVolume", args: [target] });
+    return Effect.succeed({ ref: { app: target.app, store: "actual-native-volume" }, provenance: "legacy" });
+  },
   run: (spec) => {
     calls.push({ name: "run", args: [spec] });
     return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
@@ -74,7 +86,13 @@ const makeDataPlane = (calls: Call[]): ProviderDataPlane => ({
   },
   snapshotVolume: (spec) => {
     calls.push({ name: "snapshotVolume", args: [spec] });
-    return Effect.succeed({ provider: ProviderId.make("test"), id: "snap" });
+    return Effect.succeed({
+      provider: ProviderId.make("test"),
+      id: "snap",
+      digest: "sha256:snap",
+      sizeBytes: 1,
+      format: "native" as const,
+    });
   },
   restoreVolume: (spec) => {
     calls.push({ name: "restoreVolume", args: [spec] });
@@ -123,6 +141,83 @@ const makeInput = (
 };
 
 describe("resolved provider operations", () => {
+  test("adoption requires canonical ownership rather than falling back to plan root", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    if (!ops.adoptVolume) throw new Error("Expected volume adoption adapter");
+    const result = await Effect.runPromise(
+      Effect.either(ops.adoptVolume(target, PortablePath.make("/data"))),
+    );
+    expect(result._tag).toBe("Left");
+    expect(calls.some((call) => call.name === "adoptVolume")).toBe(false);
+  });
+
+  test("adoption passes the canonical owner and inspected container to the data plane", async () => {
+    const calls: Call[] = [];
+    const canonical = {
+      ...plan,
+      identity: { appRoot: AbsolutePath.make("/canonical/root"), ownerKey: "owner" },
+    };
+    const input = makeInput(calls, () => Effect.succeed(canonical));
+    const ops = makeResolvedProviderOps({
+      ...input,
+      service: {
+        ...input.service,
+        inspect: () =>
+          Effect.succeed({
+            app,
+            service,
+            providerId: ProviderId.make("test"),
+            status: "stopped",
+            containerId: "observed-id",
+          }),
+      },
+    });
+    if (!ops.adoptVolume) throw new Error("Expected volume adoption adapter");
+    await Effect.runPromise(ops.adoptVolume(target, PortablePath.make("/data")));
+    expect(calls.find((call) => call.name === "adoptVolume")?.args).toEqual([
+      { app, containerId: "observed-id", destination: "/data", ownerRoot: "/canonical/root" },
+    ]);
+  });
+
+  test("observes a volume through the existing container identity and destination", async () => {
+    const calls: Call[] = [];
+    const input = makeInput(calls);
+    const ops = makeResolvedProviderOps({
+      ...input,
+      service: {
+        ...input.service,
+        inspect: () =>
+          Effect.succeed({
+            app,
+            service,
+            providerId: ProviderId.make("test"),
+            status: "stopped",
+            containerId: "observed-id",
+          }),
+      },
+    });
+    if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
+    const destination = PortablePath.make("/var/lib/mysql");
+    const result = await Effect.runPromise(ops.observeVolume(target, destination));
+    expect(result.ref.store).toBe("actual-native-volume");
+    expect(calls).toEqual([
+      { name: "before", args: [] },
+      { name: "observeVolume", args: [{ app, containerId: "observed-id", destination }] },
+    ]);
+  });
+
+  test("rejects volume observation when inspection has no existing container identity", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
+    const result = await Effect.runPromise(
+      Effect.either(ops.observeVolume(target, PortablePath.make("/data"))),
+    );
+    expect(result._tag).toBe("Left");
+    expect(calls.some((call) => call.name === "observeVolume")).toBe(false);
+  });
+
   test("resolves plans before before-effects and service delegation", async () => {
     // Given
     const calls: Call[] = [];
@@ -170,6 +265,34 @@ describe("resolved provider operations", () => {
     ]);
   });
 
+  test("delegates exact lifecycle transitions with the inspected runtime identity", async () => {
+    const calls: Call[] = [];
+    const input = makeInput(calls);
+    const identity = { containerId: "container:observed", imageIdentity: "sha256:observed" };
+    const ops = makeResolvedProviderOps({
+      ...input,
+      service: {
+        ...input.service,
+        resume: (selector, observed) =>
+          Effect.sync(() => calls.push({ name: "resume", args: [selector, observed] })),
+        suspend: (selector, observed) =>
+          Effect.sync(() => calls.push({ name: "suspend", args: [selector, observed] })),
+      },
+    });
+    if (ops.resume === undefined || ops.suspend === undefined)
+      throw new Error("Expected exact lifecycle adapters");
+
+    await Effect.runPromise(ops.resume(target, identity));
+    await Effect.runPromise(ops.suspend(target, identity));
+
+    expect(calls).toEqual([
+      { name: "before", args: [] },
+      { name: "resume", args: [target, identity] },
+      { name: "before", args: [] },
+      { name: "suspend", args: [target, identity] },
+    ]);
+  });
+
   test("does not run before or delegate when a plan is missing", async () => {
     // Given
     const calls: Call[] = [];
@@ -209,14 +332,25 @@ describe("resolved provider operations", () => {
     expect(calls.filter((call) => call.name !== "before").every((call) => call.args[0] === plan)).toBe(true);
   });
 
-  test("runs before and delegates all ten data-plane members with their arguments", async () => {
+  test("runs before and delegates all data-plane members with their arguments", async () => {
     // Given
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));
     const runSpec = { image: "alpine", command: ["true"] };
     const volume = { app, store: "data" };
     const snapshotSpec = { volume, snapshotId: "snap" };
-    const restoreSpec = { snapshot: { provider: ProviderId.make("test"), id: "snap" }, target: volume };
+    const generation = "00000000-0000-4000-8000-000000000001";
+    const restoreSpec = {
+      snapshot: {
+        provider: ProviderId.make("test"),
+        id: "snap",
+        digest: "sha256:snap",
+        sizeBytes: 1,
+        format: "native" as const,
+      },
+      target: volume,
+      expectedTargetGeneration: generation,
+    };
     const copyIn = { sourcePath: AbsolutePath.make("/tmp/in"), targetPath: PortablePath.make("/tmp/out") };
     const copyOut = { sourcePath: PortablePath.make("/tmp/out") };
     const artifact = { providerId: ProviderId.make("test"), ref: "image" };
@@ -228,20 +362,22 @@ describe("resolved provider operations", () => {
     await Effect.runPromise(Effect.scoped(ops.snapshotVolume(snapshotSpec)));
     await Effect.runPromise(Effect.scoped(ops.restoreVolume(restoreSpec)));
     await Effect.runPromise(ops.listVolumes({ app }));
-    await Effect.runPromise(ops.removeVolume(volume));
+    await Effect.runPromise(ops.locateVolume(volume));
+    await Effect.runPromise(ops.removeVolume(volume, generation));
     await Effect.runPromise(Effect.scoped(ops.copyToService(target, copyIn)));
     await Effect.runPromise(Effect.scoped(ops.copyFromService(target, copyOut).pipe(Stream.runDrain)));
     await Effect.runPromise(Effect.scoped(ops.exportArtifact(artifact).pipe(Stream.runDrain)));
     await Effect.runPromise(Effect.scoped(ops.importArtifact(data)));
 
     // Then
-    expect(calls.filter(({ name }) => name === "before")).toHaveLength(10);
+    expect(calls.filter(({ name }) => name === "before")).toHaveLength(11);
     expect(calls.filter(({ name }) => name !== "before").map(({ name }) => name)).toEqual([
       "run",
       "runStream",
       "snapshotVolume",
       "restoreVolume",
       "listVolumes",
+      "locateVolume",
       "removeVolume",
       "copyToService",
       "copyFromService",
@@ -253,6 +389,39 @@ describe("resolved provider operations", () => {
       { ...target, plan },
       { ...target, plan },
     ]);
+  });
+
+  test("resolves app-only ephemeral owners before run and runStream delegation", async () => {
+    // Given: helper runs identify their app but do not carry an applied plan.
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
+    const runSpec = { owner: { app }, image: "alpine", command: ["true"] };
+
+    // When: both buffered and streaming helper paths are dispatched.
+    await Effect.runPromise(Effect.scoped(ops.run(runSpec)));
+    await Effect.runPromise(Effect.scoped(ops.runStream(runSpec).pipe(Stream.runDrain)));
+
+    // Then: the resolved applied plan reaches the provider data plane.
+    expect(calls).toEqual([
+      { name: "before", args: [] },
+      { name: "run", args: [{ ...runSpec, owner: { app, plan } }] },
+      { name: "before", args: [] },
+      { name: "runStream", args: [{ ...runSpec, owner: { app, plan } }] },
+    ]);
+  });
+
+  test("rejects app-only ephemeral owners when no applied plan exists", async () => {
+    // Given: a helper run names an app that has no applied plan.
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls, () => Effect.succeed(undefined)));
+    const runSpec = { owner: { app }, image: "alpine", command: ["true"] };
+
+    // When: the helper run is requested.
+    const exit = await Effect.runPromiseExit(Effect.scoped(ops.run(runSpec)));
+
+    // Then: dispatch fails before the data plane can mount or create a volume.
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
   });
 
   test("copies through the data plane with a bare target when no plan is applied", async () => {
@@ -281,10 +450,21 @@ describe("resolved provider operations", () => {
       Effect.scoped(ops.runStream({ image: "alpine", command: ["true"] }).pipe(Stream.runDrain)),
       Effect.scoped(ops.snapshotVolume({ volume })),
       Effect.scoped(
-        ops.restoreVolume({ snapshot: { provider: ProviderId.make("test"), id: "x" }, target: volume }),
+        ops.restoreVolume({
+          snapshot: {
+            provider: ProviderId.make("test"),
+            id: "x",
+            digest: "sha256:x",
+            sizeBytes: 1,
+            format: "native" as const,
+          },
+          target: volume,
+          expectedTargetGeneration: "00000000-0000-4000-8000-000000000001",
+        }),
       ),
       ops.listVolumes({ app }),
-      ops.removeVolume(volume),
+      ops.locateVolume(volume),
+      ops.removeVolume(volume, "00000000-0000-4000-8000-000000000001"),
       Effect.scoped(
         ops.copyToService(target, {
           sourcePath: AbsolutePath.make("/tmp/in"),
@@ -304,7 +484,7 @@ describe("resolved provider operations", () => {
     const exits = await Promise.all(failures.map((failure) => Effect.runPromiseExit(failure)));
 
     // Then
-    expect(exits).toHaveLength(10);
+    expect(exits).toHaveLength(11);
     for (const exit of exits) {
       expect(Exit.isFailure(exit)).toBe(true);
       if (!Exit.isFailure(exit) || exit.cause._tag !== "Fail")

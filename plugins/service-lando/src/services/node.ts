@@ -1,28 +1,226 @@
 import { Effect, Schema } from "effect";
+import { satisfies, subset, valid, validRange } from "semver";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type {
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceType,
+  ServiceTypeProjectFileInput,
+} from "@lando/sdk/services";
 
+import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
+const NODE_ARTIFACTS = Object.fromEntries(
+  SUPPORTED_NODE_VERSIONS.map((version) => [version, `node:${version}`]),
+);
 
 export const NODE_FEATURE_ID = "service-lando.node" as const;
 export const NODE_FEATURE_PRIORITY = 600;
+export const NODE_GLOBALS_STEP_ID = "service-lando.node:globals" as const;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
 const DEFAULT_PORT = 3000;
+const NODE_HEALTHCHECK_SCRIPT =
+  'const net=require("node:net");const socket=net.connect(Number(process.argv[1]),"127.0.0.1");socket.once("connect",()=>socket.end());socket.once("error",()=>process.exit(1));';
 
 const NodeFeatureConfigSchema = Schema.Struct({
-  version: Schema.Literal(...SUPPORTED_NODE_VERSIONS),
+  version: Schema.String,
 });
 type NodeFeatureConfig = typeof NodeFeatureConfigSchema.Type;
 
 const REMEDIATION_VERSION = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_NODE_VERSIONS.map((v) => `node:${v}`).join(", ")} (got node:${requested}).`;
+
+const NODE_MAJOR = 22;
+const NODE_LTS_CODENAME = "jod";
+const PROJECT_FILE_LIMIT = 1_048_576;
+
+export class NodeInferenceError extends Error {
+  readonly remediation: string;
+
+  constructor(message: string, remediation: string) {
+    super(`${message} ${remediation}`);
+    this.name = "NodeInferenceError";
+    this.remediation = remediation;
+  }
+}
+
+type NodeInferenceSelection = {
+  readonly artifact: string;
+  readonly normalizedConstraint: string;
+  readonly sourcePath: string;
+};
+
+type ParsedNvmrc = NodeInferenceSelection & {
+  readonly range: string | undefined;
+  readonly exactVersion: string | undefined;
+};
+
+const exactPinRemediation = "Add an exact pin in .nvmrc, or a channel-preserving Node pin, then retry.";
+
+const parseNvmrc = (input: ServiceTypeProjectFileInput & { readonly present: true }): ParsedNvmrc => {
+  const constraint = input.text
+    .split(/\r?\n/u)
+    .map((line) => line.replace(/#.*$/u, "").trim().toLowerCase())
+    .find((line) => line.length > 0);
+  if (constraint === undefined) {
+    throw new NodeInferenceError(
+      `Unsupported Node version "" in ${input.path}.`,
+      `Use Node ${NODE_MAJOR}, ${NODE_LTS_CODENAME}, lts/*, or an exact Node ${NODE_MAJOR} pin.`,
+    );
+  }
+  const major = new RegExp(`^v?${NODE_MAJOR}$`, "u");
+  const minor = new RegExp(`^v?${NODE_MAJOR}\\.(\\d+)$`, "u").exec(constraint);
+  const exact = new RegExp(`^v?${NODE_MAJOR}\\.(\\d+)\\.(\\d+)$`, "u").exec(constraint);
+
+  if (exact !== null) {
+    const normalized = constraint.replace(/^v/u, "");
+    if (valid(normalized) === null) {
+      throw new NodeInferenceError(
+        `Invalid Node version "${constraint}" in ${input.path}.`,
+        exactPinRemediation,
+      );
+    }
+    return {
+      artifact: `node:${normalized}`,
+      normalizedConstraint: normalized,
+      sourcePath: input.path,
+      range: undefined,
+      exactVersion: normalized,
+    };
+  }
+  if (minor !== null && valid(`${NODE_MAJOR}.${minor[1]}.0`) !== null) {
+    const normalized = `${NODE_MAJOR}.${minor[1]}`;
+    return {
+      artifact: `node:${normalized}`,
+      normalizedConstraint: normalized,
+      sourcePath: input.path,
+      range: normalized,
+      exactVersion: undefined,
+    };
+  }
+  if (
+    major.test(constraint) ||
+    constraint === NODE_LTS_CODENAME ||
+    constraint === `lts/${NODE_LTS_CODENAME}`
+  ) {
+    return {
+      artifact: `node:${NODE_MAJOR}`,
+      normalizedConstraint: String(NODE_MAJOR),
+      sourcePath: input.path,
+      range: String(NODE_MAJOR),
+      exactVersion: undefined,
+    };
+  }
+  if (constraint === "lts/*") {
+    return {
+      artifact: "node:lts",
+      normalizedConstraint: constraint,
+      sourcePath: input.path,
+      range: "*",
+      exactVersion: undefined,
+    };
+  }
+  throw new NodeInferenceError(
+    `Unsupported Node version "${constraint}" in ${input.path}.`,
+    `Use Node ${NODE_MAJOR}, ${NODE_LTS_CODENAME}, lts/*, or an exact Node ${NODE_MAJOR} pin.`,
+  );
+};
+
+const packageEngine = (
+  input: ServiceTypeProjectFileInput & { readonly present: true },
+): string | undefined => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input.text);
+  } catch (cause) {
+    throw new NodeInferenceError(
+      `Node inference could not parse ${input.path} as valid JSON: ${cause instanceof Error ? cause.message : String(cause)}.`,
+      "Fix package.json or remove bare type: node.",
+    );
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new NodeInferenceError(
+      `${input.path} must contain a JSON object.`,
+      "Fix package.json or remove bare type: node.",
+    );
+  }
+  const engines = Reflect.get(parsed, "engines");
+  if (engines === undefined) return undefined;
+  if (engines === null || typeof engines !== "object" || Array.isArray(engines)) {
+    throw new NodeInferenceError(
+      `${input.path} engines must be an object.`,
+      "Set engines.node to a valid semver range.",
+    );
+  }
+  const node = Reflect.get(engines, "node");
+  if (node === undefined) return undefined;
+  if (typeof node !== "string") {
+    throw new NodeInferenceError(
+      `${input.path} engines.node must be a string.`,
+      "Set engines.node to a valid semver range.",
+    );
+  }
+  const constraint = node.trim();
+  if (validRange(constraint) === null) {
+    throw new NodeInferenceError(
+      `${input.path} engines.node is not a valid semver range: "${constraint}".`,
+      "Set engines.node to a valid semver range.",
+    );
+  }
+  return constraint;
+};
+
+const compatibleWithEngine = (selection: ParsedNvmrc, engine: string): boolean => {
+  if (selection.exactVersion !== undefined) return satisfies(selection.exactVersion, engine);
+  if (selection.range === undefined) return false;
+  return subset(selection.range, engine);
+};
+
+export const resolveNodeInference = (
+  inputs: ReadonlyArray<ServiceTypeProjectFileInput>,
+): NodeInferenceSelection => {
+  const nvmrc = inputs.find((input) => /(?:^|[/\\])\.nvmrc$/u.test(input.path));
+  const packageJson = inputs.find((input) => /(?:^|[/\\])package\.json$/u.test(input.path));
+  const engine = packageJson?.present === true ? packageEngine(packageJson) : undefined;
+
+  if (nvmrc?.present === true) {
+    const selection = parseNvmrc(nvmrc);
+    if (engine !== undefined && !compatibleWithEngine(selection, engine)) {
+      throw new NodeInferenceError(
+        `${nvmrc.path} constraint "${selection.normalizedConstraint}" conflicts with package.json engines.node "${engine}".`,
+        "Make both project files describe compatible Node versions.",
+      );
+    }
+    return selection;
+  }
+  if (engine !== undefined) {
+    const supportedRange = String(NODE_MAJOR);
+    if (subset(supportedRange, engine)) {
+      return {
+        artifact: `node:${NODE_MAJOR}`,
+        normalizedConstraint: engine,
+        sourcePath: packageJson?.path ?? "package.json",
+      };
+    }
+    throw new NodeInferenceError(
+      `package.json engines.node "${engine}" does not prove that the complete Node ${NODE_MAJOR} image channel is compatible.`,
+      exactPinRemediation,
+    );
+  }
+  throw new NodeInferenceError(
+    packageJson?.present === true
+      ? "package.json has no Node constraint in engines.node."
+      : "Node inference found neither .nvmrc nor package.json.",
+    "Add .nvmrc or package.json engines.node, then retry.",
+  );
+};
 
 const validateVersion = (
   declaredType: string | undefined,
@@ -37,12 +235,22 @@ const validateVersion = (
   throw new Error(`Unsupported Node version "${version}". ${REMEDIATION_VERSION(version)}`);
 };
 
-const configFor = (ctx: ServiceFeatureContext): NodeFeatureConfig => ctx.config as NodeFeatureConfig;
+// Official Node images ship Corepack shims at /usr/local/bin/{yarn,pnpm}.
+// --force lets authored globals replace those stubs instead of failing EEXIST.
+const nodeGlobalsCommandFor = (entries: ReadonlyArray<PackageEntry>): string =>
+  [
+    "set -eux",
+    [
+      "npm install -g --force --no-fund --no-audit",
+      ...entries.map(([name, version]) => shellSingleQuote(`${name}@${version}`)),
+    ].join(" "),
+  ].join(" && ");
 
 const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const { version } = configFor(ctx);
+  const { version } = ctx.config as NodeFeatureConfig;
   const serviceType = `node:${version}`;
+  const port = service.port ?? DEFAULT_PORT;
   const appMount = {
     source: AbsolutePath.make(ctx.appRoot),
     target: APP_MOUNT_TARGET,
@@ -61,14 +269,35 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? serviceType });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
+  ctx.addEnv("PORT", String(port));
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   if (service.user !== undefined) ctx.setUser(service.user);
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
 
-  addServicePortEndpoints(ctx, { port: DEFAULT_PORT, protocol: "http" });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
+  if (service.command !== undefined) {
+    ctx.setHealthcheck({
+      kind: "command",
+      command: ["node", "-e", NODE_HEALTHCHECK_SCRIPT, String(port)],
+      intervalSeconds: 10,
+      timeoutSeconds: 5,
+      retries: 5,
+      startPeriodSeconds: 10,
+    });
+  }
 
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  const globals = normalizeNpmGlobals(service.globals);
+  if (globals.length > 0) {
+    ctx.addBuildStep({
+      id: NODE_GLOBALS_STEP_ID,
+      phase: "build",
+      command: nodeGlobalsCommandFor(globals),
+      user: "root",
+      buildKeyInputs: { globals },
+    });
+  }
 };
 
 export const nodeServiceFeature: ServiceFeatureDefinition = {
@@ -87,7 +316,7 @@ export const nodeServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
-const normalizedService = (service: ServiceConfig, resolvedVersion: SupportedNodeVersion): ServiceConfig => ({
+const normalizedService = (service: ServiceConfig, resolvedVersion: string): ServiceConfig => ({
   ...service,
   type: `node:${resolvedVersion}`,
 });
@@ -96,11 +325,15 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
   id: `node:${version}`,
   name: `node:${version}`,
   base: "lando",
+  versions: SUPPORTED_NODE_VERSIONS,
+  artifacts: NODE_ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root", node: "/home/node" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.try({
       try: () => {
         const resolvedVersion = validateVersion(input.service.type, version);
+        normalizeNpmGlobals(input.service.globals);
 
         return {
           base: "lando" as const,
@@ -125,3 +358,54 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
 
 export const nodeLtsServiceType: ServiceType = makeNodeServiceType("lts");
 export const node22ServiceType: ServiceType = makeNodeServiceType("22");
+
+export const nodeServiceType: ServiceType = {
+  id: "node",
+  name: "node",
+  base: "lando",
+  identity: { defaultUser: "root", homes: { root: "/root", node: "/home/node" } },
+  schema: Schema.Unknown,
+  projectFiles: (service) => {
+    const packageRoot = service.packageRoot ?? ".";
+    const prefix = packageRoot === "." ? "" : `${packageRoot}/`;
+    return [
+      { path: `${prefix}.nvmrc`, maxBytes: PROJECT_FILE_LIMIT },
+      { path: `${prefix}package.json`, maxBytes: PROJECT_FILE_LIMIT },
+    ];
+  },
+  resolve: (input) =>
+    Effect.try({
+      try: () => {
+        const inference = resolveNodeInference(input.projectFiles ?? []);
+        const resolvedVersion = inference.artifact.slice("node:".length);
+        normalizeNpmGlobals(input.service.globals);
+        const files = (input.projectFiles ?? []).map((file) => ({
+          path: file.path,
+          present: file.present,
+          ...(file.present ? { sha256: file.sha256 } : {}),
+        }));
+        return {
+          base: "lando" as const,
+          normalizedConfig: normalizedService(input.service, resolvedVersion),
+          features: [
+            { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
+            { id: "lando.env", config: { appPaths: { appRoot: "/app", projectMount: "/app" } } },
+          ],
+          metadata: {
+            node: {
+              sourcePath: inference.sourcePath,
+              normalizedConstraint: inference.normalizedConstraint,
+              artifact: inference.artifact,
+              files,
+            },
+          },
+        };
+      },
+      catch: (cause) =>
+        new ServiceTypeError({
+          message: cause instanceof Error ? cause.message : "Failed to infer a Node version.",
+          serviceType: "node",
+          cause,
+        }),
+    }),
+};

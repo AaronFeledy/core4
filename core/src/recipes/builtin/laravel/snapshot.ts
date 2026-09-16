@@ -1,11 +1,12 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { PHP_VERSIONS } from "../php-stack.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:3c5383b45686360dee84e0f2d8a177efeb059a752b64b95bad32c55a67e973b1";
+  "sha256:2a8648f1a02131d930313a58e609cc337c21a63334092fed3a126afb47286079";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -172,7 +173,7 @@ const expression: ExpressionNode = {
 export const laravelSnapshot: RecipeSnapshot = {
   identity: laravelProducer,
   optionTypes: {
-    php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
+    php: { kind: "enum", values: [...PHP_VERSIONS] },
     database: { kind: "enum", values: ["mariadb:11.4", "postgres:16"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },

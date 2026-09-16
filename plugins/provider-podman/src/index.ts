@@ -12,7 +12,7 @@
 import { readFile } from "node:fs/promises";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
-import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
@@ -24,7 +24,11 @@ import {
 } from "@lando/container-runtime/log-file-helper-payloads";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
-import { type BringUpOptions, bringUp } from "@lando/container-runtime/podman/bring-up";
+import {
+  type BringUpOptions,
+  bringUp,
+  podmanVolumeCreationLabels,
+} from "@lando/container-runtime/podman/bring-up";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
@@ -36,7 +40,7 @@ import {
 } from "@lando/container-runtime/podman/version-floor";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
-import { postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import {
   type ProviderCapabilityError,
@@ -678,9 +682,15 @@ export const makeRuntimeProvider = (
   );
   const dataPlane = makeProviderDataPlane({
     providerId: PROVIDER_ID,
+    endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath,
+    prepareWitnessImage: pullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
+      ctx: PODMAN_CTX,
+      dialect: libpodPullDialect,
+    }),
     api: podmanApi,
     snapshotMode: "copy",
     redactDetails,
+    volumeCreationLabels: podmanVolumeCreationLabels,
   });
 
   const resolvePlan = (app: AppId): Effect.Effect<AppPlan | undefined, never> => {
@@ -715,6 +725,10 @@ export const makeRuntimeProvider = (
     service: {
       lifecycle: (plan, target, action) =>
         postServiceLifecycle(plan, target, action, { api: podmanApi, ctx: PODMAN_CTX }),
+      resume: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "start", { api: podmanApi, ctx: PODMAN_CTX }),
+      suspend: (target, identity) =>
+        postExactServiceLifecycle(target, identity, "stop", { api: podmanApi, ctx: PODMAN_CTX }),
       waitForExit: (plan, target, waitOptions) =>
         waitForExit(plan, target, {
           api: podmanApi,
@@ -772,8 +786,12 @@ export const makeRuntimeProvider = (
             api: podmanApi,
             ctx: PODMAN_CTX,
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+            ...(applyOptions.serviceEnvironment === undefined
+              ? {}
+              : { serviceEnvironment: applyOptions.serviceEnvironment }),
+            reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(plan))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan))),
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
             const plan = target.plan ?? (yield* resolvePlan(target.app));

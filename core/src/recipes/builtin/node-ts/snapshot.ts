@@ -4,7 +4,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const NODE_TS_RECIPE_VERSION = "0.1.0";
 export const NODE_TS_CONTENT_DIGEST =
-  "sha256:df6b7b0ed7834bde8d310b856db4cd798ef8a1d84cea578e3e0ceef2ecd40ec5";
+  "sha256:867db3894c25320f4a9c58fcc8fed102cb87d3242b6138704ad2593d01621804";
 
 export const nodeTsProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -39,6 +39,7 @@ export const nodeTsSnapshot: RecipeSnapshot = {
                       key: "image",
                       value: { kind: "Literal", value: "node:{{ default(env.LANDO_NODE_VERSION, 'lts') }}" },
                     },
+                    { key: "home", value: { kind: "Literal", value: false } },
                     {
                       key: "environment",
                       value: {

@@ -1,6 +1,7 @@
-import { isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import { makeConfigTranslatorRegistryLive } from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
+import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { mergeLandofiles } from "@lando/landofile/merge";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -17,11 +18,18 @@ import {
   type ConfigTranslatorShape,
   type RecipeDecomposerFactory,
 } from "@lando/sdk/services";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Either, Option, Schema } from "effect";
 import { RECIPE_TRANSLATOR_ID } from "./config-translator.ts";
-import { auxiliaryDestination, writeAuxiliaryScaffold } from "./init-pipeline/files.ts";
+import {
+  type RecipeAuxiliaryContentSource,
+  auxiliaryDestination,
+  readAuxiliaryScaffoldContent,
+  writeAuxiliaryScaffold,
+} from "./init-pipeline/files.ts";
 import { runBoundPostInit } from "./init-pipeline/post-init.ts";
 import { containsSecretValue, secretReference } from "./init-pipeline/secrets.ts";
+import { postInitAuthorizationIssue } from "./post-init/authorization.ts";
 import type { PostInitOutcome, RunPostInitOptions } from "./post-init/runtime.ts";
 import { makeRecipeTranslatorModule } from "./translator-module.ts";
 
@@ -64,7 +72,10 @@ export interface RecipeInitPipelineRequest {
   readonly appName: string;
   readonly encoder: ConfigTranslatorShape;
   readonly journalRoot: () => string;
+  readonly contentSource?: RecipeAuxiliaryContentSource;
+  readonly sourceRoot?: string;
   readonly checkpoint?: NonNullable<TransactionOptions["checkpoint"]>;
+  readonly privateFileAccess: PrivateFileAccess;
   readonly runPostInit?: (options: RunPostInitOptions) => Promise<PostInitOutcome>;
 }
 export interface RecipeInitPipelineResult {
@@ -82,17 +93,40 @@ const blocked = (stage: RecipeInitBlockedError["stage"]) =>
     remediation: "Correct the recipe inputs, translator, or encoder before retrying initialization.",
   });
 
-export const runRecipeInitPipeline = (
-  request: RecipeInitPipelineRequest,
-): Effect.Effect<
-  RecipeInitPipelineResult,
-  RecipeInitBlockedError | RecipeInitCommitError | RecipeInitPostInitError,
-  never
-> =>
+export interface RecipeLandofilePreviewRequest {
+  readonly manifest: RecipeManifest;
+  readonly decomposer: RecipeDecomposerFactory;
+  readonly answers: Readonly<Record<string, unknown>>;
+  readonly secretAnswers?: Readonly<Record<string, string>>;
+  readonly appName: string;
+  readonly encoder: ConfigTranslatorShape;
+}
+
+export interface RecipeLandofilePreview {
+  readonly text: string;
+  readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
+}
+
+interface EncodedRecipeLandofile extends RecipeLandofilePreview {
+  readonly redact: (text: string) => string;
+  readonly containsSecret: (value: unknown) => boolean;
+}
+
+// Preview and commit share validation and encoding; prompt answers can change
+// between the preview and the write.
+const encodeRecipeLandofile = (
+  request: RecipeLandofilePreviewRequest & {
+    readonly appRoot?: string;
+    readonly landofileBasename?: string;
+  },
+): Effect.Effect<EncodedRecipeLandofile, RecipeInitBlockedError, never> =>
   Effect.gen(function* () {
     const validated = validateRecipeSecretPrompts(request.manifest);
     if (Either.isLeft(validated)) return yield* Effect.fail(blocked("secret-prompts"));
-    const raw = Object.values(request.secretAnswers ?? {}).filter((value) => value.length > 0);
+    const raw = validated.right
+      .filter(({ disposition }) => disposition.kind === "init-only")
+      .map(({ promptName }) => request.secretAnswers?.[promptName])
+      .filter((value): value is string => value !== undefined && value.length > 0);
     const containsSecret = (value: unknown) => containsSecretValue(raw, value);
     if (
       containsSecret([
@@ -106,9 +140,16 @@ export const runRecipeInitPipeline = (
     ) {
       return yield* Effect.fail(blocked("secret-prompts"));
     }
-    const references = Object.fromEntries(
-      validated.right.map(({ promptName, disposition }) => [promptName, secretReference(disposition)]),
-    );
+    const references = yield* Effect.try({
+      try: () =>
+        Object.fromEntries(
+          validated.right.map(({ promptName, disposition }) => [
+            promptName,
+            secretReference(disposition, request.secretAnswers?.[promptName]),
+          ]),
+        ),
+      catch: () => blocked("secret-prompts"),
+    });
     const input = yield* Schema.decodeUnknown(ConfigTranslateRecipeRequestInput)({
       _tag: "recipe-request",
       recipe: { id: request.manifest.id, version: request.manifest.version },
@@ -170,15 +211,61 @@ export const runRecipeInitPipeline = (
     )
       return yield* Effect.fail(blocked("diagnostics"));
     if (containsSecret(encoded.text)) return yield* Effect.fail(blocked("encode"));
+    return { text: encoded.text, diagnostics, redact, containsSecret };
+  });
+
+/**
+ * Encode the Landofile a recipe would write, without creating or mutating any
+ * file. Used for pre-write preview surfaces such as the init name prompt.
+ */
+export const previewRecipeLandofile = (
+  request: RecipeLandofilePreviewRequest,
+): Effect.Effect<RecipeLandofilePreview, RecipeInitBlockedError, never> =>
+  Effect.map(encodeRecipeLandofile(request), ({ text, diagnostics }) => ({ text, diagnostics }));
+
+export const runRecipeInitPipeline = (
+  request: RecipeInitPipelineRequest,
+): Effect.Effect<
+  RecipeInitPipelineResult,
+  RecipeInitBlockedError | RecipeInitCommitError | RecipeInitPostInitError,
+  never
+> =>
+  Effect.gen(function* () {
+    if (
+      (request.manifest.postInit ?? []).some(
+        (action) => postInitAuthorizationIssue(action, request.manifest.prompts ?? []) !== undefined,
+      )
+    ) {
+      return yield* Effect.fail(blocked("validate"));
+    }
+    const { text, diagnostics, redact, containsSecret } = yield* encodeRecipeLandofile(request);
     const basename = request.landofileBasename ?? ".lando.yml";
     const landofilePath = join(request.appRoot, basename);
-    yield* Effect.try({
-      try: () => {
-        for (const file of request.manifest.files ?? []) {
+    // The pipeline owns the Landofile itself, so a manifest entry that targets a
+    // Landofile layer is the recipe's own template and is never written here.
+    const auxiliaryEntries = (request.manifest.files ?? [])
+      .map((file, index) => ({ file, index }))
+      .filter(
+        ({ file }) =>
+          file.dest !== basename && file.dest !== LANDOFILE_NAME && file.dest !== LANDOFILE_TS_NAME,
+      );
+    if (
+      auxiliaryEntries.some(
+        ({ file }) => file.when !== undefined || file.mode !== undefined || file.engine !== undefined,
+      )
+    ) {
+      return yield* Effect.fail(blocked("validate"));
+    }
+    yield* Effect.tryPromise({
+      try: async () => {
+        for (const { file } of auxiliaryEntries) {
           auxiliaryDestination(request.appRoot, file.dest);
-          if (!isAbsolute(file.src)) {
-            throw new RangeError("Auxiliary source must be an absolute path resolved by the caller.");
-          }
+          await readAuxiliaryScaffoldContent({
+            file,
+            appName: request.appName,
+            contentSource: request.contentSource,
+            sourceRoot: request.sourceRoot,
+          });
         }
       },
       catch: () => blocked("validate"),
@@ -186,10 +273,11 @@ export const runRecipeInitPipeline = (
     const receipt = yield* makeManagedFileTransactions({
       journalRoot: request.journalRoot,
       ...(request.checkpoint === undefined ? {} : { checkpoint: request.checkpoint }),
+      privateFileAccess: request.privateFileAccess,
     })
       .run({
         appRoot: request.appRoot,
-        operations: [{ kind: "write", path: basename, content: encoded.text }],
+        operations: [{ kind: "write", path: basename, content: text, expectedBefore: { present: false } }],
       })
       .pipe(
         Effect.mapError(
@@ -197,7 +285,9 @@ export const runRecipeInitPipeline = (
             new RecipeInitCommitError({
               phase: error.phase,
               reason: error.reason,
-              message: `Recipe scaffold transaction failed (${error.phase}/${error.reason}).`,
+              message: redact(
+                `Recipe scaffold transaction failed (${error.phase}/${error.reason}): ${error.cause}${error.path === "" ? "" : ` at ${error.path}`}.`,
+              ),
               remediation: redact(error.remediation),
             }),
         ),
@@ -213,13 +303,16 @@ export const runRecipeInitPipeline = (
         failedAction,
         rolledBack: false,
       });
-    for (const [index, file] of (request.manifest.files ?? []).entries()) {
+    for (const { file, index } of auxiliaryEntries) {
       const path = yield* Effect.tryPromise({
         try: () =>
           writeAuxiliaryScaffold({
             appRoot: request.appRoot,
             file,
+            appName: request.appName,
             containsSecret,
+            contentSource: request.contentSource,
+            sourceRoot: request.sourceRoot,
           }),
         catch: () => postFailure(`files[${index}]`),
       });

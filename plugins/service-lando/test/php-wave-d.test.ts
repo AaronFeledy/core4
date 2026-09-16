@@ -5,11 +5,13 @@ import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/sche
 import type { ServiceType } from "@lando/sdk/services";
 
 import { serviceTypes } from "../src/index.ts";
+import { phpImageFor } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
   php81ServiceType,
   php84ServiceType,
+  php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -56,7 +58,7 @@ describe("PHP Wave D planning", () => {
     },
   );
 
-  test("renders the exact Apache site config for a validated webroot", async () => {
+  test("renders the Apache site config for a validated webroot", async () => {
     // Given
     const service = { type: "php:8.4", webroot: "/app/web", allowOverride: true };
 
@@ -67,26 +69,43 @@ describe("PHP Wave D planning", () => {
     expect(plan.command).toEqual([
       "sh",
       "-c",
-      [
-        "set -eu",
-        "cat > /etc/apache2/sites-available/000-default.conf <<'LANDO_APACHE_SITE'",
-        "<VirtualHost *:80>",
-        "  DocumentRoot /app/web",
-        "  <Directory /app/web>",
-        "    Options -Indexes +FollowSymLinks",
-        "    AllowOverride All",
-        "    Require all granted",
-        "  </Directory>",
-        "</VirtualHost>",
-        "LANDO_APACHE_SITE",
-        "exec apache2-foreground",
-      ].join("\n"),
+      expect.stringContaining(
+        [
+          "cat > /etc/apache2/sites-available/000-default.conf <<'LANDO_APACHE_SITE'",
+          "<VirtualHost *:80>",
+          "  DocumentRoot /app/web",
+          "  <Directory /app/web>",
+          "    Options -Indexes +FollowSymLinks",
+          "    AllowOverride All",
+          "    Require all granted",
+          "  </Directory>",
+          '  Alias "/_lando/errors/" "/usr/share/lando/errors/"',
+        ].join("\n"),
+      ),
     ]);
+    expect(plan.command).toEqual(["sh", "-c", expect.stringContaining("exec apache2-foreground")]);
+  });
+
+  test("Lando-owned Apache serves branded 403 and 404 pages outside the app mount", async () => {
+    const plan = await compose(php84ServiceType, {
+      type: "php:8.4",
+      webroot: "/app/web",
+      allowOverride: true,
+    });
+
+    const command = Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command ?? "");
+    expect(command).toContain("/usr/share/lando/errors/403.html");
+    expect(command).toContain("/usr/share/lando/errors/404.html");
+    expect(command).toContain("ErrorDocument 403 /_lando/errors/403.html");
+    expect(command).toContain("ErrorDocument 404 /_lando/errors/404.html");
+    expect(command).toContain('Alias "/_lando/errors/" "/usr/share/lando/errors/"');
+    expect(command).not.toContain("/app/.lando");
   });
 
   test.each([
     ["8.1", php81ServiceType],
     ["8.4", php84ServiceType],
+    ["8.6", php86ServiceType],
   ] as const)("plans and registers PHP %s", async (version, serviceType) => {
     // Given
     const type = `php:${version}`;
@@ -98,6 +117,6 @@ describe("PHP Wave D planning", () => {
     expect([...SUPPORTED_PHP_VERSIONS]).toContain(version);
     expect(serviceTypes.get(type)).toBe(serviceType);
     expect(plan.type).toBe(type);
-    expect(plan.artifact).toEqual({ kind: "ref", ref: `${type}-apache-bookworm` });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: phpImageFor(version, "apache") });
   });
 });

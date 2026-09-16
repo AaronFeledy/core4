@@ -1,0 +1,13 @@
+name: task-events-unknown
+services:
+  web:
+    type: "node:22"
+    primary: true
+tooling:
+  build:
+    service: ":host"
+    cmd: echo "build ran"
+events:
+  pre-deploy:
+    - cmd: echo "there is no deploy task"
+      service: ":host"

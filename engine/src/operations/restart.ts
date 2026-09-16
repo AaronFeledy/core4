@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
 import type {
   RestartAppOptions,
@@ -6,10 +6,16 @@ import type {
   RestartAppError as SdkRestartAppError,
 } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { PostRestartEvent, PreRestartEvent } from "@lando/sdk/events";
+import {
+  AppPlanner,
+  EventService,
+  LandofileService,
+  RuntimeProviderRegistry,
+  StateStore,
+} from "@lando/sdk/services";
 import type {
   BuildOrchestrator,
-  EventService,
   FileSystem,
   GlobalAppService,
   ManagedFileTransactionGuard,
@@ -20,9 +26,14 @@ import type {
 import { RouterService } from "@lando/sdk/services";
 
 import type { RedactionService } from "@lando/redaction/service";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
-import { compensateFailure } from "../lifecycle/failure-compensation.ts";
-import { runAppInitEvents } from "./events.ts";
+import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
+import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { isPostStartStepError } from "../tooling/event-errors.ts";
+import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
@@ -43,11 +54,13 @@ type RestartAppServices =
   | LandofileService
   | ManagedFileTransactionGuard
   | PathsService
+  | PrivateFileAccessService
   | PluginRegistry
   | RouterService
   | RedactionService
   | RuntimeProviderRegistry
-  | ShellRunner;
+  | ShellRunner
+  | StateStore;
 
 export const restartApp = (
   options: RestartAppOptions = {},
@@ -55,7 +68,6 @@ export const restartApp = (
   managed?: StartManagedScope,
 ): Effect.Effect<RestartAppResult, RestartAppError, RestartAppServices> =>
   Effect.gen(function* () {
-    const proxy = yield* RouterService;
     const resolvedTarget =
       target ??
       (yield* Effect.gen(function* () {
@@ -67,19 +79,58 @@ export const restartApp = (
         const plan = yield* planner.plan(landofile, capabilities);
         return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
       }));
-    const plan = resolvedTarget.plan;
+    const registry = yield* RuntimeProviderRegistry;
+    const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
+    const plan = mysqlResolvedTarget.plan;
     yield* runAppInitEvents(plan);
-    yield* stopAppWithPlan({}, resolvedTarget);
-    yield* managed?.onStopped ?? Effect.void;
-    return yield* compensateFailure(
-      startApp(
-        {
-          reconcile: options.reconcile ?? false,
-          ...(options.signal === undefined ? {} : { signal: options.signal }),
-        },
-        resolvedTarget,
-        managed,
-      ),
-      proxy.removeRoutes(plan.id),
+    const context = yield* Effect.context<RestartAppServices>();
+    const stateStore = yield* StateStore;
+    const provider = yield* registry.select(plan);
+    return yield* withAppMutationLock(
+      appLockTarget(plan),
+      withPlanVolumeCoordination({
+        plan,
+        provider,
+        stateStore,
+        body: () =>
+          Effect.gen(function* () {
+            const proxy = yield* RouterService;
+            const events = yield* EventService;
+            const preRestart = PreRestartEvent.make({
+              _tag: "pre-restart",
+              scope: "app",
+              app: mysqlResolvedTarget.app,
+              plan,
+              triggeredBy: "app:restart",
+              timestamp: DateTime.unsafeMake(new Date().toISOString()),
+            });
+            yield* events.publish(preRestart);
+            yield* runAppEvent(plan, "pre-restart", preRestart);
+            yield* stopAppWithPlan({}, mysqlResolvedTarget);
+            yield* managed?.onStopped ?? Effect.void;
+            const result = yield* compensateFailureUnless(
+              startApp(
+                {
+                  reconcile: options.reconcile ?? false,
+                  ...(options.signal === undefined ? {} : { signal: options.signal }),
+                },
+                mysqlResolvedTarget,
+                managed,
+              ),
+              proxy.removeRoutes(plan.id),
+              isPostStartStepError,
+            );
+            const postRestart = PostRestartEvent.make({
+              _tag: "post-restart",
+              scope: "app",
+              app: mysqlResolvedTarget.app,
+              plan,
+              timestamp: DateTime.unsafeMake(new Date().toISOString()),
+            });
+            yield* events.publish(postRestart);
+            yield* runAppEvent(plan, "post-restart", postRestart);
+            return result;
+          }).pipe(Effect.provide(context)),
+      }),
     );
   });

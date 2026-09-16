@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { makeLandoPaths } from "@lando/core/paths";
-import { makeTestDownloader, makeTestStateStore } from "@lando/core/testing";
-import { makePluginStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeTestDownloader } from "@lando/engine/testing/downloader";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makeLandoPaths } from "@lando/paths";
 import { type LandoPluginContext, definePlugin } from "@lando/sdk/plugins";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { AppPlanSanitizer, Downloader, LogFileHelperAssets, PathsService } from "@lando/sdk/services";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 import { manifest, plugin } from "../src/index.ts";
 
@@ -62,6 +64,7 @@ describe("provider-lando plugin descriptor", () => {
       stateStore: makePluginStateStore(
         stateStore,
         AbsolutePath.make("/tmp/provider-lando-plugin-descriptor/state"),
+        ownerOnlyFileAccess,
       ),
       events: { publishRender: () => Effect.void },
     };

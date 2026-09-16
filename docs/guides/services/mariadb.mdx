@@ -73,6 +73,22 @@ lando mariadb
 
 Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can still pipe into the client with `lando exec`.
 
+## Add server config
+
+Set `config.server` to an app-relative file when you need to tune the server:
+
+```yaml
+services:
+  db:
+    type: mariadb
+    config:
+      server: ./config/my.cnf
+```
+
+Lando mounts that file read-only at `/etc/mysql/conf.d/99-lando.cnf`. The server reads it as a drop-in on startup, after its own defaults, so anything you set there wins. It has to be a regular file, not a directory.
+
+The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
+
 ## Pin a version
 
 Set `image:` when `mariadb:11.4` isn't the version you want. For example, the 10.11 LTS line:

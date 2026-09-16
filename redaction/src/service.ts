@@ -60,7 +60,7 @@ const collectSecretStoreValues = (secretStore: Context.Tag.Service<typeof Secret
     const values = yield* Effect.all(
       ids.map((id) => secretStore.get(id).pipe(Effect.catchAll(() => Effect.succeed(undefined)))),
     );
-    return values.filter(nonEmpty);
+    return values.filter((value): value is string => value !== undefined && value.length > 0);
   });
 
 export const collectSecretEnvValues = (
@@ -70,7 +70,8 @@ export const collectSecretEnvValues = (
   const values: string[] = [];
   for (const [key, value] of Object.entries(sourceEnv)) {
     const normalizedParts = key.toLowerCase().split(/[_-]+/u).filter(nonEmpty);
-    const carriesSecret = normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
+    const carriesSecret =
+      key.toUpperCase() === "REDISCLI_AUTH" || normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
     if (carriesSecret && nonEmpty(value) && isUsableExactRedactionValue(value)) {
       values.push(value);
     }
@@ -113,7 +114,8 @@ const makeRedactorOptions = (
   secretValues: Iterable<string>,
   options: RedactionForProfileOptions | undefined,
 ): CreateRedactorOptions => ({
-  values: dedupeValues([...secretValues, ...collectOptionValues(options)]),
+  values: dedupeValues(collectOptionValues(options)),
+  authoritativeValues: [...secretValues],
   ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
 });
 

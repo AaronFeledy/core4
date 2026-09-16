@@ -5,7 +5,9 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { acquireAdvisoryLockAt, withAdvisoryLock } from "../../src/lock.ts";
+import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "../../src/lock.ts";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
+const withAdvisoryLock = withAdvisoryLockUsing(ownerOnlyFileAccess);
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
@@ -27,7 +29,10 @@ describe("advisory state lock", () => {
         // When a non-expiring acquisition encounters the abandoned artifact
         await run(
           Effect.acquireUseRelease(
-            acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false }),
+            acquireAdvisoryLockAt(path, "test", {
+              expireLiveOwner: false,
+              privateFileAccess: ownerOnlyFileAccess,
+            }),
             (lock) => Effect.promise(async () => expect(await readFile(path, "utf8")).toContain(lock.token)),
             (lock) => lock.release,
           ),
@@ -52,11 +57,12 @@ describe("advisory state lock", () => {
           `
         import { Effect } from ${JSON.stringify(import.meta.resolve("effect"))};
         import { acquireAdvisoryLockAt } from ${JSON.stringify(import.meta.resolve("../../src/lock.ts"))};
+        import { ownerOnlyFileAccess } from ${JSON.stringify(import.meta.resolve("../private-file-access.ts"))};
         import { stat } from "node:fs/promises";
         process.umask(0o777);
         const path = ${JSON.stringify(path)};
         await Effect.runPromise(Effect.acquireUseRelease(
-          acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false }),
+          acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false, privateFileAccess: ownerOnlyFileAccess }),
           () => Effect.promise(async () => {
             if (((await stat(path)).mode & 0o777) !== 0o600) throw new Error("mode mismatch");
           }),
@@ -84,11 +90,35 @@ describe("advisory state lock", () => {
     try {
       // When another transaction tries to acquire it
       const result = await Effect.runPromiseExit(
-        acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false }),
+        acquireAdvisoryLockAt(path, "test", {
+          expireLiveOwner: false,
+          privateFileAccess: ownerOnlyFileAccess,
+        }),
       );
       // Then contention fails without stealing the live owner's lock
       expect(result._tag).toBe("Failure");
       expect(await readFile(path, "utf8")).toBe(record);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  test("honors a short acquire timeout", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-state-lock-"));
+    const path = join(dir, "held.lock");
+    const record = JSON.stringify({ pid: process.pid, token: "live", createdAt: Date.now() });
+    await writeFile(path, record);
+    try {
+      const started = Date.now();
+      const result = await Effect.runPromiseExit(
+        acquireAdvisoryLockAt(path, "test", {
+          expireLiveOwner: false,
+          timeoutMs: 80,
+          retryMs: 10,
+          privateFileAccess: ownerOnlyFileAccess,
+        }),
+      );
+      expect(result._tag).toBe("Failure");
+      expect(Date.now() - started).toBeLessThan(1_500);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

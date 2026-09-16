@@ -180,6 +180,9 @@ export const selectMigrationPath = (
  * Classify a hunk against its current authoring value without mutating that value.
  * Undefined denotes an absent site. The after-state wins when both states match;
  * customized option defaults are retained, while structural conflicts block.
+ * The `rename` branch compares values, while `RenameHunk.old`/`.new` are canonical
+ * PATH strings, so callers must classify `rename` hunks themselves rather than
+ * relying on this function for that kind.
  */
 export const classifyHunk = (
   hunk: RecipeMigrationHunk,

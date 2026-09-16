@@ -1,6 +1,7 @@
 import { DateTime, Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
+import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
   CapabilityError,
   CommandAliasConflictError,
@@ -10,7 +11,9 @@ import type {
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
+  HomePathCapabilityError,
   LandofileParseError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -18,6 +21,8 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
+  SecretNotFoundError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -71,6 +76,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 
 export type GlobalRebuildError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
@@ -81,13 +87,16 @@ export type GlobalRebuildError =
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | PluginManifestError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | SecretNotFoundError;
 
 export type GlobalRebuildServices =
   | AppPlanner
@@ -129,10 +138,12 @@ export const globalRebuild = (
     );
 
     const builtPlan = yield* builder.build(loaded.plan);
+    const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
     yield* Effect.scoped(
       provider.apply(builtPlan, {
         reconcile: true,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
+        serviceEnvironment,
       }),
     );
 

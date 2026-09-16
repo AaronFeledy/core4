@@ -10,6 +10,7 @@ import { type StateStoreContractHarness, runStateStoreContract } from "@lando/sd
 
 import { makeStateStore } from "@lando/state-store/service";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 let root: AbsolutePathType;
 
@@ -46,7 +47,7 @@ describe("StateStore contract suite", () => {
   test("StateStoreLive satisfies the StateStore contract", async () => {
     const harness: StateStoreContractHarness = {
       name: "StateStoreLive",
-      store: makeStateStore(),
+      store: makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
       root,
       readRaw,
       list,

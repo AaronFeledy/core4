@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Context, DateTime, Effect, Exit, Schema } from "effect";
+import { Cause, Context, DateTime, Effect, Either, Exit, Schema } from "effect";
 
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { PluginDescriptorMismatchError, ToolingCommandLookupError } from "@lando/sdk/errors";
 import type { ExecutableCommandLoader, ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, ToolingTaskShape } from "@lando/sdk/schema";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 
@@ -57,6 +57,38 @@ const makeRuntimeContext = (id: string, load: ExecutableCommandLoader): Context.
   });
 
 describe("resolveEventCommandTarget", () => {
+  test("preserves normalization failure tags instead of creating a fallback declaration", async () => {
+    // Given
+    const task = Schema.decodeUnknownSync(ToolingTaskShape)({
+      cmd: ["echo"],
+      args: { first: { order: 1 }, second: { order: 1 } },
+    });
+    const plan = attachEffectiveTooling(makePlan(), { invalid: task });
+    // When
+    const result = await Effect.runPromise(
+      Effect.either(resolveEventCommandTarget("app:invalid", Context.empty(), [], plan)),
+    );
+    // Then
+    expect(Either.isLeft(result) ? result.left : undefined).toMatchObject({
+      _tag: "ToolingCompileError",
+      tool: "invalid",
+      source: { path: plan.metadata.source, task: "invalid" },
+    });
+  });
+  test("orders native arguments by declared order after schema decode", async () => {
+    // Given
+    const task = Schema.decodeUnknownSync(ToolingTaskShape)({
+      cmd: ["echo"],
+      args: { second: { order: 2 }, first: { order: 1 } },
+    });
+    const plan = attachEffectiveTooling(makePlan(), { ordered: task });
+    // When
+    const target = await Effect.runPromise(
+      resolveEventCommandTarget("app:ordered", Context.empty(), [], plan),
+    );
+    // Then
+    expect(Object.keys(target.spec.args ?? {})).toEqual(["first", "second"]);
+  });
   test("resolves a built-in target without weakening its command spec", async () => {
     // Given
     const effect = resolveEventCommandTarget("app:start", Context.empty(), [builtInEntry]);

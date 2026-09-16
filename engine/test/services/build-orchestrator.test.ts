@@ -28,7 +28,9 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
@@ -383,6 +385,7 @@ describe("BuildOrchestratorLive", () => {
     };
     let cacheOpenCount = 0;
     const failingStateStore = Layer.succeed(StateStore, {
+      withLock: (_key, body) => body,
       open: () => {
         cacheOpenCount += 1;
         return cacheOpenCount === 1 ? Effect.fail(cacheFailure) : Effect.never;
@@ -447,6 +450,7 @@ describe("BuildOrchestratorLive", () => {
     };
     const testStore = makeTestStateStore();
     const failingStateStore = Layer.succeed(StateStore, {
+      withLock: testStore.service.withLock,
       open: (spec) =>
         testStore.service.open(spec).pipe(
           Effect.map((bucket) => ({

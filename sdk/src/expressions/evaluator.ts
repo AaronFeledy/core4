@@ -1354,6 +1354,13 @@ const renderSecretRef = (name: string, state: EvaluationState): string => {
   return asString("secret", value, state);
 };
 
+/**
+ * Helper names that are pure: deterministic, context-only, and free of host
+ * reads. The forbidden host-IO helpers and the unsupported decoders are
+ * deliberately absent, so a static caller can treat any other name as opaque.
+ */
+export const PURE_EXPRESSION_HELPER_NAMES: ReadonlySet<string> = new Set(Object.keys(HELPERS));
+
 export const EXPRESSION_HELPER_NAMES: ReadonlySet<string> = new Set([
   ...Object.keys(HELPERS),
   ...FORBIDDEN_HELPERS,

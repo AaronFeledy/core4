@@ -114,6 +114,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/cli/verbosity-and-debug");
     expect(slugs).toContain("guides/scratch/scratch-from-recipe");
     expect(slugs).toContain("guides/cli/ssh");
+    expect(slugs).toContain("guides/cli/share-target");
     expect(slugs).toContain("guides/setup/provider-selection");
     expect(slugs).toContain("guides/setup/provider-auto-setup");
     expect(slugs).toContain("guides/install/github-releases");
@@ -125,6 +126,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/programmatic-recipe");
     expect(slugs).not.toContain("guides/recipes/remote-sources");
     expect(slugs).toContain("guides/subsystems/proxy-traefik");
+    expect(slugs).toContain("guides/subsystems/service-dns");
     expect(slugs).toContain("guides/subsystems/doctor-walkthrough");
     expect(slugs).not.toContain("guides/recipes/canonical-public-transcript");
     expect(slugs).not.toContain("guides/install/verify-installer-scripts");

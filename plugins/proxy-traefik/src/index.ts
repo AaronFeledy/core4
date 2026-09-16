@@ -6,13 +6,14 @@
  * importing the manifest `module:` path (which cannot resolve in a
  * `bun build --compile` binary).
  */
-import { type Effect, Schema } from "effect";
+import { Schema } from "effect";
 
-import { definePlugin } from "@lando/sdk/plugins";
-import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
+import { type GlobalServiceContributionEffect, definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 
 import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
+import diagnosticsGlobalService from "./global-services/diagnostics.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 import { preferredHostPortsCheck } from "./preferred-host-ports.ts";
@@ -26,10 +27,25 @@ export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
+export {
+  TRAEFIK_DIAGNOSTICS_COMMAND,
+  TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
+  TRAEFIK_DIAGNOSTICS_IMAGE,
+} from "./global-services/diagnostics.ts";
+export {
+  TRAEFIK_DIAGNOSTICS_CONTAINER_DIR,
+  TRAEFIK_DIAGNOSTICS_HOSTNAME,
+  TRAEFIK_DIAGNOSTICS_ID,
+  TRAEFIK_DIAGNOSTICS_PORT,
+  renderTraefikDiagnosticHtml,
+  renderTraefikDiagnosticNginxConfig,
+  renderTraefikFallbackConfig,
+} from "./diagnostics.ts";
 export const routerServices = new Map([["traefik", proxy]]);
 
-export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
+export const globalServices: ReadonlyMap<string, GlobalServiceContributionEffect> = new Map([
   ["traefik", traefikGlobalService],
+  ["traefik-diagnostics", diagnosticsGlobalService],
 ]);
 
 export const manifest = Schema.decodeSync(PluginManifest)({
@@ -54,6 +70,13 @@ export const manifest = Schema.decodeSync(PluginManifest)({
         enabledByDefault: true,
         requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
         summary: "Global Traefik router",
+      },
+      {
+        id: "traefik-diagnostics",
+        module: "./src/global-services/diagnostics.ts",
+        enabledByDefault: true,
+        requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
+        summary: "Unmatched route diagnostics",
       },
     ],
   },

@@ -1,13 +1,14 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { PHP_VERSIONS } from "../php-stack.ts";
 import { encodedStringNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { backdropSettings } from "./settings.ts";
 
 export const BACKDROP_RECIPE_VERSION = "0.1.0";
 export const BACKDROP_CONTENT_DIGEST =
-  "sha256:a12bfc4006d9b2a3952d5d00d7f34ef6945f4ff290d1e46f57fb63b522c70b2c";
+  "sha256:6a13349aa7e9426de32ff3dafea83d8137f9b8f31803d160af74607b3d7767f3";
 
 export const backdropProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -52,8 +53,8 @@ const PHP_TOOL_DESCRIPTION = "Run the PHP CLI inside the appserver service.";
 export const backdropSnapshot: RecipeSnapshot = {
   identity: backdropProducer,
   optionTypes: {
-    php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
-    database: { kind: "enum", values: ["mariadb:11.4", "mariadb:10.11", "mysql:8.0"] },
+    php: { kind: "enum", values: [...PHP_VERSIONS] },
+    database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0"] },
     composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
   },
