@@ -16,12 +16,14 @@ import {
 import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
+} from "@lando/engine/plugins/certificate-authority-resolver";
+import {
   type RouterServiceRegistration,
   RouterServiceRegistry,
   SelectedRouterServiceLive,
   makeRouterServiceRegistry,
   makeRouterServiceRegistryLive,
-} from "../../../src/testing/engine-layers.ts";
+} from "@lando/engine/subsystems/proxy/registry";
 import { provideTestRuntime } from "../../../src/testing/test-runtime.ts";
 
 const service = (id: string): RouterServiceShape => ({

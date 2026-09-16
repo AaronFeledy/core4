@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { Cause, Effect, Exit, Stream } from "effect";
 
-import { resolveLiveProviderSocket } from "@lando/core/testing";
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError, ServiceCopyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ServiceName } from "@lando/sdk/schema";
@@ -13,13 +18,11 @@ import {
   runProviderContractMatrix,
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import { IntelMacUnsupportedError } from "../src/host-support.ts";
 
 const textEncoder = new TextEncoder();
 
-const attachFrame = (stream: 1 | 2, text: string) => {
-  const payload = textEncoder.encode(text);
+const attachBytesFrame = (stream: 1 | 2, payload: Uint8Array) => {
   const frame = new Uint8Array(8 + payload.length);
   frame[0] = stream;
   frame[4] = (payload.length >>> 24) & 0xff;
@@ -29,6 +32,7 @@ const attachFrame = (stream: 1 | 2, text: string) => {
   frame.set(payload, 8);
   return frame;
 };
+const attachFrame = (stream: 1 | 2, text: string) => attachBytesFrame(stream, textEncoder.encode(text));
 
 const tarBlockSize = 512;
 
@@ -123,13 +127,13 @@ const makeFakeApi = () => {
   const existing = new Set<string>();
   const execs = new Map<string, number>();
   const containerBinds = new Map<string, ReadonlyArray<string>>();
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.sync((): PodmanHttpResponse => {
+      Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
         if (request.path === "/networks/create") {
@@ -245,9 +249,10 @@ const collectAsyncBytes = async (input: AsyncIterable<Uint8Array> | undefined): 
 };
 
 const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) => {
-  const calls: PodmanHttpRequest[] = [];
+  const calls: EngineHttpRequest[] = [];
   const containers = new Map<string, { readonly body: unknown; stdout: Uint8Array; exitCode: number }>();
   const volumes = new Map<string, Uint8Array>();
+  const volumeLabels = new Map<string, Readonly<Record<string, string>>>();
   const snapshots = new Map<string, Uint8Array>();
   const serviceFiles = new Map<string, Uint8Array>();
   const artifacts = new Map<string, Uint8Array>();
@@ -258,7 +263,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     info: Effect.succeed({}),
     ping: Effect.succeed(undefined),
     request: (request) =>
-      Effect.promise(async (): Promise<PodmanHttpResponse> => {
+      Effect.promise(async (): Promise<EngineHttpResponse> => {
         calls.push(request);
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
@@ -284,8 +289,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           if (
             volume !== undefined &&
             body?.Image?.startsWith("localhost/lando-volume-snapshot:") === true &&
-            command ===
-              "sh -c find /lando-data -mindepth 1 -maxdepth 1 -exec rm -rf {} +; cp -a /snapshot/. /lando-data/"
+            command?.includes("cp -a --") === true
           )
             volumes.set(volume, snapshots.get(body.Image) ?? new Uint8Array());
           return { status: 204, body: "" };
@@ -311,13 +315,59 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
           snapshots.set(`${repo}:${tag}`, volumes.get(volume ?? "") ?? new Uint8Array());
           return { status: 201, body: JSON.stringify({ id: `${repo}:${tag}` }) };
         }
+        if (
+          request.path.startsWith("/images/") &&
+          request.path.endsWith("/json") &&
+          request.method === "GET"
+        ) {
+          const ref = decodeURIComponent(request.path.slice("/images/".length, -"/json".length));
+          const payload = snapshots.get(ref);
+          return payload === undefined
+            ? { status: 404, body: "{}" }
+            : { status: 200, body: JSON.stringify({ Id: ref, Size: payload.byteLength }) };
+        }
+        if (request.path === "/volumes/create" && request.method === "POST") {
+          const body = request.body as {
+            readonly Name?: string;
+            readonly Labels?: Readonly<Record<string, string>>;
+          };
+          const name = body.Name ?? "";
+          if (volumes.has(name)) return { status: 409, body: "{}" };
+          const labels = body.Labels ?? {};
+          volumes.set(name, new Uint8Array());
+          volumeLabels.set(name, labels);
+          return { status: 201, body: JSON.stringify({ Name: name, Labels: labels }) };
+        }
         if (request.path === "/volumes" && request.method === "GET")
           return {
             status: 200,
-            body: JSON.stringify({ Volumes: Array.from(volumes.keys()).map((Name) => ({ Name })) }),
+            body: JSON.stringify({
+              Volumes: Array.from(volumes.keys()).map((Name) => ({
+                Name,
+                Labels: volumeLabels.get(Name) ?? {},
+              })),
+            }),
           };
-        if (request.path.startsWith("/volumes/") && request.method === "DELETE")
+        if (request.path.startsWith("/volumes/") && request.method === "GET") {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          return volumes.has(name)
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Name: name,
+                  Driver: "local",
+                  Options: {},
+                  Labels: volumeLabels.get(name) ?? {},
+                }),
+              }
+            : { status: 404, body: "{}" };
+        }
+        if (request.path.startsWith("/volumes/") && request.method === "DELETE") {
+          const name = decodeURIComponent(request.path.slice("/volumes/".length));
+          volumes.delete(name);
+          volumeLabels.delete(name);
           return { status: 204, body: "" };
+        }
         if (
           request.path.startsWith("/containers/") &&
           request.path.includes("/archive?") &&
@@ -352,7 +402,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
         const name = decodeURIComponent(
           request.path.slice("/containers/".length, request.path.indexOf("/logs?")),
         );
-        return Stream.make(containers.get(name)?.stdout ?? new Uint8Array());
+        return Stream.make(attachBytesFrame(1, containers.get(name)?.stdout ?? new Uint8Array()));
       }
       if (request.path.startsWith("/containers/") && request.path.includes("/attach?")) {
         const name = decodeURIComponent(

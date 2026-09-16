@@ -1,4 +1,20 @@
 import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
+import { makeAttachDecoder } from "./streams.ts";
+import {
+  type MountedVolumeTarget,
+  type NativeVolumeIdentityResolution,
+  type VolumeAdoptionTarget,
+  adoptMountedVolume,
+  locateVolume,
+  observeMountedVolume,
+  resolveNativeVolumeIdentity,
+} from "./volume-observation.ts";
+import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
+export { volumeCreationOwnerLabels } from "./volume-observation.ts";
+import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
+export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
+export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";
 
 import { Effect, Fiber, type Scope, Stream } from "effect";
 
@@ -11,6 +27,7 @@ import {
   ProviderId,
   type ServiceName,
   type StorageScope,
+  type VolumeInfo,
 } from "@lando/sdk/schema";
 import type {
   ArtifactRef,
@@ -42,9 +59,15 @@ export interface DataPlaneApiClient {
 
 export interface ProviderDataPlaneOptions {
   readonly providerId: string;
+  readonly endpointNamespace?: string;
+  readonly prepareWitnessImage?: Effect.Effect<unknown, ProviderError>;
   readonly api: DataPlaneApiClient;
   readonly snapshotMode: "copy" | "native";
   readonly redactDetails: (value: unknown) => unknown;
+  readonly volumeCreationLabels?: (
+    plan: AppPlan,
+    store: AppPlan["stores"][number],
+  ) => Readonly<Record<string, string>>;
 }
 
 const textDecoder = new TextDecoder();
@@ -75,12 +98,12 @@ const octal = (value: number, width: number): string | undefined => {
   return text.padStart(width - 1, "0");
 };
 
-const archiveFile = (name: string, payload: Uint8Array): Uint8Array | undefined => {
+const archiveFileHeader = (name: string, payloadSize: number): Uint8Array | undefined => {
   if (name.length === 0 || new TextEncoder().encode(name).byteLength > 100) return undefined;
   const mode = octal(0o644, 8);
   const uid = octal(0, 8);
   const gid = octal(0, 8);
-  const size = octal(payload.byteLength, 12);
+  const size = octal(payloadSize, 12);
   const mtime = octal(0, 12);
   if (
     mode === undefined ||
@@ -106,22 +129,38 @@ const archiveFile = (name: string, payload: Uint8Array): Uint8Array | undefined 
   const checksumOctal = octal(checksum, 7);
   if (checksumOctal === undefined) return undefined;
   writeAscii(header, 148, `${checksumOctal}\0 `, 8);
-  const output = new Uint8Array(tarBlockSize + padToBlock(payload.byteLength) + tarBlockSize * 2);
-  output.set(header, 0);
-  output.set(payload, tarBlockSize);
+  return header;
+};
+
+const appendBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
+  if (left.byteLength === 0) return right;
+  const output = new Uint8Array(left.byteLength + right.byteLength);
+  output.set(left);
+  output.set(right, left.byteLength);
   return output;
 };
 
-const extractFirstTarFile = (archive: Uint8Array): Uint8Array | undefined => {
-  if (archive.byteLength < tarBlockSize) return undefined;
-  const header = archive.slice(0, tarBlockSize);
-  const sizeRaw = textDecoder.decode(header.slice(124, 136)).replace(/\0.*$/u, "").trim();
-  const size = Number.parseInt(sizeRaw || "0", 8);
-  if (!Number.isFinite(size) || size < 0) return undefined;
-  const start = tarBlockSize;
-  const end = start + size;
-  if (end > archive.byteLength) return undefined;
-  return archive.slice(start, end);
+const extractFirstTarFile = async function* (source: AsyncIterable<Uint8Array>): AsyncGenerator<Uint8Array> {
+  let buffered: Uint8Array<ArrayBufferLike> = new Uint8Array();
+  let remaining: number | undefined;
+  for await (const chunk of source) {
+    buffered = appendBytes(buffered, chunk);
+    if (remaining === undefined) {
+      if (buffered.byteLength < tarBlockSize) continue;
+      const sizeRaw = textDecoder.decode(buffered.subarray(124, 136)).replaceAll("\0", "").trim();
+      remaining = sizeRaw.length === 0 ? 0 : Number.parseInt(sizeRaw, 8);
+      if (!Number.isSafeInteger(remaining) || remaining < 0)
+        throw new RangeError("Invalid tar payload size.");
+      buffered = buffered.subarray(tarBlockSize);
+    }
+    if (remaining > 0 && buffered.byteLength > 0) {
+      const count = Math.min(remaining, buffered.byteLength);
+      yield buffered.subarray(0, count);
+      buffered = buffered.subarray(count);
+      remaining -= count;
+    }
+  }
+  if (remaining === undefined || remaining !== 0) throw new RangeError("Truncated tar payload.");
 };
 
 const decodeDockerRunLogs = (
@@ -171,11 +210,6 @@ const collectStreamBytes = <E, R>(stream: Stream.Stream<Uint8Array, E, R>) =>
     Stream.runCollect,
     Effect.map((chunks) => concatBytes(chunks)),
   );
-
-const oneChunk = (chunk: Uint8Array): AsyncIterable<Uint8Array> =>
-  (async function* () {
-    yield chunk;
-  })();
 
 const basename = (path: string): string => path.split(/[\\/]/u).filter(Boolean).at(-1) ?? "";
 const dirname = (path: string): string => {
@@ -233,6 +267,8 @@ const envList = (env: Readonly<Record<string, string>> | undefined): ReadonlyArr
   env === undefined ? undefined : Object.entries(env).map(([key, value]) => `${key}=${value}`);
 
 const copyModeHelperImage = "alpine:3.20";
+const preserveWitness = `! -name '${VOLUME_WITNESS_FILE}' ! -name '.lando-witness-stage-*'`;
+const excludeWitness = `--exclude='${VOLUME_WITNESS_FILE}' --exclude='./${VOLUME_WITNESS_FILE}' --exclude='.lando-witness-stage-*' --exclude='./.lando-witness-stage-*'`;
 const copyModeMountPath = "/lando-data";
 const copyModeMountTarget = PortablePath.make(copyModeMountPath);
 const copyModeSnapshotMountPath = "/lando-snapshots";
@@ -321,13 +357,17 @@ const requireServiceContainerName = (
 
 interface EngineVolume {
   readonly Name?: string;
+  readonly Driver?: string;
+  readonly Options?: Readonly<Record<string, string>> | null;
   readonly Labels?: Readonly<Record<string, string>>;
+  readonly CreatedAt?: string;
 }
 
 const landoVolumeLabels = {
   app: "dev.lando.app",
   store: "dev.lando.store",
   scope: "dev.lando.scope",
+  instance: "dev.lando.volume-instance",
 } as const;
 
 const storageScopeFromLabel = (value: string | undefined): StorageScope | undefined =>
@@ -342,11 +382,12 @@ const labelsMatch = (
 const volumeInfoFromEngineVolume = (
   volume: EngineVolume,
   filter: Parameters<RuntimeProviderShape["listVolumes"]>[0],
-) => {
+): VolumeInfo | undefined => {
   const labels = volume.Labels ?? {};
   const labelApp = labels[landoVolumeLabels.app];
   const labelStore = labels[landoVolumeLabels.store];
   const labelScope = storageScopeFromLabel(labels[landoVolumeLabels.scope]);
+  const instanceId = labels[landoVolumeLabels.instance];
   if (labelApp === undefined || labelStore === undefined) return undefined;
   const store = labelStore;
   if (filter.app !== undefined && labelApp !== String(filter.app)) return undefined;
@@ -363,6 +404,12 @@ const volumeInfoFromEngineVolume = (
           : { scope: filter.scope }
         : { scope: labelScope }),
     },
+    ...(instanceId === undefined
+      ? { provenance: "legacy" as const }
+      : {
+          instanceId,
+          provenance: "known" as const,
+        }),
     ...(volume.Labels === undefined ? {} : { labels: volume.Labels }),
   };
 };
@@ -370,7 +417,7 @@ const volumeInfoFromEngineVolume = (
 const legacyVolumeInfoFromEngineVolume = (
   volume: EngineVolume,
   filter: Parameters<RuntimeProviderShape["listVolumes"]>[0],
-) => {
+): VolumeInfo | undefined => {
   const labels = volume.Labels ?? {};
   if (labels[landoVolumeLabels.app] !== undefined || labels[landoVolumeLabels.store] !== undefined) {
     return undefined;
@@ -383,6 +430,7 @@ const legacyVolumeInfoFromEngineVolume = (
       store: filter.store,
       ...(filter.scope === undefined ? {} : { scope: filter.scope }),
     },
+    provenance: "legacy",
     ...(volume.Labels === undefined ? {} : { labels: volume.Labels }),
   };
 };
@@ -428,7 +476,72 @@ const ensure2xx = (
         ),
       );
 
-const createEphemeralContainer = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
+const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) => {
+  const mounts = dataStoreMounts(spec);
+  if (mounts.length === 0) return Effect.void;
+  const owner = spec.owner;
+  const plan = owner?.plan;
+  if (owner === undefined || plan === undefined || plan.identity === undefined || plan.id !== owner.app) {
+    return Effect.fail(
+      volumeError(
+        options,
+        "run.volume",
+        "Provider ephemeral data-store mounts require an app plan with canonical ownership identity.",
+        owner,
+        undefined,
+        mounts[0]?.store,
+      ),
+    );
+  }
+  const stores = [...new Set(mounts.map((mount) => mount.store))];
+  return Effect.forEach(stores, (name) => {
+    const store = plan.stores.find((candidate) => candidate.name === name);
+    if (store === undefined) {
+      return Effect.fail(
+        volumeError(
+          options,
+          "run.volume",
+          "Provider ephemeral data-store mount is not declared by the app plan.",
+          { app: plan.id, store: name },
+          undefined,
+          name,
+        ),
+      );
+    }
+    const labels = (options.volumeCreationLabels ?? makeVolumeCreationLabels)(plan, store);
+    return request(options, "run.volume", {
+      method: "POST",
+      path: "/volumes/create",
+      body: { Name: store.name, Labels: labels },
+    }).pipe(
+      Effect.flatMap((response) =>
+        response.status === 200 || response.status === 201 || response.status === 409
+          ? Effect.void
+          : Effect.fail(
+              volumeError(
+                options,
+                "run.volume",
+                `Provider volume create returned HTTP ${response.status}.`,
+                response,
+                undefined,
+                store.name,
+              ),
+            ),
+      ),
+    );
+  }).pipe(Effect.asVoid);
+};
+
+interface WitnessMountSource {
+  readonly containerId: string;
+  readonly readOnly: boolean;
+}
+
+const createEphemeralContainer = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+  witnessSource?: WitnessMountSource,
+) => {
   const name = ephemeralContainerName(options.providerId);
   const mount = firstDataStoreMount(spec);
   const binds = dataStoreMounts(spec).map(
@@ -442,7 +555,17 @@ const createEphemeralContainer = (options: ProviderDataPlaneOptions, spec: Ephem
       Image: spec.image,
       Cmd: spec.command,
       ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
-      HostConfig: { Binds: binds },
+      ...(witnessSource === undefined
+        ? { HostConfig: { Binds: binds } }
+        : {
+            User: "0:0",
+            Entrypoint: [],
+            HostConfig: {
+              VolumesFrom: [`${witnessSource.containerId}:${witnessSource.readOnly ? "ro" : "rw"}`],
+              NetworkMode: "none",
+              ReadonlyRootfs: true,
+            },
+          }),
       OpenStdin: attachStdin,
       AttachStdin: attachStdin,
       StdinOnce: attachStdin,
@@ -505,9 +628,26 @@ const waitForEphemeralContainer = (options: ProviderDataPlaneOptions, name: stri
     Effect.tap((response) => ensure2xx(options, "run.wait", response, firstDataStoreMount(spec)?.store)),
   );
 
-const runBytes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) =>
+const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: string, spec: EphemeralRunSpec) =>
+  request(options, "run.inspect", {
+    method: "GET",
+    path: `/containers/${encodeURIComponent(name)}/json`,
+  }).pipe(
+    Effect.tap((response) => ensure2xx(options, "run.inspect", response, firstDataStoreMount(spec)?.store)),
+    Effect.map((response) => {
+      const parsed =
+        response.body.length === 0 ? {} : (JSON.parse(response.body) as { State?: { ExitCode?: number } });
+      return parsed.State?.ExitCode ?? 0;
+    }),
+  );
+
+const runBytes = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+  witnessSource?: WitnessMountSource,
+) =>
   Effect.acquireUseRelease(
-    createEphemeralContainer(options, spec),
+    createEphemeralContainer(options, spec, witnessSource),
     (name) =>
       Effect.gen(function* () {
         const stdinFiber = yield* Effect.forkScoped(attachEphemeralStdin(options, name, spec));
@@ -527,15 +667,9 @@ const runBytes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) =>
             path: `/containers/${encodeURIComponent(name)}/logs?stdout=${captureStdout ? "true" : "false"}&stderr=true`,
           }),
         ).pipe(Effect.map((payload) => decodeDockerRunLogs(payload, captureStdout ? "stdout" : "stderr")));
-        const inspect = yield* request(options, "run.inspect", {
-          method: "GET",
-          path: `/containers/${encodeURIComponent(name)}/json`,
-        });
-        yield* ensure2xx(options, "run.inspect", inspect, firstDataStoreMount(spec)?.store);
-        const parsed =
-          inspect.body.length === 0 ? {} : (JSON.parse(inspect.body) as { State?: { ExitCode?: number } });
+        const exitCode = yield* inspectEphemeralExitCode(options, name, spec);
         return {
-          exitCode: parsed.State?.ExitCode ?? 0,
+          exitCode,
           stdout: logs.stdout,
           stderr: textDecoder.decode(logs.stderr),
           chunks: logs.chunks,
@@ -557,6 +691,83 @@ const runBytes = (options: ProviderDataPlaneOptions, spec: EphemeralRunSpec) =>
     (name) => removeEphemeralContainer(options, name, spec.remove !== false),
   );
 
+const runByteStream = (
+  options: ProviderDataPlaneOptions,
+  spec: EphemeralRunSpec,
+): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> => {
+  const decode = makeAttachDecoder();
+  return Stream.acquireRelease(createEphemeralContainer(options, { ...spec, captureStdout: true }), (name) =>
+    removeEphemeralContainer(options, name, spec.remove !== false),
+  ).pipe(
+    Stream.flatMap((name) =>
+      Stream.unwrap(
+        Effect.gen(function* () {
+          const stdinFiber = yield* Effect.forkScoped(attachEphemeralStdin(options, name, spec));
+          const started = yield* request(options, "run.start", {
+            method: "POST",
+            path: `/containers/${encodeURIComponent(name)}/start`,
+          });
+          yield* ensure2xx(options, "run.start", started, firstDataStoreMount(spec)?.store);
+          const output = stream(options, "run.logs", {
+            method: "GET",
+            path: `/containers/${encodeURIComponent(name)}/logs?follow=true&stdout=true&stderr=true`,
+          }).pipe(
+            Stream.mapConcat((chunk) =>
+              decode(chunk).map(
+                (frame): ExecChunk => ({ kind: frame.stream, chunk: new Uint8Array(frame.payload) }),
+              ),
+            ),
+          );
+          const completed = Stream.fromEffect(
+            Effect.gen(function* () {
+              if (spec.stdinStream !== undefined) yield* Fiber.join(stdinFiber);
+              yield* waitForEphemeralContainer(options, name, spec);
+              return { exitCode: yield* inspectEphemeralExitCode(options, name, spec) } satisfies ExecChunk;
+            }),
+          );
+          return Stream.concat(output, completed);
+        }).pipe(
+          Effect.mapError((cause) =>
+            volumeError(
+              options,
+              "runStream",
+              "Provider ephemeral stream failed.",
+              undefined,
+              cause,
+              firstDataStoreMount(spec)?.store,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+};
+
+const parseSnapshotMetrics = (
+  options: ProviderDataPlaneOptions,
+  output: string,
+  format: "tar" | "native",
+  store: string,
+): Effect.Effect<
+  { readonly digest: string; readonly sizeBytes: number; readonly format: "tar" | "native" },
+  ProviderError
+> => {
+  const match = output.trim().match(/^(\S+)\s+(\d+)$/u);
+  const sizeBytes = match === null ? Number.NaN : Number(match[2]);
+  return match !== null && match[1] !== undefined && Number.isSafeInteger(sizeBytes) && sizeBytes >= 0
+    ? Effect.succeed({ digest: match[1], sizeBytes, format })
+    : Effect.fail(
+        volumeError(
+          options,
+          "snapshotVolume",
+          "Provider snapshot integrity output was invalid.",
+          output,
+          undefined,
+          store,
+        ),
+      );
+};
+
 const commitNativeSnapshot = (
   options: ProviderDataPlaneOptions,
   containerName: string,
@@ -577,7 +788,11 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
   Effect.acquireUseRelease(
     createEphemeralContainer(options, {
       image: copyModeHelperImage,
-      command: ["sh", "-c", "rm -rf /snapshot && mkdir -p /snapshot && cp -a /lando-data/. /snapshot/"],
+      command: [
+        "sh",
+        "-c",
+        `mkdir -p /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /snapshot/' sh {} +`,
+      ],
       mounts: [{ store: volumeName(store), target: copyModeMountTarget, readOnly: true }],
       remove: true,
     }),
@@ -612,9 +827,104 @@ const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, store: stri
   );
 
 export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
+  const executeWitness = (spec: EphemeralRunSpec, witnessSource?: WitnessMountSource) =>
+    request(options, "witness.image", {
+      method: "GET",
+      path: `/images/${encodeURIComponent(VOLUME_WITNESS_IMAGE)}/json`,
+    }).pipe(
+      Effect.flatMap((image) =>
+        image.status === 404 && options.prepareWitnessImage !== undefined
+          ? options.prepareWitnessImage
+          : ensure2xx(options, "witness.image", image),
+      ),
+      Effect.zipRight(Effect.scoped(runBytes(options, spec, witnessSource))),
+      Effect.map((result) => ({
+        exitCode: result.exitCode,
+        stdout: textDecoder.decode(result.stdout),
+        stderr: result.stderr,
+      })),
+    );
+  const observation = {
+    ...options,
+    runWitness: (target: MountedVolumeTarget, command: readonly string[], readOnly: boolean) =>
+      executeWitness(
+        { image: VOLUME_WITNESS_IMAGE, command, captureStdout: true, remove: true },
+        { containerId: target.containerId, readOnly },
+      ),
+    runVolumeWitness: (nativeName: string, command: readonly string[]) =>
+      executeWitness({
+        image: VOLUME_WITNESS_IMAGE,
+        command,
+        captureStdout: true,
+        mounts: [
+          {
+            store: nativeName,
+            target: PortablePath.make(VOLUME_WITNESS_MOUNT),
+            readOnly: true,
+          },
+        ],
+        remove: true,
+      }),
+  };
+  const verifyExpectedIdentity = (input: {
+    readonly ref: Parameters<RuntimeProviderShape["locateVolume"]>[0];
+    readonly expectedGeneration: string;
+    readonly operation: "restoreVolume" | "removeVolume";
+  }) =>
+    request(options, input.operation, {
+      method: "GET",
+      path: `/volumes/${encodeURIComponent(volumeName(input.ref.store))}`,
+    }).pipe(
+      Effect.flatMap((response) =>
+        response.status === 200
+          ? Effect.try({
+              try: () => JSON.parse(response.body) as EngineVolume,
+              catch: (cause) =>
+                volumeError(options, input.operation, "Provider volume inspection failed.", undefined, cause),
+            })
+          : Effect.fail(
+              volumeError(options, input.operation, "Provider volume inspection failed.", response),
+            ),
+      ),
+      Effect.flatMap((current) =>
+        current.Name === volumeName(input.ref.store)
+          ? resolveNativeVolumeIdentity(
+              observation,
+              {
+                Name: current.Name,
+                ...(current.Driver === undefined ? {} : { Driver: current.Driver }),
+                ...(current.Options === undefined ? {} : { Options: current.Options }),
+                ...(current.Labels === undefined ? {} : { Labels: current.Labels }),
+              },
+              { _tag: "named" },
+            )
+          : Effect.succeed<NativeVolumeIdentityResolution>({}),
+      ),
+      Effect.flatMap((resolution) =>
+        (resolution.identity?.generation ?? resolution.creationGeneration) === input.expectedGeneration
+          ? Effect.void
+          : Effect.fail(
+              volumeError(
+                options,
+                input.operation,
+                "Provider volume generation changed before mutation.",
+                undefined,
+                undefined,
+                input.ref.store,
+              ),
+            ),
+      ),
+    );
   return {
+    locateVolume: (ref: Parameters<RuntimeProviderShape["locateVolume"]>[0]) =>
+      locateVolume(observation, ref),
+    observeVolume: (target: MountedVolumeTarget) => observeMountedVolume(observation, target),
+    adoptVolume: (target: VolumeAdoptionTarget) => adoptMountedVolume(observation, target),
     run: (spec: EphemeralRunSpec): Effect.Effect<ExecResult, ProviderError, Scope.Scope> =>
-      runBytes(options, { ...spec, captureStdout: spec.captureStdout ?? false }).pipe(
+      ensureEphemeralVolumes(options, spec).pipe(
+        Effect.zipRight(
+          Effect.suspend(() => runBytes(options, { ...spec, captureStdout: spec.captureStdout ?? false })),
+        ),
         Effect.map(({ exitCode, stdout, stderr }) => ({
           exitCode,
           stdout: textDecoder.decode(stdout),
@@ -623,9 +933,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       ),
     runStream: (spec: EphemeralRunSpec): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> =>
       Stream.unwrap(
-        runBytes(options, { ...spec, captureStdout: true }).pipe(
-          Effect.map(({ exitCode, chunks }) => Stream.make(...chunks, { exitCode })),
-        ),
+        ensureEphemeralVolumes(options, spec).pipe(Effect.map(() => runByteStream(options, spec))),
       ),
     snapshotVolume: ((spec) => {
       const store = spec.volume.store;
@@ -633,6 +941,47 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const id = spec.snapshotId ?? `${name}-snapshot-${randomUUID()}`;
       if (options.snapshotMode === "native") {
         return snapshotVolumeWithCommit(options, store, id).pipe(
+          Effect.flatMap((snapshot) =>
+            request(options, "snapshotVolume", {
+              method: "GET",
+              path: `/images/${encodeURIComponent(nativeSnapshotImage(id))}/json`,
+            }).pipe(
+              Effect.tap((response) => ensure2xx(options, "snapshotVolume", response, store)),
+              Effect.flatMap((response) =>
+                Effect.try({
+                  try: () => JSON.parse(response.body) as { readonly Id?: string; readonly Size?: number },
+                  catch: (cause) =>
+                    volumeError(
+                      options,
+                      "snapshotVolume",
+                      "Provider native snapshot inspection failed.",
+                      response,
+                      cause,
+                      store,
+                    ),
+                }),
+              ),
+              Effect.flatMap((image) =>
+                image.Id === undefined || image.Size === undefined
+                  ? Effect.fail(
+                      volumeError(
+                        options,
+                        "snapshotVolume",
+                        "Provider native snapshot identity was incomplete.",
+                        image,
+                        undefined,
+                        store,
+                      ),
+                    )
+                  : Effect.succeed({
+                      ...snapshot,
+                      digest: image.Id,
+                      sizeBytes: image.Size,
+                      format: "native" as const,
+                    }),
+              ),
+            ),
+          ),
           Effect.mapError((cause) =>
             volumeError(
               options,
@@ -652,17 +1001,18 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         command: [
           "sh",
           "-c",
-          `mkdir -p ${copyModeSnapshotMountPath} && tar -C ${copyModeMountPath} -cf ${copyModeSnapshotMountPath}/${snapshotFile} .`,
+          `set -eu; mkdir -p ${copyModeSnapshotMountPath}; file=${copyModeSnapshotMountPath}/${snapshotFile}; tar -C ${copyModeMountPath} -cf "$file" ${excludeWitness} .; digest="$(sha256sum "$file")"; set -- $digest; printf '%s %s\n' "$1" "$(wc -c < "$file")"`,
         ],
         mounts: [
           { store: name, target: copyModeMountTarget, readOnly: true },
           { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: false },
         ],
+        captureStdout: true,
         remove: true,
       }).pipe(
         Effect.flatMap((result) =>
           result.exitCode === 0
-            ? Effect.void
+            ? parseSnapshotMetrics(options, textDecoder.decode(result.stdout), "tar", store)
             : Effect.fail(
                 volumeError(
                   options,
@@ -674,7 +1024,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                 ),
               ),
         ),
-        Effect.as({ provider: ProviderId.make(options.providerId), id }),
+        Effect.map((metrics) => ({ provider: ProviderId.make(options.providerId), id, ...metrics })),
         Effect.mapError((cause) =>
           volumeError(options, "snapshotVolume", "Provider volume snapshot failed.", undefined, cause, store),
         ),
@@ -686,14 +1036,58 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       if (options.snapshotMode === "native") {
         const command =
           spec.overwrite !== false
-            ? "find /lando-data -mindepth 1 -maxdepth 1 -exec rm -rf {} +; cp -a /snapshot/. /lando-data/"
+            ? `test -d /snapshot && find /lando-data -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} + && find /snapshot -mindepth 1 -maxdepth 1 ${preserveWitness} -exec sh -c 'cp -a -- "$@" /lando-data/' sh {} +`
             : "test -d /snapshot";
-        return runBytes(options, {
-          image: nativeSnapshotImage(spec.snapshot.id),
-          command: ["sh", "-c", command],
-          mounts: [{ store: name, target: copyModeMountTarget, readOnly: false }],
-          remove: true,
+        const verifySource = request(options, "restoreVolume", {
+          method: "GET",
+          path: `/images/${encodeURIComponent(nativeSnapshotImage(spec.snapshot.id))}/json`,
         }).pipe(
+          Effect.tap((response) => ensure2xx(options, "restoreVolume", response, store)),
+          Effect.flatMap((response) =>
+            Effect.try({
+              try: () => JSON.parse(response.body) as { readonly Id?: string; readonly Size?: number },
+              catch: (cause) =>
+                volumeError(
+                  options,
+                  "restoreVolume",
+                  "Provider native snapshot inspection failed.",
+                  response,
+                  cause,
+                  store,
+                ),
+            }),
+          ),
+          Effect.flatMap((image) =>
+            image.Id === spec.snapshot.digest && image.Size === spec.snapshot.sizeBytes
+              ? Effect.void
+              : Effect.fail(
+                  volumeError(
+                    options,
+                    "restoreVolume",
+                    "Provider native snapshot identity changed before mutation.",
+                    image,
+                    undefined,
+                    store,
+                  ),
+                ),
+          ),
+        );
+        return verifySource.pipe(
+          Effect.zipRight(
+            verifyExpectedIdentity({
+              ref: spec.target,
+              expectedGeneration: spec.expectedTargetGeneration,
+              operation: "restoreVolume",
+            }),
+          ),
+          Effect.zipRight(
+            runBytes(options, {
+              image: nativeSnapshotImage(spec.snapshot.id),
+              command: ["sh", "-c", command],
+              mounts: [{ store: name, target: copyModeMountTarget, readOnly: false }],
+              remove: true,
+            }),
+          ),
           Effect.flatMap((result) =>
             result.exitCode === 0
               ? Effect.void
@@ -718,17 +1112,32 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       const snapshotPath = `${copyModeSnapshotMountPath}/${snapshotFile}`;
       const restoreCommand =
         spec.overwrite !== false
-          ? `test -f ${snapshotPath} && find ${copyModeMountPath} -mindepth 1 -maxdepth 1 -exec rm -rf {} + && tar -C ${copyModeMountPath} -xf ${snapshotPath}`
-          : `test -f ${snapshotPath}`;
-      return runBytes(options, {
-        image: copyModeHelperImage,
-        command: ["sh", "-c", restoreCommand],
-        mounts: [
-          { store: name, target: copyModeMountTarget, readOnly: false },
-          { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: true },
-        ],
-        remove: true,
+          ? `set -eu; test -f "$1"; actual="$(sha256sum "$1")"; actual="${"${actual%% *}"}"; test "$actual" = "$2"; test "$(wc -c < "$1")" = "$3"; find ${copyModeMountPath} -mindepth 1 -maxdepth 1 ${preserveWitness} -exec rm -rf {} +; tar -C ${copyModeMountPath} -xf "$1" ${excludeWitness}`
+          : `set -eu; test -f "$1"; actual="$(sha256sum "$1")"; actual="${"${actual%% *}"}"; test "$actual" = "$2"; test "$(wc -c < "$1")" = "$3"`;
+      return verifyExpectedIdentity({
+        ref: spec.target,
+        expectedGeneration: spec.expectedTargetGeneration,
+        operation: "restoreVolume",
       }).pipe(
+        Effect.zipRight(
+          runBytes(options, {
+            image: copyModeHelperImage,
+            command: [
+              "sh",
+              "-c",
+              restoreCommand,
+              "lando-restore",
+              snapshotPath,
+              spec.snapshot.digest,
+              String(spec.snapshot.sizeBytes),
+            ],
+            mounts: [
+              { store: name, target: copyModeMountTarget, readOnly: false },
+              { store: snapshotStore, target: copyModeSnapshotMountTarget, readOnly: true },
+            ],
+            remove: true,
+          }),
+        ),
         Effect.flatMap((result) =>
           result.exitCode === 0
             ? Effect.void
@@ -751,30 +1160,51 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     listVolumes: ((filter) =>
       request(options, "listVolumes", { method: "GET", path: "/volumes" }).pipe(
         Effect.tap((response) => ensure2xx(options, "listVolumes", response, filter.store)),
-        Effect.map((response) => {
+        Effect.flatMap((response) => {
           const parsed =
             response.body.length === 0
               ? { Volumes: [] }
-              : (JSON.parse(response.body) as {
-                  Volumes?: ReadonlyArray<EngineVolume>;
-                });
-          return (parsed.Volumes ?? [])
-            .map(
-              (volume) =>
-                volumeInfoFromEngineVolume(volume, filter) ??
-                legacyVolumeInfoFromEngineVolume(volume, filter),
-            )
-            .filter((volume): volume is NonNullable<typeof volume> => volume !== undefined);
+              : (JSON.parse(response.body) as
+                  | EngineVolume[]
+                  | { readonly Volumes?: ReadonlyArray<EngineVolume> });
+          const volumes = Array.isArray(parsed) ? parsed : (parsed.Volumes ?? []);
+          return Effect.forEach(volumes, (volume) => {
+            const info =
+              volumeInfoFromEngineVolume(volume, filter) ?? legacyVolumeInfoFromEngineVolume(volume, filter);
+            if (info === undefined || volume.Name === undefined) return Effect.succeed(info);
+            const exact = filter.app !== undefined && filter.store !== undefined;
+            return resolveNativeVolumeIdentity(
+              observation,
+              {
+                Name: volume.Name,
+                ...(volume.Driver === undefined ? {} : { Driver: volume.Driver }),
+                ...(volume.Options === undefined ? {} : { Options: volume.Options }),
+                ...(volume.Labels === undefined ? {} : { Labels: volume.Labels }),
+              },
+              exact ? { _tag: "named" } : undefined,
+            ).pipe(
+              Effect.map((resolution) =>
+                resolution.identity === undefined ? info : { ...info, identity: resolution.identity },
+              ),
+            );
+          }).pipe(
+            Effect.map((resolved) =>
+              resolved.filter((volume): volume is NonNullable<typeof volume> => volume !== undefined),
+            ),
+          );
         }),
         Effect.mapError((cause) =>
           volumeError(options, "listVolumes", "Provider volume list failed.", undefined, cause, filter.store),
         ),
       )) satisfies RuntimeProviderShape["listVolumes"],
-    removeVolume: ((ref) =>
-      request(options, "removeVolume", {
-        method: "DELETE",
-        path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
-      }).pipe(
+    removeVolume: ((ref, expectedGeneration) =>
+      verifyExpectedIdentity({ ref, expectedGeneration, operation: "removeVolume" }).pipe(
+        Effect.zipRight(
+          request(options, "removeVolume", {
+            method: "DELETE",
+            path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
+          }),
+        ),
         Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
         Effect.mapError((cause) =>
@@ -783,7 +1213,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       )) satisfies RuntimeProviderShape["removeVolume"],
     copyToService: ((target, spec) =>
       Effect.tryPromise({
-        try: async () => new Uint8Array(await Bun.file(spec.sourcePath).arrayBuffer()),
+        try: () => stat(spec.sourcePath),
         catch: (cause) =>
           copyError(
             options,
@@ -794,9 +1224,9 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
             target.service,
           ),
       }).pipe(
-        Effect.flatMap((payload) => {
-          const archive = archiveFile(basename(spec.targetPath), payload);
-          return archive === undefined
+        Effect.flatMap((sourceStat) => {
+          const header = archiveFileHeader(basename(spec.targetPath), sourceStat.size);
+          return header === undefined
             ? Effect.fail(
                 copyError(
                   options,
@@ -807,31 +1237,63 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
                   target.service,
                 ),
               )
-            : Effect.succeed(archive);
+            : Effect.succeed({ header, sourceSize: sourceStat.size });
         }),
-        Effect.flatMap((payload) =>
-          requireServiceContainerName(options, "copyToService", target).pipe(
-            Effect.flatMap((containerName) =>
-              request(options, "copyToService", {
-                method: "PUT",
-                path: `/containers/${encodeURIComponent(containerName)}/archive?path=${encodeURIComponent(dirname(spec.targetPath))}&overwrite=${String(spec.overwrite ?? false)}`,
-                headers: { "Content-Type": "application/x-tar" },
-                stdin: oneChunk(payload),
-              }).pipe(
-                Effect.mapError((cause) =>
-                  copyError(
-                    options,
-                    "copyToService",
-                    "Provider service copy-in failed.",
-                    undefined,
-                    cause,
-                    target.service,
+        Effect.flatMap(({ header, sourceSize }) => {
+          const source = Stream.fromAsyncIterable(
+            (async function* () {
+              let emitted = 0;
+              for await (const chunk of Bun.file(spec.sourcePath).slice(0, sourceSize).stream()) {
+                emitted += chunk.byteLength;
+                yield chunk;
+              }
+              if (emitted !== sourceSize) throw new RangeError("Copy source changed size during upload.");
+            })(),
+            (cause) =>
+              copyError(
+                options,
+                "copyToService",
+                "Failed to read copy source.",
+                { sourcePath: spec.sourcePath },
+                cause,
+                target.service,
+              ),
+          );
+          const archive = Stream.concat(
+            Stream.make(header),
+            Stream.concat(
+              source,
+              Stream.make(new Uint8Array(padToBlock(sourceSize) - sourceSize + tarBlockSize * 2)),
+            ),
+          );
+          return Effect.scoped(
+            Stream.toAsyncIterableEffect(archive).pipe(
+              Effect.flatMap((stdin) =>
+                requireServiceContainerName(options, "copyToService", target).pipe(
+                  Effect.flatMap((containerName) =>
+                    request(options, "copyToService", {
+                      method: "PUT",
+                      path: `/containers/${encodeURIComponent(containerName)}/archive?path=${encodeURIComponent(dirname(spec.targetPath))}&overwrite=${String(spec.overwrite ?? false)}`,
+                      headers: { "Content-Type": "application/x-tar" },
+                      stdin,
+                    }).pipe(
+                      Effect.mapError((cause) =>
+                        copyError(
+                          options,
+                          "copyToService",
+                          "Provider service copy-in failed.",
+                          undefined,
+                          cause,
+                          target.service,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        }),
         Effect.tap((response) =>
           response.status >= 200 && response.status < 300
             ? Effect.void
@@ -849,31 +1311,27 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         Effect.asVoid,
       )) satisfies RuntimeProviderShape["copyToService"],
     copyFromService: ((target, spec) =>
-      Stream.unwrap(
+      Stream.unwrapScoped(
         requireServiceContainerName(options, "copyFromService", target).pipe(
           Effect.flatMap((containerName) =>
-            collectStreamBytes(
+            Stream.toAsyncIterableEffect(
               stream(options, "copyFromService", {
                 method: "GET",
                 path: `/containers/${encodeURIComponent(containerName)}/archive?path=${encodeURIComponent(spec.sourcePath)}`,
               }),
             ).pipe(
-              Effect.flatMap((archive) => {
-                const payload = extractFirstTarFile(archive);
-                return payload === undefined
-                  ? Effect.fail(
-                      copyError(
-                        options,
-                        "copyFromService",
-                        "Failed to extract provider service copy archive.",
-                        { sourcePath: spec.sourcePath },
-                        undefined,
-                        target.service,
-                      ),
-                    )
-                  : Effect.succeed(payload);
-              }),
-              Effect.map((payload) => Stream.make(payload)),
+              Effect.map((archive) =>
+                Stream.fromAsyncIterable(extractFirstTarFile(archive), (cause) =>
+                  copyError(
+                    options,
+                    "copyFromService",
+                    "Failed to extract provider service copy archive.",
+                    { sourcePath: spec.sourcePath },
+                    cause,
+                    target.service,
+                  ),
+                ),
+              ),
               Effect.mapError((cause) =>
                 copyError(
                   options,
@@ -905,28 +1363,28 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
       )) satisfies RuntimeProviderShape["exportArtifact"],
     importArtifact: ((data) =>
-      collectStreamBytes(data).pipe(
-        Effect.mapError((cause) =>
-          artifactError(
-            options,
-            "importArtifact",
-            "Failed to read artifact import stream.",
-            undefined,
-            cause,
-          ),
-        ),
-        Effect.flatMap((payload) =>
-          request(options, "importArtifact", {
-            method: "POST",
-            path: "/images/load",
-            headers: { "Content-Type": "application/x-tar" },
-            stdin: oneChunk(payload),
-          }).pipe(
-            Effect.mapError((cause) =>
-              artifactError(options, "importArtifact", "Provider artifact import failed.", undefined, cause),
+      Effect.scoped(
+        Stream.toAsyncIterableEffect(data).pipe(
+          Effect.flatMap((stdin) =>
+            request(options, "importArtifact", {
+              method: "POST",
+              path: "/images/load",
+              headers: { "Content-Type": "application/x-tar" },
+              stdin,
+            }).pipe(
+              Effect.mapError((cause) =>
+                artifactError(
+                  options,
+                  "importArtifact",
+                  "Provider artifact import failed.",
+                  undefined,
+                  cause,
+                ),
+              ),
             ),
           ),
         ),
+      ).pipe(
         Effect.tap((response) =>
           response.status >= 200 && response.status < 300
             ? Effect.void
@@ -958,3 +1416,5 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       )) satisfies RuntimeProviderShape["importArtifact"],
   };
 };
+
+export type ProviderDataPlane = ReturnType<typeof makeProviderDataPlane>;

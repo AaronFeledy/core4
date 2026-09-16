@@ -6,13 +6,16 @@ import type {
   CommandAliasConflictError,
   ConfigExpressionError,
   GlobalAppError,
+  HomePathCapabilityError,
   LandofileParseError,
+  LandofileUnknownEventError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -77,13 +80,16 @@ export const GlobalStatusResultSchema = Schema.Struct({
 
 type GlobalStatusError =
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
+  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError

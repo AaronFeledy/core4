@@ -349,6 +349,8 @@ The plan is what crosses the core↔provider boundary. Providers MAY translate t
 
 Every `RoutePlan` in the plan carries a planner-resolved `backend` with the target `service`, HTTP protocol, and service port. Route providers consume that backend without inspecting service endpoints or applying fallback-port heuristics.
 
+Host reachability through `hostAliases` and the host alias/IP inside containers MUST be realized only from a declared provider capability plus known gateway data. A provider lacking that capability MUST produce no host-reachability alias and MUST NOT cause a plan-time error for its absence. Unknown gateway data MUST NOT be guessed. This mechanism MUST NOT install legacy helper mounts (§6.9).
+
 ### 5.5.1 Supported Compose input at the boundary
 
 The Landofile supports a documented Compose subset (§7.4). Core accepts supported Compose top-level keys and Compose service keys at the input boundary, but it does not pass a raw Compose document across the provider boundary as the source of truth.

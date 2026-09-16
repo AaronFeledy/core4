@@ -279,19 +279,27 @@ export const runScannerContract = (scanner: UrlScannerShape): Effect.Effect<void
 
 export const makeTestUrlScanner = (): UrlScannerShape & {
   readonly calls: ReadonlyArray<
-    | { readonly op: "scan"; readonly appId: AppId }
+    | {
+        readonly op: "scan";
+        readonly appId: AppId;
+        readonly options?: Parameters<UrlScannerShape["scan"]>[1];
+      }
     | { readonly op: "detectCollisions"; readonly appIds: ReadonlyArray<AppId> }
   >;
 } => {
   const calls: Array<
-    | { readonly op: "scan"; readonly appId: AppId }
+    | {
+        readonly op: "scan";
+        readonly appId: AppId;
+        readonly options?: Parameters<UrlScannerShape["scan"]>[1];
+      }
     | { readonly op: "detectCollisions"; readonly appIds: ReadonlyArray<AppId> }
   > = [];
   return {
     id: "test",
-    scan: (appId) =>
+    scan: (appId, options) =>
       Effect.sync((): ScanResult => {
-        calls.push({ op: "scan", appId });
+        calls.push({ op: "scan", appId, ...(options === undefined ? {} : { options }) });
         return { appId, endpoints: [] };
       }),
     detectCollisions: (appIds) =>

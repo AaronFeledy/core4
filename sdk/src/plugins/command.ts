@@ -61,6 +61,10 @@ export interface ExecutableCommandRenderContext<A = unknown, Input = ExecutableC
   readonly exitCode: number;
 }
 
+type ExecutableCommandRender<A, E, R, Input> = {
+  bivarianceHack(context: ExecutableCommandRenderContext<A, Input>): Effect.Effect<void, E, R>;
+}["bivarianceHack"];
+
 /** Framework-neutral executable command contract implemented by plugin command modules. */
 export interface ExecutableCommandSpec<
   A = unknown,
@@ -82,7 +86,7 @@ export interface ExecutableCommandSpec<
    * Optional post-run render hook. Receives the validated input, result, and
    * captured streams; returns an Effect that performs framework-neutral output.
    */
-  readonly render?: (context: ExecutableCommandRenderContext<A, Input>) => Effect.Effect<void, E, R>;
+  readonly render?: ExecutableCommandRender<A, E, R, Input>;
   /**
    * Exact secret values to seed RedactionService when encoding the command
    * envelope. Tokens must not be required fields on resultSchema.

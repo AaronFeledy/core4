@@ -1,3 +1,5 @@
+import { wordpressSnapshotYaml } from "./snapshot.ts";
+
 export const WORDPRESS_RECIPE_ID = "wordpress";
 
 export const wordpressRecipeSource = `${WORDPRESS_RECIPE_ID}/recipe.yml`;
@@ -39,4 +41,4 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring WordPress up.
-`;
+\n${wordpressSnapshotYaml}`;

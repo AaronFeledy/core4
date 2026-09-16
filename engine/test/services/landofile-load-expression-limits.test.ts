@@ -9,7 +9,7 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService } from "@lando/sdk/services";
 
 import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
-import { LandofileServiceLive } from "../../src/services/landofile-live";
+import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
 import { IMPORTED_PEM, PEM, withApp } from "./landofile-load-expression-support.ts";
 
 test("enforces the configured recursion limit", async () => {

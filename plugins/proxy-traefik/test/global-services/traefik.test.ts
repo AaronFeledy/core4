@@ -94,9 +94,9 @@ describe("traefik global service ServiceConfig", () => {
     expect(text).toContain("exec traefik");
   });
 
-  test("maps host.lando.internal to the host gateway so cross-engine backends can be reached", async () => {
+  test("does not author extra_hosts; host reachability is planner-owned", async () => {
     const config = await decodeConfig();
-    expect(config.extra_hosts).toEqual({ "host.lando.internal": "host-gateway" });
+    expect(config.extra_hosts).toBeUndefined();
   });
 
   test("adds NET_BIND_SERVICE so privileged loopback ports can be acquired", async () => {

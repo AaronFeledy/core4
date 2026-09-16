@@ -16,7 +16,7 @@ services:
     type: apache
 ```
 
-Your repository is mounted at `/app`, which is also set as `APACHE_DOCUMENT_ROOT`. Start it. Lando wires the service into the proxy:
+Your repository is mounted at `/app`, which is also the default `webroot` and `APACHE_DOCUMENT_ROOT`. Start it. Lando wires the service into the proxy:
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -35,16 +35,33 @@ Your repository is mounted at `/app`, which is also set as `APACHE_DOCUMENT_ROOT
 
 The proxy derives an HTTPS hostname from the service's HTTP endpoint without a `proxy:` block. You'll get something like `web.<app>.lndo.site`.
 
-Override the served directory by setting `APACHE_DOCUMENT_ROOT` under
-`services.web.environment`:
+Set `webroot:` when Apache should serve a subdirectory. Lando writes that path into Apache's generated config and exposes it as `LANDO_WEBROOT` and `APACHE_DOCUMENT_ROOT`:
 
 ```yaml
 services:
   web:
     type: apache
-    environment:
-      APACHE_DOCUMENT_ROOT: /app/public
+    webroot: /app/public
 ```
+
+  <Scenario id="authored-webroot" render>
+    <Step name="scaffold">
+      <UseFixture name="apache-webroot" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/public\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: apache-webroot" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+An explicit `environment.APACHE_DOCUMENT_ROOT` still wins for custom setups. If you replace `command:` or `entrypoint:`, your launcher owns the Apache config too.
 
 ## Pin a version
 

@@ -6,6 +6,7 @@ import {
   phpPromptYaml,
   webrootPromptYaml,
 } from "../php-stack";
+import { symfonySnapshotYaml } from "./snapshot.ts";
 
 export const SYMFONY_RECIPE_ID = "symfony";
 
@@ -38,4 +39,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Symfony up.
+
+${symfonySnapshotYaml}
 `;

@@ -9,6 +9,7 @@ import type {
   CommandAliasTargetError,
   ComposeKeyRejectedError,
   ConfigExpressionError,
+  HomePathCapabilityError,
   LandoCommandError,
   LandofileFormConflictError,
   LandofileIncludeError,
@@ -21,14 +22,17 @@ import type {
   LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginManifestError,
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  RouteInputError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
+import { ToolingCompileError } from "@lando/sdk/errors";
 import {
   AppPlanner,
   LandofileService,
@@ -69,6 +73,7 @@ export const AppCacheRefreshResultSchema = Schema.Struct({
 });
 
 type AppCacheRefreshError =
+  | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
   | LandofileNotFoundError
@@ -78,8 +83,10 @@ type AppCacheRefreshError =
   | LandofileTimeoutError
   | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingCompileError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
@@ -88,6 +95,7 @@ type AppCacheRefreshError =
   | CapabilityError
   | PublicationUnsupportedError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | CommandAliasTargetError
   | CacheError
@@ -126,7 +134,13 @@ export const refreshAppCache = (
 
     const cwd = options.cwd ?? process.cwd();
     const scripts = yield* discoverScripts(cwd);
-    const entries = compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan));
+    const entries = yield* Effect.try({
+      try: () => compileAppCommands(landofile, scripts, effectiveToolingForPlan(plan)),
+      catch: (cause) => {
+        if (cause instanceof ToolingCompileError) return cause;
+        throw cause;
+      },
+    });
     const aliasError = commandAliasRegistrationError(
       landofile.commandAliases,
       entries.map((entry) => entry.id),

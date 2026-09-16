@@ -17,6 +17,7 @@ const AppBuildStepIntent = Schema.Struct({
   phase: Schema.String,
   command: ProviderCommandSpec,
   dependsOn: Schema.optional(Schema.Array(Schema.String)),
+  user: Schema.optional(Schema.String),
 });
 type AppBuildStepIntent = typeof AppBuildStepIntent.Type;
 
@@ -70,7 +71,13 @@ const stepFor = (
       kind: "execStream",
       command: intent.command.command,
       dependsOn: [...new Set(dependencies)],
-      buildKey: appBuildKeyForStep({ command: intent.command, service, stepId: id }),
+      ...(intent.user === undefined ? {} : { user: intent.user }),
+      buildKey: appBuildKeyForStep({
+        command: intent.command,
+        service,
+        stepId: id,
+        ...(intent.user === undefined ? {} : { user: intent.user }),
+      }),
     },
   };
 };

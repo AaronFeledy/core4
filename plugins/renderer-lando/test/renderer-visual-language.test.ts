@@ -16,12 +16,9 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import {
-  EventServiceLive,
-  createBufferedRendererIO,
-  makeJsonRendererLive,
-  renderPlain,
-} from "@lando/core/testing";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
+import { makeJsonRendererLive, renderPlain } from "@lando/renderer/runtime";
 
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";

@@ -94,6 +94,7 @@ export const sidebar = [
           { label: "Reap orphaned scratch apps", slug: "guides/scratch/scratch-gc" },
           { label: "Open a shell in a service", slug: "guides/cli/ssh" },
           { label: "Run commands inside a service", slug: "guides/cli/exec" },
+          { label: "Share a service or extra port", slug: "guides/cli/share-target" },
           { label: "Init from a remote source", slug: "guides/cli/init-from-remote" },
           { label: "Interactive prompts", slug: "guides/cli/interactive-prompts" },
           { label: "Power off every app", slug: "guides/cli/poweroff" },
@@ -105,6 +106,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "Use the Traefik proxy", slug: "guides/subsystems/proxy-traefik" },
+          { label: "Reach services by name", slug: "guides/subsystems/service-dns" },
           { label: "Run lando doctor", slug: "guides/subsystems/doctor-walkthrough" },
           { label: "Reach an app from another device", slug: "guides/subsystems/external-access" },
           { label: "Trust local HTTPS certificates", slug: "guides/subsystems/certificates-mkcert" },

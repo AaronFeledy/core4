@@ -29,6 +29,7 @@ import {
   LandofileImportRefMisuseError,
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
+  RouteInputError,
   SubscriberLevelMismatchError,
 } from "../errors/index.ts";
 import { KeymapConflictError } from "../errors/keymap.ts";
@@ -78,6 +79,7 @@ import {
   PostPullEvent,
   PostPushEvent,
   PostRebuildEvent,
+  PostRestartEvent,
   PostServiceStartEvent,
   PostServiceStopEvent,
   PostStartEvent,
@@ -108,6 +110,7 @@ import {
   PrePullEvent,
   PrePushEvent,
   PreRebuildEvent,
+  PreRestartEvent,
   PreServiceStartEvent,
   PreServiceStopEvent,
   PreStartEvent,
@@ -142,8 +145,12 @@ import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
+import * as ConfigTranslateSchemas from "./config-translate.ts";
+import { GlobalConfigView } from "./config-view.ts";
 import {
   AgentEnvConfig,
+  AppEnvironmentDefaults,
+  AppLabelDefaults,
   GlobalConfig,
   McpConfig,
   NetworkCaConfig,
@@ -165,6 +172,7 @@ import {
   SnapshotInfo,
   VolumeFilter,
   VolumeInfo,
+  VolumeLocator,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotRef,
@@ -190,6 +198,7 @@ import {
   FileSyncSessionInfo,
   FileSyncSessionSpec,
 } from "./file-sync-engine.ts";
+import { HostTerminal } from "./host-terminal.ts";
 import {
   HttpClientCapabilities,
   HttpRequest,
@@ -205,6 +214,13 @@ import {
   RendererKeyChord,
   RendererKeyName,
 } from "./keymap.ts";
+import { AuthoringExpression, AuthoringExpressionExpectedType } from "./landofile-authoring-expression.ts";
+import {
+  LandofileAuthoringFragment,
+  LandofileAuthoringFragmentWire,
+  LandofileAuthoringShape,
+  LandofileAuthoringShapeWire,
+} from "./landofile-authoring.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   CommandAliasesShape,
@@ -212,13 +228,17 @@ import {
   HealthcheckInput,
   IncludeEntry,
   LandofileShape,
+  PhpComposerConfig,
   RouteInput,
+  RouteObjectInput,
   ServiceConfig,
   ServiceConfigInput,
+  ServiceFileConfig,
   ToolingArgShape,
   ToolingDefaultsShape,
   ToolingFlagShape,
   ToolingIncludeShape,
+  ToolingStepShape,
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
@@ -241,6 +261,8 @@ import {
   ProviderCapabilities,
   RoutePlan,
   RouteRef,
+  ScanPlan,
+  ScannerConfig,
   SharedNetworkMembershipPlan,
 } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
@@ -281,6 +303,24 @@ import {
   ProxyStatus,
   RouterConfig,
 } from "./proxy.ts";
+import { RecipeDecomposeInput, RecipeDecomposeResult } from "./recipe-decompose.ts";
+import {
+  RecipeContentDigest,
+  RecipeOptionValue,
+  RecipeProducer,
+  RecipeServiceMap,
+  RecipeSourceKind,
+} from "./recipe-identity.ts";
+import { LandofileRecipeField, LandofileRecipeProvenance } from "./recipe-provenance.ts";
+import {
+  RecipeHunkClassification,
+  RecipeHunkKind,
+  RecipeMigration,
+  RecipeMigrationHunk,
+  RecipeOptionType,
+  RecipeSnapshot,
+  RecipeSnapshotAsset,
+} from "./recipe-snapshot.ts";
 import {
   RecipeChoicesFrom,
   RecipeManifest,
@@ -318,6 +358,7 @@ import {
   StyledSpan,
   StyledSpanTone,
 } from "./renderer-panel.ts";
+import { RouteFilter, RouteFilterType } from "./route-filter.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo } from "./service-info.ts";
 import {
@@ -327,6 +368,7 @@ import {
   MailpitServiceConfig,
   MinIOServiceConfig,
   MssqlServiceConfig,
+  MysqlServiceConfig,
   PhpMyAdminServiceConfig,
   PhpServiceConfig,
   RabbitMQServiceConfig,
@@ -356,6 +398,8 @@ import {
   UpdateManifestSemver,
   UpdateManifestSha256,
 } from "./update-manifest.ts";
+import { VolumeIdentity } from "./volume-identity.ts";
+import { VolumeCreationFact, VolumeInitializationRecord } from "./volume-initialization.ts";
 
 const catalogServiceSchemaRegistry = {
   DotnetServiceConfig,
@@ -364,6 +408,7 @@ const catalogServiceSchemaRegistry = {
   MailpitServiceConfig,
   MinIOServiceConfig,
   MssqlServiceConfig,
+  MysqlServiceConfig,
   PhpMyAdminServiceConfig,
   PhpServiceConfig,
   RabbitMQServiceConfig,
@@ -399,7 +444,7 @@ export type PublicSchemaReferencePage = {
   readonly content: string;
 };
 
-const rawPublicSchemaRegistry = {
+const basePublicSchemaRegistry = {
   DeprecationNotice,
   DeprecationUse,
   LandofileExpressionParseError,
@@ -436,6 +481,7 @@ const rawPublicSchemaRegistry = {
   BootstrapLevel,
   HostArchitecture,
   HostPlatformFamily,
+  HostTerminal,
   AppRef,
   ArtifactRef,
   ArtifactBuildSpec,
@@ -459,12 +505,17 @@ const rawPublicSchemaRegistry = {
   RouteRef,
   RoutePlan,
   ProxyCapabilities,
+  RouteFilterType,
+  RouteFilter,
+  RouteInputError,
   ProxyConfig,
   RouterConfig,
   ProxyAuthority,
   ProxyApplyResult,
   ProxyStatus,
   HealthcheckPlan,
+  ScannerConfig,
+  ScanPlan,
   CertificatePlan,
   HostAliasPlan,
   ServiceDependencyCondition,
@@ -476,9 +527,10 @@ const rawPublicSchemaRegistry = {
   IsolateMode,
   ProviderCapabilities,
   CommandAliasesShape,
-  LandofileShape,
   ServiceConfig,
   ServiceConfigInput,
+  ServiceFileConfig,
+  PhpComposerConfig,
   LogSource,
   LogSourceId,
   LogSourceInput,
@@ -487,15 +539,19 @@ const rawPublicSchemaRegistry = {
   EndpointInput,
   RouteInput,
   HealthcheckInput,
+  RouteObjectInput,
   ToolingVar,
   ToolingFlagShape,
   ToolingArgShape,
   ToolingDefaultsShape,
+  ToolingStepShape,
   ToolingTaskShape,
   ToolingIncludeShape,
   IncludeEntry,
   McpConfig,
   AgentEnvConfig,
+  AppEnvironmentDefaults,
+  AppLabelDefaults,
   NotifyConfig,
   RendererCapabilities,
   TelemetryConfig,
@@ -503,6 +559,7 @@ const rawPublicSchemaRegistry = {
   NetworkCaConfig,
   NetworkConfig,
   GlobalConfig,
+  GlobalConfigView,
   ConfigLintViolation,
   ConfigLintResult,
   DownloadRequest,
@@ -512,6 +569,10 @@ const rawPublicSchemaRegistry = {
   DataEndpoint,
   VolumeRef,
   VolumeInfo,
+  VolumeLocator,
+  VolumeIdentity,
+  VolumeCreationFact,
+  VolumeInitializationRecord,
   VolumeFilter,
   VolumeSnapshotSpec,
   VolumeSnapshotRef,
@@ -724,7 +785,107 @@ const rawPublicSchemaRegistry = {
   PostHttpCallEvent,
 } as const;
 
+const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
+  typeof ConfigTranslateSchemas & {
+    readonly PreRestartEvent: typeof PreRestartEvent;
+    readonly PostRestartEvent: typeof PostRestartEvent;
+    readonly LandofileShape: typeof LandofileShape;
+    readonly AuthoringExpression: typeof AuthoringExpression;
+    readonly AuthoringExpressionExpectedType: typeof AuthoringExpressionExpectedType;
+    readonly LandofileAuthoringShape: typeof LandofileAuthoringShape;
+    readonly LandofileAuthoringFragment: typeof LandofileAuthoringFragment;
+    readonly LandofileAuthoringShapeWire: typeof LandofileAuthoringShapeWire;
+    readonly LandofileAuthoringFragmentWire: typeof LandofileAuthoringFragmentWire;
+    readonly RecipeSourceKind: typeof RecipeSourceKind;
+    readonly RecipeContentDigest: typeof RecipeContentDigest;
+    readonly RecipeProducer: typeof RecipeProducer;
+    readonly RecipeOptionValue: typeof RecipeOptionValue;
+    readonly RecipeServiceMap: typeof RecipeServiceMap;
+    readonly LandofileRecipeProvenance: typeof LandofileRecipeProvenance;
+    readonly LandofileRecipeField: typeof LandofileRecipeField;
+    readonly RecipeOptionType: typeof RecipeOptionType;
+    readonly RecipeSnapshotAsset: typeof RecipeSnapshotAsset;
+    readonly RecipeSnapshot: typeof RecipeSnapshot;
+    readonly RecipeHunkKind: typeof RecipeHunkKind;
+    readonly RecipeHunkClassification: typeof RecipeHunkClassification;
+    readonly RecipeMigrationHunk: typeof RecipeMigrationHunk;
+    readonly RecipeMigration: typeof RecipeMigration;
+    readonly RecipeDecomposeInput: typeof RecipeDecomposeInput;
+    readonly RecipeDecomposeResult: typeof RecipeDecomposeResult;
+  } = {
+  LandofileShape,
+  PreRestartEvent,
+  PostRestartEvent,
+  AuthoringExpression,
+  AuthoringExpressionExpectedType,
+  LandofileAuthoringShape,
+  LandofileAuthoringFragment,
+  LandofileAuthoringShapeWire,
+  LandofileAuthoringFragmentWire,
+  RecipeSourceKind,
+  RecipeContentDigest,
+  RecipeProducer,
+  RecipeOptionValue,
+  RecipeServiceMap,
+  LandofileRecipeProvenance,
+  LandofileRecipeField,
+  RecipeOptionType,
+  RecipeSnapshotAsset,
+  RecipeSnapshot,
+  RecipeHunkKind,
+  RecipeHunkClassification,
+  RecipeMigrationHunk,
+  RecipeMigration,
+  RecipeDecomposeInput,
+  RecipeDecomposeResult,
+  ...ConfigTranslateSchemas,
+  ...basePublicSchemaRegistry,
+};
+
 const PUBLIC_SCHEMA_DESCRIPTIONS = {
+  RecipeSourceKind: "Origin class of a recipe producer, keeping bundled and local families distinct.",
+  RecipeContentDigest: "SHA-256 over canonical recipe inputs, excluding the digest itself and history.",
+  RecipeProducer: "Versioned identity of the recipe that produced generated authoring data.",
+  RecipeOptionValue: "Nonsecret scalar or scalar-array recipe option value.",
+  RecipeServiceMap: "Injective map from generated service name to current service name.",
+  LandofileRecipeProvenance: "Inert object-form recipe provenance recorded in a generated Landofile.",
+  LandofileRecipeField: "Bare recipe id or full object-form recipe provenance.",
+  RecipeOptionType: "Serializable descriptor for one persistable recipe option.",
+  RecipeSnapshotAsset: "Metadata and digest for one recipe-authored auxiliary file.",
+  RecipeSnapshot: "Inert declarative data that renders one recipe version's authoring output.",
+  RecipeHunkKind: "Declarative migration operation kind.",
+  RecipeHunkClassification: "Resolution class assigned to one migration hunk.",
+  RecipeMigrationHunk: "One declarative edit inside a recipe migration edge.",
+  RecipeMigration: "One declarative migration edge between two recipe versions.",
+  RecipeDecomposeInput: "Merged recipe identity and nonsecret options handed to a decomposer.",
+  RecipeDecomposeResult: "Authoring fragment and provenance produced by one decomposition.",
+  AuthoringExpression: "Parsed expression at a typed Landofile authoring site, without value resolution.",
+  AuthoringExpressionExpectedType: "Value kind required by a Landofile authoring expression site.",
+  LandofileAuthoringShape: "Complete Landofile authoring tree with unresolved typed expressions.",
+  LandofileAuthoringFragment: "Recursively partial Landofile authoring tree with unresolved expressions.",
+  LandofileAuthoringShapeWire: "Complete Landofile authoring wire tree preserving expression source.",
+  LandofileAuthoringFragmentWire: "Partial Landofile authoring wire tree preserving expression source.",
+  ConfigTranslateAnswerValue: "Nonsecret scalar or scalar-array recipe answer.",
+  ConfigTranslateConfidence: "Translator detection confidence.",
+  ConfigTranslateDeletion: "Source-attributed deletion intent for core to apply.",
+  ConfigTranslateDetectInput: "Bounded source snapshots available for translator detection.",
+  ConfigTranslateDiagnostic: "Translation diagnostic attributed to a source and key path.",
+  ConfigTranslateDiagnosticKind: "Translation diagnostic classification.",
+  ConfigTranslateDocument: "Immutable source snapshot read by core before translation.",
+  ConfigTranslateDocumentBytes: "Bounded raw source bytes encoded as base64 on the wire.",
+  ConfigTranslateDocumentSetInput: "Ordered source document set with selection and writable layers.",
+  ConfigTranslateEncodeInput: "Complete authoring context and optional exact fragment to encode.",
+  ConfigTranslateEncodeResult: "Encoded target text with ordered diagnostics.",
+  ConfigTranslateInput: "Tagged document-set or recipe translation request.",
+  ConfigTranslateLayerFragment: "Existing lower-layer authoring wire fragment.",
+  ConfigTranslateMatch: "Translator detection match with source identities and confidence.",
+  ConfigTranslateMode: "Full document-set or selected-layer translation scope.",
+  ConfigTranslateOutput: "Validated authoring wire fragment attributed to one target layer.",
+  ConfigTranslateRecipeRequestInput: "Recipe identity and answers without filesystem discovery.",
+  ConfigTranslateResult: "Target-layer outputs, ordered diagnostics, and deletion intents.",
+  ConfigTranslateSecretReference: "Approved secret reference or init-only sink without raw secret data.",
+  ConfigTranslateSourceId: "Core-assigned identity for a document or synthetic recipe source.",
+  ConfigTranslateSpan: "Source span used to locate and order translation diagnostics.",
   DeprecationNotice: "Public Lando schema contract for Deprecation Notice.",
   DeprecationUse: "Public Lando schema contract for Deprecation Use.",
   LandofileExpressionParseError: "Public Lando schema contract for Landofile Expression Parse Error.",
@@ -761,6 +922,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   BootstrapLevel: "Public Lando schema contract for Bootstrap Level.",
   HostArchitecture: "Public Lando schema contract for Host Architecture.",
   HostPlatformFamily: "Host behavior family used for artifact and platform-specific selection.",
+  HostTerminal: "Facts observed from an output terminal that is actually attached to the host process.",
   AppRef: "Public Lando schema contract for App Ref.",
   ArtifactRef: "Public Lando schema contract for Artifact Ref.",
   ArtifactBuildSpec: "Public Lando schema contract for Artifact Build Spec.",
@@ -783,6 +945,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EndpointPlan: "Public Lando schema contract for Endpoint Plan.",
   RouteRef: "Public Lando schema contract for Route Ref.",
   RoutePlan: "Public Lando schema contract for Route Plan.",
+  RouteFilterType: "Supported provider-neutral route filter types.",
+  RouteFilter: "Provider-neutral route filter options discriminated by type.",
+  RouteInputError: "Invalid authored route with its key path and remediation.",
+  RouteObjectInput: "Expanded authored route with optional ordered filters.",
   ProxyCapabilities: "Proxy route features truthfully supported by an implementation.",
   ProxyConfig: "Proxy setup configuration supplied by core.",
   RouterConfig: "Shared host-router bind address and port policy.",
@@ -790,6 +956,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
   ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",
   HealthcheckPlan: "Public Lando schema contract for Healthcheck Plan.",
+  ScannerConfig: "Post-start URL scan settings, or false to skip scanning.",
+  ScanPlan: "Fully resolved post-start URL scan settings for a service.",
   CertificatePlan: "Public Lando schema contract for Certificate Plan.",
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
   ServiceDependencyCondition: "How a service dependency must be satisfied before dependents start.",
@@ -805,6 +973,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
+  ServiceFileConfig: "App-relative file-backed service configuration mounted read-only into the container.",
+  PhpComposerConfig: "Composer release selection plus the global Composer packages installed with it.",
   LogSource: "Public Lando schema contract for Log Source.",
   LogSourceId: "Public Lando schema contract for Log Source Id.",
   LogSourceInput: "Public Lando schema contract for Log Source Input.",
@@ -817,6 +987,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingFlagShape: "Public Lando schema contract for Tooling Flag Shape.",
   ToolingArgShape: "Public Lando schema contract for Tooling Arg Shape.",
   ToolingDefaultsShape: "App-wide defaults inherited by Landofile tooling tasks.",
+  ToolingStepShape: "Shell command step with tooling task execution overrides.",
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
   ToolingIncludeShape: "Public Lando schema contract for Tooling Include Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
@@ -827,6 +998,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   NetworkCaConfig: "Public Lando schema contract for Network Ca Config.",
   NetworkConfig: "Public Lando schema contract for Network Config.",
   GlobalConfig: "Public Lando schema contract for Global Config.",
+  GlobalConfigView: "Curated effective global settings for config view and get.",
   ConfigLintViolation: "Public Lando schema contract for Config Lint Violation.",
   ConfigLintResult: "Public Lando schema contract for Config Lint Result.",
   DownloadRequest: "Public Lando schema contract for Download Request.",
@@ -836,6 +1008,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   DataEndpoint: "Public Lando schema contract for Data Endpoint.",
   VolumeRef: "Public Lando schema contract for Volume Ref.",
   VolumeInfo: "Public Lando schema contract for Volume Info.",
+  VolumeIdentity: "Owner-bound observed physical volume generation.",
+  VolumeCreationFact: "Daemon-confirmed volume creation during one apply.",
+  VolumeInitializationRecord: "Generation-bound durable initialization claim and outcome.",
   VolumeFilter: "Public Lando schema contract for Volume Filter.",
   VolumeSnapshotSpec: "Public Lando schema contract for Volume Snapshot Spec.",
   VolumeSnapshotRef: "Public Lando schema contract for Volume Snapshot Ref.",
@@ -940,6 +1115,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PreInitEvent: "Public Lando schema contract for Pre Init Event.",
   PostInitEvent: "Public Lando schema contract for Post Init Event.",
   PreStartEvent: "Public Lando schema contract for Pre Start Event.",
+  PreRestartEvent: "Public Lando schema contract for Pre Restart Event.",
+  PostRestartEvent: "Public Lando schema contract for Post Restart Event.",
   PostStartEvent: "Public Lando schema contract for Post Start Event.",
   PreStopEvent: "Public Lando schema contract for Pre Stop Event.",
   PostStopEvent: "Public Lando schema contract for Post Stop Event.",
@@ -1033,6 +1210,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   SubscriberSelector: "Public Lando schema contract for Subscriber Selector.",
   SubscriberManifestEntry: "Public Lando schema contract for Subscriber Manifest Entry.",
   PublishedGlobalConfigKey: "Public Lando schema contract for Published Global Config Key.",
+  AppEnvironmentDefaults: "Bounded environment defaults applied only to user-app services.",
+  AppLabelDefaults: "Bounded container-label defaults applied only to user-app services.",
   NotifyConfig: "Public Lando schema contract for Notify Config.",
   RendererCapabilities: "Public Lando schema contract for Renderer Capabilities.",
   PromptSpec: "Public Lando schema contract for Prompt Spec.",
@@ -1046,6 +1225,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HttpResponse: "Public Lando schema contract for Http Response.",
   HttpStreamResponse: "Public Lando schema contract for Http Stream Response.",
   HttpUploadRequest: "Public Lando schema contract for Http Upload Request.",
+  VolumeLocator: "Stable provider locator for one native volume before or after creation.",
   PreHttpCallEvent: "Public Lando schema contract for Pre Http Call Event.",
   PostHttpCallEvent: "Public Lando schema contract for Post Http Call Event.",
 } as const satisfies Record<keyof typeof rawPublicSchemaRegistry, string>;
@@ -1056,6 +1236,7 @@ const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
   MailpitServiceConfig: "Landofile configuration accepted by the Mailpit catalog service.",
   MinIOServiceConfig: "Landofile configuration accepted by the MinIO catalog service.",
   MssqlServiceConfig: "Landofile configuration accepted by the SQL Server catalog service.",
+  MysqlServiceConfig: "Landofile configuration accepted by the MySQL catalog service.",
   PhpMyAdminServiceConfig: "Landofile configuration accepted by the phpMyAdmin catalog service.",
   PhpServiceConfig: "Landofile configuration accepted by the PHP catalog service.",
   RabbitMQServiceConfig: "Landofile configuration accepted by the RabbitMQ catalog service.",
@@ -1973,6 +2154,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PostServiceStopEvent.serviceName",
   "PostServiceStopEvent.timestamp",
   "PostStartEvent._tag",
+  "PostRestartEvent._tag",
   "PostStartEvent.app",
   "PostStartEvent.plan",
   "PostStartEvent.scope",
@@ -2112,6 +2294,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PreServiceStopEvent.serviceName",
   "PreServiceStopEvent.timestamp",
   "PreStartEvent._tag",
+  "PreRestartEvent._tag",
   "PreStartEvent.app",
   "PreStartEvent.plan",
   "PreStartEvent.scope",
@@ -2195,11 +2378,8 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "RecipeRegistryResolution.url",
   "RecipeRegistryResponse.id",
   "RecipeRegistryResponse.resolution",
-  "RouteInput.endpoint",
-  "RouteInput.hostname",
-  "RouteInput.pathPrefix",
-  "RouteInput.scheme",
   "RoutePlan.endpoint",
+  "RouteInputError._tag",
   "RoutePlan.hostname",
   "RoutePlan.pathPrefix",
   "RoutePlan.scheme",
@@ -2377,7 +2557,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ToolingFlagShape.default",
   "ToolingFlagShape.deprecated",
   "ToolingFlagShape.description",
-  "ToolingFlagShape.type",
   "ToolingTaskShape.args",
   "ToolingTaskShape.cmd",
   "ToolingTaskShape.cmds",
@@ -2451,7 +2630,20 @@ const hasSchemaUsefulDescription = (ast: AST.AST): boolean => {
 const fieldName = (name: PropertyKey): string => (typeof name === "symbol" ? name.toString() : String(name));
 
 const isSelfExplanatoryPublicField = (schemaName: string, name: string): boolean =>
-  PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS.has(`${schemaName}.${name}`) || name.startsWith("x-");
+  PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS.has(
+    `${schemaName.replace(/^LandofileAuthoring(?:Shape|Fragment)(?:Wire)?$/, "LandofileShape")}.${name}`,
+  ) || name.startsWith("x-");
+
+const hasUsefulFieldDescription = (property: AST.PropertySignature): boolean =>
+  hasOwnUsefulDescription(property.annotations) ||
+  hasOwnUsefulDescription(property.type.annotations) ||
+  hasOptionalMemberUsefulDescription(property.type);
+
+const inheritsLandofileFieldDescription = (schemaName: string, name: PropertyKey): boolean => {
+  if (!/^LandofileAuthoring(?:Shape|Fragment)(?:Wire)?$/.test(schemaName)) return false;
+  const property = AST.getPropertySignatures(LandofileShape.ast).find((entry) => entry.name === name);
+  return property !== undefined && hasUsefulFieldDescription(property);
+};
 
 const schemaFromAst = (ast: AST.AST): Schema.Schema.AnyNoContext =>
   Schema.make(ast) as Schema.Schema.AnyNoContext;
@@ -2509,9 +2701,15 @@ export const validatePublicSchemaAnnotations = (
       const fieldPath = `${schemaName}.${name}`;
       issues.push(...validateExamples(schemaName, fieldPath, schemaFromAst(property.type)));
       if (
-        !hasOwnUsefulDescription(property.annotations) &&
-        !hasOwnUsefulDescription(property.type.annotations) &&
-        !hasOptionalMemberUsefulDescription(property.type) &&
+        !hasUsefulFieldDescription(property) &&
+        !inheritsLandofileFieldDescription(schemaName, property.name) &&
+        !(
+          AST.isUnion(schema.ast) &&
+          schema.ast.types.every((member) => {
+            const field = AST.getPropertySignatures(member).find((entry) => entry.name === property.name);
+            return field !== undefined && hasUsefulFieldDescription(field);
+          })
+        ) &&
         !(exemptions.fields?.has(fieldPath) ?? false) &&
         !isSelfExplanatoryPublicField(schemaName, name)
       ) {
@@ -2609,8 +2807,10 @@ const expressionNodeDefinitions = () => {
   } satisfies Parameters<typeof JSONSchema.fromAST>[1]["definitions"];
 };
 
-const expressionJsonSchema = (schemaName: "ExpressionNode" | "ExpressionTemplate") => {
-  const schema = schemaName === "ExpressionNode" ? ExpressionNode : ExpressionTemplate;
+const expressionJsonSchema = (
+  schemaName: "ExpressionNode" | "ExpressionTemplate" | "AuthoringExpression",
+) => {
+  const schema = { ExpressionNode, ExpressionTemplate, AuthoringExpression }[schemaName];
   const definitions = expressionNodeDefinitions();
   return {
     $schema: "http://json-schema.org/draft-07/schema#",
@@ -2629,12 +2829,23 @@ const schemaForPublicName = (schemaName: JsonSchemaName) => {
 export const getJsonSchema = (schemaName: JsonSchemaName) => {
   if (schemaName === "DeprecationNotice") return getJsonSchemaWithDeprecations(DeprecationNoticeJsonShape);
   if (schemaName === "LandofileShape") return landofileJsonSchema();
-  if (schemaName === "ServiceConfig" || schemaName === "ServiceConfigInput") {
+  if (
+    schemaName === "ServiceConfig" ||
+    schemaName === "ServiceConfigInput" ||
+    schemaName === "LandofileAuthoringShape" ||
+    schemaName === "LandofileAuthoringFragment" ||
+    schemaName === "LandofileAuthoringShapeWire" ||
+    schemaName === "LandofileAuthoringFragmentWire"
+  ) {
     const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName]);
     repairTemplateLiteralExtensionRecords(schema);
     return schema;
   }
-  if (schemaName === "ExpressionNode" || schemaName === "ExpressionTemplate")
+  if (
+    schemaName === "ExpressionNode" ||
+    schemaName === "ExpressionTemplate" ||
+    schemaName === "AuthoringExpression"
+  )
     return expressionJsonSchema(schemaName);
   return getJsonSchemaWithDeprecations(schemaForPublicName(schemaName));
 };

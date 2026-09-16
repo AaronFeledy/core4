@@ -17,6 +17,7 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import {
@@ -25,7 +26,6 @@ import {
   renderJson,
   renderPlain,
 } from "@lando/renderer/runtime";
-import { EventServiceLive } from "../../src/testing/engine-layers";
 
 const fixturePath = resolve(import.meta.dirname, "fixtures/renderer.task-tree.concurrent.ndjson");
 const fixtureContent = readFileSync(fixturePath, "utf8");

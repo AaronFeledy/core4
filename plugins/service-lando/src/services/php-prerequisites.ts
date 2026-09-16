@@ -52,8 +52,7 @@ const aptPackageArguments = Object.entries(PHP_APT_PACKAGE_PINS).map(
 );
 
 // Exact direct-package pins and the resolved dpkg manifest bound cold builds within Debian's
-// retention window. The upstream php image and transitive apt closure remain mutable until the
-// follow-up switches runtime plans to digest-pinned Lando PHP base images.
+// retention window. The upstream php image and transitive apt closure remain mutable.
 export const PHP_PREREQUISITES_COMMAND = [
   "set -eux",
   "apt-get update",
@@ -75,7 +74,9 @@ const composerRemediation = `Set ${Object.keys(PHP_COMPOSER_MAJORS)
   .map((major) => `composer: "${major}"`)
   .join(", ")}, ${Object.keys(PHP_COMPOSER_RELEASES)
   .map((version) => `composer: "${version}"`)
-  .join(", ")}, or composer: false.`;
+  .join(
+    ", ",
+  )}, composer: false, or the object form composer: { version: "2", packages: { "vendor/tool": "^1.0" } }.`;
 
 export const composerCommandFor = (release: PhpComposerRelease): string =>
   [
@@ -87,25 +88,39 @@ export const composerCommandFor = (release: PhpComposerRelease): string =>
 
 export const PHP_COMPOSER_COMMAND = composerCommandFor(PHP_COMPOSER);
 
+export const PHP_COMPOSER_STEP_ID = "service-lando.php:composer" as const;
+
+/**
+ * The Composer version a service requested, independent of spelling: the
+ * object form carries it on `version`, the legacy form is the value itself.
+ */
+const phpComposerRequestedVersion = (value: unknown): unknown => {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return (value as { readonly version?: unknown }).version;
+  }
+  return value;
+};
+
 export const resolvePhpComposer = (value: unknown): PhpComposerRelease | false => {
-  if (value === undefined) return PHP_COMPOSER;
-  if (value === false) return false;
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`Unsupported Composer version ${JSON.stringify(value)}. ${composerRemediation}`);
+  const requested = phpComposerRequestedVersion(value);
+  if (requested === undefined) return PHP_COMPOSER;
+  if (requested === false) return false;
+  if (typeof requested !== "string" || requested.length === 0) {
+    throw new Error(`Unsupported Composer version ${JSON.stringify(requested)}. ${composerRemediation}`);
   }
-  if (isComposerMajor(value)) {
-    return PHP_COMPOSER_RELEASES[PHP_COMPOSER_MAJORS[value]];
+  if (isComposerMajor(requested)) {
+    return PHP_COMPOSER_RELEASES[PHP_COMPOSER_MAJORS[requested]];
   }
-  if (isComposerExact(value)) {
-    return PHP_COMPOSER_RELEASES[value];
+  if (isComposerExact(requested)) {
+    return PHP_COMPOSER_RELEASES[requested];
   }
-  throw new Error(`Unsupported Composer version "${value}". ${composerRemediation}`);
+  throw new Error(`Unsupported Composer version "${requested}". ${composerRemediation}`);
 };
 
 export const assertPhpComposerCompatible = (phpVersion: string, composerValue: unknown): void => {
   const match = /^(\d+)\.(\d+)$/.exec(phpVersion);
   if (match === null) return;
-  if (composerValue !== "2.7.7") return;
+  if (phpComposerRequestedVersion(composerValue) !== "2.7.7") return;
   const majorText = match[1];
   const minorText = match[2];
   if (majorText === undefined || minorText === undefined) return;
@@ -125,6 +140,7 @@ export const phpPrerequisiteBuildSteps = (
     id: "service-lando.php:prerequisites",
     phase: "build",
     command: PHP_PREREQUISITES_COMMAND,
+    user: "root",
     buildKeyInputs: {
       aptPackages: PHP_APT_PACKAGE_PINS,
       extensions: PHP_COMMON_EXTENSIONS,
@@ -135,9 +151,10 @@ export const phpPrerequisiteBuildSteps = (
   return [
     prerequisites,
     {
-      id: "service-lando.php:composer",
+      id: PHP_COMPOSER_STEP_ID,
       phase: "build",
       command: composerCommandFor(release),
+      user: "root",
       buildKeyInputs: { composer: release },
     },
   ];

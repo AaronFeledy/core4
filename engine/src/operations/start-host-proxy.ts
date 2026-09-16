@@ -7,6 +7,7 @@ import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { prepareHostProxyShimArtifact } from "../composition.ts";
 import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
@@ -105,6 +106,7 @@ export const startHostProxyRunLandoSession = (
     const platform = landoPaths.platform;
     const hostGatewayName = yield* validateHostProxyTransportCapability(platform, capabilities);
     const events = yield* EventService;
+    const privateFileAccess = yield* PrivateFileAccessService;
     return yield* runWithTaskTree(
       makeTaskTree(events, {
         parentId: startHostProxyTreeId(String(plan.id)),
@@ -122,6 +124,7 @@ export const startHostProxyRunLandoSession = (
             paths: { ...landoPaths.roots, platform },
             shimArtifactPath,
             shimTarget,
+            privateFileAccess,
             ...(hostGatewayName === undefined ? {} : { hostGatewayName }),
           });
           yield* tree.completeTask("session", "Host-proxy session ready");
@@ -147,7 +150,7 @@ export const withStartedHostProxy = <A, E, R>(
 ): Effect.Effect<
   A,
   E | HostProxyTransportUnavailableError,
-  R | ShellRunner | EventService | RedactionService | PathsService
+  R | ShellRunner | EventService | RedactionService | PathsService | PrivateFileAccessService
 > =>
   Effect.gen(function* () {
     const paths = yield* PathsService;

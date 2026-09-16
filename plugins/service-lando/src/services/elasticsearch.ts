@@ -4,11 +4,18 @@ import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type {
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceImageIdentity,
+  ServiceType,
+} from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
 const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.17.0";
+const VERSIONS = ["8"] as const;
+const ARTIFACTS = { "8": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/elasticsearch/data");
 export const ELASTICSEARCH_FEATURE_ID = "service-lando.elasticsearch";
@@ -65,6 +72,11 @@ export const elasticsearchServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
+const IDENTITY: ServiceImageIdentity = {
+  defaultUser: "elasticsearch",
+  homes: { elasticsearch: "/usr/share/elasticsearch", root: "/root" },
+};
+
 const resolveElasticsearchServiceType: ServiceType["resolve"] = (input) =>
   Effect.succeed({
     base: "lando",
@@ -76,6 +88,9 @@ export const elasticsearch8ServiceType: ServiceType = {
   id: "elasticsearch:8",
   name: "elasticsearch",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
+  identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: resolveElasticsearchServiceType,
 };
@@ -84,6 +99,9 @@ export const elasticsearchServiceType: ServiceType = {
   id: "elasticsearch",
   name: "elasticsearch",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
+  identity: IDENTITY,
   schema: Schema.Unknown,
   resolve: resolveElasticsearchServiceType,
 };

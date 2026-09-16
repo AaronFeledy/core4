@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { Cause, Effect, Exit, Runtime } from "effect";
 
 import { DownloadFetchError, RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { initApp } from "../../src/cli/commands/init.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
 import {
@@ -17,6 +17,7 @@ import {
   makeTarballRecipeExtractor,
   resolveTarballRecipeSource,
 } from "../../src/recipes/tarball-source.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
 const VALID_RECIPE = `id: remote-recipe
 title: Remote Recipe
@@ -71,6 +72,37 @@ const makeTarball = async (files: Readonly<Record<string, string>>): Promise<Uin
   }
 };
 
+interface TarEntrySpec {
+  readonly name: string;
+  readonly bytes?: Uint8Array;
+  readonly typeflag?: string;
+  readonly linkname?: string;
+}
+
+const makeTarballEntries = (entries: ReadonlyArray<TarEntrySpec>): Uint8Array => {
+  const blocks: Buffer[] = [];
+  for (const entry of entries) {
+    const bytes = entry.bytes ?? new Uint8Array();
+    const header = Buffer.alloc(512);
+    Buffer.from(entry.name).copy(header, 0, 0, 100);
+    Buffer.from("0000644\0").copy(header, 100);
+    Buffer.from(bytes.byteLength.toString(8).padStart(11, "0")).copy(header, 124);
+    header[135] = 0;
+    header.fill(0x20, 148, 156);
+    header[156] = (entry.typeflag ?? "0").charCodeAt(0);
+    if (entry.linkname !== undefined) Buffer.from(entry.linkname).copy(header, 157, 0, 100);
+    Buffer.from("ustar\0").copy(header, 257);
+    Buffer.from("00").copy(header, 263);
+    const checksum = header.reduce((sum, byte) => sum + byte, 0);
+    Buffer.from(`${checksum.toString(8).padStart(6, "0")}\0 `).copy(header, 148);
+    blocks.push(header, Buffer.from(bytes));
+    const padding = (512 - (bytes.byteLength % 512)) % 512;
+    if (padding > 0) blocks.push(Buffer.alloc(padding));
+  }
+  blocks.push(Buffer.alloc(1024));
+  return new Uint8Array(gzipSync(Buffer.concat(blocks)));
+};
+
 const fetcherFor = (bytes: Uint8Array, calls?: Array<string>): TarballRecipeFetcher => ({
   fetch: async (url) => {
     calls?.push(url);
@@ -102,6 +134,178 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("resolveTarballRecipeSource", () => {
+  test.each([
+    { hostileEntries: [{ name: "../escape", bytes: Buffer.from("outside") }] },
+    {
+      hostileEntries: [
+        { name: "././@LongLink", bytes: Buffer.from("../gnu-longname-escape\0"), typeflag: "L" },
+        { name: "placeholder", bytes: Buffer.from("outside") },
+      ],
+    },
+  ])("rejects traversal without publishing and cleans its staging tree", async ({ hostileEntries }) => {
+    // Given: a sentinel root and an archive that writes a valid member before a traversal member.
+    await withTempRoot(async (dir) => {
+      const sentinel = join(dir, "sentinel");
+      const marker = join(sentinel, "marker");
+      const userDataRoot = join(dir, "data");
+      await mkdir(sentinel, { recursive: true });
+      await writeFile(marker, "unchanged");
+      const bytes = makeTarballEntries([
+        { name: "recipe.yml", bytes: Buffer.from(VALID_RECIPE) },
+        ...hostileEntries,
+      ]);
+
+      // When: the archive is resolved through the real tarball publication boundary.
+      let caught: unknown;
+      try {
+        await resolveTarballRecipeSource({
+          url: "https://example.test/hostile.tar.gz",
+          userDataRoot,
+          fetcher: fetcherFor(bytes),
+        });
+      } catch (error) {
+        caught = error;
+      }
+
+      // Then: extraction fails, the sentinel is unchanged, and no cache or staging tree is published.
+      expect(caught).toBeInstanceOf(RecipeSourceError);
+      expect(await readFile(marker, "utf8")).toBe("unchanged");
+      const cacheRoot = join(userDataRoot, "recipe-cache", "tarball");
+      expect(await Bun.file(join(cacheRoot, "escape")).exists()).toBe(false);
+      expect(await Bun.file(join(cacheRoot, "gnu-longname-escape")).exists()).toBe(false);
+      expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+        [
+          "data",
+          join("data", "recipe-cache"),
+          join("data", "recipe-cache", "tarball"),
+          "sentinel",
+          join("sentinel", "marker"),
+        ].sort(),
+      );
+    });
+  });
+
+  test("skips links, devices, FIFOs, and PAX metadata while publishing regular siblings", async () => {
+    // Given: nonregular members surrounding regular members, including a symlink-then-file alias.
+    await withTempRoot(async (dir) => {
+      const userDataRoot = join(dir, "data");
+      const bytes = makeTarballEntries([
+        { name: "recipe.yml", bytes: Buffer.from(VALID_RECIPE) },
+        { name: "templates/payload", typeflag: "2", linkname: "../../sentinel" },
+        { name: "templates/payload", bytes: Buffer.from("regular") },
+        { name: "templates/hard", typeflag: "1", linkname: "recipe.yml" },
+        { name: "templates/fifo", typeflag: "6" },
+        { name: "templates/device", typeflag: "3" },
+        { name: "pax", bytes: Buffer.from("path=ignored\n"), typeflag: "x" },
+        { name: "templates/sibling", bytes: Buffer.from("published") },
+      ]);
+
+      // When: the archive is resolved and published.
+      const result = await resolveTarballRecipeSource({
+        url: "https://example.test/nonregular.tar.gz",
+        userDataRoot,
+        fetcher: fetcherFor(bytes),
+      });
+
+      // Then: regular files publish byte-for-byte and skipped member types create nothing.
+      expect(await readFile(join(result.root ?? "", "templates", "payload"), "utf8")).toBe("regular");
+      expect(await readFile(join(result.root ?? "", "templates", "sibling"), "utf8")).toBe("published");
+      expect(await Bun.file(join(result.root ?? "", "templates", "hard")).exists()).toBe(false);
+      expect(await Bun.file(join(result.root ?? "", "templates", "fifo")).exists()).toBe(false);
+      expect(await Bun.file(join(result.root ?? "", "templates", "device")).exists()).toBe(false);
+      const published = join("data", "recipe-cache", "tarball", sha256(bytes));
+      expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+        [
+          "data",
+          join("data", "recipe-cache"),
+          join("data", "recipe-cache", "tarball"),
+          published,
+          join(published, "recipe.yml"),
+          join(published, "templates"),
+          join(published, "templates", "payload"),
+          join(published, "templates", "sibling"),
+        ].sort(),
+      );
+    });
+  });
+
+  // The drive-name fixture creates a literal C: directory, which Windows filesystems cannot represent.
+  test.skipIf(process.platform === "win32")(
+    "normalizes rooted member names inside the publication tree",
+    async () => {
+      // Given: absolute, drive-rooted, and UNC-like member names accepted by the normalization contract.
+      await withTempRoot(async (dir) => {
+        const bytes = makeTarballEntries([
+          { name: "recipe.yml", bytes: Buffer.from(VALID_RECIPE) },
+          { name: "/absolute.txt", bytes: Buffer.from("absolute") },
+          { name: "C:\\drive.txt", bytes: Buffer.from("drive") },
+          { name: "\\\\server\\share.txt", bytes: Buffer.from("unc") },
+        ]);
+
+        // When: the archive is published.
+        const result = await resolveTarballRecipeSource({
+          url: "https://example.test/rooted.tar.gz",
+          userDataRoot: join(dir, "data"),
+          fetcher: fetcherFor(bytes),
+        });
+
+        // Then: each name resolves beneath the cache root rather than to a host-rooted path.
+        const root = result.root ?? "";
+        expect(await readFile(join(root, "absolute.txt"), "utf8")).toBe("absolute");
+        expect(await readFile(join(root, "C:", "drive.txt"), "utf8")).toBe("drive");
+        expect(await readFile(join(root, "server", "share.txt"), "utf8")).toBe("unc");
+        const published = join("data", "recipe-cache", "tarball", sha256(bytes));
+        expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+          [
+            "data",
+            join("data", "recipe-cache"),
+            join("data", "recipe-cache", "tarball"),
+            published,
+            join(published, "recipe.yml"),
+            join(published, "absolute.txt"),
+            join(published, "C:"),
+            join(published, "C:", "drive.txt"),
+            join(published, "server"),
+            join(published, "server", "share.txt"),
+          ].sort(),
+        );
+      });
+    },
+  );
+
+  test("normalizes duplicate path aliases to one last-member-wins file", async () => {
+    // Given: two regular members whose slash and dot aliases normalize to the same path.
+    await withTempRoot(async (dir) => {
+      const bytes = makeTarballEntries([
+        { name: "recipe.yml", bytes: Buffer.from(VALID_RECIPE) },
+        { name: "templates/./payload", bytes: Buffer.from("first") },
+        { name: "templates//payload", bytes: Buffer.from("second") },
+      ]);
+
+      // When: the archive is published.
+      const result = await resolveTarballRecipeSource({
+        url: "https://example.test/aliases.tar.gz",
+        userDataRoot: join(dir, "data"),
+        fetcher: fetcherFor(bytes),
+      });
+
+      // Then: the normalized destination contains the final regular member bytes.
+      expect(await readFile(join(result.root ?? "", "templates", "payload"), "utf8")).toBe("second");
+      const published = join("data", "recipe-cache", "tarball", sha256(bytes));
+      expect((await readdir(dir, { recursive: true })).sort()).toEqual(
+        [
+          "data",
+          join("data", "recipe-cache"),
+          join("data", "recipe-cache", "tarball"),
+          published,
+          join(published, "recipe.yml"),
+          join(published, "templates"),
+          join(published, "templates", "payload"),
+        ].sort(),
+      );
+    });
+  });
+
   test("gzip archives exceeding the decompressed-size cap fail as extract-failed", async () => {
     await withTempRoot(async (dir) => {
       const cap = 4096;

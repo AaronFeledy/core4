@@ -21,7 +21,8 @@ import { resolve } from "node:path";
 
 import { Schema } from "effect";
 
-import { type SummaryDocument, displayWidth, formatSummary, stripAnsi } from "@lando/core/testing";
+import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
+import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 import {
   type LandoEvent,
   MessageWarnEvent,

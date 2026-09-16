@@ -1,3 +1,5 @@
+import { astroSnapshotYaml } from "./snapshot.ts";
+
 export const ASTRO_RECIPE_ID = "astro";
 
 export const astroRecipeSource = `${ASTRO_RECIPE_ID}/recipe.yml`;
@@ -41,4 +43,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Astro up.
+
+${astroSnapshotYaml}
 `;

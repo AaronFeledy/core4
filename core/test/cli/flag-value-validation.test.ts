@@ -7,13 +7,14 @@ import {
   validateCommandCliFlags,
   validateUnknownCliFlags,
 } from "../../src/cli/flag-value-validation.ts";
+import { Flags } from "../../src/cli/spec/metadata.ts";
 
 const flags = {
   provider: { type: "option" },
   service: { type: "option", char: "s" },
   follow: { type: "boolean", char: "f" },
   shell: { type: "option", options: ["posix", "powershell", "pwsh"] },
-  tail: { type: "option" },
+  tail: Flags.integer(),
   answer: { type: "option", multiple: true },
   yes: { type: "boolean" },
 } as const;

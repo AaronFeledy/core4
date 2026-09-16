@@ -6,7 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { LandofileValidationError } from "@lando/core/errors";
 import { LandofileService } from "@lando/core/services";
-import { LandofileServiceLive } from "../../src/testing/engine-layers.ts";
+import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-landofile-service-boundary-"));

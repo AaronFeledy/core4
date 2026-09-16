@@ -1,0 +1,39 @@
+name: migrate-programmatic
+recipe:
+  id: lamp
+  options:
+    composer: "2"
+    database: mariadb:11.4
+    name: migrate-programmatic
+    php: "8.2"
+    webroot: /app
+  producer:
+    contentDigest: sha256:c0b2cde89f016351b3fd769068969460e7ebdcc01853ff6e61381f1290853fd8
+    manifestVersion: 0.1.0
+    packageName: "@lando/recipe-lamp"
+    recipeId: lamp
+    sourceKind: bundled
+  version: 0.1.0
+runtime: 4
+services:
+  appserver:
+    composer: "{{ recipe.composer }}"
+    dependsOn:
+      - database
+    framework: none
+    port: 80
+    type: "php:{{ recipe.php }}"
+    webroot: /app
+  database:
+    type: "{{ recipe.database }}"
+tooling:
+  composer:
+    cmds:
+      - composer
+    description: "Run Composer inside the appserver service."
+    service: appserver
+  php:
+    cmds:
+      - php
+    description: "Run the PHP CLI inside the appserver service."
+    service: appserver

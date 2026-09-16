@@ -57,6 +57,11 @@ const bunTargetFor = (platform: CiPlatform): Bun.Build.CompileTarget => {
 const hostTarget = (): string =>
   `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
 
+// Bun 1.4 Linux-to-Windows bytecode crashes before even a dependency-free entry.
+// Keep native builds optimized; cross-target Windows binaries evaluate ESM instead.
+export const compiledBinaryBytecode = (target: string, host = hostTarget()): boolean =>
+  !target.startsWith("windows-") || target === host;
+
 const nativeRootFor = (target: string): string => {
   const root = Object.entries(opentuiNativeCatalog.targetToNativeRoot).find(
     ([candidate]) => candidate === target,
@@ -126,7 +131,7 @@ export const buildCompiledBinary = async (
     // Keep version and OpenTUI metadata on `define`; enable autoload only if
     // relocated-binary smoke fails with a missing package/path diagnostic.
     compile: { target: bunTargetFor(platform), outfile: options.outfile },
-    bytecode: true,
+    bytecode: compiledBinaryBytecode(platform.id),
     minify: true,
     sourcemap: "external",
     define: {

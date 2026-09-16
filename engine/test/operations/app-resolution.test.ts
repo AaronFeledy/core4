@@ -14,6 +14,9 @@ import {
   loadUserLandofileAt,
   loadUserLandofileFile,
 } from "../../src/landofile/app-resolution.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
+
+const TestStateStoreLive = makeTestStateStore().layer;
 
 const landofile = (name?: string): LandofileShape =>
   (name === undefined ? {} : { name }) as unknown as LandofileShape;
@@ -62,7 +65,9 @@ describe("loadUserLandofile includes", () => {
       process.chdir(dir);
 
       const result = await Effect.runPromise(
-        loadUserLandofile(fakeLandofileService({ name: "myapp", includes: ["./fragment.yml"] })),
+        loadUserLandofile(fakeLandofileService({ name: "myapp", includes: ["./fragment.yml"] })).pipe(
+          Effect.provide(TestStateStoreLive),
+        ),
       );
       const actual: unknown = result;
 
@@ -81,7 +86,9 @@ describe("loadUserLandofile includes", () => {
       await writeFile(join(dir, "custom.lando.yml"), "name: custom\nincludes:\n  - ./fragment.yml\n", "utf8");
       await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
 
-      const result = await Effect.runPromise(loadUserLandofileFile(join(dir, "custom.lando.yml")));
+      const result = await Effect.runPromise(
+        loadUserLandofileFile(join(dir, "custom.lando.yml")).pipe(Effect.provide(TestStateStoreLive)),
+      );
       const actual: unknown = result;
 
       expect(actual).toEqual({ name: "custom", services: { web: { type: "node" } } });
@@ -96,7 +103,9 @@ describe("loadUserLandofile includes", () => {
       await writeFile(join(dir, "custom.lando.yml"), "name: custom\ninclude:\n  - ./fragment.yml\n", "utf8");
       await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
 
-      const result = await Effect.runPromise(loadUserLandofileFile(join(dir, "custom.lando.yml")));
+      const result = await Effect.runPromise(
+        loadUserLandofileFile(join(dir, "custom.lando.yml")).pipe(Effect.provide(TestStateStoreLive)),
+      );
       const actual: unknown = result;
 
       expect(actual).toEqual({ name: "custom", services: { web: { type: "node" } } });
@@ -112,7 +121,9 @@ describe("loadUserLandofile includes", () => {
       await writeFile(basePath, 'lando: ">=999.0.0"\n', "utf8");
       await writeFile(join(dir, ".lando.yml"), "name: layered\n", "utf8");
 
-      const error = await Effect.runPromise(Effect.flip(loadUserLandofileFile(join(dir, ".lando.yml"))));
+      const error = await Effect.runPromise(
+        Effect.flip(loadUserLandofileFile(join(dir, ".lando.yml"))).pipe(Effect.provide(TestStateStoreLive)),
+      );
 
       expect(error._tag).toBe("LandofileVersionConstraintError");
       if (error._tag !== "LandofileVersionConstraintError") throw error;

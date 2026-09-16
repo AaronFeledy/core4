@@ -168,6 +168,37 @@ export const SshServiceContribution = Schema.Struct({
 });
 export type SshServiceContribution = typeof SshServiceContribution.Type;
 
+/**
+ * Plugins use `configTranslators:` to register `ConfigTranslator`
+ * implementations. Translators are loaded only for an explicit conversion
+ * request; the manifest metadata here never triggers loading.
+ */
+export const ConfigTranslatorContribution = Schema.Struct({
+  id: Schema.propertySignature(Schema.String).annotations({
+    description: "Unique ConfigTranslator id across every plugin source.",
+  }),
+  module: Schema.propertySignature(Schema.String).annotations({
+    description: "Contained plugin module exporting the translator factory.",
+  }),
+  inputKinds: Schema.propertySignature(Schema.Array(Schema.String)).annotations({
+    description: "Input kinds the translator decodes, for listings and explicit selection.",
+  }),
+  detects: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description:
+      "Advisory glob patterns for help and explicit conversion matching; detect() stays authoritative.",
+  }),
+  optionsSchema: Schema.optional(Schema.String).annotations({
+    description: "Optional contained module path exporting the translator-specific options schema.",
+  }),
+  summary: Schema.optional(Schema.String).annotations({
+    description: "One-line translator description for listings and diagnostics.",
+  }),
+  deprecated: Schema.optional(DeprecationNotice).annotations({
+    description: "Optional lifecycle notice for this contribution.",
+  }),
+});
+export type ConfigTranslatorContribution = typeof ConfigTranslatorContribution.Type;
+
 export const PluginSetupFlagContribution = Schema.Struct({
   name: Schema.String,
   type: Schema.Literal("boolean", "option"),
@@ -201,6 +232,10 @@ export const PluginContribution = Schema.Struct({
     description: "CertificateAuthority implementations registered by this plugin.",
   }),
   commands: Schema.optional(Schema.Array(ContributionRef)),
+  configTranslators: Schema.optional(Schema.Array(ConfigTranslatorContribution)).annotations({
+    description:
+      "ConfigTranslator implementations registered by this plugin; loaded only on explicit conversion.",
+  }),
   globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
   downloaders: Schema.optional(Schema.Array(DownloaderContribution)),
   httpClients: Schema.optional(Schema.Array(HttpClientContribution)),

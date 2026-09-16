@@ -26,6 +26,7 @@ import {
   setActiveCommandId,
 } from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
+import { attachedHostTerminal } from "./exec-host-io";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { type ToolingRoute, resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
 
@@ -60,8 +61,16 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   const commandArgv = argv.slice(1);
   prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
+  const hostTerminal =
+    activeResultFormat === "json" || activeRendererMode === "json" ? undefined : attachedHostTerminal();
   return runCompiledCommand(
-    runTooling({ name, args: commandArgv, renderProgress: true }),
+    runTooling({
+      name,
+      args: commandArgv,
+      renderProgress: true,
+      tty: hostTerminal !== undefined,
+      ...(hostTerminal === undefined ? {} : { hostTerminal }),
+    }),
     makeLandoRuntime(
       cliRuntimeOptions({
         bootstrap: "app",

@@ -16,6 +16,18 @@ import { Schema } from "effect";
  *                    bootstrap level.
  * - `not-found`    — no Landofile could be discovered for the selector.
  */
+/**
+ * A mutating app operation waited for the per-app advisory lock and the
+ * finite wait budget expired. Another live Lando command still holds the lock.
+ */
+export class AppLockTimeoutError extends Schema.TaggedError<AppLockTimeoutError>()("AppLockTimeoutError", {
+  message: Schema.String,
+  app: Schema.String,
+  timeoutMs: Schema.Number,
+  remediation: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 export class AppResolveError extends Schema.TaggedError<AppResolveError>()("AppResolveError", {
   message: Schema.String,
   reason: Schema.Literal("ambiguous", "mismatch", "missing-root", "unknown-id", "not-found"),

@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import {
   SqlCommandFailedError,
   SqlConfirmRequiredError,
+  SqlDumpNotFoundError,
   SqlServiceAmbiguousError,
   SqlServiceNotFoundError,
 } from "@lando/sdk/errors";
@@ -117,5 +118,27 @@ describe("SqlCommandFailedError", () => {
     expect(decoded._tag).toBe("SqlCommandFailedError");
     expect(decoded.service).toBe("database");
     expect(decoded.command).toEqual(["mysql", "-e", "DROP DATABASE app"]);
+  });
+});
+
+describe("SqlDumpNotFoundError", () => {
+  test("encodes and decodes with _tag intact when an import dump is missing", () => {
+    const error = new SqlDumpNotFoundError({
+      message: "Dump file not found: /tmp/sql-app/_backups/missing.sql.gz",
+      path: "/tmp/sql-app/_backups/missing.sql.gz",
+      appRoot: "/tmp/sql-app",
+      remediation: "Check the path. Relative dumps resolve from the app root (/tmp/sql-app).",
+    });
+
+    expect(error._tag).toBe("SqlDumpNotFoundError");
+    expect(Schema.is(SqlDumpNotFoundError)(error)).toBe(true);
+
+    const encoded = Schema.encodeUnknownSync(SqlDumpNotFoundError)(error);
+    const decoded = Schema.decodeUnknownSync(SqlDumpNotFoundError)(encoded);
+
+    expect(decoded._tag).toBe("SqlDumpNotFoundError");
+    expect(decoded.path).toBe("/tmp/sql-app/_backups/missing.sql.gz");
+    expect(decoded.appRoot).toBe("/tmp/sql-app");
+    expect(decoded.remediation).toContain("app root");
   });
 });

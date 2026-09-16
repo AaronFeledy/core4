@@ -5,7 +5,8 @@ import { TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive, createBufferedRendererIO } from "@lando/core/testing";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
 import type { LiveRegionSpoolFactory } from "../src/opentui/live-region-spool.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";

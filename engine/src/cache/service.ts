@@ -2,6 +2,11 @@ import { Clock, type Context, Effect, Layer, Ref, Schema } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 import { CacheService } from "@lando/sdk/services";
+import {
+  type PrivateFileAccess,
+  PrivateFileAccessLive,
+  PrivateFileAccessService,
+} from "@lando/state-store/private-file-access";
 
 import { writeAtomicCacheFile } from "./atomic.ts";
 
@@ -38,6 +43,7 @@ const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Schema<
 
 const makeCacheService = (
   entries: Ref.Ref<ReadonlyMap<string, CacheEntry>>,
+  privateFileAccess: PrivateFileAccess,
 ): Context.Tag.Service<typeof CacheService> => ({
   read: <A, I>(key: string, schema?: Schema.Schema<A, I>) =>
     Effect.gen(function* () {
@@ -65,13 +71,28 @@ const makeCacheService = (
         }),
       );
     }),
-  writeAtomic: (path, content) => writeAtomicCacheFile(path, content),
+  writeAtomic: (path, content) => writeAtomicCacheFile(path, content, privateFileAccess.enforce),
   invalidate: (key) => Ref.update(entries, (current) => removeKey(current, key)),
 });
 
-export const CacheServiceLive = Layer.effect(
+const makeCacheServiceLayer = (privateFileAccess: PrivateFileAccess) =>
+  Layer.effect(
+    CacheService,
+    Ref.make<ReadonlyMap<string, CacheEntry>>(new Map()).pipe(
+      Effect.map((entries) => makeCacheService(entries, privateFileAccess)),
+    ),
+  );
+
+export const CacheServiceWithPrivateFileAccessLive: Layer.Layer<
   CacheService,
-  Ref.make<ReadonlyMap<string, CacheEntry>>(new Map()).pipe(Effect.map(makeCacheService)),
+  never,
+  PrivateFileAccessService
+> = Layer.unwrapEffect(
+  Effect.map(PrivateFileAccessService, (privateFileAccess) => makeCacheServiceLayer(privateFileAccess)),
+);
+
+export const CacheServiceLive = CacheServiceWithPrivateFileAccessLive.pipe(
+  Layer.provide(PrivateFileAccessLive),
 );
 
 export { CacheService };

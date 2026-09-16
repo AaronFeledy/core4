@@ -22,6 +22,7 @@ import { RecipeManifest } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { decodeOrFail } from "@lando/landofile/decode";
+import { postInitAuthorizationIssue } from "../post-init/authorization";
 import { flattenRecipe } from "./flatten";
 import { parseRecipeYaml } from "./parser";
 
@@ -159,6 +160,8 @@ const validateSemantics = (
 
   if (manifest.postInit !== undefined) {
     for (const [index, action] of manifest.postInit.entries()) {
+      const authorizationIssue = postInitAuthorizationIssue(action, manifest.prompts ?? []);
+      if (authorizationIssue !== undefined) issues.push(`postInit[${index}]: ${authorizationIssue}`);
       if (action.type !== "bun") continue;
       if (action.verb === "add") {
         const categories = [

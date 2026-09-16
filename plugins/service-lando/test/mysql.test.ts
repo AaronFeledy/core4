@@ -3,7 +3,12 @@ import { Effect, Schema } from "effect";
 
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 
-import { MYSQL_FEATURE_ID, mysqlServiceFeature, mysqlServiceType } from "../src/services/mysql.ts";
+import {
+  MYSQL_CONFIG_TARGET,
+  MYSQL_FEATURE_ID,
+  mysqlServiceFeature,
+  mysqlServiceType,
+} from "../src/services/mysql.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -59,7 +64,7 @@ describe("mysql ServiceType", () => {
     });
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
     expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-mysql-data");
+    expect(plan.storage[0]?.store).toBe("myapp-db-mysql-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3306, protocol: "tcp", name: "db" }]);
   });
@@ -151,5 +156,34 @@ describe("mysql ServiceType", () => {
       retries: 5,
       startPeriodSeconds: 30,
     });
+  });
+
+  test("mounts config.server read-only at MYSQL_CONFIG_TARGET without changing command or entrypoint", async () => {
+    const baseline = await planMysqlService({ type: "mysql" });
+    const plan = await planMysqlService({
+      type: "mysql",
+      config: { server: "config/my.cnf" },
+    });
+
+    expect(plan.mounts).toEqual([
+      {
+        type: "bind",
+        source: "/srv/apps/myapp/config/my.cnf",
+        target: MYSQL_CONFIG_TARGET,
+        readOnly: true,
+        realization: "passthrough",
+      },
+    ]);
+    expect(String(MYSQL_CONFIG_TARGET)).toBe("/etc/mysql/conf.d/99-lando.cnf");
+    expect(plan.command).toEqual(baseline.command);
+    expect(plan.entrypoint).toEqual(baseline.entrypoint);
+  });
+
+  test("omits the server config mount when config.server is absent", async () => {
+    const plan = await planMysqlService({ type: "mysql" });
+
+    expect(plan.mounts).toEqual([]);
+    expect(plan.command).toBeUndefined();
+    expect(plan.entrypoint).toBeUndefined();
   });
 });

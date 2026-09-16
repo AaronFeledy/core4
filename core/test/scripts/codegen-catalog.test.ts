@@ -75,13 +75,13 @@ const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
   ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
-  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo"],
+  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo", ["mutagen-versions"]],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo"],
-  ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo"],
+  ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo", ["mutagen-versions"]],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
   [
     "host-proxy-allowlist",
@@ -90,6 +90,7 @@ const expectedCatalogRows = [
     "repo",
     ["setup-plugin-flags", "mcp-allowlist"],
   ],
+  ["core-service-env-catalog", "derived", "build-core-service-env-catalog.ts", "repo"],
   [
     "command-registry-manifest",
     "derived",
@@ -109,11 +110,13 @@ const expectedCatalogRows = [
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
+      "core-service-env-catalog",
       "command-registry-manifest",
     ],
   ],
   ["command-reference", "derived", "build-command-reference.ts", "repo", ["command-registry-manifest"]],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
+  ["service-type-reference", "derived", "build-service-type-reference.ts", "repo"],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
   ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
@@ -177,6 +180,37 @@ describe("codegen catalog", () => {
     expect(commands).toEqual(expectedCommands);
   });
 
+  test("generates the mutagen pin before every generator that imports bundled plugins", async () => {
+    // Given: `@lando/file-sync-mutagen` statically imports `mutagen-versions.json`,
+    // so any generator that imports the bundled plugin list transitively reads
+    // that pin. Derive those generators from source instead of hard-coding ids,
+    // so a newly added one is covered automatically.
+    const pluginImporters = (
+      await Promise.all(
+        catalog.map(async (entry) => {
+          const source = await Bun.file(resolve(repositoryRoot, "scripts", entry.script)).text();
+          return source.includes("bundledPlugins") ? entry : undefined;
+        }),
+      )
+    ).filter((entry) => entry !== undefined);
+    const waves = groupCodegenWaves(catalog);
+    const waveIndexOf = (id: string): number =>
+      waves.findIndex((wave) => wave.some((entry) => entry.id === id));
+
+    // When: the pin generator is placed in a wave.
+    const pinWave = waveIndexOf("mutagen-versions");
+
+    // Then: the pin is fully written before any importer reads it. Sharing a wave
+    // lets the import observe the file mid-truncation, because `Bun.write`
+    // truncates in place (`JSON Parse error: Unexpected EOF` on Windows CI).
+    expect(pinWave).toBeGreaterThanOrEqual(0);
+    expect(pluginImporters.length).toBeGreaterThan(0);
+    for (const entry of pluginImporters) {
+      expect(entry.dependsOn ?? []).toContain("mutagen-versions");
+      expect(waveIndexOf(entry.id)).toBeGreaterThan(pinWave);
+    }
+  });
+
   test("generates command graph prerequisites before schema artifacts", () => {
     // Given: schema generation imports the complete command and plugin graph.
     const prerequisiteIds = [
@@ -186,6 +220,7 @@ describe("codegen catalog", () => {
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
+      "core-service-env-catalog",
       "command-registry-manifest",
     ] as const;
 
@@ -223,13 +258,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(27);
+    expect(catalog).toHaveLength(29);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(1);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(10);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(16);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(18);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);

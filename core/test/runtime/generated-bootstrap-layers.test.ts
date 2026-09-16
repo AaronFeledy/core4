@@ -38,7 +38,8 @@ describe("generated bootstrap layers", () => {
     const scratch = await readFile(resolve(generatedLayersDir, "scratch.ts"), "utf8");
 
     // When: command-registry and subscriber-runtime composition is inspected.
-    const subscriberInstall = "makeSubscriberRuntimeLive(bundledPluginModules(), BUILT_IN_COMMAND_IDS)";
+    const subscriberInstall =
+      "makeSubscriberRuntimeWithPrivateFileAccessLive(\n    bundledPluginModules(),\n    BUILT_IN_COMMAND_IDS,\n  )";
     const commandRegistryInstall = "CommandRegistryLive.pipe(";
 
     // Then: pre-command tiers install neither command subscribers nor a command registry.
@@ -48,9 +49,18 @@ describe("generated bootstrap layers", () => {
     }
 
     expect(minimal).not.toContain("makePluginRegistryLive");
+    expect(minimal).toContain('from "@lando/managed-file/transaction"');
+    expect(minimal).toContain(
+      "    ManagedFileTransactionGuardWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccessLive)),",
+    );
+    expect(minimal).toContain(
+      "    StateStoreWithPrivateFileAccessLive.pipe(Layer.provide(privateFileAccessLive)),",
+    );
     expect(commands).toContain("makeEngineLandofileServiceLive");
     expect(commands).toContain(`from "@lando/${"engine"}/services/landofile-live"`);
-    expect(commands).toContain("makeEngineLandofileServiceLive(landofileRuntimeInputs())");
+    expect(commands).toContain("Effect.map(PathsService");
+    expect(commands).toContain("resolveUserIncludesDir: () => paths.userIncludesDir");
+    expect(commands).toContain("resolveUserCacheRoot: () => paths.roots.userCacheRoot");
     expect(commands).toContain("export const makeCommandsBootstrapBaseLayer");
     expect(countOccurrences(commands, commandRegistryInstall)).toBe(1);
     expect(countOccurrences(commands, subscriberInstall)).toBe(1);
@@ -70,6 +80,20 @@ describe("generated bootstrap layers", () => {
       expect(countOccurrences(source, commandRegistryInstall)).toBe(0);
       expect(countOccurrences(source, subscriberInstall)).toBe(0);
     }
+  });
+
+  test("plugins bootstrap installs the config translator registry over the contribution graph", async () => {
+    // Given: the minimal and plugins generated tiers.
+    const minimal = await readFile(resolve(generatedLayersDir, "minimal.ts"), "utf8");
+    const plugins = await readFile(resolve(generatedLayersDir, "plugins.ts"), "utf8");
+
+    // Then: only the plugins tier constructs the registry, fed by the same graph the plugin registry sees.
+    expect(minimal).not.toContain("makeConfigTranslatorRegistryLive");
+    expect(countOccurrences(plugins, "makeConfigTranslatorRegistryLive(bundledPluginModules())")).toBe(1);
+    expect(plugins).toContain(
+      "const configTranslatorRegistryLive = makeConfigTranslatorRegistryLive(bundledPluginModules()).pipe(\n    Layer.provide(Layer.merge(minimalRuntimeLive, contributionGraphLive)),",
+    );
+    expect(plugins).toContain("configTranslatorRegistryLive,");
   });
 
   test("provider bootstrap wires the default UrlScanner", async () => {
