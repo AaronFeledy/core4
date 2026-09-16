@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,6 +14,32 @@ const fileExists = async (path: string): Promise<boolean> =>
   );
 
 describe("writeFileAtomicViaRename", () => {
+  test("rejects a successful ACL swap before writing secrets", async () => {
+    // Given an ACL hook that replaces the opened inode
+    const dir = await mkdtemp(join(tmpdir(), "lando-cache-atomic-"));
+    const target = join(dir, "plan.bin");
+    let original = "";
+    try {
+      // When enforcement succeeds on the replacement
+      const result = await Effect.runPromise(
+        Effect.either(
+          writeAtomicCacheFile(target, "secret", async (created) => {
+            original = `${created}.original`;
+            await rename(created, original);
+            await writeFile(created, "foreign");
+          }),
+        ),
+      );
+      // Then the cache failure leaves the original empty and unpublished
+      expect(result._tag).toBe("Left");
+      if (result._tag === "Left") expect(result.left._tag).toBe("CacheError");
+      expect(await readFile(original, "utf8")).toBe("");
+      expect(await fileExists(target)).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("writes cache files with owner-only permissions", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-cache-atomic-"));
     try {

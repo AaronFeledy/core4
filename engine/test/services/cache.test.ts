@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
 
-import { Cause, DateTime, Effect, Exit, Option, Schema, TestClock, TestContext } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Schema, TestClock, TestContext } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 import {
@@ -21,6 +21,7 @@ import {
   ServiceName,
 } from "@lando/sdk/schema";
 import { CacheService } from "@lando/sdk/services";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   type AppPlanCacheKeyInput,
@@ -38,7 +39,7 @@ import {
   writeCwdAppMapEntry,
 } from "../../src/cache/cwd-app-map.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
-import { CacheServiceLive } from "../../src/cache/service.ts";
+import { CacheServiceLive, CacheServiceWithPrivateFileAccessLive } from "../../src/cache/service.ts";
 
 const CachedValue = Schema.Struct({
   name: Schema.String,
@@ -109,6 +110,32 @@ const providerCapabilities: ProviderCapabilities = {
 };
 
 describe("CacheServiceLive", () => {
+  test("uses the composed private-file service before publishing an atomic cache file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-cache-private-access-"));
+    const path = join(root, "plan.bin");
+    const enforcedPaths: string[] = [];
+    const cacheLayer = CacheServiceWithPrivateFileAccessLive.pipe(
+      Layer.provide(
+        Layer.succeed(PrivateFileAccessService, {
+          enforce: async (candidate) => {
+            enforcedPaths.push(candidate);
+          },
+          verify: async () => undefined,
+        }),
+      ),
+    );
+
+    await Effect.runPromise(
+      Effect.flatMap(CacheService, (cache) => cache.writeAtomic(path, "private-cache")).pipe(
+        Effect.provide(cacheLayer),
+      ),
+    );
+
+    expect(await readFile(path, "utf8")).toBe("private-cache");
+    expect(enforcedPaths).toHaveLength(1);
+    expect(enforcedPaths[0]).toStartWith(`${path}.tmp-`);
+  });
+
   test("six-layer source fingerprints are stable and invalidate when any layer changes", async () => {
     const appRoot = await mkdtemp(join(tmpdir(), "lando-layer-fingerprint-"));
     await writeFile(join(appRoot, ".lando.yml"), "name: app\n");
@@ -608,6 +635,7 @@ describe("CacheServiceLive", () => {
       routes: [
         {
           hostname: "web.cache-plan.lndo.site",
+          priority: 2,
           scheme: "https" as const,
           service: ServiceName.make("web"),
           backend: { service: ServiceName.make("web"), protocol: "http" as const, port: 8080 },

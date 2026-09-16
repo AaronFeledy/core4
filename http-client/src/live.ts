@@ -35,12 +35,13 @@ import type {
 import { createRedactor } from "@lando/sdk/secrets";
 import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
 
+import { type DirectHttpTransport, directHttpRequest } from "./direct-http.ts";
+import { type HttpTransports, requestWithNetworkTrust } from "./network-request.ts";
 import {
   NetworkTrust,
   type ResolvedNetworkTrust,
   type SystemCaProvider,
   defaultSystemCaPems,
-  fetchInitForNetwork,
   loadCaPems,
   resolveNetworkTrustPlan,
 } from "./network-trust.ts";
@@ -120,11 +121,6 @@ const parseUrl = (url: string): URL | undefined => {
 
 const headerRecords = (headers: Headers): ReadonlyArray<HttpHeaderRecord> =>
   Array.from(headers.entries(), ([name, value]) => ({ name, value }));
-
-const requestHeadersInit = (headers: HttpRequest["headers"]): Record<string, string> | undefined =>
-  headers === undefined || headers.length === 0
-    ? undefined
-    : Object.fromEntries(headers.map((header) => [header.name, header.value]));
 
 const remainingHttpTimeoutMs = (request: HttpRequest, startedAt: number): number | undefined =>
   request.timeoutMs === undefined ? undefined : request.timeoutMs - (Date.now() - startedAt);
@@ -256,27 +252,26 @@ interface FetchOutcome {
 }
 
 const openConnection = (
-  fetchImpl: typeof fetch,
+  transports: HttpTransports,
   systemCaPems: SystemCaProvider,
   request: HttpRequest,
-  url: URL,
 ): Effect.Effect<FetchOutcome, HttpRequestError, Scope.Scope> =>
   Effect.gen(function* () {
     const trust = yield* resolveTrust();
-    const trustInit =
-      trust === undefined ? undefined : fetchInitForNetwork(request.url, trust, systemCaPems());
     const controller = new AbortController();
     yield* Effect.addFinalizer(() => Effect.sync(() => controller.abort()));
     const response = yield* Effect.tryPromise({
       try: () =>
-        fetchImpl(request.url, {
-          ...(request.method === undefined ? {} : { method: request.method }),
-          ...(request.redirect === undefined ? {} : { redirect: request.redirect }),
-          headers: requestHeadersInit(request.headers),
-          signal: controller.signal,
-          ...trustInit,
-        }),
-      catch: (cause) => requestError(request.url, `Failed to fetch ${urlOrigin(url.href)}`, cause),
+        requestWithNetworkTrust(
+          request,
+          {
+            transports,
+            trust,
+            systemCaPems: trust === undefined ? [] : systemCaPems(),
+          },
+          controller.signal,
+        ),
+      catch: (cause) => requestError(request.url, `Failed to fetch ${urlOrigin(request.url)}`, cause),
     });
     return { response };
   });
@@ -363,7 +358,7 @@ const streamFile = (
 
 const makeStream =
   (
-    fetchImpl: typeof fetch,
+    transports: HttpTransports,
     systemCaPems: SystemCaProvider,
     eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
   ): HttpClientShape["stream"] =>
@@ -385,7 +380,7 @@ const makeStream =
       const result = yield* Effect.either(
         applyHttpTimeout(
           request,
-          openConnection(fetchImpl, systemCaPems, request, url),
+          openConnection(transports, systemCaPems, request),
           remainingHttpTimeoutMs(request, startedAt),
         ),
       );
@@ -405,20 +400,30 @@ const makeStream =
       }
 
       const { response } = result.right;
+      let postPublished = false;
       const publishPost = (outcome: "success" | "failure", failureDetail: string | undefined) =>
-        events.publish(
-          postEvent({
-            request,
-            origin,
-            outcome,
-            status: response.status,
-            durationMs: Date.now() - startedAt,
-            failureDetail,
-            redact: events.redact,
-          }),
-        );
+        Effect.suspend(() => {
+          if (postPublished) return Effect.void;
+          postPublished = true;
+          return events.publish(
+            postEvent({
+              request,
+              origin,
+              outcome,
+              status: response.status,
+              durationMs: Date.now() - startedAt,
+              failureDetail,
+              redact: events.redact,
+            }),
+          );
+        }).pipe(Effect.uninterruptible);
 
       const body = yield* responseBodyStream(request, response, startedAt);
+      yield* Effect.addFinalizer((exit) =>
+        Exit.isSuccess(exit)
+          ? publishPost("success", undefined)
+          : publishPost("failure", bodyFailureDetail(exit)),
+      );
       const bodyWithTelemetry = body.pipe(
         (stream) => applyHttpStreamTimeout(request, stream, remainingHttpTimeoutMs(request, startedAt)),
         Stream.ensuringWith((exit) =>
@@ -432,13 +437,13 @@ const makeStream =
 
 const makeRequest =
   (
-    fetchImpl: typeof fetch,
+    transports: HttpTransports,
     systemCaPems: SystemCaProvider,
     eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
   ): HttpClientShape["request"] =>
   (request) =>
     Effect.gen(function* () {
-      const streamResponse = yield* makeStream(fetchImpl, systemCaPems, eventService)(request);
+      const streamResponse = yield* makeStream(transports, systemCaPems, eventService)(request);
       const bytes = yield* Stream.runCollect(streamResponse.body).pipe(
         Effect.map((chunks) => {
           const arr = Array.from(chunks);
@@ -477,6 +482,7 @@ const makeUpload = (): HttpClientShape["upload"] => (request) =>
 export const makeHttpClientLive = (
   fetchImpl: typeof fetch = fetch,
   systemCaPems: SystemCaProvider = defaultSystemCaPems,
+  directImpl: DirectHttpTransport = directHttpRequest,
 ): Layer.Layer<HttpClient> =>
   Layer.effect(
     HttpClient,
@@ -485,8 +491,8 @@ export const makeHttpClientLive = (
       return {
         id: "core-http-client",
         capabilities: CAPABILITIES,
-        request: makeRequest(fetchImpl, systemCaPems, eventService),
-        stream: makeStream(fetchImpl, systemCaPems, eventService),
+        request: makeRequest({ fetch: fetchImpl, direct: directImpl }, systemCaPems, eventService),
+        stream: makeStream({ fetch: fetchImpl, direct: directImpl }, systemCaPems, eventService),
         upload: makeUpload(),
       };
     }),

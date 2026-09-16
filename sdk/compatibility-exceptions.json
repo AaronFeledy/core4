@@ -1,5 +1,407 @@
 [
   {
+    "surface": "command:meta:config",
+    "changeKind": "ref-changed",
+    "path": "$.config.$ref",
+    "justification": "Config view and get intentionally reference GlobalConfigView instead of GlobalConfig: the curated effective-output schema includes appEnv and appLabels while excluding loader bookkeeping. GlobalConfig remains unchanged for configuration input."
+  },
+  {
+    "surface": "command:meta:config",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "The meta:config output reference graph intentionally replaces GlobalConfig with GlobalConfigView and its selected public-setting definitions. This separates effective config output from configuration input; the additive GlobalConfigView export is documented in sdk/API_COMPATIBILITY.md."
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Restart events embed AppPlan; its ServicePlan values additively gain optional service-type provenance for project-file inference and an optional resolved post-start scan block. Existing restart payloads remain valid."
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Restart events embed AppPlan; its ServicePlan values additively gain optional service-type provenance for project-file inference and an optional resolved post-start scan block. Existing restart payloads remain valid."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.proxy.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.proxy.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "enum-changed",
+    "path": "$.$defs.PhpServiceConfig.type",
+    "justification": "US-618E moves shipped PHP version availability to canonical ServiceType metadata while retaining php:<version> syntax validation"
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PostRestartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PreRestartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:ProxyApplyResult",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:RendererPanelContext",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:RouteInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:RoutePlan",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.routes.items.anyOf",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.proxy.additionalProperties",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "US-615 route shorthand and filters"
+  },
+  {
+    "surface": "service:LandofileService",
+    "changeKind": "signature-changed",
+    "path": "$.discover",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "service:AppPlanner",
+    "changeKind": "signature-changed",
+    "path": "$.plan",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileEventLifecycleReentryError",
+    "changeKind": "property-added",
+    "path": "$.chain",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.events.anyOf",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEventsAuthoringFragment.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEventsAuthoring.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.events.anyOf",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.LandofileEvents.additionalProperties",
+    "justification": "US-614 dynamic tooling events and restart brackets"
+  },
+  {
     "surface": "command:app:config",
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
@@ -843,67 +1245,85 @@
     "surface": "schema:ConfigTranslateDocumentSetInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The fragment authoring projection intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously accepted fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateEncodeInput.context.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The complete encoder context intentionally becomes object-only at the root while its recipe field adds provenance and keeps expressions at typed value sites; root expressions were never valid Landofiles."
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateEncodeInput.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The optional fragment authoring projection intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously accepted fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateInput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The fragment authoring projection intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously accepted fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateLayerFragment",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateLayerFragment.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The fragment authoring projection intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously accepted fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateOutput",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateOutput.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The output wire fragment intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously valid output fragment remains valid."
   },
   {
     "surface": "schema:ConfigTranslateResult",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.ConfigTranslateOutput.fragment.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
-  },
-  {
-    "surface": "schema:LandofileAuthoringFragment",
-    "changeKind": "ref-graph-changed",
-    "path": "$.$defs",
-    "justification": "Recipe provenance and declarative snapshot definitions are added to the local reference graph while every previously accepted form is preserved."
+    "justification": "The result wire fragment intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references; every previously valid output fragment remains valid."
   },
   {
     "surface": "schema:LandofileAuthoringFragmentWire",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringFragmentWire.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
-  },
-  {
-    "surface": "schema:LandofileAuthoringShape",
-    "changeKind": "ref-graph-changed",
-    "path": "$.$defs",
-    "justification": "Recipe provenance and declarative snapshot definitions are added to the local reference graph while every previously accepted form is preserved."
+    "justification": "The fragment wire root remains object-or-expression; its object branch intentionally adds recipe provenance and lifts expression alternatives beside refined provenance references."
   },
   {
     "surface": "schema:LandofileAuthoringShapeWire",
     "changeKind": "unsupported-construct",
     "path": "$.$defs.LandofileAuthoringShapeWire.anyOf",
-    "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+    "justification": "The complete authoring wire root intentionally drops the document-level expression alternative; the root is a Landofile object and expressions remain available only at typed value sites."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShape.anyOf",
+    "justification": "The complete authoring root intentionally drops the document-level expression alternative; the root is a Landofile object and expressions remain available only at typed value sites."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileRecipeProvenanceAuthoring.anyOf",
+    "justification": "The refined recipe-provenance definition remains an object while its expression alternative moves beside the definition reference at the recipe value site."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringFragment.anyOf",
+    "justification": "The fragment root remains object-or-expression; its object branch intentionally adds recipe provenance and lifts the provenance expression alternative beside its definition reference."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileRecipeProvenanceAuthoringFragment.anyOf",
+    "justification": "The partial refined recipe-provenance definition remains an object while its expression alternative moves beside the definition reference at the recipe value site."
+  },
+  {
+    "surface": "schema:RecipeDecomposeResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.RecipeDecomposeResult.fragment.anyOf",
+    "justification": "The decompose result still carries the same authoring wire fragment; its union content changes only because recipe-provenance expressions move beside refined definition references."
   },
   {
     "surface": "schema:LandofileShape",
@@ -928,5 +1348,347 @@
     "changeKind": "unsupported-construct",
     "path": "$.landofile.recipe.anyOf",
     "justification": "The Landofile recipe key intentionally widens from a bare id string to that id-or-provenance union while the bare string stays valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
+    "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:ConfigTranslateRecipeRequestInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
+    "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:ConfigTranslateSecretReference",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
+    "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:RecipeDecomposeInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ConfigTranslateStoredSecretReference.reference.pattern",
+    "justification": "Stored-secret input intentionally narrows to one canonical ${secret:...} reference so raw secret bytes and composite expressions cannot cross the translation boundary."
+  },
+  {
+    "surface": "schema:AppPlan",
+    "changeKind": "unsupported-keyword",
+    "path": "$.services.additionalProperties",
+    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block; every previously accepted service remains valid."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.services.anyOf",
+    "justification": "ServiceConfig additively gains optional packageRoot for Node project-file provenance and optional per-step build user on the build-script object form; every previously accepted service remains valid."
+  },
+  {
+    "surface": "schema:DatasetContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted dataset context remains valid."
+  },
+  {
+    "surface": "schema:ToolingFlagShape",
+    "changeKind": "property-removed",
+    "path": "$.type",
+    "justification": "The unreleased `type` spelling is replaced outright by an explicit `boolean` switch rather than carried as an alias; the Landofile parser rejects `type` with tagged remediation instead of silently accepting two spellings."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.flags.additionalProperties",
+    "justification": "Flag entries intentionally replace the unreleased `type` spelling with `boolean` and add optional `alias`, `choices`, and `required` so one normalized declaration drives native options, CLI help, and MCP input schemas."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.args.additionalProperties",
+    "justification": "Argument entries intentionally add optional `choices` and non-negative integer `order` while preserving every previously accepted field."
+  },
+  {
+    "surface": "schema:ToolingTaskShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.cmds.items.anyOf",
+    "justification": "Step lists intentionally accept an ordered command object beside the previously accepted string form; every previously accepted string entry remains valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShape.tooling.anyOf",
+    "justification": "The authoring tooling projection intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.services.anyOf",
+    "justification": "ServiceConfig additively gains optional packageRoot for Node project-file provenance and optional per-step build user on the build-script object form; every previously accepted authoring document remains valid."
+  },
+  {
+    "surface": "schema:PostGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PostGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PostStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreGlobalRebuildEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreGlobalStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:PreStartEvent",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted event remains valid."
+  },
+  {
+    "surface": "schema:TunnelStartRequest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.plan.services.additionalProperties",
+    "justification": "Nested ServicePlan values additively gain optional service-type provenance and an optional resolved post-start scan block; every previously accepted tunnel request remains valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.tooling.anyOf",
+    "justification": "The authoring tooling wire projection intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.tooling.anyOf",
+    "justification": "Encoder tooling context intentionally lifts the new step-object command form and declared flag/argument metadata beside its previously accepted alternatives."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:BuildScript",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringFragment",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInputAuthoringFragment.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInputAuthoring.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.build.oneOf",
+    "justification": "The build-script union additively accepts an object step naming the container identity for that step alone; the previously accepted string and string-array forms remain valid."
+  },
+  {
+    "surface": "schema:ServicePlan",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "The resolved post-start scan block adds its own definition beside the existing service-plan references and keeps every prior accepted form."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.composer.anyOf",
+    "justification": "Composer selection additively accepts an object carrying a version and global packages; the previously accepted string and false forms remain members of the same union."
+  },
+  {
+    "surface": "command:app:pull",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "command:app:push",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataEndpoint",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataTransferSpec",
+    "changeKind": "unsupported-construct",
+    "path": "$.from.anyOf",
+    "justification": "Host-path source endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:DataTransferSpec",
+    "changeKind": "unsupported-construct",
+    "path": "$.to.anyOf",
+    "justification": "Host-path target endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:SyncResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.artifacts.items.anyOf",
+    "justification": "Host-path endpoints add an optional trusted marker while preserving every previously accepted endpoint form."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.expectedTargetGeneration",
+    "justification": "The unreleased physical restore contract now requires the caller's observed target generation so providers fail before mutating a replaced volume."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.digest",
+    "justification": "The unreleased snapshot contract now binds native restore metadata to the provider-observed immutable artifact digest instead of a synthetic snapshot identifier."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.format",
+    "justification": "The unreleased snapshot contract now records whether provider restore metadata identifies a native artifact or a portable tar archive."
+  },
+  {
+    "surface": "schema:SnapshotInfo",
+    "changeKind": "property-added",
+    "path": "$.native.sizeBytes",
+    "justification": "The unreleased snapshot contract now records provider-observed immutable artifact size so restore rejects replacement artifacts before mutation."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.digest",
+    "justification": "The unreleased provider restore contract now requires the immutable source digest so providers can reject changed snapshot artifacts before target mutation."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.format",
+    "justification": "The unreleased provider restore contract now requires the snapshot artifact format needed to select and verify the restore path."
+  },
+  {
+    "surface": "schema:VolumeRestoreSpec",
+    "changeKind": "property-added",
+    "path": "$.snapshot.sizeBytes",
+    "justification": "The unreleased provider restore contract now requires immutable source size so providers can reject truncated or replaced artifacts before target mutation."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.digest",
+    "justification": "The unreleased snapshot reference now identifies the real immutable provider artifact digest rather than deriving integrity from the snapshot id."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.format",
+    "justification": "The unreleased snapshot reference now distinguishes native provider artifacts from portable tar archives."
+  },
+  {
+    "surface": "schema:VolumeSnapshotRef",
+    "changeKind": "property-added",
+    "path": "$.sizeBytes",
+    "justification": "The unreleased snapshot reference now carries provider-observed artifact size for pre-mutation restore verification."
   }
 ]

@@ -12,10 +12,19 @@ import { EndpointInput } from "./endpoint.ts";
 import { StringImportRef } from "./landofile-reference.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
-import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
+import { ScannerConfig } from "./networking.ts";
+import {
+  AbsoluteContainerPath,
+  CommandSpec,
+  PortablePath,
+  ProviderExtensionConfig,
+  ProviderId,
+  ServiceName,
+} from "./primitives.ts";
 import { RouterConfig } from "./proxy.ts";
 import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
+import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
@@ -25,12 +34,22 @@ export { BuildBlock } from "./build-block.ts";
 export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
-export const RouteInput = Schema.Struct({
-  hostname: Schema.String,
-  scheme: Schema.optional(Schema.Literal("http", "https", "both")),
-  endpoint: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  pathPrefix: Schema.optional(Schema.String),
+export const RouteObjectInput = Schema.Struct({
+  hostname: Schema.String.annotations({ description: "Host header pattern for this route." }),
+  scheme: Schema.optional(Schema.Literal("http", "https", "both")).annotations({
+    description: "HTTP or HTTPS schemes served by this route.",
+  }),
+  endpoint: Schema.optional(Schema.Union(Schema.String, Schema.Number)).annotations({
+    description: "Target service endpoint name or port.",
+  }),
+  pathPrefix: Schema.optional(Schema.String).annotations({ description: "Request path prefix to match." }),
+  filters: Schema.optional(Schema.Array(RouteFilter)).annotations({
+    description: "Ordered provider-neutral route filters; names identify filters across layers.",
+  }),
 });
+export type RouteObjectInput = typeof RouteObjectInput.Type;
+
+export const RouteInput = Schema.Union(Schema.NonEmptyString, RouteObjectInput);
 export type RouteInput = typeof RouteInput.Type;
 
 /** Mount input — short ("./src:/app") or expanded form. */
@@ -501,6 +520,43 @@ export const ServiceCreds = Schema.Struct({
 export type ServiceCreds = typeof ServiceCreds.Type;
 
 /**
+ * App-relative file-backed configuration a catalog service may author under
+ * `services.<name>.config` (e.g. a MySQL server config file or a Solr conf directory).
+ */
+export const ServiceFileConfig = Schema.Struct({
+  server: Schema.optional(Schema.NonEmptyString).annotations({
+    description: "App-relative path to a regular file mounted read-only as the service's server config.",
+  }),
+  dir: Schema.optional(Schema.NonEmptyString).annotations({
+    description: "App-relative path to a directory mounted read-only as the service's config directory.",
+  }),
+}).annotations({
+  identifier: "ServiceFileConfig",
+  title: "Service File Config",
+  description: "App-relative file-backed service configuration mounted read-only into the container.",
+});
+export type ServiceFileConfig = typeof ServiceFileConfig.Type;
+
+/**
+ * The additive object form of `services.<name>.composer`, selecting a Composer
+ * release and the global Composer packages installed alongside it.
+ */
+export const PhpComposerConfig = Schema.Struct({
+  version: Schema.optional(Schema.String).annotations({
+    description:
+      "Composer major channel or exact checksum-pinned version; omitted selects the bundled release.",
+  }),
+  packages: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+    description: "Global Composer packages installed at build time, package name to version constraint.",
+  }),
+}).annotations({
+  identifier: "PhpComposerConfig",
+  title: "Php Composer Config",
+  description: "Composer release selection plus the global Composer packages installed with it.",
+});
+export type PhpComposerConfig = typeof PhpComposerConfig.Type;
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -529,17 +585,36 @@ const ServiceConfigWithExtensions = Schema.Struct(
     database: Schema.optional(Schema.String).annotations({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
+    password: Schema.optional(Schema.String).annotations({
+      description:
+        "Redis authentication password, passed through the container environment rather than command arguments.",
+    }),
+    persist: Schema.optional(Schema.Boolean).annotations({
+      description:
+        "Redis disk persistence: defaults to true; false disables durable storage, AOF, and RDB snapshots.",
+    }),
     creds: Schema.optional(ServiceCreds).annotations({
       description: "Service login credentials used to provision or connect to the service.",
     }),
+    config: Schema.optional(ServiceFileConfig).annotations({
+      description: "App-relative file-backed service configuration mounted read-only into the container.",
+    }),
     hosts: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))).annotations({
       description: "Database hosts this admin UI connects to; a single hostname or a list of hostnames.",
+    }),
+    mailFrom: Schema.optional(Schema.Union(Schema.Literal(false), Schema.Array(ServiceName))).annotations({
+      description:
+        "Mailpit PHP senders: omitted selects every resolved PHP service, false selects none, and a list selects named PHP services in authored order with duplicates removed.",
     }),
     cores: Schema.optional(Schema.Array(Schema.String)),
     port: Schema.optional(Schema.Number).annotations({
       description: "Primary container port exposed by the service.",
     }),
     framework: Schema.optional(Schema.String),
+    packageRoot: Schema.optional(Schema.String).annotations({
+      description:
+        "App-root-relative source directory used only by service-type project-file inference; it does not change mounts or the container working directory.",
+    }),
     webroot: Schema.optional(PortablePath).annotations({
       description: "Container path served as this service's HTTP document root.",
     }),
@@ -549,9 +624,15 @@ const ServiceConfigWithExtensions = Schema.Struct(
     allowOverride: Schema.optional(Schema.Boolean).annotations({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
     }),
-    composer: Schema.optional(Schema.Union(Schema.Literal(false), Schema.String)).annotations({
+    composer: Schema.optional(
+      Schema.Union(Schema.Literal(false), Schema.String, PhpComposerConfig),
+    ).annotations({
       description:
-        "PHP Composer selection: a major channel, an exact checksum-pinned version, or false to skip install.",
+        "PHP Composer selection: a major channel, an exact checksum-pinned version, false to skip install, or an object carrying a version and global packages.",
+    }),
+    globals: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+      description:
+        "Global npm packages installed at build time, package name to version specifier; authored order is normalized.",
     }),
     via: Schema.optional(Schema.String).annotations({
       description: 'PHP serving mode: "apache" (default), "fpm", or "cli".',
@@ -624,7 +705,21 @@ const ServiceConfigWithExtensions = Schema.Struct(
     storage: Schema.optional(Schema.Array(StorageInput)).annotations({
       description: "Persistent or cached storage attached to the service.",
     }),
+    home: Schema.optional(
+      Schema.Union(
+        Schema.Literal(false),
+        Schema.Struct({
+          path: Schema.optional(AbsoluteContainerPath),
+        }),
+      ),
+    ).annotations({
+      description:
+        "Persist the planned user's home directory, or false to disable it. Set path to choose the destination when the image's home is not known.",
+    }),
 
+    scanner: Schema.optional(ScannerConfig).annotations({
+      description: "How the post-start URL scan probes this service, or false to skip it.",
+    }),
     endpoints: Schema.optional(Schema.Array(EndpointInput)).annotations({
       description: "Internal or published network endpoints exposed by the service.",
     }),
@@ -748,7 +843,18 @@ const ToolingEnvironment = Schema.Record({ key: Schema.String, value: ToolingVar
 });
 
 export const ToolingFlagShape = Schema.Struct({
-  type: Schema.optional(Schema.Literal("boolean", "option")),
+  alias: Schema.optional(Schema.String).annotations({
+    description: "Optional single-token alias for this flag.",
+  }),
+  choices: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Allowed values for this flag.",
+  }),
+  boolean: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether this flag is a boolean switch instead of a value-taking option.",
+  }),
+  required: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether this flag must be supplied.",
+  }),
   description: Schema.optional(Schema.String),
   default: Schema.optional(ToolingVarLiteral),
   deprecated: Schema.optional(DeprecationNotice),
@@ -756,12 +862,35 @@ export const ToolingFlagShape = Schema.Struct({
 export type ToolingFlagShape = typeof ToolingFlagShape.Type;
 
 export const ToolingArgShape = Schema.Struct({
+  choices: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Allowed values for this argument.",
+  }),
+  order: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.nonNegative())).annotations({
+    description: "Positional order of this argument within the task.",
+  }),
   description: Schema.optional(Schema.String),
   required: Schema.optional(Schema.Boolean),
   default: Schema.optional(ToolingVarLiteral),
   deprecated: Schema.optional(DeprecationNotice),
 });
 export type ToolingArgShape = typeof ToolingArgShape.Type;
+
+export const ToolingStepShape = Schema.Struct({
+  cmd: Schema.String.annotations({ description: "Shell command executed for this step." }),
+  service: Schema.optional(Schema.String).annotations({
+    description: "Service this step runs in; overrides the task service.",
+  }),
+  dir: Schema.optional(PortablePath).annotations({
+    description: "Working directory for this step; overrides the task directory.",
+  }),
+  user: Schema.optional(Schema.String).annotations({
+    description: "User this step runs as; overrides the task user.",
+  }),
+  env: Schema.optional(ToolingEnvironment).annotations({
+    description: "Environment overlaid on the task environment for this step.",
+  }),
+});
+export type ToolingStepShape = typeof ToolingStepShape.Type;
 
 export const AppLifecycleEventName = Schema.Literal(
   "pre-init",
@@ -770,12 +899,20 @@ export const AppLifecycleEventName = Schema.Literal(
   "post-start",
   "pre-stop",
   "post-stop",
+  "pre-restart",
+  "post-restart",
   "pre-rebuild",
   "post-rebuild",
   "pre-destroy",
   "post-destroy",
 ).annotations({ description: "App lifecycle point that runs an ordered Landofile event step list." });
 export type AppLifecycleEventName = typeof AppLifecycleEventName.Type;
+
+export const ToolingEventName = Schema.TemplateLiteral(Schema.Literal("pre-", "post-"), Schema.String);
+export type ToolingEventName = typeof ToolingEventName.Type;
+
+export const LandofileEventName = Schema.Union(AppLifecycleEventName, ToolingEventName);
+export type LandofileEventName = typeof LandofileEventName.Type;
 
 const EventStepCondition = Schema.Union(Schema.String, Schema.Boolean);
 
@@ -1031,20 +1168,25 @@ export const EventStep = Schema.Union(
 });
 export type EventStep = typeof EventStep.Type;
 
-export const LandofileEvents = Schema.Struct({
-  "pre-init": Schema.optional(Schema.Array(EventStep)),
-  "post-init": Schema.optional(Schema.Array(EventStep)),
-  "pre-start": Schema.optional(Schema.Array(EventStep)),
-  "post-start": Schema.optional(Schema.Array(EventStep)),
-  "pre-stop": Schema.optional(Schema.Array(EventStep)),
-  "post-stop": Schema.optional(Schema.Array(EventStep)),
-  "pre-rebuild": Schema.optional(Schema.Array(EventStep)),
-  "post-rebuild": Schema.optional(Schema.Array(EventStep)),
-  "pre-destroy": Schema.optional(Schema.Array(EventStep)),
-  "post-destroy": Schema.optional(Schema.Array(EventStep)),
-}).annotations({
+export const LandofileEvents = Schema.Struct(
+  {
+    "pre-init": Schema.optional(Schema.Array(EventStep)),
+    "post-init": Schema.optional(Schema.Array(EventStep)),
+    "pre-start": Schema.optional(Schema.Array(EventStep)),
+    "post-start": Schema.optional(Schema.Array(EventStep)),
+    "pre-stop": Schema.optional(Schema.Array(EventStep)),
+    "post-stop": Schema.optional(Schema.Array(EventStep)),
+    "pre-restart": Schema.optional(Schema.Array(EventStep)),
+    "post-restart": Schema.optional(Schema.Array(EventStep)),
+    "pre-rebuild": Schema.optional(Schema.Array(EventStep)),
+    "post-rebuild": Schema.optional(Schema.Array(EventStep)),
+    "pre-destroy": Schema.optional(Schema.Array(EventStep)),
+    "post-destroy": Schema.optional(Schema.Array(EventStep)),
+  },
+  Schema.Record({ key: Schema.String, value: Schema.Array(EventStep) }),
+).annotations({
   identifier: "LandofileEvents",
-  description: "Ordered tasks keyed by app lifecycle event name.",
+  description: "Ordered tasks keyed by lifecycle or tooling event name, validated after tooling resolution.",
 });
 export type LandofileEvents = typeof LandofileEvents.Type;
 
@@ -1056,7 +1198,7 @@ export type LandofileEvents = typeof LandofileEvents.Type;
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
  * - `description:` / `summary:` — short help text.
  * - `cmd:` — single command (string or string array).
- * - `cmds:` — sequential command list (strings only in this schema).
+ * - `cmds:` — sequential shell commands or command steps with execution overrides.
  * - `arguments: false` — reject caller-supplied positional arguments.
  * - `dir:` — task working directory.
  * - `env:` — task environment overrides.
@@ -1066,21 +1208,29 @@ export type LandofileEvents = typeof LandofileEvents.Type;
  * `deprecated:`, `flags.<name>.deprecated:`, and `args.<name>.deprecated:`.
  *
  * Unsupported fields rejected by `LandofileService` with remediation:
- * `deps:`, step-objects in `cmds:` (`task:`, `command:`, `defer:`,
- * `for:`, `cmd:` step overrides), `engine:`, `bootstrap:`, `dotenv:`,
- * `user:`, `appMount:`, `stdio:`, `interactive:`,
+ * `deps:`, non-command step-objects in `cmds:` (`task:`, `command:`, `defer:`,
+ * `for:`), `engine:`, `bootstrap:`, `dotenv:`,
+ * `appMount:`, `stdio:`, `interactive:`,
  * `passThrough:`, `sources:`, `generates:`, `method:`, `status:`,
  * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
- * `silent:`, `output:`, `failFast:`, `disabled:`, `aliases:`,
+ * `silent:`, `output:`, `failFast:`, `aliases:`,
  * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
  * `examples:`, `usage:`.
  */
 export const ToolingTaskShape = Schema.Struct({
+  user: Schema.optional(Schema.String).annotations({
+    description: "User that the task's commands run as inside the target service.",
+  }),
+  disabled: Schema.optional(Schema.Boolean).annotations({
+    description: "Disables the task so it is hidden from listings and refused at execution.",
+  }),
   service: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
   summary: Schema.optional(Schema.String),
   cmd: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
-  cmds: Schema.optional(Schema.Array(Schema.String)),
+  cmds: Schema.optional(Schema.Array(Schema.Union(Schema.String, ToolingStepShape))).annotations({
+    description: "Ordered shell commands or command steps with task-local execution overrides.",
+  }),
   arguments: Schema.optional(Schema.Literal(false)).annotations({
     description: "Set to false to reject caller-supplied positional arguments for this task.",
   }),
@@ -1154,7 +1304,7 @@ export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
  * The map key is the include namespace; the entry names a local tooling
  * fragment carrying only `tooling:` and `toolingIncludes:`.
  *
- * Deliberately omitted: `dir:` (task-level `dir:` is rejected) and
+ * Deliberately omitted: `dir:` (set it on individual tasks instead) and
  * `checksum:` (tooling fragments are local-file only, so there is no remote
  * source to pin).
  */

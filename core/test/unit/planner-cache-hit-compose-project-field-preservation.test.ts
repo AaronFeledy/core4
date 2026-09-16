@@ -28,7 +28,7 @@ test("Given supported project fields, when planning twice, then the cache hit re
     name: "preserved-project-field",
     runtime: 4,
     configs,
-    services: { web: { image: "node:lts" } },
+    services: { web: { image: "node:lts", home: false } },
   });
   const capabilities = {
     ...TestRuntimeProvider.capabilities,

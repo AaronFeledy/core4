@@ -1,8 +1,6 @@
-import { type Context, DateTime, Effect, Either, ParseResult, Schema } from "effect";
-
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
+import { findLandofilePath } from "@lando/landofile/discovery";
 import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
@@ -11,21 +9,23 @@ import {
   CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type HomePathCapabilityError,
+  type LandofileUnknownEventError,
   LandofileValidationError,
   type NotImplementedError,
   type PublicationUnsupportedError,
+  type RouteInputError,
   ServiceTypeCollisionError,
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
-  AppPlan,
+  type AppPlan,
   type LandofileShape,
   type NetworkPlan,
   type NetworkingPlan,
   type ProviderCapabilities,
   type ServiceConfig,
-  ServiceName,
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
@@ -36,7 +36,7 @@ import {
   type PathsService,
   type PluginRegistry,
 } from "@lando/sdk/services";
-
+import { type Context, DateTime, Effect, Either } from "effect";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -45,6 +45,7 @@ import {
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
+import { routerEnabledFrom } from "../config/router-config.ts";
 import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -62,7 +63,8 @@ import {
   hostProxyExtensionForCapabilities,
 } from "../subsystems/host-proxy/plan-extension.ts";
 import { CORE_VERSION } from "../version.ts";
-import { planServiceDrafts } from "./authored.ts";
+import * as AppDefaults from "./app-defaults.ts";
+import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
   assertComposeKnobsSupported,
@@ -80,8 +82,13 @@ import {
 } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
+import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
+import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
+import { decodeAppPlan } from "./plan-decode.ts";
+import { attachScanPlans } from "./scanner-plan.ts";
+import { resolveServiceConfigSources } from "./service-config-files.ts";
 import {
   type ResolvedService,
   appFeatureError,
@@ -90,34 +97,13 @@ import {
   loadServiceTypeWithVersion,
   resolveHostFacts,
   resolvePinnedArtifactTag,
+  resolvedServiceCacheInput,
   servicePlanError,
   serviceTypeCollision,
   serviceTypeFor,
   unsupportedServiceType,
 } from "./service-types.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
-
-const validationIssues = (cause: unknown): ReadonlyArray<string> => {
-  if (ParseResult.isParseError(cause)) {
-    return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
-      issue.path.length === 0 ? issue.message : issue.path.join("."),
-    );
-  }
-  return [cause instanceof Error ? cause.message : "Invalid app plan."];
-};
-
-const decodeAppPlan = (appRoot: string, plan: unknown): Effect.Effect<AppPlan, LandofileValidationError> => {
-  const decoded = Schema.decodeUnknownEither(AppPlan)(plan);
-  if (Either.isRight(decoded)) return Effect.succeed(decoded.right);
-  const issues = validationIssues(decoded.left);
-  return Effect.fail(
-    new LandofileValidationError({
-      message: `Planned AppPlan is invalid: ${issues.join(", ")}.`,
-      file: `${appRoot}/.lando.yml`,
-      issues,
-    }),
-  );
-};
 
 export const planApp = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
@@ -131,11 +117,14 @@ export const planApp = (
 ): Effect.Effect<
   AppPlan,
   | LandofileValidationError
+  | RouteInputError
   | CapabilityError
+  | HomePathCapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
   | CommandAliasConflictError
   | ConfigExpressionError
+  | LandofileUnknownEventError
 > => {
   const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
   const landofilePath = `${appRoot}/.lando.yml`;
@@ -165,7 +154,9 @@ export const planApp = (
                 }),
             ),
           );
+    const appDefaults = AppDefaults.resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
     const configProvider = globalConfig?.defaultProviderId;
+    const routerEnabled = routerEnabledFrom(globalConfig?.router, landofile.router);
     const networkPlan = yield* Effect.try({
       try: () => resolveNetworkTrustPlan({ network: globalConfig?.network }, process.env),
       catch: (cause) =>
@@ -196,10 +187,9 @@ export const planApp = (
     const fileSyncEngineId =
       providerCapabilities.bindMountPerformance === "slow" ? resolveFileSyncEngineId(manifests) : undefined;
     const cacheRoot = resolveUserCacheRoot();
-    const sourceFingerprint = yield* readAppPlanSourceFingerprint(
-      appRoot,
-      getLandofileReferencedFiles(landofile),
-    ).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
+      Effect.catchAll(() => Effect.succeed(undefined)),
+    );
     const registeredServiceTypeIds = manifests.flatMap((manifest) =>
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     );
@@ -241,17 +231,21 @@ export const planApp = (
     });
     const resolvedServices: ResolvedService[] = [];
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
+      const routes = yield* normalizeAuthoredRoutes({ name, service, landofile });
       const loadedEnvFiles = yield* loadServiceEnvFiles({ appRoot, serviceName: name, service, fileSystem });
+      const configSourceInputs = yield* resolveServiceConfigSources({
+        appRoot,
+        serviceName: name,
+        config: service.config,
+      });
       const hasEnvFiles = topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0;
-      const serviceWithEnvironment: ServiceConfig = !hasEnvFiles
-        ? service
-        : {
-            ...service,
-            environment: {
-              ...topLevelEnvFiles.environment,
-              ...(loadedEnvFiles.environment ?? {}),
-            },
-          };
+      const serviceWithEnvironment = AppDefaults.withUserAppDefaults({
+        service,
+        defaults: appDefaults,
+        topLevelEnvironment: topLevelEnvFiles.environment,
+        serviceEnvironment: loadedEnvFiles.environment,
+        hasEnvFiles,
+      });
       if (
         serviceWithEnvironment.image !== undefined &&
         serviceWithEnvironment.build !== undefined &&
@@ -270,7 +264,6 @@ export const planApp = (
       if (authored.globalEntry !== undefined) {
         yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
       }
-
       const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
       const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
         Effect.mapError((error) =>
@@ -281,9 +274,20 @@ export const planApp = (
       );
       const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
       const pinnedService: ServiceConfig =
-        resolvedArtifactTag === undefined
+        resolvedArtifactTag === undefined || serviceWithEnvironment.image !== undefined
           ? serviceWithEnvironment
           : { ...serviceWithEnvironment, image: resolvedArtifactTag };
+      const projectFiles = yield* loadAuthorizedServiceProjectFiles({
+        appRoot,
+        name,
+        service,
+        serviceType,
+        serviceTypeId,
+        version,
+        pinnedService,
+        registeredServiceTypeIds,
+        fileSystem,
+      });
       const resolution = yield* serviceType
         .resolve({
           name,
@@ -295,6 +299,7 @@ export const planApp = (
           metadata: encodedMetadata,
           host,
           capabilities: providerCapabilities,
+          projectFiles,
         })
         .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       const resolvedAuthored = authoredStorageScopes(appRoot, name, resolution.normalizedConfig);
@@ -334,10 +339,6 @@ export const planApp = (
               paths: pathsService,
             })
           : undefined;
-      const authoredRoutes = [
-        ...(pinnedService.routes ?? []),
-        ...(landofile.proxy?.[ServiceName.make(name)] ?? []),
-      ];
       const certsFeature =
         resolution.base === "lando"
           ? yield* resolveCertsFeature({
@@ -346,9 +347,9 @@ export const planApp = (
               serviceName: name,
               certs: resolution.normalizedConfig.certs ?? pinnedService.certs,
               hostnames: pinnedService.hostnames ?? [],
-              routes: authoredRoutes,
+              routes,
               defaultRouteHostname:
-                authoredRoutes.length === 0 ? `${name}.${appSlug}.${DEFAULT_PROXY_DOMAIN}` : undefined,
+                routes.length === 0 ? `${name}.${appSlug}.${DEFAULT_PROXY_DOMAIN}` : undefined,
               resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
               fileSystem,
             })
@@ -366,6 +367,7 @@ export const planApp = (
         (featureRef) => plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef,
       );
       resolvedServices.push({
+        routes,
         name,
         service: pinnedService,
         authored: storageAuthored,
@@ -376,9 +378,10 @@ export const planApp = (
         featureRefs,
         resolvedArtifactTag,
         envFileInputs: loadedEnvFiles.inputs,
+        projectFiles,
+        configSourceInputs,
       });
     }
-
     const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
     const toolingServices = resolvedServices.map((entry) => ({
       name: entry.name,
@@ -395,11 +398,26 @@ export const planApp = (
     });
     if (reservedToolingConflict !== undefined) yield* Effect.fail(reservedToolingConflict);
     const effectiveEvents = compileEffectiveEvents({ landofile });
+    const validEvents = validEventNames(effectiveTooling);
+    const unknownEvent = unknownEventName(landofile.events, validEvents);
+    if (unknownEvent !== undefined) {
+      const canonicalPath = yield* Effect.tryPromise({
+        try: () => findLandofilePath(appRoot),
+        catch: (cause) =>
+          new LandofileValidationError({
+            message: cause instanceof Error ? cause.message : "Cannot locate the canonical Landofile.",
+            file: landofilePath,
+            issues: ["events"],
+          }),
+      });
+      return yield* Effect.fail(unknownEventError(unknownEvent, validEvents, canonicalPath ?? landofilePath));
+    }
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },
       providerCapabilities,
       pluginManifests: manifests,
+      config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, appDefaults),
       ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
       versionConstraints,
       serviceInputs: {
@@ -407,19 +425,7 @@ export const planApp = (
         composition: {
           topLevelEnvFileInputs: topLevelEnvFiles.inputs,
           composeConfigFileInputs,
-          services: resolvedServices.map((entry) => ({
-            name: entry.name,
-            serviceType: entry.serviceType.id,
-            base: entry.resolution.base,
-            normalizedConfig: entry.resolution.normalizedConfig,
-            tooling: entry.resolution.tooling ?? {},
-            logSources: entry.logSources,
-            featureRefs: entry.featureRefs,
-            envFileInputs: entry.envFileInputs,
-            ...(entry.resolvedArtifactTag === undefined
-              ? {}
-              : { resolvedArtifactTag: entry.resolvedArtifactTag }),
-          })),
+          services: resolvedServices.map(resolvedServiceCacheInput),
           appFeatures: appFeatures.map((entry) => ({
             id: entry.id,
             ...(entry.pluginId === undefined ? {} : { pluginId: entry.pluginId }),
@@ -455,7 +461,6 @@ export const planApp = (
       appName,
       appRoot,
       host,
-      landofileProxy: landofile.proxy,
     });
     const appFeatureResult = yield* composeAppFeatures({
       appName,
@@ -488,7 +493,7 @@ export const planApp = (
       metadata,
       fileSyncEngineId,
     });
-    if (finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
+    if (routerEnabled && finalized.routes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
       yield* Effect.fail(
         new CapabilityError({
           message: "Routes require provider capability sharedCrossAppNetwork.",
@@ -499,7 +504,6 @@ export const planApp = (
         }),
       );
     }
-
     const serviceNames = Object.keys(finalized.services);
     const hasServices = serviceNames.length > 0;
     const networks: ReadonlyArray<NetworkPlan> = hasServices
@@ -522,7 +526,7 @@ export const planApp = (
     };
     const hasComposeProjectExtension = Object.keys(composeProjectExtension).length > 0;
     const requiredGlobalServices = [
-      ...(finalized.routes.length > 0 ? ["traefik"] : []),
+      ...(finalized.routes.length > 0 && routerEnabled ? ["traefik"] : []),
       ...appFeatureResult.requires.globalServices,
     ];
     const plan = attachEffectiveEvents(
@@ -533,6 +537,7 @@ export const planApp = (
           slug: appSlug,
           root: AbsolutePath.make(appRoot),
           provider,
+          router: { enabled: routerEnabled },
           services: finalized.services,
           routes: finalized.routes,
           networks,
@@ -552,7 +557,7 @@ export const planApp = (
           ...(requiredGlobalServices.length === 0
             ? {}
             : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
-        }),
+        }).pipe(Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices))),
         effectiveTooling,
       ),
       effectiveEvents,

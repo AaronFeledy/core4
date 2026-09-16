@@ -1,0 +1,182 @@
+---
+id: migrating-recipes
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, recipes, config, migrate]
+---
+
+# Move your Landofile to a newer recipe version without losing your edits
+
+```sh
+lando app:config:migrate --dry-run
+lando app:config:migrate
+lando rebuild
+```
+
+Run that from an app you created with `lando init --recipe=<id>`. Lando reads the recipe version recorded under `recipe.version`, walks the ordered migration edges the installed recipe publishes from that version forward, and rewrites the Landofile one edge at a time. Values you took over stay yours. Options you changed stay changed. When it lands anything, it tells you to `lando rebuild`.
+
+Migration never plans or applies the app, never follows `includes:`, and never executes a `.lando.ts`. It only edits the file.
+
+## Preview with `--dry-run`
+
+```sh
+lando app:config:migrate --dry-run
+```
+
+Dry-run prints the complete ordered hunk set for every edge and writes nothing. Read it before you write. Each hunk line names the edge (`0.1.0 -> 0.2.0`), the hunk kind, the Landofile path it touches, and one of four classifications:
+
+| Classification | Meaning |
+| --- | --- |
+| `already-satisfied` | The file already holds the new value. Nothing to do. |
+| `selected` | The hunk will be applied. |
+| `retained-option` | You customized this option. Your value stays and the edge still advances. |
+| `blocking` | The hunk can't apply. The edge stops here, and so does every later edge. |
+
+## Write the migration
+
+Migrate rewrites your Landofile in place. Before it does, it takes an advisory lock on the app root and leaves an immutable backup next to the file named `.lando.yml.bak.<sha256>` (the digest is of the bytes before the write). The emitted YAML keeps every value but drops comments, same as `app:config:translate --write`. Commit or stash first if you want a cheap diff.
+
+```sh
+lando app:config:migrate
+```
+
+By default this asks once per selectable hunk. Answer yes to apply, no to decline. Declining a hunk blocks its edge.
+
+In a script or an agent, skip the prompts:
+
+```sh
+lando app:config:migrate --yes
+```
+
+`--yes` (or `-y`) selects every untouched option and structural hunk. Without a TTY and without `--yes`, migrate fails closed and tells you to re-run with `--yes`. It never hangs waiting for input.
+
+When an edge lands, the last line of the report is `run \`lando rebuild\``. Do that. The file changed; the containers haven't.
+
+## Read the report
+
+Migrate commits only the longest prefix of edges where every hunk is non-blocking. Say the recipe publishes three edges from your recorded version. Edges 1 and 2 are clean and edge 3 has one hunk that blocks. You get edges 1 and 2 written, `recipe.version` and `recipe.producer` set once to the version edge 2 produced, and edge 3 reported as `blocked` with its remediation. Nothing from edge 3 lands, not even the hunks that would have been fine. Fix the blocker, run migrate again, and it picks up from edge 3.
+
+That partial run reads like this (illustrative shape; no bundled recipe publishes migration history yet, so you can't reproduce it against a bundled app today):
+
+```text
+Landofile: /home/you/app/.lando.yml
+Target: lamp 0.4.0
+Producer: bundled @lando/recipe-lamp
+Digest: sha256:<target digest>
+Recorded: lamp 0.1.0
+Producer: bundled @lando/recipe-lamp
+Digest: sha256:<recorded digest>
+Committed: lamp 0.3.0
+Producer: bundled @lando/recipe-lamp
+Digest: sha256:<committed digest>
+Status: partial
+Edge: 0.1.0 -> 0.2.0 (satisfied)
+  0.1.0 -> 0.2.0: option-default recipe.options.php [retained-option]
+Edge: 0.2.0 -> 0.3.0 (satisfied)
+  0.2.0 -> 0.3.0: rename services.appserver [selected]
+Edge: 0.3.0 -> 0.4.0 (blocked)
+  0.3.0 -> 0.4.0: option-default recipe.options.database [blocking] (site-taken-over)
+    services.database.type holds a literal that differs from the new value; set it to the new value or restore {{ recipe.database }}, then re-run.
+run `lando rebuild`
+```
+
+### Managed sites move, taken-over sites don't
+
+A value site that still holds the generated `{{ recipe.<option> }}` expression is managed. Migration updates it. Replace that expression with a literal and you own the site: migration never overwrites a taken-over literal. If your literal already equals what the new version would produce, the hunk is `already-satisfied` and the edge advances. If it differs, the hunk is `blocking` with reason `site-taken-over`, and the report tells you to reconcile it by hand. Run `lando app:config:explain` to see which sites you've taken over before you migrate.
+
+### Customized options are retained
+
+Set `php: "8.2"` at init when the default was `8.3`, and a later edge that moves the default to `8.4` classifies your option as `retained-option`. Your `8.2` stays. The edge still counts as satisfied.
+
+### Renames are all or nothing
+
+When an edge renames a service, it rewrites `recipe.services`, the service key, and every managed reference to it (`dependsOn`, tooling `service:` lines, routes) in one hunk. If any of those references was taken over, the whole edge blocks. No half-renamed service map.
+
+### Repeat runs are no-ops
+
+Run migrate again after it completes and the file doesn't change by a byte. The report says `Status: no-op` and `Nothing changed: already current.` Same when there are no edges to walk because the recorded version already matches what the recipe publishes. That's the case for every bundled recipe today: none publishes `migrations:` yet, so a fresh `lando init` app is already current.
+
+## Get JSON
+
+```sh
+lando app:config:migrate --dry-run --format=json
+```
+
+The `result` object carries `mode` (`write` or `dry-run`), `status` (`committed`, `partial`, `blocked`, or `no-op`), `landofilePath`, `target`, optional `recorded` and `committed` producers, `noMutation` when nothing changed, an `edges` array with per-hunk `classification`, `reason`, and `remediation`, and `next`. Agents should read that instead of scraping the text.
+
+## When migration is blocked before any edge runs
+
+Some inputs stop the chain before it starts. Nothing is written, and the report carries `Blocked (<reason>)` with a `detail` and a `remediation` line.
+
+| Situation | Reason |
+| --- | --- |
+| Bare `recipe: lamp` with no options or producer | `bare-provenance` |
+| `includes:` present (never followed) | `includes-present` |
+| A `.lando.ts` in the app root (never executed) | `programmatic-landofile` |
+| No installed recipe publishes that id | `unknown-recipe` |
+| Recorded provenance fails validation | `invalid-provenance` |
+| `recipe.services` doesn't match the service map | `invalid-service-map` |
+
+Bare provenance is the common one for apps hand-written before `lando init` recorded producers. Re-run `lando init` with the recipe to record the producer identity and options, then migrate.
+
+<Guide>
+  <Scenario id="already-current" render>
+    <Step name="dry-run-current">
+      <UseFixture name="managed-lamp" />
+      <Run command="lando app:config:migrate --dry-run" />
+      <Verify command="lando app:config:migrate --dry-run --format=json" expect={{ stdout: { regex: "\"mode\":\\s*\"dry-run\"" } }} />
+      <Verify command="lando app:config:migrate --dry-run --format=json" expect={{ stdout: { regex: "\"status\":\\s*\"no-op\"" } }} />
+    </Step>
+    <Step name="write-current">
+      <Run command="lando app:config:migrate --yes" />
+      <Verify command="lando app:config:migrate --yes --format=json" expect={{ stdout: { regex: "\"noMutation\":\\s*\"already-current\"" } }} />
+      <Verify file="managed-lamp/.lando.yml" expect={{ regex: "name: migrate-demo" }} />
+      <Verify file="managed-lamp/.lando.yml" expect={{ regex: "version: 0\\.1\\.0" }} />
+    </Step>
+    <Step name="current-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="blocked-bare" render>
+    <Step name="migrate-bare">
+      <UseFixture name="bare-recipe" />
+      <Run command="lando app:config:migrate --dry-run" />
+      <Verify command="lando app:config:migrate --dry-run --format=json" expect={{ stdout: { regex: "\"bare-provenance\"" } }} />
+      <Verify file="bare-recipe/.lando.yml" expect={{ regex: "recipe: lamp" }} />
+    </Step>
+    <Step name="bare-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="blocked-includes" render>
+    <Step name="migrate-includes">
+      <UseFixture name="includes-app" />
+      <Run command="lando app:config:migrate --yes" />
+      <Verify command="lando app:config:migrate --yes --format=json" expect={{ stdout: { regex: "\"includes-present\"" } }} />
+      <Verify file="includes-app/.lando.yml" expect={{ regex: "\\./fragments/extra\\.yml" }} />
+    </Step>
+    <Step name="includes-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="blocked-programmatic" render>
+    <Step name="migrate-programmatic">
+      <UseFixture name="programmatic-app" />
+      <Run command="lando app:config:migrate --yes" />
+      <Verify command="lando app:config:migrate --yes --format=json" expect={{ stdout: { regex: "\"programmatic-landofile\"" } }} />
+      <Verify file="programmatic-app/.lando.ts" expect={{ regex: "must never execute" }} />
+    </Step>
+    <Step name="programmatic-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [See which Landofile values your recipe still manages](../landofile/config-explain.mdx)
+- [Translate a config into a v4 Landofile](../landofile/config-translate.mdx)

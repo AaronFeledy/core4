@@ -69,7 +69,7 @@ import { setActiveLogLevel } from "./renderer-mode-state";
 import { runBuiltInCommand } from "./run-built-in-command";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
-import { resolveToolingRoute } from "./tooling-router";
+import { resolveToolingRoute, toolingHelpRequested } from "./tooling-router";
 import { unknownCommandError } from "./unknown-command-error";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize";
@@ -347,6 +347,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     } else if (route._tag === "alias-disabled") {
       setActiveCommandId("cli:unknown-command");
       await failUnknownCommand(route.token);
+      return;
+    } else if (toolingHelpRequested(route, argvTail)) {
+      await dispatchHelpTarget(route.commandId);
       return;
     } else if (await routeResolvedTooling(route, argvTail)) {
       return;

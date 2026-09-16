@@ -14,7 +14,7 @@
         "Hostile preinstalled-v3 byte/mode/link/path fixtures, repeat install/shellenv, platform installers, operation-specific guide, and applicable standard gates pass."
       ],
       "dependsOn": ["US-607"],
-      "priority": 31,
+      "priority": 33,
       "passes": false,
       "notes": ""
     },
@@ -29,7 +29,7 @@
         "End-to-end install/shellenv/update/uninstall hostile-v3 preservation, complete coexistence guide, release-package, platform, and applicable standard gates pass."
       ],
       "dependsOn": ["US-619B1"],
-      "priority": 32,
+      "priority": 34,
       "passes": false,
       "notes": ""
     },
@@ -42,7 +42,7 @@
         "Copy the checksum-pinned licensed corpus to owning test fixtures; normal v4 restrictions remain unchanged, no production/test reads `spec/**`, and parser/applicable standard gates pass."
       ],
       "dependsOn": ["US-608A"],
-      "priority": 33,
+      "priority": 35,
       "passes": false,
       "notes": ""
     },
@@ -57,7 +57,7 @@
         "Close over injected `RecipeDecomposer` while keeping public `R = never`; plugin DAG, clean install, codegen, cold-start, contract, and applicable standard gates pass."
       ],
       "dependsOn": ["US-608B", "US-609B", "US-620A"],
-      "priority": 34,
+      "priority": 36,
       "passes": false,
       "notes": ""
     },
@@ -72,7 +72,7 @@
         "Cover dist-redis/local-false, nested removal, scalar and identity arrays, recipe-layer interval, no nonexistent prefix, live structural-option regeneration, and single-layer fail-closed dependency closure; applicable standard gates pass."
       ],
       "dependsOn": ["US-609B", "US-609C", "US-609E", "US-620B"],
-      "priority": 35,
+      "priority": 37,
       "passes": false,
       "notes": ""
     },
@@ -89,7 +89,7 @@
         "Separate supported real-runtime fixtures from unavailable-version and unsupported-option rejections; do not manufacture images; README/provider and applicable standard gates pass."
       ],
       "dependsOn": ["US-607", "US-616", "US-618A", "US-618B", "US-618C", "US-618E", "US-620B", "US-621A"],
-      "priority": 36,
+      "priority": 38,
       "passes": false,
       "notes": ""
     },
@@ -104,7 +104,7 @@
         "Cover nested command cycles/depth, pre/body/post failures, fatal post-step tails, unknown events, and applicable standard gates."
       ],
       "dependsOn": ["US-613", "US-614", "US-621C1"],
-      "priority": 37,
+      "priority": 39,
       "passes": false,
       "notes": ""
     },
@@ -119,7 +119,7 @@
         "Add no legacy `/lando`, `/helpers`, user-state mounts, `LANDO_MOUNT`, or fabricated host address; real home/route/scan and applicable standard gates pass."
       ],
       "dependsOn": ["US-615", "US-617A", "US-617B", "US-621C1"],
-      "priority": 38,
+      "priority": 40,
       "passes": false,
       "notes": ""
     },
@@ -132,7 +132,7 @@
         "Assert every inventory path has exactly one `target`, `drop`, or `unsupported` owner and one golden diagnostic/output case; no residual bag, fallback, runtime emulation, or unspecified variant remains; applicable standard gates pass."
       ],
       "dependsOn": ["US-618D1", "US-618D3", "US-621C1", "US-621C3", "US-621C5"],
-      "priority": 39,
+      "priority": 41,
       "passes": false,
       "notes": ""
     },
@@ -156,7 +156,7 @@
         "US-621C8",
         "US-619B3"
       ],
-      "priority": 40,
+      "priority": 42,
       "passes": false,
       "notes": ""
     },
@@ -169,7 +169,7 @@
         "Leftovers inspect only selected `docker` or actual provider id `podman`, skip informationally without app context, and skip managed `lando` before daemon access; shadow is unverified informational only; no proxy duplicate/container-runtime import; fake-home/path/provider/platform and applicable standard gates pass."
       ],
       "dependsOn": ["US-620B", "US-621D"],
-      "priority": 41,
+      "priority": 43,
       "passes": false,
       "notes": ""
     },
@@ -182,7 +182,7 @@
         "Run all named root, SDK, plugin, transaction, release, guide, transcript, real-provider, codegen, and boundary gates; update gap analysis, version matrix docs, and guide index without claiming unsupported fixtures convert."
       ],
       "dependsOn": ["US-611B", "US-622A"],
-      "priority": 42,
+      "priority": 44,
       "passes": false,
       "notes": ""
     }

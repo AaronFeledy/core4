@@ -354,6 +354,10 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     let stdinIterator: AsyncIterator<Bytes> | undefined;
     let stdinReady = false;
     let stdinExhausted = false;
+    let stopStdinPump: (() => void) | undefined;
+    const stdinStopped = new Promise<void>((resolve) => {
+      stopStdinPump = resolve;
+    });
     const pendingStdin: Bytes[] = [];
     const abort = () => connection.destroy();
     input.signal?.addEventListener("abort", abort, { once: true });
@@ -375,7 +379,12 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       stdinIterator = iterator;
       stdinPump = (async () => {
         while (true) {
-          const next = await iterator.next();
+          const outcome = await Promise.race([
+            iterator.next().then((next) => ({ kind: "next", next }) as const),
+            stdinStopped.then(() => ({ kind: "stopped" }) as const),
+          ]);
+          if (outcome.kind === "stopped") return;
+          const next = outcome.next;
           if (next.done === true) {
             stdinExhausted = true;
             maybeEndStdin();
@@ -448,9 +457,10 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       }
     } finally {
       input.signal?.removeEventListener("abort", abort);
+      stopStdinPump?.();
+      await stdinPump?.catch(() => undefined);
       void stdinIterator?.return?.();
       connection.destroy();
-      void stdinPump?.catch(() => undefined);
     }
   }
 

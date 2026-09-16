@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { Effect, Exit } from "effect";
 
 import {

@@ -141,6 +141,63 @@ describe("managed-file transaction coordinator", () => {
     expect(await readFile(target, "utf8")).toBe("name: concurrent\n");
   });
 
+  test("rejects stale expected bytes during prepare before creating artifacts", async () => {
+    // Given a caller snapshot whose target was edited before transaction preparation
+    const { appRoot, transactions } = await makeFixture();
+    const target = join(appRoot, ".lando.yml");
+    await writeFile(target, "name: concurrent\n", "utf8");
+
+    // When the caller requires the bytes it originally read
+    const error = await failure(
+      transactions.prepare({
+        appRoot,
+        operations: [
+          {
+            kind: "write",
+            path: ".lando.yml",
+            content: "name: after\n",
+            expectedBefore: { present: true, digest: digestOf("name: before\n") },
+          },
+        ],
+      }),
+    );
+
+    // Then prepare fails without overwriting or retaining transaction artifacts
+    expect(error).toMatchObject({ reason: "conflict", phase: "prepare", path: ".lando.yml" });
+    expect(await readFile(target, "utf8")).toBe("name: concurrent\n");
+    expect(await stageNames(appRoot)).toEqual([]);
+    expect(await backupNames(appRoot)).toEqual([]);
+    expect(await run(transactions.readJournal(appRoot))).toBeNull();
+  });
+
+  test("rejects an unexpectedly present target during prepare", async () => {
+    // Given an init-style caller that observed an absent target before another writer created it
+    const { appRoot, transactions } = await makeFixture();
+    const target = join(appRoot, ".lando.yml");
+    await writeFile(target, "name: concurrent\n", "utf8");
+
+    // When the caller requires absence
+    const error = await failure(
+      transactions.prepare({
+        appRoot,
+        operations: [
+          {
+            kind: "write",
+            path: ".lando.yml",
+            content: "name: initialized\n",
+            expectedBefore: { present: false },
+          },
+        ],
+      }),
+    );
+
+    // Then the existing file survives and no artifact is created
+    expect(error).toMatchObject({ reason: "conflict", phase: "prepare", path: ".lando.yml" });
+    expect(await readFile(target, "utf8")).toBe("name: concurrent\n");
+    expect(await stageNames(appRoot)).toEqual([]);
+    expect(await backupNames(appRoot)).toEqual([]);
+  });
+
   test("leaves a complete owner-only prepared journal when the caller abandons prepare", async () => {
     // Given an abandoned prepare (crash-before-commit boundary)
     const { appRoot, transactions } = await makeFixture();

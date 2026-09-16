@@ -48,25 +48,30 @@ export const runBoundPostInit = (options: {
         default:
           action satisfies never;
       }
-      const invoke = (cmd: readonly string[], cwd: string, childEnv: Readonly<Record<string, string>>) => {
-        const [executable, ...args] = cmd;
-        if (executable === undefined)
-          return Promise.reject(options.postFailure(`postInit[${index}] (${action.type})`));
-        return Effect.runPromise(
-          runner
-            .run({ cmd: executable, args, cwd, env: childEnv, ...(stdin === undefined ? {} : { stdin }) })
-            .pipe(
-              Effect.map((result) => ({
-                ...result,
-                stdout: redact(result.stdout),
-                stderr: redact(result.stderr),
-              })),
-            ),
-        );
-      };
       const outcome = yield* Effect.tryPromise({
-        try: () =>
-          (request.runPostInit ?? runPostInit)({
+        try: (signal) => {
+          const invoke = (
+            cmd: readonly string[],
+            cwd: string,
+            childEnv: Readonly<Record<string, string>>,
+          ) => {
+            const [executable, ...args] = cmd;
+            if (executable === undefined)
+              return Promise.reject(options.postFailure(`postInit[${index}] (${action.type})`));
+            return Effect.runPromise(
+              runner
+                .run({ cmd: executable, args, cwd, env: childEnv, ...(stdin === undefined ? {} : { stdin }) })
+                .pipe(
+                  Effect.map((result) => ({
+                    ...result,
+                    stdout: redact(result.stdout),
+                    stderr: redact(result.stderr),
+                  })),
+                ),
+              { signal },
+            );
+          };
+          return (request.runPostInit ?? runPostInit)({
             actions: [action],
             destination: request.appRoot,
             recipeId: request.manifest.id,
@@ -81,7 +86,8 @@ export const runBoundPostInit = (options: {
                 request.appRoot,
                 env,
               ),
-          }),
+          });
+        },
         catch: () => options.postFailure(`postInit[${index}] (${action.type})`),
       });
       for (const item of outcome.executed)

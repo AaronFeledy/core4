@@ -3,19 +3,22 @@ import type { Server } from "node:http";
 
 import { Effect, Fiber } from "effect";
 
-import type { AppRef } from "@lando/sdk/schema";
-
 import type { RootOverrides } from "@lando/paths";
+import type { AppRef } from "@lando/sdk/schema";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { HostProxyInFlightRequest } from "./transport-handler.ts";
 import type { HostProxySessionPaths } from "./transport-session.ts";
 
 export const cleanupHostProxyRunLandoState = (
   app: AppRef,
   paths?: RootOverrides,
-): Effect.Effect<void, never> =>
-  Effect.promise(async () => {
-    const { removeOwnedHostProxyWorkerState } = await import("./worker-ownership.ts");
-    await Effect.runPromise(removeOwnedHostProxyWorkerState(app, paths));
+): Effect.Effect<void, never, PrivateFileAccessService> =>
+  Effect.gen(function* () {
+    const privateFileAccess = yield* PrivateFileAccessService;
+    const { removeOwnedHostProxyWorkerState } = yield* Effect.promise(() => import("./worker-ownership.ts"));
+    yield* removeOwnedHostProxyWorkerState(app, paths, {
+      privateFileAccess,
+    });
   }).pipe(Effect.catchAll(() => Effect.void));
 
 export const removeSessionState = (paths: HostProxySessionPaths, socketOwned: boolean): Effect.Effect<void> =>

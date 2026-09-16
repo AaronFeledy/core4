@@ -1,13 +1,29 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
-import { type DiscoveredApp, buildUninstallPlan, uninstall } from "@lando/engine/operations/uninstall";
-import { metaUninstallSpec, uninstallOptionsFromInput } from "../../src/cli/command-specs/meta/uninstall.ts";
+import {
+  type DiscoveredApp,
+  buildUninstallPlan,
+  uninstall as uninstallEffect,
+} from "@lando/engine/operations/uninstall";
+import { PrivateFileAccessLive, PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import {
+  metaUninstallSpec as declarativeUninstallSpec,
+  uninstallOptionsFromInput,
+} from "../../src/cli/command-specs/meta/uninstall.ts";
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
+
+const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
+  uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
+
+const metaUninstallSpec = {
+  ...declarativeUninstallSpec,
+  run: (input: unknown) => declarativeUninstallSpec.run(input).pipe(Effect.provide(PrivateFileAccessLive)),
+};
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-test-"));
@@ -82,6 +98,64 @@ const runCli = async (
 describe("meta:uninstall", () => {
   afterEach(() => {
     process.exitCode = undefined;
+  });
+
+  test("declarative dispatch returns a real plan when dry-run uses isolated fake I/O", async () => {
+    // Given: every discovery/read seam is injected; no host runtime or mutation is allowed.
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const forbidden = mock((): never => {
+      throw new Error("dry-run attempted host I/O or mutation");
+    });
+    const listDiscoveredApps = mock(async () => []);
+    const lifecycle: string[] = [];
+    const privateAccess = Layer.scoped(
+      PrivateFileAccessService,
+      Effect.acquireRelease(
+        Effect.sync(() => {
+          lifecycle.push("acquired");
+          return { enforce: forbidden, verify: forbidden };
+        }),
+        () => Effect.sync(() => void lifecycle.push("released")),
+      ),
+    );
+    try {
+      // When: call the unwrapped declarative spec, as non-native executors do.
+      const result = await Effect.runPromise(
+        declarativeUninstallSpec
+          .run({
+            flags: { "dry-run": true, purge: true },
+            _userDataRoot: userDataRoot,
+            _userCacheRoot: userCacheRoot,
+            _userConfRoot: join(root, "config"),
+            _execPath: join(root, "lando"),
+            ...sandboxCliExtras(root),
+            _exists: () => false,
+            _listDiscoveredApps: listDiscoveredApps,
+            _readManagedProviderMachine: () => ({ ownership: "absent" }),
+            _readText: forbidden,
+            _writeText: forbidden,
+            _remove: forbidden,
+            _elevate: forbidden,
+            _cleanupDiscoveredApps: forbidden,
+            _teardownProviderMachines: forbidden,
+            _terminateRuntimeBinProcesses: forbidden,
+          })
+          .pipe(Effect.provide(privateAccess)),
+      );
+
+      // Then: an actual plan is returned without executing its steps or leaking the service scope.
+      expect(result).toMatchObject({ dryRun: true, mode: "purge", refused: false, failed: false });
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        target: userDataRoot,
+        status: "skipped",
+      });
+      expect(result.steps.every((step) => step.outcome === undefined)).toBe(true);
+      expect(listDiscoveredApps).toHaveBeenCalledWith(userDataRoot, userCacheRoot);
+      expect(forbidden).not.toHaveBeenCalled();
+      expect(lifecycle).toEqual(["acquired", "released"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test("is registered as a minimal bootstrap command with a top-level alias", () => {

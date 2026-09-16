@@ -22,6 +22,11 @@ import {
 } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
+import {
+  type PrivateFileAccess,
+  PrivateFileAccessLive,
+  PrivateFileAccessService,
+} from "@lando/state-store/private-file-access";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 
@@ -151,6 +156,7 @@ const execShell = async (command: string, options?: ShellCommandOptions): Promis
 
 export const makeShellRunnerService = (
   makeReplIO: () => ShellReplIO,
+  privateFileAccess: PrivateFileAccess,
 ): Context.Tag.Service<typeof ShellRunner> => {
   const service: Context.Tag.Service<typeof ShellRunner> = {
     exec: (command, options) =>
@@ -174,10 +180,20 @@ export const makeShellRunnerService = (
       }),
     run: (command, options) => service.exec(command, options),
     runScript: (path, options) => service.exec(`bun ${quoteShellPath(path)}`, options),
-    interactive: (spec) => runHostShellRepl({ ...spec, io: spec.io ?? makeReplIO() }),
+    interactive: (spec) => runHostShellRepl({ ...spec, io: spec.io ?? makeReplIO() }, privateFileAccess),
   };
   return service;
 };
 
 export const makeShellRunnerLive = (makeReplIO: () => ShellReplIO): Layer.Layer<ShellRunner> =>
-  Layer.succeed(ShellRunner, makeShellRunnerService(makeReplIO));
+  makeShellRunnerWithPrivateFileAccessLive(makeReplIO).pipe(Layer.provide(PrivateFileAccessLive));
+
+export const makeShellRunnerWithPrivateFileAccessLive = (
+  makeReplIO: () => ShellReplIO,
+): Layer.Layer<ShellRunner, never, PrivateFileAccessService> =>
+  Layer.effect(
+    ShellRunner,
+    Effect.map(PrivateFileAccessService, (privateFileAccess) =>
+      makeShellRunnerService(makeReplIO, privateFileAccess),
+    ),
+  );

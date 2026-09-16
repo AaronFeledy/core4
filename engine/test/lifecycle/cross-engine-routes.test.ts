@@ -19,6 +19,7 @@ const plan = (provider: string): AppPlan => ({
   routes: [
     {
       hostname: "web.shop.lndo.site",
+      priority: 2,
       scheme: "https",
       service: ServiceName.make("web"),
       backend: { service: ServiceName.make("web"), protocol: "http", port: 80 },
@@ -36,6 +37,23 @@ const plan = (provider: string): AppPlan => ({
 });
 
 describe("rewriteCrossEngineProxyRoutes", () => {
+  test("preserves route filters when rewriting cross-engine backends", () => {
+    // Given
+    const filters = [
+      { type: "stripPrefix", prefix: "/api" },
+      { type: "addPrefix", prefix: "/v1" },
+    ] as const;
+    const original = plan("docker");
+    // When
+    const rewritten = rewriteCrossEngineProxyRoutes({
+      plan: { ...original, routes: original.routes.map((route) => ({ ...route, filters })) },
+      published: [{ service: "web", containerPort: 80, hostPort: 32768 }],
+    });
+    // Then
+    expect(rewritten[0]?.backend).toMatchObject({ host: HOST_INTERNAL_ALIAS, port: 32768 });
+    expect(rewritten[0]?.filters).toBe(filters);
+  });
+
   test("keeps .internal backends when the app shares the managed Traefik engine", () => {
     const rewritten = rewriteCrossEngineProxyRoutes({
       plan: plan(String(MANAGED_PROVIDER_ID)),

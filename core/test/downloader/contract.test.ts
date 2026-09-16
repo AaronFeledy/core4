@@ -13,11 +13,11 @@ import { type DownloaderContractHarness, runDownloaderContract } from "@lando/sd
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import type { HttpClientCapabilities } from "@lando/sdk/schema";
 
+import { makeTestDownloader } from "@lando/engine/testing/downloader";
 import { DownloaderLive } from "@lando/http-client/downloader";
 import { makeHttpClientLive } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
 import { HttpClient, type HttpClientShape } from "@lando/http-client/service";
-import { makeTestDownloader } from "../../src/testing/downloader.ts";
 
 const CONTRACT_HTTP_CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],
@@ -300,7 +300,23 @@ describe("DownloaderLive threads network trust through HttpClient", () => {
         }),
       ).pipe(
         Effect.provideService(NetworkTrust, trust),
-        Effect.provide(DownloaderLive.pipe(Layer.provide(makeHttpClientLive(captureFetch, () => [])))),
+        Effect.provide(
+          DownloaderLive.pipe(
+            Layer.provide(
+              makeHttpClientLive(
+                captureFetch,
+                () => [],
+                (url, init) =>
+                  captureFetch(url.href, {
+                    method: init.method,
+                    headers: init.headers,
+                    signal: init.signal,
+                    ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
+                  }),
+              ),
+            ),
+          ),
+        ),
       ),
     );
     return captured[0] ?? {};

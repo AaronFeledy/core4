@@ -25,3 +25,135 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Rails up.
+
+snapshot:
+  identity:
+    sourceKind: "bundled"
+    packageName: "@lando/recipe-rails"
+    recipeId: "rails"
+    manifestVersion: "0.1.0"
+    contentDigest: "sha256:1faa3a1a496dabcb300229d0db14e0e2d570506e785391f9332947d2b1febd65"
+  optionTypes:
+  defaults:
+  template:
+    expression:
+      kind: "ObjectLiteral"
+      entries:
+        - key: "runtime"
+          value:
+            kind: "Literal"
+            value: 4
+        - key: "services"
+          value:
+            kind: "ObjectLiteral"
+            entries:
+              - key: "web"
+                value:
+                  kind: "ObjectLiteral"
+                  entries:
+                    - key: "type"
+                      value:
+                        kind: "Literal"
+                        value: "ruby:3.3"
+                    - key: "framework"
+                      value:
+                        kind: "Literal"
+                        value: "rails"
+                    - key: "port"
+                      value:
+                        kind: "Literal"
+                        value: 3000
+                    - key: "build"
+                      value:
+                        kind: "ObjectLiteral"
+                        entries:
+                          - key: "artifact"
+                            value:
+                              kind: "ArrayLiteral"
+                              elements:
+                                - kind: "Literal"
+                                  value: "apt-get update && apt-get install -y --no-install-recommends build-essential"
+                                - kind: "Literal"
+                                  value: "gem install rails --no-document"
+                    - key: "dependsOn"
+                      value:
+                        kind: "ArrayLiteral"
+                        elements:
+                          - kind: "Literal"
+                            value: "database"
+                          - kind: "Literal"
+                            value: "cache"
+                    - key: "routes"
+                      value:
+                        kind: "ArrayLiteral"
+                        elements:
+                          - kind: "ObjectLiteral"
+                            entries:
+                              - key: "hostname"
+                                value:
+                                  kind: "Literal"
+                                  value: "{{ app.name }}.{{ proxy.defaultDomain }}"
+                              - key: "scheme"
+                                value:
+                                  kind: "Literal"
+                                  value: "both"
+              - key: "database"
+                value:
+                  kind: "ObjectLiteral"
+                  entries:
+                    - key: "type"
+                      value:
+                        kind: "Literal"
+                        value: "postgres"
+              - key: "cache"
+                value:
+                  kind: "ObjectLiteral"
+                  entries:
+                    - key: "type"
+                      value:
+                        kind: "Literal"
+                        value: "redis"
+        - key: "tooling"
+          value:
+            kind: "ObjectLiteral"
+            entries:
+              - key: "rails"
+                value:
+                  kind: "ObjectLiteral"
+                  entries:
+                    - key: "service"
+                      value:
+                        kind: "Literal"
+                        value: "web"
+                    - key: "description"
+                      value:
+                        kind: "Literal"
+                        value: "Run the Rails CLI inside the web service."
+                    - key: "cmds"
+                      value:
+                        kind: "ArrayLiteral"
+                        elements:
+                          - kind: "Literal"
+                            value: "rails"
+              - key: "bundle"
+                value:
+                  kind: "ObjectLiteral"
+                  entries:
+                    - key: "service"
+                      value:
+                        kind: "Literal"
+                        value: "web"
+                    - key: "description"
+                      value:
+                        kind: "Literal"
+                        value: "Run Bundler inside the web service."
+                    - key: "cmds"
+                      value:
+                        kind: "ArrayLiteral"
+                        elements:
+                          - kind: "Literal"
+                            value: "bundle"
+  assets:
+    - dest: "Gemfile"
+      digest: "sha256:2626800dfc7a9e4fdff7441d002834a4d510dc727c23f3100c3a7b07e77e764d"
+      template: false

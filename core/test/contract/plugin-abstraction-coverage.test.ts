@@ -74,7 +74,7 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     abstraction: "RouteFilter",
     makeExport: "makeRouteFilterContractSuite",
     runExport: "runRouteFilterContractSuite",
-    defaultPolicy: "reference-mirror",
+    defaultPolicy: "built-in",
     invocationFiles: ["engine/test/subsystems/proxy/route-filter-contract.test.ts"],
   },
   {
@@ -123,6 +123,14 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
       "core/test/recipes/astro.decomposer.test.ts",
       "core/test/recipes/sveltekit.decomposer.test.ts",
       "core/test/recipes/nextjs.decomposer.test.ts",
+      "core/test/recipes/django.decomposer.test.ts",
+      "core/test/recipes/fastapi.decomposer.test.ts",
+      "core/test/recipes/rails.decomposer.test.ts",
+      "core/test/recipes/jekyll.decomposer.test.ts",
+      "core/test/recipes/hugo.decomposer.test.ts",
+      "core/test/recipes/eleventy.decomposer.test.ts",
+      "core/test/recipes/empty.decomposer.test.ts",
+      "core/test/recipes/toolbox.decomposer.test.ts",
     ],
   },
   {

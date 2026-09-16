@@ -1,13 +1,14 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { PHP_VERSIONS } from "../php-stack.ts";
 import { encodedStringNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const DRUPAL_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CONTENT_DIGEST =
-  "sha256:e19e6e75cb31520601c5c648cd19ee2378a6a05593d42120ed2fcbae91ab8e81";
+  "sha256:b847329e140001dc24ec3c4bf8a4caf3a9c60f065524aa29ed741e29088252ac";
 
 export const drupalProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -108,9 +109,9 @@ export const drupalSnapshot: RecipeSnapshot = {
   identity: drupalProducer,
   optionTypes: {
     drupal: { kind: "enum", values: ["11", "10"] },
-    php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
+    php: { kind: "enum", values: [...PHP_VERSIONS] },
     webserver: { kind: "enum", values: ["apache", "nginx"] },
-    database: { kind: "enum", values: ["mariadb:11.4", "mariadb:10.11", "mysql:8.0", "postgres:16"] },
+    database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0", "postgres:16"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
   },

@@ -11,6 +11,7 @@ import { LandofileService, Renderer } from "@lando/sdk/services";
 
 import { assertLandoVersionConstraint, loadUserLandofile } from "@lando/engine/landofile/app-resolution";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
@@ -198,7 +199,7 @@ describe("loadUserLandofile version-constraint enforcement", () => {
           landofile: { lando: ">=4.1", includes: ["fragment.yml"] },
           appRoot,
           sourcePath: rootPath,
-        }),
+        }).pipe(Effect.provide(makeTestStateStore().layer)),
       );
       const error = await Effect.runPromise(
         Effect.flip(assertLandoVersionConstraint(resolved, { runningVersion: "4.2.0" })),

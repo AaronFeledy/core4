@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
-import { makePluginStateStore, makeTestStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
@@ -18,6 +19,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-app");
@@ -84,6 +86,7 @@ const makeProvider = async (api: DockerApiClient, appliedPlan?: AppPlan) => {
   const appliedPlanState = makePluginStateStore(
     makeTestStateStore().service,
     AbsolutePath.make("/tmp/provider-docker-service-lifecycle-state"),
+    ownerOnlyFileAccess,
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, appliedPlan));
   return Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }));

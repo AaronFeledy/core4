@@ -3,8 +3,9 @@ import { resolve } from "node:path";
 import { Effect } from "effect";
 
 import { RAILS_RECIPE_ID, railsRecipeYaml } from "../../src/recipes/builtin/rails/manifest.ts";
-import { railsRenderer } from "../../src/recipes/builtin/rails/render.ts";
+import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
+import { decomposeBuiltinRecipe } from "../_support/recipe-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const CANONICAL_RECIPE_PATH = resolve(REPO_ROOT, "recipes/rails/recipe.yml");
@@ -37,24 +38,30 @@ describe("rails canonical recipe", () => {
   });
 
   test("renders ruby, postgres, redis, and rails/bundle tooling", () => {
-    const files = railsRenderer.render({ appName: "rails-canon", answers: { name: "rails-canon" } });
-    const landofile = files.get(".lando.yml");
-    expect(landofile).toBeDefined();
-    expect(landofile).toContain("type: ruby:3.3");
-    expect(landofile).toContain("type: postgres");
-    expect(landofile).toContain("type: redis");
-    expect(landofile).toContain("  rails:\n");
-    expect(landofile).toContain("  bundle:\n");
+    const { fragment } = decomposeBuiltinRecipe("rails");
+    expect(fragment).toMatchObject({
+      services: { web: { type: "ruby:3.3" }, database: { type: "postgres" }, cache: { type: "redis" } },
+      tooling: { rails: { service: "web" }, bundle: { service: "web" } },
+    });
   });
 
-  test("renders a web build.artifact that gem-installs rails and a Gemfile", () => {
-    const files = railsRenderer.render({ appName: "rails-canon", answers: { name: "rails-canon" } });
-    const landofile = files.get(".lando.yml");
-    expect(landofile).toBeDefined();
-    expect(landofile).toContain(
-      '    build:\n      artifact:\n        - "apt-get update && apt-get install -y --no-install-recommends build-essential"\n        - "gem install rails --no-document"',
+  test("renders a web build.artifact that gem-installs rails and a Gemfile", async () => {
+    const { fragment } = decomposeBuiltinRecipe("rails");
+    expect(fragment).toMatchObject({
+      services: {
+        web: {
+          build: {
+            artifact: [
+              "apt-get update && apt-get install -y --no-install-recommends build-essential",
+              "gem install rails --no-document",
+            ],
+          },
+        },
+      },
+    });
+    expect(await bundledRecipeContentSource("rails")({ src: "templates/Gemfile", dest: "Gemfile" })).toBe(
+      'source "https://rubygems.org"\n',
     );
-    expect(files.get("Gemfile")).toBe('source "https://rubygems.org"\n');
   });
 
   test("manifest files dest list includes Gemfile so init writes it", async () => {

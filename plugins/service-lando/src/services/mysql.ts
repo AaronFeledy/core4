@@ -3,7 +3,7 @@ import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
+import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type LogSource,
@@ -12,15 +12,24 @@ import {
   type ServiceConfig,
   type ServiceCreds,
 } from "@lando/sdk/schema";
+import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { resolveBindSource } from "./_volume-helpers.ts";
 
-const DEFAULT_IMAGE = "mysql:8.0";
+export const MYSQL_VERSIONS = ["8.0", "8.4", "9.7"] as const;
+export const MYSQL_ARTIFACTS = {
+  "8.0": "mysql:8.0",
+  "8.4": "mysql:8.4",
+  "9.7": "mysql:9.7",
+} as const;
+const DEFAULT_IMAGE = MYSQL_ARTIFACTS["8.0"];
 const DEFAULT_PORT = 3306;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MYSQL_FEATURE_ID = "service-lando.mysql";
+export const MYSQL_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
 
 const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -89,7 +98,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   addEnvRecord(ctx, familyEnvFor("mysql", creds));
   addEnvRecord(ctx, landoDbEnvFor(creds));
   ctx.addStorage({
-    store: `${appName}-mysql-data`,
+    store: `${appName}-${ctx.serviceName}-mysql-data`,
     target: DATA_TARGET,
     readOnly: false,
   });
@@ -107,6 +116,16 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
   if (service.user !== undefined) ctx.setUser(service.user);
+
+  const server = service.config?.server;
+  if (server !== undefined && server.length > 0) {
+    ctx.addMount({
+      type: "bind",
+      source: resolveBindSource(server, ctx.appRoot),
+      target: MYSQL_CONFIG_TARGET,
+      readOnly: true,
+    });
+  }
 };
 
 export const mysqlServiceFeature: ServiceFeatureDefinition = {
@@ -125,18 +144,31 @@ export const mysqlServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
-export const mysqlServiceType: ServiceType = {
-  id: "mysql",
+const makeMysqlServiceType = (id: string, image?: string): ServiceType => ({
+  id,
   name: "mysql",
   base: "lando",
-  schema: Schema.Unknown,
+  versions: MYSQL_VERSIONS,
+  artifacts: MYSQL_ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
+  schema: MysqlServiceConfig,
   resolve: (input) => {
+    if (id !== "mysql" && input.service.image !== undefined && input.service.image !== image) {
+      return Effect.fail(
+        new ServiceTypeError({
+          message:
+            "A versioned MySQL type cannot be combined with image. Remove image or use unversioned type: mysql for an unverified custom image.",
+          serviceType: id,
+        }),
+      );
+    }
     const creds = mysqlCredsFor(appNameFor(input), input.name, input.service);
     return Effect.succeed({
       base: "lando",
       normalizedConfig: {
         ...input.service,
-        type: "mysql",
+        type: id,
+        ...(image === undefined ? {} : { image }),
         creds,
         environment: { ...input.service.environment, ...familyEnvFor("mysql", creds) },
       },
@@ -151,4 +183,9 @@ export const mysqlServiceType: ServiceType = {
       },
     });
   },
-};
+});
+
+export const mysql80ServiceType = makeMysqlServiceType("mysql:8.0", MYSQL_ARTIFACTS["8.0"]);
+export const mysql84ServiceType = makeMysqlServiceType("mysql:8.4", MYSQL_ARTIFACTS["8.4"]);
+export const mysql97ServiceType = makeMysqlServiceType("mysql:9.7", MYSQL_ARTIFACTS["9.7"]);
+export const mysqlServiceType = makeMysqlServiceType("mysql");

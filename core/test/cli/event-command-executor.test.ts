@@ -30,6 +30,7 @@ import { EventCommandExecutor } from "@lando/engine/services/event-command-execu
 import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { metaBunSpec } from "../../src/cli/command-specs/meta/bun.ts";
@@ -40,6 +41,7 @@ import { validateEventCommandInput } from "../../src/cli/event-command-input.ts"
 import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import { Args, Flags } from "../../src/cli/spec/metadata.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 class EventCommandTestError extends Schema.TaggedError<EventCommandTestError>()("EventCommandTestError", {
   message: Schema.String,
@@ -92,11 +94,12 @@ const makeHarness = (): Harness => {
       Context.add(EventService, eventService),
       Context.add(Renderer, renderer),
       Context.add(RedactionService, redaction),
+      Context.add(PrivateFileAccessService, ownerOnlyFileAccess),
       Context.add(
         ShellRunner,
         makeShellRunnerService(() => {
           throw new TypeError("Interactive shell IO was not expected in this test.");
-        }),
+        }, ownerOnlyFileAccess),
       ),
     ),
   };
@@ -804,7 +807,7 @@ describe("EventCommandExecutorLive", () => {
         inspect: {
           cmd: "inspect",
           arguments: false,
-          flags: { verbose: { type: "boolean" } },
+          flags: { verbose: { boolean: true } },
         },
       },
     );
@@ -843,6 +846,8 @@ describe("EventCommandExecutorLive", () => {
     expect(invocations[0]).toMatchObject({
       commands: [["sh", "-c", 'inspect "$@"', "lando-tooling", "--verbose"]],
     });
+    expect(invocations[0]?.tty).toBeUndefined();
+    expect(invocations[0]?.hostTerminal).toBeUndefined();
   });
 
   test("redacts flag-shaped raw argv from nested lifecycle events without changing target argv", async () => {
@@ -1242,6 +1247,7 @@ describe("EventCommandExecutorLive", () => {
     expect(input).toEqual({
       argv: ["--", "tail"],
       parsedArgv: ["app", "a", "b", "--", "tail"],
+      interaction: "non-interactive",
       flags: { decimal: 1.25, integer: 4, enabled: false, mode: "SAFE", labels: ["[one]", "[two]"] },
       args: { target: "app", paths: ["a", "b"] },
     });

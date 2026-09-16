@@ -69,6 +69,24 @@ lando psql
 
 Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can still pipe into `psql` with `lando exec`.
 
+## Use your own postgresql.conf
+
+Set `config.server` to an app-relative file when the stock config isn't enough:
+
+```yaml
+services:
+  db:
+    type: postgres
+    config:
+      server: ./config/postgresql.conf
+```
+
+Lando mounts that file read-only at `/etc/lando/postgresql.conf` and starts the server with `-c config_file=/etc/lando/postgresql.conf`. It has to be a regular file, not a directory.
+
+The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
+
+If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append the `-c config_file=...` flag to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
+
 ## Pin a version
 
 Set `image:` when `postgres:16` isn't the version you want:

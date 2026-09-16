@@ -66,6 +66,7 @@ export const mailhogServiceType: ServiceType = {
   id: "mailhog",
   name: "mailhog",
   base: "lando",
+  identity: { defaultUser: "mailhog", homes: { mailhog: "/home/mailhog", root: "/root" } },
   schema: MailhogServiceConfig,
   resolve: (input) =>
     Effect.gen(function* () {

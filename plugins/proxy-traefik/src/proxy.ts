@@ -15,13 +15,18 @@ import {
   type RouterServiceShape,
 } from "@lando/sdk/services";
 
+import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
+import { prepareTraefikDiagnostics } from "./global-services/diagnostics.ts";
 import { persistPortAcquisition, readAcquisitionState } from "./port-acquisition-state.ts";
 import {
   ROUTE_FILE_PREFIX,
   ROUTE_FILE_SUFFIX,
   acquisitionStateFile,
   defaultTlsFile,
+  diagnosticConfigFile,
+  diagnosticHtmlFile,
   dynamicConfigDir,
+  fallbackConfigFile,
   joinFor,
   routeFile,
   routingStateFile,
@@ -139,8 +144,13 @@ export const makeTraefikRouterService = (
         if (decision.notices.length > 0) {
           yield* publishFallbackWarn(dependencies, decision);
         }
-        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID]);
+        yield* prepareTraefikDiagnostics(dependencies);
+        yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
         yield* assertAdvertisedForward(dependencies, advertised);
+        yield* dependencies.fileSystem.writeAtomic(
+          fallbackConfigFile(dependencies.paths),
+          renderTraefikFallbackConfig(),
+        );
         yield* dependencies.fileSystem.writeAtomic(
           routingStateFile(dependencies.paths),
           [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
@@ -204,6 +214,9 @@ export const makeTraefikRouterService = (
       yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(diagnosticHtmlFile(dependencies.paths));
       yield* removeAllCertificates(dependencies);
       routes.clear();
     }).pipe(Effect.mapError((cause) => proxyError("stop", cause))),

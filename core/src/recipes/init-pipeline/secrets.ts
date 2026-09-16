@@ -1,9 +1,15 @@
 import type { ConfigTranslateSecretReference, RecipeSecretDisposition } from "@lando/sdk/schema";
 
-export const secretReference = (disposition: RecipeSecretDisposition): ConfigTranslateSecretReference => {
+export const secretReference = (
+  disposition: RecipeSecretDisposition,
+  storedReference: string | undefined,
+): ConfigTranslateSecretReference => {
   switch (disposition.kind) {
     case "secret-store":
-      return { disposition: "secret-store", reference: disposition.field };
+      if (storedReference === undefined || storedReference.length === 0) {
+        throw new RangeError("A stored-secret disposition requires a non-empty reference.");
+      }
+      return { disposition: "secret-store", reference: storedReference };
     case "init-only":
       switch (disposition.sink.kind) {
         case "stdin":

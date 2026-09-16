@@ -23,8 +23,10 @@ import {
   PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
+  StateStore,
   ToolingEngine,
 } from "@lando/core/services";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import type {
   AppSelector,
   DestroyOptions,
@@ -44,6 +46,8 @@ import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 
@@ -162,6 +166,7 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
   Layer.mergeAll(
+    PrivateFileAccessLive,
     NoopTransactionGuardLive,
     ConfigServiceLive,
     FileSystemLive,
@@ -218,6 +223,8 @@ const makeRestartLayer = (
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
+    TestStateStoreLive,
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({
         name: "test-restart",
@@ -267,10 +274,12 @@ describe("lando restart", () => {
     const effective = compileEffectiveEvents({
       landofile: {
         events: {
+          "pre-restart": ["echo user-pre-restart"],
           "pre-stop": ["echo user-pre-stop"],
           "post-stop": ["echo user-post-stop"],
           "pre-start": ["echo user-pre-start"],
           "post-start": ["echo user-post-start"],
+          "post-restart": ["echo user-post-restart"],
         },
       },
     });
@@ -282,9 +291,11 @@ describe("lando restart", () => {
 
     // Then
     expect(
-      harness.events.filter((event) => ["pre-stop", "post-stop", "pre-start", "post-start"].includes(event)),
-    ).toEqual(["pre-stop", "post-stop", "pre-start", "post-start"]);
-    expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(4);
+      harness.events.filter((event) =>
+        ["pre-restart", "pre-stop", "post-stop", "pre-start", "post-start", "post-restart"].includes(event),
+      ),
+    ).toEqual(["pre-restart", "pre-stop", "post-stop", "pre-start", "post-start", "post-restart"]);
+    expect(harness.events.filter((event) => event === "task.detail")).toHaveLength(6);
   });
   test("destroys then applies provider-lando and publishes stop+start events", async () => {
     const harness = makeRestartLayer();
@@ -293,6 +304,7 @@ describe("lando restart", () => {
     expect(harness.events).toEqual([
       "pre-init",
       "post-init",
+      "pre-restart",
       "pre-app-stop",
       "pre-stop",
       "pre-service-stop",
@@ -307,6 +319,7 @@ describe("lando restart", () => {
       "task.tree.complete",
       "post-app-start",
       "post-start",
+      "post-restart",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);

@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { AppPlanner, PluginRegistry } from "@lando/core/services";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
-import { AppPlannerLive, PluginRegistryLive } from "@lando/core/testing";
 import { globalServices, services } from "../src/index.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 
@@ -83,7 +84,11 @@ describe("@lando/service-lando registration", () => {
       "mssql:2019",
       "mssql:2022",
       "mysql",
+      "mysql:8.0",
+      "mysql:8.4",
+      "mysql:9.7",
       "nginx",
+      "node",
       "node:lts",
       "node:22",
       "opensearch",
@@ -93,6 +98,7 @@ describe("@lando/service-lando registration", () => {
       "php:8.3",
       "php:8.4",
       "php:8.5",
+      "php:8.6",
       "phpmyadmin",
       "phpmyadmin:5",
       "phpmyadmin:latest",
@@ -499,15 +505,22 @@ describe("@lando/service-lando registration", () => {
     ).rejects.toThrow(/Unsupported service type python:3\.11.*Supported alternatives:.*python:3\.12/);
   });
 
-  test("AppPlanner rejects unsupported php versions with PHP-family remediation", async () => {
-    await expect(
-      plan({
-        name: "php-bad",
-        runtime: 4,
-        services: { [ServiceName.make("web")]: { type: "php:9.0" } },
-      }),
-    ).rejects.toThrow(/Unsupported service type php:9\.0.*Supported alternatives:.*php:8\.1.*php:8\.4/);
-  });
+  test.each(["8.0", "9.0"])(
+    "AppPlanner rejects unavailable PHP %s with PHP-family remediation",
+    async (version) => {
+      await expect(
+        plan({
+          name: "php-bad",
+          runtime: 4,
+          services: { [ServiceName.make("web")]: { type: `php:${version}` } },
+        }),
+      ).rejects.toThrow(
+        new RegExp(
+          `Unsupported service type php:${version.replace(".", "\\.")}.*Supported alternatives:.*php:8\\.1.*php:8\\.5`,
+        ),
+      );
+    },
+  );
 
   test("AppPlanner resolves ruby:3.3 through PluginRegistry with rails framework preset", async () => {
     const appPlan = await plan({

@@ -13,6 +13,7 @@ import { type ManagedFileContractHarness, runManagedFileContract } from "@lando/
 
 import { makeDiskBackend, makeManagedFileService } from "../src/service.ts";
 import { makeTestManagedFileStore } from "../src/testing.ts";
+import { ownerOnlyFileAccess } from "./transaction-fixture.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
@@ -40,7 +41,11 @@ describe("ManagedFileService contract suite", () => {
 
     try {
       const service = await run(
-        makeDiskBackend({ defaultBase: () => base, ledgerRoot: () => dataRoot }).pipe(
+        makeDiskBackend({
+          defaultBase: () => base,
+          ledgerRoot: () => dataRoot,
+          privateFileAccess: ownerOnlyFileAccess,
+        }).pipe(
           Effect.flatMap((backend) =>
             makeManagedFileService(backend, {
               redactText: redact,

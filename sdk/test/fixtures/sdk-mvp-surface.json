@@ -18,7 +18,7 @@
   ],
   "serviceTags": {
     "AppPlanner": [
-      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError | CommandAliasConflictError | ConfigExpressionError>"
+      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | RouteInputError | CapabilityError | NotImplementedError | HomePathCapabilityError | PublicationUnsupportedError | CommandAliasConflictError | ConfigExpressionError | LandofileUnknownEventError>"
     ],
     "BuildOrchestrator": [
       "build: (plan: AppPlan) => Effect.Effect<AppPlan, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
@@ -56,7 +56,7 @@
       "writeFile: (path: string, content: string) => Effect.Effect<void, FileSystemError>"
     ],
     "LandofileService": [
-      "discover: Effect.Effect<LandofileShape, LandofileNotFoundError | LandofileParseError | LandofileValidationError | LandofileSandboxError | LandofileTimeoutError | LandofileUnknownEventError | LandofileFormConflictError | LandofileIncludeError | LandofileLockMismatchError | LandofileImportRefMisuseError | LandofileLoadLimitError | LandofileLoadOutsideRootError | ToolingIncludeCycleError | NotImplementedError | ComposeKeyRejectedError | ManagedFileTransactionError>"
+      "discover: Effect.Effect<LandofileShape, LandofileNotFoundError | LandofileParseError | LandofileValidationError | RouteInputError | LandofileSandboxError | LandofileTimeoutError | LandofileFormConflictError | LandofileIncludeError | LandofileLockMismatchError | LandofileImportRefMisuseError | LandofileLoadLimitError | LandofileLoadOutsideRootError | ToolingIncludeCycleError | NotImplementedError | ComposeKeyRejectedError | ManagedFileTransactionError>"
     ],
     "Logger": [
       "debug: (message: string, data?: Readonly<Record<string, unknown>>) => Effect.Effect<void, EventError>",
@@ -94,13 +94,17 @@
       "isAvailable: Effect.Effect<boolean, ProviderUnavailableError>",
       "list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>",
       "listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>",
+      "locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>",
+      "observeVolume?: (target: ServiceSelector, destination: PortablePath) => Effect.Effect<VolumeInfo, ProviderError>",
+      "adoptVolume?: (target: ServiceSelector, destination: PortablePath) => Effect.Effect<VolumeInfo, ProviderError>",
       "logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>",
       "planSetup: (options: ProviderSetupInspectOptions) => Effect.Effect<ProviderSetupPlan, ProviderError>",
       "platform: HostPlatform",
       "pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>",
       "removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>",
-      "removeVolume: (ref: VolumeRef) => Effect.Effect<void, ProviderError>",
+      "removeVolume: (ref: VolumeRef, expectedGeneration: VolumeIdentity[\"generation\"]) => Effect.Effect<void, ProviderError>",
       "removeVolumeSnapshot?: (snapshot: VolumeSnapshotRef) => Effect.Effect<void, ProviderError, Scope.Scope>",
+      "resume?: (target: ServiceSelector, identity: ServiceRuntimeIdentity) => Effect.Effect<void, ProviderError>",
       "restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
       "run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>",
       "runStream: (spec: EphemeralRunSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>",
@@ -108,6 +112,7 @@
       "snapshotVolume: (spec: VolumeSnapshotSpec) => Effect.Effect<VolumeSnapshotRef, ProviderError, Scope.Scope>",
       "start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
       "stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
+      "suspend?: (target: ServiceSelector, identity: ServiceRuntimeIdentity) => Effect.Effect<void, ProviderError>",
       "restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>",
       "version: string",
       "waitForExit: (target: ServiceSelector, options?: WaitForExitOptions) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>"
