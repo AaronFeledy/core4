@@ -55,6 +55,7 @@ export const sidebar = [
           { label: "Run the Rails recipe", slug: "guides/recipes/rails-workflow" },
           { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
           { label: "Run the Symfony recipe", slug: "guides/recipes/symfony-workflow" },
+          { label: "Run the Laravel recipe", slug: "guides/recipes/laravel-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
