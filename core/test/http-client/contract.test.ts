@@ -140,7 +140,17 @@ describe("HttpClient contract suite", () => {
       query: () => Effect.succeed([]),
     } as never);
 
-    const layer = makeHttpClientLive(fetchImpl, () => [SYSTEM_CA_SAMPLE]).pipe(Layer.provide(eventLayer));
+    const layer = makeHttpClientLive(
+      fetchImpl,
+      () => [SYSTEM_CA_SAMPLE],
+      (url, init) =>
+        fetchImpl(url.href, {
+          method: init.method,
+          headers: init.headers,
+          signal: init.signal,
+          ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
+        }),
+    ).pipe(Layer.provide(eventLayer));
     const service = await run(
       Effect.scoped(
         Effect.provide(
