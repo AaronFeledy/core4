@@ -99,6 +99,8 @@ describe("family command builders", () => {
   test("mysql dump uses restore-oriented mysqldump flags without -p", () => {
     expect(dumpCommand("mysql", creds)).toEqual([
       "mysqldump",
+      "-h",
+      "127.0.0.1",
       "-u",
       "alice",
       "--single-transaction",
@@ -112,6 +114,8 @@ describe("family command builders", () => {
   test("mariadb dump uses restore-oriented mariadb-dump flags without GTID", () => {
     expect(dumpCommand("mariadb", creds)).toEqual([
       "mariadb-dump",
+      "-h",
+      "127.0.0.1",
       "-u",
       "alice",
       "--single-transaction",
@@ -135,7 +139,7 @@ describe("family command builders", () => {
   });
 
   test("mysql load uses mysql -u without -p", () => {
-    expect(loadCommand("mysql", creds)).toEqual(["mysql", "-u", "alice", "appdb"]);
+    expect(loadCommand("mysql", creds)).toEqual(["mysql", "-h", "127.0.0.1", "-u", "alice", "appdb"]);
   });
 
   test("postgres load uses psql -U and -d", () => {
@@ -170,6 +174,8 @@ describe("family command builders", () => {
   test("countCommand uses family-specific emptiness probes", () => {
     expect(countCommand("mysql", creds)).toEqual([
       "mysql",
+      "-h",
+      "127.0.0.1",
       "-u",
       "alice",
       "-D",
@@ -211,6 +217,8 @@ describe("family command builders", () => {
   test("resetCommand embeds the database name and never -P", () => {
     expect(resetCommand("mysql", creds)).toEqual([
       "mysql",
+      "-h",
+      "127.0.0.1",
       "-u",
       "alice",
       "-e",

@@ -20,6 +20,28 @@ const REGISTRY_AUTH_FAILURE_SIGNATURES = [
 ] as const;
 
 export type PullFailureKind = "registry-auth" | "generic";
+export type PullFailureSource = "stream-frame";
+export type PullFailureSignature =
+  | "toomanyrequests"
+  | "denied"
+  | "manifest-unknown"
+  | "name-unknown"
+  | "no-such-host"
+  | "connection-refused"
+  | "timeout"
+  | "tls"
+  | "unknown";
+
+const PULL_FAILURE_SIGNATURES: ReadonlyArray<readonly [signature: PullFailureSignature, pattern: RegExp]> = [
+  ["toomanyrequests", /\btoomanyrequests\b/iu],
+  ["denied", /\bdenied\b/iu],
+  ["manifest-unknown", /(?:^|[^a-z0-9])manifest[ _-]unknown(?:$|[^a-z0-9])/iu],
+  ["name-unknown", /(?:^|[^a-z0-9])name[ _-]unknown(?:$|[^a-z0-9])/iu],
+  ["no-such-host", /\bno such host\b/iu],
+  ["connection-refused", /\bconnection refused\b/iu],
+  ["timeout", /\b(?:i\/o timeout|timed out|timeout)\b/iu],
+  ["tls", /\b(?:tls|x509)\b/iu],
+];
 
 export type ImagePullFrame =
   | {
@@ -28,7 +50,12 @@ export type ImagePullFrame =
       readonly current?: number;
       readonly total?: number;
     }
-  | { readonly kind: "error"; readonly message: string }
+  | {
+      readonly kind: "error";
+      readonly message: string;
+      readonly source: PullFailureSource;
+      readonly signature: PullFailureSignature;
+    }
   | { readonly kind: "ignore" };
 
 export interface PullImageOptions<E = never> {
@@ -50,6 +77,9 @@ export const classifyPullFailure = (message: string): PullFailureKind => {
     ? "registry-auth"
     : "generic";
 };
+
+export const classifyPullFailureSignature = (message: string): PullFailureSignature =>
+  PULL_FAILURE_SIGNATURES.find(([, pattern]) => pattern.test(message))?.[0] ?? "unknown";
 
 export const buildImagePullRequest = (reference: string, dialect: PullDialect) => dialect.request(reference);
 
@@ -75,7 +105,13 @@ export const parseImagePullFrame = (line: string, dialect: PullDialect): ImagePu
   }
   if (typeof parsed !== "object" || parsed === null) return { kind: "ignore" };
   const errorText = dialect.frameError(parsed);
-  if (errorText !== undefined) return { kind: "error", message: errorText };
+  if (errorText !== undefined)
+    return {
+      kind: "error",
+      message: errorText,
+      source: "stream-frame",
+      signature: classifyPullFailureSignature(errorText),
+    };
   const streamText = textOrUndefined("stream" in parsed ? parsed.stream : undefined);
   const statusText = textOrUndefined("status" in parsed ? parsed.status : undefined);
   const progressDetail = "progressDetail" in parsed ? parsed.progressDetail : undefined;
@@ -91,26 +127,43 @@ export const parseImagePullFrame = (line: string, dialect: PullDialect): ImagePu
   };
 };
 
-const pullFailure = (
-  ctx: ProviderErrorContext,
-  reference: string,
-  message: string,
-  details?: unknown,
-): ProviderUnavailableError => {
-  const failureKind = classifyPullFailure(message);
-  return new ProviderUnavailableError({
-    providerId: ctx.providerId,
-    operation: "pullArtifact",
-    message: redactString(`Container image pull failed: ${message}`),
-    details: redactDetails({
-      reference,
-      error: message,
-      failureKind,
-      ...(details === undefined ? {} : { details }),
-    }),
-    remediation: failureKind === "registry-auth" ? REGISTRY_AUTH_REMEDIATION : ctx.remediation,
-  });
+type PullFailureInput = {
+  readonly ctx: ProviderErrorContext;
+  readonly reference: string;
+  readonly message: string;
+  readonly source?: PullFailureSource;
+  readonly signature?: PullFailureSignature;
+  readonly details?: unknown;
+  readonly cause?: unknown;
 };
+
+const pullFailureFields = (input: PullFailureInput) => {
+  const failureKind = classifyPullFailure(input.message);
+  return {
+    providerId: input.ctx.providerId,
+    operation: "pullArtifact",
+    message: redactString(`Container image pull failed: ${input.message}`),
+    details: redactDetails(
+      input.source === undefined
+        ? {
+            reference: input.reference,
+            error: input.message,
+            failureKind,
+            ...(input.details === undefined ? {} : { details: input.details }),
+          }
+        : {
+            failureKind,
+            source: input.source,
+            ...(input.signature === undefined ? {} : { signature: input.signature }),
+          },
+    ),
+    remediation: failureKind === "registry-auth" ? REGISTRY_AUTH_REMEDIATION : input.ctx.remediation,
+    ...(input.cause === undefined ? {} : { cause: input.cause }),
+  };
+};
+
+const pullFailure = (input: PullFailureInput): ProviderUnavailableError =>
+  new ProviderUnavailableError(pullFailureFields(input));
 
 const httpStatusOf = (details: unknown): number | undefined => {
   if (typeof details !== "object" || details === null || !("status" in details)) return undefined;
@@ -129,9 +182,16 @@ const pullFailureFromTransport = (
   error: ProviderUnavailableError | ProviderInternalError,
 ): ProviderUnavailableError | ProviderInternalError => {
   const status = httpStatusOf(error.details);
-  return status === undefined
-    ? error
-    : pullFailure(ctx, reference, withApiReason(`HTTP ${status}.`, error.details), error.details);
+  const input = {
+    ctx,
+    reference,
+    message: status === undefined ? error.message : withApiReason(`HTTP ${status}.`, error.details),
+    ...(status === undefined ? {} : { details: error.details }),
+    cause: error,
+  };
+  return error instanceof ProviderInternalError
+    ? new ProviderInternalError(pullFailureFields(input))
+    : pullFailure(input);
 };
 
 const parseResponseJson = (
@@ -163,7 +223,15 @@ export const pullImage = <E = never>(
         case "ignore":
           return Effect.void;
         case "error":
-          return Effect.fail(pullFailure(options.ctx, reference, frame.message));
+          return Effect.fail(
+            pullFailure({
+              ctx: options.ctx,
+              reference,
+              message: frame.message,
+              source: frame.source,
+              signature: frame.signature,
+            }),
+          );
         case "progress":
           return options.publish === undefined
             ? Effect.void
@@ -200,7 +268,12 @@ export const pullImage = <E = never>(
       const response = yield* api.request(buildImagePullRequest(reference, options.dialect));
       if (response.status < 200 || response.status >= 300) {
         return yield* Effect.fail(
-          pullFailure(options.ctx, reference, withApiReason(`HTTP ${response.status}.`, response), response),
+          pullFailure({
+            ctx: options.ctx,
+            reference,
+            message: withApiReason(`HTTP ${response.status}.`, response),
+            details: response,
+          }),
         );
       }
       yield* Effect.forEach(response.body.split("\n"), emitFrame, { discard: true });
@@ -229,7 +302,12 @@ export const pullImage = <E = never>(
     const response = yield* request(inspect.request(reference));
     if (response.status !== 200) {
       return yield* Effect.fail(
-        pullFailure(options.ctx, reference, `post-pull inspect HTTP ${response.status}.`, response),
+        pullFailure({
+          ctx: options.ctx,
+          reference,
+          message: `post-pull inspect HTTP ${response.status}.`,
+          details: response,
+        }),
       );
     }
     const decoded = yield* parseResponseJson(response, options.ctx);
