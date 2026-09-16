@@ -90,6 +90,7 @@ describe("Traefik RouterService TLS", () => {
         [
           {
             hostname: "demo.lndo.site",
+            priority: 2,
             scheme: "http",
             service: ServiceName.make("web"),
             backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
@@ -145,6 +146,7 @@ describe("Traefik RouterService TLS", () => {
         [
           {
             hostname: "demo.lndo.site",
+            priority: 2,
             scheme: "http",
             service: ServiceName.make("web"),
             backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },

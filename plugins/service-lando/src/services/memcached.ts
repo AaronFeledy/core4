@@ -50,6 +50,7 @@ export const memcachedServiceType: ServiceType = {
   id: "memcached",
   name: "memcached",
   base: "lando",
+  identity: { defaultUser: "memcache", homes: { memcache: "/home/memcache", root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.succeed({

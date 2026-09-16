@@ -9,9 +9,9 @@ import { LandofileShape, type ProviderCapabilities, ServiceName } from "@lando/c
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { AppPlannerLive } from "../../src/testing/engine-layers.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
-import { PluginRegistryLive } from "../../src/testing/engine-layers.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const composeServiceFieldCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
@@ -61,6 +61,7 @@ describe("Compose service field preservation", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           labels: { "io.lando.role": "web" },
           networks: ["frontend"],
           configs: [
@@ -120,6 +121,7 @@ describe("Compose service field preservation", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           "x-foo": { enabled: true },
         },
       },
@@ -144,6 +146,7 @@ describe("Compose service field preservation", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           profiles: ["dev"],
           shm_size: "64m",
         },

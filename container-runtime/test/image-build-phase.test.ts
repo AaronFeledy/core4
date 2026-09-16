@@ -47,7 +47,7 @@ test("derived Dockerfiles contain only build-phase steps", async () => {
       "@lando/core/service-features": {
         buildSteps: [
           { id: "compile", phase: "build", command: ["echo", "build-only"] },
-          { id: "install", phase: "app", command: ["echo", "app-only"] },
+          { id: "install", phase: "app", command: ["echo", "app-only"], user: "invalid user" },
         ],
       },
     },

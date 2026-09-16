@@ -1,3 +1,5 @@
+import { backdropSnapshotYaml } from "./snapshot.ts";
+
 export const BACKDROP_RECIPE_ID = "backdrop";
 
 export const backdropRecipeSource = `${BACKDROP_RECIPE_ID}/recipe.yml`;
@@ -21,4 +23,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Backdrop up.
+
+${backdropSnapshotYaml}
 `;

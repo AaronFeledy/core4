@@ -9,6 +9,7 @@ import {
   php81ServiceType,
   php82ServiceType,
   php85ServiceType,
+  php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -27,6 +28,7 @@ const BuildSteps = Schema.Struct({
       Schema.Struct({
         id: Schema.optional(Schema.String),
         command: Schema.Unknown,
+        user: Schema.optional(Schema.String),
         buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
       }),
     ),
@@ -120,11 +122,17 @@ describe("PHP xdebug option", () => {
     const plan = await composePhpPlan({ xdebug: true });
     const steps = buildStepsFor(plan);
     const xdebugStep = steps.find((step) => step.id === "service-lando.php:xdebug");
+    const rawXdebug = (
+      (plan.extensions["@lando/core/service-features"] as { buildSteps?: ReadonlyArray<object> } | undefined)
+        ?.buildSteps ?? []
+    ).find((step) => (step as { id?: string }).id === "service-lando.php:xdebug");
     const command = String(xdebugStep?.command);
 
     expect(xdebugStep?.buildKeyInputs).toEqual({
       xdebug: { ...PHP_XDEBUG_RELEASE, phpVersion: "8.2", mode: "debug" },
     });
+    expect(xdebugStep?.user).toBe("root");
+    expect("privileged" in (rawXdebug ?? {})).toBe(false);
     expect(command).toContain(PHP_XDEBUG_RELEASE.url);
     expect(command).toContain(PHP_XDEBUG_RELEASE.sha256);
     expect(command).toContain("xdebug.mode=debug");
@@ -214,6 +222,12 @@ describe("PHP xdebug option", () => {
   test("Given a custom image and invalid xdebug, when planning, then it still fails closed", async () => {
     const planned = composePhpPlan({ image: "registry.example.com/php:8.2-custom", xdebug: "nope" });
     await expectRejectsToThrow(planned, /Unsupported Xdebug mode/);
+  });
+
+  test("Given php:8.6 and xdebug true, when planning, then it fails closed because the shipped pin stops at 8.5", async () => {
+    const planned = composePhpPlan({ xdebug: true }, php86ServiceType);
+    await expectRejectsToThrow(planned, /Xdebug is not available on PHP 8\.6/);
+    await expectRejectsToThrow(planned, /Remove xdebug: or set type to php:8\.5/);
   });
 
   test("Given a custom image and xdebug true, when planning, then it skips the install step without XDEBUG_MODE", async () => {

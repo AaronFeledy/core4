@@ -12,6 +12,12 @@ export const spec = {
     service: { type: "string", description: "Source database service." },
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
     label: { type: "string", description: "Optional snapshot label." },
+    compression: {
+      type: "string",
+      options: ["gzip", "zstd", "none"],
+      default: "gzip",
+      description: "Snapshot compression format.",
+    },
   },
   resultSchema: DbCommandResultSchema,
   redactionTokens: dbCommandRedactionTokens,

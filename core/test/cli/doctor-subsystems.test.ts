@@ -9,6 +9,7 @@ import { StreamFrame } from "@lando/sdk/schema";
 import { PathsService, RouterService } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
+import { FileSystemLive } from "@lando/engine/services/file-system";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import { HOST_PROXY_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
 import {
@@ -18,7 +19,6 @@ import {
   renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
 } from "../../src/cli/commands/doctor-subsystems.ts";
-import { FileSystemLive } from "../../src/testing/engine-layers.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.subsystems.ndjson");
 

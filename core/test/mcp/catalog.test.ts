@@ -5,8 +5,11 @@ import { McpToolInputError } from "@lando/sdk/errors";
 
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
-import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
+import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
+import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
+import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
+import { Flags } from "../../src/cli/spec/metadata.ts";
 
 const spec = (id: string, extra: Partial<LandoCommandSpec> = {}): LandoCommandSpec => ({
   id,
@@ -23,6 +26,27 @@ const entry = (id: string, extra: Partial<LandoCommandSpec> = {}): McpCommandEnt
 });
 
 describe("deriveToolInputSchema", () => {
+  test("projects repeatable service arrays for app info and rebuild", () => {
+    // Given
+    const specs = [infoSpec, rebuildSpec];
+
+    // When
+    const schemas = specs.map(deriveToolInputSchema);
+
+    // Then
+    for (const schema of schemas) {
+      expect(schema).toMatchObject({
+        properties: {
+          flags: {
+            properties: {
+              service: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+      });
+    }
+  });
+
   test("projects flags and args into a closed object schema", () => {
     const schema = deriveToolInputSchema(
       spec("app:info", {
@@ -62,7 +86,7 @@ describe("deriveToolInputSchema", () => {
 
 describe("validateToolInput", () => {
   const withFlags = spec("app:logs", {
-    flags: { format: { type: "string", required: true }, tail: { type: "number" } },
+    flags: { format: { type: "string", required: true }, tail: Flags.integer() },
     args: { service: { type: "string" } },
   });
 
@@ -148,6 +172,41 @@ describe("computeEffectiveAllowlist", () => {
 });
 
 describe("buildCatalog", () => {
+  test("exposes declared tooling flag and arg names in the derived input schema", () => {
+    // Given
+    const projected = mcpRegistryWithToolingEntries({ commandEntries: [] }, [
+      {
+        id: "app:greet",
+        summary: "Greet",
+        hidden: false,
+        input: {
+          flags: [{ name: "loud", boolean: true, required: false }],
+          args: [{ name: "target", order: 0, required: true }],
+        },
+      },
+    ]);
+    // When
+    const catalog = buildCatalog({
+      ...projected,
+      effective: computeEffectiveAllowlist({ defaults: [], allow: ["app:greet"] }),
+      options: { tooling: true },
+    });
+    // Then
+    expect(catalog.tools[0]?.inputSchema).toEqual({
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        flags: { type: "object", additionalProperties: false, properties: { loud: { type: "boolean" } } },
+        args: {
+          type: "object",
+          additionalProperties: false,
+          properties: { target: { type: "string" } },
+          required: ["target"],
+        },
+      },
+    });
+  });
+
   const commandEntries = [entry("app:info"), entry("app:logs"), entry("meta:version")];
 
   test("emits one sorted tool per effective-allowlist command", () => {

@@ -88,12 +88,25 @@ const createFakeGpg = async (root: string) => {
   return { gpgPath, logPath };
 };
 
+const HOST_ROOT_OVERRIDES = [
+  "LANDO_USER_DATA_ROOT",
+  "LANDO_USER_CONF_ROOT",
+  "LANDO_USER_CACHE_ROOT",
+  "LANDO_INSTALL_DIR",
+  "XDG_DATA_HOME",
+] as const;
+
+const hostEnvWithoutLandoRoots = (): Record<string, string | undefined> =>
+  Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !HOST_ROOT_OVERRIDES.some((override) => override === key)),
+  );
+
 const runInstaller = async (
   env: Record<string, string>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
   const proc = Bun.spawn(["sh", installerPath], {
     cwd: repoRoot,
-    env: { ...process.env, ...env },
+    env: { ...hostEnvWithoutLandoRoots(), ...env },
     stdout: "pipe",
     stderr: "pipe",
   });

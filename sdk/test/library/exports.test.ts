@@ -3,6 +3,10 @@ import { readFile } from "node:fs/promises";
 import { Schema } from "effect";
 
 describe("@lando/sdk package exports", () => {
+  test("landofile entry point exports translation validation", async () => {
+    const landofile = await import("@lando/sdk/landofile");
+    expect(landofile.validateConfigTranslateResult).toBeDefined();
+  });
   test("root entry point resolves the public namespaces", async () => {
     const sdk = await import("@lando/sdk");
 
@@ -42,6 +46,17 @@ describe("@lando/sdk package exports", () => {
     expect(schema.GlobalConfig).toBeDefined();
     expect(schema.ConfigLintViolation).toBeDefined();
     expect(schema.ConfigLintResult).toBeDefined();
+    expect(schema.ConfigTranslateInput).toBeDefined();
+    expect(schema.ConfigTranslateResult).toBeDefined();
+    expect(schema.RecipeProducer).toBeDefined();
+    expect(schema.LandofileRecipeField).toBeDefined();
+    expect(schema.LandofileRecipeProvenance).toBeDefined();
+    expect(schema.RecipeSnapshot).toBeDefined();
+    expect(schema.RecipeMigration).toBeDefined();
+    expect(schema.RecipeMigrationHunk).toBeDefined();
+    expect(schema.RecipeSecretDisposition).toBeDefined();
+    expect(schema.RecipeDecomposeInput).toBeDefined();
+    expect(schema.RecipeDecomposeResult).toBeDefined();
     expect(schema.ArtifactManifestEntry).toBeDefined();
     expect(schema.DownloadRequest).toBeDefined();
     expect(schema.DownloadResult).toBeDefined();
@@ -153,6 +168,7 @@ describe("@lando/sdk package exports", () => {
     const varnish = await import("@lando/sdk/schema/services/varnish");
     const dotnet = await import("@lando/sdk/schema/services/dotnet");
     const mssql = await import("@lando/sdk/schema/services/mssql");
+    const mysql = await import("@lando/sdk/schema/services/mysql");
     const phpmyadmin = await import("@lando/sdk/schema/services/phpmyadmin");
 
     expect(localstack.LocalStackServiceConfig).toBeDefined();
@@ -165,6 +181,7 @@ describe("@lando/sdk package exports", () => {
     expect(varnish.VarnishServiceConfig).toBeDefined();
     expect(dotnet.DotnetServiceConfig).toBeDefined();
     expect(mssql.MssqlServiceConfig).toBeDefined();
+    expect(mysql.MysqlServiceConfig).toBeDefined();
     expect(phpmyadmin.PhpMyAdminServiceConfig).toBeDefined();
   });
 
@@ -351,6 +368,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.GuideFrontmatterValidationError).toBeDefined();
     expect(errors.GuideHiddenScenarioReasonError).toBeDefined();
     expect(errors.AppIdReservedError).toBeDefined();
+    expect(errors.AppLockTimeoutError).toBeDefined();
     expect(errors.AppResolveError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();
@@ -474,6 +492,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.ProcessRunner).toBeDefined();
     expect(services.ShellRunner).toBeDefined();
     expect(services.ConfigTranslator).toBeDefined();
+    expect(services.ConfigTranslatorRegistry).toBeDefined();
     expect(services.Downloader).toBeDefined();
     expect(services.HttpClient).toBeDefined();
     expect(services.DataMover).toBeDefined();
@@ -645,6 +664,29 @@ describe("@lando/sdk package exports", () => {
 
     expect(sdkTest.runConfigTranslatorContractSuite).toBeDefined();
     expect(sdkTest.makeConfigTranslatorContractSuite).toBeDefined();
+  });
+
+  test("test entry point exports the recipe decomposer contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runRecipeDecomposerContractSuite).toBeDefined();
+    expect(sdkTest.makeRecipeDecomposerContractSuite).toBeDefined();
+  });
+
+  test("recipes entry point exports the pure recipe contract surface", async () => {
+    const recipes = await import("@lando/sdk/recipes");
+
+    expect(recipes.computeRecipeContentDigest).toBeDefined();
+    expect(recipes.validateLandofileRecipeProvenance).toBeDefined();
+    expect(recipes.validateSnapshotTemplate).toBeDefined();
+    expect(recipes.renderRecipeSnapshot).toBeDefined();
+    expect(recipes.validateMigrationChain).toBeDefined();
+    expect(recipes.deriveHunkId).toBeDefined();
+    expect(recipes.selectMigrationPath).toBeDefined();
+    expect(recipes.validateOptionValues).toBeDefined();
+    expect(recipes.validateRecipeSecretPrompts).toBeDefined();
+    expect(recipes.secretSinkFailure).toBeDefined();
+    expect(recipes.SNAPSHOT_HELPER_ALLOWLIST).toBeDefined();
   });
 
   test("test entry point exports the route filter contract suite", async () => {

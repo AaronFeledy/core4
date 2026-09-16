@@ -36,6 +36,7 @@ export * from "./remote-source-dataset-tunnel.ts";
 export * from "./state-store-contract.ts";
 export * from "./downloader-contract.ts";
 export * from "./interaction-contract.ts";
+export * from "./recipe-decomposer.ts";
 export * from "./redaction-secret-store.ts";
 export * from "./config-translator-route-filter.ts";
 export * from "./doctor-tooling-plugin-source.ts";

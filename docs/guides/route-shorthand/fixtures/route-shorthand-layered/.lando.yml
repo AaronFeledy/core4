@@ -1,0 +1,15 @@
+name: route-shorthand-layered
+services:
+  app:
+    type: "node:22"
+    primary: true
+    routes:
+      - hostname: api.lndo.site
+        pathPrefix: /v1
+        filters:
+          - name: strip-v1
+            type: stripPrefix
+            prefix: /v1
+          - type: responseHeader
+            header: X-Served-By
+            value: base

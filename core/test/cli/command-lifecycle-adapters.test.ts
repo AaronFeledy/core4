@@ -3,6 +3,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
+import { effectiveBootstrapForCommand } from "@lando/engine/runtime/cli-options";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
@@ -19,7 +20,6 @@ import {
 import { runDynamicTooling } from "../../src/cli/dynamic-tooling.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { effectiveBootstrapForCommand } from "../../src/testing/engine-layers.ts";
 
 afterEach(() => {
   setActiveCommandId("cli:unknown");
@@ -126,6 +126,7 @@ describe("CLI lifecycle adapters", () => {
     expect(COMMAND_REGISTRY_MANIFEST.commands["meta:update"]?.spec.bootstrap).toBe("plugins");
     expect(COMMAND_REGISTRY_MANIFEST.commands["meta:mcp"]?.spec.bootstrap).toBe("plugins");
     expect(COMMAND_REGISTRY_MANIFEST.commands["apps:list"]?.spec.bootstrap).toBe("minimal");
+    expect(COMMAND_REGISTRY_MANIFEST.commands["app:config:translate"]?.spec.bootstrap).toBe("plugins");
   });
 
   test("notification policy promotes configured lower tiers without changing cold declarations", () => {

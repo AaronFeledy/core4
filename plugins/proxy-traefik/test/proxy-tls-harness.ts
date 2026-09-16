@@ -10,12 +10,14 @@ export const app = AppId.make("demo/app");
 export const httpsRoutes: ReadonlyArray<RoutePlan> = [
   {
     hostname: "z.demo.lndo.site",
+    priority: 2,
     scheme: "https",
     service: ServiceName.make("web"),
     backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
   },
   {
     hostname: "a.demo.lndo.site",
+    priority: 3,
     scheme: "both",
     service: ServiceName.make("api"),
     backend: { service: ServiceName.make("api"), protocol: "http", port: 8081 },

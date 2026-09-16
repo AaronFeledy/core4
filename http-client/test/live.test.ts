@@ -299,7 +299,16 @@ describe("HttpClientLive network trust", () => {
   ): Promise<void> => {
     const program = Effect.flatMap(HttpClient, (client) =>
       Effect.flatMap(client.stream(request), (res) => Stream.runDrain(res.body)),
-    ).pipe(Effect.provide(makeHttpClientLive(fetchImpl, () => systemCaPems)));
+    ).pipe(
+      Effect.provide(
+        makeHttpClientLive(
+          fetchImpl,
+          () => systemCaPems,
+          (url, init) =>
+            fetchImpl(url, { ...init, ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }) }),
+        ),
+      ),
+    );
     const provided = trust === undefined ? program : program.pipe(Effect.provideService(NetworkTrust, trust));
     return Effect.runPromise(Effect.scoped(provided));
   };
@@ -533,7 +542,8 @@ describe("HttpClientLive network trust", () => {
 
 describe("HttpClientLive lifecycle events", () => {
   const serveOnce = (payload: Uint8Array) =>
-    ((_input: unknown) => Promise.resolve(new Response(payload, { status: 200 }))) as unknown as typeof fetch;
+    ((_input: unknown) =>
+      Promise.resolve(new Response(new Uint8Array(payload), { status: 200 }))) as unknown as typeof fetch;
 
   test("publishes redacted pre/post-http-call events with scheme+host origin", async () => {
     const secret = "SECRET-abc123";

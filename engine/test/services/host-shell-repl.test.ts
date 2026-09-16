@@ -11,7 +11,8 @@ import { EventService, type LandoEvent, type ShellReplInput } from "@lando/sdk/s
 import { RedactionService } from "@lando/redaction/service";
 import { hostShellEvaluatorArgv, runHostShellLine } from "../../src/services/host-shell-line";
 import { makeStatefulShellRedactor } from "../../src/services/host-shell-redactor";
-import { runHostShellRepl } from "../../src/services/host-shell-repl";
+import { runHostShellRepl as runHostShellReplWithPrivateFileAccess } from "../../src/services/host-shell-repl";
+import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const input = (...events: ReadonlyArray<ShellReplInput>): AsyncIterable<ShellReplInput> =>
   (async function* () {
@@ -27,6 +28,9 @@ const replIo = (
   writeStderr: () => {},
   ...(callbacks.close === undefined ? {} : { close: callbacks.close }),
 });
+
+const runHostShellRepl = (spec: Parameters<typeof runHostShellReplWithPrivateFileAccess>[0]) =>
+  runHostShellReplWithPrivateFileAccess(spec, ownerOnlyFileAccess);
 
 const eventLayer = (events: LandoEvent[]) =>
   Layer.succeed(EventService, {

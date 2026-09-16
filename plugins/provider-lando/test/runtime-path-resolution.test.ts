@@ -1,14 +1,14 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import { type PodmanApiClient, type PodmanServiceRunner, makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import { AppId } from "@lando/sdk/schema";
 
 const fakeServiceRunner: PodmanServiceRunner = {
   launch: () => Effect.succeed(4242),
@@ -55,12 +55,7 @@ describe("provider-lando runtime path resolution", () => {
         }),
       );
 
-      await Effect.runPromiseExit(
-        provider.exec(
-          { app: AppId.make("path-resolution"), service: ServiceName.make("app") },
-          { command: ["true"] },
-        ),
-      );
+      await Effect.runPromiseExit(provider.listVolumes({ app: AppId.make("path-resolution") }));
 
       expect(observedSockets).toEqual([providerSocketPath]);
       expect(await readFile(providerPidPath, "utf8")).toBe("4242");
@@ -108,12 +103,7 @@ describe("provider-lando runtime path resolution", () => {
         }),
       );
 
-      await Effect.runPromiseExit(
-        provider.exec(
-          { app: AppId.make("path-resolution-env"), service: ServiceName.make("app") },
-          { command: ["true"] },
-        ),
-      );
+      await Effect.runPromiseExit(provider.listVolumes({ app: AppId.make("path-resolution-env") }));
 
       expect(observedSockets).toEqual([providerSocketPath]);
       expect(observedSockets).not.toContain("/tmp/should-never-be-used.sock");
@@ -170,10 +160,7 @@ describe("provider-lando runtime path resolution", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        provider.exec(
-          { app: AppId.make("path-resolution-darwin-missing"), service: ServiceName.make("app") },
-          { command: ["true"] },
-        ),
+        provider.listVolumes({ app: AppId.make("path-resolution-darwin-missing") }),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
@@ -211,10 +198,7 @@ describe("provider-lando runtime path resolution", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        provider.exec(
-          { app: AppId.make("path-resolution-darwin-bundle"), service: ServiceName.make("app") },
-          { command: ["true"] },
-        ),
+        provider.listVolumes({ app: AppId.make("path-resolution-darwin-bundle") }),
       );
 
       expect(Exit.isFailure(exit)).toBe(true);

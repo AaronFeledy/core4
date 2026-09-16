@@ -1,3 +1,5 @@
+import { joomlaSnapshotYaml } from "./snapshot.ts";
+
 export const JOOMLA_RECIPE_ID = "joomla";
 export const joomlaRecipeSource = `${JOOMLA_RECIPE_ID}/recipe.yml`;
 export const joomlaRecipeYaml = `id: ${JOOMLA_RECIPE_ID}
@@ -19,4 +21,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring Joomla up.
+
+${joomlaSnapshotYaml}
 `;

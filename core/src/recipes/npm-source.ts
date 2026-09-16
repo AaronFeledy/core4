@@ -33,6 +33,13 @@ export interface NpmPackageDist {
 
 export interface NpmPackumentVersion {
   readonly dist: NpmPackageDist;
+  readonly name?: string;
+  readonly version?: string;
+  readonly landoPlugin?: {
+    readonly name?: string;
+    readonly version?: string;
+    readonly requires?: Readonly<Record<string, string>>;
+  };
 }
 
 export interface NpmPackument {

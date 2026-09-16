@@ -9,11 +9,15 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "postgres:16";
+const VERSIONS = ["16"] as const;
+const ARTIFACTS = { "16": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 5432;
 const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
+export const POSTGRES_CONFIG_TARGET = PortablePath.make("/etc/lando/postgresql.conf");
 
 const defaultPassword = (appId: string): string =>
   `lando-${createHash("sha256").update(appId).digest("hex").slice(0, 16)}`;
@@ -79,6 +83,19 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 30,
   });
 
+  const server = service.config?.server;
+  if (server !== undefined && server.length > 0) {
+    ctx.addMount({
+      type: "bind",
+      source: resolveBindSource(server, ctx.appRoot),
+      target: POSTGRES_CONFIG_TARGET,
+      readOnly: true,
+    });
+    if (service.command === undefined && service.entrypoint === undefined) {
+      ctx.setCommand(["postgres", "-c", `config_file=${POSTGRES_CONFIG_TARGET}`]);
+    }
+  }
+
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
@@ -105,6 +122,9 @@ export const postgresServiceType: ServiceType = {
   id: "postgres",
   name: "postgres",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = credsFor(input);

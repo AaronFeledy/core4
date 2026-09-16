@@ -89,7 +89,7 @@ describe("lando init git source native CLI dispatch", () => {
 
   test("initApp resolves a git recipe through manifest parsing before the existing renderer boundary", async () => {
     await withTempCwd(async (dir) => {
-      const { initApp } = await import("../../src/cli/commands/init.ts");
+      const { initAppWithOwnerOnlyFileAccess: initApp } = await import("../_support/private-file-access.ts");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
       process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
       try {

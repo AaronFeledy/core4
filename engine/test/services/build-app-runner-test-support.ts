@@ -16,7 +16,9 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { PathsService, RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+import { ProcessRunnerLive } from "../../src/services/process-runner.ts";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";

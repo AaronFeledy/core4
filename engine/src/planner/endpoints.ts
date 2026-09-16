@@ -1,17 +1,19 @@
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import { Effect, Schema } from "effect";
 
 import {
   type CapabilityError,
   type ConfigExpressionError,
+  HomePathCapabilityError,
   LandofileValidationError,
   PublicationUnsupportedError,
+  type RouteInputError,
 } from "@lando/sdk/errors";
 import {
   type AppId,
   type FileSyncPlan,
   type ProviderCapabilities,
   type ProviderId,
-  type RouteInput,
   type RoutePlan,
   ServiceName,
   ServicePlan,
@@ -23,7 +25,9 @@ import {
   usesManagedProxyNetwork,
 } from "../lifecycle/cross-engine-routes.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
+import { sortRecord } from "../services/draft.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
+import { applyHostReachability } from "../subsystems/networking.ts";
 import {
   bindRealization,
   missingCapability,
@@ -32,8 +36,10 @@ import {
 } from "./compose-capabilities.ts";
 import { LOG_SOURCES_EXTENSION_KEY, isRecord, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
+import { applyServiceHome } from "./home.ts";
 import { DEFAULT_PROXY_DOMAIN } from "./naming.ts";
 import { evaluateRouteHostname } from "./route-hostname.ts";
+import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
 import { expandExcludesToShadows } from "./storage.ts";
 
@@ -60,7 +66,7 @@ export const resolveRoute = (
   appRoot: string,
   serviceName: string,
   endpoints: ServicePlan["endpoints"],
-  route: RouteInput,
+  route: NormalizedRoute,
   expression: {
     readonly routeIndex: number;
     readonly appName: string;
@@ -95,11 +101,13 @@ export const resolveRoute = (
       );
     }
     return {
+      priority: 2,
       hostname,
       scheme: route.scheme ?? "https",
       service: ServiceName.make(serviceName),
       ...(route.endpoint === undefined ? {} : { endpoint: route.endpoint }),
       ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
+      ...(route.filters.length === 0 ? {} : { filters: route.filters }),
       backend: {
         service: ServiceName.make(serviceName),
         protocol: endpoint.protocol,
@@ -134,15 +142,19 @@ export const finalizeServices = (input: {
   readonly fileSyncEngineId: string | undefined;
 }): Effect.Effect<
   FinalizedServices,
-  LandofileValidationError | CapabilityError | PublicationUnsupportedError | ConfigExpressionError
+  | LandofileValidationError
+  | CapabilityError
+  | HomePathCapabilityError
+  | PublicationUnsupportedError
+  | ConfigExpressionError
+  | RouteInputError
 > =>
   Effect.gen(function* () {
     const services: Record<string, unknown> = {};
     const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
     const stores: Array<FinalizedServices["stores"][number]> = [];
     const fileSync: Array<FileSyncPlan> = [];
-    const routes: Array<RoutePlan> = [];
-    const routeIndexes = new Map<string, number>();
+    const routeAccumulator = makeRouteAccumulator();
     const seenStoreNames = new Set<string>();
 
     const pushStore = (
@@ -156,22 +168,13 @@ export const finalizeServices = (input: {
       stores.push({ name, scope, kind, ...(key === undefined ? {} : { key }) });
     };
 
-    const pushRoute = (route: RoutePlan): number => {
-      const key = `${route.hostname}\u0000${route.scheme}`;
-      const existing = routeIndexes.get(key);
-      if (existing !== undefined) return existing;
-      const index = routes.length;
-      routes.push(route);
-      routeIndexes.set(key, index);
-      return index;
-    };
-
     for (const {
       name,
       hostnames,
       authoredArtifact,
       authored,
       draft,
+      homeIntent,
       logSources,
       routes: authoredRoutes,
       extensions,
@@ -218,8 +221,13 @@ export const finalizeServices = (input: {
         redirectSteps.length === 0
           ? draft
           : { ...draft, buildSteps: [...draft.buildSteps, ...redirectSteps] };
+      const planned = applyHostReachability(
+        servicePlanFromDraft(draftForPlan, [], input.metadata, extensionsForPlan),
+        input.providerCapabilities.hostReachability,
+      );
       const servicePlan = {
-        ...servicePlanFromDraft(draftForPlan, [], input.metadata, extensionsForPlan),
+        ...planned,
+        environment: sortRecord(planned.environment),
         ...(logSources.length === 0 ? {} : { logSources }),
       };
 
@@ -258,8 +266,17 @@ export const finalizeServices = (input: {
         ),
       };
 
+      const withHome = applyServiceHome({
+        servicePlan: servicePlanWithCapabilityRealization,
+        serviceName: name,
+        appSlug: input.appSlug,
+        intent: homeIntent,
+      });
+      if (withHome instanceof HomePathCapabilityError) yield* Effect.fail(withHome);
+      const servicePlanWithHome = withHome as ServicePlan;
+
       const endpointNames = new Set<string>();
-      for (const endpoint of servicePlanWithCapabilityRealization.endpoints) {
+      for (const endpoint of servicePlanWithHome.endpoints) {
         if (endpoint.name === undefined) continue;
         if (endpointNames.has(endpoint.name)) {
           yield* Effect.fail(duplicateEndpointNameError(input.appRoot, name, endpoint.name));
@@ -270,47 +287,48 @@ export const finalizeServices = (input: {
       const routeRefs: Array<ServicePlan["routes"][number]> = [];
       if (authoredRoutes.length > 0) {
         for (const [routeIndex, route] of authoredRoutes.entries()) {
-          routeRefs.push({
-            index: pushRoute(
-              yield* resolveRoute(
-                input.appRoot,
-                name,
-                servicePlanWithCapabilityRealization.endpoints,
-                route,
-                {
-                  routeIndex,
-                  appName: input.appName,
-                  appSlug: input.appSlug,
-                  defaultDomain: input.defaultDomain,
-                },
-              ),
-            ),
-          });
+          routeRefs.push(
+            ...(yield* routeAccumulator.add(
+              yield* resolveRoute(input.appRoot, name, servicePlanWithHome.endpoints, route, {
+                routeIndex,
+                appName: input.appName,
+                appSlug: input.appSlug,
+                defaultDomain: input.defaultDomain,
+              }),
+              route.source ?? { key: `services.${name}.routes[${routeIndex}]` },
+            )),
+          );
         }
       } else {
-        const endpoint = servicePlanWithCapabilityRealization.endpoints.find(isRoutableEndpoint);
+        const endpoint = servicePlanWithHome.endpoints.find(isRoutableEndpoint);
         if (endpoint !== undefined) {
-          routeRefs.push({
-            index: pushRoute({
-              hostname: `${name}.${input.appSlug}.${DEFAULT_PROXY_DOMAIN}`,
-              scheme: "https",
-              service: ServiceName.make(name),
-              ...(endpoint.name === undefined ? { endpoint: endpoint.port } : { endpoint: endpoint.name }),
-              backend: {
+          routeRefs.push(
+            ...(yield* routeAccumulator.add(
+              {
+                priority: 2,
+                hostname: `${name}.${input.appSlug}.${DEFAULT_PROXY_DOMAIN}`,
+                scheme: "https",
                 service: ServiceName.make(name),
-                protocol: endpoint.protocol,
-                port: endpoint.port,
+                ...(endpoint.name === undefined ? { endpoint: endpoint.port } : { endpoint: endpoint.name }),
+                backend: {
+                  service: ServiceName.make(name),
+                  protocol: endpoint.protocol,
+                  port: endpoint.port,
+                },
               },
-            }),
-          });
+              { key: `services.${name}.endpoints` },
+            )),
+          );
         }
       }
       const servicePlanWithRoutes: ServicePlan = {
-        ...servicePlanWithCapabilityRealization,
-        routes: routeRefs,
+        ...servicePlanWithHome,
+        routes: routeRefs.filter(
+          (ref, index) => routeRefs.findIndex((other) => other.index === ref.index) === index,
+        ),
         endpoints: usesManagedProxyNetwork(input.provider)
-          ? servicePlanWithCapabilityRealization.endpoints
-          : promoteRoutableEndpointsForHostProxy(servicePlanWithCapabilityRealization.endpoints),
+          ? servicePlanWithHome.endpoints
+          : promoteRoutableEndpointsForHostProxy(servicePlanWithHome.endpoints),
       };
 
       if (
@@ -380,5 +398,11 @@ export const finalizeServices = (input: {
     }
 
     yield* validateServiceDependencies(input.appRoot, services);
-    return { services, serviceHostnames, stores, fileSync, routes };
+    return {
+      services,
+      serviceHostnames,
+      stores,
+      fileSync,
+      routes: prioritizeRoutes(routeAccumulator.routes),
+    };
   });

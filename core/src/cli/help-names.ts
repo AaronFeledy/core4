@@ -8,6 +8,7 @@ export type TypeableNameInput = {
   readonly canonicalId: string;
   readonly builtInAliases: ReadonlyArray<string>;
   readonly aliasPolicy?: HelpAliasPolicy;
+  readonly implicitNamespaceStrip?: boolean;
 };
 
 export type TypeableName = {
@@ -17,15 +18,15 @@ export type TypeableName = {
 
 const isNameToken = (token: string): boolean => !token.startsWith("-");
 
+const implicitName = (builtInAliases: ReadonlyArray<string>): string | undefined =>
+  builtInAliases.find(isNameToken);
+
 const stripNamespacePrefix = (canonicalId: string): string | undefined => {
   const separator = canonicalId.indexOf(":");
   if (separator === -1) return undefined;
   const stripped = canonicalId.slice(separator + 1);
   return stripped.length === 0 ? undefined : stripped;
 };
-
-const implicitName = (canonicalId: string, builtInAliases: ReadonlyArray<string>): string | undefined =>
-  builtInAliases.find(isNameToken) ?? stripNamespacePrefix(canonicalId);
 
 export const typeableName = (input: TypeableNameInput): TypeableName => {
   const { canonicalId, builtInAliases, aliasPolicy } = input;
@@ -51,7 +52,9 @@ export const typeableName = (input: TypeableNameInput): TypeableName => {
         .sort((left, right) => left.localeCompare(right))
     : [];
 
-  const implicit = implicitName(canonicalId, builtInAliases);
+  const implicit =
+    implicitName(builtInAliases) ??
+    (input.implicitNamespaceStrip === true ? stripNamespacePrefix(canonicalId) : undefined);
   const implicitAvailable = aliasesEnabled && implicit !== undefined && typeable(implicit);
 
   const primary = customs[0] ?? (implicitAvailable && implicit !== undefined ? implicit : canonicalId);

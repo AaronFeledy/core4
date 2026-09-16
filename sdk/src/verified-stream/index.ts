@@ -31,8 +31,8 @@ export interface VerifiedStreamResult {
   readonly sizeBytes: number;
 }
 
-export interface PersistVerifiedStreamParams<E> {
-  readonly body: Stream.Stream<Uint8Array, E>;
+export interface PersistVerifiedStreamParams<E, R = never> {
+  readonly body: Stream.Stream<Uint8Array, E, R>;
   readonly destinationPath: string;
   readonly expectedSha256?: string | undefined;
   readonly expectedSizeBytes?: number | undefined;
@@ -41,8 +41,8 @@ export interface PersistVerifiedStreamParams<E> {
   readonly randomId?: (() => string) | undefined;
 }
 
-export interface CollectVerifiedStreamParams<E> {
-  readonly body: Stream.Stream<Uint8Array, E>;
+export interface CollectVerifiedStreamParams<E, R = never> {
+  readonly body: Stream.Stream<Uint8Array, E, R>;
   readonly expectedSha256?: string | undefined;
   readonly expectedSizeBytes?: number | undefined;
 }
@@ -82,9 +82,9 @@ const verify = (
  * verification. Requires an ambient `Scope`: a finalizer removes the temp file
  * unless the verified rename committed.
  */
-export const persistVerifiedStream = <E>(
-  params: PersistVerifiedStreamParams<E>,
-): Effect.Effect<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope> =>
+export const persistVerifiedStream = <E, R>(
+  params: PersistVerifiedStreamParams<E, R>,
+): Effect.Effect<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> =>
   Effect.gen(function* () {
     const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
     const committed = yield* Ref.make(false);
@@ -167,9 +167,9 @@ export const persistVerifiedStream = <E>(
  * checksum/size. No disk is touched. Use only when the caller explicitly wants
  * an in-memory download.
  */
-export const collectVerifiedStream = <E>(
-  params: CollectVerifiedStreamParams<E>,
-): Effect.Effect<VerifiedStreamResult, E | VerifiedStreamError, never> =>
+export const collectVerifiedStream = <E, R>(
+  params: CollectVerifiedStreamParams<E, R>,
+): Effect.Effect<VerifiedStreamResult, E | VerifiedStreamError, R> =>
   Effect.gen(function* () {
     const hash = createHash("sha256");
     const size = yield* Ref.make(0);

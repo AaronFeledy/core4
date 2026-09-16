@@ -25,8 +25,11 @@ import {
   LandofileService,
   PathsService,
   RuntimeProviderRegistry,
+  StateStore,
 } from "@lando/core/services";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
+const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 import type {
   AppSelector,
   DestroyOptions,
@@ -34,6 +37,7 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -223,6 +227,8 @@ const makeStopLayer = (
   };
 
   const layer = Layer.mergeAll(
+    PrivateFileAccessLive,
+    TestStateStoreLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
@@ -438,6 +444,8 @@ describe("lando stop", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      TestStateStoreLive,
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
@@ -667,6 +675,8 @@ describe("lando stop", () => {
       list: () => Effect.succeed([]),
     };
     const layer = Layer.mergeAll(
+      TestStateStoreLive,
+      PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),

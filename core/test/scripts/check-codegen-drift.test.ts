@@ -18,6 +18,7 @@ const EXPECTED_CATALOG_PATHS = [
   "images/php",
   "plugins/file-sync-mutagen/mutagen-versions.json",
   "recipes/*/.scaffold/*",
+  "sdk/src/schema/generated/core-service-env.ts",
   "sdk/test/fixtures/bundled-plugin-manifests.json",
 ] as const;
 
@@ -299,5 +300,17 @@ describe("check:codegen-drift package wiring", () => {
     const driftIndex = codegenCheck.indexOf("bun run check:codegen-drift");
     expect(codegenIndex).toBeGreaterThanOrEqual(0);
     expect(driftIndex).toBeGreaterThan(codegenIndex);
+  });
+
+  test("keeps gate:pr as the local pre-PR quality chain", async () => {
+    // Given: the monorepo package.json scripts table.
+    const scripts = await readPackageJsonScripts(repoRoot);
+    const gatePr = scripts["gate:pr"];
+    if (gatePr === undefined) throw new TypeError("package.json is missing gate:pr");
+
+    // When / Then: the chain runs typecheck, lint, codegen:check, boundaries, then guide-drift.
+    expect(gatePr).toBe(
+      "bun run typecheck && bun run lint && bun run codegen:check && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
+    );
   });
 });

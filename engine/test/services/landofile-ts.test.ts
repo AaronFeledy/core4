@@ -16,7 +16,7 @@ import { ServiceName, defineLandofile } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { TS_TIMEOUT_ENV } from "@lando/landofile/ts-loader";
-import { LandofileServiceLive } from "../../src/services/landofile-live";
+import { TestLandofileServiceLive as LandofileServiceLive } from "./landofile-layer.ts";
 
 const withTempCwd = async <T>(
   run: (dir: string) => Promise<T>,

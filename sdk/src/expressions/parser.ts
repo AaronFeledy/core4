@@ -17,6 +17,7 @@ export interface ParseExpressionOptions {
   readonly filePath: string;
   readonly line?: number;
   readonly column?: number;
+  readonly bareShellParameters?: "evaluate" | "preserve";
 }
 
 interface Position {
@@ -29,6 +30,7 @@ interface ParserContext {
   readonly source: string;
   readonly line: number | undefined;
   readonly column: number | undefined;
+  readonly bareShellParameters: "evaluate" | "preserve";
 }
 
 const IDENTIFIER_START = /^[A-Za-z_]$/;
@@ -868,12 +870,17 @@ class TemplateParser {
   }
 
   private parseBareShellSegment(): void {
-    this.flushLiteral();
+    const parameterStart = this.cursor.offset();
     this.cursor.advance(1);
     const start = this.cursor.offset();
     while (isIdentifierPart(this.cursor.current())) {
       this.cursor.advance(1);
     }
+    if (this.context.bareShellParameters === "preserve") {
+      this.literal += this.cursor.slice(parameterStart, this.cursor.offset());
+      return;
+    }
+    this.flushLiteral();
     this.segments.push({
       kind: "ShellParamSegment",
       name: this.cursor.slice(start, this.cursor.offset()),
@@ -925,6 +932,7 @@ const parseExpressionSync = (source: string, options: ParseExpressionOptions): E
     filePath: options.filePath,
     line: options.line,
     column: options.column,
+    bareShellParameters: options.bareShellParameters ?? "evaluate",
     source,
   }).parse();
 

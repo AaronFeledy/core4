@@ -9,7 +9,7 @@ import {
   defaultLogFileHelperDistRoot,
   loadLogFileHelperPayloads,
   resolveLogFileHelperPayloadPath,
-} from "../../src/testing/engine-layers.ts";
+} from "@lando/engine/providers/log-file-helper-payloads";
 import "../../src/runtime/engine-composition.ts";
 
 describe("log file helper payloads", () => {

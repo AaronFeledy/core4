@@ -28,6 +28,7 @@ export type OclifFlagDefinition = {
   readonly name?: string;
   readonly description?: string;
   readonly type?: string;
+  readonly valueType?: "string" | "integer";
   readonly char?: string;
   readonly aliases?: ReadonlyArray<string>;
   readonly multiple?: boolean;
@@ -83,12 +84,12 @@ export const flagNameByToken = (
 };
 
 export const parseFlagValue = (
-  name: string,
+  definition: OclifFlagDefinition,
   value: string | boolean,
 ): string | number | boolean | undefined => {
-  if (name === "tail" && typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isNaN(parsed) ? undefined : parsed;
+  if (definition.valueType === "integer" && typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) ? parsed : undefined;
   }
   return value;
 };
@@ -99,7 +100,7 @@ export const setParsedFlag = (
   value: string | boolean,
   definition: OclifFlagDefinition,
 ): void => {
-  const parsed = parseFlagValue(name, value);
+  const parsed = parseFlagValue(definition, value);
   // undefined means the value was unparseable (e.g. non-numeric --tail): leave the flag unset.
   if (parsed === undefined) return;
   if (definition.multiple === true) {

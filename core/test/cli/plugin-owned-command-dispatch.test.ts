@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Context, Effect, Exit, Schema } from "effect";
 
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { ToolingCommandLookupError } from "@lando/sdk/errors";
 import { type ExecutableCommandInput, type ExecutableCommandSpec, definePlugin } from "@lando/sdk/plugins";
+import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
+import { Renderer } from "@lando/sdk/services";
 import { builtInCommandCatalog, builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
@@ -11,10 +14,10 @@ import { UnknownCliFlagError } from "../../src/cli/flag-value-validation.ts";
 import {
   isPluginOwnedCommandId,
   pluginOwnedCliFlagError,
+  pluginOwnedCommandEffect,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "../../src/cli/run-plugin-owned-command.ts";
-import { PluginContributionGraph } from "../../src/testing/engine-layers.ts";
 
 const DbImportResult = Schema.Struct({
   imported: Schema.Boolean,
@@ -52,6 +55,29 @@ const makeStrictDbImportSpec = (): ExecutableCommandSpec => ({
   },
   strict: true,
 });
+
+const makeExecutableDbImportSpec = (): ExecutableCommandSpec<typeof DbImportResult.Type, never, never> => ({
+  id: "db:import",
+  summary: "Import a database dump.",
+  namespace: "db",
+  bootstrap: "app",
+  flags: { host: { type: "option", description: "Database host" } },
+  args: { file: { type: "string" } },
+  strict: false,
+  resultSchema: DbImportResult,
+  run: (input) =>
+    Effect.succeed({
+      imported: true,
+      ...(typeof input.flags.host === "string" ? { host: input.flags.host } : {}),
+    }),
+});
+
+const silentRenderer = {
+  id: "test",
+  capabilities: RENDERER_CAPABILITIES_NONE,
+  message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
+  output: { stdout: () => Effect.void, stderr: () => Effect.void },
+} satisfies Context.Tag.Service<typeof Renderer>;
 
 const makeDbImportPlugin = () => {
   const spec = makeDbImportSpec();
@@ -168,6 +194,55 @@ describe("plugin-owned command dispatch", () => {
       imported: true,
       host: "db.example",
     });
+  });
+
+  test("runs a plugin render hook for human output", async () => {
+    // Given
+    const rendered: Array<{ readonly input: ExecutableCommandInput; readonly result: unknown }> = [];
+    const spec: ExecutableCommandSpec<typeof DbImportResult.Type, never, never> = {
+      ...makeExecutableDbImportSpec(),
+      render: ({ input, result }) =>
+        Effect.sync(() => {
+          rendered.push({ input, result });
+        }),
+    };
+
+    // When
+    await Effect.runPromise(
+      pluginOwnedCommandEffect(spec, ["--host", "db.example", "dump.sql"], true).pipe(
+        Effect.provideService(Renderer, silentRenderer),
+      ),
+    );
+
+    // Then
+    expect(rendered).toHaveLength(1);
+    expect(rendered[0]?.result).toEqual({ imported: true, host: "db.example" });
+    expect(rendered[0]?.input).toMatchObject({
+      argv: [],
+      parsedArgv: ["dump.sql"],
+      flags: { host: "db.example" },
+      args: { file: "dump.sql" },
+    });
+  });
+
+  test("skips a plugin render hook for machine output", async () => {
+    // Given
+    let renderCalls = 0;
+    const spec: ExecutableCommandSpec<typeof DbImportResult.Type, never, never> = {
+      ...makeExecutableDbImportSpec(),
+      render: () =>
+        Effect.sync(() => {
+          renderCalls += 1;
+        }),
+    };
+
+    // When
+    await Effect.runPromise(
+      pluginOwnedCommandEffect(spec, [], false).pipe(Effect.provideService(Renderer, silentRenderer)),
+    );
+
+    // Then
+    expect(renderCalls).toBe(0);
   });
 
   test("rejects unknown flags instead of binding their values as dump paths", () => {

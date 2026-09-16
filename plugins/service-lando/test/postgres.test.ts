@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 
 import {
+  POSTGRES_CONFIG_TARGET,
   POSTGRES_FEATURE_ID,
   postgresServiceFeature,
   postgresServiceType,
@@ -67,6 +68,8 @@ describe("postgres ServiceType", () => {
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/postgresql/data");
     expect(plan.storage[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5432, protocol: "tcp", name: "db" }]);
+    expect(plan.mounts.find((m) => String(m.target) === POSTGRES_CONFIG_TARGET)).toBeUndefined();
+    expect(plan.command).toBeUndefined();
   });
 
   test("propagates Postgres user overrides", async () => {
@@ -159,5 +162,38 @@ describe("postgres ServiceType", () => {
         publication: { bindAddress: "127.0.0.1", hostPort: 15432 },
       },
     ]);
+  });
+
+  test("mounts config.server read-only and sets postgres -c config_file when no authored command", async () => {
+    const plan = await planPostgres({
+      type: "postgres",
+      config: { server: "config/postgresql.conf" },
+    });
+
+    expect(plan.mounts).toContainEqual({
+      type: "bind",
+      source: "/srv/apps/myapp/config/postgresql.conf",
+      target: POSTGRES_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+    });
+    expect(plan.command).toEqual(["postgres", "-c", "config_file=/etc/lando/postgresql.conf"]);
+  });
+
+  test("mounts config.server but keeps an authored command", async () => {
+    const plan = await planPostgres({
+      type: "postgres",
+      config: { server: "config/postgresql.conf" },
+      command: ["postgres", "-c", "max_connections=200"],
+    });
+
+    expect(plan.mounts).toContainEqual({
+      type: "bind",
+      source: "/srv/apps/myapp/config/postgresql.conf",
+      target: POSTGRES_CONFIG_TARGET,
+      readOnly: true,
+      realization: "passthrough",
+    });
+    expect(plan.command).toEqual(["postgres", "-c", "max_connections=200"]);
   });
 });
