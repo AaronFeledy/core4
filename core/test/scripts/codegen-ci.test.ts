@@ -838,8 +838,9 @@ describe("ci workflow codegen", () => {
 
       const workflow = await readFile(workflowPerformanceWorkflowPath, "utf8");
       expect(workflow.startsWith(`${generatedWorkflowPerformanceHeader}\n`)).toBe(true);
-      expect(workflow).toContain("workflow-performance-linux-x64:");
-      expect(workflow).toContain("workflow-performance-linux-arm64:");
+      expect(workflow).toContain("  workflow-performance-blocked:");
+      expect(workflow).toContain("#   workflow-performance-linux-x64:");
+      expect(workflow).toContain("#   workflow-performance-linux-arm64:");
       expect(workflow).not.toContain("workflow-performance-darwin-");
       expect(workflow).toContain("retention-days: 90");
       expect(workflow).toContain("actions: read");
