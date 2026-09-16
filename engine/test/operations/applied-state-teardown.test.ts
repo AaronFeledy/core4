@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 
 import { DateTime, Effect, Layer } from "effect";
 
@@ -195,7 +195,8 @@ describe("applied-state teardown", () => {
 
   test("returns the same explicit idempotent result when no applied state or owned resources exist", async () => {
     await withTempRoot(async (root) => {
-      const harness = makeLayer({});
+      const desiredPlan = planAt(root);
+      const harness = makeLayer({ desiredPlan });
 
       const first = await Effect.runPromise(
         withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
@@ -205,7 +206,7 @@ describe("applied-state teardown", () => {
       );
 
       expect(first).toEqual({
-        app: basename(root),
+        app: desiredPlan.name,
         outcome: "unchanged",
         servicesDestroyed: [],
         volumesRemoved: false,
@@ -214,6 +215,24 @@ describe("applied-state teardown", () => {
       expect(harness.destroyCalls).toEqual([]);
     });
   });
+
+  test.each(["stop", "destroy"] as const)(
+    "%s preserves the original desired-config failure when no applied plan exists",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        const harness = makeLayer({});
+        const error = await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            operation === "stop" ? stopApp().pipe(Effect.asVoid) : destroyApp().pipe(Effect.asVoid),
+          ).pipe(Effect.flip, Effect.provide(harness.layer)),
+        );
+
+        expect(error).toBe(invalidDesiredConfig);
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    },
+  );
 
   test.each(["stop", "destroy"] as const)(
     "%s returns unchanged for a valid never-started app without provider mutation",

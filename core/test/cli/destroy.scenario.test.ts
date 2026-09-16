@@ -611,43 +611,44 @@ describe("lando destroy", () => {
     }
   });
 
-  test("compiled CLI accepts lando destroy --volumes before fail-closed provider evidence", async () => {
+  test("compiled CLI accepts lando destroy --volumes before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["destroy", "--volumes"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("ProviderUnavailableError");
+      expect(result.stderr).toContain("LandofileNotFoundError");
     });
   });
 
-  test("compiled CLI accepts lando destroy --purge before fail-closed provider evidence", async () => {
+  test("compiled CLI accepts lando destroy --purge before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["destroy", "--purge"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("ProviderUnavailableError");
+      expect(result.stderr).toContain("LandofileNotFoundError");
     });
   });
 
-  test("compiled CLI accepts lando destroy --purge-caches before fail-closed provider evidence", async () => {
+  test("compiled CLI accepts lando destroy --purge-caches before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["destroy", "--purge-caches"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("ProviderUnavailableError");
+      expect(result.stderr).toContain("LandofileNotFoundError");
     });
   });
 
-  test("fails closed outside an app directory when provider evidence is unavailable", async () => {
+  test("preserves the missing Landofile error outside an app directory", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["destroy"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("ProviderUnavailableError");
+      expect(result.stderr).toContain("LandofileNotFoundError");
+      expect(result.stderr).toContain("Run `lando init --full --name=<name>` to scaffold an app.");
     });
   });
 

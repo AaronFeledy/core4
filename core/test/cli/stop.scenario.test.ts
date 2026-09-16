@@ -365,13 +365,14 @@ describe("lando stop", () => {
     expect(harness.destroyCalls[0]?.target.plan).toEqual(planWithGlobalRequirement);
   });
 
-  test("fails closed outside an app directory when provider evidence is unavailable", async () => {
+  test("preserves the missing Landofile error outside an app directory", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["stop"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
-      expect(result.stderr).toContain("ProviderUnavailableError");
+      expect(result.stderr).toContain("LandofileNotFoundError");
+      expect(result.stderr).toContain("Run `lando init --full --name=<name>` to scaffold an app.");
     });
   });
 

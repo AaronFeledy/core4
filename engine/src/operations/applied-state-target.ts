@@ -1,5 +1,3 @@
-import { basename } from "node:path";
-
 import { Effect } from "effect";
 
 import { AppResolveError } from "@lando/sdk/errors";
@@ -18,8 +16,6 @@ const mismatch = (detail: string): AppResolveError =>
     detail,
     remediation: "Restore the matching app root or remove the conflicting provider state before retrying.",
   });
-
-export const currentDirectoryAppName = (): string => basename(process.cwd()) || process.cwd();
 
 export const validateResolvedAppTarget = (target: ResolvedAppTarget) =>
   Effect.gen(function* () {

@@ -30,11 +30,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import {
-  currentDirectoryAppName,
-  resolveAppliedStateTarget,
-  validateResolvedAppTarget,
-} from "./applied-state-target.ts";
+import { resolveAppliedStateTarget, validateResolvedAppTarget } from "./applied-state-target.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
@@ -73,8 +69,12 @@ const resolveDesiredTarget = Effect.gen(function* () {
 
 const resolveStopTarget = resolveDesiredTarget.pipe(
   Effect.map((target) => ({ source: "desired" as const, target })),
-  Effect.catchAll(() =>
-    resolveAppliedStateTarget.pipe(Effect.map((target) => ({ source: "applied" as const, target }))),
+  Effect.catchAll((error) =>
+    resolveAppliedStateTarget.pipe(
+      Effect.flatMap((target) =>
+        target === undefined ? Effect.fail(error) : Effect.succeed({ source: "applied" as const, target }),
+      ),
+    ),
   ),
 );
 
@@ -230,22 +230,16 @@ export const stopApp = (
     ? stopAppForTarget(options, target)
     : resolveStopTarget.pipe(
         Effect.flatMap((resolved) =>
-          resolved.target === undefined
-            ? Effect.succeed<StopAppResult>({
-                app: currentDirectoryAppName(),
-                outcome: "unchanged" as const,
-                servicesStopped: [],
-              })
-            : (resolved.source === "desired"
-                ? runAppInitEvents(resolved.target.plan).pipe(
-                    Effect.zipRight(stopAppWithResolvedPlan(options, resolved.target, false, true)),
-                  )
-                : stopAppWithResolvedPlan(options, resolved.target, false, false)
-              ).pipe(
-                Effect.map(
-                  ({ result }): StopAppResult =>
-                    result.outcome === "unchanged" ? result : { ...result, outcome: "stopped" },
-                ),
-              ),
+          (resolved.source === "desired"
+            ? runAppInitEvents(resolved.target.plan).pipe(
+                Effect.zipRight(stopAppWithResolvedPlan(options, resolved.target, false, true)),
+              )
+            : stopAppWithResolvedPlan(options, resolved.target, false, false)
+          ).pipe(
+            Effect.map(
+              ({ result }): StopAppResult =>
+                result.outcome === "unchanged" ? result : { ...result, outcome: "stopped" },
+            ),
+          ),
         ),
       );

@@ -32,11 +32,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import {
-  currentDirectoryAppName,
-  resolveAppliedStateTarget,
-  validateResolvedAppTarget,
-} from "./applied-state-target.ts";
+import { resolveAppliedStateTarget, validateResolvedAppTarget } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
@@ -77,8 +73,12 @@ const resolveDesiredTarget = Effect.gen(function* () {
 
 const resolveDestroyTarget = resolveDesiredTarget.pipe(
   Effect.map((target) => ({ source: "desired" as const, target })),
-  Effect.catchAll(() =>
-    resolveAppliedStateTarget.pipe(Effect.map((target) => ({ source: "applied" as const, target }))),
+  Effect.catchAll((error) =>
+    resolveAppliedStateTarget.pipe(
+      Effect.flatMap((target) =>
+        target === undefined ? Effect.fail(error) : Effect.succeed({ source: "applied" as const, target }),
+      ),
+    ),
   ),
 );
 
@@ -239,23 +239,16 @@ export const destroyApp = (
     ? destroyAppForTarget(options, target)
     : resolveDestroyTarget.pipe(
         Effect.flatMap((resolved) =>
-          resolved.target === undefined
-            ? Effect.succeed<DestroyAppResult>({
-                app: currentDirectoryAppName(),
-                outcome: "unchanged" as const,
-                servicesDestroyed: [],
-                volumesRemoved: false,
-              })
-            : (resolved.source === "desired"
-                ? runAppInitEvents(resolved.target.plan).pipe(
-                    Effect.zipRight(destroyAppWithResolvedTarget(options, resolved.target, false, true)),
-                  )
-                : destroyAppWithResolvedTarget(options, resolved.target, false, false)
-              ).pipe(
-                Effect.map(
-                  (result): DestroyAppResult =>
-                    result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
-                ),
-              ),
+          (resolved.source === "desired"
+            ? runAppInitEvents(resolved.target.plan).pipe(
+                Effect.zipRight(destroyAppWithResolvedTarget(options, resolved.target, false, true)),
+              )
+            : destroyAppWithResolvedTarget(options, resolved.target, false, false)
+          ).pipe(
+            Effect.map(
+              (result): DestroyAppResult =>
+                result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
+            ),
+          ),
         ),
       );
