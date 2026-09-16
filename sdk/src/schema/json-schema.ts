@@ -146,6 +146,7 @@ import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
+import { GlobalConfigView } from "./config-view.ts";
 import {
   AgentEnvConfig,
   AppEnvironmentDefaults,
@@ -558,6 +559,7 @@ const basePublicSchemaRegistry = {
   NetworkCaConfig,
   NetworkConfig,
   GlobalConfig,
+  GlobalConfigView,
   ConfigLintViolation,
   ConfigLintResult,
   DownloadRequest,
@@ -996,6 +998,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   NetworkCaConfig: "Public Lando schema contract for Network Ca Config.",
   NetworkConfig: "Public Lando schema contract for Network Config.",
   GlobalConfig: "Public Lando schema contract for Global Config.",
+  GlobalConfigView: "Curated effective global settings for config view and get.",
   ConfigLintViolation: "Public Lando schema contract for Config Lint Violation.",
   ConfigLintResult: "Public Lando schema contract for Config Lint Result.",
   DownloadRequest: "Public Lando schema contract for Download Request.",

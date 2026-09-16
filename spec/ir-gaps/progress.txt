@@ -769,3 +769,30 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 79 focused tests across route-identity, route-normalization, route-urls, route-normalize, and route-filter passed.
 - **Learnings for future iterations:** Route-match "port" in this stack means the router listener implied by scheme. Shorthand `:port` is backend selection and must not be re-litigated as a second public listener.
 ---
+## 2026-09-15 16:16 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-15 - US-626 (implementation verified)
+
+- Config view and get now return one curated effective public config projection, including persisted appEnv and appLabels maps; encoded results retain maps, selected keys, roots, and telemetry while omitting internal bookkeeping.
+- Secret-bearing map values and proxy credentials are redacted through the canonical output boundary across renderer/format combinations, including scalar lookups, without changing persisted values. The public schema, result encoding, redaction hook, and regression tests land atomically so no intermediate revision exposes newly visible secrets.
+- Verification: gate:pr passed (typecheck, lint, codegen:check, check:boundaries, and guide drift against origin/main); 491 focused tests, 9 adjacent tests (host CLI case filtered), and 3 executable global-config guide tests passed with zero failures. Schema compatibility and public-transcript gates passed; modified TypeScript LSP diagnostics were clean. Evidence was supplied by implementation session ses_f58dd5c42ffeWLagKvHhrBjcMG.
+- Sandbox acceptance: a relocated compiled binary in lando4-dev with isolated config/data/cache roots passed all 48 redaction combinations plus encoded-map parity, selected-key preservation, roots, telemetry, validation, internal omission, and invalid-map tagged rejection. QA teardown removed owned temporary roots and the relocated binary; no app/provider resources were created.
+- Acceptance approval: reviewer ses_f58c261beffebRyPG4J7ElI3xN approved all criteria unconditionally. This entry records implementation and acceptance evidence only; no completion signal, push, PR, or merge was performed.
+- **Learnings for future iterations:** widening a config result requires both a curated schema projection and output-boundary value tokens; scalar lookups lose their enclosing secret-key context unless tokens come from the full config or selected key. Preserve key metadata while redacting values, and test encoded output rather than only the in-memory operation result.
+---
+
+## 2026-09-15 - US-626 Review
+- Reviewed redacted config view/get against source ACs. No in-scope product defects; no code changes.
+- Review notes (deferred/rejected): Security HIGH (GITHUB_PAT, short numeric API_TOKEN=1234, username-only proxy userinfo) is out of scope. AC4 requires the canonical RedactionService path, which view/get already use; GITHUB_PAT is outside collectSecretEnvValues vocabulary, short numerics are the existing short-token policy (US-633 keeps it), and username-only proxy matching belongs to redactor URL patterns / proxyUrls, not this story's projection. Goal/QA/quality/context lanes passed. Bugbot did not run (Cursor usage limit).
+- Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 94 focused tests passed across config-view schema, operations, CLI redaction, meta-config scenarios, and adjacent write tests.
+- **Learnings for future iterations:** Newly exposing maps through a curated schema does not expand the secret-key catalog. Token vocabulary and short-token policy stay in @lando/redaction; do not add a config-specific redactor to satisfy a security lane that wants PAT/short-PIN/username-only coverage.
+---
+## 2026-09-15 18:05 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-15 18:12 - US-626 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, then proved `lando config set/get/view` against the binary: appEnv/appLabels round-trip, JSON/YAML/table parity, secret `DB_PASSWORD` redacted as `[redacted]` in every mode while `config.yml` kept the real value, invalid map writes fail `LandofileWriteValidationError` without changing the file. Started a php:8.3 app; HTTPS and `lando exec` printed `us626-ok`; `printenv TEAM` was `platform`. Adjacent `config validate`, `config get defaultProviderId`, `global:config`, `doctor`, `app:config`, and `logs` stayed green. App destroyed; maps unset; scratch dirs removed.
+- **Out-of-scope finding:** `curl http://appserver.us626-verify.lndo.site:8000/` returned Traefik `404 page not found` after setup warned 80/443 were in use and fell back to 8000/4443; HTTPS `:4443` served the app. Same host/WSL mirrored bind as prior verifies, not US-626.
+- **Out-of-scope finding:** `lando config --format=yaml` emits `DB_PASSWORD: [redacted]` unquoted, which YAML parses as a sequence. JSON keeps the string sentinel. Secret is not leaked; quoting belongs with serializer/redaction encoding, not this view story.
+---

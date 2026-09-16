@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `GlobalConfigView` is the additive curated effective-config schema used by config view and get. It explicitly selects public settings from `GlobalConfig`, including both app-default maps, without exposing loader bookkeeping.
+
 - `@lando/sdk/errors` additively exports `AppLockTimeoutError` (`message`, `app`, `timeoutMs`, `remediation`, optional `cause`) when a mutating app operation waits for the per-app advisory lock and the finite wait expires. It registers no JSON Schema. The type-only `StartAppError` and `StopAppError` unions additively include the tag; restart, rebuild, and destroy inherit it. Override the wait with `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds).
 
 - `RoutePlan.priority` is a planner-assigned integer above the diagnostic priority
@@ -230,6 +232,7 @@
 - `VolumeLocator`
 
 - `AppEnvironmentDefaults`
+- `GlobalConfigView`
 - `AppLabelDefaults`
 - `CORE_SERVICE_ENV_KEYS`
 - `isCoreServiceEnvKey`

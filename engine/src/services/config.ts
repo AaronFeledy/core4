@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigError } from "@lando/sdk/errors";
-import { GlobalConfig } from "@lando/sdk/schema";
+import { GlobalConfig, GlobalConfigView } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 import { resolveLandoRoots } from "@lando/paths";
@@ -93,3 +93,11 @@ const configService: Context.Tag.Service<typeof ConfigService> = {
 };
 
 export const ConfigServiceLive = Layer.succeed(ConfigService, configService);
+
+export const loadGlobalConfigView = Effect.gen(function* () {
+  const service = yield* ConfigService;
+  const loaded = yield* service.load;
+  return yield* Schema.encode(GlobalConfigView)(loaded).pipe(
+    Effect.mapError((cause) => configError("", "Failed to project public global config.", cause)),
+  );
+});
