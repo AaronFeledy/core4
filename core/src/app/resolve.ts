@@ -216,6 +216,7 @@ const resolveTarget = (
   resolvePlan(selector).pipe(
     Effect.map(targetFromResolved),
     Effect.catchAll((desiredError) => {
+      if (desiredError.reason !== "not-found") return Effect.fail(desiredError);
       const root = appliedFallbackRoot(selector);
       if (root === undefined) return Effect.fail(desiredError);
       return withResolvedCwd(root, resolveAppliedStateTarget).pipe(

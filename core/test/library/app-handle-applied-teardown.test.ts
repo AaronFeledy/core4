@@ -56,10 +56,7 @@ describe("@lando/core applied-state App handle teardown", () => {
       const provider = {
         ...TestRuntimeProvider,
         appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
-        destroy: (
-          _target: unknown,
-          options: { readonly removeState?: boolean; readonly volumes: boolean },
-        ) =>
+        destroy: (_target: unknown, options: { readonly removeState?: boolean; readonly volumes: boolean }) =>
           Effect.sync(() => {
             destroyCalls.push(options);
             if (options.removeState !== false) appliedPlan = undefined;
@@ -81,9 +78,13 @@ describe("@lando/core applied-state App handle teardown", () => {
           openLandoRuntime({ plugins: { policy: "bundled-only", layers } }).pipe(
             Effect.flatMap((runtime) => runtime.app()),
             Effect.flatMap((app) =>
-              app.stop().pipe(
-                Effect.flatMap((stopped) => app.destroy().pipe(Effect.map((destroyed) => ({ stopped, destroyed })))),
-              ),
+              app
+                .stop()
+                .pipe(
+                  Effect.flatMap((stopped) =>
+                    app.destroy().pipe(Effect.map((destroyed) => ({ stopped, destroyed }))),
+                  ),
+                ),
             ),
           ),
         ),
@@ -91,7 +92,10 @@ describe("@lando/core applied-state App handle teardown", () => {
 
       expect(result.stopped.app).toBe("library-applied-teardown");
       expect(result.destroyed.app).toBe("library-applied-teardown");
-      expect(destroyCalls).toEqual([{ removeState: false, volumes: false }, { removeState: true, volumes: false }]);
+      expect(destroyCalls).toEqual([
+        { removeState: false, volumes: false },
+        { removeState: true, volumes: false },
+      ]);
       expect(appliedPlan).toBeUndefined();
     });
   });
