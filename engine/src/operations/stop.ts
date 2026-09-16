@@ -154,7 +154,8 @@ const stopAppWithResolvedPlan = (
         plan: resolvedTarget.plan,
         provider,
         stateStore,
-        body: () => stopAppWithResolvedPlanUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
+        body: () =>
+          stopAppWithResolvedPlanUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
       });
     }),
   );
