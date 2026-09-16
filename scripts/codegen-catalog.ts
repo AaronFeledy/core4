@@ -213,6 +213,12 @@ export const CODEGEN_CATALOG = [
     script: "build-rails-journey-workflow.ts",
     workspace: "repo",
   },
+  {
+    id: "workflow-performance-workflow",
+    ownership: "committed-workflow",
+    script: "build-workflow-performance-workflow.ts",
+    workspace: "repo",
+  },
 ] as const satisfies readonly CodegenCatalogEntry[];
 
 const SCRIPT_DIRECTORY = import.meta.dirname;

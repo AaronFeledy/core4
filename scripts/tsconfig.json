@@ -10,6 +10,13 @@
     "composite": false,
     "rootDir": ".."
   },
-  "include": ["./check-*.ts", "./module-edge-scan.ts", "./boundary/**/*.ts"],
+  "include": [
+    "./check-*.ts",
+    "./module-edge-scan.ts",
+    "./boundary/**/*.ts",
+    "./build-workflow-performance-workflow.ts",
+    "./workflow-performance.ts",
+    "./workflow-performance-*.ts"
+  ],
   "exclude": ["./check-public-transcripts.ts", "./check-compose-coverage.ts"]
 }

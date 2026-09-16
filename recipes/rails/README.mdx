@@ -11,11 +11,12 @@ tags: [recipe, rails, ruby]
 
 ```sh
 lando init --recipe rails --name=my-rails-app --yes
+cd my-rails-app
 lando start
 lando info
 ```
 
-`lando start` prints the app URL. `lando info` repeats it.
+The named init creates `my-rails-app/`. Change into it before app commands. `lando start` prints the app URL. `lando info` repeats it.
 
 After start, run app tooling inside the web service:
 
@@ -25,6 +26,8 @@ lando bundle
 ```
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+For day-to-day tooling and DB/Redis hosts, see [Run the Rails recipe](/guides/recipes/rails-workflow/).
 
 ## Choose Redis persistence
 

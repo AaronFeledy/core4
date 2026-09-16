@@ -23,18 +23,23 @@ export interface SocketHttpConnection extends AsyncIterable<Bytes> {
   destroy(): void;
 }
 
-export type SocketHttpErrorKind = "connect" | "write" | "parse" | "http";
+export type SocketHttpErrorKind = "connect" | "write" | "read" | "parse" | "http";
+export type SocketReadSystemCode = "ECONNABORTED" | "ECONNRESET" | "EPIPE" | "ETIMEDOUT";
+
+const SOCKET_READ_SYSTEM_CODES = ["ECONNABORTED", "ECONNRESET", "EPIPE", "ETIMEDOUT"] as const;
 
 export class ContainerTransportError extends Error {
   readonly _tag = "ContainerTransportError";
   readonly kind: SocketHttpErrorKind;
   readonly operation: string;
+  readonly systemCode?: SocketReadSystemCode;
   readonly details?: unknown;
 
   constructor(input: {
     readonly kind: SocketHttpErrorKind;
     readonly operation: string;
     readonly message: string;
+    readonly systemCode?: SocketReadSystemCode;
     readonly details?: unknown;
     readonly cause?: unknown;
   }) {
@@ -42,6 +47,7 @@ export class ContainerTransportError extends Error {
     this.name = "ContainerTransportError";
     this.kind = input.kind;
     this.operation = input.operation;
+    if (input.systemCode !== undefined) this.systemCode = input.systemCode;
     if (input.details !== undefined) this.details = input.details;
     if (input.cause !== undefined) (this as { cause?: unknown }).cause = input.cause;
   }
@@ -269,6 +275,35 @@ const collectBytes = async (chunks: AsyncIterable<Bytes>): Promise<Bytes> => {
   return concatBytes(collected);
 };
 
+const socketReadSystemCode = (cause: unknown): SocketReadSystemCode | undefined => {
+  if (typeof cause !== "object" || cause === null) return undefined;
+  const code = Reflect.get(cause, "code");
+  return typeof code === "string"
+    ? SOCKET_READ_SYSTEM_CODES.find((candidate) => candidate === code)
+    : undefined;
+};
+
+async function* readResponse(
+  connection: SocketHttpConnection,
+  operation: string,
+  request: SocketHttpRequest,
+): AsyncGenerator<Bytes> {
+  try {
+    yield* connection;
+  } catch (cause) {
+    if (cause instanceof ContainerTransportError || request.signal?.aborted === true) throw cause;
+    const systemCode = socketReadSystemCode(cause);
+    throw new ContainerTransportError({
+      kind: "read",
+      operation,
+      message: "Failed to read the container runtime HTTP response.",
+      details: { method: request.method, path: request.path },
+      ...(systemCode === undefined ? {} : { systemCode }),
+      cause,
+    });
+  }
+}
+
 const connect = async (
   options: SocketHttpClientOptions,
   request: SocketHttpRequest,
@@ -323,7 +358,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     const connection = await connect(options, input);
     try {
       writeRequest(connection, input, options, stdinPayload);
-      const responseBytes = await collectBytes(connection);
+      const responseBytes = await collectBytes(readResponse(connection, operation, input));
       const parsed = parseHttpHead(responseBytes, operation);
       const bodyBytes =
         parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked"
@@ -403,7 +438,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       let chunkedBody = false;
       let bodyBuffer: Bytes = new Uint8Array(0) as Bytes;
 
-      for await (const chunk of connection) {
+      for await (const chunk of readResponse(connection, operation, input)) {
         if (parsed === undefined) {
           initialChunks.push(chunk);
           const merged = concatBytes(initialChunks);

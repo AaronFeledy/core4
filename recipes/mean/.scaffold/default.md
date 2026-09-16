@@ -4,11 +4,12 @@
 
 ```sh
 lando init --recipe mean --name=my-mean-app --yes
+cd my-mean-app
 lando start
 lando info
 ```
 
-`--yes` uses Node lts, MongoDB, and no Redis. Pass `--answer` to change those.
+The named init creates `my-mean-app/`. Change into it before app commands. `--yes` uses Node lts, MongoDB, and no Redis. Pass `--answer` to change those.
 
 ```sh
 lando init --recipe mean --name=my-mean-app --yes \

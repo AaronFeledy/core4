@@ -132,6 +132,17 @@ class HeldReadConnection extends FakeConnection {
   }
 }
 
+class ResetAfterHeadersConnection extends FakeConnection {
+  constructor(private readonly failure: Error) {
+    super([]);
+  }
+
+  override async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
+    yield bytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n");
+    throw this.failure;
+  }
+}
+
 describe("socket HTTP transport", () => {
   test("serializes requests and parses responses whose headers arrive in pieces", async () => {
     const connection = new FakeConnection([
@@ -394,6 +405,66 @@ describe("socket HTTP transport", () => {
     expect(error.kind).toBe("http");
     expect(error.details).toEqual({ method: "POST", path: "/exec/abc/start", status: 404 });
     expect(connection.destroyed).toBe(true);
+  });
+
+  test("types an otherwise-unclassified response read reset after HTTP headers", async () => {
+    // Given: the response iterator exposes valid headers before its socket read resets.
+    const reset = Object.assign(new Error("read ECONNRESET from /private/socket"), {
+      code: "ECONNRESET" as const,
+    });
+    const connection = new ResetAfterHeadersConnection(reset);
+    const client = makeSocketHttpClient({
+      apiPrefix: "/v6.0.0",
+      operation: "podman-api",
+      connect: async () => connection,
+    });
+
+    // When: the production stream transport consumes the response iterator.
+    let caught: unknown;
+    try {
+      await Array.fromAsync(client.stream({ method: "POST", path: "/libpod/images/pull" }));
+    } catch (cause) {
+      caught = cause;
+    }
+
+    // Then: only the closed read origin and allowlisted system code are retained.
+    expect(caught).toBeInstanceOf(ContainerTransportError);
+    if (!(caught instanceof ContainerTransportError)) throw new Error("expected transport error");
+    expect(caught.kind).toBe("read");
+    expect(caught.systemCode).toBe("ECONNRESET");
+    expect(JSON.stringify(caught)).not.toContain("/private/socket");
+  });
+
+  test("rethrows an existing typed response error unchanged", async () => {
+    // Given: the response iterator already classified its failure.
+    const typed = new ContainerTransportError({
+      kind: "http",
+      operation: "podman-api",
+      message: "typed failure",
+    });
+    const connection = new ResetAfterHeadersConnection(typed);
+    const client = makeSocketHttpClient({ apiPrefix: "/v6.0.0", connect: async () => connection });
+
+    // When/Then: response iteration preserves the existing error identity.
+    await expect(
+      Array.fromAsync(client.stream({ method: "POST", path: "/libpod/images/pull" })),
+    ).rejects.toBe(typed);
+  });
+
+  test("preserves cancellation instead of reclassifying its response error", async () => {
+    // Given: cancellation is active when the response iterator reports its terminal error.
+    const cancelled = Object.assign(new Error("cancelled response read"), { code: "ECONNRESET" as const });
+    const connection = new ResetAfterHeadersConnection(cancelled);
+    const controller = new AbortController();
+    controller.abort();
+    const client = makeSocketHttpClient({ apiPrefix: "/v6.0.0", connect: async () => connection });
+
+    // When/Then: cancellation preserves the original error identity.
+    await expect(
+      Array.fromAsync(
+        client.stream({ method: "POST", path: "/libpod/images/pull", signal: controller.signal }),
+      ),
+    ).rejects.toBe(cancelled);
   });
 
   test("never opens a socket when the buffered request body rejects", async () => {
