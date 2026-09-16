@@ -33,7 +33,13 @@ const runList = (
   options: {
     readonly userCacheRoot?: string;
     readonly discoverContainers?: (root: string) => Promise<ReadonlyArray<AppsListEntry>>;
+    readonly discoverContainersEvidence?: (root: string) => Promise<{
+      readonly apps: ReadonlyArray<AppsListEntry>;
+      readonly confirmedProviderIds: ReadonlyArray<string>;
+    }>;
     readonly path?: string;
+    readonly prune?: boolean;
+    readonly pruneLimit?: number;
   } = {},
 ) =>
   Effect.runPromise(
@@ -41,7 +47,12 @@ const runList = (
       userDataRoot,
       userCacheRoot: options.userCacheRoot ?? userDataRoot,
       ...(options.discoverContainers === undefined ? {} : { discoverContainers: options.discoverContainers }),
+      ...(options.discoverContainersEvidence === undefined
+        ? {}
+        : { discoverContainersEvidence: options.discoverContainersEvidence }),
       ...(options.path === undefined ? {} : { path: options.path }),
+      ...(options.prune === undefined ? {} : { prune: options.prune }),
+      ...(options.pruneLimit === undefined ? {} : { pruneLimit: options.pruneLimit }),
     }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
   );
 
@@ -265,6 +276,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/srv/drupal-cms",
           services: ["appserver", "database"],
+          stale: true,
         },
       ]);
     });
@@ -289,6 +301,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/srv/drupal-cms",
           services: ["appserver", "database"],
+          stale: true,
         },
       ]);
       expect(renderAppsListResult(result)).toContain("drupal-cms");
@@ -312,6 +325,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "docker",
           appRoot: "/srv/blog",
           services: ["nginx"],
+          stale: true,
         },
       ]);
     });
@@ -339,8 +353,61 @@ describe("apps:list host-wide discovery", () => {
           providerId: "podman",
           appRoot: "/srv/blog",
           services: ["nginx"],
+          stale: true,
         },
       ]);
+    });
+  });
+
+  test("prunes only stale records whose exact provider confirms no owned resources", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const landoPath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      const dockerPath = join(paths.pluginStateDir("@lando/provider-docker"), "applied-plans", "beta.json");
+      await mkdir(join(landoPath, ".."), { recursive: true });
+      await mkdir(join(dockerPath, ".."), { recursive: true });
+      await writeFile(
+        landoPath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+      await writeFile(
+        dockerPath,
+        JSON.stringify(stateEnvelope("beta", "beta", "/missing/beta", [], "docker")),
+      );
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({ apps: [], confirmedProviderIds: ["lando"] }),
+      });
+
+      expect(result.pruned?.map((entry) => entry.appId)).toEqual(["alpha"]);
+      expect(result.apps.map((entry) => entry.appId)).toEqual(["beta"]);
+      expect(await Bun.file(landoPath).exists()).toBe(false);
+      expect(await Bun.file(dockerPath).exists()).toBe(true);
+      expect(renderAppsListResult(result)).toContain(
+        "Pruned 1 stale inventory entry:\n- alpha (lando) /missing/alpha",
+      );
+    });
+  });
+
+  test("does not prune stale state without provider confirmation", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      await mkdir(join(statePath, ".."), { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({ apps: [], confirmedProviderIds: [] }),
+      });
+
+      expect(result.pruned).toEqual([]);
+      expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
+      expect(await Bun.file(statePath).exists()).toBe(true);
     });
   });
 
@@ -390,6 +457,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/workspace/drupal-cms",
           services: ["appserver", "database"],
+          stale: true,
         },
       ]);
     });

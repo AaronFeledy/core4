@@ -630,6 +630,7 @@ const testRuntimeProviderRegistry = {
   list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
   select: () => Effect.succeed(TestRuntimeProvider),
+  resolveAppliedPlan: () => Effect.succeed(undefined),
 } satisfies Context.Tag.Service<typeof RuntimeProviderRegistry>;
 
 const testRuntimeProviderRegistryLayer = Layer.succeed(RuntimeProviderRegistry, testRuntimeProviderRegistry);

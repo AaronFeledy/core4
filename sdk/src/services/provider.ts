@@ -1,6 +1,7 @@
 import { Context, type Effect, type Scope, type Stream } from "effect";
 
 import type {
+  AppResolveError,
   ArtifactTransferError,
   NoProviderInstalledError,
   ProviderCapabilityError,
@@ -19,6 +20,7 @@ import type {
 } from "../errors/index.ts";
 import type { EndpointInfo } from "../schema/endpoint.ts";
 import type {
+  AbsolutePath,
   AppId,
   AppPlan,
   DataStoreMountPlan,
@@ -232,6 +234,9 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
       RuntimeProviderShape,
       ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
     >;
+    readonly resolveAppliedPlan?: (
+      root: AbsolutePath,
+    ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
   }
 >() {}
 
@@ -243,6 +248,7 @@ export interface RuntimeProviderShape {
   readonly capabilities: ProviderCapabilities;
 
   readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
+  readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
   readonly planSetup: (
     options: ProviderSetupInspectOptions,
   ) => Effect.Effect<ProviderSetupPlan, ProviderError>;

@@ -779,6 +779,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       platform,
       capabilities: resolvedCapabilities,
       isAvailable: Effect.succeed(true),
+      appliedPlans:
+        options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+          ? Effect.succeed([])
+          : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
       ...resolvedOps,
       planSetup: () =>
         shouldManageRuntime && family === "linux"

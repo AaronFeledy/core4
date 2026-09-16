@@ -89,7 +89,7 @@ import {
   type ServiceSelector,
 } from "@lando/sdk/services";
 
-import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 
 export {
@@ -1778,6 +1778,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
         ),
+        appliedPlans:
+          options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+            ? Effect.succeed([])
+            : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
         planSetup: () => Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),

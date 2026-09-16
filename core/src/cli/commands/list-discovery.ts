@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { basename, join } from "node:path";
 
@@ -12,6 +12,13 @@ export interface AppsListEntry {
   readonly providerId: string;
   readonly appRoot: string;
   readonly services: ReadonlyArray<string>;
+  readonly stale?: boolean;
+}
+
+export interface AppsDiscoveryEvidence {
+  readonly apps: ReadonlyArray<AppsListEntry>;
+  readonly providerConfirmed: boolean;
+  readonly confirmedProviderIds: ReadonlyArray<string>;
 }
 
 const LEGACY_PROVIDER_DIRS = ["provider-lando", "provider-docker"] as const;
@@ -295,13 +302,12 @@ export const containerSocketCandidates = (
   return [...new Set(candidates)];
 };
 
-const listContainersOnSocket = (socketPath: string): Promise<unknown> =>
+const requestJsonOnSocket = (socketPath: string, path: string): Promise<unknown> =>
   new Promise((resolve, reject) => {
-    const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL], status: ["running"] }));
     const req = httpRequest(
       {
         socketPath: httpSocketPath(socketPath),
-        path: `/containers/json?filters=${filters}`,
+        path,
         method: "GET",
         headers: { Host: "localhost" },
       },
@@ -332,10 +338,24 @@ const listContainersOnSocket = (socketPath: string): Promise<unknown> =>
     req.end();
   });
 
-export const discoverRunningAppsFromSockets = async (
+const listContainersOnSocket = (socketPath: string): Promise<unknown> => {
+  const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL], status: ["running"] }));
+  return requestJsonOnSocket(socketPath, `/containers/json?filters=${filters}`);
+};
+
+const providerIdOnSocket = async (socketPath: string, userDataRoot: string): Promise<string> => {
+  const paths = makeLandoPaths({ userDataRoot });
+  const managedSocket =
+    process.platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
+  if (httpSocketPath(socketPath) === httpSocketPath(managedSocket)) return "lando";
+  const version = JSON.stringify(await requestJsonOnSocket(socketPath, "/version")).toLowerCase();
+  return version.includes("podman") ? "podman" : "docker";
+};
+
+export const discoverRunningAppsEvidenceFromSockets = async (
   userDataRoot: string,
   sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
-): Promise<AppsListEntry[]> => {
+): Promise<AppsDiscoveryEvidence> => {
   const paths = makeLandoPaths({ userDataRoot });
   for (const socket of sockets) {
     // Named pipes are not filesystem nodes; fs.access ENOENTs even when the pipe is live.
@@ -348,11 +368,63 @@ export const discoverRunningAppsFromSockets = async (
     }
     try {
       const body = await listContainersOnSocket(socket);
+      const apps = appsFromContainerList(body, { globalAppRoot: paths.globalAppRoot });
+      const labeledProviderIds = [...new Set(apps.map((app) => app.providerId))];
+      const confirmedProviderIds =
+        labeledProviderIds.length > 0 ? labeledProviderIds : [await providerIdOnSocket(socket, userDataRoot)];
       // First successful list wins so a live managed socket is not mixed with host Docker/Podman.
-      return appsFromContainerList(body, { globalAppRoot: paths.globalAppRoot });
+      return {
+        apps,
+        providerConfirmed: true,
+        confirmedProviderIds,
+      };
     } catch {
       // Socket present but not a Docker/Podman compat API, or the daemon is mid-start.
     }
   }
-  return [];
+  return { apps: [], providerConfirmed: false, confirmedProviderIds: [] };
+};
+
+export const discoverRunningAppsFromSockets = async (
+  userDataRoot: string,
+  sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
+): Promise<ReadonlyArray<AppsListEntry>> =>
+  (await discoverRunningAppsEvidenceFromSockets(userDataRoot, sockets)).apps;
+
+const removeIfPresent = async (path: string): Promise<boolean> => {
+  try {
+    await access(path);
+  } catch {
+    return false;
+  }
+  await rm(path, { force: true });
+  return true;
+};
+
+export const pruneAppliedPlanFromUserData = async (
+  userDataRoot: string,
+  appId: string,
+  providerId: string,
+): Promise<boolean> => {
+  const paths = makeLandoPaths({ userDataRoot });
+  let removed = false;
+  for (const pluginRoot of await listPluginStateRoots(paths.pluginsDir)) {
+    if (providerIdFromPluginRoot(pluginRoot) !== providerId) continue;
+    removed = (await removeIfPresent(join(pluginRoot, APPLIED_PLANS_NAMESPACE, `${appId}.json`))) || removed;
+    const recordPath = join(pluginRoot, APPLIED_PLANS_RECORD);
+    try {
+      const parsed: unknown = JSON.parse(await readFile(recordPath, "utf8"));
+      if (!isRecord(parsed) || !isRecord(parsed.data) || !(appId in parsed.data)) continue;
+      const { [appId]: _removed, ...remaining } = parsed.data;
+      await writeFile(recordPath, `${JSON.stringify({ ...parsed, data: remaining }, null, 2)}\n`);
+      removed = true;
+    } catch {}
+  }
+  for (const providerName of LEGACY_PROVIDER_DIRS) {
+    if (providerIdFromPluginRoot(providerName) !== providerId) continue;
+    removed =
+      (await removeIfPresent(join(userDataRoot, "providers", providerName, "apps", `${appId}.json`))) ||
+      removed;
+  }
+  return removed;
 };

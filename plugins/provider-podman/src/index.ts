@@ -761,6 +761,10 @@ export const makeRuntimeProvider = (
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
         ),
+        appliedPlans:
+          options.appliedPlanState === undefined
+            ? Effect.succeed([])
+            : listAppliedPlans(options.appliedPlanState),
         planSetup: () => Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),

@@ -17,7 +17,7 @@ import { detachScratchApp } from "@lando/engine/scratch-app/service";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { RendererMode } from "./bug-report";
 import { initOptionsFromInput } from "./command-specs/apps/init";
-import { appsListPathFromInput } from "./command-specs/apps/list";
+import { appsListPathFromInput, appsListPruneFromInput } from "./command-specs/apps/list";
 import { keepVolumesFromInput } from "./command-specs/apps/scratch/destroy";
 import { pruneFromInput } from "./command-specs/apps/scratch/gc";
 import { initApp } from "./commands/init";
@@ -71,8 +71,9 @@ export const appsListPathFromArgv = (argv: ReadonlyArray<string>): string | unde
 const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
   const format = activeTableJsonFormat();
   const path = appsListPathFromArgv(argv);
+  const prune = appsListPruneFromInput(compiledCommandInputFromArgv("apps:list", argv));
   return runCompiledCommand(
-    listServices(path === undefined ? {} : { path }),
+    listServices({ ...(path === undefined ? {} : { path }), ...(prune ? { prune } : {}) }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderAppsListResult(value, format),
   );

@@ -30,6 +30,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { currentDirectoryAppName, resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
@@ -38,6 +39,7 @@ export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
 
 export const StopAppResultSchema = Schema.Struct({
   app: Schema.String,
+  outcome: Schema.optional(Schema.Literal("stopped", "unchanged")),
   servicesStopped: Schema.Array(Schema.String),
 });
 
@@ -54,6 +56,23 @@ type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileServi
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
+
+const resolveDesiredTarget = Effect.gen(function* () {
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
+  const landofile = yield* loadUserLandofile(landofileService);
+  const capabilities = yield* registry.capabilities;
+  const plan = yield* planner.plan(landofile, capabilities);
+  return { plan, root: plan.root, app: appRef(plan), landofile } satisfies ResolvedAppTarget;
+});
+
+const resolveStopTarget = resolveDesiredTarget.pipe(
+  Effect.map((target) => ({ source: "desired" as const, target })),
+  Effect.catchAll(() =>
+    resolveAppliedStateTarget.pipe(Effect.map((target) => ({ source: "applied" as const, target }))),
+  ),
+);
 
 const stopAppWithResolvedPlanUncoordinated = (
   _options: StopAppOptions | undefined,
@@ -169,21 +188,10 @@ export const stopAppWithPlan = (
   StopAppServices
 > =>
   target === undefined
-    ? Effect.gen(function* () {
-        const landofileService = yield* LandofileService;
-        const registry = yield* RuntimeProviderRegistry;
-        const planner = yield* AppPlanner;
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        const plan = yield* planner.plan(landofile, capabilities);
-        yield* runAppInitEvents(plan);
-        return yield* stopAppWithResolvedPlan(options, {
-          plan,
-          root: plan.root,
-          app: appRef(plan),
-          landofile,
-        });
-      })
+    ? resolveDesiredTarget.pipe(
+        Effect.tap((resolved) => runAppInitEvents(resolved.plan)),
+        Effect.flatMap((resolved) => stopAppWithResolvedPlan(options, resolved)),
+      )
     : stopAppWithResolvedPlan(options, target);
 
 export const stopAppForTarget = (
@@ -196,4 +204,21 @@ export const stopApp = (
   options: StopAppOptions = {},
   target?: ResolvedAppTarget,
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
-  stopAppWithPlan(options, target).pipe(Effect.map(({ result }) => result));
+  target !== undefined
+    ? stopAppForTarget(options, target)
+    : resolveStopTarget.pipe(
+        Effect.flatMap((resolved) =>
+          resolved.target === undefined
+            ? Effect.succeed<StopAppResult>({
+                app: currentDirectoryAppName(),
+                outcome: "unchanged" as const,
+                servicesStopped: [],
+              })
+            : (resolved.source === "desired"
+                ? runAppInitEvents(resolved.target.plan).pipe(
+                    Effect.zipRight(stopAppForTarget(options, resolved.target)),
+                  )
+                : stopAppForTarget(options, resolved.target)
+              ).pipe(Effect.map((result): StopAppResult => ({ ...result, outcome: "stopped" }))),
+        ),
+      );

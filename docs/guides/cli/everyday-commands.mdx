@@ -81,6 +81,18 @@ lando list
 lando poweroff -y
 ```
 
+`lando list` marks an app as stale when its recorded root no longer exists and
+the provider confirms that no matching containers are running. Remove those
+exact stale records with:
+
+```sh
+lando list --prune
+```
+
+Pruning removes only the applied-plan and directory-cache records reported by
+the command. Missing or unreadable provider state is not enough evidence to
+delete a record.
+
 `poweroff` reaches beyond this app. Run it only when you mean to stop every app. `--keep-global` leaves shared host services such as the proxy up. `--keep-scratch` leaves scratch apps up.
 
 ## Check the host

@@ -20,6 +20,8 @@ import {
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { deleteCwdAppMapEntriesForRoot } from "../cache/cwd-app-map.ts";
+import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import {
@@ -30,6 +32,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { currentDirectoryAppName, resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
@@ -39,6 +42,7 @@ export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
 
 export const DestroyAppResultSchema = Schema.Struct({
   app: Schema.String,
+  outcome: Schema.optional(Schema.Literal("destroyed", "unchanged")),
   servicesDestroyed: Schema.Array(Schema.String),
   volumesRemoved: Schema.Boolean,
 });
@@ -56,6 +60,23 @@ type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | Landofil
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
+
+const resolveDesiredTarget = Effect.gen(function* () {
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
+  const landofile = yield* loadUserLandofile(landofileService);
+  const capabilities = yield* registry.capabilities;
+  const plan = yield* planner.plan(landofile, capabilities);
+  return { plan, root: plan.root, app: appRef(plan), landofile } satisfies ResolvedAppTarget;
+});
+
+const resolveDestroyTarget = resolveDesiredTarget.pipe(
+  Effect.map((target) => ({ source: "desired" as const, target })),
+  Effect.catchAll(() =>
+    resolveAppliedStateTarget.pipe(Effect.map((target) => ({ source: "applied" as const, target }))),
+  ),
+);
 
 const destroyAppForTargetUncoordinated = (
   options: DestroyAppOptions | undefined,
@@ -154,6 +175,7 @@ const destroyAppForTargetUncoordinated = (
     });
     yield* events.publish(postDestroy);
     yield* runAppEvent(plan, "post-destroy", postDestroy);
+    yield* deleteCwdAppMapEntriesForRoot({ cacheRoot: resolveUserCacheRoot(), appRoot: plan.root });
 
     return {
       app: plan.name,
@@ -189,20 +211,22 @@ export const destroyApp = (
   options: DestroyAppOptions = {},
   target?: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
-  target === undefined
-    ? Effect.gen(function* () {
-        const landofileService = yield* LandofileService;
-        const registry = yield* RuntimeProviderRegistry;
-        const planner = yield* AppPlanner;
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        const plan = yield* planner.plan(landofile, capabilities);
-        yield* runAppInitEvents(plan);
-        return yield* destroyAppForTarget(options, {
-          plan,
-          root: plan.root,
-          app: appRef(plan),
-          landofile,
-        });
-      })
-    : destroyAppForTarget(options, target);
+  target !== undefined
+    ? destroyAppForTarget(options, target)
+    : resolveDestroyTarget.pipe(
+        Effect.flatMap((resolved) =>
+          resolved.target === undefined
+            ? Effect.succeed<DestroyAppResult>({
+                app: currentDirectoryAppName(),
+                outcome: "unchanged" as const,
+                servicesDestroyed: [],
+                volumesRemoved: false,
+              })
+            : (resolved.source === "desired"
+                ? runAppInitEvents(resolved.target.plan).pipe(
+                    Effect.zipRight(destroyAppForTarget(options, resolved.target)),
+                  )
+                : destroyAppForTarget(options, resolved.target)
+              ).pipe(Effect.map((result): DestroyAppResult => ({ ...result, outcome: "destroyed" }))),
+        ),
+      );
