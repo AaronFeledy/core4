@@ -355,6 +355,7 @@ export const podmanVolumeCreationLabels = (
   "dev.lando.volume-selector": volumeSelectorValue({
     providerId: plan.provider,
     appId: plan.id,
+    ownerKey: plan.identity?.ownerKey ?? plan.root,
     volumeClass: store.kind === "cache" ? "cache" : "data",
   }),
 });

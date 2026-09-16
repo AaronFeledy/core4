@@ -12,6 +12,7 @@ export type VolumeSelectorClass = "cache" | "data";
 
 export interface LandoVolumeFilterOptions {
   readonly providerId: string;
+  readonly ownerKey: string;
   readonly volumeClasses?: ReadonlyArray<VolumeSelectorClass>;
   /** Narrow to a single store scope (e.g. `"app"`) in addition to the app label. */
   readonly scope?: AppPlan["stores"][number]["scope"];
@@ -20,12 +21,13 @@ export interface LandoVolumeFilterOptions {
 export const volumeSelectorValue = (args: {
   readonly providerId: string;
   readonly appId: string;
+  readonly ownerKey: string;
   readonly volumeClass: VolumeSelectorClass;
   readonly scope?: AppPlan["stores"][number]["scope"];
 }): string =>
   args.scope === undefined
-    ? `${args.providerId}:${args.appId}:${args.volumeClass}`
-    : `${args.providerId}:${args.appId}:${args.volumeClass}:${args.scope}`;
+    ? `${args.providerId}:${args.appId}:${args.ownerKey}:${args.volumeClass}`
+    : `${args.providerId}:${args.appId}:${args.ownerKey}:${args.volumeClass}:${args.scope}`;
 
 export const volumeSelectorLabel = (value: string): string => `dev.lando.volume-selector=${value}`;
 
@@ -42,6 +44,7 @@ export const buildLandoVolumeFilters = (
         volumeSelectorValue({
           providerId,
           appId,
+          ownerKey: options.ownerKey,
           volumeClass,
           ...(options.scope === undefined ? {} : { scope: options.scope }),
         }),
