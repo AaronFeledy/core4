@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect, Either, Layer, Schema } from "effect";
 
 import { RouteInputError } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -13,6 +13,19 @@ const plan = (input: unknown) =>
   Effect.flatMap(AppPlanner, (planner) =>
     planner.plan(Schema.decodeUnknownSync(LandofileShape)(input), TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(AppPlannerLive.pipe(Layer.provide(PluginRegistryLive))));
+
+test("preserves distinct paths when routes share a host", async () => {
+  // Given
+  const input = {
+    name: "route-identity",
+    services: { web: { type: "nginx", routes: ["same.example.test/api", "same.example.test/admin"] } },
+  };
+  // When
+  const result = await Effect.runPromise(plan(input));
+  // Then
+  expect(result.routes.map((route) => route.pathPrefix)).toEqual(["/api", "/admin"]);
+  expect(result.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }, { index: 1 }]);
+});
 
 test("plans shorthand routes with endpoint and pathPrefix", async () => {
   // Given
@@ -40,6 +53,55 @@ test("plans shorthand routes with endpoint and pathPrefix", async () => {
       backend: { port: 80 },
     },
   ]);
+});
+
+test("keeps separate HTTP and HTTPS backends on the same host and path", async () => {
+  // Given
+  const input = {
+    name: "schemes",
+    services: {
+      web: { type: "nginx", routes: [{ hostname: "same.test", scheme: "http" }] },
+      secure: { type: "nginx", routes: [{ hostname: "same.test", scheme: "https" }] },
+    },
+  };
+  // When
+  const result = await Effect.runPromise(plan(input));
+  // Then
+  expect(result.routes.map(({ scheme, backend }) => [scheme, String(backend.service)]).sort()).toEqual([
+    ["http", "web"],
+    ["https", "secure"],
+  ]);
+});
+
+test("rejects conflicting proxy and service declarations with authored source keys", async () => {
+  // Given
+  const input = {
+    name: "conflicts",
+    services: { web: { type: "nginx", routes: ["same.test"] } },
+    proxy: { web: [{ hostname: "same.test", filters: [{ type: "addPrefix", prefix: "/new" }] }] },
+  };
+  // When
+  const result = await Effect.runPromise(Effect.either(plan(input)));
+  // Then
+  if (Either.isRight(result)) throw new Error("expected conflict");
+  expect(result.left).toBeInstanceOf(RouteInputError);
+  expect(result.left).toMatchObject({ key: "proxy.web[0]" });
+  expect(result.left.message).toContain("services.web.routes[0]");
+  expect(result.left).not.toHaveProperty("file");
+});
+
+test("dedupes equivalent proxy and service declarations without duplicate service refs", async () => {
+  // Given
+  const input = {
+    name: "duplicates",
+    services: { web: { type: "nginx", routes: ["same.test:80"] } },
+    proxy: { web: [{ hostname: "same.test", filters: [] }] },
+  };
+  // When
+  const result = await Effect.runPromise(plan(input));
+  // Then
+  expect(result.routes).toHaveLength(1);
+  expect(result.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }]);
 });
 
 test("carries filters onto RoutePlan unchanged and omits the key when empty", async () => {

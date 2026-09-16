@@ -19,6 +19,7 @@ const plan = (provider: string): AppPlan => ({
   routes: [
     {
       hostname: "web.shop.lndo.site",
+      priority: 2,
       scheme: "https",
       service: ServiceName.make("web"),
       backend: { service: ServiceName.make("web"), protocol: "http", port: 80 },

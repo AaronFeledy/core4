@@ -1,5 +1,17 @@
 [
   {
+    "surface": "command:meta:config",
+    "changeKind": "ref-changed",
+    "path": "$.config.$ref",
+    "justification": "Config view and get intentionally reference GlobalConfigView instead of GlobalConfig: the curated effective-output schema includes appEnv and appLabels while excluding loader bookkeeping. GlobalConfig remains unchanged for configuration input."
+  },
+  {
+    "surface": "command:meta:config",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "The meta:config output reference graph intentionally replaces GlobalConfig with GlobalConfigView and its selected public-setting definitions. This separates effective config output from configuration input; the additive GlobalConfigView export is documented in sdk/API_COMPATIBILITY.md."
+  },
+  {
     "surface": "schema:PreRestartEvent",
     "changeKind": "unsupported-keyword",
     "path": "$.plan.services.additionalProperties",

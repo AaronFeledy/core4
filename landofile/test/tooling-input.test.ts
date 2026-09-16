@@ -1,13 +1,39 @@
 import { describe, expect, test } from "bun:test";
-import type { ToolingTaskShape } from "@lando/sdk/schema";
-import { Either } from "effect";
-import { parseToolingArgv, resolveServiceRef } from "../src/tooling-input.ts";
+import { ToolingTaskShape } from "@lando/sdk/schema";
+import { Either, Schema } from "effect";
+import { parseToolingArgv, resolveServiceRef, serializeToolingInput } from "../src/tooling-input.ts";
 import { type ToolingServiceRef, normalizeToolingTask } from "../src/tooling-normalize.ts";
 
-const normalize = (task: ToolingTaskShape) =>
-  Either.getOrThrow(normalizeToolingTask("run", task, { path: "/app/.lando.yml" }));
+const normalize = (task: typeof ToolingTaskShape.Encoded) =>
+  Either.getOrThrow(
+    normalizeToolingTask("run", Schema.decodeUnknownSync(ToolingTaskShape)(task), {
+      path: "/app/.lando.yml",
+    }),
+  );
 
 describe("parseToolingArgv", () => {
+  test("serializes normalized order with a delimiter for hyphen positionals", () => {
+    // Given
+    const task = normalize({ args: { second: { order: 2 }, first: { order: 1 } } });
+    // When
+    const argv = serializeToolingInput(task, { flags: {}, args: { second: "b", first: "--first" } });
+    // Then
+    expect(argv).toEqual(["--", "--first", "b"]);
+    expect(Either.getOrThrow(parseToolingArgv(task, argv)).args).toEqual({ first: "--first", second: "b" });
+  });
+
+  test("preserves every raw argv byte when no inputs are declared", () => {
+    // Given
+    const task = normalize({ cmd: ["echo"] });
+    const argv = ["", "--unknown=a=b", "two words", "\t\n", "é", "--", "-x", "'quoted'"];
+    // When
+    const serialized = serializeToolingInput(task, { flags: {}, args: {}, argv });
+    const parsed = Either.getOrThrow(parseToolingArgv(task, serialized));
+    // Then
+    expect(parsed.argv.map((value) => new TextEncoder().encode(value))).toEqual(
+      argv.map((value) => new TextEncoder().encode(value)),
+    );
+  });
   test("passes through undeclared input unchanged", () => {
     // Given
     const argv = ["--unknown", "value", "--", "-x"];

@@ -4,6 +4,17 @@
 
 ## Compatibility notes
 
+- `GlobalConfigView` is the additive curated effective-config schema used by config view and get. It explicitly selects public settings from `GlobalConfig`, including both app-default maps, without exposing loader bookkeeping.
+
+- `@lando/sdk/errors` additively exports `AppLockTimeoutError` (`message`, `app`, `timeoutMs`, `remediation`, optional `cause`) when a mutating app operation waits for the per-app advisory lock and the finite wait expires. It registers no JSON Schema. The type-only `StartAppError` and `StopAppError` unions additively include the tag; restart, rebuild, and destroy inherit it. Override the wait with `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds).
+
+- `RoutePlan.priority` is a planner-assigned integer above the diagnostic priority
+  of 1. Standalone schema inputs default to 2; decoded plans always carry it.
+  Routers must project this value rather than infer precedence from rule text.
+  Conflicting route matches now fail with the existing `RouteInputError` and
+  authored source keys. Equivalent ordered filter operations ignore filter merge
+  names; `both` participates in both HTTP and HTTPS conflict checks.
+
 - `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
 
 - `RuntimeProviderShape.resume(target, identity)` and `suspend(target, identity)` are additive optional exact-runtime lifecycle methods. Bundled providers address the inspected container ID directly; recovery callers fail closed when a provider cannot preserve that immutable identity across temporary observation.
@@ -221,6 +232,7 @@
 - `VolumeLocator`
 
 - `AppEnvironmentDefaults`
+- `GlobalConfigView`
 - `AppLabelDefaults`
 - `CORE_SERVICE_ENV_KEYS`
 - `isCoreServiceEnvKey`
@@ -925,6 +937,7 @@
 - `McpToolInputError`
 - `McpTransportError`
 - `McpAllowlistConflictError`
+- `AppLockTimeoutError`
 
 ## Additive service tags
 

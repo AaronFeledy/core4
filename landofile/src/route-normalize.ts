@@ -3,6 +3,7 @@ import type { RouteFilter, RouteInput } from "@lando/sdk/schema";
 import { Either } from "effect";
 
 export interface NormalizedRoute {
+  readonly source?: { readonly key: string; readonly file?: string };
   readonly hostname: string;
   readonly scheme?: "http" | "https" | "both";
   readonly endpoint?: string | number;
@@ -48,20 +49,24 @@ export const normalizeRoute = (
   route: RouteInput,
   ctx: { readonly keyPath: string; readonly file?: string },
 ): Either.Either<NormalizedRoute, RouteInputError> => {
+  const source = { key: ctx.keyPath, ...(ctx.file === undefined ? {} : { file: ctx.file }) };
   if (typeof route !== "string")
     return Either.right({
       hostname: route.hostname,
+      source,
       ...(route.scheme === undefined ? {} : { scheme: route.scheme }),
       ...(route.endpoint === undefined ? {} : { endpoint: route.endpoint }),
       ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
       filters: route.filters ?? [],
     });
   return Either.mapLeft(
-    parseRouteShorthand(route),
+    Either.map(parseRouteShorthand(route), (normalized) => ({
+      ...normalized,
+      source,
+    })),
     (message) =>
       new RouteInputError({
-        key: ctx.keyPath,
-        ...(ctx.file === undefined ? {} : { file: ctx.file }),
+        ...source,
         message,
         remediation: `Correct ${ctx.keyPath} using hostname[:port][/pathPrefix]. ${message}`,
       }),

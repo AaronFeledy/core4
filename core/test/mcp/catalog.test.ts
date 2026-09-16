@@ -9,6 +9,7 @@ import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
+import { Flags } from "../../src/cli/spec/metadata.ts";
 
 const spec = (id: string, extra: Partial<LandoCommandSpec> = {}): LandoCommandSpec => ({
   id,
@@ -85,7 +86,7 @@ describe("deriveToolInputSchema", () => {
 
 describe("validateToolInput", () => {
   const withFlags = spec("app:logs", {
-    flags: { format: { type: "string", required: true }, tail: { type: "number" } },
+    flags: { format: { type: "string", required: true }, tail: Flags.integer() },
     args: { service: { type: "string" } },
   });
 

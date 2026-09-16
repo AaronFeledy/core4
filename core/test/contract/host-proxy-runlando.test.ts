@@ -28,6 +28,7 @@ import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../src/cli/generated/host-prox
 import { runOpenForHostProxy } from "../../src/cli/host-proxy/dispatch.ts";
 
 const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
+  priority: 2,
   ...over,
   service: ServiceName.make(over.service),
   backend: { service: ServiceName.make(over.service), protocol: "http", port: 80 },

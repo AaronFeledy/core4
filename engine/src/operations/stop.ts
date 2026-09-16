@@ -29,6 +29,7 @@ import {
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
+import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
@@ -141,19 +142,22 @@ const stopAppWithResolvedPlan = (
   SdkStopAppError,
   BoundStopAppServices
 > =>
-  Effect.gen(function* () {
-    const context = yield* Effect.context<BoundStopAppServices>();
-    const registry = yield* RuntimeProviderRegistry;
-    const stateStore = yield* StateStore;
-    const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
-    const provider = yield* registry.select(resolvedTarget.plan);
-    return yield* withPlanVolumeCoordination({
-      plan: resolvedTarget.plan,
-      provider,
-      stateStore,
-      body: () => stopAppWithResolvedPlanUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
-    });
-  });
+  withAppMutationLock(
+    appLockTarget(target.plan),
+    Effect.gen(function* () {
+      const context = yield* Effect.context<BoundStopAppServices>();
+      const registry = yield* RuntimeProviderRegistry;
+      const stateStore = yield* StateStore;
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const provider = yield* registry.select(resolvedTarget.plan);
+      return yield* withPlanVolumeCoordination({
+        plan: resolvedTarget.plan,
+        provider,
+        stateStore,
+        body: () => stopAppWithResolvedPlanUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
+      });
+    }),
+  );
 
 export const stopAppWithPlan = (
   options: StopAppOptions = {},

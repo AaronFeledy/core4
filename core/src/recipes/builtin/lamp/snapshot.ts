@@ -1,10 +1,11 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { PHP_VERSIONS } from "../php-stack.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LAMP_RECIPE_VERSION = "0.1.0";
-export const LAMP_CONTENT_DIGEST = "sha256:bf832eeeb192425e56f0d69ee1989b7f28b3bcc19a5e3ed95d3ed7dba0f1c2e5";
+export const LAMP_CONTENT_DIGEST = "sha256:9afda4d9f6ee1b8af319c37c89e8afe76f25a911b9b4d2eb66b033b0fbb1689d";
 export const lampProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-lamp",
@@ -51,7 +52,7 @@ const composerTool: ExpressionNode = {
 export const lampSnapshot: RecipeSnapshot = {
   identity: lampProducer,
   optionTypes: {
-    php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
+    php: { kind: "enum", values: [...PHP_VERSIONS] },
     database: { kind: "enum", values: ["mariadb:11.4", "mysql:8.0"] },
     composer: { kind: "enum", values: ["2", "2.7.7", "false"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },

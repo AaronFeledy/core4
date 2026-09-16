@@ -12,6 +12,7 @@ import type { Effect, ParseResult, Scope, Stream } from "effect";
 
 import type {
   AppIdReservedError,
+  AppLockTimeoutError,
   AppResolveError,
   BuildPhaseFailedError,
   BunShellScriptEmptyError,
@@ -244,6 +245,7 @@ export type StartAppError =
   | ProviderUnavailableError
   | RouterPortPinMismatch
   | RouterPortsExhausted
+  | AppLockTimeoutError
   | StateStoreError
   | VolumeOperationError;
 
@@ -288,6 +290,7 @@ export type StopAppError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
+  | AppLockTimeoutError
   | StateStoreError
   | VolumeOperationError;
 

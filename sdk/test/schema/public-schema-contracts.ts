@@ -180,6 +180,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   NetworkCaConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   NetworkConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   GlobalConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  GlobalConfigView: "sdk/test/schema/config-view.test.ts",
   ConfigLintViolation: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ConfigLintResult: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DownloadRequest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

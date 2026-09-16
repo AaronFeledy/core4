@@ -18,6 +18,7 @@ const cachedPlan: AppPlan = {
   routes: [
     {
       hostname: "demo.lndo.site",
+      priority: 2,
       scheme: "https",
       service,
       backend: { service, protocol: "http", port: 8080 },
