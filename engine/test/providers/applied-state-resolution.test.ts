@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -33,6 +33,26 @@ const unavailable = (providerId: string, operation: string) =>
     message: `${providerId} evidence unavailable`,
   });
 
+const planFor = (providerId: string): AppPlan => ({
+  id: AppId.make("supplier-mismatch"),
+  name: "supplier-mismatch",
+  slug: "supplier-mismatch",
+  root,
+  identity: { appRoot: root, ownerKey: "supplier-mismatch-owner" },
+  provider: ProviderId.make(providerId),
+  services: {},
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata: {
+    resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00.000Z"),
+    source: "applied-state-resolution.test",
+    runtime: 4,
+  },
+  extensions: {},
+});
+
 describe("resolveAppliedPlanEvidence", () => {
   test("does not infer absence when no provider can supply evidence", async () => {
     const result = await Effect.runPromiseExit(resolveAppliedPlanEvidence(root, []));
@@ -59,6 +79,17 @@ describe("resolveAppliedPlanEvidence", () => {
 
     expect(result._tag).toBe("Failure");
     expect(String(result)).toContain("docker evidence unavailable");
+  });
+
+  test("rejects an applied plan attributed to a provider other than its supplier", async () => {
+    const result = await Effect.runPromiseExit(
+      resolveAppliedPlanEvidence(root, [
+        provider("lando", { appliedPlans: Effect.succeed([planFor("docker")]) }),
+      ]),
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(String(result)).toContain("applied-state-provider");
   });
 
   test("does not report absence while a provider still exposes runtime services", async () => {

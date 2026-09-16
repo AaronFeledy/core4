@@ -21,9 +21,23 @@ export const resolveAppliedPlanEvidence = (
         }),
       );
     }
-    const plans = (yield* Effect.forEach(
-      providers,
-      (provider) => provider.appliedPlans ?? Effect.succeed([]),
+    const plans = (yield* Effect.forEach(providers, (provider) =>
+      (provider.appliedPlans ?? Effect.succeed([])).pipe(
+        Effect.flatMap((appliedPlans) =>
+          Effect.forEach(appliedPlans, (plan) =>
+            String(plan.provider) === provider.id
+              ? Effect.succeed(plan)
+              : Effect.fail(
+                  new AppResolveError({
+                    message: `Provider ${provider.id} supplied applied state attributed to ${plan.provider}.`,
+                    reason: "mismatch",
+                    detail: "applied-state-provider",
+                    remediation: "Remove the mismatched applied state before retrying teardown.",
+                  }),
+                ),
+          ),
+        ),
+      ),
     )).flat();
     const matches = plans
       .filter((plan) => {
