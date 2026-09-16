@@ -9,6 +9,7 @@ tags: [beta, docs, recipes, nextjs, node, postgres, mariadb]
 
 ```sh
 lando init --recipe nextjs --name=nextjs-demo --yes
+cd nextjs-demo
 lando start
 ```
 
@@ -98,6 +99,7 @@ lando init --recipe nextjs --name=nextjs-alt --yes \
   --answer=node=22 \
   --answer=database=none \
   --answer=auth=nextauth
+cd nextjs-alt
 ```
 
 ## Talk to Postgres
