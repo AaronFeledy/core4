@@ -11,11 +11,12 @@ tags: [recipe, django, python]
 
 ```sh
 lando init --recipe django --name=my-django --yes
+cd my-django
 lando start
 lando info
 ```
 
-`--yes` skips the Celery worker. Pass `--answer` to add it.
+The named init creates `my-django/`. Change into it before app commands. `--yes` skips the Celery worker. Pass `--answer` to add it.
 
 ```sh
 lando init --recipe django --name=my-django --yes \
