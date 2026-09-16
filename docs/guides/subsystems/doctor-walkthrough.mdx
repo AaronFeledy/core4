@@ -23,6 +23,7 @@ Each check is `pass`, `warn`, or `fail`. Failed checks print remediation. Most p
 | Check | What to do |
 | --- | --- |
 | proxy | Run `lando setup`, then start an app so Traefik can route. You do not start Traefik by hand. |
+| preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports, then run `lando global:restart`. |
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 
