@@ -99,13 +99,13 @@ You do not need a Lando MySQL service while pointed at PlanetScale. Keep `db` in
 
 `pscale connect DATABASE BRANCH` listens on the host loopback, usually `127.0.0.1:3306`. Inside `app`, `127.0.0.1` is the app container itself, not the host, so that tunnel is not reachable from the service. Do not expose an authenticated database tunnel on all host interfaces to work around that boundary. Use the TLS-verified branch password URL from PlanetScale's Connect page instead.
 
-## Vitess habits that matter locally
+## Match Vitess behavior locally
 
 - Develop against a development branch. Promote schema with deploy requests.
 - PlanetScale Vitess is MySQL-compatible with limits. Check foreign-key and DDL rules in PlanetScale's MySQL compatibility docs before you assume every local MySQL feature lands remotely.
 - The PlanetScale serverless JavaScript driver is an HTTP driver for edge runtimes. Ordinary Lando services use the classic MySQL wire protocol and `DATABASE_URL` above.
 
-## Postgres on PlanetScale
+## Connect to PlanetScale Postgres
 
 PlanetScale also ships Postgres. Same Lando pattern: local `type: postgres` plus `DATABASE_URL`, or point that URL at a PlanetScale Postgres branch with SSL. See [Add PostgreSQL](../services/postgres.mdx).
 
