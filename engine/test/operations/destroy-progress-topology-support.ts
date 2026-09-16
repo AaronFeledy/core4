@@ -1,3 +1,7 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -9,6 +13,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  type VolumeInfo,
 } from "@lando/sdk/schema";
 import {
   EventService,
@@ -17,12 +22,16 @@ import {
   RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  StateStore,
+  type StateStoreShape,
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { makeLandoPaths } from "@lando/paths";
 import { destroyTreeId } from "../../src/operations/destroy-progress.ts";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 export { destroyTreeId };
 
@@ -63,7 +72,7 @@ export const plan: AppPlan = {
   services: { [web.name]: web },
   routes: [],
   networks: [],
-  stores: [],
+  stores: [{ name: "database", scope: "service", kind: "data" }],
   fileSync: [],
   metadata,
   extensions: {},
@@ -77,6 +86,8 @@ export const makeHarness = (
     readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly proxyAvailable?: boolean;
     readonly fileSync?: typeof FileSyncEngine.Service;
+    readonly stateStore?: StateStoreShape;
+    readonly volumes?: ReadonlyArray<VolumeInfo>;
   } = {},
 ) => {
   const events: LandoEvent[] = [];
@@ -84,11 +95,21 @@ export const makeHarness = (
     ...TestRuntimeProvider,
     id: "lando",
     destroy: () => options.destroyEffect ?? Effect.void,
+    listVolumes: () => Effect.succeed(options.volumes ?? []),
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };
   const layer = Layer.mergeAll(
-    Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
+    PrivateFileAccessLive,
+    Layer.succeed(StateStore, options.stateStore ?? makeTestStateStore().service),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        env: {},
+        platform: "linux",
+        userDataRoot: mkdtempSync(join(tmpdir(), "lando-destroy-harness-")),
+      }),
+    ),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),

@@ -41,12 +41,14 @@ import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/servi
 const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { makeTestLandofileServiceLive as makeEngineLandofileServiceLive } from "../_support/landofile-layer.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
 
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
+    resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
       resolve: (packageSpec) =>
         Promise.resolve({
@@ -116,11 +118,13 @@ const forkLandofile = [
   "  appserver:",
   "    image: node:20-alpine",
   "    primary: true",
+  "    home: false",
   "    dependsOn:",
   "      - database",
   "  database:",
   "    type: postgres",
   "    image: postgres:16-alpine",
+  "    home: false",
   "    environment:",
   "      POSTGRES_PASSWORD: lando",
   "",
@@ -134,6 +138,23 @@ const routedForkLandofile = [
   "  appserver:",
   "    image: node:20-alpine",
   "    primary: true",
+  "    home: false",
+  "    routes:",
+  "      - hostname: forkme.lndo.site",
+  "",
+].join("\n");
+
+const unroutedForkLandofile = [
+  "name: forkme",
+  "runtime: 4",
+  "provider: lando",
+  "router:",
+  "  enabled: false",
+  "services:",
+  "  appserver:",
+  "    image: node:20-alpine",
+  "    primary: true",
+  "    home: false",
   "    routes:",
   "      - hostname: forkme.lndo.site",
   "",
@@ -252,7 +273,7 @@ const makeScratchForkLayer = (
   });
   const scratchRegistryLive = (() => {
     if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLive;
-    const registry = makeScratchRegistry();
+    const registry = makeScratchRegistry(ownerOnlyFileAccess);
     let upsertCount = 0;
     return Layer.succeed(ScratchRegistry, {
       ...registry,
@@ -404,6 +425,33 @@ describe("ScratchAppServiceLive fork acquire", () => {
 
       expect(routes.applied).toEqual([handleId]);
       expect(routes.removed).toEqual([handleId]);
+    });
+  });
+
+  test("never publishes scratch routes when the plan disables the router", async () => {
+    await withTempProject(unroutedForkLandofile, async () => {
+      // Given: a forked source app that declares a route but disables the router.
+      const appliedPlans: AppPlan[] = [];
+      const routes: RouteRecorder = { applied: [], removed: [] };
+
+      // When
+      const acquired = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          return yield* Effect.scoped(
+            Effect.gen(function* () {
+              const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false });
+              return handle.id;
+            }),
+          );
+        }).pipe(Effect.provide(makeScratchForkLayer(appliedPlans, [], { routes }))),
+      );
+
+      // Then: the route survives on the applied plan, but nothing was handed to the router.
+      expect(appliedPlans[0]?.routes ?? []).toHaveLength(1);
+      expect(appliedPlans[0]?.router?.enabled).toBe(false);
+      expect(routes.applied).toEqual([]);
+      expect(routes.removed).toEqual([acquired]);
     });
   });
 

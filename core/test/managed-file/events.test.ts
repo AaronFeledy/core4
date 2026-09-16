@@ -9,13 +9,13 @@ import { type ManagedFile, PortablePath } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, ManagedFileService } from "@lando/sdk/services";
 
 import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import {
   ManagedFileServiceLive as ManagedFileServiceUnprovided,
   makeDiskBackend,
   makeManagedFileService,
 } from "@lando/managed-file/service";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 const ManagedFileServiceLive = ManagedFileServiceUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { RedactionServiceLive } from "@lando/redaction/service";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";

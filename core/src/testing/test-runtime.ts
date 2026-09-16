@@ -80,6 +80,7 @@ export { TestRuntimeProvider } from "@lando/sdk/test";
  */
 export { TestClock, TestContext } from "effect";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive, type PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   ScratchRegistry,
@@ -164,7 +165,8 @@ type MinimalTestRuntimeServices =
   | FileSystem
   | PrivilegeService
   | SecretStore
-  | ProcessRunner;
+  | ProcessRunner
+  | PrivateFileAccessService;
 type ProviderTestRuntimeServices =
   | MinimalTestRuntimeServices
   | PluginRegistry
@@ -980,6 +982,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     Layer.succeed(PrivilegeService, privilegeService),
     Layer.succeed(SecretStore, secretStoreService),
     Layer.succeed(ProcessRunner, processRunnerService),
+    PrivateFileAccessLive,
   );
 
   const providerLayer: Layer.Layer<ProviderTestRuntimeServices> = Layer.mergeAll(

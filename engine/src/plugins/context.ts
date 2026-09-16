@@ -242,7 +242,7 @@ export const makeLandoPluginContext = (input: {
   readonly managedFileService: ManagedFileServiceImpl;
   readonly stateStore: StateStoreShape;
   readonly pluginStateRoot: AbsolutePath;
-  readonly privateFileAccess?: import("@lando/state-store/private-file-access").PrivateFileAccess;
+  readonly privateFileAccess: import("@lando/state-store/private-file-access").PrivateFileAccess;
   readonly publishRender?: LandoPluginContext["events"]["publishRender"];
 }): LandoPluginContext => ({
   id: input.id,

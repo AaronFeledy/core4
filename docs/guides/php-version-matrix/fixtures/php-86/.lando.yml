@@ -1,0 +1,5 @@
+name: php-version-matrix-86
+services:
+  app:
+    type: "php:8.6"
+    primary: true

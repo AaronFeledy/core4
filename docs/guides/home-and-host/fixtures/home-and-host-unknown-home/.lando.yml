@@ -1,0 +1,6 @@
+name: home-and-host-unknown-home
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    primary: true

@@ -7,6 +7,7 @@ import {
   ToolingCompileError,
 } from "@lando/sdk/errors";
 
+import type { CommandIndexEntry } from "@lando/engine/cache/command-index";
 import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { findAppRoot } from "@lando/landofile/discovery";
 import {
@@ -47,6 +48,8 @@ export type ToolingRoute =
       readonly _tag: "tooling";
       readonly commandId: string;
       readonly name: string;
+      readonly hidden: boolean;
+      readonly input?: CommandIndexEntry["input"];
     }
   | {
       readonly _tag: "bun-script";
@@ -54,6 +57,38 @@ export type ToolingRoute =
       readonly name: string;
       readonly appRoot: string;
     };
+
+export type NormalizedToolingRoute = Extract<ToolingRoute, { readonly _tag: "tooling" }>;
+
+const normalizedToolingRoute = (
+  commandId: string,
+  name: string,
+  entry: CommandIndexEntry,
+): NormalizedToolingRoute => ({
+  _tag: "tooling",
+  commandId,
+  name,
+  hidden: entry.hidden,
+  ...(entry.input === undefined ? {} : { input: entry.input }),
+});
+
+/**
+ * Declared flags and args make Lando the owner of the task's argv, so `--help` describes the
+ * declaration instead of reaching the command. Raw-passthrough tasks keep handing `--help` to the
+ * tool they wrap, hidden tasks keep their own refusal, and a declared help flag wins over ours.
+ */
+export const toolingHelpRequested = (
+  route: ToolingRoute,
+  argv: ReadonlyArray<string>,
+): route is NormalizedToolingRoute => {
+  if (route._tag !== "tooling" || route.hidden || route.input === undefined) return false;
+  if (route.input.flags.some((flag) => flag.name === "help" || flag.alias === "h")) return false;
+  for (const token of argv) {
+    if (token === "--") return false;
+    if (token === "--help" || token === "-h") return true;
+  }
+  return false;
+};
 
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
@@ -134,7 +169,7 @@ export const resolveToolingRoute = (
           appRoot,
         } as const;
       }
-      return { _tag: "tooling", commandId: token, name: canonicalName } as const;
+      return normalizedToolingRoute(token, canonicalName, canonicalEntry);
     }
 
     const policy = cache.aliasPolicy;
@@ -170,11 +205,7 @@ export const resolveToolingRoute = (
           appRoot,
         } as const;
       }
-      return {
-        _tag: "tooling",
-        commandId: custom,
-        name: customName,
-      } as const;
+      return normalizedToolingRoute(custom, customName, customEntry);
     }
 
     if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
@@ -213,7 +244,7 @@ export const resolveToolingRoute = (
         appRoot,
       } as const;
     }
-    return { _tag: "tooling", commandId, name } as const;
+    return normalizedToolingRoute(commandId, name, entry);
   });
 
 export const toolingRouteError = (

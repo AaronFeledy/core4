@@ -19,7 +19,11 @@ import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/man
 import { bundledRecipeContentSource } from "../../recipes/builtin/scaffold-assets";
 import { getRecipeCatalog } from "../../recipes/catalog";
 import { type GitRecipeCloner, resolveGitRecipeSource } from "../../recipes/git-source";
-import { previewRecipeLandofile, runRecipeInitPipeline } from "../../recipes/init-pipeline";
+import {
+  RecipeInitCommitError,
+  previewRecipeLandofile,
+  runRecipeInitPipeline,
+} from "../../recipes/init-pipeline";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service";
 import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime";
@@ -114,7 +118,7 @@ export interface InitAppOptions {
   readonly postInitCommandRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
   readonly onWarn?: (message: string) => void;
   readonly events?: ProgressEmitter;
   // Absolute render target; defaults to `<cwd>/<appName>` when omitted.
@@ -451,6 +455,14 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
       ),
     };
 
+    if (options.privateFileAccess === undefined) {
+      throw new RecipeInitCommitError({
+        message: "Private file access is unavailable for recipe initialization.",
+        remediation: "Run initialization through the Lando runtime.",
+        phase: "prepare",
+        reason: "private-file-access-unavailable",
+      });
+    }
     const result = await Effect.runPromise(
       runRecipeInitPipeline({
         appRoot: directory,
@@ -462,7 +474,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
         encoder: await encoderPromise,
         journalRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
         contentSource: bundledRecipeContentSource(manifest.id),
-        ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
+        privateFileAccess: options.privateFileAccess,
         ...(resolved.root === undefined ? {} : { sourceRoot: resolved.root }),
         runPostInit: async (bound) => {
           if (

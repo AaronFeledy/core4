@@ -14,6 +14,18 @@ Global priorities, dependencies, and standard gates are recorded in the index an
 | US-617B | router and scanner | `docs/guides/services/router-and-scanner.mdx` |
 | US-618A..US-618C | catalog options | affected recipe READMEs |
 | US-618D1, US-618D3 | scoped commands and global defaults | `docs/guides/landofile/lando3-transition-options.mdx` |
+| US-623 | tooling input consistency | `docs/guides/events/task-events.mdx`, `docs/guides/agent-native/mcp.mdx` |
+| US-624 | routing correctness | `docs/guides/proxy/route-shorthand.mdx`, `docs/guides/services/router-and-scanner.mdx` |
+| US-626 | redacted config view | `docs/guides/config/global-config.mdx` |
+| US-628 | bounded scanner with live start verification | `docs/guides/services/router-and-scanner.mdx` |
+| US-629 | teardown and inventory consistency | `docs/guides/tutorial/app-lifecycle.mdx`, `docs/guides/cli/everyday-commands.mdx` |
+| US-631 | Solr core safety and copy contracts | `docs/guides/services/solr.mdx` |
+| US-632 | provider-free event validation parity | `docs/guides/landofile/config-lint.mdx`, `docs/guides/events/task-events.mdx` |
+| US-633 | label fidelity | `docs/guides/config/global-config.mdx`, `docs/guides/config/compose-compatibility.mdx` |
+| US-635 | reproducible msmtp | `docs/guides/services/mailpit.mdx` |
+| US-637 | canonical home destinations and verified metadata | `docs/guides/services/home-and-host.mdx` |
+| US-638 | live file-backed catalog config verification | maintainer-only: isolated live tests, no public guide |
+| US-642 | router file-watcher diagnostics | `docs/guides/global/doctor-walkthrough.mdx` |
 
 ### US-613: Normalize and execute tooling definitions
 
@@ -114,3 +126,150 @@ Global priorities, dependencies, and standard gates are recorded in the index an
 **Acceptance Criteria:**
 - [ ] Apache uses authored webroot for generated config/routes and Node uses authored port for endpoints, health, and generated commands.
 - [ ] Make ServiceType version metadata the single shipped matrix used by planner validation, generated docs, and tests; reject unknown/absent versions including unavailable old PHP images with tagged remediation; supported real-runtime, rejection, README, and applicable standard gates pass.
+
+## Follow-up stories (US-623..US-642)
+
+These stories come from an audit of the stories above. Audit findings are historical evidence: they point at where to look, not proof that a defect exists on current source. Each story starts by reproducing on a clean checkout and locking the behavior with a failing test before any fix.
+
+One story is one pull request. The audit first produced twenty follow-ups; they were consolidated into these twelve PR-sized deliverables. Ids are sparse on purpose: each surviving story keeps the id it had before consolidation, and the retired ids (US-625, US-627, US-630, US-634, US-636, US-639, US-640, US-641) are absorbed into the story that now owns their scope rather than reopening the original work. Nothing from a retired entry was dropped; product scope moved into the absorbing story named in its notes, and maintainer scope moved to the checklist at the end of this file.
+
+Shared gates for every follow-up: focused tests with a positive count, typecheck, lint, and boundaries, plus the schema, codegen, guide coverage, drift, and public transcript gates its acceptance criteria name. Live runtime evidence runs only in an explicit isolated sandbox under the existing runtime env gate. US-638 is the only maintainer-only story and records internal test output instead of a public guide.
+
+### US-623: Make tooling inputs consistent across CLI, events, and MCP
+
+**Description:** As a tooling author, a task receives the same validated inputs whether the CLI, an event step, or an MCP client invokes it.
+
+**Acceptance Criteria:**
+- [ ] Tooling `args` map definitions with an explicit declared order normalize once, in the tooling normalization module, into one ordered native argument declaration; event-step serialization consumes that same ordered declaration rather than object-key order, so a declared order that differs from key order yields identical argv on the CLI path and the event path, including the `--` delimiter before positionals that begin with a hyphen.
+- [ ] Schema decode runs before serialization on every path and test fixtures are decoded values rather than raw objects; a task with no declared inputs still receives its raw authored argv byte-identical after normalization.
+- [ ] One shared projection and validation path owns integer flag metadata for CLI, library, and MCP; the MCP catalog emits `integer` for inputs such as `logs --tail` instead of `number` or `string`.
+- [ ] A real `logsSpec` tail request through the MCP transport accepts a JSON integer and rejects fractional and string-typed values with a tagged error that names the offending input; non-finite values, which JSON cannot encode, are rejected at the direct validator boundary by a unit test against the shared validator.
+- [ ] Existing tagged error contracts on each surface are preserved; where the CLI and MCP contracts differ by design, tests assert each surface's own tag. Direct CLI, event-step, and MCP invocation of the same task produce the same argv and the same exit outcome, asserted as cross-surface equality rather than per-surface snapshots.
+- [ ] Failing regression tests first lock the current declared-order divergence and the current integer projection mismatch; focused tests with a positive count, the task-events and MCP guides, typecheck, lint, boundaries, and command-schema codegen gates pass.
+
+### US-624: Preserve route identity and define route specificity
+
+**Description:** As a Landofile author, several routes on one host keep their distinct match identities, overlapping routes resolve in one documented order, and real requests reach the backend the plan names.
+
+**Acceptance Criteria:**
+- [ ] Routing-match identity is scheme, host, port, and path; distinct match paths on the same host, or the same host and path on `http` versus `https`, survive lowering as separate routes in the planner output without changing the existing layer merge law.
+- [ ] Two routes with the same match identity dedupe to one route only when their backend and filters are semantically equivalent; the same match identity with a different backend or filter set fails with a tagged source-aware error before any provider action, and nothing collapses silently.
+- [ ] One explicit specificity policy is defined once in the planner: exact hosts outrank wildcard hosts, then longer path prefixes outrank shorter ones, and a diagnostic fallback route always ranks lowest; the Traefik renderer projects that policy as router priorities instead of relying on Traefik's default ordering, and two routes tied on every dimension either fail with a tagged error or resolve by one documented deterministic rule that is tested.
+- [ ] Real routing evidence in an isolated sandbox starts an app under fallback ports with an overlapping exact host, a wildcard host, a differing path, and `http` versus `https` routes, and proves each request reaches the intended backend by responder identity; the same evidence proves a disabled router publishes nothing and `lando info` reports host-only endpoints.
+- [ ] The HTTPS default is preserved and an HTTP 404 on an HTTPS-only route is a documented diagnostic outcome with remediation, not a defect; existing single-route fixtures keep their semantics, proven by planner and routing tests rather than byte-identical YAML, since goldens gain priority fields.
+- [ ] A failing regression test first captures the current same-host collapse; the route-shorthand guide documents identity and ordering with a runnable example and the router-and-scanner guide documents scheme semantics on fallback ports; focused tests with a positive count, typecheck, lint, boundaries, and applicable codegen gates pass.
+
+### US-626: Complete redacted config view and get
+
+**Description:** As a user, `lando config` and `lando config get` show the whole intentional public effective config, including `appEnv` and `appLabels`, with secrets redacted.
+
+**Acceptance Criteria:**
+- [ ] The read projection for `lando config` and `lando config get` comes from the canonical config loader and one result schema owned by `ConfigService`; neither command assembles its own view, and no separate config dump command is added.
+- [ ] The view includes every intentional public key, including the `appEnv` and `appLabels` maps, and excludes internal-only state; it is a curated public projection, never a raw dump of internal config.
+- [ ] `lando config set` followed by `lando config get` round-trips each map, and the full `lando config` view and its encoded output show the same values, so set, get, and full view have encode parity.
+- [ ] Secret values are redacted through the canonical `RedactionService` before rendering in every output mode, and the result schema ships with the schema snapshot codegen.
+- [ ] A failing regression test first proves the maps are missing from `lando config get` today; the global-config guide shows the maps in `lando config` output; focused tests with a positive count, typecheck, lint, boundaries, and schema snapshot gates pass.
+
+### US-628: Bound the scanner and verify live start scanning
+
+**Description:** As a user, post-start URL scanning stays bounded in time, memory, and concurrency, local targets follow an explicit proxy policy, and a live start proves the scanner really runs.
+
+**Acceptance Criteria:**
+- [ ] Each scanner status read runs inside a `Scope` and reads only the status line and headers; cancelling the scan aborts in-flight response streams, and no probe buffers a full response body.
+- [ ] Scanner concurrency is bounded by an explicit limit, and the scan deadline is enforced with real elapsed timing so diagnostics report actual wait time rather than the configured value.
+- [ ] Proxy handling for local scan targets is declared in the existing network trust seam of `@lando/http-client` as an explicit local-endpoint policy; no blanket domain or caller bypass is added, and remote proxy trust, custom CA, and cancellation behavior are unchanged.
+- [ ] A permanent isolated live test proves that `lando start` invokes the scanner against the actual published URL, that a failing scan warns while start still succeeds, and that interruption during the scan propagates; it cleans up its app and provider resources in a `Scope` and runs serially under the existing runtime env gate. An existing current permanent test satisfies an item; a one-off log capture does not.
+- [ ] Failing regression tests first capture unbounded reads and missing timing; focused tests with a positive count, the router-and-scanner guide, typecheck, lint, and boundaries pass.
+
+### US-629: Tear down from applied state and keep inventory consistent
+
+**Description:** As a user, `lando destroy` and `lando stop` work when the current Landofile is invalid or missing, and app inventory reflects reality afterwards without deleting live resources on a guess.
+
+**Acceptance Criteria:**
+- [ ] Destroy and stop resolve the target app from the validated last-applied state record when the desired config fails to load or is absent; the operation never requires re-planning the desired config to tear down owned resources.
+- [ ] Ownership, canonical app root, and provider identity checks against the applied record fail closed with tagged errors when they do not match the invoking context; no generic force flag skips those checks.
+- [ ] An app that was never started and owns no resources returns an explicit idempotent outcome rather than an error, and repeating the command yields the same outcome.
+- [ ] A successful destroy clears the app's applied record and its discovery and inventory cache entries in the same operation; roots that no longer exist are marked stale and reported as such, and a missing root never by itself authorizes deletion of live resources or state records.
+- [ ] A bounded prune of stale inventory entries runs only after the provider confirms no owned resources remain for that app, and the prune reports exactly which entries it removed.
+- [ ] Failing regression tests first prove the current invalid-config teardown failure and the surviving inventory entry after destroy; focused tests with a positive count, a real-runtime destroy after config corruption in an isolated sandbox, the app-lifecycle tutorial, the everyday-commands guide, typecheck, lint, and boundaries pass.
+
+### US-631: Validate Solr core names and lock config copy contracts
+
+**Description:** As a Solr user, core names cannot escape the data directory, and the config copy and build-key rules are documented contracts.
+
+**Acceptance Criteria:**
+- [ ] Core names equal to `.` or `..`, or containing a slash or backslash, are rejected before any command generation with a tagged source-aware remediation; names such as `a.b` or `a...b` that are otherwise valid stay accepted.
+- [ ] Generated shell for accepted core names such as `a.b` and `a...b` keeps its existing quoting, proven by a golden; names containing spaces or shell metacharacters remain rejected by the schema.
+- [ ] The overlay copy semantics into each core's `conf` directory and the stable build-key hash for an empty `solr.config.dir` are documented as intentional in the Solr guide and locked by tests, not treated as defects.
+- [ ] A failing regression test first proves the current path traversal acceptance; focused tests with a positive count, the Solr guide, typecheck, lint, and boundaries pass.
+
+### US-632: Share event resolution between lint, doctor, and start
+
+**Description:** As a Landofile author, `lando config lint` and `lando doctor` recognize exactly the events that `lando start` will run, without touching a provider.
+
+**Acceptance Criteria:**
+- [ ] Service tooling and event names resolve through one shared resolution function that performs no provider initialization or provider action; lint, doctor, and start all call it and report the same known event set.
+- [ ] Invocable tasks from the service, every config layer, and every include contribute to the known set identically on every surface, while include-only internal tasks that cannot be invoked are excluded on every surface; a failing regression test first shows the surfaces disagreeing today.
+- [ ] When resolution itself fails, lint and doctor surface the tagged resolve error rather than reporting a false unknown-event diagnostic.
+- [ ] Focused tests with a positive count, the config-lint and task-events guides, typecheck, lint, and boundaries pass.
+
+### US-633: Keep label secrets redacted and Compose export keys intact
+
+**Description:** As a user, secrets inside label and environment values stay redacted whatever separators the key uses, and exported Compose keys and values survive a YAML round trip.
+
+**Acceptance Criteria:**
+- [ ] `@lando/redaction` remains the only redactor; tokenization treats dot, hyphen, and underscore as separators when matching secret keys so `com.example.password`, `dev.example.db-password`, and `DB_PASSWORD` all match, and label and environment rendering keep calling the canonical `RedactionService` with no label-specific or env-specific redactor.
+- [ ] Regression canaries include dotted, hyphenated, and underscored secret keys alongside non-secret labels that must remain visible; the existing short-token policy stays in force and is asserted.
+- [ ] The Compose export serializer quotes keys and values that YAML would otherwise reinterpret, including keys with colons, leading special characters, and values that read as numbers, booleans, or null; a round-trip test parses exported YAML for every supported odd key shape and compares it structurally to the source model.
+- [ ] Runtime application through the provider API is unchanged and still bypasses YAML; there is one serializer for export and no second implementation.
+- [ ] Failing regression tests first capture the unredacted dotted label and a broken exported key; focused tests with a positive count, the global-config and compose-compatibility guides, typecheck, lint, and boundaries pass.
+
+### US-635: Acquire msmtp reproducibly per base image family
+
+**Description:** As a PHP user, Mailpit sendmail wiring installs msmtp from a pinned, reproducible source for each supported PHP base image family.
+
+**Acceptance Criteria:**
+- [ ] msmtp acquisition is keyed by the selected PHP image's supported base family and installs from a pinned repository snapshot or a checksum-verified asset; the pin identity enters the build key.
+- [ ] A documented update process regenerates the pins per family; the change does not re-pin every base image or force one distro version across families.
+- [ ] A real build of the selected PHP images sends mail through Mailpit as a non-root user, and a failing regression test first captures the unpinned install.
+- [ ] Focused tests with a positive count, the Mailpit guide, typecheck, lint, boundaries, and applicable codegen gates pass.
+
+### US-637: Canonicalize home destinations and verify shipped home metadata
+
+**Description:** As a service author, container home destinations normalize predictably, and catalog home metadata matches the images Lando ships.
+
+**Acceptance Criteria:**
+- [ ] Container destinations normalize once as POSIX paths, resolving dot segments and trailing separators, so equality between `home` and storage paths compares canonical forms; `.`, `..`, and root as a destination follow one explicit documented policy.
+- [ ] Colons are not rejected in destinations without a documented reason tied to provider mount syntax; the authored path round-trips through `lando app:config` where the existing contract shows it.
+- [ ] Per-user Apache home metadata is added only after inspecting the shipped image's account data for that user, including its passwd entry home, not only the image's default `USER` and `HOME`; where no known home exists, the tagged `HomePathCapabilityError` refusal remains, unknown custom images stay fail-closed, and no path is guessed.
+- [ ] A failing regression test first captures the non-canonical comparison; focused tests with a positive count, a real-runtime check of the verified home, the home-and-host guide, typecheck, lint, and boundaries pass.
+
+### US-638: Verify file-backed catalog config on live daemons
+
+**Description:** As a maintainer, every file-backed catalog config option has a permanent isolated live test proving the daemon actually loads the file.
+
+**Acceptance Criteria:**
+- [ ] MySQL, MariaDB, PostgreSQL, MongoDB, and Solr each have a permanent live test proving the daemon loads the mounted config file and reflects one observable setting from it, observed through the daemon itself rather than through mounted paths or generated commands alone.
+- [ ] Every live test cleans up its app and provider resources in a `Scope` and runs serially as `*.integration.test.ts` under the existing explicit runtime env gate; an existing current permanent test satisfies an item, and plan-only or documentation-only proof does not count.
+- [ ] Only targeted fixes for regressions these tests reproduce ride along, each with a failing test first; no general product implementation or sweeping service redesign is bundled.
+- [ ] The story is bounded to this one test family: scanner evidence belongs to US-628 and router or scheme evidence to US-624. Focused tests with a positive count, typecheck, lint, and boundaries pass.
+
+### US-642: Diagnose router file-watcher failures
+
+**Description:** As a user, router and doctor tell me why the file provider failed to watch and what I can do without root.
+
+**Acceptance Criteria:**
+- [ ] Router startup and `lando doctor` surface file-provider watcher errors as tagged diagnostics that distinguish inotify limits from disk or permission failures and name the runtime host actually running the watcher.
+- [ ] The remediation names a non-privileged action first; Lando never runs sysctl or restarts global services automatically.
+- [ ] The failure is surfaced without logging secrets, using the canonical redaction path for any captured output.
+- [ ] Deterministic tests inject each failure class; live evidence is recorded when a reproduction is feasible in an isolated sandbox; focused tests with a positive count, the doctor-walkthrough guide, typecheck, lint, and boundaries pass.
+
+## Maintainer checklist (not queued)
+
+These items came out of the same audit but are not stories, carry no id or priority, and block none of the twelve follow-ups. Pick them up when a PR already touches the area, or when a current reproduction exists. None of them grants authority to push, merge, or mark work complete.
+
+- **`RedisServiceConfig` schema consistency.** Publishing the Redis service config as an SDK schema is optional and belongs to whichever SDK PR already owns an additive export; follow `sdk/AGENTS.md`, record it in `sdk/API_COMPATIBILITY.md`, and rebuild `sdk/dist` before engine and core typecheck.
+- **Unit-suite baseline.** Re-establish the baseline on current clean source with `bun run test:unit` before fixing anything. The historical count of thirteen failures is a lead, not a present fact. Transcript reader, uninstall, resolve-cwd, and timeout failures that reproduce today each get their own change with a failing test first; never group unrelated failures under one cause, and justify any raised timeout per test in a comment.
+- **PR and merge evidence.** Before appending a reconciliation entry to the append-only progress log, check actual PR and commit state. A missing record means unrecorded, not unmerged.
+- **Audit diagnostics.** Distinguish skipped from failed per gate; differing non-zero exits are never one shared cause. Find the real owner of each gate; external or workspace-local automation stays untouched and is recorded with an explicit owner and handoff instead of silent edits.
+- **Scope of this list.** None of these require a failing product test to act on, and none are prerequisites for the stories above.

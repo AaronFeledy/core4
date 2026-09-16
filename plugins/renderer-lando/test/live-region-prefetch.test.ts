@@ -5,7 +5,8 @@ import { CliCommandInitEvent, type LandoEvent, TaskTreeStartEvent } from "@lando
 import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive, createBufferedRendererIO } from "@lando/core/testing";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 
 import {
   type LiveRegionControllerOptions,

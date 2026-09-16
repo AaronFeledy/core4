@@ -7,10 +7,10 @@ import { Effect, Exit, type Scope } from "effect";
 
 import { AbsolutePath, type ManagedFile, PortablePath } from "@lando/sdk/schema";
 
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeLandoPaths } from "@lando/paths";
 import { makeDiskBackend, makeManagedFileService } from "../src/service.ts";
 import { makeTestManagedFileStore } from "../src/testing.ts";
+import { ownerOnlyFileAccess } from "./transaction-fixture.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>

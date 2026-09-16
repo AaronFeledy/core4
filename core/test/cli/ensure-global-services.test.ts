@@ -28,6 +28,7 @@ import {
   PluginRegistry,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  SecretStore,
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -102,7 +103,7 @@ const fakeServiceType = makeLegacyServiceTypeFake({
       provider,
       primary,
       artifact: { kind: "ref", ref: "lando-global-service:test" },
-      environment: {},
+      environment: { TOKEN: "${secret:GLOBAL_TOKEN}" },
       workingDirectory: PortablePath.make("/app"),
       appMount: {
         source: AbsolutePath.make(appRoot),
@@ -129,7 +130,7 @@ const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => 
   const modulePath = join(moduleRoot, "fake-global-service.mjs");
   await Bun.write(
     modulePath,
-    'import { Effect } from "effect";\nexport default Effect.succeed({ type: "lando" });\n',
+    'import { Effect } from "effect";\nexport default Effect.succeed({ type: "lando", home: false });\n',
   );
   return modulePath;
 };
@@ -209,6 +210,12 @@ const makeHarness = async (
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),
+    Layer.succeed(SecretStore, {
+      id: "ensure-global-test",
+      get: () => Effect.succeed("resolved-global-token"),
+      has: () => Effect.succeed(true),
+      list: Effect.succeed(["GLOBAL_TOKEN"]),
+    }),
     Layer.succeed(BuildOrchestrator, {
       build: (plan) =>
         Effect.sync(() => {
@@ -287,6 +294,14 @@ describe("ensureGlobalServicesRunning", () => {
       expect(String(harness.applyCalls[0]?.plan.id)).toBe("global");
       expect(Object.keys(harness.applyCalls[0]?.plan.services ?? {})).toEqual(["traefik"]);
       expect(harness.applyCalls[0]?.options.reconcile).toBe(false);
+      expect(harness.applyCalls[0]?.options.serviceEnvironment?.[ServiceName.make("traefik")]).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "resolved-global-token",
+      });
+      expect(harness.applyCalls[0]?.plan.services[ServiceName.make("traefik")]?.environment).toEqual({
+        LANDO_HOST_IP: "host.lando.internal",
+        TOKEN: "${secret:GLOBAL_TOKEN}",
+      });
       expect(harness.operations).toEqual(["build", "apply"]);
       expect(harness.inspectCalls.map((call) => String(call.target.service))).toEqual(["traefik"]);
 

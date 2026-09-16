@@ -9,8 +9,8 @@
  */
 import { Effect } from "effect";
 
-import { ProcessRunner, type ScratchAppService } from "@lando/sdk/services";
-import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import type { ScratchAppService } from "@lando/sdk/services";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { detachScratchApp } from "@lando/engine/scratch-app/service";
@@ -155,12 +155,12 @@ const runAppsScratchRun = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
       Effect.gen(function* () {
-        const processRunner = yield* ProcessRunner;
+        const privateFileAccess = yield* PrivateFileAccessService;
         return yield* scratchRun(
           { ...parseScratchRunArgv(argv), signal },
           {
             ...defaultScratchRunDeps,
-            detach: (id) => detachScratchApp(id, makeOwnerOnlyFileAccess({ processRunner })),
+            detach: (id) => detachScratchApp(id, privateFileAccess),
           },
         );
       }),
@@ -176,14 +176,14 @@ export const dispatchAppsCommand = async (argv: ReadonlyArray<string>): Promise<
     await runWithProcessAbortSignal((signal) =>
       runCompiledCommand(
         Effect.gen(function* () {
-          const processRunner = yield* ProcessRunner;
+          const privateFileAccess = yield* PrivateFileAccessService;
           return yield* Effect.tryPromise({
             try: () =>
               initApp({
                 ...initOptionsFromInput(input),
                 signal,
                 onWarn: emitDiagnosticLine,
-                privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+                privateFileAccess,
               }),
             catch: (error) => error,
           });

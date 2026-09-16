@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Effect, Exit, Schema } from "effect";
+import { DateTime, Effect, Exit, Schema } from "effect";
 
 import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
 import { SqlConfirmRequiredError, SqlServiceAmbiguousError } from "@lando/sdk/errors";
-import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, CommandResultEnvelope, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
 import { type DbCommandInput, dbCommandRedactionTokens, executeDbCommand } from "../src/run.ts";
@@ -19,8 +19,11 @@ const successInputs: ReadonlyArray<{ readonly command: string; readonly input: D
   { command: "db:export", input: { action: "export", yes: false } },
   { command: "db:import", input: { action: "import", file: "dump.sql.gz", yes: true } },
   { command: "db:snapshot", input: { action: "snapshot", label: "before-change", yes: false } },
-  { command: "db:restore", input: { action: "restore", snapshotId: "before-change", yes: false } },
+  { command: "db:snapshots", input: { action: "snapshots", yes: false } },
+  { command: "db:snapshots:prune", input: { action: "prune", preview: true, yes: false } },
+  { command: "db:restore", input: { action: "restore", snapshotId: "before-change", yes: true } },
   { command: "db:reset", input: { action: "reset", yes: true } },
+  { command: "db:seed", input: { action: "seed", file: "dump.sql.gz", yes: false } },
 ];
 
 describe("db command machine output", () => {
@@ -93,5 +96,57 @@ describe("db command machine output", () => {
     expect(confirmEnvelope.ok).toBe(false);
     expect(ambiguousEnvelope.error?._tag).toBe("SqlServiceAmbiguousError");
     expect(confirmEnvelope.error?._tag).toBe("SqlConfirmRequiredError");
+  });
+
+  test("preserves snapshot recovery metadata in machine output", async () => {
+    // Given
+    const snapshot = SnapshotInfo.make({
+      id: "snap-before-upgrade",
+      store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+      digest: "sha256:test",
+      sizeBytes: 1_572_864,
+      createdAt: DateTime.unsafeMake("2026-09-11T10:00:00Z"),
+      label: "before-upgrade",
+      metadata: {
+        sourceRoot: AbsolutePath.make("/workspace/sql-app"),
+        ownerKey: "owner:sql-app",
+        repoGroupKey: "repository:sql-app",
+        service: ServiceName.make("database"),
+        volumeInstanceId: "volume-instance:database",
+        family: "mysql",
+        version: "8.4",
+        imageIdentity: "sha256:mysql-runtime",
+        recoveryReason: "manual",
+      },
+    });
+
+    // When
+    const encoded = await Effect.runPromise(
+      encodeCommandResult({
+        command: "db:snapshots",
+        resultSchema: DbCommandResult,
+        outcome: { _tag: "success", value: { service: "database", snapshots: [snapshot], steps: [] } },
+        redactor: identityRedactor,
+      }),
+    );
+    const envelope = decodeEnvelope(encoded);
+
+    // Then
+    expect(envelope.result).toMatchObject({
+      snapshots: [
+        {
+          id: "snap-before-upgrade",
+          sizeBytes: 1_572_864,
+          label: "before-upgrade",
+          metadata: {
+            sourceRoot: "/workspace/sql-app",
+            ownerKey: "owner:sql-app",
+            repoGroupKey: "repository:sql-app",
+            version: "8.4",
+            recoveryReason: "manual",
+          },
+        },
+      ],
+    });
   });
 });

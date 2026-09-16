@@ -1,0 +1,8 @@
+name: php-composer-packages-invalid
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    composer:
+      packages:
+        drush: "^13.0"

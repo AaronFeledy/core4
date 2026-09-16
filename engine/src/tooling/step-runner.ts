@@ -89,6 +89,30 @@ const resolveScalarRecord = (
     ),
   ).pipe(Effect.map(Object.fromEntries));
 
+type ToolingStepEntry = Exclude<NonNullable<ToolingTaskShape["cmds"]>[number], string>;
+
+/** Resolves expressions inside an object-form command step, preserving its per-step overrides. */
+const resolveStepEntry = (
+  step: ToolingStepEntry,
+  context: ExpressionContext,
+): Effect.Effect<ToolingStepEntry, ToolingStepExpressionError> =>
+  Effect.gen(function* () {
+    const cmd = yield* resolveString(step.cmd, context);
+    const service = step.service === undefined ? undefined : yield* resolveString(step.service, context);
+    const dir =
+      step.dir === undefined ? undefined : PortablePath.make(yield* resolveString(String(step.dir), context));
+    const user = step.user === undefined ? undefined : yield* resolveString(step.user, context);
+    const env = step.env === undefined ? undefined : yield* resolveScalarRecord(step.env, context);
+    return {
+      ...step,
+      cmd,
+      ...(service === undefined ? {} : { service }),
+      ...(dir === undefined ? {} : { dir }),
+      ...(user === undefined ? {} : { user }),
+      ...(env === undefined ? {} : { env }),
+    };
+  });
+
 export const resolveToolingTaskShape = (
   task: ToolingTaskShape,
   context: ExpressionContext,
@@ -103,7 +127,11 @@ export const resolveToolingTaskShape = (
     const cmds =
       task.cmds === undefined
         ? undefined
-        : yield* Effect.forEach(task.cmds, (value) => resolveString(value, context));
+        : yield* Effect.forEach(
+            task.cmds,
+            (value): Effect.Effect<string | ToolingStepEntry, ToolingStepExpressionError> =>
+              typeof value === "string" ? resolveString(value, context) : resolveStepEntry(value, context),
+          );
     const service = task.service === undefined ? undefined : yield* resolveString(task.service, context);
     const dir =
       task.dir === undefined ? undefined : PortablePath.make(yield* resolveString(String(task.dir), context));

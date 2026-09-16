@@ -17,6 +17,7 @@ import {
 } from "@lando/sdk/schema";
 import { ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { installEngineComposition } from "../../src/composition.ts";
@@ -33,6 +34,7 @@ const unusedPort = async () => {
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => "/tmp/lando-start-host-proxy-cache",
+    resolveUserIncludesDir: () => "/tmp/lando-start-host-proxy-includes",
     npmRecipeSource: { resolve: unusedPort },
     git: { clone: unusedPort },
     tarball: { fetch: unusedPort, extract: unusedPort },
@@ -105,6 +107,7 @@ const capabilitiesFor = (
 });
 
 const runtimeLayer = Layer.mergeAll(
+  PrivateFileAccessLive,
   EventServiceLive,
   Layer.succeed(RedactionService, {
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),

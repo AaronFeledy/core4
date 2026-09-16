@@ -2,7 +2,7 @@ import { basename, dirname } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { syncDirectory } from "@lando/state-store/atomic";
-import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
 import { transactionError, transactionIO } from "./transaction-error.ts";
@@ -65,11 +65,11 @@ export const openJournal = (
   dir: string,
   options: {
     readonly createDirectory?: boolean;
-    readonly privateFileAccess?: PrivateFileAccess;
-  } = {},
+    readonly privateFileAccess: PrivateFileAccess;
+  },
 ) =>
   Effect.gen(function* () {
-    const privateFileAccess = options.privateFileAccess ?? makeOwnerOnlyFileAccess();
+    const privateFileAccess = options.privateFileAccess;
     if (options.createDirectory !== false) yield* transactionIO("inspect", () => ensureDirectory(dir));
     const bucket = yield* makeStateStore({ privateFileAccess })
       .open({

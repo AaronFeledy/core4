@@ -1,5 +1,4 @@
-import { ProcessRunner } from "@lando/sdk/services";
-import { makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 
 import { Flags } from "../../../spec/metadata";
@@ -59,7 +58,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       const files = Array.isArray(flags.file)
         ? flags.file.filter((file): file is string => typeof file === "string")
         : undefined;
-      const processRunner = yield* ProcessRunner;
+      const privateFileAccess = yield* PrivateFileAccessService;
       return yield* appConfigTranslate({
         write: flags.write === true,
         list: flags.list === true,
@@ -67,7 +66,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
         ...(typeof flags.from === "string" ? { from: flags.from } : {}),
         ...(typeof flags.to === "string" ? { to: flags.to } : {}),
         ...(files === undefined ? {} : { files }),
-        privateFileAccess: makeOwnerOnlyFileAccess({ processRunner }),
+        privateFileAccess,
       });
     }),
   render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, "yaml"),

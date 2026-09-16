@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createServer as createHttpServer } from "node:http";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import type {
@@ -8,7 +9,6 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
-import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import type { ServiceStartError } from "@lando/sdk/errors";
 import {
@@ -399,6 +399,7 @@ describe("provider-lando bringUp", () => {
     };
     const cachePlan: AppPlan = {
       ...plan,
+      identity: { appRoot: AbsolutePath.make("/canonical/creation-root"), ownerKey: "creation-owner" },
       services: { [database.name]: database, [cacheService.name]: cacheService },
       stores: [{ name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" }],
     };
@@ -415,6 +416,8 @@ describe("provider-lando bringUp", () => {
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
         "dev.lando.volume-selector": "lando:bringupapp:cache",
+        "dev.lando.volume-owner": "/canonical/creation-root",
+        "dev.lando.volume-instance": expect.stringMatching(/^[0-9a-f-]{36}$/u),
       },
     });
     const nodeCreate = fake.calls.find(

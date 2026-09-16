@@ -15,7 +15,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 21,
-      "passes": false,
       "notes": ""
     },
     {
@@ -28,7 +27,6 @@
       ],
       "dependsOn": ["US-613"],
       "priority": 22,
-      "passes": false,
       "notes": ""
     },
     {
@@ -41,7 +39,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 23,
-      "passes": false,
       "notes": ""
     },
     {
@@ -54,7 +51,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 24,
-      "passes": false,
       "notes": ""
     },
     {
@@ -67,7 +63,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 25,
-      "passes": false,
       "notes": ""
     },
     {
@@ -80,7 +75,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 26,
-      "passes": false,
       "notes": ""
     },
     {
@@ -93,7 +87,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 27,
-      "passes": false,
       "notes": ""
     },
     {
@@ -106,7 +99,6 @@
       ],
       "dependsOn": ["US-616"],
       "priority": 28,
-      "passes": false,
       "notes": ""
     },
     {
@@ -119,7 +111,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 29,
-      "passes": false,
       "notes": ""
     },
     {
@@ -134,7 +125,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 30,
-      "passes": false,
       "notes": ""
     },
     {
@@ -147,7 +137,6 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 31,
-      "passes": false,
       "notes": ""
     },
     {
@@ -160,8 +149,184 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 32,
-      "passes": false,
       "notes": ""
+    },
+    {
+      "id": "US-623",
+      "title": "Make tooling inputs consistent across CLI, events, and MCP",
+      "description": "As a tooling author, a task receives the same validated inputs whether the CLI, an event step, or an MCP client invokes it.",
+      "acceptanceCriteria": [
+        "Tooling `args` map definitions with an explicit declared order normalize once, in the tooling normalization module, into one ordered native argument declaration; event-step serialization consumes that same ordered declaration rather than object-key order, so a declared order that differs from key order yields identical argv on the CLI path and the event path, including the `--` delimiter before positionals that begin with a hyphen.",
+        "Schema decode runs before serialization on every path and test fixtures are decoded values rather than raw objects; a task with no declared inputs still receives its raw authored argv byte-identical after normalization.",
+        "One shared projection and validation path owns integer flag metadata for CLI, library, and MCP; the MCP catalog emits `integer` for inputs such as `logs --tail` instead of `number` or `string`.",
+        "A real `logsSpec` tail request through the MCP transport accepts a JSON integer and rejects fractional and string-typed values with a tagged error that names the offending input; non-finite values, which JSON cannot encode, are rejected at the direct validator boundary by a unit test against the shared validator.",
+        "Existing tagged error contracts on each surface are preserved; where the CLI and MCP contracts differ by design, tests assert each surface's own tag. Direct CLI, event-step, and MCP invocation of the same task produce the same argv and the same exit outcome, asserted as cross-surface equality rather than per-surface snapshots.",
+        "Failing regression tests first lock the current declared-order divergence and the current integer projection mismatch; focused tests with a positive count, the task-events and MCP guides, typecheck, lint, boundaries, and command-schema codegen gates pass."
+      ],
+      "dependsOn": ["US-613", "US-614", "US-618D1"],
+      "priority": 45,
+      "notes": "Absorbs the retired US-627. Argv assembly lives with the tooling normalization owner and event serialization calls it rather than re-spelling it; integer projection lives in the command spec flag metadata primitives and @lando/mcp consumes it through the catalog projection. Non-goals: no new tooling schema fields and no change to event ordering semantics."
+    },
+    {
+      "id": "US-624",
+      "title": "Preserve route identity and define route specificity",
+      "description": "As a Landofile author, several routes on one host keep their distinct match identities, overlapping routes resolve in one documented order, and real requests reach the backend the plan names.",
+      "acceptanceCriteria": [
+        "Routing-match identity is scheme, host, port, and path; distinct match paths on the same host, or the same host and path on `http` versus `https`, survive lowering as separate routes in the planner output without changing the existing layer merge law.",
+        "Two routes with the same match identity dedupe to one route only when their backend and filters are semantically equivalent; the same match identity with a different backend or filter set fails with a tagged source-aware error before any provider action, and nothing collapses silently.",
+        "One explicit specificity policy is defined once in the planner: exact hosts outrank wildcard hosts, then longer path prefixes outrank shorter ones, and a diagnostic fallback route always ranks lowest; the Traefik renderer projects that policy as router priorities instead of relying on Traefik's default ordering, and two routes tied on every dimension either fail with a tagged error or resolve by one documented deterministic rule that is tested.",
+        "Real routing evidence in an isolated sandbox starts an app under fallback ports with an overlapping exact host, a wildcard host, a differing path, and `http` versus `https` routes, and proves each request reaches the intended backend by responder identity; the same evidence proves a disabled router publishes nothing and `lando info` reports host-only endpoints.",
+        "The HTTPS default is preserved and an HTTP 404 on an HTTPS-only route is a documented diagnostic outcome with remediation, not a defect; existing single-route fixtures keep their semantics, proven by planner and routing tests rather than byte-identical YAML, since goldens gain priority fields.",
+        "A failing regression test first captures the current same-host collapse; the route-shorthand guide documents identity and ordering with a runnable example and the router-and-scanner guide documents scheme semantics on fallback ports; focused tests with a positive count, typecheck, lint, boundaries, and applicable codegen gates pass."
+      ],
+      "dependsOn": ["US-615", "US-617B"],
+      "priority": 46,
+      "notes": "Absorbs the retired US-625 and US-641. Identity and specificity are planner concerns computed in route lowering; renderer priority values are derived from them. Router-disabled and scheme evidence lives here, not in US-628. Non-goals: no new filter types and no change to host-port acquisition."
+    },
+    {
+      "id": "US-626",
+      "title": "Complete redacted config view and get",
+      "description": "As a user, `lando config` and `lando config get` show the whole intentional public effective config, including `appEnv` and `appLabels`, with secrets redacted.",
+      "acceptanceCriteria": [
+        "The read projection for `lando config` and `lando config get` comes from the canonical config loader and one result schema owned by `ConfigService`; neither command assembles its own view, and no separate config dump command is added.",
+        "The view includes every intentional public key, including the `appEnv` and `appLabels` maps, and excludes internal-only state; it is a curated public projection, never a raw dump of internal config.",
+        "`lando config set` followed by `lando config get` round-trips each map, and the full `lando config` view and its encoded output show the same values, so set, get, and full view have encode parity.",
+        "Secret values are redacted through the canonical `RedactionService` before rendering in every output mode, and the result schema ships with the schema snapshot codegen.",
+        "A failing regression test first proves the maps are missing from `lando config get` today; the global-config guide shows the maps in `lando config` output; focused tests with a positive count, typecheck, lint, boundaries, and schema snapshot gates pass."
+      ],
+      "dependsOn": ["US-618D3"],
+      "priority": 47,
+      "notes": "Follow-up to US-618D3. Derive the view from the ConfigService schema; do not add a parallel hand-written config view type. Non-goals: no raw internal dump and no new command."
+    },
+    {
+      "id": "US-628",
+      "title": "Bound the scanner and verify live start scanning",
+      "description": "As a user, post-start URL scanning stays bounded in time, memory, and concurrency, local targets follow an explicit proxy policy, and a live start proves the scanner really runs.",
+      "acceptanceCriteria": [
+        "Each scanner status read runs inside a `Scope` and reads only the status line and headers; cancelling the scan aborts in-flight response streams, and no probe buffers a full response body.",
+        "Scanner concurrency is bounded by an explicit limit, and the scan deadline is enforced with real elapsed timing so diagnostics report actual wait time rather than the configured value.",
+        "Proxy handling for local scan targets is declared in the existing network trust seam of `@lando/http-client` as an explicit local-endpoint policy; no blanket domain or caller bypass is added, and remote proxy trust, custom CA, and cancellation behavior are unchanged.",
+        "A permanent isolated live test proves that `lando start` invokes the scanner against the actual published URL, that a failing scan warns while start still succeeds, and that interruption during the scan propagates; it cleans up its app and provider resources in a `Scope` and runs serially under the existing runtime env gate. An existing current permanent test satisfies an item; a one-off log capture does not.",
+        "Failing regression tests first capture unbounded reads and missing timing; focused tests with a positive count, the router-and-scanner guide, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-617B"],
+      "priority": 48,
+      "notes": "Absorbs the scanner half of the retired US-638. Keep probing on runProbe; the proxy policy belongs in http-client's trust seam, not in the scanner. Router-disabled evidence belongs to US-624. Non-goals: no scanner config schema changes."
+    },
+    {
+      "id": "US-629",
+      "title": "Tear down from applied state and keep inventory consistent",
+      "description": "As a user, `lando destroy` and `lando stop` work when the current Landofile is invalid or missing, and app inventory reflects reality afterwards without deleting live resources on a guess.",
+      "acceptanceCriteria": [
+        "Destroy and stop resolve the target app from the validated last-applied state record when the desired config fails to load or is absent; the operation never requires re-planning the desired config to tear down owned resources.",
+        "Ownership, canonical app root, and provider identity checks against the applied record fail closed with tagged errors when they do not match the invoking context; no generic force flag skips those checks.",
+        "An app that was never started and owns no resources returns an explicit idempotent outcome rather than an error, and repeating the command yields the same outcome.",
+        "A successful destroy clears the app's applied record and its discovery and inventory cache entries in the same operation; roots that no longer exist are marked stale and reported as such, and a missing root never by itself authorizes deletion of live resources or state records.",
+        "A bounded prune of stale inventory entries runs only after the provider confirms no owned resources remain for that app, and the prune reports exactly which entries it removed.",
+        "Failing regression tests first prove the current invalid-config teardown failure and the surviving inventory entry after destroy; focused tests with a positive count, a real-runtime destroy after config corruption in an isolated sandbox, the app-lifecycle tutorial, the everyday-commands guide, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-617A", "US-618D1"],
+      "priority": 49,
+      "notes": "Absorbs the retired US-630. Applied identity comes from the state-store applied record; desired-config loading stays on loadUserLandofile for every other operation; runtime evidence comes from the provider list, never from path existence alone."
+    },
+    {
+      "id": "US-631",
+      "title": "Validate Solr core names and lock config copy contracts",
+      "description": "As a Solr user, core names cannot escape the data directory, and the config copy and build-key rules are documented contracts.",
+      "acceptanceCriteria": [
+        "Core names equal to `.` or `..`, or containing a slash or backslash, are rejected before any command generation with a tagged source-aware remediation; names such as `a.b` or `a...b` that are otherwise valid stay accepted.",
+        "Generated shell for accepted core names such as `a.b` and `a...b` keeps its existing quoting, proven by a golden; names containing spaces or shell metacharacters remain rejected by the schema.",
+        "The overlay copy semantics into each core's `conf` directory and the stable build-key hash for an empty `solr.config.dir` are documented as intentional in the Solr guide and locked by tests, not treated as defects.",
+        "A failing regression test first proves the current path traversal acceptance; focused tests with a positive count, the Solr guide, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-618A"],
+      "priority": 50,
+      "notes": "Follow-up to US-618A solr.config.dir. Validation belongs in the Solr plugin's config schema, before plan generation. Live multi-daemon config-loading coverage belongs to US-638, not here."
+    },
+    {
+      "id": "US-632",
+      "title": "Share event resolution between lint, doctor, and start",
+      "description": "As a Landofile author, `lando config lint` and `lando doctor` recognize exactly the events that `lando start` will run, without touching a provider.",
+      "acceptanceCriteria": [
+        "Service tooling and event names resolve through one shared resolution function that performs no provider initialization or provider action; lint, doctor, and start all call it and report the same known event set.",
+        "Invocable tasks from the service, every config layer, and every include contribute to the known set identically on every surface, while include-only internal tasks that cannot be invoked are excluded on every surface; a failing regression test first shows the surfaces disagreeing today.",
+        "When resolution itself fails, lint and doctor surface the tagged resolve error rather than reporting a false unknown-event diagnostic.",
+        "Focused tests with a positive count, the config-lint and task-events guides, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-614"],
+      "priority": 51,
+      "notes": "Follow-up to US-614. The shared resolver is the engine-owned event set builder; lint and doctor must not keep private copies."
+    },
+    {
+      "id": "US-633",
+      "title": "Keep label secrets redacted and Compose export keys intact",
+      "description": "As a user, secrets inside label and environment values stay redacted whatever separators the key uses, and exported Compose keys and values survive a YAML round trip.",
+      "acceptanceCriteria": [
+        "`@lando/redaction` remains the only redactor; tokenization treats dot, hyphen, and underscore as separators when matching secret keys so `com.example.password`, `dev.example.db-password`, and `DB_PASSWORD` all match, and label and environment rendering keep calling the canonical `RedactionService` with no label-specific or env-specific redactor.",
+        "Regression canaries include dotted, hyphenated, and underscored secret keys alongside non-secret labels that must remain visible; the existing short-token policy stays in force and is asserted.",
+        "The Compose export serializer quotes keys and values that YAML would otherwise reinterpret, including keys with colons, leading special characters, and values that read as numbers, booleans, or null; a round-trip test parses exported YAML for every supported odd key shape and compares it structurally to the source model.",
+        "Runtime application through the provider API is unchanged and still bypasses YAML; there is one serializer for export and no second implementation.",
+        "Failing regression tests first capture the unredacted dotted label and a broken exported key; focused tests with a positive count, the global-config and compose-compatibility guides, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-618D3"],
+      "priority": 52,
+      "notes": "Absorbs the retired US-634. Change tokenization in redaction/src only; fix the existing export serializer rather than introducing a parallel writer."
+    },
+    {
+      "id": "US-635",
+      "title": "Acquire msmtp reproducibly per base image family",
+      "description": "As a PHP user, Mailpit sendmail wiring installs msmtp from a pinned, reproducible source for each supported PHP base image family.",
+      "acceptanceCriteria": [
+        "msmtp acquisition is keyed by the selected PHP image's supported base family and installs from a pinned repository snapshot or a checksum-verified asset; the pin identity enters the build key.",
+        "A documented update process regenerates the pins per family; the change does not re-pin every base image or force one distro version across families.",
+        "A real build of the selected PHP images sends mail through Mailpit as a non-root user, and a failing regression test first captures the unpinned install.",
+        "Focused tests with a positive count, the Mailpit guide, typecheck, lint, boundaries, and applicable codegen gates pass."
+      ],
+      "dependsOn": ["US-618C"],
+      "priority": 53,
+      "notes": "Follow-up to US-618C mailFrom wiring. Pins live beside the PHP plugin's build-step generation, keyed by base family, not by exact tag."
+    },
+    {
+      "id": "US-637",
+      "title": "Canonicalize home destinations and verify shipped home metadata",
+      "description": "As a service author, container home destinations normalize predictably, and catalog home metadata matches the images Lando ships.",
+      "acceptanceCriteria": [
+        "Container destinations normalize once as POSIX paths, resolving dot segments and trailing separators, so equality between `home` and storage paths compares canonical forms; `.`, `..`, and root as a destination follow one explicit documented policy.",
+        "Colons are not rejected in destinations without a documented reason tied to provider mount syntax; the authored path round-trips through `lando app:config` where the existing contract shows it.",
+        "Per-user Apache home metadata is added only after inspecting the shipped image's account data for that user, including its passwd entry home, not only the image's default `USER` and `HOME`; where no known home exists, the tagged `HomePathCapabilityError` refusal remains, unknown custom images stay fail-closed, and no path is guessed.",
+        "A failing regression test first captures the non-canonical comparison; focused tests with a positive count, a real-runtime check of the verified home, the home-and-host guide, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-617A", "US-618E"],
+      "priority": 54,
+      "notes": "Follow-up to US-617A and US-618E. Normalization is a planner concern on AbsoluteContainerPath; image verification is evidence, not an assumption of /var/www."
+    },
+    {
+      "id": "US-638",
+      "title": "Verify file-backed catalog config on live daemons",
+      "description": "As a maintainer, every file-backed catalog config option has a permanent isolated live test proving the daemon actually loads the file.",
+      "acceptanceCriteria": [
+        "MySQL, MariaDB, PostgreSQL, MongoDB, and Solr each have a permanent live test proving the daemon loads the mounted config file and reflects one observable setting from it, observed through the daemon itself rather than through mounted paths or generated commands alone.",
+        "Every live test cleans up its app and provider resources in a `Scope` and runs serially as `*.integration.test.ts` under the existing explicit runtime env gate; an existing current permanent test satisfies an item, and plan-only or documentation-only proof does not count.",
+        "Only targeted fixes for regressions these tests reproduce ride along, each with a failing test first; no general product implementation or sweeping service redesign is bundled.",
+        "The story is bounded to this one test family: scanner evidence belongs to US-628 and router or scheme evidence to US-624. Focused tests with a positive count, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-618A"],
+      "priority": 55,
+      "notes": "Maintainer-only. US-631 is not a prerequisite because these tests use plain core names; run it first only if a reproduced Solr regression needs its validation. Evidence entries cite current commit and command."
+    },
+    {
+      "id": "US-642",
+      "title": "Diagnose router file-watcher failures",
+      "description": "As a user, router and doctor tell me why the file provider failed to watch and what I can do without root.",
+      "acceptanceCriteria": [
+        "Router startup and `lando doctor` surface file-provider watcher errors as tagged diagnostics that distinguish inotify limits from disk or permission failures and name the runtime host actually running the watcher.",
+        "The remediation names a non-privileged action first; Lando never runs sysctl or restarts global services automatically.",
+        "The failure is surfaced without logging secrets, using the canonical redaction path for any captured output.",
+        "Deterministic tests inject each failure class; live evidence is recorded when a reproduction is feasible in an isolated sandbox; focused tests with a positive count, the doctor-walkthrough guide, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-615"],
+      "priority": 56,
+      "notes": "Follow-up to US-615 routing. Watcher runs inside the provider host (managed Podman machine on macOS/Windows), so the diagnostic must name that host."
     }
   ]
 }

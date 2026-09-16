@@ -5,6 +5,8 @@ import {
   type CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type HomePathCapabilityError,
+  type LandofileUnknownEventError,
   type NoProviderInstalledError,
   type ProviderConfigError,
   type ProviderUnavailableError,
@@ -30,6 +32,7 @@ import {
   TunnelService,
 } from "@lando/sdk/services";
 
+import { routerEnabled } from "../config/router-config.ts";
 import {
   type ResolvedAppTarget,
   type UserLandofileError,
@@ -70,8 +73,10 @@ type ShareServices = LandofileService | RuntimeProviderRegistry | AppPlanner;
 
 type AppPlanResolutionError =
   | UserLandofileError
+  | LandofileUnknownEventError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -144,8 +149,12 @@ const resolvePlan = (
   });
 };
 
-const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
-  const firstRoute = plan.routes[0];
+/**
+ * Default share target. A shared-router hostname is only reachable when the
+ * router publishes it, so a disabled router shares the app itself instead.
+ */
+export const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
+  const firstRoute = routerEnabled(plan) ? plan.routes[0] : undefined;
   if (firstRoute !== undefined)
     return { _tag: "route", routeId: firstRoute.hostname, hostname: firstRoute.hostname };
   return { _tag: "route", routeId: plan.id };

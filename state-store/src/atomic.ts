@@ -3,11 +3,7 @@ import { type FileHandle, lstat, mkdir, open, rename, unlink } from "node:fs/pro
 import { dirname } from "node:path";
 
 import { Effect, Ref } from "effect";
-import {
-  type OwnerOnlyFileAccess,
-  PrivateFileAccessError,
-  enforceOwnerOnlyFileAccess,
-} from "./private-file-access.ts";
+import { type OwnerOnlyFileAccess, PrivateFileAccessError } from "./private-file-access.ts";
 
 export const syncDirectory = async (path: string): Promise<void> => {
   // Windows does not support opening directories for fsync through this adapter.
@@ -87,9 +83,13 @@ export const writeFileAtomicScoped = (
             if (options.mode !== undefined) await handle.chmod(options.mode);
             if (
               options.mode === 0o600 &&
-              (options.privateFileAccess !== undefined || process.platform === "win32")
+              process.platform === "win32" &&
+              options.privateFileAccess === undefined
             ) {
-              await (options.privateFileAccess ?? enforceOwnerOnlyFileAccess)(tempPath);
+              throw new PrivateFileAccessError(tempPath);
+            }
+            if (options.mode === 0o600 && options.privateFileAccess !== undefined) {
+              await options.privateFileAccess(tempPath);
               const current = await lstat(tempPath);
               if (current.dev !== identity.dev || current.ino !== identity.ino) {
                 throw new PrivateFileAccessError(tempPath);

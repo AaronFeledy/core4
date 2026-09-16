@@ -3,11 +3,15 @@ import { dirname, normalize, relative, resolve, sep } from "node:path";
 
 import { type WorkspacePackage, resolveWorkspaceSpecifier } from "../graph.ts";
 import type { FileRecord, ProgramContext } from "../types.ts";
+import { isWorkspaceTestTargetAllowed } from "./package-dag-policy.ts";
 
 const TEST_MODULE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"] as const;
 const TEST_FILE_SUFFIXES = TEST_MODULE_EXTENSIONS.map((extension) => `.test${extension}`);
 
+type TestTierEdgeKind = "detached" | "direction";
+
 type TestTierEdgeViolation = {
+  readonly kind: TestTierEdgeKind;
   readonly file: string;
   readonly specifier: string;
   readonly line: number;
@@ -97,6 +101,7 @@ const collectTestEdges = async (
         const target = owners.find((candidate) => containsResolvedPath(candidate, targetPath));
         if (target === undefined || target.name === owner.name) continue;
         violations.push({
+          kind: "detached",
           file: file.relativePath,
           line: edge.line,
           specifier: edge.specifier,
@@ -106,14 +111,21 @@ const collectTestEdges = async (
         continue;
       }
       const target = workspaceTarget(edge.specifier, owners);
-      if (
-        target === undefined ||
-        target.name === owner.name ||
-        publicSubpath(edge.specifier, target, packages)
-      ) {
+      if (target === undefined || target.name === owner.name) continue;
+      if (!isWorkspaceTestTargetAllowed(owner.name, target.name)) {
+        violations.push({
+          kind: "direction",
+          file: file.relativePath,
+          line: edge.line,
+          specifier: edge.specifier,
+          owner: owner.name,
+          target: target.name,
+        });
         continue;
       }
+      if (publicSubpath(edge.specifier, target, packages)) continue;
       violations.push({
+        kind: "detached",
         file: file.relativePath,
         line: edge.line,
         specifier: edge.specifier,
@@ -151,6 +163,14 @@ export const checkPackageTestEdges = async (
   packages: ReadonlyMap<string, WorkspacePackage>,
 ): Promise<void> => {
   for (const violation of await collectTestEdges(context, packages)) {
+    if (violation.kind === "direction") {
+      context.report(
+        violation.file,
+        violation.line,
+        `[PackageDagForbiddenTestEdge] ${violation.owner} test -> ${violation.specifier}. Remediation: ${violation.target} is not an allowed test-tier target for ${violation.owner}. Move the test to ${violation.target}/test, import the owning package's testing subpath (for example @lando/engine/testing/*), or document a pre-existing test-only inversion with a commented testTargets override; do not add an upward dependency solely to make a test pass.`,
+      );
+      continue;
+    }
     context.report(
       violation.file,
       violation.line,

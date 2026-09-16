@@ -12,16 +12,19 @@ import { Context, Effect, Layer, Schema } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
 import type { StateStoreError } from "@lando/sdk/errors";
-import { ProcessRunner, type StateBucket } from "@lando/sdk/services";
+import type { StateBucket } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
 import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 import { encodeFrame } from "@lando/state-store/codec";
 import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
-import { type PrivateFileAccess, makeOwnerOnlyFileAccess } from "@lando/state-store/private-file-access";
+import {
+  type PrivateFileAccess,
+  PrivateFileAccessLive,
+  PrivateFileAccessService,
+} from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-import { ownerOnlyFileAccess } from "../services/private-file-access.ts";
 
 const REGISTRY_VERSION = 1 as const;
 
@@ -189,8 +192,8 @@ const migrateLegacyEnvelope = (privateFileAccess: PrivateFileAccess): Effect.Eff
  * handle keep working with the same token-checked release semantics.
  */
 export const acquireScratchRegistryLock = (
+  privateFileAccess: PrivateFileAccess,
   paths: ScratchRegistryPaths = scratchRegistryPaths(),
-  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
 ): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, ScratchAppError> =>
   acquireAdvisoryLockAt(paths.lock, "registry.lock", { privateFileAccess }).pipe(
     Effect.mapError((cause) =>
@@ -233,9 +236,7 @@ const openRegistryBucket = (
       ),
     );
 
-export const makeScratchRegistry = (
-  privateFileAccess: PrivateFileAccess = ownerOnlyFileAccess,
-): ScratchRegistryService => {
+export const makeScratchRegistry = (privateFileAccess: PrivateFileAccess): ScratchRegistryService => {
   const withBucket = <A>(
     operation: string,
     message: string,
@@ -278,12 +279,12 @@ export const makeScratchRegistry = (
   return { read, upsert, remove, list, get };
 };
 
-export const ScratchRegistryWithProcessRunnerLive: Layer.Layer<ScratchRegistry, never, ProcessRunner> =
-  Layer.effect(
-    ScratchRegistry,
-    Effect.map(ProcessRunner, (processRunner) =>
-      makeScratchRegistry(makeOwnerOnlyFileAccess({ processRunner })),
-    ),
-  );
+export const ScratchRegistryWithPrivateFileAccessLive: Layer.Layer<
+  ScratchRegistry,
+  never,
+  PrivateFileAccessService
+> = Layer.effect(ScratchRegistry, Effect.map(PrivateFileAccessService, makeScratchRegistry));
 
-export const ScratchRegistryLive = Layer.succeed(ScratchRegistry, makeScratchRegistry(ownerOnlyFileAccess));
+export const ScratchRegistryLive = ScratchRegistryWithPrivateFileAccessLive.pipe(
+  Layer.provide(PrivateFileAccessLive),
+);

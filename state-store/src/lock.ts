@@ -77,17 +77,39 @@ const lockError = (operation: string, lockPath: string, cause?: unknown): StateS
 export const makeLockToken = (): string =>
   `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+export type AdvisoryLockRecord = LockRecord;
+
+/** Read the owner record at an exact lock path, or `null` when absent/invalid. */
+export const peekAdvisoryLockRecord = (lockPath: string): Promise<LockRecord | null> =>
+  readLockRecord(lockPath);
+
+export interface AdvisoryLockWaitOptions {
+  readonly expireLiveOwner?: boolean;
+  /** Overall acquire deadline. Defaults to {@link LOCK_ATTEMPTS} × {@link LOCK_RETRY_MS}. */
+  readonly timeoutMs?: number;
+  readonly retryMs?: number;
+  /** Runs once after the first contended attempt, before further retries. */
+  readonly onWait?: Effect.Effect<void>;
+}
+
 const acquire = (
   lockPath: string,
   token: string,
   options: {
     readonly operation: string;
     readonly expireLiveOwner?: boolean;
+    readonly timeoutMs?: number;
+    readonly retryMs?: number;
+    readonly onWait?: Effect.Effect<void>;
     readonly privateFileAccess: PrivateFileAccess;
   },
 ): Effect.Effect<void, StateStoreError> =>
   Effect.gen(function* () {
-    for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
+    const retryMs = options.retryMs ?? LOCK_RETRY_MS;
+    const timeoutMs = options.timeoutMs ?? LOCK_ATTEMPTS * LOCK_RETRY_MS;
+    const deadline = Date.now() + timeoutMs;
+    let announced = false;
+    for (;;) {
       const acquired = yield* Effect.tryPromise({
         try: async () => {
           try {
@@ -160,9 +182,13 @@ const acquire = (
         catch: (cause) => lockError(options.operation, lockPath, cause),
       });
       if (acquired) return;
-      yield* Effect.sleep(`${LOCK_RETRY_MS} millis`);
+      if (Date.now() >= deadline) return yield* Effect.fail(lockError(options.operation, lockPath));
+      if (!announced && options.onWait !== undefined) {
+        announced = true;
+        yield* options.onWait;
+      }
+      yield* Effect.sleep(`${retryMs} millis`);
     }
-    return yield* Effect.fail(lockError(options.operation, lockPath));
   });
 
 const release = (
@@ -195,6 +221,9 @@ export const acquireAdvisoryLockAt = (
   operation: string,
   options: {
     readonly expireLiveOwner?: boolean;
+    readonly timeoutMs?: number;
+    readonly retryMs?: number;
+    readonly onWait?: Effect.Effect<void>;
     readonly privateFileAccess: PrivateFileAccess;
   },
 ): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, StateStoreError> => {
@@ -214,7 +243,7 @@ export const acquireAdvisoryLockAt = (
  * or interrupt).
  */
 export const withAdvisoryLockUsing =
-  (privateFileAccess: PrivateFileAccess) =>
+  (privateFileAccess: PrivateFileAccess, options: AdvisoryLockWaitOptions = {}) =>
   <A, E>(file: string, operation: string, body: Effect.Effect<A, E>): Effect.Effect<A, E | StateStoreError> =>
     canonicalLockTarget(file).pipe(
       Effect.flatMap((canonicalFile) => {
@@ -224,6 +253,7 @@ export const withAdvisoryLockUsing =
           acquire(lockPath, token, {
             operation,
             privateFileAccess,
+            ...options,
           }),
           () => body,
           () => release(lockPath, token, privateFileAccess),

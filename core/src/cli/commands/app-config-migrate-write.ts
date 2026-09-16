@@ -1,4 +1,3 @@
-import { ownerOnlyFileAccess } from "@lando/engine/services/private-file-access";
 import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
 import { createStandaloneRedactor } from "@lando/redaction/service";
@@ -59,7 +58,7 @@ interface WriteRecipeMigrationRequest {
   readonly appRoot: string;
   readonly document: Record<string, unknown>;
   readonly expectedBefore: Uint8Array;
-  readonly privateFileAccess?: PrivateFileAccess;
+  readonly privateFileAccess: PrivateFileAccess;
 }
 
 export const writeRecipeMigration = ({
@@ -82,7 +81,7 @@ export const writeRecipeMigration = ({
     const redactor = createStandaloneRedactor("secrets");
     yield* makeManagedFileTransactions({
       journalRoot: () => resolveLandoRoots().userDataRoot,
-      privateFileAccess: privateFileAccess ?? ownerOnlyFileAccess,
+      privateFileAccess,
     })
       .run({
         appRoot,

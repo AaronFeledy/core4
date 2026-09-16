@@ -13,6 +13,7 @@ import type { AppPlan, AppRef, PublishedEndpoint, RoutePlan, ServicePlan } from 
 import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ShellRunner } from "@lando/sdk/services";
 
+import { routerEnabled } from "@lando/engine/config/router-config";
 import { publishedEndpointHost, publishedEndpointUrl } from "@lando/engine/operations/authority-url";
 import { canOpenHost, openUrl } from "@lando/engine/services/host-opener";
 import { RedactionService } from "@lando/redaction/service";
@@ -44,7 +45,12 @@ export interface OpenTargetSelection {
   readonly all?: boolean;
 }
 
-type ResolvablePlan = Pick<AppPlan, "services" | "routes">;
+type ResolvablePlan = Pick<AppPlan, "services" | "routes" | "router">;
+
+// A route hostname is only openable while the router publishes it, so a disabled
+// router leaves every selection form with published host ports alone.
+const openableRoutes = (plan: ResolvablePlan): ReadonlyArray<RoutePlan> =>
+  routerEnabled(plan) ? plan.routes : [];
 
 const OPENABLE_SCHEMES = new Set(["http:", "https:"]);
 
@@ -79,7 +85,7 @@ const endpointOpenTarget = (service: ServicePlan, endpoint: PublishedEndpoint): 
 };
 
 const routesForService = (plan: ResolvablePlan, service: string): RoutePlan[] =>
-  plan.routes.filter((route) => String(route.service) === service);
+  openableRoutes(plan).filter((route) => String(route.service) === service);
 
 const preferHttps = (routes: ReadonlyArray<RoutePlan>): RoutePlan | undefined =>
   routes.find((route) => route.scheme === "https" || route.scheme === "both") ?? routes[0];
@@ -102,7 +108,7 @@ export const resolveOpenTargets = (
   selection: OpenTargetSelection,
 ): ReadonlyArray<OpenTarget> => {
   if (selection.route !== undefined) {
-    const match = plan.routes.find((route) => route.hostname === selection.route);
+    const match = openableRoutes(plan).find((route) => route.hostname === selection.route);
     return match === undefined ? [] : [buildOpenTarget(match)];
   }
   if (selection.service !== undefined) {
@@ -116,7 +122,8 @@ export const resolveOpenTargets = (
     return endpoint === undefined ? [] : [endpoint];
   }
   if (selection.all === true) {
-    if (plan.routes.length > 0) return plan.routes.map(buildOpenTarget);
+    const routes = openableRoutes(plan);
+    if (routes.length > 0) return routes.map(buildOpenTarget);
     return Object.values(plan.services).flatMap((service) =>
       endpointTargetsForService(plan, String(service.name)),
     );
@@ -190,6 +197,20 @@ export const openForPlan = (
     if (targets.length === 0) {
       const knownServices = Object.values(plan.services).map((service) => String(service.name));
       const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
+      const unpublishedRoutes = !routerEnabled(plan) && plan.routes.length > 0;
+      const askedForUnpublishedRoute =
+        unpublishedRoutes &&
+        options.route !== undefined &&
+        plan.routes.some((route) => route.hostname === options.route);
+      if (askedForUnpublishedRoute) {
+        return yield* Effect.fail(
+          new OpenTargetUnresolvedError({
+            message: `No openable URL matched --route ${options.route} for ${plan.name}: that hostname is declared but the router is disabled. Known services: ${knownServicesText}.`,
+            remediation:
+              "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or omit `--route` to open a published http host port.",
+          }),
+        );
+      }
       if (
         (options.service !== undefined || options.route !== undefined) &&
         resolveOpenTargets(plan, { all: true }).length > 0
@@ -205,10 +226,14 @@ export const openForPlan = (
       }
       return yield* Effect.fail(
         new OpenTargetUnresolvedError({
-          message: `No openable URL for ${plan.name}: the app declares no matching route. Known services: ${knownServicesText}.`,
+          message: unpublishedRoutes
+            ? `No openable URL for ${plan.name}: its routes are declared but the router is disabled, and no service publishes an http host port. Known services: ${knownServicesText}.`
+            : `No openable URL for ${plan.name}: the app declares no matching route. Known services: ${knownServicesText}.`,
           app: plan.name,
           services: knownServices,
-          remediation: "Declare a route under `proxy:` in your Landofile, then rerun `lando open`.",
+          remediation: unpublishedRoutes
+            ? "Set `router:` `enabled: true` in your Landofile to publish the declared routes, or publish an http endpoint on a host port, then rerun `lando open`."
+            : "Declare a route under `proxy:` in your Landofile, then rerun `lando open`.",
         }),
       );
     }

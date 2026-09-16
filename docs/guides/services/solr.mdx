@@ -54,6 +54,25 @@ lando solr-cli /solr/admin/info/system
 
 That's the same endpoint the built-in healthcheck curls (`curl -sf http://localhost:8983/solr/admin/info/system`) before Lando reports `post-start`.
 
+## Ship your own core config
+
+Set `config.dir` to an app-relative directory that holds your `solrconfig.xml`, `managed-schema`, and friends:
+
+```yaml
+services:
+  search:
+    type: solr
+    cores: [default, products]
+    config:
+      dir: ./config/solr
+```
+
+Lando mounts that directory read-only at `/etc/lando/solr/conf` inside the container. When the service starts, it copies the contents into `/var/solr/data/<core>/conf` for each core you declared, so `default` and `products` above both get the same config.
+
+The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
+
+If you also set `command:` on the service, yours wins. Lando won't copy that config into each core unless your command does it.
+
 ## Pin a version
 
 Set `image:` when `solr:9` isn't the version you want:

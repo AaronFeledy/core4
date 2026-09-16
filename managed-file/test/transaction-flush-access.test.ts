@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import { join } from "node:path";
 import { createStage, digestOf, finishAppliedMode, mutateEntry, snapshot } from "../src/transaction-fs.ts";
 import type { Stage } from "../src/transaction-journal.ts";
-import { fixture } from "./transaction-fixture.ts";
+import { fixture, ownerOnlyFileAccess } from "./transaction-fixture.ts";
 
 for (const operation of ["publish", "finish-mode"] as const) {
   test(`${operation} opens a writable handle when Windows requires write access to flush`, async () => {
@@ -24,6 +24,7 @@ for (const operation of ["publish", "finish-mode"] as const) {
       record: (created) => {
         stage = created;
       },
+      privateFileAccess: ownerOnlyFileAccess,
     });
     if (stage === undefined) throw new Error("missing stage");
     const entry = {
@@ -49,7 +50,9 @@ for (const operation of ["publish", "finish-mode"] as const) {
     });
     try {
       // When publication or interrupted mode recovery flushes the final file.
-      await (operation === "publish" ? mutateEntry(appRoot, entry) : finishAppliedMode(appRoot, entry));
+      await (operation === "publish"
+        ? mutateEntry(appRoot, entry, ownerOnlyFileAccess)
+        : finishAppliedMode(appRoot, entry, ownerOnlyFileAccess));
       // Then the replacement bytes and intended mode are durable and verifiable.
       expect((await snapshot(target)).state).toEqual(entry.after);
     } finally {

@@ -7,6 +7,7 @@ import { Cause, Effect, Exit } from "effect";
 import { composeServiceDispositions, composeTagDispositions } from "@lando/landofile/compose/dispositions";
 import { ComposeKeyRejectedError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { loadLandofileFile, loadLandofileLayers } from "../../src/services/landofile-live";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-compose-rejection-"));
@@ -26,7 +27,12 @@ const failureOf = <A, E>(exit: Exit.Exit<A, E>): E | undefined => {
 const loadYamlExit = async (dir: string, content: string) => {
   const source = join(dir, ".lando.yml");
   await writeFile(source, content);
-  return { source, exit: await Effect.runPromiseExit(loadLandofileFile(source)) };
+  return {
+    source,
+    exit: await Effect.runPromiseExit(
+      loadLandofileFile(source).pipe(Effect.provide(makeTestStateStore().layer)),
+    ),
+  };
 };
 
 type ExpectedRejection = {
@@ -163,7 +169,11 @@ describe("Landofile Compose rejection surface", () => {
       );
 
       // When
-      const error = failureOf(await Effect.runPromiseExit(loadLandofileFile(source)));
+      const error = failureOf(
+        await Effect.runPromiseExit(
+          loadLandofileFile(source).pipe(Effect.provide(makeTestStateStore().layer)),
+        ),
+      );
 
       // Then
       expectRejection(error, {
@@ -184,7 +194,11 @@ describe("Landofile Compose rejection surface", () => {
       await writeFile(overlayPath, yamlService("    container_name: overlay-web"));
 
       // When
-      const error = failureOf(await Effect.runPromiseExit(loadLandofileLayers(dir, canonicalPath)));
+      const error = failureOf(
+        await Effect.runPromiseExit(
+          loadLandofileLayers(dir, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+        ),
+      );
 
       // Then
       expectRejection(error, {

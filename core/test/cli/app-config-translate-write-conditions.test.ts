@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { ConfigTranslateSourceId, PortablePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { writeTranslateTargets } from "../../src/cli/commands/app-config-translate-write.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -35,6 +36,7 @@ test("rejects a changed unselected lower layer without changing the selected tar
     Effect.either(
       writeTranslateTargets({
         appRoot,
+        privateFileAccess: ownerOnlyFileAccess,
         documents,
         shape: { mode: "single-layer", selectedSourceIds: [".lando.local.yml"], writableLayerIds: ["local"] },
         preview: {

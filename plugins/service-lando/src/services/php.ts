@@ -6,8 +6,10 @@ import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import {
+  PHP_COMPOSER_STEP_ID,
   assertPhpComposerCompatible,
   phpPrerequisiteBuildSteps,
   resolvePhpComposer,
@@ -19,12 +21,19 @@ import {
   apacheStartCommand,
   assertPhpViaKeys,
   fpmStartCommand,
+  hasCustomPhpImage,
   phpEndpointProtocol,
   phpImageFor,
   phpListenPort,
   resolvePhpVia,
 } from "./php-via.ts";
-import { phpXdebugBuildStep, phpXdebugConfigEnv, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
+import {
+  assertPhpXdebugSupported,
+  phpXdebugBuildStep,
+  phpXdebugConfigEnv,
+  phpXdebugTooling,
+  resolvePhpXdebug,
+} from "./php-xdebug.ts";
 
 export {
   PHP_APT_PACKAGE_PINS,
@@ -32,13 +41,19 @@ export {
   PHP_COMPOSER,
   PHP_COMPOSER_COMMAND,
   PHP_COMPOSER_RELEASES,
+  PHP_COMPOSER_STEP_ID,
   PHP_PREREQUISITES_COMMAND,
 } from "./php-prerequisites.ts";
 
+export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
+
 export { PHP_FPM_LOG_SOURCES } from "./php-via.ts";
 
-export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5"] as const;
+export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] as const;
 export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
+const PHP_ARTIFACTS = Object.fromEntries(
+  SUPPORTED_PHP_VERSIONS.map((version) => [version, phpImageFor(version, "apache")]),
+);
 
 export const PHP_FEATURE_ID = "service-lando.php" as const;
 export const PHP_FEATURE_PRIORITY = 600;
@@ -80,19 +95,19 @@ const configFor = (ctx: ServiceFeatureContext): PhpFeatureConfig => ctx.config a
 
 const applyApacheShape = (ctx: ServiceFeatureContext, webroot: string, allowOverride: boolean): void => {
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
-  if (ctx.normalizedConfig.image === undefined) {
+  if (!hasCustomPhpImage(ctx.normalizedConfig)) {
     ctx.setCommand(apacheStartCommand(webroot, allowOverride));
   }
 };
 
 const applyFpmShape = (ctx: ServiceFeatureContext): void => {
-  if (ctx.normalizedConfig.image === undefined && ctx.normalizedConfig.command === undefined) {
+  if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
     ctx.setCommand(fpmStartCommand(phpListenPort("fpm", ctx.normalizedConfig.port)));
   }
 };
 
 const applyCliShape = (ctx: ServiceFeatureContext): void => {
-  if (ctx.normalizedConfig.image === undefined && ctx.normalizedConfig.command === undefined) {
+  if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
     ctx.setCommand([...PHP_CLI_KEEP_ALIVE]);
   }
 };
@@ -120,13 +135,21 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { allowOverride, version, via, webroot } = configFor(ctx);
   const port = phpListenPort(via, service.port);
+  const customImage = hasCustomPhpImage(service);
+  const artifact = customImage && service.image !== undefined ? service.image : phpImageFor(version, via);
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? phpImageFor(version, via) });
+  ctx.setArtifact({ kind: "ref", ref: artifact });
   const xdebug = resolvePhpXdebug(service.xdebug);
-  if (service.image === undefined) {
+  const composerRelease = resolvePhpComposer(service.composer);
+  if (!customImage) {
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
     if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
   }
+  const composerPackagesStep = phpComposerPackagesBuildStep(resolvePhpComposerPackages(service.composer), {
+    dependsOnComposerStep: !customImage && composerRelease !== false,
+    composerStepId: PHP_COMPOSER_STEP_ID,
+  });
+  if (composerPackagesStep !== undefined) ctx.addBuildStep(composerPackagesStep);
   if (xdebug !== false) {
     for (const [name, value] of Object.entries(phpXdebugConfigEnv())) {
       ctx.addEnv(name, value);
@@ -187,32 +210,35 @@ export const phpServiceFeature: ServiceFeatureDefinition = {
     }),
 };
 
-const normalizedService = (service: ServiceConfig, resolvedVersion: SupportedPhpVersion): ServiceConfig => ({
-  ...service,
-  type: `php:${resolvedVersion}`,
-});
-
 const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
   id: `php:${version}`,
   name: `php:${version}`,
   base: "lando",
+  versions: SUPPORTED_PHP_VERSIONS,
+  artifacts: PHP_ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: PhpServiceConfig,
   resolve: (input) =>
     Effect.try({
       try: () => {
         const resolvedVersion = validateVersion(input.service.type, version);
         resolvePhpComposer(input.service.composer);
+        resolvePhpComposerPackages(input.service.composer);
         assertPhpComposerCompatible(resolvedVersion, input.service.composer);
         const via = resolvePhpVia(input.service.via);
         assertPhpViaKeys(via, input.service);
         const xdebug = resolvePhpXdebug(input.service.xdebug);
+        assertPhpXdebugSupported(resolvedVersion, xdebug);
         resolvePhpDbClient(input.service.db_client);
         const webroot = Schema.decodeUnknownSync(PhpWebroot)(input.service.webroot ?? APP_MOUNT_TARGET);
         const allowOverride = input.service.allowOverride ?? false;
 
         return {
           base: "lando" as const,
-          normalizedConfig: normalizedService(input.service, resolvedVersion),
+          normalizedConfig: {
+            ...input.service,
+            type: `php:${resolvedVersion}`,
+          } satisfies ServiceConfig,
           logSources: PHP_FPM_LOG_SOURCES,
           features: [
             { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot } },
@@ -238,3 +264,4 @@ export const php82ServiceType: ServiceType = makePhpServiceType("8.2");
 export const php83ServiceType: ServiceType = makePhpServiceType("8.3");
 export const php84ServiceType: ServiceType = makePhpServiceType("8.4");
 export const php85ServiceType: ServiceType = makePhpServiceType("8.5");
+export const php86ServiceType: ServiceType = makePhpServiceType("8.6");

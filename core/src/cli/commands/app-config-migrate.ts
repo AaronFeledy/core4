@@ -22,6 +22,7 @@ import { BUILTIN_RECIPE_SNAPSHOTS } from "../../recipes/builtin/snapshots.ts";
 import { analyzeRecipeMigration } from "./app-config-migrate-analysis.ts";
 import type { AppConfigMigrateResult, MigrateBlockedReason } from "./app-config-migrate-output.ts";
 import {
+  AppConfigMigrateCommitError,
   AppConfigMigrateError,
   honorMigrationJournal,
   writeRecipeMigration,
@@ -226,13 +227,21 @@ export const appConfigMigrate = (options: AppConfigMigrateOptions = {}) =>
           }),
         );
       if (!options.dryRun && analysis.committed !== undefined) {
+        if (options.privateFileAccess === undefined) {
+          return yield* Effect.fail(
+            new AppConfigMigrateCommitError({
+              message: "Private file access is unavailable for the migration commit.",
+              phase: "prepare",
+              reason: "private-file-access-unavailable",
+              remediation: "Run the migration through the Lando runtime.",
+            }),
+          );
+        }
         yield* writeRecipeMigration({
           appRoot,
           document: analysis.document,
           expectedBefore: originalBytes.right,
-          ...(options.privateFileAccess === undefined
-            ? {}
-            : { privateFileAccess: options.privateFileAccess }),
+          privateFileAccess: options.privateFileAccess,
         });
       }
       let precedingBlock = false;

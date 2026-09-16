@@ -73,7 +73,7 @@ describe("lando init --recipe (non-node-postgres)", () => {
         "id: my-recipe\ntitle: My Recipe\ndescription: A custom recipe.\nversion: 0.0.1\n",
       );
 
-      const { initApp } = await import("../../src/cli/commands/init.ts");
+      const { initAppWithOwnerOnlyFileAccess: initApp } = await import("../_support/private-file-access.ts");
       let caught: unknown;
       try {
         await initApp({ cwd: dir, full: false, recipe: "./my-recipe", nonInteractive: true });
@@ -126,7 +126,7 @@ describe("lando init --full", () => {
   test("resolves a relative answers file against InitAppOptions.cwd", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, "answers.json"), JSON.stringify({ name: "from-file" }), "utf8");
-      const { initApp } = await import("../../src/cli/commands/init.ts");
+      const { initAppWithOwnerOnlyFileAccess: initApp } = await import("../_support/private-file-access.ts");
 
       const result = await initApp({
         cwd: dir,
@@ -166,7 +166,9 @@ describe("lando init --full", () => {
       const directExit = await Effect.runPromiseExit(
         Effect.tryPromise({
           try: async () => {
-            const { initApp } = await import("../../src/cli/commands/init.ts");
+            const { initAppWithOwnerOnlyFileAccess: initApp } = await import(
+              "../_support/private-file-access.ts"
+            );
             await initApp({ cwd: dir, full: true, name: "existing", nonInteractive: true });
           },
           catch: (cause) => cause,
@@ -189,7 +191,7 @@ describe("lando init --full", () => {
       await mkdir(join(dir, "existing"));
       await Bun.write(join(dir, "existing", "package.json"), JSON.stringify({ name: "keep-me" }));
 
-      const { initApp } = await import("../../src/cli/commands/init.ts");
+      const { initAppWithOwnerOnlyFileAccess: initApp } = await import("../_support/private-file-access.ts");
       const result = await initApp({
         cwd: dir,
         full: true,
@@ -215,7 +217,7 @@ describe("lando init --recipe (non-node-postgres)", () => {
         "id: my-recipe\ntitle: My Recipe\ndescription: A test local recipe.\nversion: 0.1.0\n",
       );
 
-      const { initApp } = await import("../../src/cli/commands/init.ts");
+      const { initAppWithOwnerOnlyFileAccess: initApp } = await import("../_support/private-file-access.ts");
       let caught: unknown;
       try {
         await initApp({

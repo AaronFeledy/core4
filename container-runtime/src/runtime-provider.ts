@@ -30,6 +30,8 @@ export interface ResolvedProviderOpsInput {
       target: ServiceSelector,
       action: "start" | "stop" | "restart",
     ) => Effect.Effect<void, ProviderError>;
+    readonly resume?: NonNullable<RuntimeProviderShape["resume"]>;
+    readonly suspend?: NonNullable<RuntimeProviderShape["suspend"]>;
     readonly waitForExit: (
       plan: AppPlan,
       target: ServiceSelector,
@@ -58,6 +60,8 @@ export type ResolvedProviderOps = Pick<
   | "start"
   | "stop"
   | "restart"
+  | "resume"
+  | "suspend"
   | "waitForExit"
   | "exec"
   | "execStream"
@@ -67,6 +71,9 @@ export type ResolvedProviderOps = Pick<
   | "snapshotVolume"
   | "restoreVolume"
   | "listVolumes"
+  | "locateVolume"
+  | "observeVolume"
+  | "adoptVolume"
   | "removeVolume"
   | "copyToService"
   | "copyFromService"
@@ -121,6 +128,15 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     Stream.unwrap(resolveTarget(target, operation, (plan) => Effect.succeed(delegate(plan))));
   const requireDataPlane = (operation: string): Effect.Effect<ProviderDataPlane, ProviderUnavailableError> =>
     input.dataPlane === undefined ? Effect.fail(unavailable(operation)) : Effect.succeed(input.dataPlane);
+  const resolveRunSpec = (
+    spec: Parameters<RuntimeProviderShape["run"]>[0],
+    operation: "run" | "runStream",
+  ): Effect.Effect<Parameters<RuntimeProviderShape["run"]>[0], ProviderError> => {
+    const owner = spec.owner;
+    return owner === undefined
+      ? before.pipe(Effect.as(spec))
+      : resolveTarget(owner, operation, (plan) => Effect.succeed({ ...spec, owner: { ...owner, plan } }));
+  };
 
   return {
     start: (target) =>
@@ -128,6 +144,16 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     stop: (target) => resolveTarget(target, "stop", (plan) => input.service.lifecycle(plan, target, "stop")),
     restart: (target) =>
       resolveTarget(target, "restart", (plan) => input.service.lifecycle(plan, target, "restart")),
+    resume: (target, identity) =>
+      resolveTarget(target, "resume", () => {
+        const resume = input.service.resume;
+        return resume === undefined ? Effect.fail(unavailable("resume")) : resume(target, identity);
+      }),
+    suspend: (target, identity) =>
+      resolveTarget(target, "suspend", () => {
+        const suspend = input.service.suspend;
+        return suspend === undefined ? Effect.fail(unavailable("suspend")) : suspend(target, identity);
+      }),
     waitForExit: (target, options) =>
       resolveTarget(target, "waitForExit", (plan) => input.service.waitForExit(plan, target, options)),
     exec: (target, command) =>
@@ -135,14 +161,48 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
     execStream: (target, command) =>
       resolveTargetStream(target, "execStream", (plan) => input.service.execStream(plan, target, command)),
     inspect: (target) => resolveTarget(target, "inspect", (plan) => input.service.inspect(plan, target)),
+    locateVolume: (ref) =>
+      requireDataPlane("locateVolume").pipe(
+        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.locateVolume(ref)))),
+      ),
+    observeVolume: (target, destination) =>
+      resolveTarget(target, "observeVolume", (plan) =>
+        Effect.gen(function* () {
+          const runtime = yield* input.service.inspect(plan, target);
+          if (!runtime.containerId) return yield* Effect.fail(unavailable("observeVolume"));
+          const dataPlane = yield* requireDataPlane("observeVolume");
+          return yield* dataPlane.observeVolume({
+            app: target.app,
+            containerId: runtime.containerId,
+            destination,
+          });
+        }),
+      ),
+    adoptVolume: (target, destination) =>
+      resolveTarget(target, "adoptVolume", (plan) =>
+        Effect.gen(function* () {
+          if (!plan.identity) return yield* Effect.fail(unavailable("adoptVolume"));
+          const runtime = yield* input.service.inspect(plan, target);
+          if (!runtime.containerId) return yield* Effect.fail(unavailable("adoptVolume"));
+          const dataPlane = yield* requireDataPlane("adoptVolume");
+          return yield* dataPlane.adoptVolume({
+            app: target.app,
+            containerId: runtime.containerId,
+            destination,
+            ownerRoot: plan.identity.appRoot,
+          });
+        }),
+      ),
     run: (spec) =>
       requireDataPlane("run").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.run(spec)))),
+        Effect.flatMap((dataPlane) => resolveRunSpec(spec, "run").pipe(Effect.flatMap(dataPlane.run))),
       ),
     runStream: (spec) =>
       Stream.unwrap(
         requireDataPlane("runStream").pipe(
-          Effect.flatMap((dataPlane) => before.pipe(Effect.map(() => dataPlane.runStream(spec)))),
+          Effect.flatMap((dataPlane) =>
+            resolveRunSpec(spec, "runStream").pipe(Effect.map(dataPlane.runStream)),
+          ),
         ),
       ),
     snapshotVolume: (spec) =>
@@ -157,9 +217,11 @@ export const makeResolvedProviderOps = (input: ResolvedProviderOpsInput): Resolv
       requireDataPlane("listVolumes").pipe(
         Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.listVolumes(filter)))),
       ),
-    removeVolume: (ref) =>
+    removeVolume: (ref, expectedGeneration) =>
       requireDataPlane("removeVolume").pipe(
-        Effect.flatMap((dataPlane) => before.pipe(Effect.flatMap(() => dataPlane.removeVolume(ref)))),
+        Effect.flatMap((dataPlane) =>
+          before.pipe(Effect.flatMap(() => dataPlane.removeVolume(ref, expectedGeneration))),
+        ),
       ),
     copyToService: (target, spec) =>
       requireDataPlane("copyToService").pipe(

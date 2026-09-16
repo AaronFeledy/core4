@@ -1,6 +1,6 @@
 import { Effect, Exit, Layer, Schema, Stream } from "effect";
 
-import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
   EngineHttpRequest,
@@ -26,6 +26,7 @@ import {
 } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
+  podmanVolumeCreationLabels,
   bringUp as runtimeBringUp,
   scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
@@ -68,6 +69,7 @@ import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
 import {
   type ServiceLifecycleOptions,
+  postExactServiceLifecycle as runtimePostExactServiceLifecycle,
   postServiceLifecycle as runtimePostServiceLifecycle,
 } from "@lando/container-runtime/service-lifecycle";
 import {
@@ -617,9 +619,17 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       ? undefined
       : makeProviderDataPlane({
           providerId: LANDO_CTX.providerId,
+          prepareWitnessImage: runtimePullImage(podmanApi, VOLUME_WITNESS_IMAGE, {
+            ctx: LANDO_CTX,
+            dialect: libpodPullDialect,
+          }),
+          ...(socketPath === undefined
+            ? {}
+            : { endpointNamespace: socketPath.startsWith("/") ? `unix://${socketPath}` : socketPath }),
           api: podmanApi,
           snapshotMode: "native",
           redactDetails,
+          volumeCreationLabels: podmanVolumeCreationLabels,
         });
 
   const resolvePlan = (appId: AppId): Effect.Effect<AppPlan | undefined, never> => {
@@ -742,6 +752,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       service: {
         lifecycle: (plan, target, action) =>
           runtimePostServiceLifecycle(plan, target, action, { ...apiOptions, ctx: LANDO_CTX }),
+        resume: (target, identity) =>
+          runtimePostExactServiceLifecycle(target, identity, "start", { ...apiOptions, ctx: LANDO_CTX }),
+        suspend: (target, identity) =>
+          runtimePostExactServiceLifecycle(target, identity, "stop", { ...apiOptions, ctx: LANDO_CTX }),
         waitForExit: (plan, target, waitOptions) =>
           runtimeWaitForExit(plan, target, {
             ...apiOptions,
@@ -915,8 +929,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             startFailureRemediation: landoStartFailureRemediation,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+            ...(applyOptions.serviceEnvironment === undefined
+              ? {}
+              : { serviceEnvironment: applyOptions.serviceEnvironment }),
+            reconcile: applyOptions.reconcile,
           });
-          yield* rememberPlan(plan);
+          yield* rememberPlan(applyOptions.recordedPlan ?? plan);
           return result;
         }),
       destroy: (target, destroyOptions) =>

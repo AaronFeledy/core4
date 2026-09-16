@@ -1,29 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
 
-import { runTooling } from "@lando/core/cli/operations";
-import { ProviderUnavailableError } from "@lando/core/errors";
+import { runTooling } from "@lando/engine/operations/tooling";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { AppPlannerLive } from "@lando/engine/services/planner";
+import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
-} from "@lando/core/schema";
+} from "@lando/sdk/schema";
 import {
   AppPlanner,
   LandofileService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
-} from "@lando/core/services";
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
-import {
-  AppPlannerLive,
-  EventServiceLive,
-  PluginRegistryLive,
-  ProviderExecToolingEngineLive,
-} from "@lando/core/testing";
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
@@ -144,6 +143,7 @@ const makeToolingLayer = (options: {
     select: () => Effect.succeed(options.provider),
   });
   return Layer.mergeAll(
+    PrivateFileAccessLive,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -160,6 +160,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
       services: {
         whoami: {
           type: "compose",
+          home: false,
           image: "traefik/whoami:v1.10",
           ports: ["8080:80"],
         },
@@ -182,9 +183,14 @@ describe("compose passthrough — scenario: third-party image with default endpo
     ]);
 
     // compose is an l337 service and must not inject the LANDO_* env layer.
-    expect(Object.keys(whoami.environment).filter((k) => k === "LANDO" || k.startsWith("LANDO_"))).toEqual(
-      [],
-    );
+    // LANDO_HOST_IP is host-reachability realization from provider capability,
+    // not part of that env layer, so it is excluded from this check.
+    expect(
+      Object.keys(whoami.environment).filter(
+        (k) => (k === "LANDO" || k.startsWith("LANDO_")) && k !== "LANDO_HOST_IP",
+      ),
+    ).toEqual([]);
+    expect(whoami.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
     expect(whoami.appMount).toMatchObject({ target: "/app", readOnly: false });
     expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(true);
@@ -199,6 +205,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
       services: {
         whoami: {
           type: "compose",
+          home: false,
           image: "traefik/whoami:v1.10",
           ports: ["8080:80"],
         },
@@ -233,6 +240,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
       services: {
         sidekick: {
           type: "compose",
+          home: false,
           image: "traefik/whoami:v1.10",
           appMount: false,
           ports: ["9090:80"],
@@ -246,9 +254,12 @@ describe("compose passthrough — scenario: third-party image with default endpo
 
     expect(sidekick.appMount).toBeUndefined();
     expect(sidekick.mounts).toEqual([]);
-    expect(Object.keys(sidekick.environment).filter((k) => k === "LANDO" || k.startsWith("LANDO_"))).toEqual(
-      [],
-    );
+    expect(
+      Object.keys(sidekick.environment).filter(
+        (k) => (k === "LANDO" || k.startsWith("LANDO_")) && k !== "LANDO_HOST_IP",
+      ),
+    ).toEqual([]);
+    expect(sidekick.environment.LANDO_HOST_IP).toBe("host.lando.internal");
     expect(sidekick.endpoints).toEqual([
       {
         _tag: "published",

@@ -61,6 +61,7 @@ describe("Compose service field preservation", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           labels: { "io.lando.role": "web" },
           networks: ["frontend"],
           configs: [
@@ -120,6 +121,7 @@ describe("Compose service field preservation", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           "x-foo": { enabled: true },
         },
       },
@@ -144,6 +146,7 @@ describe("Compose service field preservation", () => {
       services: {
         web: {
           image: "node:lts",
+          home: false,
           profiles: ["dev"],
           shm_size: "64m",
         },

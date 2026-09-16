@@ -1,29 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
 
-import { runTooling } from "@lando/core/cli/operations";
-import { ProviderUnavailableError } from "@lando/core/errors";
+import { runTooling } from "@lando/engine/operations/tooling";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { AppPlannerLive } from "@lando/engine/services/planner";
+import { ProviderExecToolingEngineLive } from "@lando/engine/services/tooling-engine";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
-} from "@lando/core/schema";
+} from "@lando/sdk/schema";
 import {
   AppPlanner,
   LandofileService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
-} from "@lando/core/services";
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
-import {
-  AppPlannerLive,
-  EventServiceLive,
-  PluginRegistryLive,
-  ProviderExecToolingEngineLive,
-} from "@lando/core/testing";
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
@@ -144,6 +143,7 @@ const makeToolingLayer = (options: {
     select: () => Effect.succeed(options.provider),
   });
   return Layer.mergeAll(
+    PrivateFileAccessLive,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -157,7 +157,7 @@ describe("meilisearch service type — scenario: index create + document post + 
   test("AppPlanner produces a meilisearch plan with HTTP endpoint, persistent storage, and /health healthcheck", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { search: { type: "meilisearch" } },
+      services: { search: { type: "meilisearch", home: false } },
     });
 
     const appPlan = await planLandofile(landofile);

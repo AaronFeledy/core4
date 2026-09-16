@@ -168,6 +168,7 @@ describe("@lando/sdk package exports", () => {
     const varnish = await import("@lando/sdk/schema/services/varnish");
     const dotnet = await import("@lando/sdk/schema/services/dotnet");
     const mssql = await import("@lando/sdk/schema/services/mssql");
+    const mysql = await import("@lando/sdk/schema/services/mysql");
     const phpmyadmin = await import("@lando/sdk/schema/services/phpmyadmin");
 
     expect(localstack.LocalStackServiceConfig).toBeDefined();
@@ -180,6 +181,7 @@ describe("@lando/sdk package exports", () => {
     expect(varnish.VarnishServiceConfig).toBeDefined();
     expect(dotnet.DotnetServiceConfig).toBeDefined();
     expect(mssql.MssqlServiceConfig).toBeDefined();
+    expect(mysql.MysqlServiceConfig).toBeDefined();
     expect(phpmyadmin.PhpMyAdminServiceConfig).toBeDefined();
   });
 
@@ -366,6 +368,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.GuideFrontmatterValidationError).toBeDefined();
     expect(errors.GuideHiddenScenarioReasonError).toBeDefined();
     expect(errors.AppIdReservedError).toBeDefined();
+    expect(errors.AppLockTimeoutError).toBeDefined();
     expect(errors.AppResolveError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();

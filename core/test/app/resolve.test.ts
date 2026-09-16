@@ -20,7 +20,7 @@ const testProviderLayers = [
 ];
 
 const landofileYaml = (name = "embedded-app", tooling = false): string =>
-  `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    image: node:lts\n    primary: true\n${
+  `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  web:\n    image: node:lts\n    primary: true\n    home: false\n${
     tooling ? "tooling:\n  build:\n    service: web\n    cmd: make build\n" : ""
   }`;
 
@@ -157,7 +157,7 @@ describe("resolveApp", () => {
       const service = ServiceName.make("web");
       await Bun.write(
         join(dir, "fragment.yml"),
-        `services:\n  ${service}:\n    image: node:lts\n    primary: true\n`,
+        `services:\n  ${service}:\n    image: node:lts\n    primary: true\n    home: false\n`,
       );
       const landofile: LandofileShape = {
         name: "embedded-app",

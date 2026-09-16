@@ -26,6 +26,7 @@ import {
   renderScratchListResult,
 } from "../../src/cli/commands/scratch.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const fixtureDir = join(import.meta.dirname, "fixtures");
 
@@ -228,7 +229,7 @@ const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
 describe("ScratchAppService list/info backed by the registry", () => {
   test("list derives attached / detached / orphan lifetime status", async () => {
     await withTempCache(async (cacheRoot) => {
-      const registry = makeScratchRegistry();
+      const registry = makeScratchRegistry(ownerOnlyFileAccess);
       await Effect.runPromise(
         registry.upsert(seedEntry(cacheRoot, { id: "scratch-attached-000001", ownerPid: process.pid })),
       );
@@ -253,7 +254,7 @@ describe("ScratchAppService list/info backed by the registry", () => {
   test("info reads mounts, network membership, and endpoints from the cached plan", async () => {
     await withTempCache(async (cacheRoot) => {
       const id = "scratch-detail-000004";
-      await Effect.runPromise(makeScratchRegistry().upsert(seedEntry(cacheRoot, { id })));
+      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(seedEntry(cacheRoot, { id })));
       const instanceRoot = join(cacheRoot, "scratch", id);
       await rm(instanceRoot, { recursive: true, force: true }).catch(() => undefined);
       await Bun.write(join(instanceRoot, ".keep"), "");
@@ -297,7 +298,9 @@ describe("ScratchAppService list/info backed by the registry", () => {
   test("info degrades gracefully to empty detail when no plan is cached", async () => {
     await withTempCache(async (cacheRoot) => {
       const id = "scratch-noplan-000005";
-      await Effect.runPromise(makeScratchRegistry().upsert(seedEntry(cacheRoot, { id, detached: true })));
+      await Effect.runPromise(
+        makeScratchRegistry(ownerOnlyFileAccess).upsert(seedEntry(cacheRoot, { id, detached: true })),
+      );
       const info = await runScratch(Effect.flatMap(ScratchAppService, (service) => service.info(id)));
       expect(info.status).toBe("detached");
       expect(info.mounts).toEqual([]);

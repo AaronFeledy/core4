@@ -87,11 +87,18 @@ const oneChunkStdin = async function* (): AsyncIterable<Uint8Array> {
   yield new Uint8Array([0x61]);
 };
 
-const runExec = (api: EngineHttpApi, command: CommandSpec) =>
-  Effect.runPromise(exec(plan, target, command, { api, ctx }));
+const runExec = (api: EngineHttpApi, command: CommandSpec, user?: string) =>
+  Effect.runPromise(
+    exec(plan, { app: appId, service: serviceName, ...(user === undefined ? {} : { user }) }, command, {
+      api,
+      ctx,
+    }),
+  );
 
-const createBody = (calls: ReadonlyArray<EngineHttpRequest>) =>
-  calls.find((call) => call.method === "POST" && call.path === createPath)?.body;
+const createBody = (calls: ReadonlyArray<EngineHttpRequest>): Record<string, unknown> | undefined => {
+  const body = calls.find((call) => call.method === "POST" && call.path === createPath)?.body;
+  return typeof body === "object" && body !== null ? (body as Record<string, unknown>) : undefined;
+};
 
 describe("podman exec AttachStdin", () => {
   test("sets AttachStdin true when only stdinStream is provided", async () => {
@@ -141,5 +148,34 @@ describe("podman exec error context", () => {
     expect(error.providerId).toBe("podman");
     expect(error.message).toContain("provider-podman");
     expect(error.remediation).toBe(ctx.remediation);
+  });
+});
+
+describe("podman exec User", () => {
+  test("sets User on the exec-create body when the target has a user", async () => {
+    // Given
+    const fake = makeFakeApi();
+
+    // When
+    await runExec(fake.api, { command: ["true"] }, "www-data");
+
+    // Then
+    const body = createBody(fake.calls);
+    expect(body).toEqual(expect.objectContaining({ User: "www-data" }));
+  });
+
+  test("omits User from the exec-create body when the target has no user", async () => {
+    // Given
+    const fake = makeFakeApi();
+
+    // When
+    await runExec(fake.api, { command: ["true"] });
+
+    // Then
+    const body = createBody(fake.calls);
+    expect(body).toBeDefined();
+    expect(typeof body).toBe("object");
+    expect(body).not.toBeNull();
+    expect("User" in (body ?? {})).toBe(false);
   });
 });

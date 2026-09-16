@@ -26,6 +26,7 @@ import { makeTransactionRecovery } from "./transaction-recovery.ts";
 export { ManagedFileTransactionError, TransactionRequest };
 export {
   ManagedFileTransactionGuardLive,
+  ManagedFileTransactionGuardWithPrivateFileAccessLive,
   makeManagedFileTransactionGuard,
 } from "./transaction-guard.ts";
 export type { RecoveryOutcome } from "./transaction-recovery.ts";
@@ -89,9 +90,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
       );
       const root = yield* transactionIO("prepare", () => canonicalRoot(request.appRoot));
       const dir = journalDirectory(root, options.journalRoot());
-      const store = yield* openJournal(root, dir, {
-        ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
-      });
+      const store = yield* openJournal(root, dir, { privateFileAccess: options.privateFileAccess });
       yield* Effect.acquireRelease(
         acquireAdvisoryLockAt(join(dir, "transaction.lock"), "transaction", {
           expireLiveOwner: false,
@@ -126,9 +125,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
                 ensureBackup({
                   path: resolve(root, before.backup),
                   bytes: plan.beforeBytes,
-                  ...(options.privateFileAccess === undefined
-                    ? {}
-                    : { privateFileAccess: options.privateFileAccess }),
+                  privateFileAccess: options.privateFileAccess,
                 }),
               );
           }
@@ -147,9 +144,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
                     });
                     created = stage;
                   },
-                  ...(options.privateFileAccess === undefined
-                    ? {}
-                    : { privateFileAccess: options.privateFileAccess }),
+                  privateFileAccess: options.privateFileAccess,
                 }),
               );
               entries.push({ ...plan.entry, stage: created });
@@ -218,7 +213,7 @@ export const makeManagedFileTransactions = (options: TransactionOptions) => {
     Effect.gen(function* () {
       const root = yield* transactionIO("inspect", () => canonicalRoot(appRoot));
       const store = yield* openJournal(root, journalDirectory(root, options.journalRoot()), {
-        ...(options.privateFileAccess === undefined ? {} : { privateFileAccess: options.privateFileAccess }),
+        privateFileAccess: options.privateFileAccess,
       });
       return yield* store.read;
     });

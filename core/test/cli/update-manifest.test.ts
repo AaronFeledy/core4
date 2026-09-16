@@ -16,15 +16,17 @@ import {
   type UpdateWindowsReplacementSpawnInput,
   buildWindowsReplacementScript,
   defaultFetchManifestBytes,
+  makeUpdateHandoff,
   resolveUpdateManifestUrl,
   scheduleWindowsReplacement,
   update,
   updateChannelForVersion,
 } from "@lando/engine/operations/update";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
 import { buildBugReport } from "../../src/cli/bug-report.ts";
-import { updateOptionsFromInput } from "../../src/cli/command-specs/meta/update.ts";
+import { updateOptionsFromInput, updateSpec } from "../../src/cli/command-specs/meta/update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const encoder = new TextEncoder();
@@ -534,7 +536,7 @@ describe("update signed manifest", () => {
     });
   });
 
-  test("POSIX self-update replaces the binary atomically and re-execs with preserved argv and env", async () => {
+  test("POSIX core-only self-update re-execs with a one-shot result handoff", async () => {
     const root = await makeTempRoot("lando-self-update-");
     const executablePath = join(root, "lando");
     await writeFile(executablePath, "old-binary");
@@ -561,10 +563,13 @@ describe("update signed manifest", () => {
         }),
       stream: noopProcessRunner.stream,
     } satisfies typeof ProcessRunner.Service;
+    const stateStore = makeTestStateStore();
+    const handoff = makeUpdateHandoff(stateStore.service);
 
     const result = await Effect.runPromise(
       update({
         channel: "stable",
+        only: "core",
         currentVersion: "4.2.0",
         fetchManifestBytes: fetcherForSelfUpdate({
           manifest,
@@ -583,26 +588,48 @@ describe("update signed manifest", () => {
         updateStatePath: join(root, "state.json"),
         verifyChecksumSignature: checksumVerifierFor(),
         verifyManifestSignature: verifierFor(),
+        handoff,
       }).pipe(
         Effect.provideService(ProcessRunner, processRunner),
         Effect.provideService(Telemetry, noopTelemetry),
       ),
     );
 
-    expect(result).toEqual({ updatedCore: true, updatedPlugins: [] });
+    expect(result).toEqual({
+      updatedCore: true,
+      updatedPlugins: [],
+      coreUpdateAvailable: true,
+    });
     expect(await readFile(executablePath, "utf8")).toBe("new-binary");
     expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
     expect(probeCommands).toHaveLength(2);
     expect(dirname(dirname(probeCommands[0] ?? ""))).toBe(root);
     expect(basename(dirname(probeCommands[0] ?? ""))).toStartWith(".lando-update-");
     expect(probeCommands[1]).toBe(executablePath);
-    expect(execs).toEqual([
-      {
-        path: executablePath,
-        argv: [executablePath, "update", "--channel=stable"],
-        env: { PATH: "/usr/bin", LANDO_CHANNEL: "stable" },
-      },
-    ]);
+    expect(execs).toHaveLength(1);
+    expect(execs[0]).toMatchObject({
+      path: executablePath,
+      argv: [executablePath, "update", "--channel=stable"],
+      env: { PATH: "/usr/bin", LANDO_CHANNEL: "stable" },
+    });
+    const token = execs[0]?.env.LANDO_UPDATE_HANDOFF_TOKEN;
+    expect(token).toMatch(/^[0-9a-f-]{36}$/u);
+    if (token === undefined) throw new Error("expected update handoff token");
+    const resumed = await Effect.runPromise(
+      update({ handoff: makeUpdateHandoff(stateStore.service, token) }).pipe(
+        Effect.provideService(ProcessRunner, processRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      ),
+    );
+    expect(resumed).toEqual(result);
+    expect(
+      await failureTag(
+        update({ handoff: makeUpdateHandoff(stateStore.service, token) }).pipe(
+          Effect.provideService(ProcessRunner, processRunner),
+          Effect.provideService(Telemetry, noopTelemetry),
+        ),
+      ),
+    ).toBe("UpdateNetworkError");
   });
 
   test("POSIX self-update drops Bun's compiled entrypoint from re-exec argv", async () => {
@@ -668,8 +695,6 @@ describe("update signed manifest", () => {
       readonly executablePath: string;
       readonly stagedBinaryPath: string;
       readonly backupPath: string;
-      readonly argv: ReadonlyArray<string>;
-      readonly env: Record<string, string>;
       readonly manualFallback: string;
     }> = [];
     const processRunner = {
@@ -714,7 +739,12 @@ describe("update signed manifest", () => {
       ),
     );
 
-    expect(result).toEqual({ updatedCore: true, updatedPlugins: [] });
+    expect(result).toEqual({
+      updatedCore: false,
+      coreReplacementPending: true,
+      updatedPlugins: [],
+      coreUpdateAvailable: true,
+    });
     expect(await readFile(executablePath, "utf8")).toBe("old-binary");
     expect(renames).toEqual([]);
     expect(probes).toHaveLength(1);
@@ -723,8 +753,6 @@ describe("update signed manifest", () => {
     const replacement = replacements[0];
     expect(replacement?.executablePath).toBe(executablePath);
     expect(replacement?.backupPath).toBe(`${executablePath}.bak`);
-    expect(replacement?.argv).toEqual([executablePath, "update", "--channel=stable"]);
-    expect(replacement?.env).toEqual({ Path: "C:\\Windows" });
     expect(replacement?.manualFallback).toContain("Close every running Lando process");
     expect(replacement?.manualFallback).toContain("lando.exe.bak");
     expect(replacement?.stagedBinaryPath).not.toBe(executablePath);
@@ -783,31 +811,24 @@ describe("update signed manifest", () => {
     expect(await readFile(executablePath, "utf8")).toBe("old-binary");
   });
 
-  test("Windows replacement helper waits for the running exe lock before swapping", () => {
-    const script = buildWindowsReplacementScript({
-      executablePath: "C:\\Lando\\lando.exe",
-      stagedBinaryPath: "C:\\Lando\\.lando-update-abc\\lando.exe",
-      backupPath: "C:\\Lando\\lando.exe.bak",
-      attemptedVersion: "4.4.0",
-      argv: ["C:\\Lando\\lando.exe", "update", "--channel=stable"],
-      env: { Path: "C:\\Windows" },
-      manualFallback: "fallback",
-    });
-
-    expect(script).toContain(
-      [
-        ":wait",
-        'move /Y "%TARGET%" "%BACKUP%" >nul 2>nul',
-        "if not errorlevel 1 goto install",
-        "timeout /t 1 /nobreak >nul 2>nul",
-        "goto wait",
-        ":install",
-      ].join("\r\n"),
+  test("Windows batch delegates every replacement to the locked helper and honors failure", () => {
+    const script = buildWindowsReplacementScript(
+      {
+        executablePath: "C:\\Lando\\lando.exe",
+        stagedBinaryPath: "C:\\Lando\\.lando-update-abc\\lando.exe",
+        backupPath: "C:\\Lando\\lando.exe.bak",
+        attemptedVersion: "4.4.0",
+        manualFallback: "fallback",
+      },
+      "12345678-1234-4234-8234-123456789012",
     );
-    expect(script).not.toContain("if errorlevel 1 exit /b 1\r\n:install");
-    expect(script).toContain('move /Y "%CANDIDATE%" "%TARGET%" >nul 2>nul');
-    expect(script).toContain('move /Y "%BACKUP%" "%TARGET%" >nul 2>nul');
-    expect(script).toContain('start "" "%TARGET%" "update" "--channel=stable"');
+
+    expect(script).toContain("--lando-update-replacement");
+    expect(script).toContain('"12345678-1234-4234-8234-123456789012"');
+    expect(script).toContain("if errorlevel 1 exit /b 1");
+    expect(script).not.toContain("move /Y");
+    expect(script).not.toContain("goto wait");
+    expect(script).not.toContain('start "" "%TARGET%"');
   });
 
   test("Windows replacement scheduler detaches the helper so the running exe can exit", async () => {
@@ -815,6 +836,7 @@ describe("update signed manifest", () => {
     const stagedBinaryPath = join(root, ".lando-update-abc", "lando.exe");
     await mkdir(dirname(stagedBinaryPath), { recursive: true });
     await writeFile(stagedBinaryPath, "new-windows-binary");
+    await writeFile(join(root, "lando.exe"), "old-windows-binary");
     const spawns: UpdateWindowsReplacementSpawnInput[] = [];
 
     await Effect.runPromise(
@@ -824,14 +846,18 @@ describe("update signed manifest", () => {
           stagedBinaryPath,
           backupPath: join(root, "lando.exe.bak"),
           attemptedVersion: "4.4.0",
-          argv: [join(root, "lando.exe"), "update"],
-          env: {},
           manualFallback: "fallback",
+          precondition: {
+            pluginsRoot: join(root, "plugins"),
+            currentCoreVersion: "4.2.0",
+            targetCoreVersion: "4.4.0",
+          },
+          completedResult: { updatedCore: false, updatedPlugins: [] },
         },
         (input) => {
           spawns.push(input);
         },
-      ),
+      ).pipe(Effect.provideService(StateStore, makeTestStateStore().service)),
     );
 
     expect(spawns).toEqual([
@@ -842,7 +868,7 @@ describe("update signed manifest", () => {
       },
     ]);
     expect(await readFile(join(root, ".lando-update-abc", "replace-lando.cmd"), "utf8")).toContain(
-      "goto wait",
+      "--lando-update-replacement",
     );
   });
 
@@ -990,7 +1016,7 @@ describe("update signed manifest", () => {
     expect(renames.map(([, to]) => to)).toEqual([`${executablePath}.bak`, executablePath, executablePath]);
   });
 
-  test("POSIX self-update restores the backup when re-exec fails after replacement", async () => {
+  test("POSIX self-update retains the new binary and backup when re-exec fails", async () => {
     const root = await makeTempRoot("lando-self-update-exec-rollback-");
     const executablePath = join(root, "lando");
     await writeFile(executablePath, "old-binary");
@@ -1023,8 +1049,8 @@ describe("update signed manifest", () => {
     );
 
     expect(tag).toBe("UpdatePermissionError");
-    expect(await readFile(executablePath, "utf8")).toBe("old-binary");
-    await expect(readFile(`${executablePath}.bak`, "utf8")).rejects.toThrow();
+    expect(await readFile(executablePath, "utf8")).toBe("new-binary");
+    expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
   });
 
   test("POSIX self-update restores the backup when the replaced binary fails its launch probe", async () => {
@@ -1279,6 +1305,11 @@ describe("update signed manifest", () => {
       dryRun: true,
       ...cliSelfUpdate,
     });
+    expect(updateOptionsFromInput({ flags: { only: "plugins" } })).toEqual({
+      dryRun: false,
+      only: "plugins",
+      ...cliSelfUpdate,
+    });
     expect(
       updateOptionsFromInput(compiledCommandInputFromArgv("meta:update", ["--channel=dev", "--dry-run"])),
     ).toEqual({
@@ -1286,6 +1317,23 @@ describe("update signed manifest", () => {
       dryRun: true,
       ...cliSelfUpdate,
     });
+    expect(
+      updateSpec.successExitCode?.(
+        { updatedCore: false, updatedPlugins: [], hasFailures: true },
+        { args: {}, flags: {}, argv: [] },
+      ),
+    ).toBe(1);
+  });
+
+  test("renders the update receipt through the command spec", () => {
+    // Given
+    const result = { updatedCore: false, updatedPlugins: [] };
+
+    // When
+    const rendered = updateSpec.render?.(result);
+
+    // Then
+    expect(rendered).toBe("core: unchanged");
   });
 });
 
