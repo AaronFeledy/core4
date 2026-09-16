@@ -13,3 +13,4 @@ Inherit root `AGENTS.md`. Keep only package-specific facts agents would miss.
 - Pink (`csi.pink`, SGR 95) is rail chrome, the active moving spinner glyph, and the opt-in brand icon. Running labels, static dot, wrap continuations, durations, and footers stay off pink.
 - Paint segmented bodies through `styleBodyFrameSegments` and existing `csi` tokens. Do not add color tokens or raw ANSI literals.
 - Default live region is inline at the cursor. OpenTUI is full-tail only.
+- Only `opentui/prompt-driver.ts` and `opentui/live-region-substrate.ts` may name `@opentui/core`, and only as a literal `import()`. Every other `src/**` file, including type positions (`import type`, `typeof import(...)`), goes through the structural `*Like` seams in `opentui/*-types.ts`; the boundary gates count type-only edges.
