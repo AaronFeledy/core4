@@ -821,3 +821,8 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 114 focused unit tests pass. Live integration not re-run (host-unsafe).
 ---
+## 2026-09-15 21:10 - US-628 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app, and proved post-start scanning against the binary: default `/` scan succeeded with no URL warning; `scanner.path: /nope` warned `URL scan for service appserver at https://appserver.us628-verify.lndo.site:4443/nope answered with an unaccepted status: HTTP 404` while start still exited 0; `scanner: false` emitted no URL-scan warning. HTTPS curl and `lando exec` printed `us628-ok`; `lando info` listed the published HTTPS URL; invalid `retries: -1` failed lint on `services.appserver.scanner.retries`. App destroyed; temp dir removed.
+- **Out-of-scope finding:** setup warned ports 80/443 were in use and fell back to 8000/4443; `curl http://appserver.us628-verify.lndo.site:8000/` returned 404. Same host/WSL mirrored bind as prior verifies; HTTPS-only diagnostic is US-624, not US-628.
+- **Out-of-scope finding:** `lando destroy --yes` against a Landofile with `scanner.retries: -1` failed `LandofileValidationError` before teardown. Restoring a valid Landofile then destroy succeeded. Belongs to US-629 invalid-config teardown, not this scanner story.
+---
