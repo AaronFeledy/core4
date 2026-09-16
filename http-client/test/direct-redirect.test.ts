@@ -134,6 +134,51 @@ test("a remote redirect cannot escape the proxy into a local endpoint", async ()
   }
 });
 
+test("a direct redirect to another direct origin stays off the proxy", async () => {
+  let targetCalls = 0;
+  let fetchCalls = 0;
+  const target = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => {
+      targetCalls += 1;
+      return new Response(null, { status: 204 });
+    },
+  });
+  const origin = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response(null, { status: 302, headers: { location: target.url.href } }),
+  });
+  const fetchImpl: typeof fetch = Object.assign(
+    async () => {
+      fetchCalls += 1;
+      return new Response(null, { status: 502 });
+    },
+    { preconnect: fetch.preconnect },
+  );
+  try {
+    const response = await Effect.runPromise(
+      Effect.scoped(
+        Effect.flatMap(HttpClient, (client) => client.stream({ url: origin.url.href })).pipe(
+          Effect.provide(makeHttpClientLive(fetchImpl)),
+          Effect.provideService(NetworkTrust, {
+            proxy: { http: "http://proxy.test:3128", noProxy: [] },
+            caPems: [],
+            trustHost: true,
+          }),
+        ),
+      ),
+    );
+    expect(response.status).toBe(204);
+    expect(targetCalls).toBe(1);
+    expect(fetchCalls).toBe(0);
+  } finally {
+    origin.stop(true);
+    target.stop(true);
+  }
+});
+
 test("bounds redirect loops with a typed failure", async () => {
   // Given an endpoint that redirects to itself.
   let calls = 0;

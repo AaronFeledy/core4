@@ -23,7 +23,7 @@ export const requestWithNetworkTrust = async (
   let method = request.method ?? "GET";
   const headers = new Headers(request.headers?.map(({ name, value }) => [name, value]));
   const { trust, transports, systemCaPems } = network;
-  const directOrigin = usesDirectEndpoint(url, trust) ? url.origin : undefined;
+  const startsDirect = usesDirectEndpoint(url, trust);
   const ca =
     trust === undefined || (trust.trustHost && trust.caPems.length === 0)
       ? undefined
@@ -34,7 +34,7 @@ export const requestWithNetworkTrust = async (
   for (let redirects = 0; ; redirects += 1) {
     signal.throwIfAborted();
     const response =
-      url.origin === directOrigin
+      startsDirect && usesDirectEndpoint(url, trust)
         ? await transports.direct(url, { method, headers, signal, ca })
         : await transports.fetch(url.href, {
             method,
