@@ -184,8 +184,8 @@ test("rejects conflicting persisted root claims even when one runtime is unavail
   expect(result).toMatchObject({ _tag: "Left", left: { _tag: "AppResolveError", reason: "ambiguous" } });
 });
 
-test("still requires complete runtime evidence when no persisted owner exists", async () => {
-  // Given
+test("skips unavailable unused providers when no persisted owner exists", async () => {
+  // Given: never-started teardown must not require every bundled runtime daemon.
   const failure = unavailable("podman", "select");
   // When
   const result = await run([
@@ -193,5 +193,5 @@ test("still requires complete runtime evidence when no persisted owner exists", 
     moduleFor("podman", Effect.succeed([]), Effect.fail(failure)),
   ]);
   // Then
-  expect(result).toMatchObject({ _tag: "Left", left: failure });
+  expect(result).toMatchObject({ _tag: "Right", right: undefined });
 });

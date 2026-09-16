@@ -6,7 +6,19 @@ import { AppResolveError } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import type { ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 
-export type AppliedStateProvider = Pick<RuntimeProviderShape, "id" | "appliedPlans" | "list" | "listVolumes">;
+export type AppliedStateProvider = Pick<
+  RuntimeProviderShape,
+  "id" | "appliedPlans" | "isAvailable" | "list" | "listVolumes"
+>;
+
+const runtimeEvidence = (provider: AppliedStateProvider) =>
+  provider.isAvailable.pipe(
+    Effect.flatMap((available) =>
+      available
+        ? Effect.all({ services: provider.list({}), volumes: provider.listVolumes({}) })
+        : Effect.succeed({ services: [], volumes: [] }),
+    ),
+  );
 
 export const resolveAppliedPlanEvidence = (
   root: AbsolutePath,
@@ -51,9 +63,7 @@ export const resolveAppliedPlanEvidence = (
       .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
     const selected = matches[0];
     if (selected === undefined) {
-      const evidence = yield* Effect.forEach(providers, (provider) =>
-        Effect.all({ services: provider.list({}), volumes: provider.listVolumes({}) }),
-      );
+      const evidence = yield* Effect.forEach(providers, runtimeEvidence);
       const services = evidence.flatMap((result) =>
         result.services.filter((service) => service.appRoot === root),
       );

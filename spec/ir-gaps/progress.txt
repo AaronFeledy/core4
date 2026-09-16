@@ -850,3 +850,14 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Review notes (deferred/rejected): ownerKey volume-selector dual-path is a pre-ship compatibility shim; onCorrupt discard is the existing applied-state cache-miss contract from #850; live container/network label inspection before name-based bring-down is a pre-existing provider teardown surface, not this story's applied-record checks.
 - Verification: typecheck diagnostics clean on changed files; 38 focused prune tests passed; guide gates and gate:pr were already green before the prune fix.
 ---
+## 2026-09-16 13:21 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-16 - US-629 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app, and proved applied-state teardown: invalid-config stop preserved the app, missing Landofile destroy cleared inventory, never-started/repeat destroy returned `unchanged`, a deleted root listed as stale and `--prune` kept it while resources remained, then empty-root destroy removed it.
+- Blocker fixed: empty applied teardown initialized bundled docker/podman daemons and failed `ProviderUnavailableError` instead of `unchanged`; skip runtime evidence when `isAvailable` is false.
+- **Out-of-scope finding:** `curl http://appserver.us629-verify.lndo.site:8000/` was not used; setup warned 80/443 in use and fell back to 8000/4443. HTTPS `:4443` served `us629-ok`. Same host/WSL mirrored bind as prior verifies.
+- **Out-of-scope finding:** after a volumes-preserving destroy, a later `destroy --volumes` without restart fails `AppResolveError` (`provider-resources`) because applied state is gone while volumes remain. Start then `destroy --volumes` cleans them. Fail-closed by design for this story.
+- **Learnings for future iterations:** bundled unused providers must not be initialized to confirm absence; `isAvailable` false (or make() failing) is not evidence of leftover resources.
+---

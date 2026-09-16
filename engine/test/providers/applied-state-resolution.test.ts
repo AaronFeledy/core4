@@ -15,6 +15,7 @@ const provider = (
   id: string,
   options: {
     readonly appliedPlans?: RuntimeProviderShape["appliedPlans"];
+    readonly isAvailable?: RuntimeProviderShape["isAvailable"];
     readonly list?: RuntimeProviderShape["list"];
     readonly listVolumes?: RuntimeProviderShape["listVolumes"];
   } = {},
@@ -22,6 +23,7 @@ const provider = (
   ...TestRuntimeProvider,
   id,
   appliedPlans: options.appliedPlans ?? Effect.succeed([]),
+  ...(options.isAvailable === undefined ? {} : { isAvailable: options.isAvailable }),
   list: options.list ?? (() => Effect.succeed([])),
   listVolumes: options.listVolumes ?? (() => Effect.succeed([])),
 });
@@ -64,6 +66,21 @@ describe("resolveAppliedPlanEvidence", () => {
   test("returns absence only after every provider confirms empty applied and runtime state", async () => {
     const result = await Effect.runPromise(
       resolveAppliedPlanEvidence(root, [provider("lando"), provider("docker")]),
+    );
+
+    expect(result).toBeUndefined();
+  });
+
+  test("skips runtime inspection for providers that are not available", async () => {
+    const result = await Effect.runPromise(
+      resolveAppliedPlanEvidence(root, [
+        provider("lando"),
+        provider("docker", {
+          isAvailable: Effect.succeed(false),
+          list: () => Effect.fail(unavailable("docker", "list")),
+          listVolumes: () => Effect.fail(unavailable("docker", "listVolumes")),
+        }),
+      ]),
     );
 
     expect(result).toBeUndefined();
