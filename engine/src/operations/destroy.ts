@@ -190,9 +190,10 @@ const destroyAppForTargetUncoordinated = (
     };
   });
 
-export const destroyAppForTarget = (
+const destroyAppWithResolvedTarget = (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
+  revalidate: boolean,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
   withAppMutationLock(
     appLockTarget(target.plan),
@@ -200,7 +201,7 @@ export const destroyAppForTarget = (
       const context = yield* Effect.context<BoundDestroyAppServices>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
-      const validatedTarget = yield* validateResolvedAppTarget(target);
+      const validatedTarget = revalidate ? yield* validateResolvedAppTarget(target) : target;
       const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
       const provider = yield* registry.select(resolvedTarget.plan);
       return yield* withPlanVolumeCoordination({
@@ -211,6 +212,12 @@ export const destroyAppForTarget = (
       });
     }),
   );
+
+export const destroyAppForTarget = (
+  options: DestroyAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
+  destroyAppWithResolvedTarget(options, target, true);
 
 export const destroyApp = (
   options: DestroyAppOptions = {},
@@ -229,9 +236,9 @@ export const destroyApp = (
               })
             : (resolved.source === "desired"
                 ? runAppInitEvents(resolved.target.plan).pipe(
-                    Effect.zipRight(destroyAppForTarget(options, resolved.target)),
+                    Effect.zipRight(destroyAppWithResolvedTarget(options, resolved.target, false)),
                   )
-                : destroyAppForTarget(options, resolved.target)
+                : destroyAppWithResolvedTarget(options, resolved.target, false)
               ).pipe(Effect.map((result): DestroyAppResult => ({ ...result, outcome: "destroyed" }))),
         ),
       );

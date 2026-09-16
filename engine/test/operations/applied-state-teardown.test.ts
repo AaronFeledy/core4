@@ -157,30 +157,30 @@ describe("applied-state teardown", () => {
     });
   });
 
-  test.each([
-    ["stop"],
-    ["destroy"],
-  ] as const)("%s revalidates a resolved target before provider mutation", async (operation) => {
-    await withTempRoot(async (root) => {
-      for (const [, mutate] of appliedPlanMismatches) {
-        const plan = planAt(root);
-        const harness = makeLayer({ appliedPlan: plan });
-        const mismatched = mutate(plan);
-        const exit =
-          operation === "stop"
-            ? await Effect.runPromiseExit(
-                stopAppForTarget(undefined, targetFor(mismatched)).pipe(Effect.provide(harness.layer)),
-              )
-            : await Effect.runPromiseExit(
-                destroyAppForTarget(undefined, targetFor(mismatched)).pipe(Effect.provide(harness.layer)),
-              );
+  test.each([["stop"], ["destroy"]] as const)(
+    "%s revalidates a resolved target before provider mutation",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        for (const [, mutate] of appliedPlanMismatches) {
+          const plan = planAt(root);
+          const harness = makeLayer({ appliedPlan: plan });
+          const mismatched = mutate(plan);
+          const exit =
+            operation === "stop"
+              ? await Effect.runPromiseExit(
+                  stopAppForTarget(undefined, targetFor(mismatched)).pipe(Effect.provide(harness.layer)),
+                )
+              : await Effect.runPromiseExit(
+                  destroyAppForTarget(undefined, targetFor(mismatched)).pipe(Effect.provide(harness.layer)),
+                );
 
-        expect(exit._tag).toBe("Failure");
-        expect(harness.destroyCalls).toEqual([]);
-        expect(String(exit)).toContain(AppResolveError.name);
-      }
-    });
-  });
+          expect(exit._tag).toBe("Failure");
+          expect(harness.destroyCalls).toEqual([]);
+          expect(String(exit)).toContain(AppResolveError.name);
+        }
+      });
+    },
+  );
 
   test("returns the same explicit idempotent result when no applied state or owned resources exist", async () => {
     await withTempRoot(async (root) => {

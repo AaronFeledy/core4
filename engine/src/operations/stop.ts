@@ -160,6 +160,7 @@ const stopAppWithResolvedPlanUncoordinated = (
 const stopAppWithResolvedPlan = (
   options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
+  revalidate: boolean,
 ): Effect.Effect<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   SdkStopAppError,
@@ -171,7 +172,7 @@ const stopAppWithResolvedPlan = (
       const context = yield* Effect.context<BoundStopAppServices>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
-      const validatedTarget = yield* validateResolvedAppTarget(target);
+      const validatedTarget = revalidate ? yield* validateResolvedAppTarget(target) : target;
       const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
       const provider = yield* registry.select(resolvedTarget.plan);
       return yield* withPlanVolumeCoordination({
@@ -195,15 +196,15 @@ export const stopAppWithPlan = (
   target === undefined
     ? resolveDesiredTarget.pipe(
         Effect.tap((resolved) => runAppInitEvents(resolved.plan)),
-        Effect.flatMap((resolved) => stopAppWithResolvedPlan(options, resolved)),
+        Effect.flatMap((resolved) => stopAppWithResolvedPlan(options, resolved, false)),
       )
-    : stopAppWithResolvedPlan(options, target);
+    : stopAppWithResolvedPlan(options, target, true);
 
 export const stopAppForTarget = (
   options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.Effect<StopAppResult, SdkStopAppError, BoundStopAppServices> =>
-  stopAppWithResolvedPlan(options, target).pipe(Effect.map(({ result }) => result));
+  stopAppWithResolvedPlan(options, target, true).pipe(Effect.map(({ result }) => result));
 
 export const stopApp = (
   options: StopAppOptions = {},
@@ -221,9 +222,9 @@ export const stopApp = (
               })
             : (resolved.source === "desired"
                 ? runAppInitEvents(resolved.target.plan).pipe(
-                    Effect.zipRight(stopAppForTarget(options, resolved.target)),
+                    Effect.zipRight(stopAppWithResolvedPlan(options, resolved.target, false)),
                   )
-                : stopAppForTarget(options, resolved.target)
-              ).pipe(Effect.map((result): StopAppResult => ({ ...result, outcome: "stopped" }))),
+                : stopAppWithResolvedPlan(options, resolved.target, false)
+              ).pipe(Effect.map(({ result }): StopAppResult => ({ ...result, outcome: "stopped" }))),
         ),
       );
