@@ -9,6 +9,7 @@ tags: [beta, docs, recipes, astro, node, postgres, mariadb]
 
 ```sh
 lando init --recipe astro --name=astro-demo --yes
+cd astro-demo
 lando start
 ```
 
@@ -37,6 +38,8 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a 
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*4321" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"port\":\\s*3000" } } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"astro\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "ASTRO_TELEMETRY_DISABLED" } }} />
@@ -97,10 +100,10 @@ lando astro --help
 lando npm --version
 ```
 
-Serve through the proxy with an all-interfaces bind. Use `--port 3000` so the `lando info` proxy URLs reach the app; `4321` is what the recipe writes as Astro's default. Pass your app hostname to `--allowed-hosts` (swap `astro-demo` for your app name) so Vite accepts the Traefik `Host` header:
+Serve through the proxy with an all-interfaces bind on the recipe's port, `4321`. Pass your app hostname to `--allowed-hosts` (swap `astro-demo` for your app name) so Vite accepts the Traefik `Host` header:
 
 ```sh
-lando astro dev --host 0.0.0.0 --port 3000 --allowed-hosts astro-demo.lndo.site
+lando astro dev --host 0.0.0.0 --port 4321 --allowed-hosts astro-demo.lndo.site
 ```
 
 Open the URL `lando info` prints. Prefer Node 22 with Postgres at init?
