@@ -24,9 +24,11 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
+import { effectiveEventsForPlan } from "../../src/planner/effective-events.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { CommandRegistryLive } from "../../src/services/command-registry.ts";
@@ -123,13 +125,14 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
   );
   const landofile = {
     name: "effective-tooling-cache",
-    services: { [ServiceName.make("web")]: { type: serviceType.id } },
+    services: { [ServiceName.make("web")]: { type: serviceType.id, home: false as const } },
+    events: { "pre-start": ["echo event"] },
   };
 
   try {
     await writeFile(
       join(appRoot, ".lando.yml"),
-      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n",
+      "name: effective-tooling-cache\nservices:\n  web:\n    type: effective-tooling-test\n    home: false\n",
     );
     const runPlan = () =>
       Effect.runPromise(
@@ -148,6 +151,9 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
     expect(effectiveToolingForPlan(fresh)?.inspect).toEqual({ cmd: "first", service: "web" });
     expect(effectiveToolingForPlan(cacheHit)?.inspect).toEqual({ cmd: "first", service: "web" });
     expect(effectiveToolingForPlan(changed)?.inspect).toEqual({ cmd: "second", service: "web" });
+    expect(effectiveEventsForPlan(fresh)?.["pre-start"]).toEqual(["echo event"]);
+    expect(effectiveEventsForPlan(cacheHit)?.["pre-start"]).toEqual(["echo event"]);
+    expect(effectiveEventsForPlan(changed)?.["pre-start"]).toEqual(["echo event"]);
     expect(featureCalls).toBe(2);
 
     let invocation: ToolingInvocation | undefined;
@@ -174,6 +180,7 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
       }),
       emptyConfigServiceLayer,
       EventServiceLive,
+      PrivateFileAccessLive,
     );
     const registryIds = await Effect.runPromise(
       Effect.flatMap(CommandRegistry, (registry) => registry.list).pipe(
@@ -232,12 +239,12 @@ const phpPlannerLayer = (serviceType: ServiceType) => {
 
 const phpLandofile = (name: string, tooling?: PhpTooling) => ({
   name,
-  services: { [ServiceName.make("web")]: { type: "php" } },
+  services: { [ServiceName.make("web")]: { type: "php", home: false as const } },
   ...(tooling === undefined ? {} : { tooling }),
 });
 
 const phpYaml = (name: string, toolingYaml = ""): string =>
-  `name: ${name}\nservices:\n  web:\n    type: php\n${toolingYaml}`;
+  `name: ${name}\nservices:\n  web:\n    type: php\n    home: false\n${toolingYaml}`;
 
 const withTempPlannerApp = async (yaml: string, run: () => Promise<void>): Promise<void> => {
   const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-reserved-tooling-plan-")));
@@ -361,6 +368,7 @@ test("fails runTooling reserved when Landofile authors run even if php also cont
         }),
         emptyConfigServiceLayer,
         EventServiceLive,
+        PrivateFileAccessLive,
       );
 
       // When

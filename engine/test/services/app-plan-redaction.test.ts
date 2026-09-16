@@ -23,6 +23,38 @@ describe("app-plan redaction tokens", () => {
     expect(tokens).toContain(canary);
   });
 
+  test("includes secret global app defaults after planner projection", () => {
+    const canary = "global-app-default-canary";
+
+    const tokens = collectAppPlanRedactionTokens({
+      services: {
+        app: {
+          environment: { API_TOKEN: canary },
+        },
+      },
+    });
+
+    expect(tokens).toContain(canary);
+  });
+
+  test("includes secret effective service label values from an app plan", () => {
+    // Given
+    const canary = "effective-label-canary";
+
+    // When
+    const tokens = collectAppPlanRedactionTokens({
+      services: {
+        app: {
+          environment: {},
+          extensions: { compose: { labels: { "com.example.api-token": canary } } },
+        },
+      },
+    });
+
+    // Then
+    expect(tokens).toContain(canary);
+  });
+
   test("includes authored landofile environment values", () => {
     // Given
     const canary = "config-canary";

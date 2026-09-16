@@ -1,0 +1,17 @@
+name: python-fastapi
+services:
+  app:
+    type: "python:3.12"
+    framework: fastapi
+    primary: true
+    port: 8000
+tooling:
+  pip:
+    service: app
+    cmd: pip
+  uv:
+    service: app
+    cmd: uv
+  python:
+    service: app
+    cmd: python

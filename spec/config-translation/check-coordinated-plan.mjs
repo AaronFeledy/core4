@@ -201,13 +201,17 @@ if (new Set(plannedRecipeIds).size !== plannedRecipeIds.length) {
 if (JSON.stringify([...plannedRecipeIds].sort()) !== JSON.stringify([...actualRecipeIds].sort())) {
   fail("grouped recipe coverage differs from bundledRecipes");
 }
-const recipeMilestone = byId.get("US-609E");
-if (!recipeMilestone) fail("missing recipe milestone US-609E");
-if (
-  JSON.stringify([...recipeMilestone.dependsOn].sort()) !==
-  JSON.stringify(recipeStories.map((story) => story.id).sort())
-) {
-  fail("US-609E must depend on every grouped recipe story exactly once");
+const expectedRecipeGraph = {
+  "US-609E7": ["US-609E6"],
+  "US-609E8": ["US-609E7"],
+  "US-609E": [...recipeStories.map((story) => story.id), "US-609E7", "US-609E8"],
+};
+for (const [id, dependencies] of Object.entries(expectedRecipeGraph)) {
+  const story = byId.get(id);
+  if (!story) fail(`missing recipe cutover story ${id}`);
+  if (JSON.stringify([...story.dependsOn].sort()) !== JSON.stringify([...dependencies].sort())) {
+    fail(`${id} must depend on exactly: ${dependencies.join(", ")}`);
+  }
 }
 
 const joined = ownedTexts.join("\n");

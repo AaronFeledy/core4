@@ -22,6 +22,7 @@ import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { loadLandofileFile } from "@lando/engine/services/landofile-live";
 import { AppPlannerLive } from "@lando/engine/services/planner";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
 import {
@@ -116,7 +117,12 @@ const failureOf = <A, E>(exit: Exit.Exit<A, E>): E | undefined => {
 const loadYamlExit = async (dir: string, content: string) => {
   const source = join(dir, ".lando.yml");
   await writeFile(source, content);
-  return { source, exit: await Effect.runPromiseExit(loadLandofileFile(source)) };
+  return {
+    source,
+    exit: await Effect.runPromiseExit(
+      loadLandofileFile(source).pipe(Effect.provide(makeTestStateStore().layer)),
+    ),
+  };
 };
 
 const planLandofile = (landofile: LandofileShape, capabilities: ProviderCapabilities = nativeCapabilities) =>
@@ -140,7 +146,7 @@ const asComposeLandofile = (landofile: LandofileShape, dir: string): LandofileSh
       services: Object.fromEntries(
         Object.entries(landofile.services ?? {}).map(([name, service]) => [
           name,
-          { ...service, type: "compose" },
+          { ...service, type: "compose", home: false },
         ]),
       ),
     },

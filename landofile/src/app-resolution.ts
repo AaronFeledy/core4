@@ -15,11 +15,11 @@ import {
   LandofileParseError,
   type LandofileSandboxError,
   type LandofileTimeoutError,
-  type LandofileUnknownEventError,
   type LandofileValidationError,
   type LandofileVersionConstraintError,
   type ManagedFileTransactionError,
   type NotImplementedError,
+  type RouteInputError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
@@ -42,13 +42,13 @@ export interface ResolvedAppTarget {
 export const userAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 export type UserLandofileError =
+  | RouteInputError
   | ManagedFileTransactionError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileUnknownEventError
   | LandofileFormConflictError
   | NotImplementedError
   | LandofileIncludeError
@@ -176,6 +176,7 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
               appRoot,
               sourcePath: filePath,
               ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
+              ...(options.inputs?.stateStore === undefined ? {} : { stateStore: options.inputs.stateStore }),
             }),
           ),
           Effect.map((resolved) => ({ landofile: resolved, sourcePath: undefined })),
@@ -200,6 +201,9 @@ export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAp
                 appRoot,
                 sourcePath: filePath,
                 ...(options.inputs?.ports === undefined ? {} : { ports: options.inputs.ports }),
+                ...(options.inputs?.stateStore === undefined
+                  ? {}
+                  : { stateStore: options.inputs.stateStore }),
               }),
             ),
           )

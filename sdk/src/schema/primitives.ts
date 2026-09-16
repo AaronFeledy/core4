@@ -22,6 +22,40 @@ export type PortablePath = typeof PortablePath.Type;
 export const PortNumber = Schema.Number.pipe(Schema.int(), Schema.between(1, 65535));
 export type PortNumber = typeof PortNumber.Type;
 
+/**
+ * A container identity: a name or numeric id, optionally followed by a group
+ * name or gid. The allowlist keeps the value safe to interpolate into a
+ * `USER` instruction and into a provider exec request.
+ */
+export const CONTAINER_USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-9_][A-Za-z0-9_.-]*)?$/u;
+
+export const isContainerUser = (value: string): boolean => CONTAINER_USER_PATTERN.test(value);
+
+export const ContainerUser = Schema.String.pipe(Schema.pattern(CONTAINER_USER_PATTERN)).annotations({
+  description:
+    'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.',
+});
+export type ContainerUser = typeof ContainerUser.Type;
+
+/**
+ * An absolute path inside a container. The leading slash is required so a
+ * destination is never resolved against an unknown working directory, and NUL
+ * and backslash are rejected so the value stays safe to carry into a mount
+ * destination and a provider request.
+ */
+export const ABSOLUTE_CONTAINER_PATH_PATTERN = /^\/[^\0\\]*$/u;
+
+export const isAbsoluteContainerPath = (value: string): boolean =>
+  ABSOLUTE_CONTAINER_PATH_PATTERN.test(value);
+
+export const AbsoluteContainerPath = Schema.String.pipe(
+  Schema.pattern(ABSOLUTE_CONTAINER_PATH_PATTERN),
+).annotations({
+  description:
+    "Absolute path inside a container. Must start with '/' and must not contain NUL or backslash characters.",
+});
+export type AbsoluteContainerPath = typeof AbsoluteContainerPath.Type;
+
 export const HostPlatform = Schema.Literal("darwin", "linux", "win32", "wsl");
 export type HostPlatform = typeof HostPlatform.Type;
 

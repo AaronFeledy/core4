@@ -26,6 +26,7 @@ import {
 } from "../../src/cli/commands/doctor-host-proxy-filesystem.ts";
 import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const roots: string[] = [];
 const servers: Server[] = [];
@@ -195,6 +196,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
 
@@ -303,6 +305,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
 
@@ -360,6 +363,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           shimPath: join(isolated, "lando"),
           ...workerFields,
         },
+        ownerOnlyFileAccess,
       ),
     );
     await Effect.runPromise(
@@ -373,6 +377,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           shimPath: join(ambient, "lando"),
           ...workerFields,
         },
+        ownerOnlyFileAccess,
       ),
     );
     const previousUserDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -477,6 +482,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
     const provider = {
@@ -565,6 +571,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
     let execCalls = 0;
@@ -617,6 +624,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken: secret,
         },
+        ownerOnlyFileAccess,
       ),
     );
 
@@ -676,6 +684,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
     const calls: Array<{ readonly target: unknown; readonly command: unknown }> = [];
@@ -834,6 +843,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
     const commands: unknown[] = [];
@@ -1001,6 +1011,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken: "control-token",
         },
+        ownerOnlyFileAccess,
       ),
     );
     const provider = {
@@ -1138,6 +1149,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
     const calls: string[] = [];
@@ -1208,6 +1220,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
     const calls: string[] = [];
@@ -1291,6 +1304,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
     const provider = {
@@ -1363,6 +1377,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           pid: process.pid,
           controlToken,
         },
+        ownerOnlyFileAccess,
       ),
     );
     const provider = {

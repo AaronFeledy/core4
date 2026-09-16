@@ -5,9 +5,11 @@ import { join } from "node:path";
 
 import { Effect, Schema } from "effect";
 
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const ValueSchema = Schema.Struct({ value: Schema.String });
 const PackageManifestSchema = Schema.Struct({
@@ -63,7 +65,7 @@ describe("StateStore package seam", () => {
     }
     const bucket = await Effect.runPromise(
       serviceModule
-        .makeStateStore()
+        .makeStateStore({ privateFileAccess: ownerOnlyFileAccess })
         .open({ root: { path: root }, key: "value.json", schema: ValueSchema, version: 1 }),
     );
 
@@ -90,7 +92,7 @@ describe("StateStore package seam", () => {
     const service = await Effect.runPromise(
       Effect.gen(function* () {
         return yield* StateStore;
-      }).pipe(Effect.provide(serviceModule.StateStoreLive)),
+      }).pipe(Effect.provide(serviceModule.StateStoreLive), Effect.provide(ProcessRunnerLive)),
     );
 
     // When a bucket key attempts to escape its assigned root

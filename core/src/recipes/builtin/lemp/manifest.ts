@@ -1,3 +1,5 @@
+import { lempSnapshotYaml } from "./snapshot.ts";
+
 export const LEMP_RECIPE_ID = "lemp";
 
 export const lempRecipeSource = `${LEMP_RECIPE_ID}/recipe.yml`;
@@ -34,4 +36,6 @@ files:
 postInit:
   - type: message
     text: Run 'lando start' inside the new app directory to bring the LEMP stack up.
+
+${lempSnapshotYaml}
 `;

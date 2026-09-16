@@ -7,334 +7,220 @@
 - Parallel spec editing works well when partitioned by file (no two editors on one file); README topic rows go last because they cite final headings.
 - Frozen naming contract for later stories: translators `lando4` / `recipe` / `lando3` (decode-only); inputs `landofile-document-set` / `recipe-request`; diagnostics `generated | dropped | rewritten | unsupported | non-portable | needs-review`; transaction states `prepared | committing | committed | blocked`; artifacts `<file>.bak.<full-before-sha256>` and `<target>.lando-stage.<transaction-id>`; secret dispositions `secret-store` or one `postInit.stdin` / `postInit.secretEnv.<name>` sink; commands `app:config:translate --to`, `app:config:explain`, `app:config:migrate`; events `pre-restart` / `post-restart`; doctor checks `lando3-leftovers` / `lando3-shadow`; binary `lando4` / `lando4.exe` during Alpha/Beta.
 - Managed-file transactions keep the StateStore journal bucket unlocked (`lock: "none"`) while one scoped canonical-root lock covers every journal transition and filesystem mutation; transaction locks must not expire a valid live owner, but old malformed owner-owned locks remain reclaimable.
+- A Landofile value site may legitimately hold an expression the loader cannot resolve yet. Scopes still deferred at load time are shared through `LOAD_DEFERRED_EXPRESSION_SCOPES` in `landofile/src/recipe-expressions.ts`; the raw content scanner and `resolveLandofileLoadExpressions` must agree on that one list or a value passes one gate and dies at the other. `LOAD_RESOLVABLE_EXPRESSION_SCOPES` in the same module names the subset the loader resolves itself (`recipe`, `env`); the rest belong to the planner. Scope membership alone is not enough: `expressionTouchesOnlyScopes` also requires every callee to be a pure helper, derived from the evaluator's own table, so host-reaching helpers stay loudly unsupported.
+- Resolution that reads merged file data belongs after `mergeLandofiles` and before `rejectComposeKeys`/`validateLandofile` in `loadLandofileLayers`. Per-layer validation still runs first, so a deferred expression must sit at a site whose per-file schema accepts a plain string.
 
-## 2026-09-07 01:22 - US-608C
-- Added the private managed-file transaction coordinator with canonical-root locking, complete ordered journals, symlink and containment checks, raw-byte digests, immutable full-digest backups, exclusive owner-only stages, exact output modes, and write/removal commits through durable `prepared` → `committing` → `committed` transitions.
-- Strengthened StateStore durability with parent-directory fsync after atomic rename and hardened advisory locks so transaction locks preserve live owners while reclaiming old malformed owner-owned records safely.
-- Verification: typecheck, lint, and all boundary gates passed; 67 focused transaction/StateStore tests passed with one root-only ownership test skipped, 11 adjacent managed-file tests passed, LSP diagnostics were clean, and a real-disk driver confirmed written targets, mode `0600`, immutable backup retention, stage cleanup, and journal removal.
-- **Learnings for future iterations:**
-  - Hold one external lock around a `lock: "none"` transaction journal bucket; nesting the bucket's advisory lock with the same coarse lock self-contends.
-  - Revalidate every backup globally before entering `committing` and again immediately before its target mutation; preparation alone does not protect immutable artifacts from noncooperative edits.
-  - Physical stage files remain owner-only while the journal records the intended final target mode; target and parent-directory fsyncs establish the durable ordering recovery relies on.
----
+## 2026-09-06 through 2026-09-09 — US-607 through US-609E6
 
-## 2026-09-06 14:55 - US-607
-- Amended the durable core spec so it owns the config-translation, IR-gap, and Lando 3 coexistence contracts: two-way `ConfigTranslator` with the authoring IR (`LandofileAuthoringShape` / `LandofileAuthoringFragment`), set-based inputs, encode round-trip law, six diagnostic kinds, lazy registration with collision failure, and target/write policy (§4.2, §7.4.1, §9.5, §13.1).
-- Un-forbade `recipe:` and defined the inert object provenance form with mandatory producer agreement, the `recipe.<option>` expression scope, expression-aware tag-free `emitLandofileYaml` with a provenance comment block, and the recipe-as-decomposer model with declarative `migrations:` snapshots, the pure helper allowlist, secret dispositions, and post-commit-only auxiliary actions (§7.3.1, §7.4, §7.8.1, §8.8.x).
-- Cataloged the managed-file transaction lifecycle and guard under §12.4.1 and the loader failure path (`Lando3LandofileDetected`, `LandofileDialectMixError`) under §7.1; seven-layer set conversion and recipe-layer folding under §7.2.
-- Froze IR-gap semantics in their owning sections: restart brackets (§3.5/§11.4/§8.2), normalized tooling metadata and dynamic events (§8.5.1/§8.5.7), route shorthand and filters (§6.6/§10.2), planned build users (§6.2/§6.3/§6.13), default `home:` storage (§6.5), scanner union and router disablement (§7.5/§10.5), catalog options and the single shipped version matrix (§6.11.2/§6.12), scoped `rebuild`/`info --service` (§8.2), bounded `appEnv`/`appLabels` with reserved generated `LANDO_*` keys and `dev.lando.*` (§7.5/§6.9/§6.5); removed every `LANDO_INFO` mention and added no mount alias.
-- Softened the v3 boundary (core runs nothing v3; the bundled `@lando/lando3` plugin translates on explicit request), added the bundle row, `lando4` side-by-side install/update/uninstall/shellenv ownership, bounded `DoctorCheckContext` ports, and the `lando3-leftovers` / `lando3-shadow` checks with `LegacyProxyContainerDetected` as single legacy-proxy owner (§1.x, §14.1, §10.9, §17.6.2, §17.7, §20.10.3); exclusions for upgrade/adoption, legacy state import, image manufacture, and emulation recorded as non-goals.
-- Verification: plan checker PASS (42 stories), check:boundaries and lint passed; forbidden-token scan empty; no dangling `§` references; no new em-dashes. Typecheck ran as a no-code sanity gate.
-- **Learnings for future iterations:**
-  - Later implementation stories should cite the core sections above rather than the PRD directory; the core spec now states every contract they need.
-  - The §6.3 artifact example now uses `run:` steps with optional `user:`; `instructions:` is gone from the spec and implementation should follow the `string | { run, user? }` union.
-  - §20.10.3 no longer describes a `meta:setup --migrate-proxy` upgrade path; legacy proxy handling is diagnostic plus conflict error only.
----
+Froze the durable config-translation contract in the core spec, then built the stack it names, then converted every bundled recipe onto that stack without flipping public init.
 
-## 2026-09-06 15:20 - US-607 Review
-- Review-work failed on durable-contract contradictions; Bugbot found no bugs. Fixed: secret argv/file/default wording now rejects raw secrets and treats secret-store as resolve-only references; `meta:uninstall` matches side-by-side §17.7 ownership; `non-portable` keeps the lossless target-policy exception; conversion/init commands request BootstrapLevel `plugins`; include-level `dir:` no longer claims task-level `dir` is rejected; README added-line em-dashes removed; `node-ts` is not claimed as a current bundle member.
-- Review notes (deferred/rejected): SecretWriter / owner-only backup creation / debug-argv full-value logging — not required by US-607 ACs and not newly introduced. 24-recipe catalog expansion — owned by US-609E staged growth. Appendix §15.C / §16.2 SDK export inventory — out of this story's amendment table (US-608A).
-- Verification: coordinated-plan, check:boundaries, lint, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; forbidden-token and added-line em-dash scans empty. Typecheck not rerun (markdown-only). Guide-Coverage-Skip: specification-only durable core amendment with no runtime CLI or guide-covered source surface change.
-- **Learnings for future iterations:** Command-table `minimal` is not translator-capable; `ConfigTranslatorRegistry` lives at `plugins`. When freezing IR-gap task/step `dir` precedence, do not leave include-level `dir:` claiming the task-level field is rejected.
----
+- **US-607.** Core spec now owns config translation, the IR gap, and Lando 3 coexistence: two-way `ConfigTranslator`, authoring IR, six diagnostic kinds, recipe provenance, managed-file transactions, and decode-only `@lando/lando3`. Follow-up review/drift closed secret-store wording, uninstall ownership, bootstrap `plugins` for conversion, and leftover `apps:init` / two-way-lando3 drift.
+- **US-608A.** Expression-aware `LandofileAuthoringShape` / `Fragment` in `@lando/sdk/schema`; set-based `ConfigTranslator` port, validators, and the encoder round-trip law. Review: realpath containment on translate sources; `and`/`or`/`regexMatch` no longer pretend to be booleans.
+- **US-608B.** `configTranslators` on both plugin seams and a `ConfigTranslatorRegistry` Live at bootstrap `plugins`; duplicate ids fail closed. Review: registry `list` also fail-closes on manifest/descriptor id disagreement.
+- **US-608C/D.** Private managed-file transaction coordinator (`prepared → committing → committed`) with containment, digest backups, and stages; then `blocked` recovery that rolls forward only, plus the load-path `ManagedFileTransactionGuard`. Journal is the one artifact allowed outside app-root containment.
+- **US-609A.** Bundled `@lando/lando4` two-way codec: strict authoring decode, conservative detect, no evaluation. CLI `--list` reports it; `--from lando4` round-trips `{{ env.PORT }}`.
+- **US-609B.** `RecipeDecomposer` SDK, object-form `recipe:` provenance, declarative snapshots/migrations, secret dispositions, provenance header on the canonical emitter.
+- **US-609C.** Core owns explicit conversion: extension-based discovery, `--file` as in-set selection, `--to` encoding, `--write` as one transaction. `emitLandofileYaml` left this command.
+- **US-609E0.** Decode-only bundled `recipe` translator and a private init pipeline (translate → validate → encode → commit Landofile → auxiliary files → postInit). Public init, ship list, and expander stayed untouched. Publication was blocked first by the loop's story-id pattern (`609e0` did not match) and then by an upstream `snapshot.ubuntu.com` outage on PR #926.
 
-## 2026-09-06 15:35 - US-607 Review
-- Post-commit Bugbot: moved `LANDO_HOST_IP` into the conditional env catalog so the host-reachability omission rule is the one implementers follow.
-- Review notes (deferred/rejected): none new.
-- Verification: markdown-only follow-up; previous gates unchanged.
+**US-609E1–E6** converted all 24 bundled recipes to decomposers plus current snapshots, family by family (PHP web, PHP CMS, Node apps, Node frontend, Python/Ruby, static/utility). Each batch published replacements and kept the existing `render.ts` bindings active: decomposer Landofiles carry `{{ recipe.<option> }}`, and the native load path still raised `NotImplementedError`, which would have broken `lando start`. Provider-free init byte-parity against `origin/main` was the batch gate. Missing recipe guides were authored as they went. After E6 the decomposer catalog equals the renderer registry.
+
+Learnings that still matter:
+
+- A new `plugins/*` package needs four registrations beyond its own files: root `tsconfig.json` reference, `WORKSPACE_EDGE_TABLE`, `core/build.config.ts` ship list, and `bun install`.
+- Recipe manifests are a restricted YAML parser (no inline mappings, naive quotes). Snapshots serialize as block YAML; large literals go through `b64decode`. `extends:` children must keep `snapshot` / `migrations` as whole-value replacements.
+- Snapshot templates read `options.<name>`; Landofile authoring reads `recipe.<name>`. Do not swap the heads. A structural toggle belongs in the decomposer and one snapshot `Conditional`; option text stays a `{{ recipe.<option> }}` token.
+- Do not activate decomposers until the load path can resolve recipe/env (and mixed shell) sites. That gap had no owning story until the US-609E7/E8 split below.
+- The derived authoring shape currently accepts `{}`, so "complete authoring" validation is vacuous until the schema derivation is fixed.
+- `lando4ConfigTranslator.encode` returns `{ text, diagnostics }` and wants a complete `{ context, fragment }`. Verify emitted Landofiles with `parseLandofile`, not `Bun.YAML.parse` (`packageName: @lando/recipe-<id>` is a reserved YAML indicator).
+- Auxiliary `files:` on the private pipeline fail closed on a relative `src`; bundled bytes need an in-memory content-source port (US-609E7).
+- `check:codegen-drift` fails on untracked or merely staged generator output; commit it with the change that caused it.
+- `bun test <path>` is a filter. Assert `EXIT=0` and a positive test count; a misspelled path exits nonzero with `did not match any test files`.
+
 ---
 
-## 2026-09-06 15:45 - US-607 Review
-- Post-commit Bugbot: restart payloads match start (not stop) payload shape.
-- Review notes (deferred/rejected): none new.
-- Verification: markdown-only follow-up.
+## 2026-09-09 15:50 - US-609E Adjudication
+
+Contradiction: the assigned registry switch is unshippable without `{{ recipe.<option> }}` materialization on the native load path (E1 proved decomposer Landofiles fail load), but US-609E AC2 said "this story adds no recipe-specific implementation" and E1–E6 recorded expression evaluation as separately scoped. No story owned that scope. The spec already mandates the `recipe.<option>` scope at bootstrap `minimal`.
+
+Decision: split. Added US-609E7 owning (1) the recipe-scope load-path materializer, (2) `env`-scope resolution on the same path (node-ts snapshots carry env expressions), (3) the auxiliary-asset content-source port. Narrowed US-609E AC2 to no per-recipe implementation and no new loader/pipeline enablers.
+
 ---
 
-## 2026-09-06 16:10 - US-607 Drift Audit
-- Trigger: 4 cycles, 538 changed lines, 6 commits
-- Findings by category (only categories with findings; one line each, outcome-focused)
-- Contract drift: §3.2 still listed `apps:init` at `minimal` after conversion/init moved to BootstrapLevel `plugins`; §1.2 called the lando3 path two-way; §1.3 still described fragment application instead of authoring/transaction writes
-- Fixed: conversion/init now appear on the `plugins` used-by list; lando3 conversion is named decode-only; the core-owns pipeline bullet names authoring validation, encoding, and managed-file writes
-- Split/excise decisions: none
-- Verification: typecheck, lint, check:boundaries, coordinated-plan, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift, forbidden-token and added-line em-dash scans passed
+## 2026-09-09 15:55 - US-609E (in progress)
+
+Landed the generic runtime enabler the cutover depends on: a loaded Landofile may carry `{{ recipe.<option> }}` value sites, resolved against that file's merged `recipe.options`. Resolution reads only file data. Materialization skips the inert `recipe:` provenance subtree, leaves planner-owned `app`/`proxy` hostnames untouched, and fails closed naming unresolved paths.
+
+Real surface: the lamp decomposer's emitted Landofile previously failed `lando app:config` with `Template expressions ({{ ... }}) are not supported`; it now loads and reports resolved php/webroot/composer/database while the route hostname stays `{{ app.name }}.{{ proxy.defaultDomain }}`.
+
+Story was not complete. Remaining: registry switch, renderer/expander deletion, README publication. Object-form `recipe:` was never the blocker — only the template expressions were rejected. Recipe-only support would still leave node-ts unplannable. Do not implement the cutover as a generic decomposer-backed `RecipeRenderer`; `runRecipeInitPipeline` is the prepared replacement. The pipeline still could not write bundled auxiliary assets (`writeAuxiliaryScaffold` demanded an absolute on-disk `src`).
+
 ---
 
-## 2026-09-06 17:30 - US-608A
-- Added expression-aware authoring schemas to `@lando/sdk/schema`: `LandofileAuthoringShape` (complete) and `LandofileAuthoringFragment` (recursively partial) are derived at runtime by walking `LandofileShape.ast` with `SchemaAST` (`deriveAuthoringAst`), unioning a typed expression slot at every value site; `Wire` twins publish the encoded string-bearing form. Types come from generic mappers over the runtime Encoded type, not handwritten trees.
-- Expression slots (`authoringExpressionSlot`, `AuthoringExpression`) parse with the SDK expression parser and check whole-vs-composite form (composite only at string sites), the closed scope list, known helper names (`EXPRESSION_HELPER_NAMES` now exported from `@lando/sdk/expressions`), and a static return-type inference; they never evaluate.
-- Replaced the one-way `ConfigTranslator` port: schema-backed `ConfigTranslateInput` (`landofile-document-set` | `recipe-request`), bounded `ConfigTranslateDocument` snapshots, `ConfigTranslateDetectInput { documents }`, set outputs by target layer with wire fragments, six diagnostic kinds, deletion intents, optional `encode`, and explicit `never` requirements. `validateConfigTranslateInput` / `validateConfigTranslateResult` (`@lando/sdk/landofile`) enforce source ids by variant, unique allowlisted target layers, no deletions for recipe requests, diagnostic ordering, and full authoring-fragment decoding.
-- Contract suite rewritten around the new harness with the encoder round-trip law (expression AST preserved) and cumulative-prefix/final-complete validation; coverage row stays `none-bundled`. `app:config:translate` now builds bounded document sets in core, validates merges with the authoring shape, reports deletions, and fails closed on `--write` with deletions.
-- Verification: typecheck, lint, check:boundaries, codegen:schema-snapshot, check:schema-compatibility (one accepted pre-release finding for the translate command result), lint:guides passed; 216 spot-check tests across 13 files passed; CLI `app:config:translate --list` and the no-translator failure path verified.
-- **Learnings for future iterations:**
-  - Document roots currently derive as `Union(object, expression-slot)` like every other object site; making the root object-only breaks the public-field-description gate path (it resolves descriptions through the union branch) and the `Wire` schemas lose field descriptions under `encodedSchema`. Fixing that needs the annotation gate to follow the derived root TypeLiteral first; do it together with the `lando4` codec story.
-  - Registering a schema also requires a fixture entry in `sdk/test/schema/public-schema-contracts.ts`; `AuthoringExpression` must publish through the expression-definition emission path or JSON Schema generation overflows the stack.
-  - `expect<unknown>(...)` is the repo idiom when `toEqual` compares branded/readonly schema values against literals.
-  - Deprecated helper aliases (`pathJoin`, ...) are not registered in the evaluator, so `EXPRESSION_HELPER_NAMES` does not include them yet.
+## 2026-09-09 17:05 - US-609E7
+
+Completed the cutover enabler. The native load path now resolves both loader-owned scopes, and the private init pipeline can write auxiliary scaffold assets that exist only in memory.
+
+Root cause of the env gap was not the deferred-scope list: `expressionTouchesOnlyScopes` returned false for every `Call` and `Conditional`, so node-ts's `{{ default(env.LANDO_NODE_VERSION, 'lts') }}` could never be deferred. The SDK predicate now separates context scopes (path heads) from callees (helper names) and answers "analyzable, scopes subset of allowed, callees all pure". Pure callees come from the evaluator's own helper table.
+
+The materializer generalized from recipe-only to both loader-owned scopes: it parses every `{{` site, resolves when the site reads only `recipe`/`env`, and leaves a site that also reads `app` or `proxy` untouched as a whole. Failure names the exact value path and distinguishes a missing recipe option from an unset environment variable with no `default()`. The env scope is a string-filtered snapshot of the process environment, built once in the landofile package.
+
+Init pipeline gained a content-source port: in-memory bytes no longer need an absolute `src`, `template: true` entries render before the secret check, and bundled source over existing scaffold constants is byte-identical to the still-bound renderers for mean, node-postgres, and rails. The pipeline also stops treating a manifest's own Landofile entry as an auxiliary file.
+
+Real surface: `app:config --format=json` on a Landofile carrying all four scopes returned `node:22`/`NODE_ENV: production` with the variables set, `node:lts`/`development` with them unset, `API_FRAMEWORK: express` from merged provenance, and left the route hostname literal for the planner.
+
+Review: load-time recipe/env evaluation now carries a bounded `EvaluationBudget`; provenance-skip and budget failures are tested; expressions.mdx names load-time recipe/env instead of claiming those sites are still blocked.
+
+Learnings:
+
+- Scopes and callees are different axes: `env` is a path head, `load` is a capability. Derive the pure-helper set from `HELPERS`; the parser desugars `==`/`</`>` into helper calls.
+- `${VAR}` never reaches the expression walk: `CONFIG_EXPRESSION_PATTERN` rejects it before any parse.
+- Every bundled manifest declares its own Landofile in `files:`. Filter Landofile-layer destinations explicitly or node-ts writes a second dialect.
+- Auxiliary `template: true` rendering stays a literal `{{ app.name }}` replacement. Key any content source by `dest`, not manifest `src`.
+- Once Call nodes can defer at load, pass an `EvaluationBudget` or a typo'd `range()` allocates before schema validation.
+
 ---
 
-## 2026-09-06 17:05 - Babysit
-- PR: none — branch us-608a-authoring-translation-contracts not pushed to origin, no PR exists
-- CI outcome: n/a
-- Review feedback: none
-- Merge: deferred (no PR to watch or merge; push step must create it)
+## 2026-09-09 18:52 - US-609E Adjudication
+
+Contradiction: cutover requires all 24 decomposer Landofiles to load, but the decomposed drupal Landofile fails the raw pre-parse scan. `scanContentForUnsupportedExpressions` accepts a quoted `{{`-bearing scalar only when the whole scalar is a single deferred-scope expression, so drupal's tooling command mixing literal shell text with an option expression is rejected before the E7 materializer runs. The spec permits composite interpolation at string sites; no story owned that loader work.
+
+Decision: split. Added US-609E8 owning (1) widening the raw pre-parse scan so mixed deferred-scope interpolations are deferred not rejected, (2) composite resolution post-merge in the E7 materializer, (3) loader tests covering the drupal mixed tooling scalar. Extended US-609E AC2's ownership clause to name E8 alongside E7.
+
 ---
 
-## 2026-09-06 17:15 - US-608A
-- Story verified complete on branch (no new code): both acceptance criteria hold against the committed authoring schemas, set-based `ConfigTranslator` port, validators, and rewritten contract suite.
-- Verification: typecheck, lint, check:boundaries, check:schema-compatibility (27 compatible, 0 breaking, 1 accepted) passed; 1,095 spot-check tests across story and adjacent SDK schema, landofile, contract, and CLI files passed, including the `app:config:translate` command harness.
+## 2026-09-09 19:55 - US-609E8
+
+Unblocked the last loader gap. The PRD premise was wrong: composite interpolation already worked (`type: "php:{{ recipe.php }}"` has loaded since E7). What rejected drupal was `ShellParamSegment` — the expression parser claims bare `$name`, and the scope predicate reported any template containing one as unanalyzable, so drupal's ~90 shell variables poisoned the single option reference sitting among them.
+
+`@lando/sdk/expressions` now publishes `expressionInterpolationsTouchOnlyScopes`, which judges only the `{{ ... }}` interpolations and treats shell and secret text as inert. The strict `expressionTouchesOnlyScopes` is unchanged, because the evaluator resolves `$name` from `env` and would silently blank every variable in a shell script. The three load-path gates moved to the new predicate, and the materializer replays bare shell parameters as literal text.
+
+Braced forms stay fail-closed with a source-level guard: `${VAR}` and `$VAR` parse to the same segment, and the raw pre-parse scan that rejects `${` is skipped for files containing `load(` / `import(` (and for `.lando.ts`).
+
+Real surface: compiled `app:config --format=json` on the decomposed drupal Landofile exits 0, reports `recommended-project:^11` inside the scaffold command with every `$target` / `$staging_root` / `$(ls -A ...)` intact, resolves `php:8.3` and `mariadb:11.4`, and keeps the route hostname literal.
+
+Review: load-path braced-form detection now ignores the parser's `$${` escape on scan-skipped files while still rejecting unescaped `${VAR}` / `${secret:...}`.
+
+Learnings:
+
+- Verify a suspected expression gap by parsing the actual failing scalar. Two adjudications named "composite interpolation"; the parse showed composite was fine and the shell segments were the whole story.
+- The pre-parse scan is skippable. Put the guard where the value is actually handled.
+- Only `$` immediately followed by an identifier start becomes a shell segment. `$$`, `$1`, and `$(cmd)` are ordinary literal text.
+- Follow-up (not this story): event-invoked tooling re-evaluates string `cmd` / `cmds[]` through the generic evaluator and blanks `$name`; direct tooling hands the command to `sh -c` untouched. An additive `ParseExpressionOptions` bare-parameter mode plus a shell-source site classifier is the shape to reach for.
+
 ---
 
-## 2026-09-06 17:20 - US-608A
-- Story verified complete on branch (no new code); acceptance criteria already satisfied by the committed authoring schemas, set-based `ConfigTranslator` port, validators, and contract suite. Branch awaits the Push step (no PR yet).
-- Verification: typecheck, lint, check:boundaries passed; 165 spot-check tests across 10 SDK schema, landofile, contract, exports, and CLI harness files passed.
+## 2026-09-09 18:35 - US-609E (in progress)
+
+Recipe Landofile encoding is now shared between preview and write. `encodeRecipeLandofile` holds the secret gate, decomposition, fragment validation, encode, and blocking-diagnostic checks; `previewRecipeLandofile` exposes the same result with no filesystem effect. This replaces the renderer-derived preview `initApp` feeds to the name-prompt chrome.
+
+Story was not complete. Remaining: switch `initApp` to `lookupRecipeDecomposer` + `runRecipeInitPipeline` + `previewRecipeLandofile`; delete the 24 renderers, `builtin/registry.ts`, and `recipes/expander.ts`; retarget suites; republish READMEs.
+
+Learnings for the switch: generated files lose `lando-generated` markers (transaction owns the write); `node-ts` writes `.lando.yml` where the manifest still declares `.lando.ts`, so `planInitWrites` must run over effective destinations; split collected answers so secrets never enter the nonsecret channel; reach the lando4 encoder through the generated composition root with a lazy `import()`, not a direct `@lando/lando4` import.
+
 ---
 
-## 2026-09-06 17:15 - Babysit
-- PR: none (branch `us-608a-authoring-translation-contracts` not pushed to origin)
-- CI outcome: not run (no PR)
-- Review feedback: none
-- Merge: deferred (no PR to watch or merge; push step must create it)
+## 2026-09-09 19:35 - US-609E (blocked; then unblocked by E8)
+
+Built and empirically ran the full public-init cutover, then reverted it: `initApp` blocked on a defect the story's own AC2 forbade fixing. 22 of 23 canonical-recipe init cases passed on the decomposer path before revert; drupal produced a Landofile the pre-parse scanner rejected. Every repair was outside AC2 (loader enabler owned by already-passed E7, per-recipe work owned by already-passed E6, or a runtime fallback AC2 forbids). US-609E8 is the split that unblocked this.
+
+The cutover legitimately drops managed-file markers and the ledger. Re-adding them would keep the obsolete writer alive as a second write path and break preview-byte parity. Post-init should be delegated to the pipeline's `runPostInit` callback, not run as a second phase in `initApp`. `skippedScaffold` needs a post-pipeline reconciliation against the auxiliary files actually written.
+
 ---
 
-## 2026-09-06 17:25 - US-608A
-- Story verified complete on branch (no new code); acceptance criteria already satisfied by the committed authoring schemas, set-based `ConfigTranslator` port, validators, and contract suite. Branch still awaits the Push step (no PR yet).
-- Verification: typecheck, lint passed; 160 spot-check tests across 9 SDK schema, landofile, contract, exports, and CLI harness files passed.
+## 2026-09-09 21:55 - US-609E
+
+Switched the single public init registry to the prepared replacements. `initApp` now resolves a `RecipeDecomposer` behind the same bundled-only gate, encodes through the shared preview/write path, and commits the Landofile with the managed-file transaction. The 24 `builtin/<id>/render.ts` modules, `builtin/registry.ts`, and the dead `recipes/expander.ts` + `recipes/api.ts` expansion path are gone. There is one init path and no runtime fallback.
+
+Conflict planning moved to effective destinations so `node-ts` plans against the `.lando.yml` init actually writes. Collected answers are split by prompt type. Post-init runs through the pipeline's bound callback. `skippedScaffold` is reconciled against the auxiliary files the pipeline reports writing.
+
+Two intended behavior changes: generated files no longer carry `lando-generated` markers or a managed-files ledger entry; `recipe:` is object-form provenance instead of a bare id string.
+
+Added `core/test/recipes/bundled-recipe-milestone.test.ts` as aggregate evidence over the exact 24-id ship list.
+
+Real surface: provider-free `lando init` scaffolded lamp (nondefault `php=8.2`), drupal, node-ts, rails, mean, and toolbox, and `lando app:config --format=json` loaded every one of them.
+
+Review: init now treats an existing `.lando.ts` as a Landofile conflict so it cannot drop `.lando.yml` beside it; recipe-mode scratch loads through `loadUserLandofile` so `{{ recipe.* }}` sites resolve before plan.
+
+Learnings:
+
+- The cutover dropped `mkdir(..., { recursive: true })` before the transaction and every unit test still passed, because those tests init into an existing temp cwd. Real `--name` / `--destination` failed at prepare/io. Real-surface CLI verification is what caught it.
+- Do not assert on an emitted Landofile with a general YAML parser. The unquoted `@lando/recipe-<id>` scalar is a real codec portability defect and belongs to the encoder's own story.
+- Option-derived value sites stay `{{ recipe.<option> }}` in the written file; the literal lives under `recipe.options`. Retarget tests to the loaded file or the provenance option plus the expression site.
+- After init writes expression-bearing Landofiles, any consumer that raw-parses `.lando.yml` will plan `php:{{ recipe.php }}`. Reuse `loadUserLandofile` / discover.
+
 ---
 
-## 2026-09-06 17:18 - Babysit
-- PR: none (branch us-608a-authoring-translation-contracts not pushed to origin)
-- CI outcome: n/a
-- Review feedback: none
-- Merge: deferred (no PR to watch or merge)
+## 2026-09-10 09:40 - US-610
+
+Shipped `lando app:config:explain`, the read-only provenance report. It parses the canonical Landofile raw and alone, renders the matched bundled recipe's declarative snapshot with the recorded options, and reports per option: current value, recipe default at the recorded version, the `accepted-by-value`/`chosen-by-value` heuristic, every current `{{ recipe.<option> }}` site, and every generated site whose current value no longer carries the complete generated expression. It writes nothing, executes nothing, follows no include, builds no plan, and contacts no provider.
+
+**Raw parse is the load-bearing decision.** `LandofileService.discover` and `loadLandofileLayers` run `materializeLoadScopeExpressions`, which resolves `{{ recipe.php }}` into `8.3` before anything downstream sees it. Reading through either would destroy the exact sites the report exists to show.
+
+Managed vs taken over is expression-tree identity, not value identity: replacing `{{ recipe.php }}` with `8.3` is a takeover even though the resolved value is unchanged.
+
+Nine closed blocked reasons each keep the bounded current facts. Blocking is an exit-0 report, not a command failure. Added `core/src/recipes/builtin/snapshots.ts` as the id-keyed snapshot catalog.
+
+Real surface: `lando init --recipe=lamp` then `lando app config explain` reports matched against snapshot 0.1.0. Replacing the `type` site with `php:8.3` moves it into `takenOver` while `status` stays `accepted-by-value`. Bumping the recorded producer version blocks with `identity-mismatch`.
+
+Review: `.lando.yml` plus `.lando.ts` now reports YAML facts and blocks comparison instead of pretending the app is missing; effective destinations including identity mappings must stay injective; a non-injective map still reports producer, version, and option values. `recipe.services` injectivity is not just unique explicit targets — an unmapped generated service still occupies its own name.
+
+Learnings:
+
+- Any provenance or migration surface must read the Landofile raw. US-611B needs the same view to compute hunks.
+- `renderRecipeSnapshot(snapshot, provenance.options)` reproduces option-derived sites byte-identically because snapshot templates carry `{{ recipe.<option> }}` as literal strings.
+- `lando init` records a `name` option that no bundled recipe declares a default for. Treat a missing default as legitimate.
+- Out-of-scope: `lando config:explain` exits unknown-command while `lando help --all` lists `config:explain` and canonical `lando app:config:explain` succeeds. Same compiled-binary short-name dispatch previously recorded for `config:lint`.
+
 ---
 
-## 2026-09-06 19:25 - US-608A Review
-- Review-work failed on path containment and helper typing; Bugbot found no bugs. Fixed: translation sources now realpath-check against the app root (autodetect skips escapes; `--file` fails closed), and `and`/`or`/`regexMatch` no longer pretend to be booleans.
-- Review notes (deferred/rejected): Authoring derivation dropping object refinements/transforms — unioning expression slots makes naive predicate wrap reject expressions; recorded for the codec story. Document `layerId` as `LandofileLayer` — foreign source layers are not v4 layers. Required diagnostic remediation — optional matches tagged-error convention. Recipe writable-layer field — §1.1 recipe-request has none; outputs already use `LandofileLayer`. Fail-closed `{{ null }}` / `and(true,"x")` at boolean sites — conservative `unknown` is the documented static policy. Schema-level 1 MiB cap — core already bounds reads.
-- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 120 spot-check tests across 7 authoring/translate files passed.
-- **Learnings for future iterations:** Autodetect may skip escaped symlinks, but `--file` must fail on the same realpath check or explicit paths can still leak.
+## 2026-09-10 10:38 - US-611B
+
+Shipped `lando app:config:migrate`. It resolves a chain between the recorded and target versioned producer identities, walks each edge against an in-memory prospective document plus option map, classifies every stable hunk id as `already-satisfied` / `selected` / `retained-option` / `blocking`, and commits only the longest fully satisfied edge prefix through the shared managed-file transaction. `--dry-run` prints the complete ordered hunk set and calls none of the coordinator; `--yes` selects untouched hunks; default interactive asks once per selectable hunk; non-interactive without `--yes` fails closed.
+
+**Rendering the old snapshot is what makes classification possible.** A managed site holds `{{ recipe.<option> }}`, which never deep-equals a hunk's `old` value. The engine resolves a managed site's `current` from the rendered *old* snapshot at the canonical path. Selected structural edits write the managed expression form, never the resolved literal.
+
+`classifyHunk` cannot classify a `rename`: those fields are canonical path strings. Core owns rename classification and updates `recipe.services` plus every managed `dependsOn`, tooling, and expression reference atomically or blocks the whole edge. Higher-layer ownership is a layer check, not a filesystem walk. Shared raw-Landofile helpers moved out of explain into `app-config-recipe-analysis.ts`.
+
+Real surface: compiled CLI on a throwaway lamp app returned `already-current` for migrate, `--dry-run`, and space-separated `app config migrate --dry-run`, with an identical `.lando.yml` SHA-256 before and after.
+
+Review: dry-run now inspects `pending` without locking; rename already-satisfied requires the rendered after-state (later: every managed reference, not just a present target key); route/event `service` fields rewrite via segment walks; hunk-snapshot mismatch blocks bad option-default/remove declarations; guide `<Verify file>` paths use the UseFixture subdirectory.
+
+Learnings:
+
+- No bundled recipe publishes `migrations:` yet, so bundled runs honestly report `already-current`. Drive real multi-edge chains from `core/test/cli/fixtures/recipe-migrations.ts`.
+- A `decide` callback for a pure engine can still be interactive: enumerate selectable hunks with a recording pass, prompt, then re-run with the recorded answers.
+- `<UseFixture name="x">` copies to `<testDir>/x` and chdirs there; `<Verify file>` is resolved from `testDir`, so the path must be `x/.lando.yml`.
+- Out-of-scope: `lando exec appserver -- php -r 'echo PHP_VERSION'` still prints then hangs until SIGINT.
+
+Merged as PR #946.
+
 ---
 
-## 2026-09-06 19:35 - US-608A Review
-- Post-commit Bugbot: annotated translate output comments deletion intents so preview YAML stays valid.
-- Review notes (deferred/rejected): none new.
-- Verification: lint passed; CLI translate harness passed.
+## 2026-09-11 00:46 - fix/config-translation-followups
+
+Five-lane review plus Bugbot over the 30-commit branch delta. Fixed three: private-file ACL enforcement ran against the pathname while bytes were written through the opened handle, so a Windows rename race could secure a replacement while secrets landed on the renamed-away inode (now identity-bound before any write; state-store switched from path `chmod` to fd `chmod`); `apps:init` was the only native adapter never wrapped in `runWithProcessAbortSignal`; the generated post-init reference still advertised an undeclared `--answer start=true` (fixed in the generator).
+
+Rejected: committing auxiliary scaffold through the managed-file transaction (contradicts user-owned post-commit / no-rollback / preview-byte parity).
+
+Verify: built the real binary; fresh lamp and node-ts through both init spellings; PHP/MariaDB/Node routes returned expected bodies; all four config aliases worked; explain matched, migrate already-current, translate committed a changed layer with a mode-600 backup. Compiled init rejected a non-allowlisted post-init command. SIGINT at the interactive name prompt returned `InteractionCancelledError` without a scaffold.
+
+PR #949: first CI run failed Windows provider-integration — a real regression, not a flake. The branch wired fail-closed Windows ACL enforcement into the advisory-lock path but left several sites defaulting to `makeOwnerOnlyFileAccess()` with no `ProcessRunner`, which on win32 can only ever throw. Triage made ACL access a required constructor dependency. Two Windows ACL tests got explicit 30s budgets; fail-closed behavior was never weakened. Merged.
+
+Follow-ups recorded then: (1) `landofile/src/includes.ts` still constructed a runner-less ACL service — inert today (`lock: "none"`). (2) Owner-only ACL enforcement spawned PowerShell per private file (~1.4s on Windows x64, several times that on ARM64). (3) `lando exec` still hung after one-shot output.
+
+Learning: enforcing file permissions by pathname while writing through an already-open handle is a race wherever the enforcement step is slow. Bind the check to the opened inode before writing, and prefer fd-bound `handle.chmod`.
+
 ---
 
-## 2026-09-06 19:53 - US-608A Drift Audit
-- Trigger: 6 cycles, 3490 changed lines, 8 commits
-- Weakened proofs: detect/translate fixtures attributed no source ids; contract harness could skip the complete-shape law
-- Ceremony: CLI helper splits kept — inlining would push the command past 250 LOC
-- Scope absorption: CLI rewrite is required port wiring; US-609C already owns preview/write/encode orchestration
-- Fixed: empty source identities now fail closed; fixtures attribute real snapshot ids; unused completeMerge escape removed
-- Split/excise decisions: none; passes remains true
-- Verification: typecheck pass, lint pass, 80 spot-check tests pass
----
+## 2026-09-11 - fix/runtime-acl-exec-followups
 
-## 2026-09-06 20:00 - US-608A Verify
-- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), then a throwaway php:8.3 app: `app:config:translate --list` reports no translators; translate/detect/write fail closed with `ConfigTranslateNoTranslatorsError` and no file writes; start/info/curl/exec succeeded (HTTP 200 `us608a-ok`, PHP 8.3.33); adjacent `app:config` and `app:config:lint` stayed green. Destroyed the scenario app.
-- **Out-of-scope finding:** `lando setup`/`lando start` warn that port 80 is in use (fallback 8080) and port 443 is held by leftover `lando-proxy-https` systemd-socket-proxyd (fallback 8443). Story AC not blocked; suspected prior-verify host-integration remnant plus host `rootlessport` on 8080/8443 via WSL mirrored networking.
----
+Implemented the three follow-ups: injected StateStore replaces the Landofile singleton, one scoped PowerShell worker serves sequential private-file operations throughout the runtime, and exec attaches stdin only with explicit `-i`. Exact owner-only DACL and identity-before-bytes protections remain.
 
-## 2026-09-06 22:19 - Babysit
-- PR: #916 https://github.com/AaronFeledy/core4/pull/916
-- CI outcome: pass (after unit-test shards, test-isolation, and guide-scenarios-darwin failures on the earlier pushed SHA)
-- Review feedback: fixed (verified and pushed the pending typecheck-split, deprecation-decode, and serializer-inventory commits; Bugbot clean)
-- Merge: merged (squash)
----
+Review also fixed introduced Unicode pathname framing risk, hidden StateStore dependencies, a declarative uninstall stub, and missing doctor version-constraint reporting. PowerShell console input encoding must not determine which file receives an ACL; requests now carry ASCII-only UTF-16LE base64 paths.
 
-## 2026-09-06 22:55 - US-608B
-- Added `configTranslators` to both plugin seams: the manifest `PluginContribution` (new `ConfigTranslatorContribution` with required `id`/`module`/`inputKinds` and advisory `detects`/`optionsSchema`/`summary`/`deprecated`) and `LandoPluginModule` (a `ConfigTranslatorLoader` map of lazy `() => Promise<ConfigTranslatorShape>` factories, the same shape bundled plugins already use for commands, so generated bundling stays static-import-of-descriptors with lazy implementations).
-- The module set now validates translator ids against the manifest, indexes loaders, and rejects duplicates with `ConfigTranslatorConflictError` naming both producing plugins (`makePluginCapabilityIndex` now fails with `PluginCapabilityIndexError`); no first-or-last wins.
-- New `ConfigTranslatorRegistry` SDK tag with an engine Live installed in the `plugins` bootstrap tier over the contribution graph, so bundled, system, user, app, and host-injected plugins all flow through one candidate list. Candidates are read and loaders invoked only inside `list` (memoized), cross-source duplicates fail `list` with both producer names, and a loader returning a foreign id is a `PluginLoadError` attributed to its plugin.
-- `app:config:translate` (native spec and legacy adapter) bootstraps at `plugins`, resolves translators from the registry when none are injected, and is exported from `@lando/core/cli/operations` so library callers share the same operation and tier.
-- Verification: typecheck, lint, check:boundaries, codegen:check, check:schema-compatibility (2 compatible additive fields), check:public-transcripts passed; spot checks across SDK schema/compat, engine module-set/registry, core translate/lifecycle/manifest, cold-start (fast-path, opentui canary, import boundary), generated-layer, and contract-coverage files passed. Compiled `core/dist/lando` in lando4-dev: `app:config:translate --list` reports no installed translators (exit 0, JSON `{"mode":"list","translators":[]}`), translate/detect fail closed with `ConfigTranslateNoTranslatorsError`, and `--version` stays on the 12 ms cold path.
-- **Learnings for future iterations:**
-  - A plugins-tier Live that reads `PluginContributionGraph` through `Effect.serviceOption` must be `Layer.provide`d with the graph inside `renderPlugins()`; a bare `Layer.mergeAll` sibling sees `None`.
-  - Widening `makePluginCapabilityIndex`'s error type only touched `validateResolvedPlugin`'s annotation; every other caller already treats the Left generically. Pre-existing module-set tests that read `PluginDescriptorMismatchError` fields need an `instanceof` narrow.
-  - `/tmp` is not shared with the lando4-dev distro; put throwaway CLI apps under the gitignored `.local/` tree.
-  - Bundled translators (`lando4`, `recipe`) should ship as `configTranslators` map entries wrapping `import()` in their plugin descriptor; the registry verifies the loaded `id` matches the contribution id.
----
+Verify: real PHP and Node one-shots exited without SIGINT, nonzero statuses propagated, explicit piped stdin returned exact payloads. A new pipe hang was fixed by disabling container TTY when interactive stdin is not a terminal.
 
-## 2026-09-06 23:26 - US-608B Review
-- Review-work failed on graph-level manifest/descriptor agreement; Bugbot found no bugs. Fixed: registry `list` now fail-closes with `PluginDescriptorMismatchError` when a plugin's `configTranslators` loader ids disagree with its manifest, before any factory runs.
-- Review notes (deferred/rejected): Manifest-only dynamic import of `configTranslators[].module` — command-shaped lazy Maps are the AC loading path; undeclared or missing loaders now fail closed instead of inventing a CA-style module import. Full-suite uninstall timeouts — loop forbids `bun test` with no path and those failures are unrelated. Loading every factory on first `list` / structural runtime-shape checks — MINOR, not AC-blocking.
-- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 74 spot-check tests across registry, module-set, translate, schema, and generated-layer files passed.
-- **Learnings for future iterations:** Graph-level translator collection must apply the same exact-id check as the module set. Copying `commandLoaders` without declared-vs-provided validation lets undeclared loaders activate and declared ones vanish.
----
+Out-of-scope: explicit init `--source cwd` is still advertised but unimplemented; terminal-stdin SSH one-shots still require EOF/interruption.
 
-## 2026-09-06 23:42 - US-608B Drift Audit
-- Trigger: 2 cycles, 799 changed lines, 8 commits
-- Ceremony: candidate collector and its type were exported with no production importer
-- Weakened proofs: new `ConfigTranslatorRegistry` tag and library `appConfigTranslate` export were not pinned on the existing public-export tests
-- Fixed: unexported the unused collector; pinned both public seams on the sibling export tests
-- Split/excise decisions: none; passes remains true
-- Verification: typecheck pass, lint pass, 127 spot-check tests pass
----
-
-## 2026-09-07 09:40 - US-608C
-- Verified the committed managed-file transaction coordinator against both acceptance criteria; no implementation work remained. The private module in `@lando/managed-file` locks the realpath'd app root through the state-store advisory lock, rejects symlinked targets/parents and any parent outside that root, stages `<target>.lando-stage.<id>` beside each target, and reuses only hash-verified `<file>.bak.<full-before-sha256>` backups created exclusively at `0o600`.
-- Confirmed the durability order first-hand: backups, then stages, then an owner-only fsynced `prepared` journal carrying the complete ordered before/after plan (presence, full digests, modes, backup identity, stage dev/ino), and only afterwards `committing`, per-file renames with digest rechecks, fsynced `committed`, stage cleanup, and a removal that fails unless the journal is already `committed`. Journals, tagged errors, and commit receipts carry digests, modes, and paths only, so no user bytes reach an output channel. No CLI, renderer, or prompt surface was added.
-- Documented the coordinator in the root `AGENTS.md` package-ownership bullet so later stories consume the `@lando/managed-file/transaction` seam instead of hand-rolling staging.
-- Verification: typecheck, lint, check:boundaries, coordinated-plan passed; 57 focused transaction tests (including crash-injection at every checkpoint, lock contention, symlink/hardlink attacks, and backup corruption) and 24 adjacent state-store lock/atomic tests passed. No CLI surface changed, so no CLI run applied.
-- **Learnings for future iterations:**
-  - The transaction journal is the one artifact allowed outside app-root containment: `journalDirectory` derives it from `makeLandoPaths({ userDataRoot }).managedFileLedger(...)`, keyed by app-root basename plus root digest, so two apps with the same basename never collide.
-  - Journal writes are a state machine, not a blind set: `write` re-reads, requires the exact next state in `prepared -> committing -> committed`, and rejects any payload whose non-state fields drift from what was journaled. Recovery work in the next story must transition through it rather than writing terminal states directly.
-  - `prepare` hands back an opaque handle and keeps the journal/store in a `WeakMap` lease, so `commit` cannot be replayed or driven from a foreign journal; the scoped finalizer deletes only stages whose recorded dev/ino still match, never foreign or unjournaled ones.
-  - Cross-package consumers must import through the `@lando/managed-file/transaction` subpath (package-dag rule); the package stays `private: true`, and the module is deliberately absent from the package root export.
----
-
-## 2026-09-07 09:49 - US-608C Review
-- Reviewed the managed-file transaction coordinator against both US-608C ACs and in-scope §12.4.1 coordinator sentences. Bugbot found no bugs. No in-scope defects required a code change; prepare/commit durability, locking, containment, backups/stages, and committed-only cleanup already match the story.
-- Review notes (deferred/rejected): FileSystem/`ManagedFileService` wrapping of coordinator IO — AC text does not require it; §12.4.1 forbids commands/translators bypassing the coordinator, and exclusive-open/fsync/O_NOFOLLOW primitives are not a FileSystem surface this story owns. Pathname TOCTOU / fd-relative mutation — §12.4.1 states cooperative locking is not CAS against noncooperative editors; recovery preflight is US-608D. Split-scope commit-without-lock — scope finalizer drops the lease, so commit fail-closes. Unreadable-lock EACCES takeover after stale mtime — intentional reclaim of crashed exclusive-create leftovers; live readable owners stay protected with `expireLiveOwner: false`. Windows owner-only DACL — matches existing state-store/managed-file 0o600 skip; not a new 608C contract. QA standard-invocation FAIL — empty worktree missing generated preload; main-tree focused tests passed.
-- Verification: typecheck, lint, GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 78 focused tests passed (1 root-only skip) across 12 transaction/lock/atomic/adjacent managed-file files.
-- Guide-Coverage-Skip: private transaction coordinator adds no user-facing CLI or guide-covered public contract.
----
-
-## 2026-09-07 09:56 - US-608C Drift Audit
-- Trigger: 3 cycles, 1942 changed lines, 3 commits
-- Weakened proofs: path-policy test claimed own-stage cleanup but failed in planning before stages existed; restored the claim to unjournaled foreign-stage preservation, which is the path it actually runs
-- Ceremony: unexported unused PlannedEntry and file-local verifyPrivateFile
-- Split/excise decisions: none; FileSystem wrapping re-examined and left deferred; package export stays unwired for US-609C; passes remains true
-- Verification: typecheck pass, lint pass, 67 focused tests pass (1 root-only skip)
----
-
-## 2026-09-07 10:07 - US-608C Verify
-- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), then a throwaway php:8.3 app: start/info/curl/exec succeeded (HTTP 200 `us608c-ok`, PHP 8.3.33); `app:config` and `app:config:lint` stayed green; `app:config:translate --list` reports no translators and translate fails closed; help `--all` exposes no transaction or migrate UI. Destroyed the scenario app.
-- **Out-of-scope finding:** `lando config:lint --format json` exits unknown-command (`cli:unknown-command`) while `lando help --all` lists `config:lint` and canonical `lando app:config:lint` succeeds. Story AC not blocked; suspected compiled-binary short-name dispatch, untouched by this diff.
----
-
-## 2026-09-07 11:35 - US-608D
-- Added journal recovery to `@lando/managed-file`: a new `blocked` terminal journal state, a preflight that classifies every entry against the complete recorded before/after plan (containment, symlink, link count, absence, digest, mode, immutable backup, and exclusive owner-only stage), and a roll-forward recovery that mutates only unapplied entries. A conflict marks the journal `blocked`, preserves every user file byte for byte, and demands manual resolution instead of overwriting forward or rolling back over an edit.
-- Handled the crash window between a stage rename and its chmod as its own `applied-needs-mode` disposition, so a target that already carries the recorded after digest at the stage's owner-only mode gets its intended output mode completed rather than being misread as a conflict. Applied writes must additionally still be the renamed stage inode with no stage left behind; originally absent creations and removals classify from presence.
-- Recovery of a `committed` journal performs cleanup only: it never inspects or restores targets or backups, removes stages only when identity *and* digest still prove ownership (`removeRecordedStage` replaces the identity-only removal used everywhere), and then removes the journal. Immutable backups stay until the user deletes them.
-- Added the read-only dry run: it opens the journal without creating its directory, takes no lock, mutates nothing, and reports id, state, `recover | cleanup | manual-resolution`, and target paths only.
-- Published the thin non-translator guard as an SDK tag (`ManagedFileTransactionGuard`) implemented in `@lando/managed-file`, consulted first by native multi-layer Landofile loading and as the first effect of the bound start path. `ManagedFileTransactionError` moved to the SDK so the tagged failure survives into the Landofile discover, user-load, and start error unions instead of being disguised as a parse failure; its TSDoc carries the durable cooperative-lock/not-CAS statement. The guard peeks before it locks, so an app with no journal costs two stats.
-- Verification: typecheck, lint (incl. deprecations), and check:boundaries passed; 391 managed-file + landofile tests and 206 engine-operation + core managed-file tests passed, including a new 21-case recovery suite that went 0/21 red before the implementation. CLI verified end-to-end: with a real blocked journal planted for an app root, `lando app:config` exits 1 with `ManagedFileTransactionError` and its manual-resolution remediation while the concurrent edit survives untouched; the same command succeeds normally once no journal is pending.
-- **Learnings for future iterations:**
-  - Recovery emits its own checkpoint names (`recovering`, `after-recovery-mutation`, `recovered`). Reusing the commit-phase names makes a crash-injection fixture fire again during recovery and hides real behavior behind a fake second crash.
-  - Roll forward, never back. The journal state machine is forward-only, backups plus stages make forward completion safe, and a rollback path would be a second mutation strategy with its own overwrite risk.
-  - `verifyPrivateFile` must treat a missing artifact as a `conflict`, not let `ENOENT` escape as `io`; a deleted backup is a recovery decision, not a filesystem surprise.
-  - The guard must peek with `openJournal(..., { createDirectory: false })` before locking. Creating the ledger directory on every native load would write to disk on the §12.5 hot path for every app that never ran a transaction.
-  - An Effect layer only sees what is provided *to it*: the Landofile service layer takes the guard through `Layer.provide`, and `discover` stays `R = never` by closing over the resolved guard at layer construction.
----
-
-## 2026-09-07 12:06 - US-608D Review
-- Guarded production native loads: context-provided `ManagedFileTransactionGuard` is consulted when composition inputs omit it, single-file reads consult it before parse, and discovery recovers the cwd before walking to a parent Landofile. Windows recovery no longer treats POSIX-only `0o600` stage bits as a conflict.
-- Review notes (deferred/rejected): Hold the canonical-root lock through layer parse — AC cooperative-lock/no-CAS and §12.4.1 do not require CAS across the read. Windows owner-only DACL — deferred in US-608C, not introduced here. Pathname TOCTOU on rename/chmod — spec says the cooperative lock is not CAS.
-- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 29 focused tests passed (7 landofile guard, 21 recovery, 1 start guard).
-- Guide-Coverage-Skip: internal transaction load guard with no new CLI or guide-covered public contract.
----
-## 2026-09-07 12:10 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
-
-## 2026-09-07 13:55 - US-609A
-- Added the bundled `@lando/lando4` plugin: a leaf workspace package depending only on `@lando/sdk` that contributes `configTranslators: [lando4]` through both the manifest and a lazy literal-dynamic-import loader, so ordinary bootstrap, help, version, loading, and tooling paths never construct the codec.
-- Implemented the two-way canonical v4 codec. Decode reads bounded raw bytes as UTF-8, parses with the dependency-free canonical parser, strict-decodes as an authoring fragment with excess properties rejected, and emits one output per source layer. Encode always validates the complete authoring context, then emits only the requested fragment through the canonical serializer with sorted keys, leaving expressions and secret references as verbatim source text. Nothing in either direction resolves environment, secret, file, provider, include, `.lando.ts`, or command values.
-- Made every omission explicit instead of silent: a layer the request cannot write becomes a remediated `dropped` diagnostic, while a non-YAML document (TypeScript Landofiles included, never executed), a non-v4 layer id, two documents claiming one layer, and content that is not valid canonical v4 authoring data each become `unsupported`. Non-selected single-layer documents are context and produce neither output nor diagnostic. A recipe request fails closed.
-- Made detection conservative and deterministic: it matches only when every YAML candidate strict-decodes as v4 authoring data, reports `exact` when the set carries the `runtime: 4` marker a Lando 3 document cannot have and `likely` otherwise, and returns one set-level match because core invokes a frontend once per ordered set.
-- Flipped the ConfigTranslator plugin-abstraction coverage row from `none-bundled` to `built-in` behind a real core contract-suite invocation that resolves the translator through the plugin's own lazy loader, and recorded the plugin in the reference bundle table.
-- Verification: typecheck, lint, check:boundaries, codegen:check (clean after commit), and check:schema-compatibility (0 breaking) passed; 44 spot-check tests across the codec, the core contract invocation, the coverage gate, the translator registry, and the plugin module set passed, plus 44 adjacent translate-command and module-set tests. CLI verified from source: `app:config:translate --list --format json` now reports the bundled `lando4` translator, and a real `app:config:translate --from lando4` on a throwaway app round-tripped a Landofile with `{{ env.PORT }}` intact and no provenance header.
-- **Learnings for future iterations:**
-  - The `contributes` block in `core/build.config.ts` is a fixed documentation summary with no `configTranslators` field; omit it for a translator plugin the way `@lando/sql` omits it rather than widening that type.
-  - A new `plugins/*` package needs four registrations beyond its own files: the root `tsconfig.json` reference, `WORKSPACE_EDGE_TABLE` in `scripts/boundary/rules/package-dag-policy.ts`, the `core/build.config.ts` ship list, and `bun install` before workspace imports resolve.
-  - `sdk/test/fixtures/bundled-plugin-manifests.json` is a committed codegen output keyed off the ship list, so `codegen:check` stays red until the regenerated fixture is committed with the plugin.
-  - Contract-suite and detect fixtures must be built through `Schema.decodeUnknownSync(ConfigTranslate*Input)`; `ConfigTranslateDocument.bytes` decodes base64 to a `Uint8Array`, and handing the raw base64 string to a translator makes detection silently return no match.
-  - The encoder is not yet on the CLI preview path. `app:config:translate` still emits merged outputs through `emitLandofileYaml` directly, so the sorted-key formatting this codec guarantees reaches users only when US-609C routes preview and write through the selected target encoder.
----
-
-## 2026-09-07 14:20 - US-609A Review
-- Review-work failed on diagnostic order, non-mapping encode context, and stale bundle inventories; Bugbot flagged conservative detect. Fixed: mixed dropped/unsupported diagnostics now sort by input-document order, encode fail-closes unless the complete context is a Landofile mapping even when emitting a fragment, and the bundled-plugin inventories count `@lando/lando4`.
-- Review notes (deferred/rejected): Detect returning no match when any YAML candidate fails v4 decode — intentional set-level conservative detect; core passes Landofile snapshots, not arbitrary app-tree YAML. Authoring-root Union→TypeLiteral plus annotation-gate rewrite — US-608A warned that making the root object-only breaks the public-field-description gate; codec fail-closed on non-mapping context instead of changing the shipped schema. Diagnostic value leakage — translate redaction is owned by US-609C. Partial-prefix contract fixture — MINOR; the shared suite still runs prefix/complete laws. Duplicate translator-id constants — nitpick, importing translator.ts from index.ts would break lazy load.
-- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 97 focused tests passed across codec, contract, bundled descriptor, generated-table, entry-points, plugin-registry, and packed-consumer files.
-- Guide-Coverage-Skip: codec plugin has no owned guide; US-609C owns config-translate.mdx and CLI preview/write.
-- **Learnings for future iterations:** Adding a bundled plugin requires updating every hardcoded ship-list inventory (`bundled.test.ts`, `generated-table.test.ts`, `plugin-registry.test.ts`, `bundled-plugin-loading.test.ts`, `entry-points-export.test.ts`), not only `build.config.ts` and codegen fixtures. `validateConfigTranslateResult` orders diagnostics by the full input document list, so two-pass translate must re-sort before return.
----
-## 2026-09-07 14:14 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
-
-## 2026-09-07 14:21 - US-609A Verify
-- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), then a throwaway php:8.3 app: `app:config:translate --list` reports bundled `lando4`; `--detect` is `exact` with `runtime: 4`; `--from lando4` round-trips YAML with `{{ env.PORT }}` intact and no provenance header; non-YAML `index.php` is `unsupported` and never executed. Start/info/curl/exec succeeded (HTTPS 200 `us609a-ok`, PHP 8.3.33); adjacent `app:config` and `app:config:lint` stayed green. Destroyed the scenario app.
-- **Out-of-scope finding:** `lando app:config` on a Landofile with `{{ env.PORT }}` exits 1 (`NotImplementedError`: template expressions not supported) while `app:config:lint` reports valid and `app:config:translate --from lando4` preserves the expression. Story AC not blocked; suspected unimplemented expression evaluation on the config load path.
-- **Out-of-scope finding:** `app:config:translate` autodetect includes `index.php` from the app root and emits `unsupported`; `--file .lando.yml` is clean. Story AC not blocked; suspected CLI source discovery (US-609C orchestration).
----
-
-## 2026-09-07 16:55 - US-609B
-- Published the SDK recipe-decomposition contract: a schema-backed `RecipeDecomposer` port whose `decompose` takes already-merged nonsecret options plus approved secret references and returns an authoring fragment with inert provenance, with `R = never` and no app-root detection, provider action, write, post-init work, planning, or programmatic recipe execution. Factories close over an injected `Redactor` so a sink failure reports through central redaction without the SDK reaching for an ambient service.
-- Split recipe identity into its own module: `RecipeSourceKind`/`RecipePackageName`/`RecipeContentDigest`/`RecipeProducer` plus family and versioned key helpers, so bundled and local producers sharing a package and recipe name can never collide. Added the object-form `recipe:` Landofile value (`LandofileRecipeProvenance`, `LandofileRecipeField`) with schema-enforced id/version agreement and an injective service map; `LandofileShape.recipe` widened from a bare id to that id-or-provenance union and the bare string stays valid and inert.
-- Added declarative migration data: `RecipeSnapshot` (identity, serializable option descriptors, defaults, one serialized expression tree, asset digests), `RecipeMigration` edges, and the five hunk kinds with stable ids and the four classifications. `RecipeManifest` gained optional `snapshot`/`migrations`; secret prompts now must declare exactly one disposition (stored-secret reference field, or one named `postInit.stdin` / `postInit.secretEnv.<name>` sink) and may not default a raw value, and post-init actions gained those named sink bindings.
-- Implemented the pure logic behind `@lando/sdk/recipes`: provenance validation, an options-only snapshot template walker over a closed 47-name pure-helper allowlist that rejects every IO helper and decoder, budgeted snapshot rendering that treats quoted authoring expressions in its output as data, chain validation covering twelve named failure reasons, option-descriptor checking, migratability verdicts, and secret-disposition/sink validation whose failure type carries structural identifiers only.
-- Gave the canonical emitter one fixed named leading comment block for the provenance header, gave the expression evaluator an opt-in step/depth/output/collection budget and an `options` scope, and published `runRecipeDecomposerContractSuite` with a `none-bundled` coverage row (no bundled decomposer ships until recipe init integration).
-- Verification: typecheck, lint, boundaries, codegen:check, and schema compatibility (0 breaking) passed; 2,376 focused tests across SDK schema/recipes/contract/library/errors/landofile/expressions and core contract/recipes files passed, plus core library and build suites. A real driver confirmed the emitted header text, an intact `{{ recipe.php }}` site, byte-exact parse round-trip, and fail-closed identity mismatch, forbidden `load()` helper, and chain gap.
-- **Learnings for future iterations:**
-  - Public JSON-schema fixture keys in `sdk/test/schema/public-schema-contracts.ts` must appear in the SAME ORDER as the registry keys; the coverage assertion compares arrays, not sets.
-  - Embedding the recursive expression AST directly in a registered schema overflowed the deprecation-annotation traversal. That traversal now carries a visited guard, and a snapshot template is wrapped in a named carrier so the recursive grammar is referenced once instead of inlined.
-  - The annotation gate resolves a union's shared discriminator only through direct struct members; nesting a sub-union as the first member hides the field. Flatten the union rather than adding an exemption.
-  - Widening a `LandofileShape` field changes `anyOf` in every schema and command result that embeds it, so expect a batch of `unsupported-construct` findings needing recorded justifications in `sdk/compatibility-exceptions.json`.
-  - `Schema.TaggedError.fields` includes `_tag`; assert it when pinning an exact field set.
-  - Adding an export to `@lando/sdk/landofile` also needs the core seam list in `core/test/build/landofile-package-seam.test.ts` updated.
----
-
-## 2026-09-07 17:25 - US-609B Review
-- Review-work failed on digest derivation, exclusive secret sinks, and nested callbacks; Bugbot found no bugs. Fixed: canonical content-digest projection and hash, exclusive secret-store versus init-only sink ownership, recursive callable rejection, and migratability identity plus default-type checks.
-- Review notes (deferred/rejected): ConfigTranslateSecretReference as an unrestricted string — pre-existing US-608A envelope with a trusted-caller precondition. Evaluator join/replace allocation and regexMatch CPU — general evaluator hardening, not this story's ACs. Optional contract mutationProbe — the side-effect law exists and is self-tested. classifyHunk rename path comparison — owned by US-611B analysis. Secret defaults in Effect ParseError trees — filter diagnostics are value-free and sink-failure redaction already holds. node:crypto hashing — existing SDK pattern.
-- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 97 focused tests passed across digest, secret, migration, option, and export files.
-- Guide-Coverage-Skip: SDK recipe contract helpers add no user-facing CLI or guide-covered public command surface.
-- **Learnings for future iterations:** Digest projections must omit `identity.contentDigest` and migrations; `exactOptionalPropertyTypes` forbids assigning `undefined` into optional keys.
----
-
-## 2026-09-07 21:56 - US-609B Drift Audit
-- Trigger: 2 cycles, 3637 changed lines, 3 commits
-- Findings: provenance-header test used a fake option map instead of object-form provenance and `{{ recipe.* }}` sites; versioned identity had no behavioral test; secret disposition re-decoded an already-typed union; classifyHunk (US-611B analysis) was on the public recipes barrel
-- Fixed: restored object-form header plus intact expression-site round-trip; added digest-keyed identity agreement; removed dead secret re-validation; unexported classifyHunk from the public recipes barrel
-- Split/excise decisions: none; classifyHunk stays in-module for US-611B; no passes flip
-- Verification: typecheck, lint, 89 spot checks — pass
----
-
-## 2026-09-07 17:10 - US-609B Verify
-- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0). Object-form `recipe:` is inert: lint/translate round-trip provenance and `{{ recipe.php }}` sites, identity mismatch fail-closes, secret prompts without disposition fail `recipes:validate`, start/info/curl/exec succeeded (HTTPS 200 `us609b-ok`, PHP 8.3.33). Adjacent recipes:list/describe/validate and `lando4` detect stayed green. Destroyed the scenario app.
-- Blocker: default `lando app:config` table render FiberFailed on object-form `recipe:` (`TypeError: No default value`). Fixed to print the provenance id; table render now shows the recipe id.
-- **Learnings for future iterations:** Template-string interpolation of a Landofile union field can throw via ToPrimitive after redaction; format a scalar id (or JSON) instead of coercing the object.
----
-
-## 2026-09-07 19:55 - US-609C
-- Core now owns the whole explicit-conversion pipeline. It discovers config sources by extension (`.yml`/`.yaml`/`.json`/`.toml`, so application files never enter the set), assigns each document its real Landofile layer from its basename with foreign files landing in `canonical`, orders the set by layer position then path, and hands the frontend exactly one `landofile-document-set` per invocation.
-- `--file` no longer bypasses discovery. It now selects inside the full set and switches the request to `single-layer`, so unselected documents stay available as translator context, `writableLayerIds` narrows to the selected dependency closure, and present lower-precedence layers are decoded as v4 authoring fragments for validation context. A lower layer that is not already v4 fails closed naming the file and the `--file` remedy instead of silently translating half an app.
-- Removed the pre-translation parse of the current Landofile as v4 and the blanket merge of it under the outputs. That predecode made the command unable to translate any non-v4 `.lando.yml`, which is the case it exists for, and the merge resurrected keys a translator had deliberately dropped. Unsupported-tooling rejection now runs on the merged authoring result.
-- Added cumulative merge-prefix validation over context plus outputs in layer order, final complete-authoring validation, and target encoding through the new `--to` flag (default `lando4`). `emitLandofileYaml` is gone from this command; every target's text comes from the selected encoder, so sorted-key formatting and verbatim expressions reach users. An unknown `--to`, or a target without `encode`, fails closed listing the encodable ids.
-- Diagnostics are frontend-first then encoder, redacted through `RedactionService` with a standalone fallback, and identical between preview and write. An `unsupported` diagnostic skips encoding entirely and blocks writing; `non-portable` blocks writing.
-- `--write` is now one managed-file transaction covering every declared v4 layer path plus deletions, producing immutable `<file>.bak.<sha256>` backups. Only `lando4` may write; any other target is preview-only. Single-layer refuses to touch a target file that exists and was not selected, and refuses to delete an unselected source.
-- Results carry the encoder id: preview gained `targets[{layer,path,content}]`, write replaced `outputPath`/`backupPath` with `written`/`backups`/`removed`.
-- Verification: typecheck, lint, check:boundaries, codegen:check, and check:schema-compatibility (0 breaking, 1 pre-existing accepted) passed; 115 spot-check tests across translate, document-set, scenario, lando4 codec, transaction, and landofile config-translate files passed; guide gates lint:guides, dev:guides (3 rendered scenarios), check:guide-coverage, and check:public-transcripts passed. Real CLI verified on a throwaway two-layer app: preview labels each target path and keeps `{{ env.PHPV }}` verbatim, `index.php` never enters the set, an unknown `--to` fails closed, and `--write` rewrote only the layer whose bytes changed while leaving a digest-named backup and no legacy `.lando.yml.bak`.
-- **Learnings for future iterations:**
-  - The derived `LandofileAuthoringShape` currently accepts `{}` and every partial value, so "final complete authoring shape" validation is presently vacuous. Do not paper over that in a consumer with a hand-rolled required-field check; the gap belongs to the authoring-schema derivation that owns the shape.
-  - Guide fixtures that ship a local layer need a `.gitignore` negation. The root ignore covers `.lando.local.yml`, so a `docs/guides/**/fixtures/**` fixture silently never reaches the repo and the scenario passes locally then fails everywhere else.
-  - `check:public-transcripts` does not regenerate a partially populated `dist/transcripts/public/guides`; clear that gitignored directory before re-running it or it reports every other shipped guide as missing.
-  - Writing command output into the app root under test poisons the next run: discovery picks the artifact up, the translator marks it `unsupported`, and the write correctly fails closed. Keep manual-QA artifacts outside the app root.
-  - The transaction reports only files whose bytes actually changed, so a re-encode that is byte-identical yields no write and no backup. That is the byte-deterministic repeat the spec asks for, not a missing write.
----
-
-## 2026-09-07 20:06 - US-609C Review
-- Review-work failed on once-read snapshots, `--file` discovery membership, and YAML-beside-TypeScript writes. Fixed: lower v4 context now uses the bounded document snapshots; `--file` selects inside discovery (with the existing realpath fail-closed for escapes); encoding refuses a layer whose TypeScript form already exists.
-- Review notes (deferred/rejected): QA coverage-gap FAIL — existing tests already prove frontend-once, write transaction, and fail-closed unselected edits; extra planner/provider assertions are not AC blockers. Expected-before digest / transaction CAS — §12.4.1 cooperative lock is not CAS; expanding the coordinator is US-608C/D, previously deferred. Diagnostic `sourceId`/`keyPath` redaction — structural identities required for writes. Discovering every in-root YAML/JSON/TOML — intentional extension policy.
-- Verification: typecheck, lint passed; GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; 70 focused translate/document-set tests passed.
-- Guide-Coverage-Skip: review only tightened fail-closed `--file` membership and TypeScript counterpart writes; the owned config-translate guide already covers selection and write.
-- **Learnings for future iterations:** `--file` membership is not a substitute for the realpath containment error; check containment first on undiscovered explicit paths so escaped symlinks still fail as outside-root.
----
-
-## 2026-09-07 20:15 - US-609C Review
-- Post-commit Bugbot: `--file ./path` now normalizes `.` segments so it still matches discovery.
-- Review notes (deferred/rejected): none new.
-- Verification: 71 focused translate/document-set tests passed.
----
-
-## 2026-09-07 20:24 - US-609C Drift Audit
-- Trigger: 3 cycles, 1534 changed lines, 3 commits
-- Weakened proofs: encoder fail-closed was asserted on `--detect`, so detect required an encoder
-- Ceremony: unused helper exports and a tautological layer-order assertion
-- Fixed: detect no longer requires an encoder; encoder fail-closed proved on preview; unused exports and the tautology removed
-- Split/excise decisions: none; passes remains true
-- Verification: typecheck, lint, 71 spot-check tests — pass
----
+PR #962: CI pass including native Windows x64 and ARM64 ACL gates. Remaining init/translation/event test and adapter ACL dependencies were wired explicitly; non-interactive MCP exec now refuses host stdin attachment even with `-i`. Merged (squash ae9ef4a8).

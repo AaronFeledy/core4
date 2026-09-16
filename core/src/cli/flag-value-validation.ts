@@ -34,6 +34,7 @@ export class UnknownCliFlagError extends Schema.TaggedError<UnknownCliFlagError>
 type FlagDefinition = {
   readonly name: string;
   readonly boolean: boolean;
+  readonly integer: boolean;
   readonly multiple: boolean;
   readonly options: ReadonlyArray<string>;
 };
@@ -47,6 +48,7 @@ const flagDefinitionsByToken = (
     const definition = {
       name,
       boolean: "type" in candidate && candidate.type === "boolean",
+      integer: "valueType" in candidate && candidate.valueType === "integer",
       multiple: "multiple" in candidate && candidate.multiple === true,
       options:
         "options" in candidate && Array.isArray(candidate.options)
@@ -198,7 +200,7 @@ export const validateCliFlagValues = (
     if (equalsIndex === -1 && byToken.has(flagToken(value))) {
       return malformedFlagValue(definition.name, "missing");
     }
-    if (definition.name === "tail" && !/^-?\d+$/.test(value)) {
+    if (definition.integer && (!/^-?\d+$/.test(value) || !Number.isInteger(Number(value)))) {
       return malformedFlagValue(definition.name, "invalid_integer");
     }
     if (definition.options.length > 0 && !definition.options.includes(value)) {

@@ -1,6 +1,6 @@
 // allow: SIZE_OK — this task's ownership fence requires all translation regressions in this existing test file.
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,9 +28,9 @@ import { parseLandofile } from "@lando/landofile/parser";
 import {
   type AppConfigTranslateResult,
   AppConfigTranslateResultSchema,
-  appConfigTranslate,
   renderConfigTranslateResult,
 } from "../../src/cli/commands/app-config-translate.ts";
+import { appConfigTranslateWithOwnerOnlyFileAccess as appConfigTranslate } from "../_support/private-file-access.ts";
 
 const dirs: Array<string> = [];
 const originalDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -1063,22 +1063,46 @@ describe("appConfigTranslate", () => {
     });
   });
 
-  // Unsupported tooling is checked on merged frontend output, never foreign input.
-  test("rejects unsupported tooling flag metadata after translation", async () => {
+  test("--write preserves an edit made after translation read its source snapshot", async () => {
+    const original = "name: before\nruntime: 4\n";
+    const concurrent = "name: concurrent\nruntime: 4\n";
+    const cwd = await makeAppDir(original);
+    const encoder = makeLando4Encoder();
+    const translators = [
+      makeTranslator("v3", { name: "translated", runtime: 4 }),
+      {
+        ...encoder,
+        encode: (input: ConfigTranslateEncodeInput) => {
+          writeFileSync(join(cwd, ".lando.yml"), concurrent);
+          return encoder.encode?.(input) ?? Effect.die("missing encoder");
+        },
+      },
+    ];
+
+    const exit = await runExit(appConfigTranslate({ cwd, write: true, translators }));
+
+    expect(failureValue(exit)).toMatchObject({ _tag: "ConfigTranslateError" });
+    expect(failureValue(exit)?.message).toContain("prepare/conflict");
+    expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe(concurrent);
+  });
+
+  // Tooling metadata is checked on merged frontend output, never on foreign input.
+  test("rejects invalid tooling metadata emitted by translation before writing", async () => {
     const cwd = await makeAppDir("name: demo\n");
     const translators = withEncoder([
       makeTranslator("v3", {
         name: "demo",
         runtime: 4,
-        tooling: { echo: { cmd: "echo hi", flags: { verbose: { type: "boolean" } } } },
+        tooling: { echo: { cmd: "echo hi", args: { target: { order: -1 } } } },
       }),
     ]);
 
-    const exit = await runExit(appConfigTranslate({ cwd, translators }));
+    const exit = await runExit(appConfigTranslate({ cwd, write: true, translators }));
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(failureTag(exit)).toBe("NotImplementedError");
-    expect(failureValue(exit)?.message ?? "").toContain('Tooling flags field "type"');
+    expect(failureTag(exit)).toBe("ConfigTranslateError");
+    expect(failureValue(exit)?.message ?? "").toContain("invalid authoring fragment");
+    expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe("name: demo\n");
   });
 
   test("fails with LandofileNotFoundError when there is no Landofile", async () => {
@@ -1089,7 +1113,6 @@ describe("appConfigTranslate", () => {
     expect(failureTag(exit)).toBe("LandofileNotFoundError");
   });
 
-  // Rendering consumes encoder output from a complete frontend fragment.
   test("renderConfigTranslateResult prints the Landofile and the schema encodes each mode", async () => {
     const cwd = await makeAppDir("name: demo\nruntime: 4\n");
     const translators = withEncoder([

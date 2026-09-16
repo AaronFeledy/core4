@@ -17,7 +17,7 @@ import {
   type RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { lintLandofile } from "@lando/engine/services/landofile-live";
+import { appConfigLint } from "@lando/engine/operations/app-config-lint";
 import { CORE_VERSION } from "@lando/engine/version";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -51,7 +51,7 @@ export {
 } from "./doctor-report-render";
 
 const appConfigForReport = (): Effect.Effect<ConfigLintResult, never, never> =>
-  lintLandofile().pipe(
+  appConfigLint().pipe(
     Effect.catchTag("LandofileNotFoundError", (error) =>
       Effect.succeed({
         app: "",

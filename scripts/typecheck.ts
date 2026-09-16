@@ -1,6 +1,13 @@
 import { resolve } from "node:path";
 import config from "../tsconfig.json";
 
+export const typecheckEnvironment = (
+  env: Readonly<Record<string, string | undefined>>,
+): Record<string, string | undefined> => ({
+  ...env,
+  NODE_OPTIONS: [env.NODE_OPTIONS, "--max-old-space-size=4096"].filter(Boolean).join(" "),
+});
+
 export const typecheck = async (
   args: ReadonlyArray<string>,
   run: (args: ReadonlyArray<string>) => Promise<number>,
@@ -24,6 +31,7 @@ if (import.meta.main) {
     (args) =>
       Bun.spawn(["tsc", "-b", ...args], {
         cwd: resolve(import.meta.dirname, ".."),
+        env: typecheckEnvironment(process.env),
         stdin: "inherit",
         stdout: "inherit",
         stderr: "inherit",

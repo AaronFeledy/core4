@@ -9,7 +9,9 @@ import type { ManagedFile } from "@lando/sdk/schema";
 import { EventService, ManagedFileService } from "@lando/sdk/services";
 
 import { EventServiceLive } from "@lando/engine/services/event-service";
-import { ManagedFileServiceLive } from "@lando/managed-file/service";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
+import { ManagedFileServiceLive as ManagedFileServiceUnprovided } from "@lando/managed-file/service";
+const ManagedFileServiceLive = ManagedFileServiceUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 import { RedactionServiceLive } from "@lando/redaction/service";
 import { makeTestSecretStore } from "../../src/testing/secret-store.ts";
 

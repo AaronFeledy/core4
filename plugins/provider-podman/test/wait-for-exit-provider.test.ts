@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
-import { makePluginStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import {
   AbsolutePath,
@@ -16,6 +16,7 @@ import {
 } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import { persistAppliedPlan } from "../src/applied-state.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("podman-wait-app");
@@ -72,7 +73,11 @@ test("waitForExit forwards cancellation to the Podman wait request", async () =>
       }),
   };
   try {
-    const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+    const state = makePluginStateStore(
+      makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+      AbsolutePath.make(stateDir),
+      ownerOnlyFileAccess,
+    );
     await Effect.runPromise(persistAppliedPlan(state, plan));
     const provider = await Effect.runPromise(
       makeRuntimeProvider({

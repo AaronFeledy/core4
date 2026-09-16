@@ -29,6 +29,8 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import type { TemplateEngine } from "@lando/sdk/template";
 
+import { hostExpressionEnvironment } from "./recipe-expressions.ts";
+
 /** A resolved set of template engines, keyed by engine id. */
 export type TemplateEngineRegistry = ReadonlyMap<string, TemplateEngine>;
 
@@ -109,18 +111,10 @@ const parseError = (
     ...(cause === undefined ? {} : { cause }),
   });
 
-const stringEnv = (): Record<string, string> => {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (typeof value === "string") env[key] = value;
-  }
-  return env;
-};
-
 /** Minimal pre-planning render context — no `service.*` / `info.*`. */
 const defaultRenderContext = (): TemplateRenderContext => ({
   bootstrapLevel: "app",
-  env: stringEnv(),
+  env: hostExpressionEnvironment(),
   scope: "landofile",
 });
 

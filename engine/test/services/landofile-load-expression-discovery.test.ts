@@ -50,10 +50,39 @@ test("discovers load and import CA expressions", async () => {
   });
 });
 
-test("keeps unrelated Landofile expressions deferred", async () => {
+test("resolves an env expression against the host environment", async () => {
   await withApp(async (appRoot) => {
     // Given
-    await writeFile(join(appRoot, ".lando.yml"), 'name: "{{ env.APP_NAME }}"\n');
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      "name: \"{{ default(env.LANDO_APP_NAME, 'fallback-app') }}\"\n",
+    );
+
+    // When
+    const landofile = await discover();
+
+    // Then
+    expect(landofile.name).toBe("fallback-app");
+  });
+});
+
+test("fails closed when an env expression names an unset variable", async () => {
+  await withApp(async (appRoot) => {
+    // Given
+    await writeFile(join(appRoot, ".lando.yml"), 'name: "{{ env.LANDO_UNSET_FIXTURE }}"\n');
+
+    // When
+    const failure = await discoverFailure();
+
+    // Then
+    expect(String((failure as { message?: unknown }).message ?? "")).toContain("name");
+  });
+});
+
+test("keeps host-reaching Landofile expressions unsupported", async () => {
+  await withApp(async (appRoot) => {
+    // Given
+    await writeFile(join(appRoot, ".lando.yml"), "name: \"{{ which('php') }}\"\n");
 
     // When
     const failure = await discoverFailure();

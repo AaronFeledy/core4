@@ -6,6 +6,7 @@ import { NotImplementedError, ToolingExecError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runHostScript } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 import { emitToolingOutputProgress } from "./tooling-progress.ts";
@@ -29,7 +30,8 @@ export const runBunShellScript = (
   },
 ): Effect.Effect<
   ToolingResult,
-  NotImplementedError | ShellExecError | ShellScriptOutsideRootError | ToolingExecError
+  NotImplementedError | ShellExecError | ShellScriptOutsideRootError | ToolingExecError,
+  PrivateFileAccessService
 > =>
   Effect.gen(function* () {
     if (script.service !== HOST_SERVICE) {

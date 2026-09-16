@@ -27,6 +27,7 @@ import {
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
+  StateStore,
 } from "@lando/core/services";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -38,12 +39,14 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { runDestroy } from "../../src/cli/cli-adapters/app-lifecycle.ts";
 import {
   setActiveCommandId,
   setActiveRendererMode,
   setActiveResultFormat,
 } from "../../src/cli/compiled-runtime.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -260,6 +263,8 @@ const makeDestroyLayer = (
     stop: Effect.void,
   });
   const commandLayer = Layer.mergeAll(
+    PrivateFileAccessLive,
+    Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
     Layer.succeed(
       PathsService,
@@ -559,7 +564,7 @@ describe("lando destroy", () => {
     }
   });
 
-  test("plain destroy preserves snapshots and purge removes the app snapshot subtree", async () => {
+  test("plain destroy preserves snapshots across volume and cache removal", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-destroy-snapshots-"));
     const snapshotRoot = makeLandoPaths({
       userDataRoot: dataRoot,
@@ -586,7 +591,7 @@ describe("lando destroy", () => {
           Effect.provide(makeDestroyLayer({ userDataRoot: dataRoot }).layer),
         ),
       );
-      expect(existsSync(snapshotRoot)).toBe(false);
+      expect(existsSync(snapshotRoot)).toBe(true);
     } finally {
       await rm(dataRoot, { recursive: true, force: true });
     }

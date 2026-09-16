@@ -7,7 +7,7 @@ tags: [beta, docs, config, cli]
 
 # Read and write global config
 
-`lando config` reads or writes host-level settings that apply to every app, such as which container provider Lando picks by default. It never touches a project's Landofile or the shared global app. Use `app:config` for a project and `global:config` for the shared global app.
+Run `lando config --format=json` to read your effective host-level settings. It never changes a project's Landofile or the shared global app.
 
 <Guide>
   <Scenario id="installation-config" render>
@@ -18,9 +18,54 @@ tags: [beta, docs, config, cli]
     </Step>
   </Scenario>
 
-The default view/get surface currently reports three fields under `result.config`: `userDataRoot`, `userConfRoot`, and `defaultProviderId`. The full `GlobalConfig` schema, which validates `config.yml` and set/unset/validate mutations, is broader: `defaultProviderId`, `telemetry`, `renderer`, `logLevel`, `network`, `mcp`, `agentEnv`, `notify`, `events`, `systemPluginRoot`, `userDataRoot`, `userConfRoot`, `userCacheRoot`, and `allowLoadOutsideRoot`.
+## Set app defaults and read them back
 
-## Precedence
+Use `appEnv` for environment defaults and `appLabels` for container-label defaults. They apply to user-app services; values authored on a service win. The full view includes both maps under `result.config`. A lookup also returns the selected map or scalar under `result.value`.
+
+These commands replace each whole map. Keep any existing entries you want before running them.
+
+```sh
+lando config set appEnv '{"TEAM":"platform"}' --type=json
+lando config set appLabels '{"team":"platform"}' --type=json
+lando config get appEnv --format=json
+lando config get appLabels --format=json
+lando config --format=json
+```
+
+The equivalent `config.yml` entries are:
+
+```yaml
+appEnv:
+  TEAM: platform
+appLabels:
+  team: platform
+```
+
+The view exposes public settings, not internal bookkeeping. Secret-bearing environment values and proxy credentials are redacted before output, including single-key lookups and JSON or YAML output. Redaction does not change the values stored in `config.yml`.
+
+  <Scenario id="app-default-maps" render>
+    <Step name="set-maps">
+      <Run command="lando config set appEnv.TEAM platform" />
+      <Run command="lando config set appLabels.team platform" />
+    </Step>
+    <Step name="get-maps">
+      <Run command="lando config get appEnv --format=json" />
+      <Verify command="lando config get appEnv --format=json" expect={{ stdout: { regex: "\"TEAM\":\\s*\"platform\"" } }} />
+      <Verify command="lando config get appLabels --format=json" expect={{ stdout: { regex: "\"team\":\\s*\"platform\"" } }} />
+    </Step>
+    <Step name="view-maps">
+      <Run command="lando config --format=json" />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"appEnv\":\\s*\\{\\s*\"TEAM\":\\s*\"platform\"" } }} />
+      <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"appLabels\":\\s*\\{\\s*\"team\":\\s*\"platform\"" } }} />
+    </Step>
+    <Step name="remove-example-defaults">
+      <Cleanup />
+      <Run command="lando config unset appEnv" />
+      <Run command="lando config unset appLabels" />
+    </Step>
+  </Scenario>
+
+## Choose the effective value
 
 `ConfigService` merges the global config in a deterministic order. A later source wins: defaults, then `config.yml`, then `LANDO_CONFIG__*` env vars, then inline flags. A `LANDO_CONFIG__*` env var maps its SCREAMING_SNAKE_CASE path to the matching camelCase config key and overrides the file for that key, for example `LANDO_CONFIG__DEFAULT_PROVIDER_ID=podman`.
 
@@ -28,7 +73,7 @@ The installation config lives at `config.yml` under the resolved user config roo
 
 `LANDO_PROVIDER` does not persist as last-used. After a successful `lando setup --provider=docker`, later `lando doctor` and `lando start` stay on Docker.
 
-## Get, set, unset, validate, edit
+## Get, set, unset, validate, or edit a key
 
 ```sh
 # Read a single dot-path key
@@ -47,7 +92,7 @@ lando config validate
 lando config edit
 ```
 
-## The shared global app
+## Configure the shared global app
 
 `lando global:config` reads or writes the shared global Lando app's Landofile stack. That always-on app hosts host-wide services such as the proxy. It is not the installation config from `lando config`. Lando starts Traefik for you as part of that global app.
 

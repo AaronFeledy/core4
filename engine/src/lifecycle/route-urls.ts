@@ -36,7 +36,7 @@ export const proxyUrlsByService = (
         .filter((authority) => routeAcceptsAuthority(route, authority))
         .map((authority) => authorityUrl(authority, route.pathPrefix)),
     );
-    urls.set(route.service, serviceUrls);
+    urls.set(route.service, [...new Set(serviceUrls)]);
   }
   return urls;
 };

@@ -15,11 +15,15 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "mariadb:11.4";
+const VERSIONS = ["11.4"] as const;
+const ARTIFACTS = { "11.4": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 3306;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MARIADB_FEATURE_ID = "service-lando.mariadb";
+export const MARIADB_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
 
 const MARIADB_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -115,6 +119,16 @@ const applyMariadbFeature = (ctx: ServiceFeatureContext): void => {
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
   if (service.user !== undefined) ctx.setUser(service.user);
+
+  const server = service.config?.server;
+  if (server !== undefined && server.length > 0) {
+    ctx.addMount({
+      type: "bind",
+      source: resolveBindSource(server, ctx.appRoot),
+      target: MARIADB_CONFIG_TARGET,
+      readOnly: true,
+    });
+  }
 };
 
 export const mariadbServiceFeature: ServiceFeatureDefinition = {
@@ -137,6 +151,9 @@ export const mariadbServiceType: ServiceType = {
   id: "mariadb",
   name: "mariadb",
   base: "lando",
+  versions: VERSIONS,
+  artifacts: ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: Schema.Unknown,
   resolve: (input) => {
     const creds = mariadbCreds(input, input.name, input.service);

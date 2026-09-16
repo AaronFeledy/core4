@@ -1,6 +1,8 @@
 import type { LogSource, ServiceConfig } from "@lando/sdk/schema";
 import { AbsolutePath, LogSourceId } from "@lando/sdk/schema";
 
+import { apacheErrorPageConfigLines, landoErrorPageSetupLines } from "./http-errors.ts";
+
 export const PHP_VIA_MODES = ["apache", "fpm", "cli"] as const;
 export type PhpVia = (typeof PHP_VIA_MODES)[number];
 
@@ -39,7 +41,17 @@ export const resolvePhpVia = (value: unknown): PhpVia => {
   throw new Error(`Unsupported PHP serving mode ${JSON.stringify(value)}. ${VIA_REMEDIATION}`);
 };
 
-export const phpImageFor = (version: string, via: PhpVia): string => `php:${version}-${via}-bookworm`;
+// Official Hub publishes PHP 8.6 as RC bookworm tags until GA. Other minors use the GA tag.
+const phpUpstreamVersion = (version: string): string => (version === "8.6" ? "8.6-rc" : version);
+
+export const phpImageFor = (version: string, via: PhpVia): string =>
+  `php:${phpUpstreamVersion(version)}-${via}-bookworm`;
+
+export const hasCustomPhpImage = (service: ServiceConfig): boolean => {
+  if (service.image === undefined) return false;
+  const version = service.type?.startsWith("php:") === true ? service.type.slice("php:".length) : undefined;
+  return version === undefined || service.image !== phpImageFor(version, "apache");
+};
 
 export const phpListenPort = (via: PhpVia, authoredPort: number | undefined): number => {
   if (authoredPort !== undefined) return authoredPort;
@@ -79,6 +91,7 @@ export const apacheStartCommand = (webroot: string, allowOverride: boolean): Rea
     "-c",
     [
       "set -eu",
+      ...landoErrorPageSetupLines(),
       "cat > /etc/apache2/sites-available/000-default.conf <<'LANDO_APACHE_SITE'",
       "<VirtualHost *:80>",
       `  DocumentRoot ${webroot}`,
@@ -87,6 +100,7 @@ export const apacheStartCommand = (webroot: string, allowOverride: boolean): Rea
       `    AllowOverride ${override}`,
       "    Require all granted",
       "  </Directory>",
+      ...apacheErrorPageConfigLines(),
       "</VirtualHost>",
       "LANDO_APACHE_SITE",
       "exec apache2-foreground",

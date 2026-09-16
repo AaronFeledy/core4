@@ -30,6 +30,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const fakeProviderId = ProviderId.make("descriptor-fake");
 const fakeProvider = {
@@ -105,7 +106,9 @@ const selectExit = (modules: ReadonlyArray<LandoPluginModule>, manifests: Readon
       return yield* registry.select(planFor(fakeProviderId)).pipe(Effect.exit);
     }).pipe(
       Effect.provide(
-        makeRuntimeProviderRegistry(modules).pipe(Layer.provide(makeDependencyLayer(manifests))),
+        makeRuntimeProviderRegistry(modules, ownerOnlyFileAccess).pipe(
+          Layer.provide(makeDependencyLayer(manifests)),
+        ),
       ),
     ),
   );
@@ -117,7 +120,9 @@ const selectEither = (modules: ReadonlyArray<LandoPluginModule>, manifests: Read
       return yield* registry.select(planFor(fakeProviderId)).pipe(Effect.either);
     }).pipe(
       Effect.provide(
-        makeRuntimeProviderRegistry(modules).pipe(Layer.provide(makeDependencyLayer(manifests))),
+        makeRuntimeProviderRegistry(modules, ownerOnlyFileAccess).pipe(
+          Layer.provide(makeDependencyLayer(manifests)),
+        ),
       ),
     ),
   );

@@ -6,12 +6,17 @@ import { Cause, DateTime, Effect, Option } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
-import { startDetachedHostProxyWorker } from "@lando/engine/subsystems/host-proxy/detached-worker";
+import { startDetachedHostProxyWorker as startDetachedHostProxyWorkerWithPrivateFileAccess } from "@lando/engine/subsystems/host-proxy/detached-worker";
 import { defaultSpawnWorker } from "@lando/engine/subsystems/host-proxy/worker-process";
 import { workerStatePath } from "@lando/engine/subsystems/host-proxy/worker-state";
 import "../../../src/runtime/engine-composition.ts";
+import { ownerOnlyFileAccess } from "../../_support/private-file-access.ts";
 
 const MEBIBYTE = 1024 * 1024;
+const startDetachedHostProxyWorker = (
+  options: Omit<Parameters<typeof startDetachedHostProxyWorkerWithPrivateFileAccess>[0], "privateFileAccess">,
+) =>
+  startDetachedHostProxyWorkerWithPrivateFileAccess({ ...options, privateFileAccess: ownerOnlyFileAccess });
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
 const plan: AppPlan = {
   id: AppId.make("demo"),

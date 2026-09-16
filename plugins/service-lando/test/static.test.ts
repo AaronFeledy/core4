@@ -90,20 +90,21 @@ describe("static ServiceType", () => {
     expect(plan.command).toEqual([
       "sh",
       "-c",
-      [
-        "cat > /etc/nginx/conf.d/default.conf <<'LANDO_STATIC_NGINX'",
-        "server {",
-        "  listen 80;",
-        "  server_name _;",
-        '  root "/app";',
-        "  index index.html index.htm;",
-        "  location / { try_files $uri $uri/ =404; }",
-        "}",
-        "LANDO_STATIC_NGINX",
-        "exec nginx -g 'daemon off;'",
-      ].join("\n"),
+      expect.stringContaining(
+        [
+          "cat > /etc/nginx/conf.d/default.conf <<'LANDO_STATIC_NGINX'",
+          "server {",
+          "  listen 80;",
+          "  server_name _;",
+          '  root "/app";',
+          "  index index.html index.htm;",
+          "  error_page 403 /_lando/errors/403.html;",
+          "  error_page 404 /_lando/errors/404.html;",
+        ].join("\n"),
+      ),
     ]);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.command).toEqual(["sh", "-c", expect.stringContaining("exec nginx -g 'daemon off;'")]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx" });
@@ -121,6 +122,18 @@ describe("static ServiceType", () => {
       LANDO_APP_ROOT: "/app",
       LANDO_PROJECT_MOUNT: "/app",
     });
+  });
+
+  test("Lando-owned nginx serves branded 403 and 404 pages outside the read-only app mount", async () => {
+    const plan = await composeStaticPlan({ type: "static" });
+
+    const command = Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command ?? "");
+    expect(command).toContain("/usr/share/lando/errors/403.html");
+    expect(command).toContain("/usr/share/lando/errors/404.html");
+    expect(command).toContain("error_page 403 /_lando/errors/403.html;");
+    expect(command).toContain("error_page 404 /_lando/errors/404.html;");
+    expect(command).toContain("internal;");
+    expect(command).not.toContain("/app/.lando");
   });
 
   test("caddy-backed static server picks caddy image", async () => {
@@ -171,6 +184,7 @@ describe("static ServiceType", () => {
     });
 
     expect(plan.command).toEqual(["custom-static-server"]);
+    expect(String(plan.command)).not.toContain("/usr/share/lando/errors");
     expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(plan.dependsOn).toEqual([]);
   });

@@ -87,6 +87,7 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
+  identity: { defaultUser: "root", homes: { root: "/root" } },
   schema: DotnetServiceConfig,
   resolve: (input) => {
     const appName = appNameFor(input);

@@ -12,7 +12,7 @@ import {
 } from "@lando/sdk/schema";
 
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
-import { postServiceLifecycle } from "../src/service-lifecycle.ts";
+import { postExactServiceLifecycle, postServiceLifecycle } from "../src/service-lifecycle.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("lifecycle-app");
@@ -170,5 +170,29 @@ describe("service lifecycle failures", () => {
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect(failure.message).toBe("Container stop failed with HTTP 500. daemon rejected request");
     expect(failure.remediation).toBe(ctx.remediation);
+  });
+});
+
+describe.each(["docker", "lando", "podman"] as const)("%s exact service lifecycle", (providerName) => {
+  test("addresses the inspected container id instead of the planned name", async () => {
+    const calls: EngineHttpRequest[] = [];
+    const api: EngineHttpApi = {
+      request: (request) =>
+        Effect.sync(() => {
+          calls.push(request);
+          return { status: 204, body: "" };
+        }),
+    };
+
+    await Effect.runPromise(
+      postExactServiceLifecycle(
+        target,
+        { containerId: "sha256:inspected-container", imageIdentity: "sha256:inspected-image" },
+        "start",
+        { api, ctx: { providerId: providerName, remediation: `Repair ${providerName} and retry.` } },
+      ),
+    );
+
+    expect(calls).toEqual([{ method: "POST", path: "/containers/sha256%3Ainspected-container/start" }]);
   });
 });

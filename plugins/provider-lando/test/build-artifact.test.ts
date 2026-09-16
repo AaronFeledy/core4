@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { stripHostProxyRunLando } from "@lando/core/testing";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { DateTime, Effect } from "effect";
 
 import { type PodmanApiClient, type PodmanHttpRequest, makeRuntimeProvider } from "@lando/provider-lando";

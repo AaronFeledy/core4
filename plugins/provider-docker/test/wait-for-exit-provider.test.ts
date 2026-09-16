@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
-import { makePluginStateStore, makeTestStateStore } from "@lando/core/testing";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
@@ -18,6 +19,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("wait-for-exit-app");
@@ -78,6 +80,7 @@ const waitForExit = async (api: DockerApiClient, requestedService = serviceName,
   const appliedPlanState = makePluginStateStore(
     makeTestStateStore().service,
     AbsolutePath.make("/tmp/provider-docker-wait-for-exit-state"),
+    ownerOnlyFileAccess,
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
   const provider = await Effect.runPromise(
@@ -99,6 +102,7 @@ const waitFailure = async (api: DockerApiClient, requestedService = serviceName)
       const appliedPlanState = makePluginStateStore(
         makeTestStateStore().service,
         AbsolutePath.make("/tmp/provider-docker-wait-for-exit-failure-state"),
+        ownerOnlyFileAccess,
       );
       yield* persistAppliedPlan(appliedPlanState, plan);
       const provider = yield* makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState });

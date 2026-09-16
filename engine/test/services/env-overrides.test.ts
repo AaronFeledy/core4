@@ -32,6 +32,8 @@ const withEnv = async <T>(vars: Record<string, string>, body: (dir: string) => P
     "LANDO_ROUTER_BIND_ADDRESS",
     "LANDO_ROUTER_HTTP_FALLBACKS",
     "LANDO_ROUTER_HTTPS_FALLBACKS",
+    "LANDO_APP_ENV",
+    "LANDO_APP_LABELS",
     ...Object.keys(vars),
   ]);
   // Also clear any pre-existing LANDO_CONFIG__ vars so the test is hermetic.
@@ -67,6 +69,29 @@ const loadConfig = () =>
   );
 
 describe("LANDO_CONFIG__ generic env overlay", () => {
+  test("canonical app default overrides replace the complete file maps", async () => {
+    await withEnv(
+      {
+        LANDO_APP_ENV: '{"FROM_ENV":"yes"}',
+        LANDO_APP_LABELS: '{"com.example.source":"environment"}',
+      },
+      async (dir) => {
+        await writeConfig(dir, [
+          "appEnv:",
+          "  FROM_FILE: yes",
+          "appLabels:",
+          "  com.example.source: file",
+          "  com.example.file-only: yes",
+        ]);
+
+        const config = await loadConfig();
+
+        expect(config.appEnv).toEqual({ FROM_ENV: "yes" });
+        expect(config.appLabels).toEqual({ "com.example.source": "environment" });
+      },
+    );
+  });
+
   test("env overlay overrides a scalar from config.yml (env > file)", async () => {
     await withEnv({ LANDO_CONFIG__default_provider_id: "podman" }, async (dir) => {
       await writeConfig(dir, ["defaultProviderId: docker"]);

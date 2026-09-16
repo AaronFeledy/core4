@@ -22,6 +22,7 @@ export interface RouterServiceContractHarness {
 const contractRoutes = (): ReadonlyArray<RoutePlan> => [
   {
     hostname: "*.contract-test-app.lndo.site",
+    priority: 2,
     scheme: "both",
     service: ServiceName.make("web"),
     pathPrefix: "/api",
@@ -29,6 +30,7 @@ const contractRoutes = (): ReadonlyArray<RoutePlan> => [
   },
   {
     hostname: "secure.contract-test-app.lndo.site",
+    priority: 3,
     scheme: "https",
     service: ServiceName.make("secure"),
     backend: { service: ServiceName.make("secure"), protocol: "https", port: 9443 },

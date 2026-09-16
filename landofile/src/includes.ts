@@ -14,13 +14,17 @@ import {
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
-import type { StateBucket, StateRoot } from "@lando/sdk/services";
+import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
 
-import { makeStateStore } from "@lando/state-store/service";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";
-import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
+import {
+  getLandofileIncludeSources,
+  getLocalIncludePaths,
+  rememberLandofileIncludeSources,
+  rememberLocalIncludePaths,
+} from "./include-provenance.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
 import {
   getLandofileReferencedFiles,
@@ -90,6 +94,7 @@ export interface ResolveLandofileIncludesOptions {
   readonly resolveTooling?: boolean;
   readonly loadPolicy?: LandofileLoadPolicy;
   readonly ports?: LandofileRuntimePorts;
+  readonly stateStore?: StateStoreShape;
   readonly onRelaxedRead?: (read: LandofileRelaxedRead) => Effect.Effect<void>;
 }
 
@@ -109,6 +114,7 @@ interface LockEntry {
 interface ResolveContext {
   readonly appRoot: string;
   readonly sourceRoot: string;
+  readonly userOwned: boolean;
   readonly cacheRoot: string;
   readonly lockfilePath: string;
   readonly deps: LandofileIncludeDeps;
@@ -119,17 +125,20 @@ interface ResolveContext {
   readonly noNetwork: boolean;
   readonly loadPolicy: LandofileLoadPolicy;
   readonly ports?: LandofileRuntimePorts;
+  readonly stateStore: StateStoreShape | undefined;
   readonly onRelaxedRead?: ResolveLandofileIncludesOptions["onRelaxedRead"];
 }
 
 interface FragmentResult {
   readonly sourceId: string;
+  readonly inventoryId: string;
   /** Authored includes[] source. Used for rejection attribution, never as an identity/lock/cache key. */
   readonly authoredSource: string;
   readonly resolved?: string;
   readonly content: string;
   readonly filePath: string;
   readonly root: string;
+  readonly userOwned: boolean;
   readonly locked: boolean;
 }
 
@@ -251,7 +260,10 @@ const parseSourceRef = (raw: string): { readonly value: string; readonly ref?: s
   return ref === "" ? { value: raw } : { value: raw.slice(0, at), ref };
 };
 
-const classify = (source: string): "local" | "git" | "npm" => {
+type IncludeSourceKind = "local" | "user" | "git" | "npm";
+
+const classify = (source: string): IncludeSourceKind => {
+  if (source.startsWith("user:")) return "user";
   if (source.startsWith("npm:")) return "npm";
   if (source.startsWith("git@") || source.startsWith("github:") || /^https?:\/\//u.test(source)) return "git";
   return "local";
@@ -318,14 +330,73 @@ const parseNpmInclude = (
 };
 
 const fetchLocal = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
-  const candidate = isAbsolute(entry.source) ? entry.source : resolve(ctx.sourceRoot, entry.source);
-  const filePath = await assertUnderRoot(ctx.appRoot, candidate, entry.source);
+  const source = ctx.userOwned ? userIncludeSubpath(`user:${entry.source}`) : entry.source;
+  const candidate = isAbsolute(source) ? source : resolve(ctx.sourceRoot, source);
+  const root = ctx.userOwned ? requiredPorts(ctx).resolveUserIncludesDir() : ctx.appRoot;
+  if (ctx.userOwned) assertUserIncludeLexicalPath(root, candidate, entry.source);
+  const filePath = await assertUnderRoot(
+    root,
+    candidate,
+    entry.source,
+    ctx.userOwned ? "user includes root" : "app root",
+  );
+  const userId = `user:${relative(root, filePath).replace(/\\/gu, "/")}`;
   return {
-    sourceId: filePath,
+    sourceId: ctx.userOwned ? userId : filePath,
+    inventoryId: ctx.userOwned ? userId : `local:${relative(root, filePath).replace(/\\/gu, "/")}`,
     authoredSource: entry.source,
     content: await readText(filePath, entry.source),
     filePath,
     root: dirname(filePath),
+    userOwned: ctx.userOwned,
+    locked: false,
+  };
+};
+
+const userIncludeSubpath = (source: string): string => {
+  const subpath = source.slice("user:".length);
+  const slashPath = subpath.replace(/\\/gu, "/");
+  const invalid =
+    subpath.trim() === "" ||
+    slashPath.startsWith("/") ||
+    /^[A-Za-z]:\//u.test(slashPath) ||
+    !/\.ya?ml$/iu.test(slashPath);
+  if (invalid) {
+    throw includeError({
+      message: `User include source must be a nonempty relative .yml or .yaml path: ${source}`,
+      source,
+      kind: "subpath-invalid",
+      remediation: "Use user:<relative-profile.yml> below the user includes directory.",
+    });
+  }
+  return slashPath;
+};
+
+const assertUserIncludeLexicalPath = (root: string, candidate: string, source: string): void => {
+  const subpath = relative(root, candidate).replace(/\\/gu, "/");
+  if (subpath === ".." || subpath.startsWith("../") || isAbsolute(subpath)) {
+    throw includeError({
+      message: `Include ${source} resolves outside the user includes root.`,
+      source,
+      kind: "outside-root",
+      remediation: "Use an include path that stays inside the user includes root.",
+    });
+  }
+};
+
+const fetchUser = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
+  const root = requiredPorts(ctx).resolveUserIncludesDir();
+  const candidate = resolve(root, userIncludeSubpath(entry.source));
+  assertUserIncludeLexicalPath(root, candidate, entry.source);
+  const filePath = await assertUnderRoot(root, candidate, entry.source, "user includes root");
+  return {
+    sourceId: entry.source,
+    inventoryId: entry.source,
+    authoredSource: entry.source,
+    content: await readText(filePath, entry.source),
+    filePath,
+    root: dirname(filePath),
+    userOwned: true,
     locked: false,
   };
 };
@@ -363,11 +434,13 @@ const fetchGitFromCache = async (
   const safePath = await assertUnderRoot(publishedDir, filePath, entry.source, "cloned repository");
   return {
     sourceId: parsed.sourceId,
+    inventoryId: parsed.sourceId,
     authoredSource: entry.source,
     resolved: locked.resolved,
     content: await readText(safePath, entry.source),
     filePath: safePath,
     root: dirname(safePath),
+    userOwned: false,
     locked: true,
   };
 };
@@ -406,11 +479,13 @@ const fetchGit = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   );
   return {
     sourceId: parsed.sourceId,
+    inventoryId: parsed.sourceId,
     authoredSource: entry.source,
     resolved: commitSha,
     content: await readText(filePath, entry.source),
     filePath,
     root: dirname(filePath),
+    userOwned: false,
     locked: true,
   };
 };
@@ -448,11 +523,13 @@ const fetchNpmFromCache = async (
   const safePath = await assertUnderRoot(publishedDir, filePath, entry.source, "npm package");
   return {
     sourceId: parsed.sourceId,
+    inventoryId: parsed.sourceId,
     authoredSource: entry.source,
     resolved: locked.resolved,
     content: await readText(safePath, entry.source),
     filePath: safePath,
     root: dirname(safePath),
+    userOwned: false,
     locked: true,
   };
 };
@@ -512,11 +589,13 @@ const fetchNpm = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   );
   return {
     sourceId: parsed.sourceId,
+    inventoryId: parsed.sourceId,
     authoredSource: entry.source,
     resolved: version,
     content: await readText(filePath, entry.source),
     filePath,
     root: dirname(filePath),
+    userOwned: false,
     locked: true,
   };
 };
@@ -540,7 +619,7 @@ const parseFragment = (
           sourceRoot: fragment.root,
           layer,
         },
-        policy: ctx.loadPolicy,
+        policy: fragment.userOwned ? { ...ctx.loadPolicy, allowFileAccess: false } : ctx.loadPolicy,
       }),
     ),
     Effect.tap(({ relaxedReads }) => {
@@ -665,20 +744,36 @@ const resolveTree = (
     );
     const includes = authoredIncludeEntries(sourced);
     if (includes.length === 0)
-      return rememberLocalIncludePaths(
-        rememberVersionConstraintEntries(sourced, ownVersionConstraintEntries(sourced, source, layer, order)),
-        getLocalIncludePaths(landofile),
+      return rememberLandofileIncludeSources(
+        rememberLocalIncludePaths(
+          rememberVersionConstraintEntries(
+            sourced,
+            ownVersionConstraintEntries(sourced, source, layer, order),
+          ),
+          getLocalIncludePaths(landofile),
+        ),
+        getLandofileIncludeSources(landofile),
       );
 
     const fragments: LandofileShape[] = [];
     const fragmentRecords: Record<string, unknown>[] = [];
     const localIncludePaths: string[] = [...getLocalIncludePaths(landofile)];
+    const includeSources = [...getLandofileIncludeSources(landofile)];
     for (const rawEntry of includes) {
       const entry = normalizeInclude(rawEntry);
       const fragment = yield* Effect.tryPromise({
         try: async () => {
           const kind = classify(entry.source);
+          if (ctx.userOwned && (kind === "git" || kind === "npm")) {
+            throw includeError({
+              message: `User Landofile profile ${source} must not declare remote include ${entry.source}.`,
+              source: entry.source,
+              kind: "source-unresolved",
+              remediation: "Use relative or user: YAML includes inside the user includes directory.",
+            });
+          }
           if (kind === "local") return fetchLocal(entry, ctx);
+          if (kind === "user") return fetchUser(entry, ctx);
           if (kind === "git") return fetchGit(entry, ctx);
           return fetchNpm(entry, ctx);
         },
@@ -699,7 +794,7 @@ const resolveTree = (
       const parsed = yield* parseFragment(fragment, ctx, layer);
       const nested = yield* resolveTree(
         parsed as LandofileShape,
-        { ...ctx, sourceRoot: fragment.root },
+        { ...ctx, sourceRoot: fragment.root, userOwned: fragment.userOwned },
         depth + 1,
         [...stack, fragment.sourceId],
         fragment.sourceId,
@@ -709,7 +804,11 @@ const resolveTree = (
       fragments.push(nested);
       fragmentRecords.push(nested as Record<string, unknown>);
       localIncludePaths.push(...getLocalIncludePaths(nested));
-      if (!fragment.locked) localIncludePaths.push(fragment.sourceId);
+      includeSources.push(...getLandofileIncludeSources(nested), {
+        id: fragment.inventoryId,
+        sha256: sha256(fragment.content),
+      });
+      if (!fragment.locked) localIncludePaths.push(fragment.filePath);
       if (fragment.locked && fragment.resolved !== undefined) {
         const actual = sha256(fragment.content);
         if (ctx.mode === "refresh") {
@@ -752,12 +851,15 @@ const resolveTree = (
     ]);
     const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
     return rememberLandofileReferencedFiles(
-      rememberLocalIncludePaths(
-        rememberVersionConstraintEntries(decoded, [
-          ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
-          ...ownVersionConstraintEntries(sourced, source, layer, order),
-        ]),
-        [...localIncludePaths],
+      rememberLandofileIncludeSources(
+        rememberLocalIncludePaths(
+          rememberVersionConstraintEntries(decoded, [
+            ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
+            ...ownVersionConstraintEntries(sourced, source, layer, order),
+          ]),
+          [...localIncludePaths],
+        ),
+        includeSources,
       ),
       [...getLandofileReferencedFiles(sourced), ...fragments.flatMap(getLandofileReferencedFiles)],
     );
@@ -855,7 +957,6 @@ const LockEntrySchema = Schema.Struct({
 });
 const LockEntriesSchema = Schema.Array(LockEntrySchema);
 
-const lockfileStore = makeStateStore();
 const lockTextDecoder = new TextDecoder();
 
 /**
@@ -878,11 +979,13 @@ const lockfileRoot = (
 };
 
 const openLockfileBucket = (
+  stateStore: StateStoreShape | undefined,
   appRoot: string,
   lockfilePath: string,
-): Effect.Effect<StateBucket<readonly LockEntry[]>, LandofileParseError> => {
+): Effect.Effect<StateBucket<readonly LockEntry[]>, LandofileParseError | LandofileIncludeError> => {
+  if (stateStore === undefined) return Effect.fail(missingRuntimeInput("StateStore"));
   const { root, key } = lockfileRoot(appRoot, lockfilePath);
-  return lockfileStore
+  return stateStore
     .open({
       root,
       key,
@@ -911,10 +1014,11 @@ const openLockfileBucket = (
 };
 
 const parseLockEntries = (
+  stateStore: StateStoreShape | undefined,
   appRoot: string,
   path: string,
-): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError> =>
-  openLockfileBucket(appRoot, path).pipe(
+): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError | LandofileIncludeError> =>
+  openLockfileBucket(stateStore, appRoot, path).pipe(
     Effect.flatMap((bucket) =>
       bucket.get.pipe(
         Effect.mapError(
@@ -937,11 +1041,12 @@ const parseLockEntries = (
   );
 
 const writeLockEntries = (
+  stateStore: StateStoreShape | undefined,
   appRoot: string,
   lockfilePath: string,
   entries: ReadonlyArray<LockEntry>,
 ): Effect.Effect<void, LandofileIncludeError> =>
-  openLockfileBucket(appRoot, lockfilePath).pipe(
+  openLockfileBucket(stateStore, appRoot, lockfilePath).pipe(
     Effect.flatMap((bucket) => bucket.set(entries)),
     Effect.mapError(() =>
       includeError({
@@ -956,7 +1061,7 @@ const writeLockfileIfNeeded = (ctx: ResolveContext): Effect.Effect<void, Landofi
   if (ctx.stagedLocks.size === 0) return Effect.void;
   const merged = new Map(ctx.lockEntries);
   for (const [source, entry] of ctx.stagedLocks) merged.set(source, entry);
-  return writeLockEntries(ctx.appRoot, ctx.lockfilePath, [...merged.values()]);
+  return writeLockEntries(ctx.stateStore, ctx.appRoot, ctx.lockfilePath, [...merged.values()]);
 };
 
 const authoredVersionConstraintEntries = (
@@ -990,16 +1095,18 @@ export const resolveLandofileIncludes = (
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
+      userOwned: false,
       cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
       lockfilePath,
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,
       mode: "pin",
-      lockEntries: yield* parseLockEntries(options.appRoot, lockfilePath),
+      lockEntries: yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath),
       stagedLocks: new Map(),
       noNetwork: false,
       loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
       ...(options.ports === undefined ? {} : { ports: options.ports }),
+      stateStore: options.stateStore,
       ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
     };
     const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
@@ -1034,13 +1141,16 @@ export const resolveLandofileIncludes = (
     return rememberLandofileAppRoot(
       rememberVersionConstraintEntries(
         rememberInternalToolingTasks(
-          rememberLocalIncludePaths(decoded, [
-            ...new Set([
-              ...existingLocalIncludePaths,
-              ...getLocalIncludePaths(unresolved),
-              ...tooling.localFragmentPaths,
+          rememberLandofileIncludeSources(
+            rememberLocalIncludePaths(decoded, [
+              ...new Set([
+                ...existingLocalIncludePaths,
+                ...getLocalIncludePaths(unresolved),
+                ...tooling.localFragmentPaths,
+              ]),
             ]),
-          ]),
+            getLandofileIncludeSources(unresolved),
+          ),
           winningInternalToolingTasks([
             { tooling: tooling.tooling, internalTaskIds: tooling.internalTaskIds },
             { tooling: unresolved.tooling, internalTaskIds: getInternalToolingTasks(unresolved) },
@@ -1084,6 +1194,7 @@ export interface UpdateLandofileIncludesOptions {
   readonly sources?: ReadonlyArray<string>;
   readonly noNetwork?: boolean;
   readonly ports?: LandofileRuntimePorts;
+  readonly stateStore?: StateStoreShape;
 }
 
 const byCodepointString = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
@@ -1097,7 +1208,7 @@ export const updateLandofileIncludes = (
     const noNetwork = options.noNetwork === true;
     const requestedSources = options.sources ?? [];
     const scoped = requestedSources.length > 0;
-    const existing = yield* parseLockEntries(options.appRoot, lockfilePath);
+    const existing = yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath);
     const allIncludes = authoredIncludeEntries(options.landofile);
 
     if (scoped) {
@@ -1129,6 +1240,7 @@ export const updateLandofileIncludes = (
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
+      userOwned: false,
       cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
       lockfilePath,
       deps: options.deps ?? {},
@@ -1139,6 +1251,7 @@ export const updateLandofileIncludes = (
       noNetwork,
       loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
       ...(options.ports === undefined ? {} : { ports: options.ports }),
+      stateStore: options.stateStore,
     };
 
     if (includes.length > 0) {
@@ -1175,7 +1288,7 @@ export const updateLandofileIncludes = (
       const finalEntries = scoped
         ? [...new Map([...existing, ...ctx.stagedLocks]).values()]
         : [...ctx.stagedLocks.values()];
-      yield* writeLockEntries(options.appRoot, lockfilePath, finalEntries);
+      yield* writeLockEntries(options.stateStore, options.appRoot, lockfilePath, finalEntries);
       wrote = true;
     }
 
@@ -1216,6 +1329,7 @@ export interface VerifyLandofileIncludesOptions {
   readonly deps?: LandofileIncludeDeps;
   readonly maxDepth?: number;
   readonly ports?: LandofileRuntimePorts;
+  readonly stateStore?: StateStoreShape;
 }
 
 const MISSING_LOCK_VALUE = "<missing>";
@@ -1242,12 +1356,13 @@ export const verifyLandofileIncludes = (
 ): Effect.Effect<IncludeVerifyReport, ResolveIncludesError, never> =>
   Effect.gen(function* () {
     const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
-    const existing = yield* parseLockEntries(options.appRoot, lockfilePath);
+    const existing = yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath);
     const includes = authoredIncludeEntries(options.landofile);
 
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
+      userOwned: false,
       cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
       lockfilePath,
       deps: options.deps ?? {},
@@ -1258,6 +1373,7 @@ export const verifyLandofileIncludes = (
       noNetwork: false,
       loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
       ...(options.ports === undefined ? {} : { ports: options.ports }),
+      stateStore: options.stateStore,
     };
 
     if (includes.length > 0) {

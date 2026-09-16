@@ -9,6 +9,8 @@ const SCALAR_KEYS = [
   "runs",
   "fetchAllowlist",
   "deprecated",
+  "snapshot",
+  "migrations",
 ] as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -71,7 +73,7 @@ export const stripExtendsAndDrop = (raw: Record<string, unknown>): Record<string
   };
 };
 
-/** Pure parent-then-child recipe merge. Child scalars win with no parent fallback. */
+/** Pure parent-then-child recipe merge. Child whole-value keys win with no parent fallback. */
 export const mergeRecipeManifests = (
   parent: Record<string, unknown>,
   child: Record<string, unknown>,
