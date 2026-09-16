@@ -26,6 +26,7 @@ import {
   verifyActiveVolumeCoordination,
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
@@ -147,12 +148,14 @@ const stopAppWithResolvedPlan = (
       const context = yield* Effect.context<BoundStopAppServices>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
-      const provider = yield* registry.select(target.plan);
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const provider = yield* registry.select(resolvedTarget.plan);
       return yield* withPlanVolumeCoordination({
-        plan: target.plan,
+        plan: resolvedTarget.plan,
         provider,
         stateStore,
-        body: () => stopAppWithResolvedPlanUncoordinated(options, target).pipe(Effect.provide(context)),
+        body: () =>
+          stopAppWithResolvedPlanUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
       });
     }),
   );

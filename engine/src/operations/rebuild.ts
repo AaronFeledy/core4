@@ -33,6 +33,7 @@ import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
@@ -138,7 +139,7 @@ export const rebuildApp = (
   managed?: StartManagedScope,
 ): Effect.Effect<RebuildAppResult, RebuildAppError, RebuildAppServices> =>
   Effect.gen(function* () {
-    const resolvedTarget =
+    const plannedTarget =
       target ??
       (yield* Effect.gen(function* () {
         const landofileService = yield* LandofileService;
@@ -149,12 +150,13 @@ export const rebuildApp = (
         const plan = yield* planner.plan(landofile, capabilities);
         return { plan, root: plan.root, app: userAppRef(plan), landofile } satisfies ResolvedAppTarget;
       }));
+    const registry = yield* RuntimeProviderRegistry;
+    const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
     const plan = resolvedTarget.plan;
     const selectedPlan = yield* selectRebuildPlan(plan, options.services);
     const scoped = options.services !== undefined && options.services.length > 0;
     yield* runAppInitEvents(plan);
     const context = yield* Effect.context<RebuildAppServices>();
-    const registry = yield* RuntimeProviderRegistry;
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
     return yield* withAppMutationLock(

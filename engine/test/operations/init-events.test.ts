@@ -189,7 +189,7 @@ describe("app initialization lifecycle events", () => {
 
     // Then
     expect(initCalls).toHaveLength(1);
-    expect(source).toContain("stopAppWithPlan({}, resolvedTarget)");
-    expect(source).toMatch(/resolvedTarget,\s+managed,/u);
+    expect(source).toContain("stopAppWithPlan({}, mysqlResolvedTarget)");
+    expect(source).toMatch(/mysqlResolvedTarget,\s+managed,/u);
   });
 });

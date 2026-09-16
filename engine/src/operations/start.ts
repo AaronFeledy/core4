@@ -40,6 +40,7 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -297,13 +298,17 @@ export const startAppForTarget = (
       yield* guard.ensureConsistent(String(target.root));
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
-      const provider = yield* registry.select(target.plan);
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const plan = resolvedTarget.plan;
+      const provider = yield* registry.select(plan);
       return yield* withPlanVolumeCoordination({
-        plan: target.plan,
+        plan,
         provider,
         stateStore,
         body: () =>
-          startAppForTargetUncoordinated(options, target, managed, execution).pipe(Effect.provide(context)),
+          startAppForTargetUncoordinated(options, resolvedTarget, managed, execution).pipe(
+            Effect.provide(context),
+          ),
       });
     }),
   );
