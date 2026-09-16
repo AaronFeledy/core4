@@ -46,14 +46,17 @@ const inspectSuccess = (reference: string): EngineHttpResponse => ({
   body: JSON.stringify({ RepoDigests: [`${reference}@sha256:test`] }),
 });
 
-const withClosingSocket = async <T>(run: (socketPath: string) => Promise<T>): Promise<T> => {
+const withClosingSocket = async <T>(
+  run: (socketPath: string) => Promise<T>,
+  respond: (socket: Socket) => void = (socket) => socket.end(),
+): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-container-runtime-pull-"));
   const socketPath = join(dir, "podman.sock");
   const connections = new Set<Socket>();
   const server = createServer((socket) => {
     connections.add(socket);
     socket.once("close", () => connections.delete(socket));
-    socket.end();
+    respond(socket);
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -228,10 +231,12 @@ describe("docker image pull dialect", () => {
     // Given / When / Then
     expect(
       parseImagePullFrame('{"errorDetail":{"message":"denied"},"error":"fallback"}', dockerPullDialect),
-    ).toEqual({ kind: "error", message: "denied" });
+    ).toEqual({ kind: "error", message: "denied", source: "stream-frame", signature: "denied" });
     expect(parseImagePullFrame('{"error":"manifest unknown"}', dockerPullDialect)).toEqual({
       kind: "error",
       message: "manifest unknown",
+      source: "stream-frame",
+      signature: "manifest-unknown",
     });
   });
 
@@ -299,7 +304,44 @@ describe("libpod image pull dialect", () => {
     expect(parseImagePullFrame('{"error":"manifest unknown"}', libpodPullDialect)).toEqual({
       kind: "error",
       message: "manifest unknown",
+      source: "stream-frame",
+      signature: "manifest-unknown",
     });
+  });
+
+  test("retains a closed signature from an HTTP 200 Libpod error frame", async () => {
+    // Given: Libpod returns a protocol-level error inside a successful HTTP response.
+    const secret = "private-registry.example/team/private-image:latest";
+
+    // When: the real socket client processes the pull protocol response.
+    const failure = await withClosingSocket(
+      (socketPath) =>
+        Effect.runPromise(
+          pullImage(makePodmanApiClient(socketPath, landoCtx), secret, {
+            ctx: landoCtx,
+            dialect: libpodPullDialect,
+          }).pipe(Effect.flip),
+        ),
+      (socket) => {
+        socket.once("data", () => {
+          const body = `${JSON.stringify({ error: `manifest unknown for ${secret}` })}\n`;
+          socket.end(
+            `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
+          );
+        });
+      },
+    );
+
+    // Then: only closed protocol evidence survives, never the frame text or reference.
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.details).toMatchObject({
+      failureKind: "generic",
+      source: "stream-frame",
+      signature: "manifest-unknown",
+    });
+    const serialized = JSON.stringify(failure.details);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain("manifest unknown for");
   });
 });
 
@@ -314,6 +356,25 @@ describe.each(dialects)("%s frame parser", (_name, dialect) => {
 });
 
 describe("pull failure handling", () => {
+  test.each([
+    ["TOOMANYREQUESTS: retry later", "toomanyrequests"],
+    ["requested access to the resource is denied", "denied"],
+    ["MANIFEST_UNKNOWN: manifest missing", "manifest-unknown"],
+    ["NAME_UNKNOWN: repository missing", "name-unknown"],
+    ["lookup registry.invalid: no such host", "no-such-host"],
+    ["dial tcp 127.0.0.1:443: connection refused", "connection-refused"],
+    ["request timed out", "timeout"],
+    ["tls: failed to verify certificate", "tls"],
+    ["opaque private failure", "unknown"],
+    ["notdeniedx tlsish timeouts", "unknown"],
+  ] as const)("retains closed stream signature %s", (message, signature) => {
+    // Given/When: an untrusted Libpod error frame crosses the parser boundary.
+    const frame = parseImagePullFrame(JSON.stringify({ error: message }), libpodPullDialect);
+
+    // Then: its origin and signature are from closed sets.
+    expect(frame).toEqual({ kind: "error", message, source: "stream-frame", signature });
+  });
+
   const cases: ReadonlyArray<{ readonly message: string; readonly expected: PullFailureKind }> = [
     { message: "UNAUTHORIZED: access denied", expected: "registry-auth" },
     { message: "authentication required", expected: "registry-auth" },
