@@ -52,7 +52,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
 };
 
 const NUMBER_LIKE = /^-?\d+(?:\.\d+)?$/u;
-const BARE_SAFE = /^[A-Za-z0-9._~:/@+-]+$/u;
+const BARE_SAFE = /^(?!@)[A-Za-z0-9._~:/@+-]+$/u;
 const RESERVED = new Set(["true", "false", "null"]);
 
 const quoteScalar = (value: string): string => {

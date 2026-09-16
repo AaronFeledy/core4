@@ -8,7 +8,7 @@ tags: [beta, docs, recipes, runs, allowlist]
 
 # Declare which commands a recipe may run
 
-Put `runs` in `recipe.yml`. `ctx.run`, `postInit` `command` actions, and `choicesFrom` may use only those command ids.
+Put `runs` in `recipe.yml` to constrain `ctx.run`, `choicesFrom`, and `postInit` Bun `x` actions. This host-tool policy does not authorize `postInit` `command` actions.
 
 ```yaml
 id: runs-allowlist
@@ -50,5 +50,7 @@ lando meta recipes validate ./ --format=json
 </Guide>
 
 ## Next
+
+See [Recipe post-init commands](../../reference/recipe-post-init.mdx) for the separate canonical command allowlist and explicit start opt-in. Adding an id to `runs` cannot grant post-init command authority.
 
 See [Declare which URLs a recipe may fetch](./authoring-fetch-allowlist.mdx) for `ctx.fetch`.

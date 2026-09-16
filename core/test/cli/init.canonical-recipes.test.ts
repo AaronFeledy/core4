@@ -7,12 +7,12 @@ import { Effect } from "effect";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 
-import { initApp } from "../../src/cli/commands/init.ts";
 import {
   BUILTIN_RECIPE_DECOMPOSERS,
   builtinRecipeDecomposerIds,
 } from "../../src/recipes/builtin/decomposers.ts";
 import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { bundledManifest } from "../_support/recipe-output.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {

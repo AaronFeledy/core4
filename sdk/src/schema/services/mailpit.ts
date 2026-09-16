@@ -9,6 +9,7 @@ import { ServiceConfig } from "../landofile.ts";
 export const MailpitServiceConfig = Schema.extend(
   ServiceConfig.pick(
     "image",
+    "mailFrom",
     "port",
     "user",
     "database",

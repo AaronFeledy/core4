@@ -2,6 +2,10 @@ import type { CommandAliasConflictError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
 import { applyToolingDefaults } from "@lando/landofile/tooling-defaults";
+import {
+  getInternalToolingTasks,
+  rememberInternalToolingTasks,
+} from "@lando/landofile/tooling-include-provenance";
 
 import { reservedToolingNameConflict } from "../operations/reserved-aliases.ts";
 
@@ -34,9 +38,12 @@ export const compileEffectiveTooling = (input: {
     }
   }
 
-  return sortedTooling(
-    applyToolingDefaults({ ...contributed, ...input.landofile.tooling }, input.landofile.toolingDefaults) ??
-      {},
+  return rememberInternalToolingTasks(
+    sortedTooling(
+      applyToolingDefaults({ ...contributed, ...input.landofile.tooling }, input.landofile.toolingDefaults) ??
+        {},
+    ),
+    getInternalToolingTasks(input.landofile),
   );
 };
 

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { dirname, join } from "node:path";
 
-import { resolveLiveProviderSocket, stripHostProxyRunLando } from "@lando/core/testing";
+import { buildKeyForService } from "@lando/engine/services/build-key";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -14,7 +16,6 @@ import {
 import { RuntimeProvider } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
 
-import { buildKeyForService } from "@lando/core/testing";
 import { PHP_COMMON_EXTENSIONS, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 

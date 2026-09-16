@@ -7,6 +7,8 @@ import { parseInitSourceFlags } from "../../commands/init-source";
 import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../prompts/answer-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 
+type InitCommandOptions = Omit<InitAppOptions, "privateFileAccess">;
+
 /**
  * `lando apps:init` — interactive scaffolding for new Lando apps.
  *
@@ -33,7 +35,7 @@ export interface InitFlags {
   readonly yes?: boolean;
 }
 
-export const initOptionsFromInput = (input: unknown): InitAppOptions => {
+export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
   const inputArgs = typeof input === "object" && input !== null && "args" in input ? input.args : undefined;
   const destination =
     typeof inputArgs === "object" && inputArgs !== null && "destination" in inputArgs

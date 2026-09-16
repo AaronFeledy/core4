@@ -1,0 +1,6 @@
+name: node-port
+services:
+  app:
+    type: "node:22"
+    port: 5173
+    command: node server.mjs

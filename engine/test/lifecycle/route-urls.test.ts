@@ -6,14 +6,25 @@ import { proxyUrlsByService } from "../../src/lifecycle/route-urls.ts";
 
 const webRoute = (hostname: string, scheme: RoutePlan["scheme"]): RoutePlan => {
   const service = ServiceName.make("web");
-  return { hostname, scheme, service, backend: { service, protocol: "http", port: 8080 } };
+  return { priority: 2, hostname, scheme, service, backend: { service, protocol: "http", port: 8080 } };
 };
+
+test("preserves path URLs once each when same-host routes repeat an authority", () => {
+  // Given
+  const routes = [webRoute("app.test", "https"), { ...webRoute("app.test", "https"), pathPrefix: "/api" }];
+  const authority: ProxyAuthority = { hostname: "app.test", scheme: "https", port: 4443 };
+  // When
+  const urls = proxyUrlsByService(routes, [authority, authority]);
+  // Then
+  expect(urls.get(ServiceName.make("web"))).toEqual(["https://app.test:4443", "https://app.test:4443/api"]);
+});
 
 test("brackets IPv6 authorities in route URLs", () => {
   const service = ServiceName.make("web");
   const routes: ReadonlyArray<RoutePlan> = [
     {
       hostname: "2001:db8::1",
+      priority: 2,
       scheme: "https",
       service,
       backend: { service, protocol: "http", port: 8080 },

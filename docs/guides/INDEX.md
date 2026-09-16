@@ -91,6 +91,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Shipped |
 | PRD-08 | US-148 | `app:config:translate` command | `docs/guides/landofile/config-translate.mdx` | Shipped |
 | PRD-08 | US-195 | `app:config:lint` command (IDE / standalone) | `docs/guides/landofile/config-lint.mdx` | Shipped |
+| — | — | `app:config:explain` recipe provenance report | `docs/guides/landofile/config-explain.mdx` | Shipped |
 | PRD-10 | US-159 | tooling bootstrap level + cache-only app-plan read | `docs/guides/tooling/composer-php.mdx` | Shipped |
 | PRD-10 | US-163 | service-mode `lando shell` | `docs/guides/tooling/lando-shell.mdx` | Shipped |
 | PRD-10 | US-164 | tooling output via renderer task tree | `docs/guides/tooling/output-streaming.mdx` | Shipped |
@@ -201,6 +202,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | `lando ssh` service shell and host keys | `docs/guides/cli/ssh.mdx` | Shipped |
 | — | — | `lando apps:poweroff` stop every running app | `docs/guides/cli/poweroff.mdx` | Shipped |
 | — | — | `lando exec` one-off commands in a service | `docs/guides/cli/exec.mdx` | Shipped |
+| — | — | `lando share --target` for a non-primary service or extra port | `docs/guides/cli/share-target.mdx` | Shipped |
 | — | — | `lando init` from a remote source | `docs/guides/cli/init-from-remote.mdx` | Shipped |
 | — | — | global config file and precedence | `docs/guides/config/global-config.mdx` | Shipped |
 | — | — | offline / air-gapped development | `docs/guides/config/offline-dev.mdx` | Shipped |
@@ -211,11 +213,13 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | install and run on WSL | `docs/guides/install/wsl.mdx` | Shipped |
 | — | — | GitHub Actions CI install and drive | `docs/guides/install/ci-github-actions.mdx` | Shipped |
 | — | — | external access to app services | `docs/guides/subsystems/external-access.mdx` | Shipped |
+| - | - | how services find each other (service keys, .internal, *.lndo.site) | `docs/guides/subsystems/service-dns.mdx` | Shipped |
 | — | — | in-container agent context markers | `docs/guides/agent-native/in-container-context.mdx` | Shipped |
 | — | — | app name edge cases and validation | `docs/guides/landofile/app-name-edge-cases.mdx` | Shipped |
 | — | — | Landofile with zero services | `docs/guides/landofile/zero-services.mdx` | Shipped |
 | — | — | Drupal stack service and tooling overrides | `docs/guides/recipes/drupal-stack-overrides.mdx` | Shipped |
 | — | — | Drupal multisite configuration | `docs/guides/recipes/drupal-multisite.mdx` | Shipped |
+| — | — | `app:config:migrate` recipe migration edges | `docs/guides/recipes/migrating-recipes.mdx` | Shipped |
 | — | — | PHP version selection matrix | `docs/guides/services/php-version-matrix.mdx` | Shipped |
 | — | — | Composer workflows in PHP services | `docs/guides/tooling/php-composer-workflows.mdx` | Shipped |
 | — | — | PHP service customization | `docs/guides/services/php-customization.mdx` | Shipped |
@@ -238,3 +242,10 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-06 | US-579 | database import, export, snapshot, restore, and reset | `docs/guides/tooling/db-import-export.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | app plan cache refresh | `docs/guides/cli/cache-refresh.mdx` | Shipped |
 | L3-PARITY-07 | US-580 | CLI verbosity, renderer modes, and debug output | `docs/guides/cli/verbosity-and-debug.mdx` | Shipped |
+| IR-GAPS-01 | US-618D1 | service-scoped rebuild and info | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
+| IR-GAPS-01 | US-618D3 | bounded global environment and label defaults for user apps | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
+| — | — | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
+| — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
+| — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
+| — | — | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |
+| — | — | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |

@@ -10,13 +10,13 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
-} from "@lando/core/testing";
-import { makePluginStateStore } from "@lando/core/testing";
+} from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -31,6 +31,7 @@ import {
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("crossprocessapp");
@@ -322,7 +323,11 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
 
 const runOnce = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
 const appliedPlanState = (stateDir: string) =>
-  makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+  makePluginStateStore(
+    makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+    AbsolutePath.make(stateDir),
+    ownerOnlyFileAccess,
+  );
 
 describe("provider-lando cross-process state", () => {
   test("persists a host-proxy-sanitized applied plan while applying the runtime plan", async () => {

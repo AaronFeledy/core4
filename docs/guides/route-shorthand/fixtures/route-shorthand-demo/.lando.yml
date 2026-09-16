@@ -1,0 +1,31 @@
+name: route-shorthand-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    routes:
+      - app.lndo.site
+      - "*.app.lndo.site"
+      - "*-app.lndo.site"
+      - "wild.*.app.lndo.site"
+      - "lets.combine.*.lndo.site:8080/everything/for-real"
+      - hostname: api.lndo.site
+        scheme: https
+        endpoint: 8080
+        pathPrefix: /v1
+        filters:
+          - name: strip-v1
+            type: stripPrefix
+            prefix: /v1
+          - type: addPrefix
+            prefix: /internal
+          - name: trace-id
+            type: requestHeader
+            header: X-Request-Source
+            value: lando
+          - type: responseHeader
+            header: X-Served-By
+            value: lando-proxy
+          - type: redirect
+            to: https://api.lndo.site/v1/docs
+            permanent: false

@@ -6,31 +6,8 @@ import type { RecipeOptionType, RecipeOptionValue, RecipeSnapshot } from "@lando
 import { Effect, Either } from "effect";
 
 import { buildConfig } from "../../build.config.ts";
-import { astroSnapshot } from "../../src/recipes/builtin/astro/snapshot.ts";
-import { backdropSnapshot } from "../../src/recipes/builtin/backdrop/snapshot.ts";
 import { BUILTIN_RECIPE_DECOMPOSERS, lookupRecipeDecomposer } from "../../src/recipes/builtin/decomposers.ts";
-import { djangoSnapshot } from "../../src/recipes/builtin/django/snapshot.ts";
-import { drupalCmsSnapshot } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
-import { drupalSnapshot } from "../../src/recipes/builtin/drupal/snapshot.ts";
-import { eleventySnapshot } from "../../src/recipes/builtin/eleventy/snapshot.ts";
-import { emptySnapshot } from "../../src/recipes/builtin/empty/snapshot.ts";
-import { fastapiSnapshot } from "../../src/recipes/builtin/fastapi/snapshot.ts";
-import { hugoSnapshot } from "../../src/recipes/builtin/hugo/snapshot.ts";
-import { jekyllSnapshot } from "../../src/recipes/builtin/jekyll/snapshot.ts";
-import { joomlaSnapshot } from "../../src/recipes/builtin/joomla/snapshot.ts";
-import { lampSnapshot } from "../../src/recipes/builtin/lamp/snapshot.ts";
-import { laravelSnapshot } from "../../src/recipes/builtin/laravel/snapshot.ts";
-import { lempSnapshot } from "../../src/recipes/builtin/lemp/snapshot.ts";
-import { meanSnapshot } from "../../src/recipes/builtin/mean/snapshot.ts";
-import { nextjsSnapshot } from "../../src/recipes/builtin/nextjs/snapshot.ts";
-import { nodeApiSnapshot } from "../../src/recipes/builtin/node-api/snapshot.ts";
-import { nodePostgresSnapshot } from "../../src/recipes/builtin/node-postgres/snapshot.ts";
-import { nodeTsSnapshot } from "../../src/recipes/builtin/node-ts/snapshot.ts";
-import { railsSnapshot } from "../../src/recipes/builtin/rails/snapshot.ts";
-import { sveltekitSnapshot } from "../../src/recipes/builtin/sveltekit/snapshot.ts";
-import { symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
-import { toolboxSnapshot } from "../../src/recipes/builtin/toolbox/snapshot.ts";
-import { wordpressSnapshot } from "../../src/recipes/builtin/wordpress/snapshot.ts";
+import { BUILTIN_RECIPE_SNAPSHOTS, lookupRecipeSnapshot } from "../../src/recipes/builtin/snapshots.ts";
 
 /**
  * Per-recipe suites pin individual decomposers; this suite checks the complete
@@ -58,35 +35,8 @@ const decomposerFor = (recipeId: string) => {
   return factory({ redactor });
 };
 
-const SNAPSHOTS: Readonly<Record<string, RecipeSnapshot>> = {
-  "node-postgres": nodePostgresSnapshot,
-  wordpress: wordpressSnapshot,
-  laravel: laravelSnapshot,
-  symfony: symfonySnapshot,
-  lamp: lampSnapshot,
-  backdrop: backdropSnapshot,
-  joomla: joomlaSnapshot,
-  lemp: lempSnapshot,
-  "node-api": nodeApiSnapshot,
-  mean: meanSnapshot,
-  astro: astroSnapshot,
-  sveltekit: sveltekitSnapshot,
-  nextjs: nextjsSnapshot,
-  django: djangoSnapshot,
-  drupal: drupalSnapshot,
-  "drupal-cms": drupalCmsSnapshot,
-  fastapi: fastapiSnapshot,
-  rails: railsSnapshot,
-  jekyll: jekyllSnapshot,
-  hugo: hugoSnapshot,
-  eleventy: eleventySnapshot,
-  empty: emptySnapshot,
-  "node-ts": nodeTsSnapshot,
-  toolbox: toolboxSnapshot,
-};
-
 const snapshotFor = (recipeId: string): RecipeSnapshot => {
-  const snapshot = SNAPSHOTS[recipeId];
+  const snapshot = lookupRecipeSnapshot(recipeId);
   if (snapshot === undefined) throw new Error(`no published snapshot for "${recipeId}"`);
   return snapshot;
 };
@@ -100,6 +50,11 @@ describe("bundled recipe conversion milestone", () => {
   it("registers one decomposer per bundled id and none beyond the set", () => {
     for (const recipeId of BUNDLED_IDS) expect(lookupRecipeDecomposer(recipeId)).toBeDefined();
     expect([...BUILTIN_RECIPE_DECOMPOSERS.keys()].sort()).toEqual([...BUNDLED_IDS].sort());
+  });
+
+  it("registers one declarative snapshot per bundled id and none beyond the set", () => {
+    for (const recipeId of BUNDLED_IDS) expect(lookupRecipeSnapshot(recipeId)).toBeDefined();
+    expect([...BUILTIN_RECIPE_SNAPSHOTS.keys()].sort()).toEqual([...BUNDLED_IDS].sort());
   });
 
   it("publishes a current declarative snapshot with versioned bundled identity", () => {

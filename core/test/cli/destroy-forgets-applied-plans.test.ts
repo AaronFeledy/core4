@@ -18,6 +18,7 @@ import {
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 import { readAppliedPlansFromUserData } from "../../src/cli/commands/list-discovery.ts";
 
@@ -84,7 +85,11 @@ const liveAppliedState = (userDataRoot: string) => {
   return {
     pluginStateDir,
     stateDir: `${userDataRoot}/providers`,
-    appliedPlanState: makePluginStateStore(makeStateStore(), AbsolutePath.make(pluginStateDir)),
+    appliedPlanState: makePluginStateStore(
+      makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
+      AbsolutePath.make(pluginStateDir),
+      ownerOnlyFileAccess,
+    ),
   };
 };
 

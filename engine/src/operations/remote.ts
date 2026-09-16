@@ -7,6 +7,8 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
+  HomePathCapabilityError,
+  LandofileUnknownEventError,
   NoProviderInstalledError,
   ProviderConfigError,
   ProviderUnavailableError,
@@ -122,8 +124,10 @@ export interface RemoteSetupOptions extends RemoteTestOptions {
 
 type AppPlanResolutionError =
   | UserLandofileError
+  | LandofileUnknownEventError
   | CapabilityError
   | CommandAliasConflictError
+  | HomePathCapabilityError
   | ConfigExpressionError
   | NoProviderInstalledError
   | ProviderConfigError

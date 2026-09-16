@@ -9,11 +9,11 @@ import { AppPlanner, LandofileService } from "@lando/core/services";
 
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { AppPlannerLive } from "@lando/engine/services/planner";
-import { initApp } from "../../src/cli/commands/init.ts";
 import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import { parseRecipe } from "../../src/recipes/manifest/service.ts";
 import { TestLandofileServiceLive as LandofileServiceLive } from "../_support/landofile-layer.ts";
+import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
 interface CanonicalAnswers {

@@ -20,10 +20,10 @@ import {
   finalizePluginInstall,
   validatePluginManifest,
 } from "@lando/engine/operations/plugin-install";
+import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
 import { makeLandoPaths } from "@lando/paths";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeInteractionService } from "../../interaction/service";
-import { publish } from "../../recipes/git-source";
 import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner";
 
 import {
@@ -80,6 +80,14 @@ export interface PluginAddOptions {
   readonly prompter?: PluginAddPrompter;
   readonly interaction?: InteractionPrompter;
   readonly trustStore?: PluginTrustStore;
+  readonly requestedSelector?: string;
+  readonly expectedManifest?: {
+    readonly name: string;
+    readonly version: string;
+    readonly requires?: Readonly<Record<string, string>>;
+  };
+  readonly expectedActivation?: InstalledPluginRegistryEntry;
+  readonly expectedRegistry?: Readonly<Record<string, InstalledPluginRegistryEntry>>;
 }
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*(@[^/\s]+)?$/i;
@@ -154,6 +162,8 @@ const packageDeclaresPostinstall = async (packageDir: string): Promise<boolean> 
 interface InstalledPluginPackage {
   readonly created: boolean;
   readonly packageDir: string;
+  readonly targetDir?: string;
+  readonly stagingRoot?: string;
 }
 
 const npmInstallFailure = (message: string, spec: string): NotImplementedError =>
@@ -220,7 +230,9 @@ const installFromNpm = async (
   }
 
   const packageDir = installTargetFor(pluginsRoot, parsed.name, resolvedVersion, options.spec);
-  if (await fileExists(packageDir)) return { created: false, packageDir };
+  if (options.expectedActivation === undefined && (await fileExists(packageDir))) {
+    return { created: false, packageDir };
+  }
 
   let archiveBytes: Uint8Array;
   try {
@@ -237,18 +249,24 @@ const installFromNpm = async (
     await (options.extractor ?? defaultTarballRecipeExtractor).extract(archiveBytes, stagingRoot);
     const extractedPackageDir = join(stagingRoot, "package");
     await validatePluginManifest(extractedPackageDir);
-    await publish(extractedPackageDir, packageDir);
+    return { created: true, packageDir: extractedPackageDir, targetDir: packageDir, stagingRoot };
   } catch (cause) {
     await rm(stagingRoot, { recursive: true, force: true });
-    await rm(packageDir, { recursive: true, force: true });
     throw cause;
   }
-  await rm(stagingRoot, { recursive: true, force: true });
-  return { created: true, packageDir };
 };
 
 const defaultInteractionPrompter = (): InteractionPrompter =>
   makePromiseInteractionPrompter(makeInteractionService());
+
+const equalRequirements = (
+  left: Readonly<Record<string, string>> | undefined,
+  right: Readonly<Record<string, string>> | undefined,
+): boolean => {
+  const leftEntries = Object.entries(left ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  const rightEntries = Object.entries(right ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
+};
 
 const trustPrompterFromInteraction = (interaction: InteractionPrompter): PluginAddPrompter => ({
   confirmTrust: ({ pluginName }) =>
@@ -344,29 +362,39 @@ export const pluginAdd = (
     yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
 
     const packageName = parsePackageName(options.spec);
+    const requestedSelector =
+      options.requestedSelector ?? parseNpmPackageSpec(options.spec).version ?? "latest";
     let createdPackageDir: string | undefined;
-    const packageDir = yield* Effect.tryPromise({
-      try: async () => {
-        if (options.spawner !== undefined) {
-          const installed = await options.spawner.install({ spec: options.spec, cwd: pluginsRoot });
-          if (installed.exitCode !== 0) throw installFailure(options.spec, installed.stderr);
-          return installed.packageRoot ?? join(pluginsRoot, "node_modules", packageName);
-        }
-        const installed = await installFromNpm(options, pluginsRoot);
-        if (installed.created) createdPackageDir = installed.packageDir;
-        return installed.packageDir;
-      },
-      catch: (cause) =>
-        cause instanceof RecipeSourceError
-          ? npmInstallFailure(cause.message, options.spec)
-          : cause instanceof NotImplementedError || cause instanceof PluginManifestError
-            ? cause
-            : new NotImplementedError({
-                message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
-                commandId: "meta:plugin:add",
-                remediation: "Check the plugin package and retry.",
-              }),
-    });
+    let targetDir: string | undefined;
+    const packageDir = yield* Effect.acquireRelease(
+      Effect.tryPromise({
+        try: async () => {
+          if (options.spawner !== undefined) {
+            const installed = await options.spawner.install({ spec: options.spec, cwd: pluginsRoot });
+            if (installed.exitCode !== 0) throw installFailure(options.spec, installed.stderr);
+            return installed.packageRoot ?? join(pluginsRoot, "node_modules", packageName);
+          }
+          const installed = await installFromNpm(options, pluginsRoot);
+          if (installed.created) createdPackageDir = installed.stagingRoot;
+          targetDir = installed.targetDir;
+          return installed.packageDir;
+        },
+        catch: (cause) =>
+          cause instanceof RecipeSourceError
+            ? npmInstallFailure(cause.message, options.spec)
+            : cause instanceof NotImplementedError || cause instanceof PluginManifestError
+              ? cause
+              : new NotImplementedError({
+                  message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
+                  commandId: "meta:plugin:add",
+                  remediation: "Check the plugin package and retry.",
+                }),
+      }),
+      () =>
+        Effect.promise(async () => {
+          if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
+        }),
+    );
 
     const { manifest } = yield* Effect.tryPromise({
       try: () => validatePluginManifest(packageDir),
@@ -378,6 +406,24 @@ export const pluginAdd = (
               issues: [String(cause)],
             }),
     });
+    if (
+      options.expectedManifest !== undefined &&
+      (manifest.name !== options.expectedManifest.name ||
+        manifest.version !== options.expectedManifest.version ||
+        !equalRequirements(manifest.requires, options.expectedManifest.requires))
+    ) {
+      const mismatchedPackageDir = createdPackageDir;
+      if (mismatchedPackageDir !== undefined) {
+        yield* Effect.promise(() => rm(mismatchedPackageDir, { recursive: true, force: true }));
+      }
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message: `Extracted plugin manifest for ${manifest.name}@${manifest.version} does not match advertised npm metadata.`,
+          pluginName: manifest.name,
+          issues: ["name, version, and requires must match the registry packument"],
+        }),
+      );
+    }
 
     const hasPostinstall = yield* Effect.promise(() => packageDeclaresPostinstall(packageDir));
     const persistentStoreOption = yield* Effect.serviceOption(PersistentPluginTrustStore);
@@ -387,8 +433,8 @@ export const pluginAdd = (
     const trustStoreForRollback = options.trustStore ?? globalTrustStore;
     const hadTrustBefore = trustStoreForRollback.has(trustName);
     const trustSource = yield* Effect.tryPromise({
-      try: async () => {
-        if (hasPostinstall && options.trust !== true) {
+      try: async (): Promise<PluginAddResult["trustSource"]> => {
+        if (hasPostinstall && options.trust !== true && options.expectedActivation === undefined) {
           if (trustStoreForRollback.has(trustName)) return "session";
           if (
             persistentStore !== undefined &&
@@ -411,7 +457,11 @@ export const pluginAdd = (
             }),
     });
 
-    if (hasPostinstall && trustSource !== "untrusted") {
+    if (
+      hasPostinstall &&
+      trustSource !== "untrusted" &&
+      (createdPackageDir !== undefined || options.spawner !== undefined)
+    ) {
       const postinstallExit = yield* bunSelfInstall({
         cwd: packageDir,
         spawner: options.bunSelfSpawner ?? defaultBunSelfSpawner,
@@ -437,38 +487,40 @@ export const pluginAdd = (
       }
     }
 
-    yield* Effect.promise(async () => {
-      try {
-        await Effect.runPromise(
-          finalizePluginInstall({
-            pluginsRoot,
-            entry: {
-              name: manifest.name,
-              version: manifest.version,
-              path: packageDir,
-            },
-            ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-          }),
-        );
-      } catch (cause) {
-        if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
-        if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
-          trustStoreForRollback.delete(trustName);
-        }
-        throw cause;
-      }
-    });
+    yield* finalizePluginInstall({
+      pluginsRoot,
+      entry: {
+        name: manifest.name,
+        version: manifest.version,
+        path: targetDir ?? packageDir,
+        requestedSelector,
+      },
+      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+      ...(options.expectedActivation === undefined ? {} : { expectedActivation: options.expectedActivation }),
+      ...(options.expectedRegistry === undefined ? {} : { expectedRegistry: options.expectedRegistry }),
+      expectedManifest: manifest,
+      ...(targetDir === undefined ? {} : { stagedPath: packageDir }),
+    }).pipe(
+      Effect.tapErrorCause(() =>
+        Effect.promise(async () => {
+          if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
+          if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
+            trustStoreForRollback.delete(trustName);
+          }
+        }),
+      ),
+    );
 
     return {
       pluginName: manifest.name,
       pluginVersion: manifest.version,
       trustName,
       pluginsRoot,
-      entry: packageDir,
+      entry: targetDir ?? packageDir,
       trusted: trustSource !== "untrusted",
       trustSource,
     };
-  });
+  }).pipe(Effect.scoped);
 
 export const renderPluginAddResult = (result: PluginAddResult): string =>
   `installed: ${result.pluginName}@${result.pluginVersion}\ntrusted: ${result.trustSource}\nplugins-root: ${result.pluginsRoot}${

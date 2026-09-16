@@ -13,6 +13,11 @@ import type { Entry, Stage } from "../src/transaction-journal.ts";
 import { preflight } from "../src/transaction-preflight.ts";
 import { fixture } from "./transaction-fixture.ts";
 
+const privateFileAccess = {
+  enforce: () => Promise.resolve(),
+  verify: () => Promise.resolve(),
+};
+
 for (const platform of ["win32", "linux"] as const) {
   test(`compares writable and read-only file states using ${platform} permissions`, () => {
     const originalPlatform = process.platform;
@@ -37,8 +42,13 @@ for (const operation of ["publish", "finish-mode"] as const) {
     const target = join(appRoot, ".lando.yml");
     const bytes = new TextEncoder().encode("name: windows-app\n");
     let stage: Stage | undefined;
-    await createStage(`${target}.lando-stage.windows`, bytes, (created) => {
-      stage = created;
+    await createStage({
+      path: `${target}.lando-stage.windows`,
+      bytes,
+      record: (created) => {
+        stage = created;
+      },
+      privateFileAccess,
     });
     if (stage === undefined) throw new Error("missing stage");
     await fs.chmod(stage.path, 0o666);
@@ -62,12 +72,18 @@ for (const operation of ["publish", "finish-mode"] as const) {
     try {
       Object.defineProperty(process, "platform", { value: "win32" });
       // When the coordinator publishes or finishes an interrupted mode application.
-      await (operation === "publish" ? mutateEntry(appRoot, entry) : finishAppliedMode(appRoot, entry));
+      await (operation === "publish"
+        ? mutateEntry(appRoot, entry, privateFileAccess)
+        : finishAppliedMode(appRoot, entry, privateFileAccess));
       // Then the bytes are committed and recovery recognizes the synthetic mode as applied.
       expect((await snapshot(target)).state).toEqual({ present: true, digest: digestOf(bytes), mode: 0o666 });
       expect(await fs.readFile(target, "utf8")).toBe("name: windows-app\n");
       expect(
-        await preflight(appRoot, { id: "windows", root: appRoot, state: "committing", entries: [entry] }),
+        await preflight(
+          appRoot,
+          { id: "windows", root: appRoot, state: "committing", entries: [entry] },
+          privateFileAccess,
+        ),
       ).toEqual([{ entry, disposition: "applied" }]);
     } finally {
       open.mockRestore();

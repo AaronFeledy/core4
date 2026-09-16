@@ -26,6 +26,7 @@ import {
   verifyLinuxPodmanPortability,
   verifyManagedLinuxPodman,
 } from "./linux-podman-source-build.ts";
+import { fetchOverHttps } from "./runtime-bundle-fetch.ts";
 import {
   LinuxPodmanSourceBuild,
   RUNTIME_BUNDLE_SOURCES_PATH,
@@ -194,13 +195,6 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
     await rm(stageDir, { recursive: true, force: true });
     await rm(downloadDir, { recursive: true, force: true });
   }
-};
-
-const fetchOverHttps = async (url: string): Promise<Uint8Array> => {
-  const response = await fetch(url);
-  if (!response.ok)
-    throw new Error(`assemble-runtime-bundle: download failed (${response.status}) for ${url}`);
-  return new Uint8Array(await response.arrayBuffer());
 };
 
 const main = async (argv: ReadonlyArray<string>): Promise<void> => {

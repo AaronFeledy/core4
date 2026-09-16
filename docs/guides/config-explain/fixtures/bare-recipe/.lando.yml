@@ -1,0 +1,25 @@
+name: explain-demo
+recipe: lamp
+runtime: 4
+services:
+  appserver:
+    composer: "{{ recipe.composer }}"
+    dependsOn:
+      - database
+    framework: none
+    port: 80
+    type: "php:{{ recipe.php }}"
+    webroot: /app
+  database:
+    type: "{{ recipe.database }}"
+tooling:
+  composer:
+    cmds:
+      - composer
+    description: "Run Composer inside the appserver service."
+    service: appserver
+  php:
+    cmds:
+      - php
+    description: "Run the PHP CLI inside the appserver service."
+    service: appserver

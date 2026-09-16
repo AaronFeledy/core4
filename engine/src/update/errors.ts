@@ -4,6 +4,12 @@ import { Schema } from "effect";
 import type { LandoCommandError } from "@lando/sdk/errors";
 import { UpdateChannel as UpdateChannelSchema } from "@lando/sdk/schema";
 
+export const CoreUpdateFailureSchema = Schema.Struct({
+  tag: Schema.String,
+  message: Schema.String,
+  remediation: Schema.String,
+});
+
 export class UpdateNetworkError extends Schema.TaggedError<UpdateNetworkError>()("UpdateNetworkError", {
   message: Schema.String,
   url: Schema.optional(Schema.String),

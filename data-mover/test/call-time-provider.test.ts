@@ -5,12 +5,14 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { DataMoverLive } from "@lando/data-mover/service";
+import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import { DataMover, EventService, PathsService, RuntimeProvider } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { StateStoreLive } from "@lando/state-store/service";
+import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
+const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
 
 const app = AppId.make("data-app");
 const service = ServiceName.make("web");

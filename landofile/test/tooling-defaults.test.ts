@@ -11,7 +11,7 @@ import type { LandofileShape, ToolingDefaultsShape } from "@lando/sdk/schema";
 import type { ServiceTypeResolution } from "@lando/sdk/services";
 
 import { resolveLandofileIncludes } from "../src/includes.ts";
-import { makeTestLandofilePorts } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const DEFAULT_DIR = PortablePath.make("/workspace/default");
 const TASK_DIR = PortablePath.make("/workspace/task");
@@ -24,7 +24,9 @@ const defaults = {
 } satisfies ToolingDefaultsShape;
 
 const resolve = (landofile: LandofileShape, appRoot = "/workspace/app") =>
-  Effect.runPromise(resolveLandofileIncludes({ landofile, appRoot }));
+  Effect.runPromise(
+    resolveLandofileIncludes({ landofile, appRoot, stateStore: makeTestLandofileStateStore() }),
+  );
 
 describe("tooling defaults", () => {
   const roots: string[] = [];
@@ -205,6 +207,7 @@ describe("tooling defaults", () => {
       resolveLandofileIncludes({
         landofile,
         appRoot,
+        stateStore: makeTestLandofileStateStore(),
         cacheRoot: join(appRoot, ".cache"),
         ports: makeTestLandofilePorts(join(appRoot, ".cache")),
       }),

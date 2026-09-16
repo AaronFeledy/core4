@@ -16,6 +16,7 @@ import {
 } from "@lando/sdk/errors";
 import { type ConfigTranslateDocument, ConfigTranslateSourceId, type PortablePath } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
+import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 import {
   detectConfigTranslators,
@@ -62,6 +63,7 @@ export interface AppConfigTranslateOptions {
    * without either, the operation reports no registered translators.
    */
   readonly translators?: ReadonlyArray<ConfigTranslatorShape>;
+  readonly privateFileAccess?: PrivateFileAccess;
 }
 
 export type AppConfigTranslateError =
@@ -275,5 +277,20 @@ export const appConfigTranslate = (
       diagnostics,
       deletions,
     };
-    return options.write === true ? yield* writeTranslateTargets(appRoot, preview, shape) : preview;
+    if (options.write !== true) return preview;
+    if (options.privateFileAccess === undefined) {
+      return yield* Effect.fail(
+        new ConfigTranslateError({
+          message: "Private file access is unavailable for translated configuration writes.",
+          remediation: "Run the translation through the Lando runtime.",
+        }),
+      );
+    }
+    return yield* writeTranslateTargets({
+      appRoot,
+      preview,
+      shape,
+      documents,
+      privateFileAccess: options.privateFileAccess,
+    });
   });

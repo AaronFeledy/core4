@@ -13,6 +13,7 @@ import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 
 export interface LandofileLoadPolicy {
   readonly allowOutsideRoot: boolean;
+  readonly allowFileAccess?: boolean;
   readonly maxFileBytes: number;
   readonly maxFilesPerExpression: number;
   readonly maxRecursionDepth: number;
@@ -20,6 +21,7 @@ export interface LandofileLoadPolicy {
 
 export const DEFAULT_LANDOFILE_LOAD_POLICY: LandofileLoadPolicy = {
   allowOutsideRoot: false,
+  allowFileAccess: true,
   maxFileBytes: 1_048_576,
   maxFilesPerExpression: 16,
   maxRecursionDepth: 4,
@@ -54,6 +56,13 @@ export class LandofileFileSession {
   }
 
   load(authoredPath: string): FileRef {
+    if (this.policy.allowFileAccess === false) {
+      throw new LandofileExpressionEvalError({
+        message: "User Landofile profiles must not use file-access expressions.",
+        filePath: this.source.sourcePath,
+        remediation: "Move load/import expressions to the consuming app Landofile.",
+      });
+    }
     const candidate = resolve(this.source.sourceRoot, authoredPath);
     let absolutePath: string;
     try {

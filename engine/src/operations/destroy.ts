@@ -1,5 +1,3 @@
-import { rm } from "node:fs/promises";
-
 import { DateTime, Effect, Option, Schema } from "effect";
 
 import type {
@@ -18,14 +16,22 @@ import {
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
+  StateStore,
 } from "@lando/sdk/services";
+import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
+import {
+  verifyActiveVolumeCoordination,
+  withPlanVolumeCoordination,
+} from "../lifecycle/volume-coordination.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
+import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
-import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
+import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -42,6 +48,8 @@ type DestroyAppServices =
   | EventService
   | LandofileService
   | PathsService
+  | PrivateFileAccessService
+  | StateStore
   | RuntimeProviderRegistry;
 type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | LandofileService>;
 
@@ -49,7 +57,7 @@ const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-export const destroyAppForTarget = (
+const destroyAppForTargetUncoordinated = (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
@@ -85,7 +93,7 @@ export const destroyAppForTarget = (
       children: {
         fileSync: fileSyncApplicable,
         proxy: proxy._tag === "Some",
-        snapshots: volumes,
+        snapshots: false,
       },
       work: (tree) =>
         Effect.gen(function* () {
@@ -94,35 +102,39 @@ export const destroyAppForTarget = (
           if (fileSyncApplicable) yield* tree.completeTask("file-sync");
 
           yield* tree.startTask("provider");
-          const providerDestroy = provider
-            .destroy(
-              { app: plan.id, plan },
-              {
-                volumes,
-                ...(resolvedOptions.purgeCaches === undefined
-                  ? {}
-                  : { purgeCaches: resolvedOptions.purgeCaches }),
-                removeState: true,
-              },
-            )
-            .pipe(
-              Effect.ensuring(
-                Effect.gen(function* () {
-                  yield* tree.startTask("host-proxy");
-                  yield* cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform });
-                  yield* tree.completeTask("host-proxy");
-                }),
+          const providerDestroy = verifyActiveVolumeCoordination(provider).pipe(
+            Effect.zipRight(
+              provider.destroy(
+                { app: plan.id, plan },
+                {
+                  volumes,
+                  ...(resolvedOptions.purgeCaches === undefined
+                    ? {}
+                    : { purgeCaches: resolvedOptions.purgeCaches }),
+                  removeState: true,
+                },
               ),
-              Effect.tap(() => tree.completeTask("provider")),
-              Effect.tapError(() => tree.failTask("provider")),
-            );
+            ),
+            Effect.ensuring(
+              Effect.gen(function* () {
+                yield* tree.startTask("host-proxy");
+                yield* cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform });
+                yield* tree.completeTask("host-proxy");
+              }),
+            ),
+            Effect.tap(() => tree.completeTask("provider")),
+            Effect.tapError(() => tree.failTask("provider")),
+          );
           if (proxy._tag === "Some") {
             const removeRoutes = tree.startTask("routes").pipe(
               Effect.zipRight(proxy.value.removeRoutes(plan.id)),
               Effect.tap(() => tree.completeTask("routes")),
               Effect.tapError(() => tree.failTask("routes")),
             );
-            yield* runAllAndMergeFailures<SdkDestroyAppError, never>([providerDestroy, removeRoutes]);
+            yield* runAllAndMergeFailures<SdkDestroyAppError, PrivateFileAccessService>([
+              providerDestroy,
+              removeRoutes,
+            ]);
           } else {
             yield* events.publish(
               MessageWarnEvent.make({
@@ -131,16 +143,6 @@ export const destroyAppForTarget = (
               }),
             );
             yield* providerDestroy;
-          }
-
-          if (volumes) {
-            yield* tree.startTask("snapshots");
-            yield* Effect.promise(() =>
-              rm(paths.appSnapshotsDir(String(plan.id)), { recursive: true, force: true }).catch(
-                () => undefined,
-              ),
-            );
-            yield* tree.completeTask("snapshots");
           }
         }),
     });
@@ -151,7 +153,7 @@ export const destroyAppForTarget = (
       timestamp: now(),
     });
     yield* events.publish(postDestroy);
-    yield* runPostAppEvent(plan, "post-destroy", postDestroy);
+    yield* runAppEvent(plan, "post-destroy", postDestroy);
 
     return {
       app: plan.name,
@@ -161,6 +163,27 @@ export const destroyAppForTarget = (
       volumesRemoved: volumes || resolvedOptions.purgeCaches === true,
     };
   });
+
+export const destroyAppForTarget = (
+  options: DestroyAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
+  withAppMutationLock(
+    appLockTarget(target.plan),
+    Effect.gen(function* () {
+      const context = yield* Effect.context<BoundDestroyAppServices>();
+      const registry = yield* RuntimeProviderRegistry;
+      const stateStore = yield* StateStore;
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const provider = yield* registry.select(resolvedTarget.plan);
+      return yield* withPlanVolumeCoordination({
+        plan: resolvedTarget.plan,
+        provider,
+        stateStore,
+        body: () => destroyAppForTargetUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
+      });
+    }),
+  );
 
 export const destroyApp = (
   options: DestroyAppOptions = {},

@@ -21,7 +21,8 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { EventServiceLive, type RendererIO, createBufferedRendererIO } from "@lando/core/testing";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 
 import { renderPlainLine } from "../src/format.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";

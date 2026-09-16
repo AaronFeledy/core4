@@ -65,29 +65,6 @@ const resolvableAtLoad = (source: string, template: ExpressionTemplate): boolean
   !sourceHasUnescapedBracedForm(source) &&
   expressionInterpolationsTouchOnlyScopes(template, LOAD_RESOLVABLE_EXPRESSION_SCOPES);
 
-/**
- * Replays bare shell-parameter text as a literal segment.
- *
- * The evaluator resolves `$name` from the `env` scope. That text is not the
- * loader's: a Landofile value carrying `$name` and no expression is returned
- * byte-for-byte today, and the string usually goes on to a container shell that
- * owns those names. So the loader resolves the `{{ ... }}` interpolations around
- * the text and leaves the text itself exactly as authored.
- *
- * Only `$` immediately followed by an identifier start becomes a segment, so
- * `$$`, `$1` and `$(cmd)` are already literal text and need no replay. Only the
- * bare spelling is rewritten because {@link resolvableAtLoad} refuses unescaped
- * `${`, which every operator spelling requires.
- */
-const withInertShellText = (template: ExpressionTemplate): ExpressionTemplate => ({
-  whole: template.whole,
-  segments: template.segments.map((segment) =>
-    segment.kind === "ShellParamSegment" && segment.operator === "plain"
-      ? ({ kind: "LiteralSegment", text: `$${segment.name}` } as const)
-      : segment,
-  ),
-});
-
 /** A value site that could not be resolved from the merged document. */
 export interface UnresolvedLoadScopeExpression {
   /** Dotted path of the value site holding the expression. */
@@ -154,7 +131,7 @@ export const materializeLoadScopeExpressions = (
   const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
     if (typeof value === "string") {
       if (!value.includes("{{")) return value;
-      const parsed = parseExpressionEither(value, { filePath });
+      const parsed = parseExpressionEither(value, { filePath, bareShellParameters: "preserve" });
       if (Either.isLeft(parsed)) return value;
       if (!resolvableAtLoad(value, parsed.right)) return value;
       const needsOptions = !expressionInterpolationsTouchOnlyScopes(parsed.right, ["env"]);
@@ -163,7 +140,7 @@ export const materializeLoadScopeExpressions = (
         return value;
       }
       const evaluated = evaluateTemplateEither(
-        withInertShellText(parsed.right),
+        parsed.right,
         options === undefined ? { env } : { env, recipe: options },
         { filePath, budget: LOAD_EXPRESSION_BUDGET },
       );

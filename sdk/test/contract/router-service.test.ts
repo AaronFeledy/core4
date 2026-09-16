@@ -42,6 +42,7 @@ describe("RouterService contract", () => {
     const routes = [
       {
         hostname: "web.myapp.lndo.site",
+        priority: 2,
         scheme: "https" as const,
         service: ServiceName.make("web"),
         backend: { service: ServiceName.make("web"), protocol: "https" as const, port: 9443 },

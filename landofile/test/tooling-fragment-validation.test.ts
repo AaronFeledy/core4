@@ -8,7 +8,7 @@ import { Effect } from "effect";
 import type { LandofileShape } from "@lando/sdk/schema";
 
 import { resolveLandofileIncludes } from "../src/includes.ts";
-import { makeTestLandofilePorts } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const failure = (landofile: LandofileShape, appRoot: string) =>
   Effect.runPromise(
@@ -18,6 +18,7 @@ const failure = (landofile: LandofileShape, appRoot: string) =>
         appRoot,
         cacheRoot: join(appRoot, ".cache"),
         ports: makeTestLandofilePorts(join(appRoot, ".cache")),
+        stateStore: makeTestLandofileStateStore(),
       }),
     ),
   );

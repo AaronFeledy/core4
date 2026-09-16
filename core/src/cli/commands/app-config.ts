@@ -11,10 +11,10 @@ import type {
   LandofileLockMismatchError,
   LandofileSandboxError,
   LandofileTimeoutError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
+  RouteInputError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import {
@@ -26,7 +26,7 @@ import {
 } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
-import { LandofileService } from "@lando/sdk/services";
+import { LandofileService, type StateStore } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
 import { getAtPath } from "@lando/engine/config-write/dot-path";
@@ -45,6 +45,7 @@ import {
   loadLandofileLayers,
   renderLandofileTemplate,
 } from "@lando/engine/services/landofile-live";
+import { type LandofileIncludeSource, getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { parseLandofile } from "@lando/landofile/parser";
 import { detectTemplateDirective } from "@lando/landofile/template-render";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command";
@@ -69,6 +70,7 @@ export interface AppConfigResult {
   readonly app?: string;
   readonly source?: "resolved";
   readonly landofile?: LandofileShape;
+  readonly sources?: ReadonlyArray<LandofileIncludeSource>;
   readonly subcommand?: AppConfigSubcommand;
   readonly key?: string;
   readonly value?: unknown;
@@ -96,6 +98,11 @@ export const AppConfigResultSchema = Schema.Struct({
   app: Schema.optional(Schema.String),
   source: Schema.optional(Schema.Literal("resolved")),
   landofile: Schema.optional(LandofileShape),
+  sources: Schema.optional(
+    Schema.Array(
+      Schema.Struct({ id: Schema.String, sha256: Schema.String.pipe(Schema.pattern(/^[a-f0-9]{64}$/u)) }),
+    ),
+  ),
   ...ConfigWriteResultFields,
 });
 
@@ -107,8 +114,8 @@ type AppConfigError =
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileUnknownEventError
   | LandofileValidationError
+  | RouteInputError
   | LandofileWriteValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
@@ -119,7 +126,7 @@ type AppConfigError =
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
 
-type AppConfigServices = LandofileService;
+type AppConfigServices = LandofileService | StateStore;
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileShape, { onExcessProperty: "error" });
 
@@ -316,7 +323,7 @@ export const appConfigUnset = (
 
 export const appConfigValidate = (
   options: AppConfigOptions,
-): Effect.Effect<AppConfigResult, AppConfigError, never> =>
+): Effect.Effect<AppConfigResult, AppConfigError, StateStore> =>
   Effect.gen(function* () {
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "validate");
     yield* loadLandofileLayers(appRoot, inputPath).pipe(
@@ -398,6 +405,7 @@ export const appConfigGet = (
       subcommand: "get",
       key,
       value: getAtPath(landofile, key),
+      sources: getLandofileIncludeSources(landofile),
       redactionTokens: collectLandofileRedactionTokens(landofile),
     };
   });
@@ -481,6 +489,7 @@ export const appConfig = (
       app: landofile.name ?? "",
       source: "resolved",
       landofile,
+      sources: getLandofileIncludeSources(landofile),
       redactionTokens: collectLandofileRedactionTokens(landofile),
     };
   });

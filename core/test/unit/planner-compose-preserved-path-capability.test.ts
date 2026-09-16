@@ -54,9 +54,10 @@ const landofileWithBothPaths = () =>
     name: "preserved-paths",
     runtime: 4,
     services: {
-      database: { image: "postgres:17" },
+      database: { image: "postgres:17", home: false },
       web: {
         image: "node:lts",
+        home: false,
         depends_on: {
           database: { condition: "service_started", restart: true },
         },
@@ -124,7 +125,7 @@ describe("Compose preserved path capabilities", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "inert-service-extension",
       runtime: 4,
-      services: { web: { image: "node:lts", "x-foo": extension } },
+      services: { web: { image: "node:lts", home: false, "x-foo": extension } },
     });
 
     await withTempCwd(async () => {

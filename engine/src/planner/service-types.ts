@@ -2,23 +2,27 @@ import * as os from "node:os";
 
 import { type Context, Effect } from "effect";
 
+import type { NormalizedRoute } from "@lando/landofile/route-normalize";
 import {
   LandofileValidationError,
   type PluginLoadError,
   type PluginManifestError,
   ServiceTypeCollisionError,
 } from "@lando/sdk/errors";
-import type { LogSource, RouteInput, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
+import type { LogSource, ServiceConfig, ServicePlan, StorageScope } from "@lando/sdk/schema";
 import type {
   PluginRegistry,
   ServiceType,
   ServiceTypeHostFacts,
+  ServiceTypeProjectFileInput,
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
+import type { ServiceHomeIntent } from "./home.ts";
+import type { ServiceConfigSource } from "./service-config-files.ts";
 
 export type ContributionRef = string | { readonly id: string };
 
@@ -58,7 +62,12 @@ export const loadServiceTypeWithVersion = (
   reference: string,
 ): Effect.Effect<LoadedServiceType, PluginLoadError | PluginManifestError | ServiceTypeCollisionError> =>
   pluginRegistry.loadServiceType(reference).pipe(
-    Effect.map((serviceType) => ({ serviceType, version: undefined })),
+    Effect.map((serviceType) => {
+      const lastColon = reference.lastIndexOf(":");
+      const version =
+        lastColon > 0 && serviceType.versions !== undefined ? reference.slice(lastColon + 1) : undefined;
+      return { serviceType, version };
+    }),
     Effect.catchAll((error) => {
       if (error instanceof ServiceTypeCollisionError) return Effect.fail(error);
       const lastColon = reference.lastIndexOf(":");
@@ -79,10 +88,17 @@ export const resolvePinnedArtifactTag = (
   version: string | undefined,
 ): Effect.Effect<string | undefined, LandofileValidationError> => {
   if (version === undefined) return Effect.succeed(undefined);
-  const pinned = serviceType.artifacts?.[version];
-  if (pinned !== undefined) return Effect.succeed(pinned);
   const declaredVersions = serviceType.versions;
-  if (declaredVersions !== undefined && declaredVersions.length > 0 && !declaredVersions.includes(version)) {
+  if (declaredVersions === undefined || declaredVersions.length === 0) {
+    return Effect.fail(
+      new LandofileValidationError({
+        message: `Service ${serviceName} requests version ${version} of service type ${serviceType.id}, but that ServiceType does not publish any supported versions. Use the bare type ${serviceType.id} or choose a ServiceType with shipped version metadata.`,
+        file: `${appRoot}/.lando.yml`,
+        issues: [`services.${serviceName}.type`],
+      }),
+    );
+  }
+  if (!declaredVersions.includes(version)) {
     return Effect.fail(
       new LandofileValidationError({
         message: `Service ${serviceName} requests unsupported version ${version} of service type ${serviceType.id}. Supported versions: ${[...declaredVersions].sort().join(", ")}.`,
@@ -91,7 +107,15 @@ export const resolvePinnedArtifactTag = (
       }),
     );
   }
-  return Effect.succeed(`${serviceType.id}:${version}`);
+  const pinned = serviceType.artifacts?.[version];
+  if (pinned !== undefined) return Effect.succeed(pinned);
+  return Effect.fail(
+    new LandofileValidationError({
+      message: `Service type ${serviceType.id} declares supported version ${version} but does not publish an artifact for supported version ${version}. Fix the ServiceType metadata before using this version.`,
+      file: `${appRoot}/.lando.yml`,
+      issues: [`services.${serviceName}.type`],
+    }),
+  );
 };
 
 export const unsupportedServiceType = (
@@ -142,6 +166,7 @@ export const appFeatureError = (appRoot: string, cause: unknown) =>
   });
 
 export interface ResolvedService {
+  readonly routes: ReadonlyArray<NormalizedRoute>;
   readonly name: string;
   readonly service: ServiceConfig;
   readonly authored: {
@@ -159,7 +184,28 @@ export interface ResolvedService {
   }>;
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
+  readonly projectFiles: ReadonlyArray<ServiceTypeProjectFileInput>;
+  readonly configSourceInputs: ReadonlyArray<ServiceConfigSource>;
 }
+
+export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
+  name: entry.name,
+  serviceType: entry.serviceType.id,
+  base: entry.resolution.base,
+  normalizedConfig: entry.resolution.normalizedConfig,
+  tooling: entry.resolution.tooling ?? {},
+  logSources: entry.logSources,
+  featureRefs: entry.featureRefs,
+  envFileInputs: entry.envFileInputs,
+  projectFiles: entry.projectFiles.map((file) => ({
+    path: file.path,
+    present: file.present,
+    ...(file.present ? { sha256: file.sha256 } : {}),
+  })),
+  metadata: entry.resolution.metadata ?? {},
+  configSourceInputs: entry.configSourceInputs,
+  ...(entry.resolvedArtifactTag === undefined ? {} : { resolvedArtifactTag: entry.resolvedArtifactTag }),
+});
 
 export type AuthoredStorageInfo = {
   readonly scope: StorageScope;
@@ -172,9 +218,10 @@ export type PlannedServiceDraft = {
   readonly hostnames: ReadonlyArray<string>;
   readonly authoredArtifact: ServicePlan["artifact"];
   readonly authored: ResolvedService["authored"];
+  readonly homeIntent: ServiceHomeIntent;
   readonly draft: AppFeatureServiceDraft;
   readonly logSources: ReadonlyArray<LogSource>;
-  readonly routes: ReadonlyArray<RouteInput>;
+  readonly routes: ReadonlyArray<NormalizedRoute>;
   readonly extensions: ServicePlan["extensions"];
 };
 

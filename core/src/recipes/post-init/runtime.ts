@@ -11,12 +11,8 @@ import {
   defaultBunSelfSpawner,
 } from "../../cli/commands/bun-self-runner";
 import { type ChoicesCommandRunner, createDefaultChoicesCommandRunner } from "../prompts/choices-command";
-import {
-  createRecipeRunContext,
-  defaultRunWarning,
-  evaluateRunPermission,
-  runNotAllowedError,
-} from "../run-allowlist";
+import { defaultRunWarning, evaluateRunPermission, runNotAllowedError } from "../run-allowlist";
+import { shouldRunPostInitAction } from "./authorization";
 
 export interface PostInitIO {
   readonly out: (line: string) => void;
@@ -420,14 +416,8 @@ const runCommand = async (
   index: number,
   options: RunPostInitOptions,
 ): Promise<void> => {
-  const io = options.io ?? createStdioPostInitIO();
-  const ctx = createRecipeRunContext({
-    runs: options.runs,
-    runner: options.commandRunner ?? createDefaultChoicesCommandRunner(),
-    onWarn: (message) => io.err(message),
-    recipe: options.recipeId,
-  });
-  const result = await ctx.run(action.cmd, action.args);
+  const runner = options.commandRunner ?? createDefaultChoicesCommandRunner({ cwd: options.destination });
+  const result = await runner({ command: action.cmd, args: action.args ?? [] });
 
   if (result.exitCode !== 0) {
     const stderr = redactBunOutput(result.stderr.trim());
@@ -447,21 +437,14 @@ const runCommand = async (
   }
 };
 
-const rejectWhen = (index: number, action: RecipePostInitAction): never => {
-  const verb = action.type === "bun" ? action.verb : undefined;
-  throw new NotImplementedError({
-    message: `postInit[${index}] (${action.type}${verb === undefined ? "" : `:${verb}`}): \`when:\` is not implemented.`,
-    commandId: "apps:init",
-    remediation: "Remove `when:` from the post-init action.",
-  });
-};
-
 export const runPostInit = async (options: RunPostInitOptions): Promise<PostInitOutcome> => {
   const executed: PostInitExecutedAction[] = [];
+  const selected = options.actions.map((action, index) => shouldRunPostInitAction(action, options, index));
 
   for (const [index, action] of options.actions.entries()) {
-    if ("when" in action && typeof action.when === "string" && action.when.trim() !== "") {
-      rejectWhen(index, action);
+    if (!selected[index]) {
+      executed.push({ index, type: action.type, skipped: true });
+      continue;
     }
 
     switch (action.type) {

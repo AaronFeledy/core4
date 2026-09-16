@@ -184,6 +184,162 @@ describe("provisionTool", () => {
     }
   });
 
+  test.each([
+    {
+      archive: "tar.gz" as const,
+      bytes: makeTarGz([
+        { name: "mutagen", bytes: new Uint8Array(), typeflag: "2" },
+        { name: "nested/mutagen", bytes: HOST_BIN },
+      ]),
+      url: "https://example.test/nonregular-first.tar.gz",
+    },
+    {
+      archive: "zip" as const,
+      bytes: makeZip([
+        { name: "mutagen", bytes: new Uint8Array(), mode: 0o120777 },
+        { name: "nested/mutagen", bytes: HOST_BIN },
+      ]),
+      url: "https://example.test/nonregular-first.zip",
+    },
+  ])("skips a nonregular $archive basename match and installs the later regular member", async (fixture) => {
+    // Given: an archive whose first basename match is nonregular and whose second is a real executable.
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    dl.serve(fixture.url, fixture.bytes);
+    const manifest = manifestFor("linux-x64/cli", {
+      url: fixture.url,
+      sha256: sha256Hex(fixture.bytes),
+      archive: fixture.archive,
+      member: "mutagen",
+      installName: "mutagen",
+    });
+    try {
+      // When: the requested tool is provisioned.
+      const exit = await run(
+        Effect.scoped(
+          provisionTool({
+            manifest,
+            key: "linux-x64/cli",
+            toolId: "mutagen",
+            binDir: dirs.binDir,
+            toolDownloadsDir: dirs.toolDownloadsDir,
+            platform: "linux",
+          }),
+        ).pipe(Effect.provide(dl.layer)),
+      );
+
+      // Then: only the later regular member becomes the installed executable.
+      expect(exit._tag).toBe("Success");
+      expectBytes(await readFile(join(dirs.binDir, "mutagen")), HOST_BIN);
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
+  test.each([
+    {
+      archive: "tar.gz" as const,
+      bytes: makeTarGz([{ name: "mutagen", bytes: new Uint8Array(), typeflag: "2" }]),
+      url: "https://example.test/nonregular-only.tar.gz",
+    },
+    {
+      archive: "zip" as const,
+      bytes: makeZip([{ name: "mutagen", bytes: new Uint8Array(), mode: 0o040755 }]),
+      url: "https://example.test/nonregular-only.zip",
+    },
+  ])(
+    "rejects an $archive archive with no regular member without changing an existing install",
+    async (fixture) => {
+      // Given: an installed tool and an archive whose only basename match is nonregular.
+      const dirs = await makeDirs();
+      const dl = makeFakeDownloader();
+      dl.serve(fixture.url, fixture.bytes);
+      await mkdir(dirs.binDir, { recursive: true });
+      await writeFile(join(dirs.binDir, "mutagen"), HOST_BIN);
+      await writeFile(join(dirs.binDir, "mutagen.sha256"), "existing-fingerprint\n");
+      await writeFile(join(dirs.binDir, ".mutagen.version"), "existing-version\n");
+      const manifest = manifestFor("linux-x64/cli", {
+        url: fixture.url,
+        sha256: sha256Hex(fixture.bytes),
+        archive: fixture.archive,
+        member: "mutagen",
+        installName: "mutagen",
+      });
+      try {
+        // When: forced provisioning bypasses the current-install short circuit.
+        const exit = await run(
+          Effect.scoped(
+            provisionTool({
+              manifest,
+              key: "linux-x64/cli",
+              toolId: "mutagen",
+              binDir: dirs.binDir,
+              toolDownloadsDir: dirs.toolDownloadsDir,
+              platform: "linux",
+              force: true,
+            }),
+          ).pipe(Effect.provide(dl.layer)),
+        );
+
+        // Then: extraction fails and the installed bytes remain untouched.
+        expect(failure(exit)).toBeInstanceOf(ToolExtractError);
+        expectBytes(await readFile(join(dirs.binDir, "mutagen")), HOST_BIN);
+        expect(await readFile(join(dirs.binDir, "mutagen.sha256"), "utf8")).toBe("existing-fingerprint\n");
+        expect(await readFile(join(dirs.binDir, ".mutagen.version"), "utf8")).toBe("existing-version\n");
+      } finally {
+        await dirs.cleanup();
+      }
+    },
+  );
+
+  test.each([
+    {
+      archive: "tar.gz" as const,
+      bytes: makeTarGz([{ name: "mutagen", bytes: new Uint8Array() }]),
+      url: "https://example.test/empty.tar.gz",
+    },
+    {
+      archive: "zip" as const,
+      bytes: makeZip([{ name: "mutagen", bytes: new Uint8Array() }]),
+      url: "https://example.test/empty.zip",
+    },
+  ])("rejects an empty $archive executable before publishing install metadata", async (fixture) => {
+    // Given: a regular archive member with no executable bytes.
+    const dirs = await makeDirs();
+    const dl = makeFakeDownloader();
+    dl.serve(fixture.url, fixture.bytes);
+    const manifest = manifestFor("linux-x64/cli", {
+      url: fixture.url,
+      sha256: sha256Hex(fixture.bytes),
+      archive: fixture.archive,
+      member: "mutagen",
+      installName: "mutagen",
+    });
+    try {
+      // When: provisioning extracts the empty member.
+      const exit = await run(
+        Effect.scoped(
+          provisionTool({
+            manifest,
+            key: "linux-x64/cli",
+            toolId: "mutagen",
+            binDir: dirs.binDir,
+            toolDownloadsDir: dirs.toolDownloadsDir,
+            platform: "linux",
+          }),
+        ).pipe(Effect.provide(dl.layer)),
+      );
+
+      // Then: the tagged extraction error precedes binary, fingerprint, and version publication.
+      expect(failure(exit)).toBeInstanceOf(ToolExtractError);
+      expect(await Bun.file(join(dirs.binDir, "mutagen")).exists()).toBe(false);
+      expect(await Bun.file(join(dirs.binDir, "mutagen.sha256")).exists()).toBe(false);
+      expect(await Bun.file(join(dirs.binDir, ".mutagen.version")).exists()).toBe(false);
+    } finally {
+      await dirs.cleanup();
+    }
+  });
+
   test("rejects a tar.gz archive that expands over the decompressed-size cap", async () => {
     const dirs = await makeDirs();
     const dl = makeFakeDownloader();
