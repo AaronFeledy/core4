@@ -61,7 +61,7 @@ const splitLabelCriterion = (criterion: string): { readonly key: string; readonl
 const matchesLabel = (labels: Readonly<Record<string, string>>, criterion: string): boolean => {
   const { key, value } = splitLabelCriterion(criterion);
   if (!(key in labels)) return false;
-  return value === undefined ? true : labels[key] === value;
+  return value === undefined || labels[key] === value;
 };
 
 /** Pure matcher for `label` / `label!` criteria; ignores non-label filter keys. */
@@ -89,7 +89,6 @@ export interface VolumePruneOptions {
   readonly dryRun?: boolean;
 }
 
-/** Build `POST /libpod/volumes/prune` with JSON-encoded `filters` and optional `dryrun`. */
 export const buildVolumePruneRequest = (options: VolumePruneOptions): EngineHttpRequest => {
   const query = `filters=${encodeURIComponent(JSON.stringify(options.filters))}`;
   const all = options.all === true ? "&all=true" : "";
@@ -194,7 +193,6 @@ const pruneFailure = (ctx: ProviderErrorContext, status: number, body: string): 
     remediation: ctx.remediation,
   });
 
-/** Call libpod volume prune; maps non-2xx to a redacted {@link ProviderUnavailableError}. */
 export const pruneVolumes = (
   api: EngineHttpApi,
   options: VolumePruneOptions,

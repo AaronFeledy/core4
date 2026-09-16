@@ -55,19 +55,16 @@ const providerIdFromPluginRoot = (pluginRoot: string): string =>
 
 const preferProviderId = (left: string, right: string): string => {
   if (left === "cache" && right !== "cache") return right;
-  if (right === "cache" && left !== "cache") return left;
   return left;
 };
 
 const preferName = (left: string, right: string, appId: string): string => {
   if (left === appId && right !== appId) return right;
-  if (right === appId && left !== appId) return left;
   return left;
 };
 
 const preferRoot = (left: string, right: string): string => {
   if (left === "" && right !== "") return right;
-  if (right === "" && left !== "") return left;
   // First nonempty root wins so a longer leftover legacy/cache path cannot replace plugin state.
   return left;
 };

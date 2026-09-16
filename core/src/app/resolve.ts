@@ -61,7 +61,7 @@ const planResolvedLandofile = (
       Effect.suspend(() => planner.plan(landofile, capabilities)),
     );
     return { plan, landofile };
-  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+  }).pipe(Effect.mapError(toAppResolveError));
 
 const planAt = (
   dir: string | undefined,
@@ -72,7 +72,7 @@ const planAt = (
     const landofileService = yield* LandofileService;
     const landofile = yield* loadUserLandofileAt(landofileService, root);
     return yield* planResolvedLandofile(landofile, root);
-  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+  }).pipe(Effect.mapError(toAppResolveError));
 
 const planFromShape = (
   shape: LandofileShape,
@@ -85,7 +85,7 @@ const planFromShape = (
     yield* assertUserAppIdNotReserved(landofile);
     yield* assertLandoVersionConstraint(landofile, { sourcePath });
     return yield* planResolvedLandofile(landofile, appRoot);
-  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+  }).pipe(Effect.mapError(toAppResolveError));
 
 const planFromLandofileFile = (
   filePath: string,
@@ -93,7 +93,7 @@ const planFromLandofileFile = (
   Effect.gen(function* () {
     const landofile = yield* loadUserLandofileFile(filePath);
     return yield* planResolvedLandofile(landofile, dirname(filePath));
-  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+  }).pipe(Effect.mapError(toAppResolveError));
 
 const selectorMismatch = (detail: string): AppResolveError =>
   new AppResolveError({

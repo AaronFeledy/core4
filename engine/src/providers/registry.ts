@@ -195,11 +195,9 @@ export const makeRuntimeProviderRegistry = (
             Effect.provideService(AppPlanSanitizer, appPlanSanitizer),
             Effect.mapError(toProviderUnavailableFromCapability),
           );
-        const providerWithEvents =
-          eventService._tag === "Some"
-            ? provider.pipe(Effect.provideService(EventService, eventService.value))
-            : provider;
-        return providerWithEvents;
+        return eventService._tag === "Some"
+          ? provider.pipe(Effect.provideService(EventService, eventService.value))
+          : provider;
       };
 
       const providerFor = (providerId: ProviderId) =>

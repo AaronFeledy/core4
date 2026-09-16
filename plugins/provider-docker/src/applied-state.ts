@@ -10,10 +10,8 @@ const PROVIDER_ID = "docker";
 const APPLIED_STATE_VERSION = 1;
 const APPLIED_PLAN_NAMESPACE = "applied-plans";
 
-const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/u, "");
-
 export const appliedPlansDir = (stateDir: string): string =>
-  `${trimTrailingSlashes(stateDir)}/${APPLIED_PLAN_NAMESPACE}`;
+  `${stateDir.replace(/\/+$/u, "")}/${APPLIED_PLAN_NAMESPACE}`;
 
 export const appliedPlanPath = (stateDir: string, appId: AppId): string =>
   `${appliedPlansDir(stateDir)}/${appId}.json`;
