@@ -21,8 +21,9 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
-import { destroyApp } from "../../src/operations/destroy.ts";
-import { stopApp } from "../../src/operations/stop.ts";
+import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
+import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
+import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const providerId = ProviderId.make("lando");
@@ -48,6 +49,18 @@ const planAt = (root: string): AppPlan => ({
   },
   extensions: {},
 });
+
+const targetFor = (plan: AppPlan, root = plan.root): ResolvedAppTarget => ({
+  plan,
+  root,
+  app: { kind: "user", id: plan.id, root },
+});
+
+const appliedPlanMismatches: ReadonlyArray<readonly [string, (plan: AppPlan) => AppPlan]> = [
+  ["canonical root", (plan) => ({ ...plan, root: AbsolutePath.make("/tmp/other-root") })],
+  ["owner key", (plan) => ({ ...plan, identity: { appRoot: plan.root, ownerKey: "different-owner" } })],
+  ["provider", (plan) => ({ ...plan, provider: ProviderId.make("docker") })],
+];
 
 const invalidDesiredConfig = new LandofileValidationError({
   message: "The current Landofile is invalid.",
@@ -129,14 +142,7 @@ describe("applied-state teardown", () => {
     });
   });
 
-  test.each([
-    ["canonical root", (plan: AppPlan) => ({ ...plan, root: AbsolutePath.make("/tmp/other-root") })],
-    [
-      "owner key",
-      (plan: AppPlan) => ({ ...plan, identity: { appRoot: plan.root, ownerKey: "different-owner" } }),
-    ],
-    ["provider", (plan: AppPlan) => ({ ...plan, provider: ProviderId.make("docker") })],
-  ])("rejects an applied plan whose %s differs", async (_case, mutate) => {
+  test.each(appliedPlanMismatches)("rejects an applied plan whose %s differs", async (_case, mutate) => {
     await withTempRoot(async (root) => {
       const harness = makeLayer({ appliedPlan: mutate(planAt(root)) });
 
@@ -148,6 +154,31 @@ describe("applied-state teardown", () => {
       expect(harness.destroyCalls).toEqual([]);
       const failure = exit._tag === "Failure" ? exit.cause : undefined;
       expect(String(failure)).toContain(AppResolveError.name);
+    });
+  });
+
+  test.each([
+    ["stop"],
+    ["destroy"],
+  ] as const)("%s revalidates a resolved target before provider mutation", async (operation) => {
+    await withTempRoot(async (root) => {
+      for (const [, mutate] of appliedPlanMismatches) {
+        const plan = planAt(root);
+        const harness = makeLayer({ appliedPlan: plan });
+        const mismatched = mutate(plan);
+        const exit =
+          operation === "stop"
+            ? await Effect.runPromiseExit(
+                stopAppForTarget(undefined, targetFor(mismatched)).pipe(Effect.provide(harness.layer)),
+              )
+            : await Effect.runPromiseExit(
+                destroyAppForTarget(undefined, targetFor(mismatched)).pipe(Effect.provide(harness.layer)),
+              );
+
+        expect(exit._tag).toBe("Failure");
+        expect(harness.destroyCalls).toEqual([]);
+        expect(String(exit)).toContain(AppResolveError.name);
+      }
     });
   });
 

@@ -21,6 +21,32 @@ const mismatch = (detail: string): AppResolveError =>
 
 export const currentDirectoryAppName = (): string => basename(process.cwd()) || process.cwd();
 
+export const validateResolvedAppTarget = (target: ResolvedAppTarget) =>
+  Effect.gen(function* () {
+    const registry = yield* RuntimeProviderRegistry;
+    const plan = target.plan;
+    const identity = plan.identity;
+    if (identity === undefined) return yield* Effect.fail(mismatch("identity"));
+    if (plan.root !== identity.appRoot || target.root !== identity.appRoot) {
+      return yield* Effect.fail(mismatch("canonical-root"));
+    }
+    if (target.app.id !== plan.id || target.app.root !== identity.appRoot) {
+      return yield* Effect.fail(mismatch("app-ref"));
+    }
+    const canonicalIdentity = yield* resolveAppIdentity(target.root);
+    if (canonicalIdentity.appRoot !== identity.appRoot) {
+      return yield* Effect.fail(mismatch("canonical-root"));
+    }
+    if (canonicalIdentity.ownerKey !== identity.ownerKey) {
+      return yield* Effect.fail(mismatch("owner-key"));
+    }
+    const provider = yield* registry.select(plan);
+    if (provider.id !== String(plan.provider)) {
+      return yield* Effect.fail(mismatch("provider"));
+    }
+    return target;
+  });
+
 export const resolveAppliedStateTarget = Effect.gen(function* () {
   const registry = yield* RuntimeProviderRegistry;
   const cwdIdentity = yield* resolveAppIdentity(process.cwd());
@@ -37,23 +63,9 @@ export const resolveAppliedStateTarget = Effect.gen(function* () {
   }
   const plan = yield* resolveAppliedPlan(cwdIdentity.appRoot);
   if (plan === undefined) return undefined;
-  const identity = plan.identity;
-  if (identity === undefined) return yield* Effect.fail(mismatch("identity"));
-  if (plan.root !== identity.appRoot) return yield* Effect.fail(mismatch("canonical-root"));
-  const canonicalIdentity = yield* resolveAppIdentity(plan.root);
-  if (canonicalIdentity.appRoot !== identity.appRoot) {
-    return yield* Effect.fail(mismatch("canonical-root"));
-  }
-  if (canonicalIdentity.ownerKey !== identity.ownerKey) {
-    return yield* Effect.fail(mismatch("owner-key"));
-  }
-  const provider = yield* registry.select(plan);
-  if (provider.id !== String(plan.provider)) {
-    return yield* Effect.fail(mismatch("provider"));
-  }
-  return {
+  return yield* validateResolvedAppTarget({
     plan,
     root: plan.root,
     app: appRef(plan),
-  } satisfies ResolvedAppTarget;
+  } satisfies ResolvedAppTarget);
 });

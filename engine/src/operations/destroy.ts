@@ -32,7 +32,11 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import { currentDirectoryAppName, resolveAppliedStateTarget } from "./applied-state-target.ts";
+import {
+  currentDirectoryAppName,
+  resolveAppliedStateTarget,
+  validateResolvedAppTarget,
+} from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
@@ -196,7 +200,8 @@ export const destroyAppForTarget = (
       const context = yield* Effect.context<BoundDestroyAppServices>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
-      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const validatedTarget = yield* validateResolvedAppTarget(target);
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
       const provider = yield* registry.select(resolvedTarget.plan);
       return yield* withPlanVolumeCoordination({
         plan: resolvedTarget.plan,

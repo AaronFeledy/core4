@@ -61,7 +61,8 @@ export const makeAppHandle = (
   lifecycle: AppLifecycle,
 ): App => {
   const { plan, app: ref, root } = target;
-  const runInitEvents = runAppInitEvents(plan).pipe(Effect.provide(runtime));
+  const runInitEvents =
+    target.landofile === undefined ? Effect.void : runAppInitEvents(plan).pipe(Effect.provide(runtime));
   const implementation = {
     id: plan.id,
     ref,
