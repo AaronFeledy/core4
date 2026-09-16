@@ -1,9 +1,6 @@
-import { isAbsolute, relative } from "node:path";
-
 import { Effect, Either, Layer, Schema } from "effect";
 
 import {
-  AppResolveError,
   NoProviderInstalledError,
   PluginDescriptorMismatchError,
   ProviderCapabilityError,
@@ -35,6 +32,7 @@ import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { resolveAppliedPlanEvidence } from "./applied-state-resolution.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -204,46 +202,8 @@ export const makeRuntimeProviderRegistry = (
       const resolveAppliedPlan = (root: AbsolutePath) =>
         Effect.gen(function* () {
           const ids = yield* providerIds;
-          const results = yield* Effect.forEach(ids, (id) =>
-            providerFor(id).pipe(
-              Effect.flatMap((provider) => provider.appliedPlans ?? Effect.succeed([])),
-              Effect.either,
-            ),
-          );
-          const plans = results.filter(Either.isRight).flatMap((result) => result.right);
-          const matches = plans
-            .filter((plan) => {
-              const appRoot = plan.identity?.appRoot;
-              if (appRoot === undefined) return false;
-              const child = relative(appRoot, root);
-              return child === "" || (!child.startsWith("..") && !isAbsolute(child));
-            })
-            .sort(
-              (left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length,
-            );
-          const selected = matches[0];
-          if (selected === undefined) {
-            if (results.some(Either.isRight)) return undefined;
-            const failure = results.find(Either.isLeft);
-            if (failure !== undefined) return yield* Effect.fail(failure.left);
-            return undefined;
-          }
-          const selectedRoot = selected.identity?.appRoot;
-          if (
-            matches.some(
-              (candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot,
-            )
-          ) {
-            return yield* Effect.fail(
-              new AppResolveError({
-                message: `Multiple providers claim applied state for ${selectedRoot}.`,
-                reason: "ambiguous",
-                detail: "applied-state",
-                remediation: "Remove the conflicting provider state before retrying teardown.",
-              }),
-            );
-          }
-          return selected;
+          const providers = yield* Effect.forEach(ids, providerFor);
+          return yield* resolveAppliedPlanEvidence(root, providers);
         });
 
       return {

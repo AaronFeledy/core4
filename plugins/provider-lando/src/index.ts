@@ -660,7 +660,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       : removeAppliedPlan(options.appliedPlanState, appId);
   };
 
-  const hydratePlansFromDisk: Effect.Effect<void> =
+  const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
     options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
       ? Effect.void
       : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(

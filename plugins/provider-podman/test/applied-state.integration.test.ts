@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -147,6 +147,17 @@ describe("provider-podman applied state", () => {
 
       expect(loaded).toBeUndefined();
       expect(await Effect.runPromise(listAppliedPlans(state))).toEqual([]);
+    });
+  });
+
+  test("listAppliedPlans fails when the applied-state collection cannot be read", async () => {
+    await withStateRoot(async (root) => {
+      await mkdir(join(root, "applied-plans.json"));
+
+      const result = await Effect.runPromiseExit(listAppliedPlans(stateFor(root)));
+
+      expect(result._tag).toBe("Failure");
+      expect(String(result)).toContain("ProviderUnavailableError");
     });
   });
 });
