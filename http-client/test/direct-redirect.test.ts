@@ -87,18 +87,24 @@ test.each(["follow", "manual", "error"] as const)(
   },
 );
 
-test("reevaluates a remote redirect into a local endpoint", async () => {
+test("a remote redirect cannot escape the proxy into a local endpoint", async () => {
   // Given a proxied response pointing back to a local origin.
+  let localCalls = 0;
   const origin = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch: () => new Response(null, { status: 204 }),
+    fetch: () => {
+      localCalls += 1;
+      return new Response(null, { status: 204 });
+    },
   });
-  let calls = 0;
+  const calls: { readonly url: string; readonly proxy: BunFetchRequestInit["proxy"] }[] = [];
   const fetchImpl: typeof fetch = Object.assign(
-    async () => {
-      calls += 1;
-      return new Response(null, { status: 307, headers: { location: origin.url.href } });
+    async (url: Parameters<typeof fetch>[0], init?: BunFetchRequestInit) => {
+      calls.push({ url: String(url), proxy: init?.proxy });
+      return String(url) === "http://remote.test/"
+        ? new Response(null, { status: 307, headers: { location: origin.url.href } })
+        : new Response(null, { status: 204 });
     },
     { preconnect: fetch.preconnect },
   );
@@ -108,12 +114,21 @@ test("reevaluates a remote redirect into a local endpoint", async () => {
       Effect.scoped(
         Effect.flatMap(HttpClient, (client) => client.stream({ url: "http://remote.test/" })).pipe(
           Effect.provide(makeHttpClientLive(fetchImpl)),
+          Effect.provideService(NetworkTrust, {
+            proxy: { http: "http://proxy.test:3128", noProxy: [] },
+            caPems: [],
+            trustHost: true,
+          }),
         ),
       ),
     );
-    // Then the local hop uses direct transport instead of invoking fetch again.
+    // Then both hops retain the proxy and the local server receives no request.
     expect(response.status).toBe(204);
-    expect(calls).toBe(1);
+    expect(calls).toEqual([
+      { url: "http://remote.test/", proxy: "http://proxy.test:3128" },
+      { url: origin.url.href, proxy: "http://proxy.test:3128" },
+    ]);
+    expect(localCalls).toBe(0);
   } finally {
     origin.stop(true);
   }
