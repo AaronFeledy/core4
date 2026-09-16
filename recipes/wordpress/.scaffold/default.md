@@ -4,6 +4,7 @@
 
 ```sh
 lando init --recipe wordpress --name=my-wordpress-app --yes
+cd my-wordpress-app
 lando start
 lando info
 ```
@@ -11,6 +12,8 @@ lando info
 `lando start` prints the app URL. `lando info` repeats it.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+For day-to-day tooling and database hosts, see [Run the WordPress recipe](/guides/recipes/wordpress-workflow/).
 
 ## 1. scaffold
 
