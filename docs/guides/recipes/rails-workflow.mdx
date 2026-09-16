@@ -9,10 +9,11 @@ tags: [beta, docs, recipes, rails, ruby, postgres, redis]
 
 ```sh
 lando init --recipe rails --name=rails-demo --yes
+cd rails-demo
 lando start
 ```
 
-`--yes` skips the name prompt. First start builds `web`: `build-essential`, then `gem install rails`. That can take a minute. The `Gemfile` is just `source "https://rubygems.org"`. The Rails gem comes from that build step, not Bundler.
+The named init creates `rails-demo/`. Change into it before app commands. `--yes` skips the name prompt. First start builds `web`: `build-essential`, then `gem install rails`. That can take a minute. The `Gemfile` is just `source "https://rubygems.org"`. The Rails gem comes from that build step, not Bundler.
 
 The `web` container stays up. The Rails server does not start on its own.
 
