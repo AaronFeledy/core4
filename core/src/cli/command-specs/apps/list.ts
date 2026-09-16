@@ -2,6 +2,7 @@ import {
   AppsListResultSchema,
   type ListServicesResult,
   listServices,
+  listServicesWithPrune,
   renderAppsListResult,
 } from "../../commands/list";
 import { Flags } from "../../spec/metadata";
@@ -43,7 +44,8 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
   run: (input) => {
     const path = appsListPathFromInput(input);
     const prune = appsListPruneFromInput(input);
-    return listServices({ ...(path === undefined ? {} : { path }), ...(prune ? { prune } : {}) });
+    const options = path === undefined ? {} : { path };
+    return prune ? listServicesWithPrune(options) : listServices(options);
   },
   render: (result, input?: unknown) =>
     renderAppsListResult(result as ListServicesResult, extractFormat(input)),

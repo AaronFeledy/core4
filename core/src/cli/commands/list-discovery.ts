@@ -1,5 +1,5 @@
 import type { Dirent } from "node:fs";
-import { access, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { basename, join } from "node:path";
 
@@ -424,45 +424,3 @@ export const discoverRunningAppsFromSockets = async (
   sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
 ): Promise<ReadonlyArray<AppsListEntry>> =>
   (await discoverRunningAppsEvidenceFromSockets(userDataRoot, sockets)).apps;
-
-const removeIfPresent = async (path: string): Promise<boolean> => {
-  try {
-    await access(path);
-  } catch (cause) {
-    if (isRecord(cause) && cause.code === "ENOENT") return false;
-    throw cause;
-  }
-  await rm(path, { force: true });
-  return true;
-};
-
-export const pruneAppliedPlanFromUserData = async (
-  userDataRoot: string,
-  appId: string,
-  providerId: string,
-): Promise<boolean> => {
-  const paths = makeLandoPaths({ userDataRoot });
-  let removed = false;
-  for (const pluginRoot of await listPluginStateRoots(paths.pluginsDir)) {
-    if (providerIdFromPluginRoot(pluginRoot) !== providerId) continue;
-    removed = (await removeIfPresent(join(pluginRoot, APPLIED_PLANS_NAMESPACE, `${appId}.json`))) || removed;
-    const recordPath = join(pluginRoot, APPLIED_PLANS_RECORD);
-    try {
-      const parsed: unknown = JSON.parse(await readFile(recordPath, "utf8"));
-      if (!isRecord(parsed) || !isRecord(parsed.data) || !(appId in parsed.data)) continue;
-      const { [appId]: _removed, ...remaining } = parsed.data;
-      await writeFile(recordPath, `${JSON.stringify({ ...parsed, data: remaining }, null, 2)}\n`);
-      removed = true;
-    } catch (cause) {
-      if (isRecord(cause) && cause.code === "ENOENT") continue;
-      throw cause;
-    }
-  }
-  for (const providerName of LEGACY_PROVIDER_DIRS) {
-    if (providerIdFromPluginRoot(providerName) !== providerId) continue;
-    removed =
-      (await removeIfPresent(join(userDataRoot, "providers", providerName, "apps", `${appId}.json`))) ||
-      removed;
-  }
-  return removed;
-};

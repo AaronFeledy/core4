@@ -6,9 +6,11 @@ import { join } from "node:path";
 
 import { Effect, Layer } from "effect";
 
-import { ConfigService } from "@lando/sdk/services";
+import { ConfigService, PathsService } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { StateStoreLive } from "@lando/state-store/service";
 
 import {
   type AppsListEntry,
@@ -20,7 +22,7 @@ import {
   isNamedPipeSocketPath,
   mergeAppsListEntries,
 } from "../../src/cli/commands/list-discovery.ts";
-import { listServices, renderAppsListResult } from "../../src/cli/commands/list.ts";
+import { listServices, listServicesWithPrune, renderAppsListResult } from "../../src/cli/commands/list.ts";
 
 const fakeConfigService = (dataRoot: string) =>
   Layer.succeed(ConfigService, {
@@ -45,7 +47,7 @@ const runList = (
   } = {},
 ) =>
   Effect.runPromise(
-    listServices({
+    (options.prune === true ? listServicesWithPrune : listServices)({
       userDataRoot,
       userCacheRoot: options.userCacheRoot ?? userDataRoot,
       ...(options.discoverContainers === undefined ? {} : { discoverContainers: options.discoverContainers }),
@@ -53,9 +55,25 @@ const runList = (
         ? {}
         : { discoverContainersEvidence: options.discoverContainersEvidence }),
       ...(options.path === undefined ? {} : { path: options.path }),
-      ...(options.prune === undefined ? {} : { prune: options.prune }),
       ...(options.pruneLimit === undefined ? {} : { pruneLimit: options.pruneLimit }),
-    }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          fakeConfigService(userDataRoot),
+          Layer.succeed(
+            PathsService,
+            makeLandoPaths({
+              userConfRoot: userDataRoot,
+              userCacheRoot: options.userCacheRoot ?? userDataRoot,
+              userDataRoot,
+              systemPluginRoot: userDataRoot,
+            }),
+          ),
+          PrivateFileAccessLive,
+          StateStoreLive,
+        ),
+      ),
+    ),
   );
 
 const stateEnvelope = (id: string, name: string, root: string, services: string[], provider = "lando") => ({
@@ -415,6 +433,36 @@ describe("apps:list host-wide discovery", () => {
         }),
       });
 
+      expect(result.pruned).toEqual([]);
+      expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
+      expect(await Bun.file(statePath).exists()).toBe(true);
+    });
+  });
+
+  test("revalidates provider evidence under the app lock before pruning concurrent start state", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      await mkdir(join(statePath, ".."), { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+      let evidenceReads = 0;
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => {
+          evidenceReads += 1;
+          return {
+            apps: [],
+            confirmedProviderIds: ["lando"],
+            ownedAppIds: evidenceReads === 1 ? [] : ["alpha"],
+          };
+        },
+      });
+
+      expect(evidenceReads).toBe(2);
       expect(result.pruned).toEqual([]);
       expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
       expect(await Bun.file(statePath).exists()).toBe(true);
