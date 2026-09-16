@@ -1455,6 +1455,29 @@ describe("AppPlannerLive", () => {
     expect(String(failure)).toContain("FileSystem service is unavailable");
   });
 
+  test("applies a service env_file only to its owning service", async () => {
+    await withTempCwd(async (appRoot) => {
+      // Given an app credential file scoped to the application service.
+      const databaseUrl = "mysql://lando:lando@db:3306/planetscale_demo";
+      await writeFile(join(appRoot, ".env"), `DATABASE_URL=${databaseUrl}\n`);
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "service-scoped-env-file",
+        runtime: 4,
+        services: {
+          app: { image: "node:lts", home: false, env_file: ".env" },
+          db: { image: "mysql:8.4", home: false },
+        },
+      });
+
+      // When the pure planner resolves service environments.
+      const appPlan = await planWithFileSystem(landofile);
+
+      // Then the app receives the credential and the database does not.
+      expect(appPlan.services[ServiceName.make("app")]?.environment.DATABASE_URL).toBe(databaseUrl);
+      expect(appPlan.services[ServiceName.make("db")]?.environment.DATABASE_URL).toBeUndefined();
+    });
+  });
+
   test("fails with source, line, and remediation when an env file is malformed", async () => {
     await withTempCwd(async (appRoot) => {
       // Given
