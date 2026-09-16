@@ -88,7 +88,7 @@ describe("route input and plans", () => {
       // When decoding the route plan.
       const result = Schema.decodeUnknownSync(Contracts.RoutePlan)(plan);
       // Then filters are preserved when present and absent otherwise.
-      expect(result).toEqual(plan);
+      expect(result).toEqual({ ...plan, priority: 2 });
     });
   }
 });

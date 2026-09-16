@@ -213,6 +213,8 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | install and run on WSL | `docs/guides/install/wsl.mdx` | Shipped |
 | — | — | GitHub Actions CI install and drive | `docs/guides/install/ci-github-actions.mdx` | Shipped |
 | — | — | external access to app services | `docs/guides/subsystems/external-access.mdx` | Shipped |
+| — | — | Traefik host-port fallback when 80/443 are taken | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
+| - | - | how services find each other (service keys, .internal, *.lndo.site) | `docs/guides/subsystems/service-dns.mdx` | Shipped |
 | — | — | in-container agent context markers | `docs/guides/agent-native/in-container-context.mdx` | Shipped |
 | — | — | app name edge cases and validation | `docs/guides/landofile/app-name-edge-cases.mdx` | Shipped |
 | — | — | Landofile with zero services | `docs/guides/landofile/zero-services.mdx` | Shipped |
@@ -227,6 +229,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-02 | US-565 | Landofile events-as-tasks at lifecycle points | `docs/guides/landofile/events.mdx` | Shipped |
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |
+| — | — | Django recipe day-to-day workflow | `docs/guides/recipes/django-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
@@ -246,3 +249,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
 | — | — | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |
+| — | — | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |

@@ -58,19 +58,46 @@ The rest of the `router:` block works the same whether or not you touch `enabled
 | `httpFallbacks` | Extra HTTP ports to try when `httpPort` is taken. |
 | `httpsFallbacks` | Extra HTTPS ports to try when `httpsPort` is taken. |
 
-## Where `router.enabled` comes from
+## Use the route's scheme on fallback ports
+
+```sh
+lando info
+```
+
+Open the complete URL it prints, including a fallback port such as `:8443`.
+Shorthand routes and object routes without `scheme` publish **HTTPS only**.
+An HTTP request to that hostname on the HTTP listener (for example `:8080`)
+receives the diagnostic HTTP 404 when no HTTP route matches. That is expected,
+not a broken backend. Use the HTTPS URL, or explicitly set `scheme: http` or
+`scheme: both` if the app should accept plain HTTP. Lando does not implicitly
+redirect an HTTPS-only route from HTTP.
+
+```yaml
+services:
+  web:
+    type: nginx
+    routes:
+      - hostname: web.example.lndo.site
+        scheme: both
+```
+
+The HTTP and HTTPS listeners may use different fallback ports. Neither port
+changes the selected backend endpoint. See [route identity and ordering](../proxy/route-shorthand.mdx#choose-which-overlapping-route-wins)
+when the same host serves several backends or paths.
+
+## Resolve `router.enabled`
 
 The value resolves through normal config precedence. Last one wins:
 
-1. Built-in default: `true`.
-2. Your global config: `router.enabled`.
-3. The app's Landofile: `router.enabled`.
+- Built-in default: `true`.
+- Your global config: `router.enabled`.
+- The app's Landofile: `router.enabled`.
 
 So a global `router.enabled: false` turns the router off for every app on the machine, and a single app can opt back in with `router.enabled: true` in its own Landofile. The reverse works too: leave the global default alone and disable the router for the one app that doesn't want it.
 
 ## Tune the scanner per service
 
-After `lando start` finishes, Lando probes every http and https URL each service publishes. A URL that doesn't answer, or answers with a status outside the accepted set, gets a warning. That's it. A failed scan never fails `lando start`; the app is up and the warning tells you which URL to go look at.
+Once the app is up, `lando start` probes every HTTP and HTTPS URL each service publishes before returning. A URL that doesn't answer, or answers with a status outside the accepted set, gets a warning. A failed probe doesn't fail `lando start`; the app is up and the warning tells you which URL to go look at. Cancelling during the scan still interrupts start and closes its in-flight requests.
 
 The default probe hits `/`, accepts any 2xx, retries twice after the first attempt, and gives up on a URL after 20 seconds. Change that under `services.<name>.scanner`:
 
@@ -94,6 +121,12 @@ services:
 | `timeout` | `20000` | Deadline in milliseconds for the whole probe of one URL, retries included. |
 
 Every key is optional. Set only the one you need. A `retries` below `0` fails lint before anything starts, so you find out at `lando app:config:lint` rather than after a start.
+
+Run `lando start`, then `lando info` to check the published URLs after changing these settings.
+
+The scanner sends GET requests but reads only response status and headers. It doesn't download the body, so a large download or an endless response doesn't hold up a probe after the headers arrive. At most four URLs are probed at once; extra URLs wait their turn. The timeout budget starts when a URL's probe starts, not while it's queued. Each attempt has a five-second ceiling, capped by the URL's remaining overall budget. Deadline warnings report the measured elapsed time, including retries and waits, rather than repeating the configured timeout.
+
+Loopback targets (`localhost`, IPv4 loopback addresses, and `::1`) connect directly instead of going through an outbound HTTP proxy. Other targets follow the normal proxy and `NO_PROXY` settings, with the same custom CA trust. A `*.lndo.site` name isn't a blanket proxy bypass: configure `NO_PROXY` for local route names if your proxy shouldn't receive them.
 
 If a probe fails, the message Lando prints has already been through redaction, so a URL with credentials in it won't leak them into your terminal or logs.
 

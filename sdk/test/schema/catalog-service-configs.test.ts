@@ -8,6 +8,7 @@ import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/sch
 import { MailpitServiceConfig } from "@lando/sdk/schema/services/mailpit";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import { MssqlServiceConfig } from "@lando/sdk/schema/services/mssql";
+import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import { RabbitMQServiceConfig } from "@lando/sdk/schema/services/rabbitmq";
@@ -123,6 +124,25 @@ describe("catalog service config schemas", () => {
     },
   );
 
+  test.each(["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7"] as const)(
+    "Given MySQL type %s with database and creds, when decoding, then it succeeds",
+    (type) => {
+      // Given
+      const input = {
+        type,
+        port: 3306,
+        database: "lando",
+        creds: { user: "lando", password: "secret", database: "lando" },
+      };
+
+      // When
+      const result = strictDecode(MysqlServiceConfig, input);
+
+      // Then
+      expect(result._tag).toBe("Right");
+    },
+  );
+
   test.each(["phpmyadmin", "phpmyadmin:5", "phpmyadmin:latest"] as const)(
     "Given phpMyAdmin type %s with hosts, when decoding, then it succeeds",
     (type) => {
@@ -199,6 +219,7 @@ describe("catalog service config schemas", () => {
     ["VarnishServiceConfig", VarnishServiceConfig, { type: "tomcat", backend: "appserver" }],
     ["DotnetServiceConfig", DotnetServiceConfig, { type: "tomcat" }],
     ["MssqlServiceConfig", MssqlServiceConfig, { type: "mysql" }],
+    ["MysqlServiceConfig", MysqlServiceConfig, { type: "mssql" }],
     ["PhpMyAdminServiceConfig", PhpMyAdminServiceConfig, { type: "php" }],
   ] as const)("Given %s with another catalog type, when decoding, then it fails", (_name, schema, input) => {
     // Given / When
@@ -218,6 +239,7 @@ describe("catalog service config schemas", () => {
     ["VarnishServiceConfig", VarnishServiceConfig, { type: "varnish", backend: "appserver", vclPort: 80 }],
     ["DotnetServiceConfig", DotnetServiceConfig, { type: "dotnet", runtimePort: 5000 }],
     ["MssqlServiceConfig", MssqlServiceConfig, { type: "mssql", saPassword: "secret" }],
+    ["MysqlServiceConfig", MysqlServiceConfig, { type: "mysql", socket: "/tmp/mysql.sock" }],
     ["PhpMyAdminServiceConfig", PhpMyAdminServiceConfig, { type: "phpmyadmin", uploadLimit: "64M" }],
   ] as const)(
     "Given %s with an unknown key, when strictly decoding, then it fails",
@@ -290,7 +312,7 @@ describe("ServiceCreds and ServiceConfig hosts", () => {
     expect(result._tag).toBe("Right");
   });
 
-  test.each(["php:8.1", "php:8.2", "php:8.3", "php:8.4", "php:8.5"] as const)(
+  test.each(["php:8.1", "php:8.2", "php:8.3", "php:8.4", "php:8.5", "php:8.6"] as const)(
     "Given PHP type %s, when decoding composer selection, then it succeeds",
     (type) => {
       // Given

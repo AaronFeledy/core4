@@ -303,6 +303,7 @@ for (const router of [undefined, { enabled: true }, { enabled: false }] as const
       routes: [
         {
           hostname: "router-cache.lndo.site",
+          priority: 2,
           scheme: "https",
           service,
           backend: { service, protocol: "http", port: 8080 },

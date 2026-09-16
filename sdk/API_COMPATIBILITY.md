@@ -4,6 +4,17 @@
 
 ## Compatibility notes
 
+- `GlobalConfigView` is the additive curated effective-config schema used by config view and get. It explicitly selects public settings from `GlobalConfig`, including both app-default maps, without exposing loader bookkeeping.
+
+- `@lando/sdk/errors` additively exports `AppLockTimeoutError` (`message`, `app`, `timeoutMs`, `remediation`, optional `cause`) when a mutating app operation waits for the per-app advisory lock and the finite wait expires. It registers no JSON Schema. The type-only `StartAppError` and `StopAppError` unions additively include the tag; restart, rebuild, and destroy inherit it. Override the wait with `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds).
+
+- `RoutePlan.priority` is a planner-assigned integer above the diagnostic priority
+  of 1. Standalone schema inputs default to 2; decoded plans always carry it.
+  Routers must project this value rather than infer precedence from rule text.
+  Conflicting route matches now fail with the existing `RouteInputError` and
+  authored source keys. Equivalent ordered filter operations ignore filter merge
+  names; `both` participates in both HTTP and HTTPS conflict checks.
+
 - `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
 
 - `RuntimeProviderShape.resume(target, identity)` and `suspend(target, identity)` are additive optional exact-runtime lifecycle methods. Bundled providers address the inspected container ID directly; recovery callers fail closed when a provider cannot preserve that immutable identity across temporary observation.
@@ -74,7 +85,7 @@
 
 - `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
 
-- `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
+- `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `MysqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
 - `@lando/sdk/schema` and dedicated service-schema subpaths additively export catalog service config schemas for RabbitMQ, MinIO, LocalStack, Mailpit, and MailHog. They reuse the existing `ServiceConfig` field vocabulary while narrowing each catalog service's `type` value, and each schema is registered for public JSON Schema publication. The MailHog schema is a deprecated compatibility surface (`since` 4.2.0, `removeIn` 5.0.0, replacement `mailpit`).
 - `ServiceType.schema` now accepts any context-free Effect Schema so catalog service configs can be assigned without a type assertion.
 - `@lando/sdk/plugins` additively exports the framework-neutral `ExecutableCommandSpec` family and
@@ -221,6 +232,7 @@
 - `VolumeLocator`
 
 - `AppEnvironmentDefaults`
+- `GlobalConfigView`
 - `AppLabelDefaults`
 - `CORE_SERVICE_ENV_KEYS`
 - `isCoreServiceEnvKey`
@@ -472,6 +484,7 @@
 - `MailpitServiceConfig`
 - `MinIOServiceConfig`
 - `MssqlServiceConfig`
+- `MysqlServiceConfig`
 - `MountInput`
 - `MountPlan`
 - `NetworkCaConfig`
@@ -924,6 +937,7 @@
 - `McpToolInputError`
 - `McpTransportError`
 - `McpAllowlistConflictError`
+- `AppLockTimeoutError`
 
 ## Additive service tags
 

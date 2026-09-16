@@ -7,11 +7,13 @@ import { DEFAULT_AUTHORITY_PORTS, persistedAuthorities, renderTraefikDynamicConf
 const app = AppId.make("demo");
 const base: RoutePlan = {
   hostname: "api.demo.lndo.site",
+  priority: 2,
   scheme: "http",
   service: ServiceName.make("api"),
   backend: { service: ServiceName.make("api"), protocol: "http", port: 8080 },
 };
 const router = {
+  priority: 2,
   rule: "Host(`api.demo.lndo.site`)",
   entryPoints: ["web"],
   service: "route-demo-0",
@@ -197,6 +199,7 @@ describe("Traefik route filter YAML", () => {
           "    route-demo-0-http:",
           '      rule: "Host(`api.demo.lndo.site`)"',
           "      entryPoints: [web]",
+          "      priority: 2",
           "      service: route-demo-0",
           "  services:",
           "    route-demo-0:",

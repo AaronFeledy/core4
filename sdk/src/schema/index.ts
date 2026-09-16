@@ -2,6 +2,7 @@ export * from "./app-plan.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";
+export * from "./config-view.ts";
 export * from "./certificate-authority-contribution.ts";
 export {
   ComposeProjectFieldCapabilities,

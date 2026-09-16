@@ -147,6 +147,7 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
   const routes: ReadonlyArray<RoutePlan> = [
     {
       hostname: matchedHostname,
+      priority: 2,
       scheme: "both",
       service: backend.service,
       backend: { ...backend, host: "web" },

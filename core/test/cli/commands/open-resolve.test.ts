@@ -17,6 +17,7 @@ const route = (
     Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string },
 ): RoutePlan => ({
   ...over,
+  priority: over.priority ?? 2,
   service: ServiceName.make(over.service),
   backend: over.backend ?? {
     service: ServiceName.make(over.service),

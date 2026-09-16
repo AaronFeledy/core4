@@ -76,14 +76,60 @@ services:
 | Key | Meaning | Default |
 | --- | --- | --- |
 | `hostname` | Host pattern, same rules as shorthand | required |
-| `scheme` | `http`, `https`, or `both` | proxy default |
+| `scheme` | `http`, `https`, or `both` | `https` |
 | `endpoint` | Port number or named endpoint on the service | primary endpoint |
 | `pathPrefix` | Only requests under this path match | every path |
 | `filters` | Ordered list of request and response tweaks | none |
 
 Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
 
-## Filters
+## Choose which overlapping route wins
+
+Keep several paths on one host. This example sends `/api` to `api` and every
+other path on the exact host to `web`. Other matching subdomains reach `wild`.
+
+```yaml
+name: route-order
+services:
+  web:
+    type: nginx
+    routes:
+      - app.route-order.lndo.site
+  api:
+    type: nginx
+    routes:
+      - app.route-order.lndo.site/api
+  wild:
+    type: nginx
+    routes:
+      - "*.route-order.lndo.site"
+```
+
+```sh
+lando start
+lando info
+```
+
+Use the HTTPS URLs and ports printed by `lando info`. Matching uses the scheme,
+case-insensitive hostname and path prefix on the router's selected listener port.
+The shorthand `:port` selects a **backend endpoint**, not a new listener. Two
+declarations that differ only in backend port therefore conflict, rather than
+creating two public ports. Set listener ports under `router:` instead.
+
+Within an app, exact hosts outrank wildcard hosts, then longer path prefixes win.
+Ties use ascending hostname, path and scheme in code-point order, independent of
+declaration order. The planner assigns distinct priorities; the diagnostic fallback
+always sits below app routes. Overlapping wildcard patterns follow that same tie
+rule, not the number of literal characters in the pattern.
+
+Equivalent declarations of one match dedupe. Different backends or ordered filter
+operations for the same match fail planning with `RouteInputError`, naming the
+authored entries. `both` overlaps each individual scheme; it cannot hide a conflict.
+An omitted filter list equals an empty list. Filter `name` controls layer merging,
+not HTTP execution, so changing only that name does not create a distinct route.
+Layer precedence and filter merging happen before this check and are unchanged.
+
+## Add filters
 
 Five filter types ship. Each has a `type`, an optional `name`, and its own fields.
 
@@ -185,6 +231,15 @@ lando app:config:lint --format=json
 A route like `api..lndo.site:99999` fails lint with `valid: false`, a `path` of `services.app.routes[0]`, and a `suggestedFix` that repeats the grammar. Fix the entry, lint again, then `lando start`.
 
 <Guide>
+  <Scenario id="route-identity" render>
+    <Step name="plan-overlapping-routes">
+      <UseFixture name="route-identity" />
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup-route-identity">
+      <Cleanup />
+    </Step>
+  </Scenario>
   <Scenario id="shorthand-and-filters" render>
     <Step name="scaffold">
       <UseFixture name="route-shorthand-demo" />

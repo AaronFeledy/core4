@@ -107,6 +107,7 @@ export const renderTraefikDynamicConfig = (
       `    route-${namespace}-${index}-${scheme}:`,
       `      rule: ${JSON.stringify(routeRule(route))}`,
       `      entryPoints: [${scheme === "https" ? "websecure" : "web"}]`,
+      `      priority: ${route.priority}`,
       `      service: route-${namespace}-${index}`,
       ...(scheme === "https" ? ["      tls: {}"] : []),
       ...((route.filters?.length ?? 0) === 0

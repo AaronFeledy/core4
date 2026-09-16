@@ -40,6 +40,7 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
+import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
@@ -50,6 +51,7 @@ import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
+import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   withApplyProgress,
   withGlobalStartProgress,
@@ -288,21 +290,28 @@ export const startAppForTarget = (
   managed?: StartManagedScope,
   execution: { readonly forceAppBuild?: boolean } = {},
 ): Effect.Effect<StartAppResult, SdkStartAppError, BoundStartAppServices> =>
-  Effect.gen(function* () {
-    const context = yield* Effect.context<BoundStartAppServices>();
-    const guard = yield* ManagedFileTransactionGuard;
-    yield* guard.ensureConsistent(String(target.root));
-    const registry = yield* RuntimeProviderRegistry;
-    const stateStore = yield* StateStore;
-    const provider = yield* registry.select(target.plan);
-    return yield* withPlanVolumeCoordination({
-      plan: target.plan,
-      provider,
-      stateStore,
-      body: () =>
-        startAppForTargetUncoordinated(options, target, managed, execution).pipe(Effect.provide(context)),
-    });
-  });
+  withAppMutationLock(
+    appLockTarget(target.plan),
+    Effect.gen(function* () {
+      const context = yield* Effect.context<BoundStartAppServices>();
+      const guard = yield* ManagedFileTransactionGuard;
+      yield* guard.ensureConsistent(String(target.root));
+      const registry = yield* RuntimeProviderRegistry;
+      const stateStore = yield* StateStore;
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const plan = resolvedTarget.plan;
+      const provider = yield* registry.select(plan);
+      return yield* withPlanVolumeCoordination({
+        plan,
+        provider,
+        stateStore,
+        body: () =>
+          startAppForTargetUncoordinated(options, resolvedTarget, managed, execution).pipe(
+            Effect.provide(context),
+          ),
+      });
+    }),
+  );
 
 export const startApp = (
   options: StartAppOptions = {},

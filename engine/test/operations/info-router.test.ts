@@ -57,6 +57,7 @@ const planWithRouter = (enabled: boolean): AppPlan => ({
   routes: [
     {
       hostname: "web.demo.lndo.site",
+      priority: 2,
       scheme: "https",
       service: web,
       backend: { service: web, protocol: "http", port: 80 },

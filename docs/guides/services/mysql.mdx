@@ -90,13 +90,20 @@ The path has to stay inside the app root. Absolute paths, paths that climb out o
 
 ## Pin a version
 
-Set `image:` when `mysql:8.0` isn't the version you want:
+Choose a managed series in `type:`. Lando supports MySQL 8.0, 8.4 LTS, and 9.7 LTS. An unversioned `mysql` service stays on 8.0.
 
 ```yaml
 services:
   db:
-    type: mysql
-    image: mysql:8.4
+    type: "mysql:8.4"
 ```
+
+Use unversioned `type: mysql` with `image:` only for a custom image whose compatibility you manage yourself. A versioned type plus `image:` is conflicting intent and fails during planning.
+
+New stores use `<app>-<service>-mysql-data`, independent of the server version. If your app has exactly one MySQL service, its legacy `<app>-mysql-data` volume exists, and its scoped volume does not, Lando keeps using the legacy volume in place. If both volumes exist, the scoped volume wins. With multiple MySQL services, each uses its scoped identity and the legacy volume stays untouched. This selection never renames, copies, migrates, or deletes a volume.
+
+Keeping a volume's identity is not an upgrade compatibility check. Existing databases still depend on the SQL recovery guard for changed or unknown initialized series; do not treat a type change as a safe datadir upgrade.
+
+Oracle MySQL clients installed into PHP services use Oracle's signed Bookworm APT repository on amd64 and SHA256-pinned Oracle EL9 RPM payloads on Linux arm64 for all three series (8.0, 8.4, and 9.7). The arm64 support policy covers default `caching_sha2_password` authentication, not LDAP/SASL plugins. Live arm64 build, connection, and dump/restore verification is still pending. See [Customize PHP](./php-customization.mdx).
 
 </Guide>

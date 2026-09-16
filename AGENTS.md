@@ -26,6 +26,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Use Bun only: `bun install`, `bun run ...`, `bun test`. Do not introduce Node/npm/yarn/pnpm workflows.
 - Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` typechecks non-docs test trees through the referenced aggregate test project. The Astro-owned `docs/**` tree stays outside that aggregate and uses `docs:check` plus `docs:test`.
 - Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:boundaries`, `check:guide-coverage`, `check:guide-drift`, `check:public-transcripts`, `check:telemetry-inventory`, or `lint:guides`. Debug one boundary rule with `bun run scripts/check-boundaries.ts <rule-id>`.
+- Pre-PR quality script is `bun run gate:pr`: typecheck, lint, codegen:check, check:boundaries, and guide-drift against `origin/main`. Use that instead of typecheck+lint alone before pushing.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - That path is a filter, not a path: a stale or misspelled one emits a `did not match any test files` diagnostic and exits nonzero. Scripted spot-check loops must require both command success and a positive test count; never infer a pass only from the absence of failures.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial.
@@ -92,6 +93,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Executable guides are prose-first MDX: Markdown is the reader surface; `<Run>`/`<Verify>` wrap real harness execution only. No documentation-only `<Variable>` scenarios.
 - Use `bun run dev:guides docs/guides/<path>.mdx --once` for a focused guide pass (require success and a positive test count). Full sequence: `docs/contributing/ci.md`.
 - If a guide, recipe README, or guide-owned CLI surface changes, run `bun run lint:guides` and any relevant coverage/transcript/drift gates.
+- `check:guide-drift` fires when a **covered source** path changed and no owned guide was touched — not only when a guide file changed. After `git fetch origin main`, run `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift`. A bare `bun run check:guide-drift` prints `Guide-drift gate skipped` and exits 0; that is not a pass. If no guide update is genuinely needed, record `Guide-Coverage-Skip: <reason>` (≥ 24 characters) for the PR body instead of a token guide edit.
 - `recipes/<id>/README.mdx` feeds both guide-scenario generation and committed scaffold README generation, so it must remain executable-guide-valid, not just readable prose.
 
 ## Working Tree Discipline

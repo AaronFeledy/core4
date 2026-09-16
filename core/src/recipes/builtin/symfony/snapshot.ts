@@ -1,11 +1,12 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { PHP_VERSIONS } from "../php-stack.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const SYMFONY_RECIPE_VERSION = "0.1.0";
 export const SYMFONY_CONTENT_DIGEST =
-  "sha256:33e8ad026b3af1796cd2add9570befe9c6b36c8903354f2b34fd64d9b3d95ec0";
+  "sha256:f512693ecf82a9e305c65ae6e9bb92f2f6fcd12436297fd8e316a819f89d0b42";
 
 export const symfonyProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -48,7 +49,7 @@ const composerTool = (): ExpressionNode => ({
 export const symfonySnapshot: RecipeSnapshot = {
   identity: symfonyProducer,
   optionTypes: {
-    php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
+    php: { kind: "enum", values: [...PHP_VERSIONS] },
     database: { kind: "enum", values: ["postgres:16", "mariadb:11.4"] },
     composer: { kind: "enum", values: ["2", "2.7.7"] },
     webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },

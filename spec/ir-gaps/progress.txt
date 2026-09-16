@@ -708,3 +708,121 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 202 focused tests pass
 ---
+## 2026-09-14 01:32 - Push
+- [looper] gate skipped Push: gate: phase reviewed is before verified (expected phase at or past verified)
+---
+## 2026-09-14 01:33 - Babysit
+- PR: none (no PR for branch us-618e-catalog-fields-versions; Push was gate-skipped at phase `reviewed`)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to watch or merge)
+---
+## 2026-09-14 21:16 - Build
+- [looper] gate skipped Build: gate: phase reviewed is at or past implemented (nothing to do)
+---
+## 2026-09-14 21:16 - Review
+- [looper] gate skipped Review: gate: phase reviewed is at or past reviewed (nothing to do)
+---
+## 2026-09-14 21:16 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-14 21:35 - US-618E Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved Apache `webroot: /app/public` (HTTPS body `Apache webroot works`, `APACHE_DOCUMENT_ROOT`/`LANDO_WEBROOT`=/app/public, generated `lando-webroot.conf`) and Node `port: 5173` (HTTPS `PORT=5173`, in-container listen on 5173). `php:8.0`/`node:999`/`apache:9` failed `LandofileValidationError` before provider action; php:8.3 refresh and idle `node:22` (PORT=3000, no server) stayed green. Scenario apps torn down; only global remains.
+- **Out-of-scope finding:** `curl http://web.us618e-apache.lndo.site:8000/` and the Node HTTP twin returned 404 while HTTPS `:4443` served the apps. Same host/WSL 80/443 fallback as prior verifies, not US-618E.
+---
+## 2026-09-14 23:20 - Babysit
+- PR: #991 https://github.com/AaronFeledy/core4/pull/991
+- CI outcome: pass (after two triage rounds; initial push had no Actions runs because the PR was CONFLICTING)
+- Review feedback: fixed (merged origin/main and resolved conflicts; replaced a secret canary that collided with hex in a SHA-256 cache key; made the PHP db-client "custom" image genuinely custom and added stock-image coverage; refreshed stale LAMP producer digests in guide fixtures)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-09-15 13:35 - US-623
+- Tooling events and MCP now share argv serialization from normalized declarations, preserving declared positional order and hyphen-leading arguments. Decoded cross-surface tests compare argv and exit outcomes directly, while undeclared tasks retain exact raw argv bytes.
+- Integer inputs now follow flag metadata rather than the `tail` name. MCP publishes integer schemas and rejects fractional, string, and non-finite values through its existing tagged validator; plugin-owned CLI parsing retains integer metadata instead of truncating fractions. The task-events and MCP guides document the behavior.
+- Verification: gate:pr passed, including typecheck, lint, codegen, boundaries, and guide drift; semantic gates passed; 337 focused tests and both guides passed. Regression failures were captured before fixes. Sandbox CLI checks proved argv equality, raw passthrough, exit 7 preservation, and invalid-tail refusal. Final AC-scoped review approved; owned QA resources cleaned up.
+- **Learnings for future iterations:**
+  - Integer metadata must survive intermediate flag projections, including plugin-owned command definitions; fixing the primary parser alone leaves a second path silently truncating fractional input.
+  - CLI parity fixtures must avoid global flag names such as `verbose`: those tokens belong to the outer CLI, not to the task's structured input contract.
+---
+## 2026-09-15 14:24 - Review
+- [looper] gate skipped Review: gate: phase reviewed is at or past reviewed (nothing to do)
+---
+## 2026-09-15 14:24 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-15 - US-624
+- Routes now retain distinct host, scheme, and path matches instead of silently collapsing same-host paths. Equivalent backends and ordered filters deduplicate; conflicting matches fail with a source-aware RouteInputError before provider action. Shorthand ports continue selecting backend endpoints rather than listeners.
+- The planner assigns explicit priorities: exact hosts outrank wildcards, longer paths win next, and lexical hostname/path/scheme ordering resolves ties. Traefik projects those priorities above its diagnostic fallback. Both route guides document identity, ordering, fallback ports, and the expected HTTP 404 for HTTPS-only routes.
+- Verification: gate:pr, schema compatibility, guide lint/coverage/transcripts, and changed-file LSP checks passed; 340 focused tests and both guides passed. Native-Bun sandbox CLI checks passed 107 tests with one existing environment-gated skip. The same-host collapse was captured red before implementation; final acceptance review approved unconditionally.
+- Live sandbox requests on fallback ports reached the exact, wildcard, longer-path, and scheme-specific responders. Disabled routing published no shared route, returned 404 there, and exposed only a working host endpoint through info. Both QA apps were destroyed with their volumes; shared sandbox resources were preserved.
+- **Learnings for future iterations:**
+  - Compose services with explicit endpoints use those endpoints instead of deriving publication from ports. To prove host-only publication, declare a published endpoint with its publication mapping rather than mixing internal endpoints and ports.
+  - Embedded-Bun CLI test runners can misroute internal worker entrypoints as scripts. Native Bun resolved the non-live harness failures without changing product code or test assertions.
+---
+
+## 2026-09-15 - US-624 Review
+- Reviewed route identity/specificity against source ACs. No in-scope product defects; no code changes.
+- Review notes (deferred/rejected): AC1 "port" in match identity is the scheme's acquired listener, not Landofile `:port`; treating `:port` as a public match would change host-port acquisition, a story non-goal. Security HIGH (per-app ranks letting one app's wildcard outrank another app's exact host) is out of scope: the planner policy is per AppPlan, the guide states "within an app," and Traefik already merged independent configs. QA "diagnostic lowest untested" is false: diagnostics.ts emits priority 1 and proxy.test.ts asserts it. Backend-port conflict already fail-closes; not asserting RouteInputError class is not a PRD miss. Bugbot did not run (Cursor usage limit).
+- Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 79 focused tests across route-identity, route-normalization, route-urls, route-normalize, and route-filter passed.
+- **Learnings for future iterations:** Route-match "port" in this stack means the router listener implied by scheme. Shorthand `:port` is backend selection and must not be re-litigated as a second public listener.
+---
+## 2026-09-15 16:16 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-15 - US-626 (implementation verified)
+
+- Config view and get now return one curated effective public config projection, including persisted appEnv and appLabels maps; encoded results retain maps, selected keys, roots, and telemetry while omitting internal bookkeeping.
+- Secret-bearing map values and proxy credentials are redacted through the canonical output boundary across renderer/format combinations, including scalar lookups, without changing persisted values. The public schema, result encoding, redaction hook, and regression tests land atomically so no intermediate revision exposes newly visible secrets.
+- Verification: gate:pr passed (typecheck, lint, codegen:check, check:boundaries, and guide drift against origin/main); 491 focused tests, 9 adjacent tests (host CLI case filtered), and 3 executable global-config guide tests passed with zero failures. Schema compatibility and public-transcript gates passed; modified TypeScript LSP diagnostics were clean. Evidence was supplied by implementation session ses_f58dd5c42ffeWLagKvHhrBjcMG.
+- Sandbox acceptance: a relocated compiled binary in lando4-dev with isolated config/data/cache roots passed all 48 redaction combinations plus encoded-map parity, selected-key preservation, roots, telemetry, validation, internal omission, and invalid-map tagged rejection. QA teardown removed owned temporary roots and the relocated binary; no app/provider resources were created.
+- Acceptance approval: reviewer ses_f58c261beffebRyPG4J7ElI3xN approved all criteria unconditionally. This entry records implementation and acceptance evidence only; no completion signal, push, PR, or merge was performed.
+- **Learnings for future iterations:** widening a config result requires both a curated schema projection and output-boundary value tokens; scalar lookups lose their enclosing secret-key context unless tokens come from the full config or selected key. Preserve key metadata while redacting values, and test encoded output rather than only the in-memory operation result.
+---
+
+## 2026-09-15 - US-626 Review
+- Reviewed redacted config view/get against source ACs. No in-scope product defects; no code changes.
+- Review notes (deferred/rejected): Security HIGH (GITHUB_PAT, short numeric API_TOKEN=1234, username-only proxy userinfo) is out of scope. AC4 requires the canonical RedactionService path, which view/get already use; GITHUB_PAT is outside collectSecretEnvValues vocabulary, short numerics are the existing short-token policy (US-633 keeps it), and username-only proxy matching belongs to redactor URL patterns / proxyUrls, not this story's projection. Goal/QA/quality/context lanes passed. Bugbot did not run (Cursor usage limit).
+- Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 94 focused tests passed across config-view schema, operations, CLI redaction, meta-config scenarios, and adjacent write tests.
+- **Learnings for future iterations:** Newly exposing maps through a curated schema does not expand the secret-key catalog. Token vocabulary and short-token policy stay in @lando/redaction; do not add a config-specific redactor to satisfy a security lane that wants PAT/short-PIN/username-only coverage.
+---
+## 2026-09-15 18:05 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-15 18:12 - US-626 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, then proved `lando config set/get/view` against the binary: appEnv/appLabels round-trip, JSON/YAML/table parity, secret `DB_PASSWORD` redacted as `[redacted]` in every mode while `config.yml` kept the real value, invalid map writes fail `LandofileWriteValidationError` without changing the file. Started a php:8.3 app; HTTPS and `lando exec` printed `us626-ok`; `printenv TEAM` was `platform`. Adjacent `config validate`, `config get defaultProviderId`, `global:config`, `doctor`, `app:config`, and `logs` stayed green. App destroyed; maps unset; scratch dirs removed.
+- **Out-of-scope finding:** `curl http://appserver.us626-verify.lndo.site:8000/` returned Traefik `404 page not found` after setup warned 80/443 were in use and fell back to 8000/4443; HTTPS `:4443` served the app. Same host/WSL mirrored bind as prior verifies, not US-626.
+- **Out-of-scope finding:** `lando config --format=yaml` emits `DB_PASSWORD: [redacted]` unquoted, which YAML parses as a sequence. JSON keeps the string sentinel. Secret is not leaked; quoting belongs with serializer/redaction encoding, not this view story.
+---
+## 2026-09-15 19:15 - Babysit
+- PR: #998 https://github.com/AaronFeledy/core4/pull/998
+- CI outcome: fail then pass (schema-snapshot check:schema-compatibility; guide-scenarios-linux-x64 and provider-integration-linux-x64 confirm jobs were downstream skips)
+- Review feedback: fixed (recorded the intentional `command:meta:config` -> GlobalConfigView ref change as two justified entries in sdk/compatibility-exceptions.json; local Bugbot found no bugs)
+- Merge: merged (squash)
+---
+
+## 2026-09-15 - US-628
+- Startup URL scans now read only status and headers within a scope, close response streams without buffering bodies, limit concurrent probes to four, and report measured elapsed time for timeout and deadline diagnostics. Failed scans still warn without failing start; interruption propagates.
+- The HTTP trust seam explicitly sends loopback and configured NO_PROXY matches directly, without exempting router domains or callers. A narrow transport adapter avoids Bun's ambient-proxy fallback while preserving custom CA verification, redirects, streaming decompression, cancellation, and paired lifecycle events.
+- Permanent serial live tests prove the actual start CLI probes its published URL, a failing response warns at exit zero, and interrupting a real start aborts its in-flight scan. Explicit matching managed-runtime socket opt-in is required; missing or mismatched opt-in safely skips.
+- Verification: final gate:pr passed, including typecheck, lint, codegen, boundaries, and guide drift; 123 final focused tests passed, the HTTP package's 112 tests passed, and the router-and-scanner guide passed three scenarios. Regression failures were captured before implementation. Changed TypeScript diagnostics were clean; acceptance review approved after fixes and its final gate condition passed.
+- Sandbox verification passed all three permanent live scenarios with three scoped app/volume cleanup receipts. Owned temporary binaries and tmux windows were removed; shared sandbox resources were preserved. No full suite was run.
+- **Learnings for future iterations:**
+  - Bun 1.4 treats empty, null, and false fetch proxy options as ambient-proxy fallback, not explicit direct routing. A direct adapter must also preserve compressed response semantics for non-scanner consumers.
+  - Live tests using the bundled managed provider must require an explicit socket override matching that provider's actual socket; socket existence alone is not safe test opt-in.
+---
+## 2026-09-15 20:51 - US-628 Drift Audit
+- Trigger: 1 cycle, 1587 changed lines, 8 commits
+- Scope: the direct HTTP adapter is this story's trust-seam policy, not absorbed adjacent work; no public SDK surface and no prd.json edits
+- Weakened proofs: fail-first is not in git history (implementation and tests landed together); remaining ACs still have production-path proofs for scoped status reads, concurrency 4, elapsed diagnostics, local-endpoint policy, and env-gated live start
+- Ceremony: new http-client modules are single-importer but own redirect/direct transport, not forwarding facades; left uninlined because live.ts is already over the size ceiling
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 114 focused unit tests pass. Live integration not re-run (host-unsafe).
+---
+## 2026-09-15 21:10 - US-628 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app, and proved post-start scanning against the binary: default `/` scan succeeded with no URL warning; `scanner.path: /nope` warned `URL scan for service appserver at https://appserver.us628-verify.lndo.site:4443/nope answered with an unaccepted status: HTTP 404` while start still exited 0; `scanner: false` emitted no URL-scan warning. HTTPS curl and `lando exec` printed `us628-ok`; `lando info` listed the published HTTPS URL; invalid `retries: -1` failed lint on `services.appserver.scanner.retries`. App destroyed; temp dir removed.
+- **Out-of-scope finding:** setup warned ports 80/443 were in use and fell back to 8000/4443; `curl http://appserver.us628-verify.lndo.site:8000/` returned 404. Same host/WSL mirrored bind as prior verifies; HTTPS-only diagnostic is US-624, not US-628.
+- **Out-of-scope finding:** `lando destroy --yes` against a Landofile with `scanner.retries: -1` failed `LandofileValidationError` before teardown. Restoring a valid Landofile then destroy succeeded. Belongs to US-629 invalid-config teardown, not this scanner story.
+---

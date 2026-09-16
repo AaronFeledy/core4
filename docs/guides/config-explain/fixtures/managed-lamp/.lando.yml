@@ -8,7 +8,7 @@ recipe:
     php: "8.2"
     webroot: /app
   producer:
-    contentDigest: sha256:bf832eeeb192425e56f0d69ee1989b7f28b3bcc19a5e3ed95d3ed7dba0f1c2e5
+    contentDigest: sha256:9afda4d9f6ee1b8af319c37c89e8afe76f25a911b9b4d2eb66b033b0fbb1689d
     manifestVersion: 0.1.0
     packageName: "@lando/recipe-lamp"
     recipeId: lamp

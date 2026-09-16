@@ -141,7 +141,7 @@ describe("Laravel deterministic decomposition", () => {
     expect(manifest.snapshot?.assets).toEqual([]);
     expect(laravelSnapshot.defaults).toEqual(defaults);
     expect(laravelSnapshot.optionTypes).toEqual({
-      php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5"] },
+      php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] },
       database: { kind: "enum", values: ["mariadb:11.4", "postgres:16"] },
       composer: { kind: "enum", values: ["2", "2.7.7"] },
       webroot: { kind: "string", pattern: "^/[A-Za-z0-9._/-]*$" },
