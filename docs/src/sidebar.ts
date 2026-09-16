@@ -52,8 +52,10 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
+          { label: "Run the Rails recipe", slug: "guides/recipes/rails-workflow" },
           { label: "Run the Astro recipe", slug: "guides/recipes/astro-workflow" },
           { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
+          { label: "Run the Symfony recipe", slug: "guides/recipes/symfony-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
