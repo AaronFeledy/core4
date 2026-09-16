@@ -7,9 +7,22 @@ const FAILURE_TAGS = [
 ] as const;
 const PROVIDER_IDS = ["lando", "docker", "podman"] as const;
 const OPERATIONS = ["pullArtifact", "podman-api", "docker-api", "container-transport"] as const;
-const TRANSPORT_KINDS = ["connect", "write", "parse", "http"] as const;
+const TRANSPORT_KINDS = ["connect", "write", "read", "parse", "http"] as const;
+const TRANSPORT_SYSTEM_CODES = ["ECONNABORTED", "ECONNRESET", "EPIPE", "ETIMEDOUT"] as const;
 const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE"] as const;
 const PULL_FAILURE_KINDS = ["registry-auth", "generic"] as const;
+const PULL_FAILURE_SOURCES = ["stream-frame"] as const;
+const PULL_FAILURE_SIGNATURES = [
+  "toomanyrequests",
+  "denied",
+  "manifest-unknown",
+  "name-unknown",
+  "no-such-host",
+  "connection-refused",
+  "timeout",
+  "tls",
+  "unknown",
+] as const;
 const MAX_CAUSE_DEPTH = 8;
 
 const HttpStatusSchema = Schema.Int.pipe(Schema.between(100, 599));
@@ -19,11 +32,14 @@ const FailureCauseEvidenceSchema = Schema.Struct({
   providerId: Schema.optional(Schema.Literal(...PROVIDER_IDS)),
   operation: Schema.optional(Schema.Literal(...OPERATIONS)),
   kind: Schema.optional(Schema.Literal(...TRANSPORT_KINDS)),
+  systemCode: Schema.optional(Schema.Literal(...TRANSPORT_SYSTEM_CODES)),
   details: Schema.optional(
     Schema.Struct({
       status: Schema.optional(HttpStatusSchema),
       method: Schema.optional(Schema.Literal(...HTTP_METHODS)),
       failureKind: Schema.optional(Schema.Literal(...PULL_FAILURE_KINDS)),
+      source: Schema.optional(Schema.Literal(...PULL_FAILURE_SOURCES)),
+      signature: Schema.optional(Schema.Literal(...PULL_FAILURE_SIGNATURES)),
     }),
   ),
 });
@@ -33,6 +49,9 @@ export const ImagePullFailureDiagnosticSchema = Schema.Struct({
   failureKind: Schema.Literal(...PULL_FAILURE_KINDS),
   httpStatus: Schema.optional(HttpStatusSchema),
   transportKind: Schema.optional(Schema.Literal(...TRANSPORT_KINDS)),
+  systemCode: Schema.optional(Schema.Literal(...TRANSPORT_SYSTEM_CODES)),
+  source: Schema.optional(Schema.Literal(...PULL_FAILURE_SOURCES)),
+  signature: Schema.optional(Schema.Literal(...PULL_FAILURE_SIGNATURES)),
 });
 
 export const FailureEvidenceSchema = Schema.Struct({
@@ -74,6 +93,9 @@ export const failureEvidenceFor = (error: unknown): FailureEvidence => {
   let pullFailureKind: ImagePullFailureDiagnostic["failureKind"] | undefined;
   let pullHttpStatus: number | undefined;
   let pullTransportKind: ImagePullFailureDiagnostic["transportKind"] | undefined;
+  let pullSystemCode: ImagePullFailureDiagnostic["systemCode"] | undefined;
+  let pullSource: ImagePullFailureDiagnostic["source"] | undefined;
+  let pullSignature: ImagePullFailureDiagnostic["signature"] | undefined;
   let imagePull = false;
 
   for (let depth = 0; depth < MAX_CAUSE_DEPTH; depth += 1) {
@@ -83,6 +105,7 @@ export const failureEvidenceFor = (error: unknown): FailureEvidence => {
     const providerId = closedLiteral(current, "providerId", PROVIDER_IDS);
     const operation = closedLiteral(current, "operation", OPERATIONS);
     const kind = closedLiteral(current, "kind", TRANSPORT_KINDS);
+    const systemCode = closedLiteral(current, "systemCode", TRANSPORT_SYSTEM_CODES);
     const details = Reflect.get(current, "details");
     const method =
       typeof details === "object" && details !== null
@@ -92,6 +115,14 @@ export const failureEvidenceFor = (error: unknown): FailureEvidence => {
       typeof details === "object" && details !== null
         ? closedLiteral(details, "failureKind", PULL_FAILURE_KINDS)
         : undefined;
+    const source =
+      typeof details === "object" && details !== null
+        ? closedLiteral(details, "source", PULL_FAILURE_SOURCES)
+        : undefined;
+    const signature =
+      typeof details === "object" && details !== null
+        ? closedLiteral(details, "signature", PULL_FAILURE_SIGNATURES)
+        : undefined;
     const status = typeof details === "object" && details !== null ? nestedHttpStatus(details) : undefined;
 
     causes.push({
@@ -100,21 +131,31 @@ export const failureEvidenceFor = (error: unknown): FailureEvidence => {
       ...(providerId === undefined ? {} : { providerId }),
       ...(operation === undefined ? {} : { operation }),
       ...(kind === undefined ? {} : { kind }),
-      ...(method === undefined && failureKind === undefined && status === undefined
+      ...(systemCode === undefined ? {} : { systemCode }),
+      ...(method === undefined &&
+      failureKind === undefined &&
+      status === undefined &&
+      source === undefined &&
+      signature === undefined
         ? {}
         : {
             details: {
               ...(status === undefined ? {} : { status }),
               ...(method === undefined ? {} : { method }),
               ...(failureKind === undefined ? {} : { failureKind }),
+              ...(source === undefined ? {} : { source }),
+              ...(signature === undefined ? {} : { signature }),
             },
           }),
     });
     if (operation === "pullArtifact") imagePull = true;
     pullFailureKind ??= failureKind;
     pullHttpStatus ??= status;
+    pullSource ??= source;
+    pullSignature ??= signature;
     if (tag === "ContainerTransportError" || name === "ContainerTransportError") {
       pullTransportKind ??= kind;
+      pullSystemCode ??= systemCode;
     }
     current = Reflect.get(current, "cause");
   }
@@ -127,7 +168,10 @@ export const failureEvidenceFor = (error: unknown): FailureEvidence => {
             domain: "image-pull" as const,
             failureKind: pullFailureKind,
             ...(pullHttpStatus === undefined ? {} : { httpStatus: pullHttpStatus }),
+            ...(pullSource === undefined ? {} : { source: pullSource }),
+            ...(pullSignature === undefined ? {} : { signature: pullSignature }),
             ...(pullTransportKind === undefined ? {} : { transportKind: pullTransportKind }),
+            ...(pullSystemCode === undefined ? {} : { systemCode: pullSystemCode }),
           },
         }
       : {}),

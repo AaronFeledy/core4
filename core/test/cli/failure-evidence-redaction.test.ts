@@ -133,6 +133,87 @@ test("debug cause evidence classifies a closed pull transport connection diagnos
   expect(io.stderr()).not.toContain("connection failed");
 });
 
+test("debug cause evidence retains a closed pull stream-frame signature", async () => {
+  // Given a pull error frame contains private free-form context plus a closed classification.
+  const io = createBufferedRendererIO();
+  const previousGate = process.env.LANDO_DEBUG_CAUSE_CHAIN;
+  const secret = "private-registry.example/team/private-image:latest";
+  process.env.LANDO_DEBUG_CAUSE_CHAIN = "1";
+  const failure = new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "pullArtifact",
+    message: `manifest unknown for ${secret}`,
+    details: {
+      failureKind: "generic",
+      source: "stream-frame",
+      signature: "manifest-unknown",
+      reference: secret,
+      error: `manifest unknown for ${secret}`,
+    },
+  });
+
+  try {
+    // When the renderer emits private failure evidence.
+    await runWithRendererHandling(Effect.fail(failure), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io,
+      formatError: () => "pull failed",
+      setExitCode: () => undefined,
+    });
+  } finally {
+    process.env.LANDO_DEBUG_CAUSE_CHAIN = previousGate;
+  }
+
+  // Then only the closed frame origin and signature survive.
+  expect(io.stderr()).toContain(
+    '"imagePull":{"domain":"image-pull","failureKind":"generic","source":"stream-frame","signature":"manifest-unknown"}',
+  );
+  expect(io.stderr()).not.toContain(secret);
+  expect(io.stderr()).not.toContain("manifest unknown for");
+});
+
+test("debug cause evidence retains an allowlisted transport read code", async () => {
+  // Given a pull failure wraps a typed response-read error and an untrusted raw code.
+  const io = createBufferedRendererIO();
+  const previousGate = process.env.LANDO_DEBUG_CAUSE_CHAIN;
+  process.env.LANDO_DEBUG_CAUSE_CHAIN = "1";
+  const transport = new ContainerTransportError({
+    kind: "read",
+    operation: "podman-api",
+    message: "read failed at /private/socket",
+    systemCode: "ECONNRESET",
+    cause: { code: "PRIVATE_CODE", path: "/private/socket" },
+  });
+  const failure = new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "pullArtifact",
+    message: "pull failed",
+    details: { failureKind: "generic" },
+    cause: transport,
+  });
+
+  try {
+    // When the renderer emits private failure evidence.
+    await runWithRendererHandling(Effect.fail(failure), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      io,
+      formatError: () => "pull failed",
+      setExitCode: () => undefined,
+    });
+  } finally {
+    process.env.LANDO_DEBUG_CAUSE_CHAIN = previousGate;
+  }
+
+  // Then only the closed transport kind and allowlisted system code survive.
+  expect(io.stderr()).toContain(
+    '"imagePull":{"domain":"image-pull","failureKind":"generic","transportKind":"read","systemCode":"ECONNRESET"}',
+  );
+  expect(io.stderr()).not.toContain("PRIVATE_CODE");
+  expect(io.stderr()).not.toContain("/private/socket");
+});
+
 test("debug cause evidence omits out-of-range HTTP status numbers", async () => {
   const io = createBufferedRendererIO();
   const previousGate = process.env.LANDO_DEBUG_CAUSE_CHAIN;
