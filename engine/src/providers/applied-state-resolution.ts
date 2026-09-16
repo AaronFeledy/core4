@@ -21,9 +21,10 @@ export const resolveAppliedPlanEvidence = (
         }),
       );
     }
-    const plans = (
-      yield* Effect.forEach(providers, (provider) => provider.appliedPlans ?? Effect.succeed([]))
-    ).flat();
+    const plans = (yield* Effect.forEach(
+      providers,
+      (provider) => provider.appliedPlans ?? Effect.succeed([]),
+    )).flat();
     const matches = plans
       .filter((plan) => {
         const appRoot = plan.identity?.appRoot;
@@ -31,15 +32,15 @@ export const resolveAppliedPlanEvidence = (
         const child = relative(appRoot, root);
         return child === "" || (!child.startsWith("..") && !isAbsolute(child));
       })
-      .sort(
-        (left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length,
-    );
+      .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
     const selected = matches[0];
     if (selected === undefined) {
       const evidence = yield* Effect.forEach(providers, (provider) =>
         Effect.all({ services: provider.list({}), volumes: provider.listVolumes({}) }),
       );
-      const services = evidence.flatMap((result) => result.services);
+      const services = evidence.flatMap((result) =>
+        result.services.filter((service) => service.appRoot === root),
+      );
       const ownedVolumes = evidence.flatMap((result) =>
         result.volumes.filter((volume) => volume.identity?.ownerRoot === root),
       );
@@ -57,9 +58,7 @@ export const resolveAppliedPlanEvidence = (
       return undefined;
     }
     const selectedRoot = selected.identity?.appRoot;
-    if (
-      matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)
-    ) {
+    if (matches.some((candidate) => candidate !== selected && candidate.identity?.appRoot === selectedRoot)) {
       return yield* Effect.fail(
         new AppResolveError({
           message: `Multiple providers claim applied state for ${selectedRoot}.`,

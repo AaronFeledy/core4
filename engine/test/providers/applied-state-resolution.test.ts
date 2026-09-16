@@ -69,6 +69,7 @@ describe("resolveAppliedPlanEvidence", () => {
             Effect.succeed([
               {
                 app: AppId.make("orphaned-app"),
+                appRoot: root,
                 service: ServiceName.make("appserver"),
                 providerId: ProviderId.make("lando"),
                 status: "running",
@@ -80,6 +81,27 @@ describe("resolveAppliedPlanEvidence", () => {
 
     expect(result._tag).toBe("Failure");
     expect(String(result)).toContain("provider-resources");
+  });
+
+  test("ignores runtime services owned by another app root", async () => {
+    const result = await Effect.runPromise(
+      resolveAppliedPlanEvidence(root, [
+        provider("lando", {
+          list: () =>
+            Effect.succeed([
+              {
+                app: AppId.make("other-app"),
+                appRoot: AbsolutePath.make("/tmp/other-app"),
+                service: ServiceName.make("appserver"),
+                providerId: ProviderId.make("lando"),
+                status: "running",
+              },
+            ]),
+        }),
+      ]),
+    );
+
+    expect(result).toBeUndefined();
   });
 
   test("does not report absence while an owned volume remains", async () => {
