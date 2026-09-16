@@ -54,6 +54,7 @@ export const sidebar = [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
           { label: "Run the Rails recipe", slug: "guides/recipes/rails-workflow" },
           { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
+          { label: "Run the MEAN recipe", slug: "guides/recipes/mean-workflow" },
           { label: "Run the Symfony recipe", slug: "guides/recipes/symfony-workflow" },
           { label: "Run the Laravel recipe", slug: "guides/recipes/laravel-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
