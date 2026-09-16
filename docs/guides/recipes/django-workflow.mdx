@@ -9,10 +9,11 @@ tags: [beta, docs, recipes, django, python, postgres, redis]
 
 ```sh
 lando init --recipe django --name=django-demo --yes
+cd django-demo
 lando start
 ```
 
-`--yes` keeps Celery off. Init writes `.lando.yml` only. Start brings up Python, Postgres, and Redis. Drop a Django project in so `manage.py` exists, then serve it.
+`--yes` keeps Celery off. The named init creates `django-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis. Drop a Django project in so `manage.py` exists, then serve it.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
