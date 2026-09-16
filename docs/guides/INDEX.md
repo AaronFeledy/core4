@@ -232,10 +232,12 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |
 | — | — | Rails recipe day-to-day workflow | `docs/guides/recipes/rails-workflow.mdx` | Shipped |
+| — | — | Astro recipe day-to-day workflow | `docs/guides/recipes/astro-workflow.mdx` | Shipped |
 | — | — | Django recipe day-to-day workflow | `docs/guides/recipes/django-workflow.mdx` | Shipped |
 | — | — | MEAN recipe day-to-day workflow | `docs/guides/recipes/mean-workflow.mdx` | Shipped |
 | — | — | Symfony recipe day-to-day workflow | `docs/guides/recipes/symfony-workflow.mdx` | Shipped |
 | — | — | Laravel recipe day-to-day workflow | `docs/guides/recipes/laravel-workflow.mdx` | Shipped |
+| — | — | SvelteKit recipe day-to-day workflow | `docs/guides/recipes/sveltekit-workflow.mdx` | Shipped |
 | — | — | Next.js recipe day-to-day workflow | `docs/guides/recipes/nextjs-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
