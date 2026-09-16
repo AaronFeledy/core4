@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { StateStoreError } from "@lando/sdk/errors";
+import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import {
@@ -77,6 +79,18 @@ const stateFor = (root: string) =>
     ownerOnlyFileAccess,
   );
 
+const withFailingModify = (state: PluginStateStore): PluginStateStore => ({
+  open: <A, I>(spec: PluginStateBucketSpec<A, I>) =>
+    state.open(spec).pipe(
+      Effect.map((bucket) => ({
+        ...bucket,
+        modify: <B>(_update: (current: A | null) => readonly [B, A]) =>
+          Effect.fail(new StateStoreError({ reason: "io", operation: "modify", path: String(bucket.path) })),
+      })),
+    ),
+  withLock: state.withLock,
+});
+
 describe("provider-podman applied state", () => {
   test("credential-bearing proxy env round-trips across fresh stores", async () => {
     await withStateRoot(async (root) => {
@@ -118,6 +132,20 @@ describe("provider-podman applied state", () => {
       const plans = await Effect.runPromise(listAppliedPlans(state));
       expect(plans.map((plan) => plan.id)).toEqual([second.id]);
       expect(await Effect.runPromise(loadAppliedPlan(state, first.id))).toBeUndefined();
+    });
+  });
+
+  test("removeAppliedPlan propagates state-store failures and retains the plan", async () => {
+    await withStateRoot(async (root) => {
+      const state = stateFor(root);
+      const plan = planFor("retained-app");
+      await Effect.runPromise(persistAppliedPlan(state, plan));
+
+      const exit = await Effect.runPromiseExit(removeAppliedPlan(withFailingModify(state), plan.id));
+
+      expect(exit._tag).toBe("Failure");
+      expect(String(exit)).toContain("applied-state.remove");
+      expect(await Effect.runPromise(loadAppliedPlan(state, plan.id))).toEqual(plan);
     });
   });
 

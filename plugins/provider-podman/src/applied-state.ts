@@ -70,7 +70,10 @@ export const listAppliedPlans = (
     Effect.mapError(listError),
   );
 
-export const removeAppliedPlan = (stateStore: PluginStateStore, appId: AppId): Effect.Effect<void, never> =>
+export const removeAppliedPlan = (
+  stateStore: PluginStateStore,
+  appId: AppId,
+): Effect.Effect<void, ProviderUnavailableError> =>
   openAppliedPlans(stateStore).pipe(
     Effect.flatMap((bucket) =>
       bucket.modify((current) => {
@@ -78,5 +81,14 @@ export const removeAppliedPlan = (stateStore: PluginStateStore, appId: AppId): E
         return [undefined, remaining];
       }),
     ),
-    Effect.catchAll(() => Effect.void),
+    Effect.mapError(
+      (cause) =>
+        new ProviderUnavailableError({
+          providerId: PROVIDER_ID,
+          operation: "applied-state.remove",
+          message: "Unable to remove provider-podman applied plan state.",
+          remediation: "Check permissions for the provider-podman plugin state directory and retry.",
+          cause,
+        }),
+    ),
   );
