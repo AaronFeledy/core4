@@ -50,7 +50,16 @@ test("persists each sample before the next preparation and retains prep failure 
     expect(setups).toBe(report.lanes.length);
     expect(partial?.lanes[0]?.samples[0]?.steps[0]?.durationMs).toBe(835_000);
     expect(partial?.status).toBe("running");
-    expect(decodeWorkflowPerformanceReport(await Bun.file(reportPath).json())).toEqual(report);
+    const retained = decodeWorkflowPerformanceReport(await Bun.file(reportPath).json());
+    expect(retained.status).toBe(report.status);
+    expect(retained.lanes).toHaveLength(report.lanes.length);
+    expect(retained.lanes[0]?.samples[0]?.steps[0]).toMatchObject({
+      id: "prepare:setup",
+      exitCode: 124,
+      durationMs: 835_000,
+      stdout: "",
+      stderr: "[diagnostic evidence omitted]",
+    });
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -108,13 +117,28 @@ test("retains interrupted prep and attempts every owned cleanup with independent
       expect.objectContaining({
         id: "prepare:setup",
         exitCode: 124,
-        stderr: expect.stringContaining("waiting"),
+        stderr: "[diagnostic evidence omitted]",
       }),
       expect.objectContaining({ id: "cleanup:global", exitCode: 8 }),
     ]);
     expect(report.lanes[0]?.statistics).toBeUndefined();
     expect(evaluateWorkflowPerformanceReport(report).exitCode).toBe(1);
-    expect(decodeWorkflowPerformanceReport(await Bun.file(reportPath).json())).toEqual(report);
+    const retained = decodeWorkflowPerformanceReport(await Bun.file(reportPath).json());
+    expect(retained.status).toBe("interrupted");
+    expect(retained.lanes[0]?.samples[0]?.steps).toEqual([
+      expect.objectContaining({
+        id: "prepare:setup",
+        exitCode: 124,
+        stdout: "",
+        stderr: "[diagnostic evidence omitted]",
+      }),
+      expect.objectContaining({
+        id: "cleanup:global",
+        exitCode: 8,
+        stdout: "",
+        stderr: "[diagnostic evidence omitted]",
+      }),
+    ]);
     expect(commands.map((command) => command.id)).toEqual([
       "prepare:setup",
       "cleanup:destroy",

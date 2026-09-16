@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   type WorkflowPerformanceReport,
@@ -7,6 +10,7 @@ import {
   decodeWorkflowPerformanceReport,
   evaluateWorkflowPerformanceReport,
   statisticsForSamples,
+  writeWorkflowPerformanceReport,
 } from "../../../scripts/workflow-performance-report.ts";
 
 const sample = (
@@ -82,5 +86,100 @@ describe("workflow performance report", () => {
       schemaVersion: 1,
     });
     expect(() => decodeWorkflowPerformanceReport({ ...report([]), schemaVersion: 2 })).toThrow();
+  });
+
+  test("omits every free-form diagnostic before retaining the report", async () => {
+    // Given every retained free-form route contains a custom non-environment secret and private paths.
+    const root = await mkdtemp(join(tmpdir(), "workflow-performance-retention-"));
+    const secretPrefix = "custom-nonenv-";
+    const secretSuffix = "secret-989-boundary";
+    const secret = `${secretPrefix}${secretSuffix}`;
+    const boundaryFragment = `${secret}${"x".repeat(12_000 - secret.length + 5)}`;
+    const unsafe = `${secret} /home/private/app C:\\Users\\private\\lando \\\\private-host\\lando$\\runtime`;
+    const routeIds = [
+      "prepare:setup",
+      "prepare:pre-pull",
+      "prepare:start",
+      "prepare:import",
+      "prepare:snapshot",
+      "prepare:failure",
+      "start",
+      "stop",
+      "rebuild",
+      "db:import",
+      "db:restore",
+      "validate:journey",
+      "cleanup:destroy",
+      "cleanup:global",
+      "cleanup:runtime",
+      "cleanup:storage",
+    ] as const;
+    const retainedPath = join(root, "report.json");
+    const unsafeReport: WorkflowPerformanceReport = {
+      ...report([]),
+      status: "failed",
+      failure: unsafe,
+      fileSync: { eligible: false, reason: unsafe },
+      lanes: [
+        {
+          id: "cold-first-start",
+          class: "start",
+          outcome: "failed",
+          skipReason: unsafe,
+          samples: [
+            {
+              ...sample(0, "failed", 12),
+              resetCondition: unsafe,
+              skipReason: unsafe,
+              stagedFixture: { path: unsafe, bytes: 42, sha256: "abc123" },
+              steps: routeIds.map((id, index) => ({
+                id,
+                durationMs: index + 1,
+                exitCode: 70 + index,
+                stdout: index === 0 ? boundaryFragment : unsafe,
+                stderr: unsafe,
+              })),
+            },
+          ],
+        },
+      ],
+    };
+
+    try {
+      // When the real durable writer receives the report.
+      await writeWorkflowPerformanceReport(unsafeReport, retainedPath);
+      const retained = decodeWorkflowPerformanceReport(await Bun.file(retainedPath).json());
+      const serialized = JSON.stringify(retained);
+
+      // Then structured status survives while every free-form route is omitted before truncation.
+      expect(retained.status).toBe("failed");
+      expect(retained.failure).toBeUndefined();
+      expect(retained.fileSync).toEqual({ eligible: false, reason: "[diagnostic evidence omitted]" });
+      expect(retained.lanes[0]?.skipReason).toBeUndefined();
+      expect(retained.lanes[0]?.samples[0]?.skipReason).toBeUndefined();
+      expect(retained.lanes[0]?.samples[0]?.resetCondition).toBe("[diagnostic evidence omitted]");
+      expect(retained.lanes[0]?.samples[0]?.stagedFixture).toEqual({
+        path: "[diagnostic evidence omitted]",
+        bytes: 42,
+        sha256: "abc123",
+      });
+      expect(retained.lanes[0]?.samples[0]?.steps).toEqual(
+        routeIds.map((id, index) => ({
+          id,
+          durationMs: index + 1,
+          exitCode: 70 + index,
+          stdout: "",
+          stderr: "[diagnostic evidence omitted]",
+        })),
+      );
+      expect(serialized).not.toContain(secret);
+      expect(serialized).not.toContain(secretPrefix);
+      expect(serialized).not.toContain(secretSuffix);
+      expect(serialized).not.toContain("/home/private");
+      expect(serialized).not.toContain("C:\\Users\\private");
+      expect(serialized).not.toContain("\\\\private-host\\lando$");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

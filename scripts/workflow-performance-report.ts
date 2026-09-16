@@ -7,6 +7,7 @@ const EVIDENCE_LIMIT = 12_000;
 const MAX_LANES = 16;
 const MAX_SAMPLES = 10;
 const MAX_STEPS = 16;
+const OMITTED_DIAGNOSTIC = "[diagnostic evidence omitted]";
 
 const OutcomeSchema = Schema.Literal("passed", "failed", "skipped");
 const SeriesSchema = Schema.Struct({
@@ -117,6 +118,46 @@ export const statisticsForSamples = (
 export const decodeWorkflowPerformanceReport = (input: unknown): WorkflowPerformanceReport =>
   Schema.decodeUnknownSync(WorkflowPerformanceReportSchema)(input);
 
+const sanitizeWorkflowPerformanceReportForRetention = (
+  report: WorkflowPerformanceReport,
+): WorkflowPerformanceReport => ({
+  schemaVersion: report.schemaVersion,
+  ...(report.status === undefined ? {} : { status: report.status }),
+  series: report.series,
+  run: report.run,
+  versions: report.versions,
+  fileSync: { eligible: report.fileSync.eligible, reason: OMITTED_DIAGNOSTIC },
+  fixtures: report.fixtures,
+  lanes: report.lanes.map((lane) => ({
+    id: lane.id,
+    class: lane.class,
+    outcome: lane.outcome,
+    samples: lane.samples.map((sample) => ({
+      index: sample.index,
+      key: sample.key,
+      outcome: sample.outcome,
+      resetCondition: OMITTED_DIAGNOSTIC,
+      ...(sample.stagedFixture === undefined
+        ? {}
+        : {
+            stagedFixture: {
+              path: OMITTED_DIAGNOSTIC,
+              bytes: sample.stagedFixture.bytes,
+              sha256: sample.stagedFixture.sha256,
+            },
+          }),
+      steps: sample.steps.map((step) => ({
+        id: step.id,
+        durationMs: step.durationMs,
+        exitCode: step.exitCode,
+        stdout: "",
+        stderr: step.stdout.length === 0 && step.stderr.length === 0 ? "" : OMITTED_DIAGNOSTIC,
+      })),
+    })),
+    ...(lane.statistics === undefined ? {} : { statistics: lane.statistics }),
+  })),
+});
+
 export const evaluateWorkflowPerformanceReport = (
   report: WorkflowPerformanceReport,
 ): { readonly exitCode: 0 | 1; readonly reason: string } =>
@@ -132,7 +173,7 @@ export const writeWorkflowPerformanceReport = async (
   report: WorkflowPerformanceReport,
   path: string,
 ): Promise<void> => {
-  const decoded = decodeWorkflowPerformanceReport(report);
+  const decoded = decodeWorkflowPerformanceReport(sanitizeWorkflowPerformanceReportForRetention(report));
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${crypto.randomUUID()}.tmp`;
   try {
