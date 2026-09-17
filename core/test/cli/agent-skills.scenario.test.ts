@@ -76,6 +76,8 @@ describe("lando agent:skills CLI", () => {
       expect(skill).toContain(`lando-generated:${AGENT_SKILLS_SKILL_ID}`);
       expect(skill).toContain("lando exec");
       expect(skill).toContain("lando mcp");
+      expect(skill).toContain("Drive Lando through MCP");
+      expect(skill).not.toContain("docs/guides/");
       expect(await Bun.file(join(dir, "NOTES.md")).text()).toBe("keep me\n");
       expect(await Bun.file(join(dir, "AGENTS.md")).text()).toBe("# Project notes\nuser owned\n");
 
@@ -86,8 +88,11 @@ describe("lando agent:skills CLI", () => {
       };
       expect(updateResult.result.entries.every((entry) => entry.action === "skip-unchanged")).toBe(true);
 
-      const removed = await runCli(["app:agent:skills:remove", "--format=json"], dir);
+      const removed = await runCli(["app:agent:skills:remove"], dir);
       expect(removed.exitCode).toBe(0);
+      expect(removed.stdout).toContain(`- ${AGENT_SKILLS_SKILL_PATH} (remove)`);
+      expect(removed.stdout).not.toContain("~");
+      expect(removed.stdout).not.toContain("(update)");
       expect(await Bun.file(join(dir, AGENT_SKILLS_SKILL_PATH)).exists()).toBe(false);
       expect(await Bun.file(join(dir, "NOTES.md")).text()).toBe("keep me\n");
       expect(await Bun.file(join(dir, "AGENTS.md")).text()).toBe("# Project notes\nuser owned\n");

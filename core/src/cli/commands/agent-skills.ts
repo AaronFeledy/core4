@@ -58,6 +58,16 @@ const ACTION_GLYPH: Readonly<Record<ManagedFileAction, string>> = {
   "adopt-detected": "!",
 };
 
+const presentEntry = (
+  verb: AgentSkillsVerb,
+  action: ManagedFileAction,
+): { readonly glyph: string; readonly label: string } => {
+  if (verb === "remove") {
+    return { glyph: "-", label: "remove" };
+  }
+  return { glyph: ACTION_GLYPH[action], label: action };
+};
+
 const verbLabel = (verb: AgentSkillsVerb): string => {
   switch (verb) {
     case "install":
@@ -74,7 +84,8 @@ export const renderAgentSkillsResult = (result: AgentSkillsResult): string => {
     `${verbLabel(result.verb)} agent skills in ${result.appRoot} (${result.entries.length} file${result.entries.length === 1 ? "" : "s"}).`,
   ];
   for (const entry of result.entries) {
-    lines.push(`  ${ACTION_GLYPH[entry.action]} ${entry.path} (${entry.action})`);
+    const presented = presentEntry(result.verb, entry.action);
+    lines.push(`  ${presented.glyph} ${entry.path} (${presented.label})`);
   }
   if (result.entries.length === 0) {
     lines.push(

@@ -37,14 +37,15 @@ as the default way to run project tools.
 Prefer a named tooling command over raw \`lando exec\` when the Landofile
 already defines the tool.
 
-## Do not copy the product docs
+## Read the existing Lando guides
 
-Read these Lando guides instead of pasting them into this app:
+Do not paste product docs into this app. When you need more than this pack,
+look up these Lando guides by name:
 
-- \`docs/guides/agent-native/mcp.mdx\`
-- \`docs/guides/agent-native/in-container-context.mdx\`
-- \`docs/guides/cli/exec.mdx\`
-- \`docs/guides/scripting-with-json.mdx\`
+- Drive Lando through MCP
+- Inspect a running app (in-container context)
+- Run commands inside a service
+- Script Lando with JSON
 
 \`lando start\` and \`lando rebuild\` do not write or refresh this pack.
 Install, update, or remove it with \`lando agent:skills:install\`,

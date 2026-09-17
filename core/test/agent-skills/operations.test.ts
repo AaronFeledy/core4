@@ -54,6 +54,8 @@ describe("agent skill pack ownership", () => {
       const skill = store.read(AGENT_SKILLS_SKILL_PATH) ?? "";
       expect(skill).toContain(`lando-generated:${AGENT_SKILLS_SKILL_ID}`);
       expect(skill).toContain(AGENT_SKILLS_SKILL_BODY.trim());
+      expect(AGENT_SKILLS_SKILL_BODY).not.toContain("docs/guides/");
+      expect(AGENT_SKILLS_SKILL_BODY).toContain("Drive Lando through MCP");
 
       const unchanged = await runScoped(
         updateAgentSkills({ appRoot: dir }).pipe(Effect.provide(store.layer)),
