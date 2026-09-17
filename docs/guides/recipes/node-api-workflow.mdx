@@ -118,9 +118,9 @@ When you keep the default database, connect on the app network:
 | Port | `5432` |
 | Database | app name (here `node-api-demo`) |
 | User | `lando` |
-| Password | generated; read it from `lando info` |
+| Password | from `lando exec database -- printenv POSTGRES_PASSWORD` |
 
-Use host `database`, not `127.0.0.1` or `localhost`. Ping from tooling:
+Use host `database`, not `127.0.0.1` or `localhost`. `lando info` lists the user and database name and redacts the password; print it from the database service env when you need it in settings. Ping from tooling:
 
 ```sh
 lando psql -c 'SELECT 1'
