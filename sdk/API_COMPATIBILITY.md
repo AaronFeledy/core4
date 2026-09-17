@@ -4,6 +4,10 @@
 
 ## Compatibility notes
 
+- `RuntimeProviderContribution.appliedPlans(ctx)` is required for provider contributions. It reads persisted ownership claims without initializing or connecting to the runtime; providers with no persisted claims return an empty list. Applied-state recovery reads every contribution's claims before selecting an owner, so an unrelated offline runtime cannot block a valid saved plan. Inventory-read failures and conflicting claims still fail closed. When no plan matches, runtime resource inspection remains required before reporting an unchanged teardown.
+
+- `RuntimeProviderShape.appliedPlans` optionally exposes provider-owned applied state, and `RuntimeProviderRegistry.resolveAppliedPlan(root)` optionally resolves it by canonical app root for teardown recovery. `StopAppResult` and `DestroyAppResult` add optional explicit recovery outcomes, and their error unions add `AppResolveError` for fail-closed ownership mismatches.
+
 - `GlobalConfigView` is the additive curated effective-config schema used by config view and get. It explicitly selects public settings from `GlobalConfig`, including both app-default maps, without exposing loader bookkeeping.
 
 - `@lando/sdk/errors` additively exports `AppLockTimeoutError` (`message`, `app`, `timeoutMs`, `remediation`, optional `cause`) when a mutating app operation waits for the per-app advisory lock and the finite wait expires. It registers no JSON Schema. The type-only `StartAppError` and `StopAppError` unions additively include the tag; restart, rebuild, and destroy inherit it. Override the wait with `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds).

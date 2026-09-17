@@ -734,6 +734,9 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const volumes = hooks.volumes ?? new Set<string>();
+  const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
+    [...volumes].map((name) => [name, { "dev.lando.volume-owner": "/tmp/lando-sdk-contract-myapp" }]),
+  );
   const images = new Set<string>();
   const calls: DockerHttpRequest[] = [];
 
@@ -754,14 +757,26 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
           return { status: 204, body: "" };
         }
         if (request.path === "/volumes/create") {
-          const requestedName = (request.body as { Name?: string }).Name ?? "";
+          const requested = request.body as { Name?: string; Labels?: Readonly<Record<string, string>> };
+          const requestedName = requested.Name ?? "";
           const existed = volumes.has(requestedName);
           volumes.add(requestedName);
+          if (!existed) volumeLabels.set(requestedName, requested.Labels ?? {});
           return { status: existed ? 409 : 201, body: "{}" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/volumes/")) {
+          const volName = decodeURIComponent(request.path.slice("/volumes/".length));
+          return volumes.has(volName)
+            ? {
+                status: 200,
+                body: JSON.stringify({ Name: volName, Labels: volumeLabels.get(volName) ?? {} }),
+              }
+            : { status: 404, body: "" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {
           const volName = decodeURIComponent(request.path.slice("/volumes/".length));
           const deleted = volumes.delete(volName);
+          volumeLabels.delete(volName);
           return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.path.startsWith("/containers/create?name=")) {
@@ -844,7 +859,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
     },
   };
 
-  return { api, calls, running, existing, volumes };
+  return { api, calls, running, existing, volumes, volumeLabels };
 };
 
 const dbServiceName = ServiceName.make("db");
@@ -1845,5 +1860,19 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(fake3.volumes.has("myapp_db_data")).toBe(true);
     expect(fake3.volumes.has("lando-cache-npm")).toBe(false);
+  });
+
+  test("destroy preserves a named volume owned by another app root", async () => {
+    const plan = makeMultiServicePlan({ includeStores: true });
+    const fake = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data"]) });
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    fake.volumeLabels.set("myapp_db_data", { "dev.lando.volume-owner": "/tmp/another-app" });
+
+    await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
+
+    expect(fake.volumes.has("myapp_db_data")).toBe(true);
   });
 });

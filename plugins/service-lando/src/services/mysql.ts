@@ -105,11 +105,11 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
   ctx.setHealthcheck({
     kind: "command",
-    command: ["mysqladmin", "ping", "-h", "127.0.0.1"],
+    command: ["sh", "-c", 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
     intervalSeconds: 10,
     timeoutSeconds: 5,
     retries: 5,
-    startPeriodSeconds: 30,
+    startPeriodSeconds: 60,
   });
 
   if (service.command !== undefined) ctx.setCommand(service.command);

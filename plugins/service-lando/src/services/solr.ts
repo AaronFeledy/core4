@@ -2,7 +2,7 @@ import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { ServiceFeatureError } from "@lando/sdk/errors";
+import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { PortablePath } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
@@ -19,7 +19,10 @@ const VERSIONS = ["9"] as const;
 const ARTIFACTS = { "9": DEFAULT_IMAGE } as const;
 const DEFAULT_PORT = 8983;
 const DATA_TARGET = PortablePath.make("/var/solr");
-const CORE_NAME = /^[A-Za-z0-9._-]+$/;
+const CORE_NAME = /^[A-Za-z0-9._-]+$/u;
+const RESERVED_CORE_NAMES = new Set([".", ".."]);
+const CORE_NAME_REMEDIATION =
+  'Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\\" are not allowed. Rename the core to a plain directory name.';
 export const SOLR_FEATURE_ID = "service-lando.solr";
 export const SOLR_CONFIG_TARGET = PortablePath.make("/etc/lando/solr/conf");
 
@@ -28,12 +31,39 @@ const PRECREATE_SCRIPT =
 const PRECREATE_WITH_CONFIG_SCRIPT =
   'port="$1"; shift; for core in "$@"; do precreate-core "$core" && mkdir -p /var/solr/data/"$core"/conf && cp -a /etc/lando/solr/conf/. /var/solr/data/"$core"/conf/ || exit 1; done; exec solr-foreground -p "$port"';
 
+/**
+ * A Solr core name that names exactly one directory under `/var/solr/data`.
+ * Anything that could resolve somewhere else is refused, so a core can never
+ * precreate or overlay config outside its own data directory.
+ */
+export const SolrCoreName = Schema.String.pipe(
+  Schema.filter((core) => CORE_NAME.test(core) && !RESERVED_CORE_NAMES.has(core), {
+    identifier: "SolrCoreName",
+    description: "Solr core name resolving to a single directory under /var/solr/data.",
+  }),
+);
+
+const isSolrCoreName = Schema.is(SolrCoreName);
+
+const coreNameRejection = (keyPath: string, core: string): string =>
+  `${keyPath} ${JSON.stringify(core)} is not a usable Solr core directory name. ${CORE_NAME_REMEDIATION}`;
+
+const rejectUnsafeCores = (
+  serviceName: string,
+  serviceType: string,
+  cores: ReadonlyArray<string>,
+): ServiceTypeError | undefined => {
+  const index = cores.findIndex((core) => !isSolrCoreName(core));
+  const core = cores[index];
+  if (core === undefined) return undefined;
+  return new ServiceTypeError({
+    serviceType,
+    message: coreNameRejection(`services.${serviceName}.cores[${index}]`, core),
+  });
+};
+
 const validateCoreName = (core: string): void => {
-  if (!CORE_NAME.test(core)) {
-    throw new Error(
-      `Invalid Solr core name ${JSON.stringify(core)}. Use only letters, numbers, dots, underscores, and dashes.`,
-    );
-  }
+  if (!isSolrCoreName(core)) throw new Error(coreNameRejection("cores", core));
 };
 
 const defaultCommand = (port: number, cores: readonly string[], hasConfigDir: boolean): string[] => {
@@ -115,6 +145,18 @@ const IDENTITY: ServiceImageIdentity = {
   homes: { solr: "/var/solr", root: "/root" },
 };
 
+const resolveSolr =
+  (serviceType: string): ServiceType["resolve"] =>
+  (input) => {
+    const rejection = rejectUnsafeCores(input.name, serviceType, input.service.cores ?? []);
+    if (rejection !== undefined) return Effect.fail(rejection);
+    return Effect.succeed({
+      base: "lando",
+      normalizedConfig: { ...input.service, type: "solr" },
+      features: [{ id: SOLR_FEATURE_ID }],
+    });
+  };
+
 export const solr9ServiceType: ServiceType = {
   id: "solr:9",
   name: "solr",
@@ -123,12 +165,7 @@ export const solr9ServiceType: ServiceType = {
   artifacts: ARTIFACTS,
   identity: IDENTITY,
   schema: Schema.Unknown,
-  resolve: (input) =>
-    Effect.succeed({
-      base: "lando",
-      normalizedConfig: { ...input.service, type: "solr" },
-      features: [{ id: SOLR_FEATURE_ID }],
-    }),
+  resolve: resolveSolr("solr:9"),
 };
 
 export const solrServiceType: ServiceType = {
@@ -139,10 +176,5 @@ export const solrServiceType: ServiceType = {
   artifacts: ARTIFACTS,
   identity: IDENTITY,
   schema: Schema.Unknown,
-  resolve: (input) =>
-    Effect.succeed({
-      base: "lando",
-      normalizedConfig: { ...input.service, type: "solr" },
-      features: [{ id: SOLR_FEATURE_ID }],
-    }),
+  resolve: resolveSolr("solr"),
 };

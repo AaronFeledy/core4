@@ -20,6 +20,8 @@ import {
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { deleteCwdAppMapEntriesForRoot } from "../cache/cwd-app-map.ts";
+import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import {
@@ -30,6 +32,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { resolveAppliedStateTarget, validateResolvedAppTarget } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
@@ -39,6 +42,7 @@ export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
 
 export const DestroyAppResultSchema = Schema.Struct({
   app: Schema.String,
+  outcome: Schema.optional(Schema.Literal("destroyed", "unchanged")),
   servicesDestroyed: Schema.Array(Schema.String),
   volumesRemoved: Schema.Boolean,
 });
@@ -56,6 +60,27 @@ type BoundDestroyAppServices = Exclude<DestroyAppServices, AppPlanner | Landofil
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
+
+const resolveDesiredTarget = Effect.gen(function* () {
+  const landofileService = yield* LandofileService;
+  const registry = yield* RuntimeProviderRegistry;
+  const planner = yield* AppPlanner;
+  const landofile = yield* loadUserLandofile(landofileService);
+  const capabilities = yield* registry.capabilities;
+  const plan = yield* planner.plan(landofile, capabilities);
+  return { plan, root: plan.root, app: appRef(plan), landofile } satisfies ResolvedAppTarget;
+});
+
+const resolveDestroyTarget = resolveDesiredTarget.pipe(
+  Effect.map((target) => ({ source: "desired" as const, target })),
+  Effect.catchAll((error) =>
+    resolveAppliedStateTarget.pipe(
+      Effect.flatMap((target) =>
+        target === undefined ? Effect.fail(error) : Effect.succeed({ source: "applied" as const, target }),
+      ),
+    ),
+  ),
+);
 
 const destroyAppForTargetUncoordinated = (
   options: DestroyAppOptions | undefined,
@@ -154,6 +179,7 @@ const destroyAppForTargetUncoordinated = (
     });
     yield* events.publish(postDestroy);
     yield* runAppEvent(plan, "post-destroy", postDestroy);
+    yield* deleteCwdAppMapEntriesForRoot({ cacheRoot: resolveUserCacheRoot(), appRoot: plan.root });
 
     return {
       app: plan.name,
@@ -164,9 +190,11 @@ const destroyAppForTargetUncoordinated = (
     };
   });
 
-export const destroyAppForTarget = (
+const destroyAppWithResolvedTarget = (
   options: DestroyAppOptions | undefined,
   target: ResolvedAppTarget,
+  revalidate: boolean,
+  requireAppliedEvidence: boolean,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
   withAppMutationLock(
     appLockTarget(target.plan),
@@ -174,7 +202,19 @@ export const destroyAppForTarget = (
       const context = yield* Effect.context<BoundDestroyAppServices>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
-      const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
+      const validatedTarget = revalidate ? yield* validateResolvedAppTarget(target) : target;
+      if (requireAppliedEvidence && registry.resolveAppliedPlan !== undefined) {
+        const appliedPlan = yield* registry.resolveAppliedPlan(validatedTarget.plan.root);
+        if (appliedPlan === undefined) {
+          return {
+            app: validatedTarget.plan.name,
+            outcome: "unchanged" as const,
+            servicesDestroyed: [],
+            volumesRemoved: false,
+          };
+        }
+      }
+      const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);
       const provider = yield* registry.select(resolvedTarget.plan);
       return yield* withPlanVolumeCoordination({
         plan: resolvedTarget.plan,
@@ -185,24 +225,30 @@ export const destroyAppForTarget = (
     }),
   );
 
+export const destroyAppForTarget = (
+  options: DestroyAppOptions | undefined,
+  target: ResolvedAppTarget,
+): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
+  destroyAppWithResolvedTarget(options, target, true, target.landofile !== undefined);
+
 export const destroyApp = (
   options: DestroyAppOptions = {},
   target?: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
-  target === undefined
-    ? Effect.gen(function* () {
-        const landofileService = yield* LandofileService;
-        const registry = yield* RuntimeProviderRegistry;
-        const planner = yield* AppPlanner;
-        const landofile = yield* loadUserLandofile(landofileService);
-        const capabilities = yield* registry.capabilities;
-        const plan = yield* planner.plan(landofile, capabilities);
-        yield* runAppInitEvents(plan);
-        return yield* destroyAppForTarget(options, {
-          plan,
-          root: plan.root,
-          app: appRef(plan),
-          landofile,
-        });
-      })
-    : destroyAppForTarget(options, target);
+  target !== undefined
+    ? destroyAppForTarget(options, target)
+    : resolveDestroyTarget.pipe(
+        Effect.flatMap((resolved) =>
+          (resolved.source === "desired"
+            ? runAppInitEvents(resolved.target.plan).pipe(
+                Effect.zipRight(destroyAppWithResolvedTarget(options, resolved.target, false, true)),
+              )
+            : destroyAppWithResolvedTarget(options, resolved.target, false, false)
+          ).pipe(
+            Effect.map(
+              (result): DestroyAppResult =>
+                result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
+            ),
+          ),
+        ),
+      );

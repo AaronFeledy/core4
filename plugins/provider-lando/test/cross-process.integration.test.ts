@@ -220,7 +220,7 @@ const makeFakePodmanState = () => {
     plan.stores.map((store): readonly [string, Readonly<Record<string, string>>] => [
       store.name,
       {
-        "dev.lando.volume-selector": `lando:${plan.id}:${store.kind === "cache" ? "cache" : "data"}`,
+        "dev.lando.volume-selector": `lando:${plan.id}:${appRoot}:${store.kind === "cache" ? "cache" : "data"}`,
       },
     ]),
   );

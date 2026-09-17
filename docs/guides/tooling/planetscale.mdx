@@ -1,0 +1,116 @@
+---
+id: planetscale
+provider: test
+timeout: 90000
+tags: [beta, docs, tooling, database, planetscale, mysql]
+---
+
+# Develop against PlanetScale
+
+Run a local MySQL service as your day-to-day stand-in, inject `DATABASE_URL` into the app service, and swap that URL for a PlanetScale Vitess branch when you have credentials.
+
+```yaml
+name: planetscale-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    env_file:
+      - .env
+  db:
+    type: mysql
+    creds:
+      user: lando
+      password: lando
+      database: planetscale_demo
+tooling:
+  npm:
+    service: app
+    cmd: npm
+  node:
+    service: app
+    cmd: node
+```
+
+Put the local URL in `.env` next to the Landofile:
+
+```env
+DATABASE_URL=mysql://lando:lando@db:3306/planetscale_demo
+```
+
+`db` is the service hostname on the app network. Service-level `env_file` keeps `DATABASE_URL` in `app`; the local database service does not receive it. Keep `.env` out of git when it holds real PlanetScale passwords.
+
+## Start the local stand-in
+
+```sh
+lando start
+lando npm install mysql2
+lando exec app -- printenv DATABASE_URL
+```
+
+`printenv` should show the URL from `.env`. The password may be redacted in renderer output. Then open a client or run your app against that URL:
+
+```sh
+lando exec db -- mysql -u lando -plando planetscale_demo -e 'SELECT 1'
+lando node -e "import('mysql2/promise').then(async m => { const c = await m.createConnection(process.env.DATABASE_URL); console.log(await c.query('SELECT 1 AS ok')); await c.end(); })"
+```
+
+`lando info` prints the MySQL creds and the app URL.
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="start">
+      <UseFixture name="planetscale-demo" />
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="env-wired">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"[^}]*\"envFile\":\\s*\\[\\s*\"\\.env\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db\":\\s*\\{[\\s\\S]*?\"type\":\\s*\"mysql\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"db\":\\s*\\{[\\s\\S]*DATABASE_URL" } } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Point at a PlanetScale branch
+
+When you have a development branch password from the PlanetScale dashboard or `pscale password create`, select the Node.js connection instructions and replace the local URL in `.env`:
+
+```env
+DATABASE_URL=mysql://USERNAME:PASSWORD@ACCESS_HOST_URL/DATABASE_NAME?ssl={"rejectUnauthorized":true}
+```
+
+Restart so services reload the file:
+
+```sh
+lando restart
+```
+
+Remote Vitess requires TLS with server certificate validation. The Node.js URL PlanetScale provides uses `mysql2` with `rejectUnauthorized: true`; copy its username, password, access host, and database values instead of guessing the host. Lando's Node images include the Debian system roots at `/etc/ssl/certs/ca-certificates.crt`. Other drivers may require a different URL option or an explicit CA path, so copy the framework-specific values from PlanetScale's Connect page and check its [secure connections guide](https://planetscale.com/docs/vitess/connecting/secure-connections).
+
+You do not need a Lando MySQL service while pointed at PlanetScale. Keep `db` in the Landofile for offline work, or drop it when every developer uses a shared branch.
+
+## Use direct credentials from a service
+
+`pscale connect DATABASE BRANCH` listens on the host loopback, usually `127.0.0.1:3306`. Inside `app`, `127.0.0.1` is the app container itself, not the host, so that tunnel is not reachable from the service. Do not expose an authenticated database tunnel on all host interfaces to work around that boundary. Use the TLS-verified branch password URL from PlanetScale's Connect page instead.
+
+## Match Vitess behavior locally
+
+- Develop against a development branch. Promote schema with deploy requests.
+- PlanetScale Vitess is MySQL-compatible with limits. Check foreign-key and DDL rules in PlanetScale's MySQL compatibility docs before you assume every local MySQL feature lands remotely.
+- The PlanetScale serverless JavaScript driver is an HTTP driver for edge runtimes. Ordinary Lando services use the classic MySQL wire protocol and `DATABASE_URL` above.
+
+## Connect to PlanetScale Postgres
+
+PlanetScale also ships Postgres. Same Lando pattern: local `type: postgres` plus `DATABASE_URL`, or point that URL at a PlanetScale Postgres branch with SSL. See [Add PostgreSQL](../services/postgres.mdx).
+
+## Next
+
+- [Add MySQL](../services/mysql.mdx)
+- [Override config with env](../landofile/env-overrides.mdx)
+- [Import a SQL dump](./import-a-database.mdx)

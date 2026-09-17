@@ -1,0 +1,115 @@
+import { lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { childEnv } from "../core/src/cli/commands/bun-self-runner.ts";
+import type {
+  WorkflowPerformanceCommand,
+  WorkflowPerformanceCommandResult,
+} from "./workflow-performance-command.ts";
+
+export class PerformanceStoreCleanupError extends Error {
+  override readonly name = "PerformanceStoreCleanupError";
+}
+
+export const unmountPerformanceOverlay =
+  'status=0; mountpoint -q "$1/overlay" || status=$?; case "$status" in 0) umount "$1/overlay";; 32) :;; *) exit "$status";; esac';
+
+export const acquirePerformanceStores = async (rootDir: string, key: string) => {
+  const parent = join(rootDir, "samples");
+  await mkdir(parent, { recursive: true });
+  const sampleRoot = join(await realpath(parent), key);
+  if (resolve(sampleRoot, "..") !== (await realpath(parent)))
+    throw new PerformanceStoreCleanupError("Sample key must name a direct child of samples");
+  await mkdir(sampleRoot, { mode: 0o700 });
+  const tmp = await realpath(tmpdir());
+  const runtimeRoot = await mkdtemp(join(tmp, "lp-"));
+  const dataRoot = await mkdtemp(join(tmp, "ld-"));
+  const identities = await Promise.all([lstat(sampleRoot), lstat(runtimeRoot), lstat(dataRoot)]);
+  const assertOwned = async () => {
+    for (const [index, path] of [sampleRoot, runtimeRoot, dataRoot].entries()) {
+      const stat = await lstat(path);
+      const original = identities[index];
+      if (
+        stat.isSymbolicLink() ||
+        (await realpath(path)) !== path ||
+        stat.ino !== original?.ino ||
+        stat.dev !== original.dev
+      )
+        throw new PerformanceStoreCleanupError(`Ownership changed; retaining ${path}`);
+    }
+  };
+  return {
+    sampleRoot,
+    runtimeRoot,
+    dataRoot,
+    assertOwned,
+    release: async (
+      runCommand: (command: WorkflowPerformanceCommand) => Promise<WorkflowPerformanceCommandResult>,
+      command: WorkflowPerformanceCommand,
+    ) => {
+      await assertOwned();
+      const targets = [
+        join(dataRoot, "runtime/storage"),
+        join(dataRoot, "runtime/bin"),
+        join(sampleRoot, "cache"),
+      ];
+      for (const target of targets) {
+        try {
+          if ((await realpath(target)) !== target)
+            throw new PerformanceStoreCleanupError(`Store path changed; retaining ${target}`);
+        } catch (cause) {
+          if (!(cause instanceof Error && "code" in cause && cause.code === "ENOENT")) throw cause;
+        }
+      }
+      const storage = targets[0];
+      if (storage === undefined) throw new PerformanceStoreCleanupError("Missing storage target");
+      let storageExists = true;
+      try {
+        await lstat(storage);
+      } catch (cause) {
+        if (!(cause instanceof Error && "code" in cause && cause.code === "ENOENT")) throw cause;
+        storageExists = false;
+      }
+      if (storageExists) {
+        const result = await runCommand({
+          ...command,
+          id: "cleanup:storage",
+          timeoutMs: 30_000,
+          env: { ...command.env, CONTAINERS_CONF: join(dataRoot, "runtime/config/containers.conf") },
+          argv: [
+            join(dataRoot, "runtime/bin/podman"),
+            "--root",
+            storage,
+            "--runroot",
+            join(dataRoot, "runtime/run"),
+            "unshare",
+            "sh",
+            "-ec",
+            `${unmountPerformanceOverlay}; rm -rf -- "$1"`,
+            "sh",
+            storage,
+          ],
+        });
+        const helpers = await runCommand({
+          ...command,
+          id: "cleanup:storage-helpers",
+          timeoutMs: 30_000,
+          argv: [
+            process.execPath,
+            join(import.meta.dir, "workflow-performance-runtime-cleanup.ts"),
+            "--helpers-only",
+          ],
+          env: childEnv({ ...command.env }),
+        });
+        const failures = [result, helpers].filter((step) => step.exitCode !== 0);
+        if (failures.length > 0) return failures;
+      }
+      for (const target of targets) await rm(target, { recursive: true, force: true });
+      await rm(runtimeRoot, { recursive: true });
+      await rm(dataRoot, { recursive: true });
+      return [];
+    },
+  };
+};
+
+export type PerformanceStores = Awaited<ReturnType<typeof acquirePerformanceStores>>;

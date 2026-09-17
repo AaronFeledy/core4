@@ -56,6 +56,7 @@ import {
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
 import { type PluginStateStore, definePlugin } from "@lando/sdk/plugins";
 import {
+  AbsolutePath,
   AppId,
   type AppPlan,
   type HostPlatform,
@@ -89,7 +90,7 @@ import {
   type ServiceSelector,
 } from "@lando/sdk/services";
 
-import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 
 export {
@@ -1031,10 +1032,35 @@ const removeNetworkSilent = (api: DockerApiClient, plan: AppPlan): Effect.Effect
     path: `/networks/${encodeURIComponent(networkName(plan))}`,
   }).pipe(Effect.catchAll(() => Effect.void));
 
-const removeVolumeSilent = (api: DockerApiClient, name: string): Effect.Effect<void> =>
-  request(api, "destroy", { method: "DELETE", path: `/volumes/${encodeURIComponent(name)}` }).pipe(
-    Effect.catchAll(() => Effect.void),
-  );
+const removeOwnedVolume = (
+  api: DockerApiClient,
+  plan: AppPlan,
+  name: string,
+): Effect.Effect<void, ProviderError> =>
+  Effect.gen(function* () {
+    const path = `/volumes/${encodeURIComponent(name)}` as const;
+    const inspected = yield* request(api, "destroy", { method: "GET", path });
+    if (inspected.status === 404) return;
+    if (inspected.status < 200 || inspected.status >= 300) {
+      return yield* Effect.fail(
+        unavailable(
+          "destroy.volume.inspect",
+          `Docker volume inspect failed with HTTP ${inspected.status}.`,
+          inspected,
+        ),
+      );
+    }
+    const decoded = yield* parseJson(inspected, "destroy.volume.inspect");
+    if (typeof decoded !== "object" || decoded === null) return;
+    const labels = Reflect.get(decoded, "Labels");
+    if (typeof labels !== "object" || labels === null) return;
+    if (Reflect.get(labels, "dev.lando.volume-owner") !== plan.root) return;
+    const removed = yield* request(api, "destroy", { method: "DELETE", path });
+    if (removed.status === 404 || removed.status === 204 || removed.status === 200) return;
+    return yield* Effect.fail(
+      unavailable("destroy.volume", `Docker volume remove failed with HTTP ${removed.status}.`, removed),
+    );
+  });
 
 interface DiscoveredContainer {
   readonly id: string;
@@ -1312,7 +1338,7 @@ const bringDown = (plan: AppPlan, api: DockerApiClient, options: BringDownOption
         } else if (store.scope === "global" || options.volumes !== true) {
           continue;
         }
-        yield* removeVolumeSilent(api, store.name);
+        yield* removeOwnedVolume(api, plan, store.name);
       }
     }
   });
@@ -1334,6 +1360,7 @@ const inspectService = (
     if (response.status === 404) {
       return {
         app: plan.id,
+        appRoot: plan.root,
         service: service.name,
         providerId: plan.provider,
         status: "stopped",
@@ -1355,6 +1382,7 @@ const inspectService = (
     const materialized = publishedEndpointsFromInspect(decoded);
     return {
       app: plan.id,
+      appRoot: plan.root,
       service: service.name,
       providerId: plan.provider,
       status,
@@ -1734,7 +1762,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       : persistAppliedPlan(options.appliedPlanState, persistedPlan).pipe(Effect.asVoid);
   };
 
-  const forgetPlan = (appId: AppId): Effect.Effect<void> => {
+  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
     plans.delete(appId);
     return options.appliedPlanState === undefined
       ? Effect.void
@@ -1778,6 +1806,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
         ),
+        appliedPlans:
+          options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+            ? Effect.succeed([])
+            : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
         planSetup: () => Effect.succeed({ providerId: ProviderId.make(PROVIDER_ID), changes: [] }),
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
@@ -1894,6 +1926,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
                     return {
                       app: AppId.make(appId),
+                      ...(container.labels["dev.lando.app-root"] === undefined
+                        ? {}
+                        : { appRoot: AbsolutePath.make(container.labels["dev.lando.app-root"]) }),
                       service: ServiceName.make(serviceName),
                       providerId: ProviderId.make(PROVIDER_ID),
                       status,
@@ -1939,6 +1974,10 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        appliedPlans: (ctx) =>
+          Effect.flatMap(PathsService, (paths) =>
+            listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
+          ),
         make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;

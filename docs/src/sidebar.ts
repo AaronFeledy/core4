@@ -52,7 +52,14 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
+          { label: "Run the Rails recipe", slug: "guides/recipes/rails-workflow" },
+          { label: "Run the Astro recipe", slug: "guides/recipes/astro-workflow" },
           { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
+          { label: "Run the MEAN recipe", slug: "guides/recipes/mean-workflow" },
+          { label: "Run the Symfony recipe", slug: "guides/recipes/symfony-workflow" },
+          { label: "Run the Laravel recipe", slug: "guides/recipes/laravel-workflow" },
+          { label: "Run the SvelteKit recipe", slug: "guides/recipes/sveltekit-workflow" },
+          { label: "Run the Next.js recipe", slug: "guides/recipes/nextjs-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
@@ -144,6 +151,7 @@ export const sidebar = [
   {
     label: "Recipes",
     items: [
+      { label: "Astro", slug: "recipes/astro" },
       { label: "Backdrop", slug: "recipes/backdrop" },
       { label: "Django", slug: "recipes/django" },
       { label: "Drupal", slug: "recipes/drupal" },
@@ -153,7 +161,9 @@ export const sidebar = [
       { label: "Laravel", slug: "recipes/laravel" },
       { label: "LEMP", slug: "recipes/lemp" },
       { label: "MEAN", slug: "recipes/mean" },
+      { label: "Next.js", slug: "recipes/nextjs" },
       { label: "Rails", slug: "recipes/rails" },
+      { label: "SvelteKit", slug: "recipes/sveltekit" },
       { label: "Symfony", slug: "recipes/symfony" },
       { label: "WordPress", slug: "recipes/wordpress" },
     ],

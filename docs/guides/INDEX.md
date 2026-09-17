@@ -180,6 +180,7 @@ outside `docs/guides/` so they are not gate-validated here.
 | `node-api` | Node API (Express, Fastify, or Hono; optional Postgres) | `recipes/node-api/README.mdx` | Shipped |
 | `node-ts` | Node with an environment-adaptive programmatic Landofile | `recipes/node-ts/README.mdx` | Shipped |
 | `rails` | Rails (Ruby 3.3 + PostgreSQL + Redis, rails and bundle tooling) | `recipes/rails/README.mdx` | Shipped |
+| `symfony` | Symfony (PHP + PostgreSQL/MariaDB, Redis, console and Composer) | `recipes/symfony/README.mdx` | Shipped |
 | `astro` | Astro (Node; optional Postgres or MariaDB content source) | `recipes/astro/README.mdx` | Shipped |
 | `sveltekit` | SvelteKit (Node, adapter picker; optional Postgres or MariaDB) | `recipes/sveltekit/README.mdx` | Shipped |
 | `nextjs` | Next.js (Node + Postgres by default; optional auth helper) | `recipes/nextjs/README.mdx` | Shipped |
@@ -199,6 +200,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Landofile intro: services, tooling, and proxy | `docs/guides/landofile/your-landofile.mdx` | Shipped |
 | — | — | everyday CLI loop map | `docs/guides/cli/everyday-commands.mdx` | Shipped |
 | — | — | import a SQL dump with exec plus client | `docs/guides/tooling/import-a-database.mdx` | Shipped |
+| — | — | develop against PlanetScale with local MySQL and DATABASE_URL | `docs/guides/tooling/planetscale.mdx` | Shipped |
 | — | — | `lando ssh` service shell and host keys | `docs/guides/cli/ssh.mdx` | Shipped |
 | — | — | `lando apps:poweroff` stop every running app | `docs/guides/cli/poweroff.mdx` | Shipped |
 | — | — | `lando exec` one-off commands in a service | `docs/guides/cli/exec.mdx` | Shipped |
@@ -229,7 +231,14 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-02 | US-565 | Landofile events-as-tasks at lifecycle points | `docs/guides/landofile/events.mdx` | Shipped |
 | — | — | PHP image build failure remediation | `docs/guides/services/php-build-failures.mdx` | Shipped |
 | — | — | LAMP stack service variants | `docs/guides/recipes/lamp-stack-variants.mdx` | Shipped |
+| — | — | Rails recipe day-to-day workflow | `docs/guides/recipes/rails-workflow.mdx` | Shipped |
+| — | — | Astro recipe day-to-day workflow | `docs/guides/recipes/astro-workflow.mdx` | Shipped |
 | — | — | Django recipe day-to-day workflow | `docs/guides/recipes/django-workflow.mdx` | Shipped |
+| — | — | MEAN recipe day-to-day workflow | `docs/guides/recipes/mean-workflow.mdx` | Shipped |
+| — | — | Symfony recipe day-to-day workflow | `docs/guides/recipes/symfony-workflow.mdx` | Shipped |
+| — | — | Laravel recipe day-to-day workflow | `docs/guides/recipes/laravel-workflow.mdx` | Shipped |
+| — | — | SvelteKit recipe day-to-day workflow | `docs/guides/recipes/sveltekit-workflow.mdx` | Shipped |
+| — | — | Next.js recipe day-to-day workflow | `docs/guides/recipes/nextjs-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |

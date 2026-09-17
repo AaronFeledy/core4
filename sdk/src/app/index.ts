@@ -17,6 +17,7 @@ import type {
   BuildPhaseFailedError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
+  CacheError,
   CapabilityError,
   CommandAliasConflictError,
   ComposeKeyRejectedError,
@@ -254,12 +255,14 @@ export type StopAppOptions = {};
 
 export interface StopAppResult {
   readonly app: string;
+  readonly outcome?: "stopped" | "unchanged";
   readonly servicesStopped: ReadonlyArray<string>;
 }
 
 export type StopAppError =
   | ManagedFileTransactionError
   | AppIdReservedError
+  | AppResolveError
   | EventError
   | LandofileEventLifecycleReentryError
   | LandofileEventInvocationDepthError
@@ -304,7 +307,7 @@ export interface RestartAppResult {
   readonly servicesStarted: StartAppResult["servicesStarted"];
 }
 
-export type RestartAppError = StartAppError;
+export type RestartAppError = StartAppError | AppResolveError;
 
 export interface RebuildAppOptions {
   readonly services?: ReadonlyArray<ServiceName>;
@@ -317,7 +320,7 @@ export interface RebuildAppResult {
   readonly servicesStarted: StartAppResult["servicesStarted"];
 }
 
-export type RebuildAppError = StartAppError;
+export type RebuildAppError = StartAppError | AppResolveError;
 
 export interface DestroyAppOptions {
   readonly volumes?: boolean;
@@ -327,11 +330,12 @@ export interface DestroyAppOptions {
 
 export interface DestroyAppResult {
   readonly app: string;
+  readonly outcome?: "destroyed" | "unchanged";
   readonly servicesDestroyed: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
 }
 
-export type DestroyAppError = StopAppError | ProxyError | StateStoreError;
+export type DestroyAppError = StopAppError | ProxyError | StateStoreError | CacheError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;

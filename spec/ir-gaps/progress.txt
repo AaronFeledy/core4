@@ -21,6 +21,8 @@
 - A scoped provider apply must persist the full app plan with the newly built selected service definitions overlaid. Remembering only the subplan loses unrelated services; remembering the original full plan loses newly stamped artifact references.
 - Service features are filesystem-free by type: `apply` is `(ctx) => Effect<void, ServiceFeatureError>` with no requirements channel. Anything needing `stat`/`readdir`/realpath belongs in the planner (see certs), leaving the feature the pure `resolveBindSource` join.
 - Export container mount destinations as `PortablePath.make(...)` constants. A bare string constant typechecks at the `addMount` call site but fails every whole-`MountPlan` `toEqual`/`toContainEqual` assertion, because `target` is branded.
+- The guide harness fakes `lando start`: `runScenarioLayerCommand` in `core/src/testing/scenario-context.ts` returns a canned `ready` / exit 0 before the real CLI runs, and only one hardcoded landofile substring makes it exit non-zero. A guide scenario that must prove a planner or validation rejection has to run a command that falls through to `invokeRealCli`, such as `lando app:cache:refresh`.
+- Service-type config rejections belong in `ServiceType.resolve`, not in the feature. `engine/src/services/feature.ts` decodes `feature.definition.schema` against the feature REF config, never against the service config, so a feature schema cannot see `services.<name>.*` keys. `ServiceType.schema` is catalog metadata that nothing decodes. `assemble.ts` maps a resolve failure through `servicePlanError`, so the plugin's `ServiceTypeError` message becomes the user-visible `LandofileValidationError` body: lead that message with the exact key path (`services.<name>.<key>[<i>]`) because `issues` stays at service granularity.
 - `check:schema-compatibility` reads the WORKING side from the gitignored derived tree (`core/dist/schemas`), which goes stale the moment you merge main. A schema that main added but your local dist predates reports as `BREAKING surface-removed` for a surface your branch never touched. Run `bun run codegen:schema-snapshot` before believing a breaking row, and cross-check the PR's `schema-snapshot` job.
 
 ## 2026-09-11 - US-613 (in progress, not complete)
@@ -825,4 +827,100 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app, and proved post-start scanning against the binary: default `/` scan succeeded with no URL warning; `scanner.path: /nope` warned `URL scan for service appserver at https://appserver.us628-verify.lndo.site:4443/nope answered with an unaccepted status: HTTP 404` while start still exited 0; `scanner: false` emitted no URL-scan warning. HTTPS curl and `lando exec` printed `us628-ok`; `lando info` listed the published HTTPS URL; invalid `retries: -1` failed lint on `services.appserver.scanner.retries`. App destroyed; temp dir removed.
 - **Out-of-scope finding:** setup warned ports 80/443 were in use and fell back to 8000/4443; `curl http://appserver.us628-verify.lndo.site:8000/` returned 404. Same host/WSL mirrored bind as prior verifies; HTTPS-only diagnostic is US-624, not US-628.
 - **Out-of-scope finding:** `lando destroy --yes` against a Landofile with `scanner.retries: -1` failed `LandofileValidationError` before teardown. Restoring a valid Landofile then destroy succeeded. Belongs to US-629 invalid-config teardown, not this scanner story.
+---
+## 2026-09-16 - US-629 (in progress, not complete)
+- Stop and destroy now recover validated applied state when desired configuration is unavailable or invalid, including fresh library handles. Provider provenance, canonical root, and ownership checks fail closed; resource-confirmed empty apps return an explicit unchanged outcome. Failed provider teardown or applied-record removal no longer silently discards recovery evidence.
+- Inventory reports stale roots, and bounded pruning rechecks provider resources under the app mutation lock before removing modern applied records. Stop/destroy output and the lifecycle and everyday-command guides describe the new outcomes.
+- Verification: gate:pr, typecheck, lint, boundaries, guide gates, and changed-file diagnostics passed; the final focused safety checks passed 63 tests, and both required executable guides passed one scenario each. Sandbox CLI verification stopped and destroyed an app after invalidating its configuration, removed its volumes, and left only the shared global app in inventory. Owned sandbox fixtures were removed; no full suite was run.
+- Remaining acceptance blocker: stale pruning still leaves legacy provider inventory records that discovery continues to read, allowing a pruned entry to reappear. Remove applicable legacy records through advisory-locked StateStore buckets inside the existing app mutation lock, with legacy-only and duplicate-record regression coverage, before marking the story implemented.
+- **Learnings for future iterations:**
+  - Applied-plan provider identity must be checked against the provider supplying the record, not a provider selected from the record itself.
+  - Empty applied state is not proof of absent resources; include stopped containers and owned volumes, and propagate inspection failures.
+  - Inventory cleanup must cover every representation that discovery reads, including legacy records, and deletion failures must not produce successful prune receipts.
+---
+## 2026-09-16 - US-629 (implemented)
+- Stale inventory pruning now removes matching legacy provider records as well as modern applied state, so legacy-only and duplicate entries stay gone after rediscovery. App, root, and provider mismatches fail closed; deletion failures cannot produce successful prune receipts.
+- Applied ownership discovery now reads persisted provider inventory before initializing a runtime. Invalid-config stop and destroy select the actual owner without failing on an unrelated installed provider's unavailable socket; inventory failures and ownership conflicts still propagate.
+- Verification: gate:pr passed, including typecheck, lint, codegen, boundaries, and guide drift; 135 final focused tests passed. Both required executable guides passed with positive scenario counts, guide gates passed, and changed TypeScript diagnostics were clean. Regression failures were captured before both fixes; independent acceptance review approved without blockers. No full local suite was run.
+- Sandbox verification: legacy-only and duplicate stale records were pruned with exact receipts and remained absent. A live app stopped after config corruption with all four volumes preserved, then restarted and was destroyed after another corruption; containers, volumes, and inventory were empty afterwards. Owned QA roots, daemons, network, and tmux resources were cleaned without touching shared resources.
+- **Learnings for future iterations:**
+  - Persisted ownership discovery must not initialize every installed runtime: an unrelated provider's valid availability check can otherwise block recovery of the actual owner's applied state. Keep inventory reading separate from live provider construction.
+  - Legacy inventory filenames are not authoritative app identities; decode records and validate app, root, and provider before removing them under the existing mutation lock.
+---
+## 2026-09-16 - US-629 Review
+- Prune now rechecks that the candidate root is still missing under the app mutation lock, and deletes modern/Podman applied records only when the persisted root still matches the stale candidate, so a same-id live app at another root cannot be erased.
+- Review notes (deferred/rejected): ownerKey volume-selector dual-path is a pre-ship compatibility shim; onCorrupt discard is the existing applied-state cache-miss contract from #850; live container/network label inspection before name-based bring-down is a pre-existing provider teardown surface, not this story's applied-record checks.
+- Verification: typecheck diagnostics clean on changed files; 38 focused prune tests passed; guide gates and gate:pr were already green before the prune fix.
+---
+## 2026-09-16 13:21 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-16 - US-629 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app, and proved applied-state teardown: invalid-config stop preserved the app, missing Landofile destroy cleared inventory, never-started/repeat destroy returned `unchanged`, a deleted root listed as stale and `--prune` kept it while resources remained, then empty-root destroy removed it.
+- Blocker fixed: empty applied teardown initialized bundled docker/podman daemons and failed `ProviderUnavailableError` instead of `unchanged`; skip runtime evidence when `isAvailable` is false.
+- **Out-of-scope finding:** `curl http://appserver.us629-verify.lndo.site:8000/` was not used; setup warned 80/443 in use and fell back to 8000/4443. HTTPS `:4443` served `us629-ok`. Same host/WSL mirrored bind as prior verifies.
+- **Out-of-scope finding:** after a volumes-preserving destroy, a later `destroy --volumes` without restart fails `AppResolveError` (`provider-resources`) because applied state is gone while volumes remain. Start then `destroy --volumes` cleans them. Fail-closed by design for this story.
+- **Learnings for future iterations:** bundled unused providers must not be initialized to confirm absence; `isAvailable` false (or make() failing) is not evidence of leftover resources.
+---
+
+## 2026-09-16 15:15 - Babysit
+- PR: #1003 https://github.com/AaronFeledy/core4/pull/1003
+- CI outcome: fail (unit-tests-linux-x64-shard 1 and 2, guide-scenarios-windows-x64) — residual failures are `lando stop`/`lando destroy` "preserves the missing Landofile error outside an app directory", the three `destroy --purge/--purge-caches/--volumes` flag-parsing scenarios, and compiled app command aliases; all exercise the compiled CLI binary, which the focused source-level spot checks did not cover.
+- Review feedback: fixed (optional identity honored on resolved teardown plans; guide fixture registry no longer reports a false empty applied state; desired-resolution errors now propagate when applied recovery finds no plan; `apps:list` MCP opt-in restored; container label goldens updated for the consumed `dev.lando.app-root` label). First triage round wrongly rejected the MCP, container-label, and missing-Landofile failures as stale expectations — all three were real and were fixed in round two.
+- Drift check: clean (no drift in the five babysit commits; emission goldens remain as strict as at the audit base)
+- Merge: deferred (CI still red after two triage rounds; next Build must fix compiled-CLI teardown so a directory with no Landofile still fails with the `lando init` remediation instead of an idempotent `unchanged`)
+---
+## 2026-09-16 15:13 - Babysit
+- [looper] Babysit blocked: CI still red: compiled-CLI teardown must preserve the missing-Landofile error (stop/destroy scenarios + compiled aliases) and guide-scenarios-windows-x64 fails; babysit budget exhausted after two triage rounds
+---
+## 2026-09-16 15:13 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-16 15:13 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-16 - US-629 Drift Audit
+- Trigger: 4 cycles, 2668/241 changed lines, 37 commits
+- Dual path: compiled `apps:list --prune` called read-only list and emitted empty prune receipts
+- Weakened proofs: `listServices({ prune: true })` blessed a fake receipt; source missing-Landofile stop/destroy still fail-closed
+- Ceremony: new modules are real logic, not forwarders; left in place to avoid blowing 250 LOC
+- Collateral: `prd.json` unchanged; no other-story phases
+- Deferred re-exam: ownerKey volume-selector, leftover volumes, onCorrupt — no in-place regression to fix
+- Fixed: compiled list prune uses the mutating path; prune receipts emit only when prune actually ran
+- Split/excise decisions: none
+- Verification: typecheck pass, lint pass, 110 focused tests pass; compiled-binary missing-Landofile CI residual not reproduced on source CLI
+---
+## 2026-09-16 15:26 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-16 15:26 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-16 15:26 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-16 17:55 - Babysit
+- PR: #1003 https://github.com/AaronFeledy/core4/pull/1003
+- CI outcome: pass
+- Review feedback: fixed (provider-lando lifecycle/cross-process fixtures realigned to the four-part ownership-scoped volume selector; windows-arm64 private-file ACL failure was an unrelated runner flake cleared by rerun)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-09-16 18:40 - US-631
+
+Solr core names can no longer address anything but their own directory, and the config overlay rules are written down instead of implied.
+
+- Core names now go through a `SolrCoreName` schema in the Solr plugin that keeps the existing character set and additionally refuses the reserved `.` and `..`. The check moved out of command generation and into `ServiceType.resolve`, so a bad name is refused before the startup command exists, before any provider is selected, and even when the author supplied their own `command:` (authored `cores` is configuration, so its validity does not depend on whether the built-in command consumes it). The refusal is a tagged `ServiceTypeError` whose message names `services.<name>.cores[<index>]`, the rejected value, and the fix; the planner turns that into the user-visible `LandofileValidationError` against the Landofile. Dotted names such as `a.b` and `a...b` stay accepted and keep byte-identical generated shell.
+- The feature-level guard stayed, rewritten to consume the same schema, so composing `solrServiceFeature` directly without a resolver still cannot emit a traversing core. The schema is the single rule source; the guard is a sink.
+- The Solr guide now states the core naming rule with its error text, and describes the config overlay as intentional: `cp -a` lays the mounted directory over what `precreate-core` wrote for each core, it reruns every start, and a failed copy exits instead of serving a half-configured core. It also documents that overlay identity is content, not path: relocating a directory keeps the build key, changing a file inside it rebuilds, and an empty directory is a legal overlay with one fixed identity.
+- Locked the empty-overlay contract with tests rather than leaving it to inference: an empty `config.dir` hashes the empty file list, two empty directories at different paths share that identity, the resulting service build key survives relocation, and the first file added changes it.
+
+Verification: gate:pr (typecheck, lint, codegen:check, all 13 boundary rules, guide-drift against origin/main) passed, plus check:guide-coverage, check:public-transcripts, check:schema-compatibility (0 breaking), and lint:guides. Spot checks: 977 service-lando tests, 922 engine planner/services tests, and the Solr guide (2 scenarios) all pass with 0 failures. Manual CLI QA on the real binary with isolated user roots: `.`, `..`, `a/b`, `a\b`, and `../escape` each fail `lando info` with exit 1, `code: LandofileValidationError`, `issues: services.search`, and a message naming `services.search.cores[0]`; the same rejection fires with an authored `command:`; `a.b`, `a...b`, `core_1`, and `core-2` plan through validation and stop only at the absent provider.
+
+- **Learnings for future iterations:**
+  - The RED test earned its keep twice. It proved `.` and `..` were accepted, and it also exposed that every other rejection was happening inside `defaultCommand`, which the authored-`command:` path skips entirely.
+  - Copying an existing guide's rejection scenario is a trap: the `invalid-service-type` scenario passes because its fixture contains the one string the scenario-layer fake looks for, not because `lando start` validates anything. Check which commands the harness actually forwards before writing a failure scenario.
+  - A plugin cannot widen the error surface it reports. `ServiceType.resolve` is typed to `ServiceTypeError` and `servicePlanError` fixes `issues` at `services.<name>`, so precision has to live in the message. That is enough for a source-aware refusal and avoids an SDK error-shape change for one service type.
 ---

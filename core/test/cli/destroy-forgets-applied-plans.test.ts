@@ -134,7 +134,7 @@ describe("provider-lando destroy vs apps:list inventory", () => {
     });
   });
 
-  test("destroy still drops the apps:list plan when bringDown cannot reach the runtime", async () => {
+  test("destroy retains the apps:list plan when bringDown cannot reach the runtime", async () => {
     await withUserDataRoot(async (userDataRoot) => {
       await persistLivePlan(userDataRoot);
       const provider = await makeProvider(userDataRoot, false);
@@ -143,7 +143,7 @@ describe("provider-lando destroy vs apps:list inventory", () => {
       );
 
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(await listedAppIds(userDataRoot)).toEqual([]);
+      expect(await listedAppIds(userDataRoot)).toEqual([String(appId)]);
     });
   });
 

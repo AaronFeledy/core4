@@ -119,7 +119,7 @@ const makeFakeApi = () => {
     plan.stores.map((store) => [
       store.name,
       {
-        "dev.lando.volume-selector": `lando:${plan.id}:${store.kind === "cache" ? "cache" : "data"}`,
+        "dev.lando.volume-selector": `lando:${plan.id}:${appRoot}:${store.kind === "cache" ? "cache" : "data"}`,
       },
     ]),
   );
@@ -271,7 +271,9 @@ describe("provider-lando bringDown", () => {
           if (request.method === "GET" && request.path === "/volumes/foreign-data") {
             return {
               status: 200,
-              body: JSON.stringify({ Labels: { "dev.lando.volume-selector": "lando:otherapp:data" } }),
+              body: JSON.stringify({
+                Labels: { "dev.lando.volume-selector": `lando:otherapp:${appRoot}:data` },
+              }),
             };
           }
           if (request.method === "DELETE" && request.path === "/volumes/foreign-data") {
@@ -301,7 +303,9 @@ describe("provider-lando bringDown", () => {
     const filters = JSON.parse(
       decodeURIComponent(new URL(`http://localhost${prune?.path ?? ""}`).searchParams.get("filters") ?? "{}"),
     ) as Record<string, readonly string[]>;
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:bringdownapp:cache"]);
+    expect(filters.label).toEqual([
+      "dev.lando.volume-selector=lando:bringdownapp:/tmp/lando-bringdown-app:cache",
+    ]);
     expect(filters["label!"]).toBeUndefined();
     expect(filters.all).toBeUndefined();
   });
@@ -319,7 +323,9 @@ describe("provider-lando bringDown", () => {
       string,
       readonly string[]
     >;
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:bringdownapp:data"]);
+    expect(filters.label).toEqual([
+      "dev.lando.volume-selector=lando:bringdownapp:/tmp/lando-bringdown-app:data",
+    ]);
     expect(filters.all).toBeUndefined();
     expect(pruneUrl.searchParams.get("all")).toBe("true");
   });
@@ -338,8 +344,8 @@ describe("provider-lando bringDown", () => {
       readonly string[]
     >;
     expect(filters.label).toEqual([
-      "dev.lando.volume-selector=lando:bringdownapp:cache",
-      "dev.lando.volume-selector=lando:bringdownapp:data",
+      "dev.lando.volume-selector=lando:bringdownapp:/tmp/lando-bringdown-app:cache",
+      "dev.lando.volume-selector=lando:bringdownapp:/tmp/lando-bringdown-app:data",
     ]);
     expect(filters.all).toBeUndefined();
     expect(pruneUrl.searchParams.get("all")).toBe("true");
@@ -443,7 +449,7 @@ describe("provider-lando bringDown", () => {
               Labels: {
                 "dev.lando.app": "bringdownapp",
                 "dev.lando.provider": "lando",
-                "dev.lando.volume-selector": "lando:bringdownapp:data",
+                "dev.lando.volume-selector": "lando:bringdownapp:/tmp/lando-bringdown-app:data",
               },
             },
           }),
@@ -457,7 +463,7 @@ describe("provider-lando bringDown", () => {
               Labels: {
                 "dev.lando.app": "other",
                 "dev.lando.provider": "lando",
-                "dev.lando.volume-selector": "lando:other:data",
+                "dev.lando.volume-selector": "lando:other:/tmp/lando-bringdown-app:data",
               },
             },
           }),

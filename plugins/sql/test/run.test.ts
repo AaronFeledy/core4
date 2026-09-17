@@ -270,6 +270,8 @@ describe("executeDbCommand", () => {
         wrapExportCommand(
           [
             "mysqldump",
+            "-h",
+            "127.0.0.1",
             "-u",
             "lando",
             "--single-transaction",
@@ -513,7 +515,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("hostPath");
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(wrapImportCommand(["mysql", "-u", "lando", "sql-app"], true));
+      expect(transfer.to.command).toEqual(
+        wrapImportCommand(["mysql", "-h", "127.0.0.1", "-u", "lando", "sql-app"], true),
+      );
     }
     expect(transfer?.expectedDigest).toMatch(/^[a-f0-9]{64}$/u);
   });
@@ -543,7 +547,7 @@ describe("executeDbCommand", () => {
     expect(harness.snapshots()[0]?.metadata?.recoveryReason).toBe("reset");
     const exec = harness.execs().find((entry) => entry.command.join(" ").includes("DROP DATABASE"));
     expect(exec?.command[0]).toBe("mysql");
-    expect(exec?.command.slice(0, 3)).toEqual(["mysql", "-u", "root"]);
+    expect(exec?.command.slice(0, 5)).toEqual(["mysql", "-h", "127.0.0.1", "-u", "root"]);
     expect(exec?.env?.MYSQL_PWD).toBe(rootPassword);
     expect(exec?.command.join(" ")).not.toContain(SECRET);
     expect(exec?.command.join(" ")).not.toContain(rootPassword);

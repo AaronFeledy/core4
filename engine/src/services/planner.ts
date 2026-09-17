@@ -65,7 +65,7 @@ export const AppPlannerLive = Layer.effect(
               providerCapabilities,
             ).pipe(
               Effect.flatMap((plan) => {
-                const identified = { ...plan, identity };
+                const identified = { ...plan, root: identity.appRoot, identity };
                 const tooling = effectiveToolingForPlan(plan);
                 const events = effectiveEventsForPlan(plan);
                 return adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry)).pipe(

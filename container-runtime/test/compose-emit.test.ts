@@ -217,7 +217,7 @@ describe("Podman Compose emission", () => {
     );
 
     expect(content).toContain(
-      '    labels:\n      dev.lando.app: "myapp"\n      dev.lando.service: "web"\n      example.com/role: "web"\n',
+      '    labels:\n      dev.lando.app: "myapp"\n      dev.lando.app-root: "/srv/apps/myapp"\n      dev.lando.service: "web"\n      example.com/role: "web"\n',
     );
   });
 

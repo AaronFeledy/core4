@@ -31,6 +31,14 @@ services:
     </Step>
   </Scenario>
 
+  <Scenario id="rejects-traversing-core" render={false} reason="Regression coverage for core names that escape the Solr data directory">
+    <Step name="plan-invalid-core">
+      <UseFixture name="solr-bad-core" />
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "services\\.search\\.cores\\[0]" }} />
+    </Step>
+  </Scenario>
+
 ## Precreate cores
 
 List cores under `services.search` to have Solr precreate them on boot, before the foreground server starts:
@@ -43,6 +51,12 @@ services:
 ```
 
 `precreate-core` runs for each declared core before `solr-foreground`, so every core exists before the server accepts queries.
+
+A core name has to name exactly one directory under `/var/solr/data`. Use letters, numbers, dots, underscores, and dashes. `.` and `..` are reserved, and `/` and `\` are rejected, so no core can precreate or overlay config outside its own directory. Dots inside a name are fine: `a.b` and `a...b` both work. Lando refuses a bad name while it plans the app, before it builds the startup command and before it starts a provider, and the error names the offending entry:
+
+```
+services.search.cores[0] "../escape" is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\" are not allowed. Rename the core to a plain directory name.
+```
 
 ## Hit the admin API
 
@@ -70,6 +84,10 @@ services:
 Lando mounts that directory read-only at `/etc/lando/solr/conf` inside the container. When the service starts, it copies the contents into `/var/solr/data/<core>/conf` for each core you declared, so `default` and `products` above both get the same config.
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
+
+That copy is an overlay, not a replace. `cp -a` lays your files over whatever `precreate-core` just wrote into `/var/solr/data/<core>/conf`, so anything you ship wins and anything you leave out keeps the stock file. It runs on every start, so an edited file lands on the next `lando start`. If the copy fails, the container exits instead of serving a half-configured core.
+
+Lando identifies that directory by its contents, not by where it sits. Move the directory and the service keeps its build key. Change a file inside it and the service rebuilds. An empty directory is a legal overlay and hashes to one fixed identity, so two empty directories in different places give the same build key, and the first file you add changes it.
 
 If you also set `command:` on the service, yours wins. Lando won't copy that config into each core unless your command does it.
 

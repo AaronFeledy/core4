@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 
 import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
@@ -660,7 +660,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       : removeAppliedPlan(options.appliedPlanState, appId);
   };
 
-  const hydratePlansFromDisk: Effect.Effect<void> =
+  const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
     options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
       ? Effect.void
       : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
@@ -779,6 +779,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       platform,
       capabilities: resolvedCapabilities,
       isAvailable: Effect.succeed(true),
+      appliedPlans:
+        options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+          ? Effect.succeed([])
+          : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
       ...resolvedOps,
       planSetup: () =>
         shouldManageRuntime && family === "linux"
@@ -959,11 +963,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             yield* teardown;
             return;
           }
-          const teardownExit = yield* Effect.exit(teardown);
+          yield* teardown;
           yield* forgetPlan(target.app);
-          if (Exit.isFailure(teardownExit)) {
-            return yield* Effect.failCause(teardownExit.cause);
-          }
         }),
       logs: (target, logOptions) =>
         Stream.unwrap(
@@ -1008,7 +1009,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                   plan,
                   { app: plan.id, service: service.name },
                   { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
-                ),
+                ).pipe(Effect.map((snapshot) => ({ ...snapshot, appRoot: plan.root }))),
               ),
             ),
           ),
@@ -1076,6 +1077,10 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
+        appliedPlans: (ctx) =>
+          Effect.flatMap(PathsService, (paths) =>
+            listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
+          ),
         make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;

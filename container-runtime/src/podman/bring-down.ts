@@ -203,7 +203,11 @@ const removeVolume = (
       labels === undefined ||
       !volumeMatchesFilters(
         labels,
-        buildLandoVolumeFilters(plan.id, { providerId: plan.provider, volumeClasses: [volumeClass] }),
+        buildLandoVolumeFilters(plan.id, {
+          providerId: plan.provider,
+          ownerKey: plan.identity?.ownerKey ?? plan.root,
+          volumeClasses: [volumeClass],
+        }),
       )
     ) {
       return false;
@@ -248,6 +252,7 @@ const pruneAppScopedVolumes = (deps: BringDownDeps, plan: AppPlan): Effect.Effec
   pruneVolumes(deps.api, {
     filters: buildLandoVolumeFilters(plan.id, {
       providerId: plan.provider,
+      ownerKey: plan.identity?.ownerKey ?? plan.root,
       volumeClasses: pruneVolumeClasses(deps.options),
     }),
     ctx: deps.options.ctx,

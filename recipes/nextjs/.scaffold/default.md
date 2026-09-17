@@ -4,6 +4,7 @@
 
 ```sh
 lando init --recipe nextjs --name=my-nextjs --yes
+cd my-nextjs
 lando start
 lando info
 ```
@@ -14,6 +15,7 @@ lando info
 lando init --recipe nextjs --name=my-nextjs --yes \
   --answer=database=none \
   --answer=auth=nextauth
+cd my-nextjs
 ```
 
 | Option | Values | Default |

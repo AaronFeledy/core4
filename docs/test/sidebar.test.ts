@@ -9,6 +9,7 @@ const landingPagePath = join(docsRoot, "index.md");
 
 const GROUP_LABELS = ["Guides", "Recipes", "Reference", "Embedding", "Telemetry", "Contributing"] as const;
 const RECIPE_IDS = [
+  "astro",
   "backdrop",
   "django",
   "drupal",
@@ -18,7 +19,9 @@ const RECIPE_IDS = [
   "laravel",
   "lemp",
   "mean",
+  "nextjs",
   "rails",
+  "sveltekit",
   "symfony",
   "wordpress",
 ] as const;
@@ -122,7 +125,14 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/install/posix-installer");
     expect(slugs).toContain("guides/install/wsl");
     expect(slugs).toContain("guides/recipes/lamp-stack-variants");
+    expect(slugs).toContain("guides/recipes/rails-workflow");
+    expect(slugs).toContain("guides/recipes/astro-workflow");
     expect(slugs).toContain("guides/recipes/django-workflow");
+    expect(slugs).toContain("guides/recipes/mean-workflow");
+    expect(slugs).toContain("guides/recipes/symfony-workflow");
+    expect(slugs).toContain("guides/recipes/laravel-workflow");
+    expect(slugs).toContain("guides/recipes/sveltekit-workflow");
+    expect(slugs).toContain("guides/recipes/nextjs-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
     expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");
     expect(slugs).toContain("guides/recipes/programmatic-recipe");
