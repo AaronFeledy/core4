@@ -375,7 +375,7 @@ export const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => 
   const format = activeTextJsonFormat();
   return runCompiledCommand(
     appConfigLint(),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
     (value) => renderConfigLintResult(value, format),
   );
 };

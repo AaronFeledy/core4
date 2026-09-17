@@ -125,7 +125,11 @@ const makeMssqlServiceType = (id: string, image: string): ServiceType => ({
   schema: MssqlServiceConfig,
   resolve: (input) => {
     const arch = input.host?.arch ?? process.arch;
-    if (!hostRunsMssqlWithoutEmulation(arch) && input.capabilities?.architectureEmulation !== true) {
+    if (
+      input.capabilities !== undefined &&
+      !hostRunsMssqlWithoutEmulation(arch) &&
+      input.capabilities.architectureEmulation !== true
+    ) {
       return Effect.fail(
         new ServiceTypeError({
           message: ARCH_REMEDIATION,

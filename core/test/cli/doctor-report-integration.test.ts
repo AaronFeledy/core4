@@ -16,6 +16,7 @@ import { GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import {
   DoctorReportSchema,
   collectDoctorReport,
@@ -45,6 +46,7 @@ const registryService: Context.Tag.Service<typeof RuntimeProviderRegistry> = {
 
 const runtimeLayer = (config: GlobalConfig) =>
   Layer.mergeAll(
+    PluginRegistryLive,
     Layer.succeed(ConfigService, configService(Effect.succeed(config), config)),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
     Layer.succeed(RuntimeProviderRegistry, registryService),

@@ -12,7 +12,7 @@ tags: [beta, docs, landofile, config, lint]
 lando app:config:lint
 ```
 
-That validates the current app's Landofile against the canonical schema. It runs the JSON Schema only: no translators, no doctor checks, no provider probes. A clean Landofile exits `0`.
+That validates the current app's Landofile against the canonical schema, then checks that every key under `events:` names an event Lando can actually run. No translators, no doctor checks, no provider probes, no container runtime. A clean Landofile exits `0`.
 
 ## Print JSON
 
@@ -36,9 +36,15 @@ A schema violation exits non-zero. Each violation carries a dot-joined `path`, a
 
 A rejected Compose key keeps its full authored path, for example `services.web.deploy.replicas`. The `suggestedFix` comes from the pinned Compose disposition matrix instead of a generic unknown-key message.
 
+## Read unknown event names
+
+Lint resolves your tooling the same way `lando start` does: your Landofile, every config layer, every include, and every service type. So a task a service type contributes, such as `mysql` on a `mysql:8.0` service, makes `pre-mysql` and `post-mysql` valid here too. An event key outside that set exits non-zero with `LandofileUnknownEventError` and lists every name you could have used.
+
+When Lando cannot resolve your services at all, lint reports that resolution failure. It does not call your event key unknown on the strength of a set it could not finish building.
+
 ## Run it from doctor
 
-`lando doctor --app` runs the same canonical-schema lint as part of the combined doctor report, under the `app-config-lint` check name. Both commands call the same `lintLandofile` pass.
+`lando doctor --app` runs the same lint as part of the combined doctor report, under the `app-config-lint` check name. Both commands call the same pass, so they never disagree about which events exist.
 
 <Guide>
   <Scenario id="clean-landofile" render>

@@ -684,7 +684,14 @@ export interface AppConfigLintOptions {
 export interface AppConfigApi {
   readonly lint: (
     options?: AppConfigLintOptions,
-  ) => Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileUnknownEventError>;
+  ) => Effect.Effect<
+    ConfigLintResult,
+    | LandofileNotFoundError
+    | LandofileUnknownEventError
+    | LandofileValidationError
+    | CommandAliasConflictError
+    | NotImplementedError
+  >;
 }
 
 /**

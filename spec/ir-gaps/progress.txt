@@ -23,6 +23,9 @@
 - Export container mount destinations as `PortablePath.make(...)` constants. A bare string constant typechecks at the `addMount` call site but fails every whole-`MountPlan` `toEqual`/`toContainEqual` assertion, because `target` is branded.
 - The guide harness fakes `lando start`: `runScenarioLayerCommand` in `core/src/testing/scenario-context.ts` returns a canned `ready` / exit 0 before the real CLI runs, and only one hardcoded landofile substring makes it exit non-zero. A guide scenario that must prove a planner or validation rejection has to run a command that falls through to `invokeRealCli`, such as `lando app:cache:refresh`.
 - Service-type config rejections belong in `ServiceType.resolve`, not in the feature. `engine/src/services/feature.ts` decodes `feature.definition.schema` against the feature REF config, never against the service config, so a feature schema cannot see `services.<name>.*` keys. `ServiceType.schema` is catalog metadata that nothing decodes. `assemble.ts` maps a resolve failure through `servicePlanError`, so the plugin's `ServiceTypeError` message becomes the user-visible `LandofileValidationError` body: lead that message with the exact key path (`services.<name>.<key>[<i>]`) because `issues` stays at service granularity.
+- One resolution prefix, many surfaces: `resolveKnownEventSet` (`engine/src/planner/event-set.ts`) is the provider-free prefix of `planApp` — provider precedence, plugin manifests, per-service seeds through `ServiceType.resolve`, effective tooling, and the valid event set. Lint, doctor, and start all call it, and `planApp` consumes the seeds it returns instead of re-resolving, so a service still resolves exactly once per plan.
+- Internal-task exclusion rides a WeakMap keyed on object identity (`tooling-include-provenance`). Nothing between `compileEffectiveTooling` and `validEventNames` may spread, clone, or re-sort the tooling map; `compileEffectiveTooling` already sorts, so `attachEffectiveTooling` must store the object it was handed.
+- A `ServiceType.resolve` that reads `input.capabilities` must treat `undefined` as "not asked", not as "unsupported". Provider-free surfaces pass no capabilities, so a bare `input.capabilities?.x !== true` check fails a service that `lando start` accepts.
 - `check:schema-compatibility` reads the WORKING side from the gitignored derived tree (`core/dist/schemas`), which goes stale the moment you merge main. A schema that main added but your local dist predates reports as `BREAKING surface-removed` for a surface your branch never touched. Run `bun run codegen:schema-snapshot` before believing a breaking row, and cross-check the PR's `schema-snapshot` job.
 
 ## 2026-09-11 - US-613 (in progress, not complete)
@@ -46,9 +49,6 @@ Verification: typecheck, lint, and check:boundaries passed; 359 targeted tests p
   - Excluding a task from the command index and relying on a downstream authoritative check gives the wrong error tag on the fresh-cache path. Model "known but refused" distinctly from "unknown".
   - `bun core/src/cli/index.ts` exits 0 silently; only `core/bin/lando.ts` is a faithful manual-verification entry.
 ---
-## 2026-09-11 23:28 - Review
-- [looper] gate skipped Review: gate: prdPasses is false for US-613 (expected passes: true)
----
 ## 2026-09-11 23:50 - US-613 Drift Audit
 - Trigger: 1 cycle, ~2560 changed lines, 2 commits
 - Weakened proofs: the command-index suite blessed omitting disabled tasks, so a fresh cache could never emit `ToolingDisabledError`
@@ -57,15 +57,6 @@ Verification: typecheck, lint, and check:boundaries passed; 359 targeted tests p
 - Fixed: disabled tasks stay in the index as hidden; unused plan cache deleted; retired flag `type` leftover fixture and exemption removed
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 87 targeted tests pass
----
-## 2026-09-11 23:41 - Verify
-- [looper] gate skipped Verify: gate: prdPasses is false for US-613 (expected passes: true)
----
-## 2026-09-11 23:41 - Cleanup
-- [looper] gate skipped Cleanup: gate: prdPasses is false for US-613 (expected passes: true)
----
-## 2026-09-11 23:41 - Push
-- [looper] gate skipped Push: gate: prdPasses is false for US-613 (expected passes: true)
 ---
 
 ## 2026-09-12 00:45 - US-613 (complete)
@@ -107,7 +98,6 @@ Verification: typecheck, lint, check:boundaries, lint:guides, check:guide-covera
 - Merge: merged (squash)
 ---
 
-
 ## 2026-09-12 06:00 - US-614 (in progress, not complete)
 
 Landed the name-resolution spine, the recursion bound, and the restart brackets. Tooling brackets and the guide remain, so the story stays `passes: false`.
@@ -128,21 +118,6 @@ Remaining for the next pass: `pre-<task>`/`post-<task>` brackets around top-leve
   - A non-zero tooling exit is a result, not a failure, so "a failed body prevents success post-steps" is an exit-code check, not an error branch.
   - Tagged errors leak into unions far from where they are raised. Moving `LandofileUnknownEventError` from discovery to planning touched the SDK service signatures, the frozen mvp-surface fixture, six global CLI commands, and doctor. Follow the compiler outward rather than guessing the blast radius.
   - Pass-through `instanceof` lists are a trap: a new boundary error added to only one of them gets silently rewrapped as a generic step failure. They are now one shared predicate.
----
-## 2026-09-12 05:36 - Review
-- [looper] gate skipped Review: gate: prdPasses is false for US-614 (expected passes: true)
----
-## 2026-09-12 05:36 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
-## 2026-09-12 05:36 - Verify
-- [looper] gate skipped Verify: gate: prdPasses is false for US-614 (expected passes: true)
----
-## 2026-09-12 05:36 - Cleanup
-- [looper] gate skipped Cleanup: gate: prdPasses is false for US-614 (expected passes: true)
----
-## 2026-09-12 05:36 - Push
-- [looper] gate skipped Push: gate: prdPasses is false for US-614 (expected passes: true)
 ---
 
 ## 2026-09-12 06:55 - US-614 (complete)
@@ -308,22 +283,6 @@ Verification: typecheck and lint pass. 78 focused tests pass across home resolut
   - Pattern-validated schemas like `ContainerUser` are NOT branded, so their `.Type` is plain `string`. Following that precedent for `AbsoluteContainerPath` kept roughly thirty catalog declaration sites free of `.make()` noise.
   - A fail-closed default lands its blast radius in fixtures, not in source. Measure it before implementing: `type: compose` alone appears in 40 files here, including two production global services, so budget the sweep as part of the story rather than discovering it at the end.
 
-## 2026-09-12 14:20 - Review
-- [looper] gate skipped Review: gate: prdPasses is false for US-617A (expected passes: true)
----
-## 2026-09-12 14:20 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
-## 2026-09-12 14:20 - Verify
-- [looper] gate skipped Verify: gate: prdPasses is false for US-617A (expected passes: true)
----
-## 2026-09-12 14:20 - Cleanup
-- [looper] gate skipped Cleanup: gate: prdPasses is false for US-617A (expected passes: true)
----
-## 2026-09-12 14:20 - Push
-- [looper] gate skipped Push: gate: prdPasses is false for US-617A (expected passes: true)
----
-
 ## 2026-09-12 15:45 - US-617A (in progress, not complete)
 
 Closed the fail-closed blast radius everywhere except `core/test`, and shipped the guide. The story stays `passes: false`: `core/test` is still red and one production path is genuinely broken.
@@ -425,21 +384,6 @@ Verification: typecheck, lint, boundaries, and schema-compatibility passed; the 
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 95 focused tests pass
 ---
-## 2026-09-13 06:20 - Review
-- [looper] gate skipped Review: gate: prdPasses is false for US-617B (expected passes: true)
----
-## 2026-09-13 06:20 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
-## 2026-09-13 06:20 - Verify
-- [looper] gate skipped Verify: gate: prdPasses is false for US-617B (expected passes: true)
----
-## 2026-09-13 06:20 - Cleanup
-- [looper] gate skipped Cleanup: gate: prdPasses is false for US-617B (expected passes: true)
----
-## 2026-09-13 06:20 - Push
-- [looper] gate skipped Push: gate: prdPasses is false for US-617B (expected passes: true)
----
 
 ## 2026-09-13 07:15 - US-617B (complete)
 
@@ -510,9 +454,6 @@ Verification: typecheck, lint, all boundary rules, `codegen:schema-snapshot` (38
 - Verification: typecheck, lint, lint:guides, and `GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift` passed; 97 focused tests passed.
 - **Learnings for future iterations:** Bind-mount config identity belongs in the build key as `{key,digest}` only. Including the canonical host `source` reintroduces path sensitivity the mount projection already stripped.
 ---
-## 2026-09-13 09:31 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
 
 ## 2026-09-13 10:55 - US-618B (complete)
 
@@ -558,21 +499,6 @@ Real-surface evidence: on the real binary with isolated user roots, `app:config 
 - Fixed stock `node:22` Corepack `/usr/local/bin/yarn` EEXIST by adding `--force` to `npm install -g`.
 - **Out-of-scope finding:** host 80/443 in use so proxy published on 8000/4443; `curl http://appserver.us618b-verify.lndo.site:8000/` returned Traefik `404 page not found` while HTTPS `:4443` served `us618b-ok`. Same bind fallback as prior verifies, not US-618B.
 - **Learnings for future iterations:** Stock Node images ship Corepack shims at `/usr/local/bin/yarn`. Live package-install tests that use `cowsay` miss the documented `yarn` example. Verify the guide's packages, not a unique dummy.
----
-## 2026-09-13 12:57 - Review
-- [looper] gate skipped Review: gate: prdPasses is false for US-618C (expected passes: true)
----
-## 2026-09-13 12:57 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
-## 2026-09-13 12:57 - Verify
-- [looper] gate skipped Verify: gate: prdPasses is false for US-618C (expected passes: true)
----
-## 2026-09-13 12:57 - Cleanup
-- [looper] gate skipped Cleanup: gate: prdPasses is false for US-618C (expected passes: true)
----
-## 2026-09-13 12:57 - Push
-- [looper] gate skipped Push: gate: prdPasses is false for US-618C (expected passes: true)
 ---
 
 ## 2026-09-13 - US-618C (complete)
@@ -670,9 +596,6 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Review notes (deferred/rejected): compose `writeScalarMap` YAML key quoting is pre-existing export-only emission with no apply callers, not this story's AC, and authored service labels already share that renderer; dotted-label secret heuristics stay the existing `collectSecretEnvValues` splitter, which already covers the story's hyphenated label tokens.
 - Verification: typecheck and lint trusted from the clean post-build tree; 52 focused tests passed across planner defaults, schema bounds, env overlays, redaction, and catalog generation.
 ---
-## 2026-09-13 20:46 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
 
 ## 2026-09-13 21:00 - US-618D3 Verify
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (exit 0), and proved global `appEnv`/`appLabels` on a php:8.3 app: service env/labels won over defaults, reserved `LANDO_APP_NAME` and `dev.lando.*` writes were refused, `LANDO_APP_ENV` replaced the whole map on restart, and global/scratch containers did not receive the defaults. Adjacent `info`, `logs`, `exec`, HTTPS, and destroy stayed green. Scenario app, scratch fork, temp dirs, and config keys were torn down; only the global app remains.
@@ -710,23 +633,11 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 202 focused tests pass
 ---
-## 2026-09-14 01:32 - Push
-- [looper] gate skipped Push: gate: phase reviewed is before verified (expected phase at or past verified)
----
 ## 2026-09-14 01:33 - Babysit
 - PR: none (no PR for branch us-618e-catalog-fields-versions; Push was gate-skipped at phase `reviewed`)
 - CI outcome: n/a
 - Review feedback: none
 - Merge: deferred (no PR to watch or merge)
----
-## 2026-09-14 21:16 - Build
-- [looper] gate skipped Build: gate: phase reviewed is at or past implemented (nothing to do)
----
-## 2026-09-14 21:16 - Review
-- [looper] gate skipped Review: gate: phase reviewed is at or past reviewed (nothing to do)
----
-## 2026-09-14 21:16 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
 ---
 ## 2026-09-14 21:35 - US-618E Verify
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, and proved Apache `webroot: /app/public` (HTTPS body `Apache webroot works`, `APACHE_DOCUMENT_ROOT`/`LANDO_WEBROOT`=/app/public, generated `lando-webroot.conf`) and Node `port: 5173` (HTTPS `PORT=5173`, in-container listen on 5173). `php:8.0`/`node:999`/`apache:9` failed `LandofileValidationError` before provider action; php:8.3 refresh and idle `node:22` (PORT=3000, no server) stayed green. Scenario apps torn down; only global remains.
@@ -748,12 +659,6 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
   - Integer metadata must survive intermediate flag projections, including plugin-owned command definitions; fixing the primary parser alone leaves a second path silently truncating fractional input.
   - CLI parity fixtures must avoid global flag names such as `verbose`: those tokens belong to the outer CLI, not to the task's structured input contract.
 ---
-## 2026-09-15 14:24 - Review
-- [looper] gate skipped Review: gate: phase reviewed is at or past reviewed (nothing to do)
----
-## 2026-09-15 14:24 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
 
 ## 2026-09-15 - US-624
 - Routes now retain distinct host, scheme, and path matches instead of silently collapsing same-host paths. Equivalent backends and ordered filters deduplicate; conflicting matches fail with a source-aware RouteInputError before provider action. Shorthand ports continue selecting backend endpoints rather than listeners.
@@ -771,9 +676,6 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 79 focused tests across route-identity, route-normalization, route-urls, route-normalize, and route-filter passed.
 - **Learnings for future iterations:** Route-match "port" in this stack means the router listener implied by scheme. Shorthand `:port` is backend selection and must not be re-litigated as a second public listener.
 ---
-## 2026-09-15 16:16 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
 ## 2026-09-15 - US-626 (implementation verified)
 
 - Config view and get now return one curated effective public config projection, including persisted appEnv and appLabels maps; encoded results retain maps, selected keys, roots, and telemetry while omitting internal bookkeeping.
@@ -789,9 +691,6 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Review notes (deferred/rejected): Security HIGH (GITHUB_PAT, short numeric API_TOKEN=1234, username-only proxy userinfo) is out of scope. AC4 requires the canonical RedactionService path, which view/get already use; GITHUB_PAT is outside collectSecretEnvValues vocabulary, short numerics are the existing short-token policy (US-633 keeps it), and username-only proxy matching belongs to redactor URL patterns / proxyUrls, not this story's projection. Goal/QA/quality/context lanes passed. Bugbot did not run (Cursor usage limit).
 - Verification: lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, and GUIDE_DRIFT_BASE_REF=origin/main check:guide-drift passed; gate:pr passed; 94 focused tests passed across config-view schema, operations, CLI redaction, meta-config scenarios, and adjacent write tests.
 - **Learnings for future iterations:** Newly exposing maps through a curated schema does not expand the secret-key catalog. Token vocabulary and short-token policy stay in @lando/redaction; do not add a config-specific redactor to satisfy a security lane that wants PAT/short-PIN/username-only coverage.
----
-## 2026-09-15 18:05 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
 ---
 ## 2026-09-15 18:12 - US-626 Verify
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, then proved `lando config set/get/view` against the binary: appEnv/appLabels round-trip, JSON/YAML/table parity, secret `DB_PASSWORD` redacted as `[redacted]` in every mode while `config.yml` kept the real value, invalid map writes fail `LandofileWriteValidationError` without changing the file. Started a php:8.3 app; HTTPS and `lando exec` printed `us626-ok`; `printenv TEAM` was `platform`. Adjacent `config validate`, `config get defaultProviderId`, `global:config`, `doctor`, `app:config`, and `logs` stayed green. App destroyed; maps unset; scratch dirs removed.
@@ -852,9 +751,6 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Review notes (deferred/rejected): ownerKey volume-selector dual-path is a pre-ship compatibility shim; onCorrupt discard is the existing applied-state cache-miss contract from #850; live container/network label inspection before name-based bring-down is a pre-existing provider teardown surface, not this story's applied-record checks.
 - Verification: typecheck diagnostics clean on changed files; 38 focused prune tests passed; guide gates and gate:pr were already green before the prune fix.
 ---
-## 2026-09-16 13:21 - Drift Audit
-- [looper] gate skipped Drift Audit: gate: script exited with code 1
----
 
 ## 2026-09-16 - US-629 Verify
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started a php:8.3 app, and proved applied-state teardown: invalid-config stop preserved the app, missing Landofile destroy cleared inventory, never-started/repeat destroy returned `unchanged`, a deleted root listed as stale and `--prune` kept it while resources remained, then empty-root destroy removed it.
@@ -874,12 +770,6 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 ## 2026-09-16 15:13 - Babysit
 - [looper] Babysit blocked: CI still red: compiled-CLI teardown must preserve the missing-Landofile error (stop/destroy scenarios + compiled aliases) and guide-scenarios-windows-x64 fails; babysit budget exhausted after two triage rounds
 ---
-## 2026-09-16 15:13 - Build
-- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
----
-## 2026-09-16 15:13 - Review
-- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
----
 ## 2026-09-16 - US-629 Drift Audit
 - Trigger: 4 cycles, 2668/241 changed lines, 37 commits
 - Dual path: compiled `apps:list --prune` called read-only list and emitted empty prune receipts
@@ -890,15 +780,6 @@ Teardown: both source-QA apps and the earlier proof app were destroyed with purg
 - Fixed: compiled list prune uses the mutating path; prune receipts emit only when prune actually ran
 - Split/excise decisions: none
 - Verification: typecheck pass, lint pass, 110 focused tests pass; compiled-binary missing-Landofile CI residual not reproduced on source CLI
----
-## 2026-09-16 15:26 - Verify
-- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
----
-## 2026-09-16 15:26 - Cleanup
-- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
----
-## 2026-09-16 15:26 - Push
-- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
 ---
 ## 2026-09-16 17:55 - Babysit
 - PR: #1003 https://github.com/AaronFeledy/core4/pull/1003
@@ -923,4 +804,197 @@ Verification: gate:pr (typecheck, lint, codegen:check, all 13 boundary rules, gu
   - The RED test earned its keep twice. It proved `.` and `..` were accepted, and it also exposed that every other rejection was happening inside `defaultCommand`, which the authored-`command:` path skips entirely.
   - Copying an existing guide's rejection scenario is a trap: the `invalid-service-type` scenario passes because its fixture contains the one string the scenario-layer fake looks for, not because `lando start` validates anything. Check which commands the harness actually forwards before writing a failure scenario.
   - A plugin cannot widen the error surface it reports. `ServiceType.resolve` is typed to `ServiceTypeError` and `servicePlanError` fixes `issues` at `services.<name>`, so precision has to live in the message. That is enough for a source-aware refusal and avoids an SDK error-shape change for one service type.
+---
+## 2026-09-16 19:12 - Babysit
+- PR: #1004 https://github.com/AaronFeledy/core4/pull/1004
+- Merge: merged (squash) as 9ae63749 on main
+- Reconciled by hand, not written by the step. Babysit merged this PR and switched back to
+  `main`, then was killed ~33 minutes later by a permission-gate timeout (external_directory)
+  before it ran `looper signal story-phase merged`. US-631 therefore sat at `published` while
+  every story-gated step skipped on `main`, until the stall detector stopped the run.
+---
+## 2026-09-16 19:45 - Babysit
+- [looper] Babysit blocked: permission gate timed out: external_directory
+---
+
+## 2026-09-17 - US-632 (in progress, not complete)
+
+Landed the fail-first regression proof and the user-facing contract; the shared resolver itself is
+mid-flight in the working tree and uncommitted.
+
+- The defect is now pinned by a cross-surface regression test: one temp app carrying an authored task,
+  a public tooling include, an `internal: true` tooling include, and a service type that contributes
+  its own task. Both `lando app:config:lint` and the planner are asserted against ONE explicit
+  `validEvents` literal. RED captured: lint reported only the lifecycle names plus the authored and
+  public-include brackets, so `pre-inspect` (the service-contributed task) came back as an unknown
+  event while the planner accepted it. Internal-include brackets were already excluded on both
+  surfaces, so include provenance was never the bug.
+- The lint and task-events guides now describe the single resolution rule: lint, doctor, and start
+  build the known set from the Landofile, every config layer, every include, and every service type,
+  without touching a container runtime, and a resolution failure is reported as itself rather than as
+  a false unknown-event. A new guide scenario lints an app whose only `pre-mysql` producer is the
+  `mysql:8.0` service type.
+
+Verification so far: the regression test fails 2/2 for the intended reason, and `lint:guides` passes.
+Repo gates were not run because the implementation is incomplete.
+
+Remaining work, decided and ready to execute:
+- Extract the provider-free per-service resolution prefix of `planApp` (through `ServiceType.resolve`)
+  plus the effective-tooling and event-name block into one shared resolver that `planApp` and
+  `appConfigLint` both call, so start still resolves each service exactly once.
+- `appConfigLint` takes `PluginRegistry` in its requirements channel; the lint command spec moves from
+  the `minimal` bootstrap tier to `plugins`, because `minimal` does not merge the registry.
+- Doctor injects the app-config section from its already-built provider context, keeps only its three
+  existing tagged catches, and lets resolution failures reach the section isolator.
+- Guard the MSSQL architecture-emulation check on capabilities being present, so provider-free lint
+  does not fail a service that start accepts.
+- `attachEffectiveTooling` re-sorts into a new object and drops the WeakMap internal-task provenance;
+  attach the already-sorted object instead.
+
+- **Learnings for future iterations:**
+  - The surfaces did not disagree about includes, only about service types. `appConfigLint` passed
+    `services: []` into `compileEffectiveTooling`, so every task a service type contributes was
+    invisible to lint and doctor while `lando start` honored it.
+  - A cross-surface regression test must hand BOTH surfaces the same `PluginRegistry`. Providing the
+    test registry only to the planner makes lint fail for a wiring reason that looks like the defect.
+  - Internal-task exclusion rides a WeakMap keyed on object identity, so nothing between
+    `compileEffectiveTooling` and `validEventNames` may spread, clone, or re-sort the tooling map.
+---
+## 2026-09-17 16:01 - Review
+- [looper] gate skipped Review: gate: phase merged is at or past reviewed (nothing to do)
+---
+## 2026-09-17 16:01 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-17 16:01 - Verify
+- [looper] gate skipped Verify: gate: phase merged is at or past verified (nothing to do)
+---
+## 2026-09-17 16:01 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase merged is at or past published (nothing to do)
+---
+## 2026-09-17 16:01 - Push
+- [looper] gate skipped Push: gate: phase merged is at or past published (nothing to do)
+---
+
+## 2026-09-17 16:05 - Babysit
+- PR: none — branch us-632-shared-event-resolution has no commits ahead of origin/main and no upstream; US-632 changes are uncommitted in the working tree
+- CI outcome: n/a (no PR to watch)
+- Review feedback: none
+- Merge: deferred (missing PR; story work never committed or pushed)
+---
+## 2026-09-17 16:03 - Build
+- [looper] gate skipped Build: gate: phase merged is at or past implemented (nothing to do)
+---
+## 2026-09-17 16:03 - Review
+- [looper] gate skipped Review: gate: phase merged is at or past reviewed (nothing to do)
+---
+## 2026-09-17 16:03 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-17 16:03 - Verify
+- [looper] gate skipped Verify: gate: phase merged is at or past verified (nothing to do)
+---
+## 2026-09-17 16:03 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase merged is at or past published (nothing to do)
+---
+## 2026-09-17 16:03 - Push
+- [looper] gate skipped Push: gate: phase merged is at or past published (nothing to do)
+---
+
+## 2026-09-17 16:10 - Babysit
+- PR: none — no PR exists for branch us-632-shared-event-resolution
+- CI outcome: n/a (branch tip equals origin/main, no upstream, US-632 work still uncommitted in the working tree)
+- Review feedback: none
+- Merge: deferred (nothing published to merge; work must be committed and pushed first)
+---
+## 2026-09-17 16:04 - Build
+- [looper] gate skipped Build: gate: phase merged is at or past implemented (nothing to do)
+---
+## 2026-09-17 16:04 - Review
+- [looper] gate skipped Review: gate: phase merged is at or past reviewed (nothing to do)
+---
+## 2026-09-17 16:04 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-17 16:04 - Verify
+- [looper] gate skipped Verify: gate: phase merged is at or past verified (nothing to do)
+---
+## 2026-09-17 16:04 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase merged is at or past published (nothing to do)
+---
+## 2026-09-17 16:04 - Push
+- [looper] gate skipped Push: gate: phase merged is at or past published (nothing to do)
+---
+
+## 2026-09-17 16:06 - Babysit
+- PR: none — no PR exists for branch us-632-shared-event-resolution
+- CI outcome: n/a (branch tip equals origin/main; US-632 work still uncommitted, no local commits to push)
+- Review feedback: none
+- Merge: deferred (nothing published to merge; PRD phase says merged but no commit or PR exists)
+---
+## 2026-09-17 16:05 - Build
+- [looper] gate skipped Build: gate: phase merged is at or past implemented (nothing to do)
+---
+## 2026-09-17 16:05 - Review
+- [looper] gate skipped Review: gate: phase merged is at or past reviewed (nothing to do)
+---
+## 2026-09-17 16:05 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-17 16:05 - Verify
+- [looper] gate skipped Verify: gate: phase merged is at or past verified (nothing to do)
+---
+## 2026-09-17 16:05 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase merged is at or past published (nothing to do)
+---
+## 2026-09-17 16:05 - Push
+- [looper] gate skipped Push: gate: phase merged is at or past published (nothing to do)
+---
+
+## 2026-09-17 16:10 - Babysit
+- PR: none — no PR exists for us-632-shared-event-resolution
+- CI outcome: n/a (no PR)
+- Review feedback: none
+- Merge: deferred (branch has no commits; HEAD == origin/main and all US-632 changes remain uncommitted in the working tree, so nothing was pushed or merged)
+---
+
+## 2026-09-17 17:30 - US-632 (complete)
+
+`lando app:config:lint`, `lando doctor --app`, and `lando start` now build the known event set from one shared,
+provider-free resolver.
+
+- Extracted the provider-free prefix of `planApp` into a shared resolver: provider precedence, plugin manifests,
+  per-service seeds resolved through `ServiceType.resolve`, effective tooling, the reserved-name check, and the valid
+  event set. `planApp` consumes the seeds that resolver returns rather than resolving services a second time, and a new
+  test pins each service to exactly one `resolve` call.
+- Lint and doctor call the same resolver, so a task contributed by a service type (`mysql` on a `mysql:8.0` service) makes
+  `pre-mysql`/`post-mysql` valid on every surface, while an `internal: true` include task still contributes no brackets
+  anywhere. Doctor injects the app-config section from the provider context it already built, and a resolution failure
+  reaches the section isolator as its own tagged error instead of a false unknown-event diagnostic.
+- `app:config:lint` moved to the `plugins` bootstrap tier (both the spec and the compiled CLI adapter) because the shared
+  resolver needs `PluginRegistry`; `App.config.lint()` widened its error channel accordingly.
+- The Landofile parser now accepts namespaced keys, which authored event keys need: an include contributes `docs:generate`,
+  so `pre-docs:generate` is a legal event key and previously failed to parse.
+- MSSQL's architecture-emulation refusal now fires only when capabilities were actually supplied, so provider-free lint no
+  longer rejects a service `lando start` accepts.
+
+Verification: gate:pr (typecheck, lint, codegen:check, all boundary rules, guide-drift against origin/main) passed, plus
+check:guide-coverage, check:public-transcripts, check:schema-compatibility (0 breaking), and lint:guides. Spot checks:
+371 engine planner/operations tests, 582 landofile/parser tests, 2631 core CLI tests, and the task-events and config-lint
+guides all pass; the two failures in `core/test/cli/uninstall-runtime-service.test.ts` reproduce identically on a stashed
+tree and are unrelated. Manual CLI QA on the real binary with isolated user roots: an app hooking `pre-mysql` on a
+`mysql:8.0` service lints clean (exit 0) where the pre-change tree rejected it as unknown; a typo'd key now lists
+`pre-mysql`/`post-mysql` in its valid set; `doctor --app` reports that same app-config section; an unresolvable service type
+surfaces `LandofileValidationError` from both lint and the doctor section isolator; `doctor` without `--app` still omits the
+section.
+
+- **Learnings for future iterations:**
+  - Raising a command's bootstrap tier is two edits, not one. The `LandoCommandSpec` `bootstrap` field and the
+    `cliRuntimeOptions({ bootstrap })` call in the compiled CLI adapter must agree; only the second one governs the real
+    binary, and a mismatch typechecks.
+  - `check:codegen-drift` is git-status based, so a story that changes a command summary reports drift until the
+    regenerated `docs/reference/commands.mdx` is committed. Run `gate:pr` again after committing before believing a
+    drift failure.
+  - Prove a cross-surface parity fix at the binary, not only in tests: stashing the branch and re-running the same
+    `lando app:config:lint` against the same fixture is the cheapest RED/GREEN evidence for this class of defect.
 ---

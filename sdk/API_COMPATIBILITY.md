@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `App.config.lint()` also resolves service-contributed tooling and authored event names. Its error channel includes `LandofileValidationError`, `CommandAliasConflictError`, and `NotImplementedError` for resolution failures; those failures are not schema violations or unknown-event diagnostics.
+
 - `RuntimeProviderContribution.appliedPlans(ctx)` is required for provider contributions. It reads persisted ownership claims without initializing or connecting to the runtime; providers with no persisted claims return an empty list. Applied-state recovery reads every contribution's claims before selecting an owner, so an unrelated offline runtime cannot block a valid saved plan. Inventory-read failures and conflicting claims still fail closed. When no plan matches, runtime resource inspection remains required before reporting an unchanged teardown.
 
 - `RuntimeProviderShape.appliedPlans` optionally exposes provider-owned applied state, and `RuntimeProviderRegistry.resolveAppliedPlan(root)` optionally resolves it by canonical app root for teardown recovery. `StopAppResult` and `DestroyAppResult` add optional explicit recovery outcomes, and their error unions add `AppResolveError` for fail-closed ownership mismatches.

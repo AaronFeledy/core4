@@ -20,7 +20,7 @@ import { RedactionService, createStandaloneRedactor } from "@lando/redaction/ser
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
-import { collectDoctorReport, doctorDeprecations } from "./doctor-report";
+import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems";
@@ -66,6 +66,10 @@ const collectResilientDoctorReport = (
       // cannot fail even when the full runtime could not be built.
       return yield* collectDoctorReport({
         options,
+        appConfig:
+          context === undefined
+            ? Effect.succeed(undefined)
+            : appConfigForReport().pipe(Effect.provide(context)),
         certs:
           context === undefined
             ? Effect.succeed(UNRESOLVED_CERTS_STATUS)
