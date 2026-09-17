@@ -133,6 +133,8 @@ lando restart
 lando info
 ```
 
+Bare `lando pip` and `lando uvicorn` still hit the image binaries unless you call `/app/.venv/bin/...` or retarget tooling.
+
 ## Connect FastAPI to Postgres and Redis
 
 | Setting | Postgres | Redis |
