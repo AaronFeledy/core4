@@ -38,3 +38,19 @@ test("detects !reset on a namespaced event key", () => {
   // Then
   expect(tags).toEqual([{ tag: "!reset", line: 2, column: 22 }]);
 });
+
+test("keeps unquoted colon scalars in sequences instead of treating them as maps", async () => {
+  // Given
+  const content = "services:\n  web:\n    ports:\n      - 8080:80\n    volumes:\n      - ./src:/app\n";
+  // When
+  const parsed = await Effect.runPromise(parseLandofile({ file: "/tmp/ports.yml", cwd: "/tmp", content }));
+  // Then
+  expect(parsed).toEqual({
+    services: {
+      web: {
+        ports: ["8080:80"],
+        volumes: ["./src:/app"],
+      },
+    },
+  });
+});

@@ -71,8 +71,13 @@ const ANCHOR_PREFIX_PATTERN = new RegExp(`^&${YAML_REFERENCE_NAME_PATTERN.source
 const MAPPING_ENTRY_PATTERN = /^(<<|[A-Za-z0-9_.@/-]+(?::[A-Za-z0-9_.@/-]+)*):((?:\s+.*)?)$/;
 const MAPPING_ENTRY_FALLBACK_PATTERN = /^(<<|[A-Za-z0-9_.@/-]+):(.*)$/;
 
-const splitMappingEntry = (text: string): readonly [string, string] | undefined => {
-  const match = text.match(MAPPING_ENTRY_PATTERN) ?? text.match(MAPPING_ENTRY_FALLBACK_PATTERN);
+const splitMappingEntry = (
+  text: string,
+  options: { readonly compactValue?: boolean } = {},
+): readonly [string, string] | undefined => {
+  const match =
+    text.match(MAPPING_ENTRY_PATTERN) ??
+    (options.compactValue === true ? text.match(MAPPING_ENTRY_FALLBACK_PATTERN) : null);
   if (match === null) return undefined;
   const key = match[1];
   const rawValue = match[2];
@@ -404,7 +409,7 @@ export const detectLandofileTags: (options: {
       continue;
     }
 
-    const entry = splitMappingEntry(line.text);
+    const entry = splitMappingEntry(line.text, { compactValue: true });
     if (entry === undefined) continue;
     const [key, rawValue] = entry;
     occurrences.push(
@@ -446,7 +451,7 @@ const parseMap = (
     }
     if (line.text.startsWith("- ")) break;
 
-    const entry = splitMappingEntry(line.text);
+    const entry = splitMappingEntry(line.text, { compactValue: true });
     if (entry === undefined) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
@@ -662,7 +667,7 @@ const parseListItemMap = (
       );
     }
 
-    const entry = splitMappingEntry(line.text);
+    const entry = splitMappingEntry(line.text, { compactValue: true });
     if (entry === undefined) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
