@@ -142,6 +142,26 @@ describe("service config file sources", () => {
     );
   });
 
+  test("hashes the empty file list when dir holds no files", async () => {
+    // Given a config directory with nothing in it.
+    await mkdir(join(appRoot, "empty-conf"), { recursive: true });
+    // When resolving it.
+    const result = await Effect.runPromise(resolveConfig({ dir: "empty-conf" }));
+    // Then the empty file list hashes to a fixed digest instead of failing.
+    expect(result[0]?.digest).toBe(sha256(""));
+  });
+
+  test("gives two empty config dirs the same identity regardless of path", async () => {
+    // Given two distinct empty directories.
+    await mkdir(join(appRoot, "empty-conf"), { recursive: true });
+    await mkdir(join(appRoot, "other-empty-conf", "nested-empty"), { recursive: true });
+    // When resolving each.
+    const first = await Effect.runPromise(resolveConfig({ dir: "empty-conf" }));
+    const second = await Effect.runPromise(resolveConfig({ dir: "other-empty-conf" }));
+    // Then empty directory trees share one identity; only files carry identity.
+    expect(second[0]?.digest).toBe(first[0]?.digest);
+  });
+
   test("keeps identity stable when sources have not changed", async () => {
     // Given an existing resolution.
     const config = { server: "server.cnf", dir: "conf" };

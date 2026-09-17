@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Effect } from "effect";
@@ -68,4 +69,28 @@ test("keeps the build key stable when only host source paths change", async () =
   ]);
   // Then
   expect(relocated).toBe(original);
+});
+
+const emptyDirDigest = createHash("sha256").update("").digest("hex");
+
+test("keeps the build key stable when an empty config dir moves", async () => {
+  // Given a service whose config dir holds no files.
+  const original = await key([{ key: "dir", authored: "conf", source: "/app/conf", digest: emptyDirDigest }]);
+  // When the same empty directory is authored from another path.
+  const relocated = await key([
+    { key: "dir", authored: "solr/conf", source: "/elsewhere/solr/conf", digest: emptyDirDigest },
+  ]);
+  // Then the build key is unchanged; an empty overlay contributes one fixed identity.
+  expect(relocated).toBe(original);
+});
+
+test("changes the build key when an empty config dir gains a file", async () => {
+  // Given the empty-overlay build key.
+  const original = await key([{ key: "dir", authored: "conf", source: "/app/conf", digest: emptyDirDigest }]);
+  // When a file lands in that directory.
+  const populated = await key([
+    { key: "dir", authored: "conf", source: "/app/conf", digest: "d".repeat(64) },
+  ]);
+  // Then the service rebuilds.
+  expect(populated).not.toBe(original);
 });
