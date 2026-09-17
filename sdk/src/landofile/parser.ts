@@ -120,7 +120,7 @@ const assertDepth = (filePath: string, line: number, depth: number, maxDepth: nu
 
 const stripComment = (line: string): string => {
   const indent = line.match(/^ */)?.[0] ?? "";
-  const entry = splitMappingEntry(line.slice(indent.length));
+  const entry = splitMappingEntry(line.slice(indent.length), { compactValue: true });
   if (entry === undefined) {
     return line.replace(/\s+#.*$/, "");
   }
