@@ -22,6 +22,7 @@ describe("detectLandofileTags", () => {
     ["anchored override in a sequence", "values:\n  - &shared !override", "!override", 2, 13],
     ["anchored reset in an inline list", "ports: &shared [!reset]", "!reset", 1, 17],
     ["reset behind a punctuated anchor name", "ports: &shared.default !reset", "!reset", 1, 24],
+    ["namespaced-key reset", "pre-docs:generate: !reset []", "!reset", 1, 20],
   ] as const;
 
   for (const [name, content, tag, line, column] of matchingCases) {

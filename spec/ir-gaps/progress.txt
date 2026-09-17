@@ -998,3 +998,10 @@ section.
   - Prove a cross-surface parity fix at the binary, not only in tests: stashing the branch and re-running the same
     `lando app:config:lint` against the same fixture is the cheapest RED/GREEN evidence for this class of defect.
 ---
+
+## 2026-09-17 17:41 - US-632 Review
+- Confirmed lint, doctor, and start share one provider-free resolver. Fixed namespaced mapping-entry splitting so comment stripping and `!reset`/`!override` detection use the same colon-aware key grammar as parse.
+- Review notes (deferred/rejected): capability-dependent tooling divergence is out of scope (same resolver; start may pass capabilities it already has; bundled types follow the MSSQL undefined-means-not-asked pattern). Doctor skipping app lint when provider bootstrap fails is pre-existing doctor resilience, not an AC miss. Resolution failures reaching the doctor section isolator (instead of app-config-lint) is the story's designed tagged-error path, not a false unknown-event. `LandofileFormConflictError` is already in the public lint channel via the `LandofileNotFoundError` alias. Extra three-surface/MySQL/provider-init tripwire tests were rejected as coverage preference; lint/planner parity, doctor→lint delegation, and the two guides already satisfy the ACs.
+- Verification: typecheck, lint passed; 31 namespaced-key and tag-detection tests passed, plus 96 parser/round-trip/tag tests; guide gates passed (`lint:guides`, `check:guide-coverage`, `codegen:guide-scenarios`, `check:public-transcripts`, `GUIDE_DRIFT_BASE_REF=origin/main`).
+- **Learnings for future iterations:** Widening YAML mapping keys is not done when only `parseMap` changes. `stripComment` and `detectLandofileTags` still split on the first colon unless they share the same splitter.
+---
