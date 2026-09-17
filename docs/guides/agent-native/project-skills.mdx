@@ -1,0 +1,59 @@
+---
+id: project-skills
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 90000
+tags: [beta, docs, agent]
+---
+
+# Install project-local agent skills
+
+`lando agent:skills:install` writes a Lando-owned skill pack into this app so
+agents run tooling through Lando. `lando start` and `lando rebuild` never do
+this. Default `lando init` is also off; pass `--agent-skills` when you want
+the pack on a new app.
+
+```sh
+lando agent:skills:install
+lando agent:skills:update
+lando agent:skills:remove
+```
+
+The pack is `.agents/skills/lando/SKILL.md`. It tells agents to prefer
+`lando <tooling>`, `lando exec`, and `lando mcp`, and to detect in-container
+vs host. It points at the existing [MCP](./mcp.mdx),
+[in-container context](./in-container-context.mdx), and
+[exec](../cli/exec.mdx) guides. It does not copy those pages.
+
+Update refreshes the file when Lando still owns it. Remove deletes that
+owned file only. A skill file you adopted or wrote by hand stays put.
+
+<Guide>
+  <Scenario id="install-update-remove" render>
+    <Step name="scaffold">
+      <UseFixture name="project-skills-app" />
+    </Step>
+    <Step name="install">
+      <Run command="lando agent:skills:install" />
+      <Verify command="lando agent:skills:install --format=json" expect={{ stdout: { regex: "skip-unchanged" } }} />
+    </Step>
+    <Step name="update">
+      <Run command="lando agent:skills:update" />
+      <Verify command="lando agent:skills:update --format=json" expect={{ stdout: { regex: "skip-unchanged" } }} />
+    </Step>
+    <Step name="remove">
+      <Run command="lando agent:skills:remove" />
+      <Verify command="lando agent:skills:remove --format=json" expect={{ stdout: { regex: "\"entries\":\\s*\\[\\]" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Init stays off unless you ask
+
+```sh
+lando init --name=demo --recipe=toolbox --yes --no-interactive
+lando init --name=demo --recipe=toolbox --yes --no-interactive --agent-skills
+```
+
+The first command writes the recipe only. The second also installs the pack
+into the new app directory.

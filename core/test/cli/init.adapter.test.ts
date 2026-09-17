@@ -37,4 +37,9 @@ describe("OCLIF init adapter", () => {
 
     expect(options.destination).toBe(process.cwd());
   });
+
+  test("agent-skills stays off unless the init flag is passed", () => {
+    expect(initOptionsFromInput({ args: {}, flags: {} }).agentSkills).toBe(false);
+    expect(initOptionsFromInput({ args: {}, flags: { "agent-skills": true } }).agentSkills).toBe(true);
+  });
 });

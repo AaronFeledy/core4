@@ -11,6 +11,9 @@ import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
+import { ManagedFileServiceLive } from "@lando/managed-file/service";
+import type { AgentSkillsResult } from "../../agent-skills/operations.ts";
+import { installAgentSkills } from "../../agent-skills/operations.ts";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service";
 import { getInteractionServiceOverride } from "../../interaction/testing-override";
@@ -125,6 +128,8 @@ export interface InitAppOptions {
   readonly destination?: string;
   // Run recipe `postInit:` actions after rendering; defaults to true.
   readonly runPostInit?: boolean;
+  // Opt-in: write the Lando agent skill pack after a successful init. Default off.
+  readonly agentSkills?: boolean;
 }
 
 export interface InitAppResult {
@@ -134,6 +139,7 @@ export interface InitAppResult {
   readonly answers: PromptAnswers;
   readonly postInit: PostInitOutcome;
   readonly skippedScaffold: ReadonlyArray<string>;
+  readonly agentSkills?: AgentSkillsResult;
 }
 
 export const stripSecretInitAnswers = (
@@ -526,5 +532,13 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
   await Effect.runPromise(tree.close(`Initialized ${appName}`));
 
-  return { appName, directory, answers: publicAnswers, postInit, skippedScaffold };
+  if (options.agentSkills !== true) {
+    return { appName, directory, answers: publicAnswers, postInit, skippedScaffold };
+  }
+
+  const agentSkills = await Effect.runPromise(
+    installAgentSkills({ appRoot: directory }).pipe(Effect.provide(ManagedFileServiceLive)),
+    options.signal === undefined ? undefined : { signal: options.signal },
+  );
+  return { appName, directory, answers: publicAnswers, postInit, skippedScaffold, agentSkills };
 };

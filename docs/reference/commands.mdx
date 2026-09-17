@@ -25,6 +25,24 @@ consume this JSON instead of parsing the rendered tables.
 
 ## Commands
 
+## `lando app:agent:skills:install`
+
+Write the Lando agent skill pack into this app (opt-in, never on start or rebuild).
+
+Aliases: `lando agent:skills:install`
+
+## `lando app:agent:skills:remove`
+
+Delete Lando-owned agent skill files in this app. Adopted or user files stay.
+
+Aliases: `lando agent:skills:remove`
+
+## `lando app:agent:skills:update`
+
+Refresh Lando-owned agent skill files in this app.
+
+Aliases: `lando agent:skills:update`
+
 ## `lando app:cache:refresh`
 
 Rebuild the app plan, tooling graph, and command index without starting services.
@@ -514,6 +532,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--agent-skills` | Install the Lando agent skill pack into the new app (off by default). |
 | `--answer` | Recipe answer in key=value form (repeatable). |
 | `--answers` | Path to a JSON answers file. |
 | `--checksum` | Expected SHA-256 of a --source=tarball archive (64 hex chars). |
