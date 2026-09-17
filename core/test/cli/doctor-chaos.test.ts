@@ -16,6 +16,7 @@ import {
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionServiceLive } from "@lando/redaction/service";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -619,4 +620,3 @@ describe("doctor chaos: whole report", () => {
     expect(JSON.stringify(check)).not.toContain(secret);
   });
 });
-import { PluginRegistryLive } from "@lando/engine/plugins/registry";
