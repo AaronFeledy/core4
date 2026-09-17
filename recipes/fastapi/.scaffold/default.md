@@ -24,6 +24,8 @@ lando pip install -r requirements.txt
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling, Postgres/Redis hosts, and a restart-safe venv serve, see [Run the FastAPI recipe](/guides/recipes/fastapi-workflow/).
+
 ## 1. scaffold
 
 ```bash
@@ -59,5 +61,3 @@ lando app:config --format=json
 ```bash
 lando destroy -y
 ```
-
-For day-to-day tooling, Postgres/Redis hosts, and a restart-safe venv serve, see [Run the FastAPI recipe](/guides/recipes/fastapi-workflow/).
