@@ -84,7 +84,7 @@ services:
       server: ./config/my.cnf
 ```
 
-Lando mounts that file read-only at `/etc/mysql/conf.d/99-lando.cnf`. The server reads it as a drop-in on startup, after its own defaults, so anything you set there wins. It has to be a regular file, not a directory.
+Lando mounts that file read-only at `/etc/mysql/my.cnf`. MySQL reads it directly on startup, after the image's `/etc/my.cnf`, without relying on that file's include directives. It has to be a regular file, not a directory.
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
