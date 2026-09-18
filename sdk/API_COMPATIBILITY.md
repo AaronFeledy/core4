@@ -282,6 +282,7 @@
 - `AuthoringExpressionForm`
 - `authoringExpressionSlot`
 - `classifyAuthoringSource`
+- `containerDestinationRefusalMessage`
 - `isPlainAuthoringString`
 - `deriveAuthoringAst`
 - `LandofileAuthoringShape`
@@ -476,6 +477,8 @@
 - `ManagedFilePlan`
 - `ManagedFileResult`
 - `JSON_SCHEMA_NAMES`
+- `normalizeContainerDestination`
+- `parseContainerDestination`
 - `parseShortVolume`
 - `publicSchemaMetadataIndex`
 - `publicSchemaRegistry`
