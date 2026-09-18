@@ -1164,7 +1164,8 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 ---
 ## 2026-09-18 07:45 - Babysit
 - PR: #1011 https://github.com/AaronFeledy/core4/pull/1011
-- CI outcome: fail (guide-scenarios-windows-arm64)
+- CI outcome: fail (static-checks-platform windows-arm64; the static-checks, guide-scenarios-linux-x64 and provider-integration-linux-x64 gates fail only as cascades of it)
 - Review feedback: fixed (documented the three new container-destination exports in `sdk/API_COMPATIBILITY.md`, clearing the SDK additive-export gate; the library-api-tests failure had cascaded into the guide-scenarios and provider-integration linux-x64 gates via `build-linux-x64`). Bugbot reported no findings on this PR; a deferred shadow-mount dedup observation in `engine/src/planner/storage.ts` was verified byte-identical to `origin/main` and left out of scope.
-- Merge: deferred (`guide-scenarios-windows-arm64` hangs to its 30m cap emitting zero step output; it timed out identically on `main` at 27bc3abc and passed once on this PR at 9m18s, so it is a pre-existing windows-11-arm hang, not a US-637 regression — all other 56 checks pass and the PR is MERGEABLE with no review objections)
+- Merge: deferred (windows-arm64 runner instability, not a US-637 regression. `static-checks-platform (windows-arm64)` fails its "Native Windows private-file ACL tests" step on three consecutive reruns — the PowerShell DACL enforce takes >15s against a 5s bun test timeout; the earlier `guide-scenarios-windows-arm64` 30m hang is the same runner. Both fail intermittently on `main` today while this branch changes zero `state-store` files, so a recalibration belongs in its own story on `main` rather than scope expansion during triage. Every other check passes, Bugbot reported nothing, and the PR is MERGEABLE with no review objections.)
+- **Learnings for future iterations:** windows-arm64 CI turned unreliable on 2026-09-18 — both the `state-store` native ACL tests and guide scenarios time out there, roughly 50/50 on `main`. Reruns do not clear it; those native-Windows timeouts need recalibrating.
 ---
