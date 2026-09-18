@@ -192,7 +192,7 @@ export const makeAppHandle = (
     },
     config: {
       lint: (options?: { readonly cwd?: string }) =>
-        ops.appConfigLint({ ...options, cwd: options?.cwd ?? root }),
+        ops.appConfigLint({ ...options, cwd: options?.cwd ?? root }).pipe(Effect.provide(runtime)),
     },
     events: {
       subscribe: (name?: string) =>
