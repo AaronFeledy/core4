@@ -1,3 +1,5 @@
+import { join as pathJoin } from "node:path";
+
 import { Effect } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -80,14 +82,6 @@ const composeError = (ctx: ProviderErrorContext, message: string, details?: unkn
     details,
     remediation: ctx.remediation,
   });
-
-// Strips redundant slashes while correctly preserving a leading slash on
-// absolute paths (including the edge case where the first segment is "/").
-const pathJoin = (...parts: ReadonlyArray<string>) => {
-  const hasLeadingSlash = (parts[0] ?? "").startsWith("/");
-  const segments = parts.map((part) => part.replace(/^\/+|\/+$/gu, "")).filter((part) => part.length > 0);
-  return (hasLeadingSlash ? "/" : "") + segments.join("/");
-};
 
 const serviceImage = (ctx: ProviderErrorContext, service: ServicePlan) => {
   if (service.artifact?.kind === "ref") {

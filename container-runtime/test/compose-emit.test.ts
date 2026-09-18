@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { DateTime, Effect, Layer, Stream } from "effect";
 
@@ -397,8 +398,8 @@ describe("Podman Compose emission", () => {
       emitCompose(plan, { userDataRoot, ctx }).pipe(Effect.provide(fileSystem.layer)),
     );
 
-    expect(result.path).toBe("/tmp/lando-data/apps/myapp/compose.yml");
-    expect(composePath(plan, { userDataRoot, ctx })).toBe("/tmp/lando-data/apps/myapp/compose.yml");
+    expect(result.path).toBe(join(userDataRoot, "apps", "myapp", "compose.yml"));
+    expect(composePath(plan, { userDataRoot, ctx })).toBe(join(userDataRoot, "apps", "myapp", "compose.yml"));
     expect(result.content).toStartWith('version: "3.9"\n');
     expect(fileSystem.calls.some((call) => call.operation === "mkdir")).toBe(true);
     expect(fileSystem.calls.some((call) => call.operation === "writeAtomic")).toBe(true);
@@ -448,9 +449,10 @@ describe("Podman Compose emission", () => {
     );
   });
 
-  test("pathJoin preserves leading slash including root-only input", () => {
-    expect(composePath(plan, { userDataRoot: "/data", ctx })).toBe("/data/apps/myapp/compose.yml");
-    expect(composePath(plan, { userDataRoot: "/data/", ctx })).toBe("/data/apps/myapp/compose.yml");
+  test("composePath uses native separators and preserves absolute roots", () => {
+    for (const root of ["/data", "/data/", "/data/.", "/"]) {
+      expect(composePath(plan, { userDataRoot: root, ctx })).toBe(join(root, "apps", "myapp", "compose.yml"));
+    }
 
     const content = renderCompose(plan, ctx);
     const volumeLines = content.split("\n").filter((line) => /^ {6}- "\//.test(line));
