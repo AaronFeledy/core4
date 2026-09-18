@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
@@ -9,11 +9,13 @@ import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Stream } from "effect";
 
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
+  emitCompose,
   linuxDockerCapabilities,
   makeDockerApiClient,
   makeProviderLayer,
@@ -30,7 +32,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { RuntimeProvider } from "@lando/sdk/services";
+import { FileSystem, RuntimeProvider } from "@lando/sdk/services";
 import {
   runProviderContract,
   runProviderContractMatrix,
@@ -1405,8 +1407,131 @@ describe("provider-docker RuntimeProvider contract", () => {
     const compose = renderCompose(makePlan());
 
     expect(compose).toContain('image: "node:22-alpine"');
-    expect(compose).toContain('"127.0.0.1:31080:31080/tcp"');
-    expect(compose).toContain('name: "lando-myapp"');
+    expect(compose).toContain('"127.0.0.1:31080:31080"');
+    expect(compose).toContain('  lando-myapp:\n    driver: "bridge"');
+  });
+
+  test("omits the TCP suffix but preserves UDP when exporting published ports", () => {
+    // Given
+    const plan = makePlan({
+      ...makeService(),
+      endpoints: [
+        { _tag: "published", port: 31080, protocol: "tcp", publication: { hostPort: 31080 } },
+        { _tag: "published", port: 31081, protocol: "udp", publication: { hostPort: 31081 } },
+      ],
+    });
+    // When
+    const compose = renderCompose(plan);
+    // Then
+    expect(compose).toContain('"127.0.0.1:31080:31080"');
+    expect(compose).toContain('"127.0.0.1:31081:31081/udp"');
+  });
+
+  test("exports a bridge driver without an explicit name when the network is per-app", () => {
+    // Given
+    const plan = makePlan();
+    // When
+    const compose = renderCompose(plan);
+    // Then
+    expect(compose).toContain('  lando-myapp:\n    driver: "bridge"');
+    expect(compose).not.toContain('name: "lando-myapp"');
+    expect(compose).toContain(
+      '  lando_bridge_network:\n    external: true\n    name: "lando_bridge_network"',
+    );
+  });
+
+  test("throws a tagged Docker provider error when the artifact reference is missing", () => {
+    // Given
+    const { artifact: _artifact, ...service } = makeService();
+    const plan = makePlan(service);
+    // When
+    const result = Effect.runSync(
+      Effect.either(
+        Effect.try({
+          try: () => renderCompose(plan),
+          catch: (error) => error,
+        }),
+      ),
+    );
+    // Then
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: { _tag: "ProviderInternalError", providerId: "docker" },
+    });
+  });
+
+  test("exports under apps and the app ID using FileSystem mkdir and writeAtomic", async () => {
+    // Given: ID deliberately differs from slug.
+    const userDataRoot = await mkdtemp(path.join(tmpdir(), "lando-docker-compose-"));
+    const plan = { ...makePlan(), id: AppId.make("compose-id"), slug: "compose-slug" };
+    const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(FileSystemLive)));
+    const calls: string[] = [];
+    try {
+      // When
+      const result = await Effect.runPromise(
+        emitCompose(plan, { userDataRoot }).pipe(
+          Effect.provideService(FileSystem, {
+            ...fileSystem,
+            mkdir: (target) =>
+              fileSystem.mkdir(target).pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    calls.push(`mkdir:${target}`);
+                  }),
+                ),
+              ),
+            writeAtomic: (target, content) =>
+              fileSystem.writeAtomic(target, content).pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    calls.push(`writeAtomic:${target}`);
+                  }),
+                ),
+              ),
+          }),
+        ),
+      );
+      // Then
+      const expectedPath = path.join(userDataRoot, "apps", "compose-id", "compose.yml");
+      expect(result.path).toBe(expectedPath);
+      expect(calls).toEqual([
+        `mkdir:${path.join(userDataRoot, "apps")}`,
+        `mkdir:${path.join(userDataRoot, "apps", "compose-id")}`,
+        `writeAtomic:${expectedPath}`,
+      ]);
+      expect(await Bun.file(expectedPath).text()).toBe(result.content);
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("runtime YAML-bypass canary: apply sends raw environment and secret labels through the HTTP API", async () => {
+    // Given
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+    const plan = makePlan({
+      ...makeService(),
+      environment: { "com.example:role": "x", true: "yes", DB_PASSWORD: "s3cret" },
+      extensions: { compose: { labels: { "dev.example.db-password": "s3cret" } } },
+    });
+    const parse = spyOn(Bun.YAML, "parse");
+    try {
+      // When
+      await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+      // Then
+      const create = fake.calls.find(
+        (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
+      );
+      expect(create?.body).toMatchObject({
+        Env: expect.arrayContaining(["com.example:role=x", "true=yes", "DB_PASSWORD=s3cret"]),
+        Labels: { "dev.example.db-password": "s3cret" },
+      });
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
   });
 
   test("creates and mounts cache volumes with storage-kind labels", async () => {
@@ -1467,8 +1592,8 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(compose).toContain(
       '      custom-shared-net:\n        aliases:\n          - "web.custom.internal"',
     );
-    expect(compose).toContain('  custom-app-net:\n    name: "custom-app-net"');
-    expect(compose).toContain('  custom-shared-net:\n    name: "custom-shared-net"\n    external: true');
+    expect(compose).toContain('  custom-app-net:\n    driver: "bridge"');
+    expect(compose).toContain('  custom-shared-net:\n    external: true\n    name: "custom-shared-net"');
     expect(compose).not.toContain("lando_bridge_network");
   });
 
@@ -1479,7 +1604,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     });
 
     expect(compose).toContain("      custom-app-net:");
-    expect(compose).toContain('  custom-app-net:\n    name: "custom-app-net"');
+    expect(compose).toContain('  custom-app-net:\n    driver: "bridge"');
     expect(compose).toContain("aliases:");
     expect(compose).not.toContain("lando_bridge_network");
   });

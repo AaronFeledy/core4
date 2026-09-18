@@ -28,6 +28,13 @@ import {
   containerCreateBodyFragment,
   containerHostConfigFragment,
 } from "@lando/container-runtime/plan";
+import {
+  type EmitComposeResult,
+  type EmitComposeOptions as RuntimeEmitComposeOptions,
+  composePath as runtimeComposePath,
+  emitCompose as runtimeEmitCompose,
+  renderCompose as runtimeRenderCompose,
+} from "@lando/container-runtime/podman/compose";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
 import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
@@ -78,6 +85,7 @@ import {
   type ExecChunk,
   type ExecResult,
   type ExecTarget,
+  type FileSystem,
   type LogChunk,
   LogFileHelperAssets,
   type LogOptions,
@@ -145,14 +153,8 @@ export interface ResolveDockerHostOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
-export interface EmitComposeOptions {
-  readonly userDataRoot: string;
-}
-
-export interface EmitComposeResult {
-  readonly path: string;
-  readonly content: string;
-}
+export type EmitComposeOptions = Omit<RuntimeEmitComposeOptions, "ctx">;
+export type { EmitComposeResult };
 
 interface ContainerInspect {
   readonly Id?: string;
@@ -759,68 +761,16 @@ const createContainerBody = (
     ...(environment === undefined ? {} : { environment }),
   });
 
-export const renderCompose = (plan: AppPlan): string => {
-  const sharedNetwork = landoSharedNetworkName(plan);
-  const services = Object.values(plan.services)
-    .map((service) => {
-      const image = service.artifact?.kind === "ref" ? service.artifact.ref : "";
-      const ports = service.endpoints
-        .flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : []))
-        .map((endpoint) => {
-          const bindAddress = endpoint.publication.bindAddress ?? "127.0.0.1";
-          const hostPort = endpoint.publication.hostPort ?? "";
-          return `      - "${bindAddress}:${hostPort}:${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}"`;
-        })
-        .join("\n");
-      const expose = service.endpoints
-        .flatMap((endpoint) =>
-          endpoint._tag === "internal" && endpoint.protocol !== "unix"
-            ? [`      - "${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}"`]
-            : [],
-        )
-        .join("\n");
-      const networks = [
-        "    networks:",
-        ...networkNames(plan).flatMap((name) => {
-          const aliases = name === sharedNetwork ? serviceNetworkAliases(plan, service) : [service.name];
-          return aliases.length === 0
-            ? [`      ${name}:`]
-            : [`      ${name}:`, "        aliases:", ...aliases.map((alias) => `          - "${alias}"`)];
-        }),
-      ].join("\n");
-      return [
-        `  ${service.name}:`,
-        `    image: "${image}"`,
-        ports.length === 0 ? "" : `    ports:\n${ports}`,
-        expose.length === 0 ? "" : `    expose:\n${expose}`,
-        networks,
-      ]
-        .filter((line) => line.length > 0)
-        .join("\n");
-    })
-    .join("\n");
-  const networks = networkNames(plan)
-    .map((name) => {
-      if (name === sharedNetwork) return `  ${name}:\n    name: "${name}"\n    external: true`;
-      return `  ${name}:\n    name: "${name}"`;
-    })
-    .join("\n");
-  return `version: "3.9"\nservices:\n${services}\nnetworks:\n${networks}\n`;
-};
+export const renderCompose = (plan: AppPlan): string => runtimeRenderCompose(plan, DOCKER_CTX);
 
 export const emitCompose = (
   plan: AppPlan,
   options: EmitComposeOptions,
-): Effect.Effect<EmitComposeResult, ProviderInternalError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const path = `${options.userDataRoot}/${plan.slug}/compose.yml`;
-      const content = renderCompose(plan);
-      await Bun.write(path, content);
-      return { path, content };
-    },
-    catch: (cause) => internal("emitCompose", "Failed to emit Docker compose file.", { app: plan.id }, cause),
-  });
+): Effect.Effect<EmitComposeResult, ProviderInternalError, FileSystem> =>
+  runtimeEmitCompose(plan, { ...options, ctx: DOCKER_CTX });
+
+export const composePath = (plan: AppPlan, options: EmitComposeOptions): string =>
+  runtimeComposePath(plan, { ...options, ctx: DOCKER_CTX });
 
 const ensureNetwork = (api: DockerApiClient, name: string) =>
   request(api, "apply", {
