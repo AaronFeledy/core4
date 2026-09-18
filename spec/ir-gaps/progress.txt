@@ -1114,3 +1114,12 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - Review notes (deferred/rejected): unused pin SHA-256s at install time rejected — AC allows snapshot OR checksum-verified asset; snapshot+exact version is the chosen path and checksums stay as provenance/build-key. Dual generator/runtime schema and hasCustomPhpImage apache-only name are MINOR/NITPICK. Live PHP build + non-root mail send stays Verify. Bugbot found no bugs.
 - Verification: gate:pr passed; guide gates passed (lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, GUIDE_DRIFT_BASE_REF=origin/main); mailpit guide 4/4; focused tests 74/74.
 ---
+## 2026-09-18 03:42 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-18 03:50 - US-635 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started stock `php:8.3` + mailpit (bookworm msmtp 1.8.23-1) and custom `php:8.3-apache-bullseye` + mailpit (bullseye msmtp 1.8.11-2.1). Both sent mail as www-data into Mailpit. Unprovable `php:8.3-alpine` failed `app:cache:refresh` with `LandofileValidationError` before provider action. Adjacent mailhog lint/refresh stayed green. Apps destroyed.
+- **Out-of-scope finding:** setup/start warned ports 80/443 in use and fell back to 8080/8443. Pre-existing host/WSL bind, not US-635.
+- **Out-of-scope finding:** `lando info --format=json | head` crashed the renderer with `EPIPE` in `renderer-output-journal.ts` (`writeStdout`). Piping a short consumer closes stdout while the journal still writes.
+- **Out-of-scope finding:** `lando destroy --yes` on a never-started invalid Landofile (`php:8.3-alpine` + mailpit) failed `LandofileValidationError` instead of the US-629 never-started idempotent outcome. No applied record existed; dir was `rm -rf`'d.
+---
