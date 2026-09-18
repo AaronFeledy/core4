@@ -1065,3 +1065,10 @@ in `appLabels`, `lando config get appLabels --format=json` emitted the secret ve
   - Prose-only guides have no `<Guide>` block, so `dev:guides` reports no scenario output and exits non-zero for
     them. That is not a failure; their gates are `lint:guides` and `check:guide-coverage`.
 ---
+
+## 2026-09-17 19:55 - US-633 Review
+- Confirmed dotted/hyphen/underscore secret-key tokenization, one Compose serializer, YAML round-trip of odd keys, and runtime apply still bypassing YAML. No in-scope product defects.
+- Review notes (deferred/rejected): token guide edits rejected — check:guide-drift vs origin/main passed with no covered-source hit; global-config already documents secret redaction; compose-compatibility is the Landofile key-disposition page, not export quoting. review-work 5-lane harness could not spawn (continuation task_id injection); equivalent AC/QA/quality/security/context review plus Bugbot (no bugs) substituted.
+- Verification: typecheck, lint, codegen:check, boundaries passed; guide gates passed (lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, GUIDE_DRIFT_BASE_REF=origin/main); spot checks 13+17+60+5+33 (3 skip) plus global-config guide 3/3.
+- Guide-Coverage-Skip: US-633 tokenizer and Compose export quoting are internal serializer/redaction fixes; owned guides already cover secret redaction and Landofile Compose dispositions, not export YAML quoting.
+---
