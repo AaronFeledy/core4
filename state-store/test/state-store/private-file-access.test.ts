@@ -40,7 +40,7 @@ describe("owner-only private file access", () => {
 
     // When owner-only access is applied
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       (access) => access.enforce(path),
     );
 
@@ -54,13 +54,54 @@ describe("owner-only private file access", () => {
     expect(OWNER_ONLY_FILE_ACL_WORKER_SCRIPT).toContain("WindowsIdentity]::GetCurrent()");
   });
 
+  test("starts native pwsh for Windows ARM ACL work", async () => {
+    // Given a Windows ARM host with Program Files
+    const path = "D:\\tmp\\private.json";
+    const worker = makeRecordingWorkerSpawn();
+
+    // When owner-only access is applied
+    await runWithAccess(
+      {
+        platform: "win32",
+        arch: "arm64",
+        env: { SystemRoot: "D:\\Windows", ProgramFiles: "D:\\Program Files" },
+        spawn: worker.spawn,
+      },
+      (access) => access.enforce(path),
+    );
+
+    // Then the worker is native pwsh, not emulated Windows PowerShell 5.1
+    expect(worker.commands[0]?.[0]).toBe(win32.join("D:\\Program Files", "PowerShell", "7", "pwsh.exe"));
+    expect(worker.requests).toEqual([{ id: "1", operation: "enforce", path }]);
+  });
+
+  test("fails closed on Windows ARM when Program Files is unavailable", async () => {
+    // Given a Windows ARM host without Program Files
+    const path = "D:\\tmp\\private.json";
+
+    // When owner-only access is applied, then it fails without spawning
+    const worker = makeRecordingWorkerSpawn();
+    await expect(
+      runWithAccess(
+        {
+          platform: "win32",
+          arch: "arm64",
+          env: { SystemRoot: "D:\\Windows" },
+          spawn: worker.spawn,
+        },
+        (access) => access.enforce(path),
+      ),
+    ).rejects.toThrow(new PrivateFileAccessError(path).message);
+    expect(worker.spawnCount()).toBe(0);
+  });
+
   test("reuses one Windows ACL process for sequential operations", async () => {
     // Given a recording Windows ACL process runner
     const worker = makeRecordingWorkerSpawn();
 
     // When two private-file operations run sequentially
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       async (access) => {
         await access.enforce("D:\\tmp\\first.json");
         await access.verify("D:\\tmp\\second.json");
@@ -85,7 +126,7 @@ describe("owner-only private file access", () => {
 
     // When private-file operations start concurrently
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       (access) => Promise.all([access.enforce("D:\\tmp\\first.json"), access.verify("D:\\tmp\\second.json")]),
     );
 
@@ -102,7 +143,7 @@ describe("owner-only private file access", () => {
     const worker = makeRecordingWorkerSpawn(() => ({ kind: "response", ok: false }));
     await expect(
       runWithAccess(
-        { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+        { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
         (access) => access.enforce(path),
       ),
     ).rejects.toThrow(new PrivateFileAccessError(path).message);
@@ -127,7 +168,7 @@ describe("owner-only private file access", () => {
 
     // When an existing private file is verified
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       (access) => access.verify("D:\\tmp\\private.json"),
     );
 
@@ -160,7 +201,7 @@ describe("owner-only private file access", () => {
 
     // When the failed operation is followed by a new operation in the same scope
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       async (access) => {
         await expect(access.enforce(failedPath)).rejects.toEqual(new PrivateFileAccessError(failedPath));
         await access.verify(recoveredPath);
@@ -180,7 +221,7 @@ describe("owner-only private file access", () => {
     // When enforcement receives the malformed frame, then only the path-bearing error escapes
     await expect(
       runWithAccess(
-        { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+        { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
         (access) => access.enforce(path),
       ),
     ).rejects.toThrow(new PrivateFileAccessError(path).message);
@@ -192,7 +233,7 @@ describe("owner-only private file access", () => {
 
     // When the service scope closes after a successful operation
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       (access) => access.enforce("D:\\tmp\\private.json"),
     );
 
