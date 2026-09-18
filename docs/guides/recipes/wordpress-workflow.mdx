@@ -1,0 +1,161 @@
+---
+id: wordpress-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, wordpress, php, mariadb]
+---
+
+# Run the WordPress recipe
+
+```sh
+lando init --recipe wordpress --name=wp-demo --yes
+cd wp-demo
+lando start
+```
+
+The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3 and skips Redis. Apache and MariaDB are up after start. Drop WordPress into the app root so `index.php` exists, then open the URL `lando info` prints.
+
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: wordpress`, Apache on port `80`, depends on `database` |
+| `database` | `type: mariadb` |
+| `cache` (optional) | `type: redis` with `--answer=redis=true` |
+| Tooling | `lando wp` and `lando composer` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead.
+
+## Put WP-CLI and mysqli on appserver
+
+Stock PHP images ship Composer and `pdo_mysql`. WordPress day-to-day also needs the `mysqli` extension and a `wp` binary on `appserver`. Add both as root `build.artifact` steps on `appserver`, then rebuild so they land in the image:
+
+```yaml
+services:
+  appserver:
+    build:
+      artifact:
+        - run: docker-php-ext-install mysqli
+          user: root
+        - run: curl -fsSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x /usr/local/bin/wp
+          user: root
+```
+
+Refresh the plan and rebuild:
+
+```sh
+lando app:cache:refresh
+lando rebuild -y
+```
+
+`lando restart` alone reuses the previous image. After rebuild, confirm the tools:
+
+```sh
+lando wp --allow-root --info
+lando composer --version
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+WP-CLI runs as root inside tooling, so pass `--allow-root` on every `lando wp` invocation.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="wordpress-workflow" display="wp-demo" />
+      <Run command="lando init --recipe wordpress --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"wordpress\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wp\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="redis-php82" render>
+    <Step name="init">
+      <Variable name="appName" value="wordpress-workflow-redis" display="wp-redis" />
+      <Run command="lando init --recipe wordpress --name={{appName}} --yes --answer=php=8.2 --answer=redis=true" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.2\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Download and install WordPress
+
+Core download wants more than the default 128M PHP memory limit. Raise it for that command, then use normal `lando wp --allow-root` for the rest:
+
+```sh
+lando exec appserver -- php -d memory_limit=512M /usr/local/bin/wp --allow-root core download
+lando wp --allow-root config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database --skip-check
+lando wp --allow-root core install \
+  --url='https://wp-demo.lndo.site' \
+  --title='WP Demo' \
+  --admin_user=admin \
+  --admin_password=admin \
+  --admin_email=admin@example.com \
+  --skip-email
+```
+
+Match `--url` to the HTTPS endpoint `lando info` prints (add the port when info shows one). Then:
+
+```sh
+lando wp --allow-root core is-installed
+lando wp --allow-root option get home
+lando composer --version
+lando mariadb -e 'SHOW TABLES FROM `wp-demo`;'
+```
+
+Open the HTTPS URL. A fresh install serves the site title you passed to `core install`.
+
+## Connect WordPress to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `wp-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Put host `database` in `wp-config.php` (or in `config create --dbhost`). Do not use `127.0.0.1` or `localhost`. Root password is generated; you do not need it for the app user.
+
+Add Redis at init with `--answer=redis=true`. That adds a `cache` service on `redis`. Wire an object cache plugin to host `cache` on port `6379` when you want it.
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [WordPress recipe](/recipes/wordpress/)
+- [Install an extra PHP extension](../services/php-customization.mdx)
+- [Run build steps as root or as your app user](../services/build-steps.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
+- [Add Redis](../services/redis.mdx)
