@@ -63,10 +63,10 @@ describe("msmtp pin manifest", () => {
     const manifest = Schema.decodeUnknownSync(MsmtpPinManifest)(MSMTP_PINS);
     // Then
     expect(Object.keys(manifest.families).sort()).toEqual([...MSMTP_SUPPORTED_FAMILIES].sort());
-    expect(manifest.families["debian-bookworm"]?.version).toBe("1.8.23-1");
-    expect(manifest.families["debian-bookworm"]?.suite).toBe("bookworm");
-    expect(manifest.families["debian-bullseye"]?.version).toBe("1.8.11-2.1");
-    expect(manifest.families["debian-bullseye"]?.suite).toBe("bullseye");
+    expect(manifest.families["debian-bookworm"].version).toBe("1.8.23-1");
+    expect(manifest.families["debian-bookworm"].suite).toBe("bookworm");
+    expect(manifest.families["debian-bullseye"].version).toBe("1.8.11-2.1");
+    expect(manifest.families["debian-bullseye"].suite).toBe("bullseye");
   });
 
   test("every pinned artifact carries a distinct checksum and a matching url", () => {

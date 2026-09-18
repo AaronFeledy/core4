@@ -62,7 +62,6 @@ export const resolveMsmtpBaseFamily = (service: ServiceConfig): MsmtpBaseFamily 
   return suite === "bullseye" ? "debian-bullseye" : "debian-bookworm";
 };
 
-/** The pin record for one family. */
 export const msmtpPinFor = (
   family: MsmtpBaseFamily,
   manifest: MsmtpPinManifest = MSMTP_PINS,
