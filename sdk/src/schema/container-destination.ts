@@ -43,8 +43,7 @@ const canonical = (target: string): string => {
 export type ContainerDestinationRefusal = "not-absolute" | "root";
 
 /**
- * Canonicalizes a destination, or names why it cannot be one. Callers that
- * already hold a validated absolute path use {@link normalizeContainerDestination}.
+ * Canonicalizes a destination, or names why it cannot be one.
  */
 export const parseContainerDestination = (
   target: string,
@@ -56,13 +55,6 @@ export const parseContainerDestination = (
   if (value === "/") return { ok: false, reason: "root" };
   return { ok: true, value: PortablePath.make(value) };
 };
-
-/**
- * Canonicalizes a destination that is already known to be absolute and
- * non-root, such as a service type's declared home or a Lando-owned constant.
- */
-export const normalizeContainerDestination = (target: string): PortablePath =>
-  PortablePath.make(canonical(target));
 
 /** Human-readable reason text, reused by every surface that refuses a destination. */
 export const containerDestinationRefusalMessage = (

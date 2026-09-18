@@ -2,42 +2,57 @@ import { describe, expect, it } from "bun:test";
 
 import {
   containerDestinationRefusalMessage,
-  normalizeContainerDestination,
   parseContainerDestination,
 } from "../../src/schema/container-destination.ts";
 import { PortablePath } from "../../src/schema/primitives.ts";
-
-describe("normalizeContainerDestination", () => {
-  it("Given a trailing separator, When normalized, Then it is dropped", () => {
-    expect(normalizeContainerDestination("/home/node/")).toBe(PortablePath.make("/home/node"));
-  });
-
-  it("Given repeated separators, When normalized, Then they collapse", () => {
-    expect(normalizeContainerDestination("/home//node")).toBe(PortablePath.make("/home/node"));
-  });
-
-  it("Given dot segments, When normalized, Then they resolve away", () => {
-    expect(normalizeContainerDestination("/home/./other/../node")).toBe(PortablePath.make("/home/node"));
-  });
-
-  it("Given parent segments above the top, When normalized, Then they clamp at root", () => {
-    expect(normalizeContainerDestination("/a/../../b")).toBe(PortablePath.make("/b"));
-  });
-
-  it("Given a colon in a segment, When normalized, Then it is preserved", () => {
-    expect(normalizeContainerDestination("/srv/a:b/")).toBe(PortablePath.make("/srv/a:b"));
-  });
-
-  it("Given an already canonical path, When normalized, Then it is unchanged", () => {
-    expect(normalizeContainerDestination("/var/lib/mysql")).toBe(PortablePath.make("/var/lib/mysql"));
-  });
-});
 
 describe("parseContainerDestination", () => {
   it("Given an absolute path, When parsed, Then it yields the canonical form", () => {
     expect(parseContainerDestination("/var//www/./")).toEqual({
       ok: true,
       value: PortablePath.make("/var/www"),
+    });
+  });
+
+  it("Given a trailing separator, When parsed, Then it is dropped", () => {
+    expect(parseContainerDestination("/home/node/")).toEqual({
+      ok: true,
+      value: PortablePath.make("/home/node"),
+    });
+  });
+
+  it("Given repeated separators, When parsed, Then they collapse", () => {
+    expect(parseContainerDestination("/home//node")).toEqual({
+      ok: true,
+      value: PortablePath.make("/home/node"),
+    });
+  });
+
+  it("Given dot segments, When parsed, Then they resolve away", () => {
+    expect(parseContainerDestination("/home/./other/../node")).toEqual({
+      ok: true,
+      value: PortablePath.make("/home/node"),
+    });
+  });
+
+  it("Given parent segments above the top, When parsed, Then they clamp at root", () => {
+    expect(parseContainerDestination("/a/../../b")).toEqual({
+      ok: true,
+      value: PortablePath.make("/b"),
+    });
+  });
+
+  it("Given a colon in a segment, When parsed, Then it is preserved", () => {
+    expect(parseContainerDestination("/srv/a:b/")).toEqual({
+      ok: true,
+      value: PortablePath.make("/srv/a:b"),
+    });
+  });
+
+  it("Given an already canonical path, When parsed, Then it is unchanged", () => {
+    expect(parseContainerDestination("/var/lib/mysql")).toEqual({
+      ok: true,
+      value: PortablePath.make("/var/lib/mysql"),
     });
   });
 

@@ -477,7 +477,6 @@
 - `ManagedFilePlan`
 - `ManagedFileResult`
 - `JSON_SCHEMA_NAMES`
-- `normalizeContainerDestination`
 - `parseContainerDestination`
 - `parseShortVolume`
 - `publicSchemaMetadataIndex`
