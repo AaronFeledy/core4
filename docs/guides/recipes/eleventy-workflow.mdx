@@ -91,7 +91,7 @@ lando eleventy
 
 That writes `_site/index.html`. The recipe already runs `npx @11ty/eleventy --serve --port 8080` on `builder`, so open the `builder` URL `lando info` prints (for example `https://builder.eleventy-demo.lndo.site` or the same host with a fallback port). Live reload rides with that serve.
 
-Prefer a one-shot rebuild without touching the long-running serve? `lando eleventy` is the same CLI via tooling.
+Need a one-off rebuild while the development server keeps running? Use `lando eleventy`.
 
 ## Destroy without surprises
 
