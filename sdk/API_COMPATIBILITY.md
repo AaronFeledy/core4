@@ -83,6 +83,8 @@
 
 - `@lando/sdk/errors` additively exports `PhpMyAdminHostsCredsError` and `AppFeatureError` additively includes it; `ServiceInfo` / `InfoAppService` additively gain optional `creds`.
 
+- `@lando/sdk/errors` additively exports `MailpitMsmtpBaseFamilyError` and `AppFeatureError` additively includes it; Mailpit fails closed at plan time when a selected PHP sender's image has no provable base image family for pinned msmtp acquisition.
+
 - `AppPlanner.plan`'s error channel additively gains `CommandAliasConflictError` for plan-time rejection of surviving service-type reserved tooling names; the frozen service-surface fixture is updated to match. The type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions additively include the same tag because those App-handle methods plan through `AppPlanner`.
 
 - `@lando/sdk/errors` additively exports `HomePathCapabilityError` (`message`, `service`, `serviceType`, optional `user`, `remediation`) when a service persists its home but the planner cannot know the destination. `AppPlanner.plan`'s error channel additively includes the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match. `ServiceConfig` additively accepts optional `home` (`false` or `{ path? }`). `ServiceType` additively accepts optional `identity` (`ServiceImageIdentity`).

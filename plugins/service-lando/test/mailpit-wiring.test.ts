@@ -9,7 +9,7 @@ import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { mailpitServiceType } from "../src/services/mailpit.ts";
 
-const planEffect = (mailFrom: unknown, php = true) =>
+const planEffect = (mailFrom: unknown, php = true, firstOverrides: Record<string, unknown> = {}) =>
   Effect.flatMap(AppPlanner, (planner) =>
     planner.plan(
       Schema.decodeUnknownSync(LandofileShape)({
@@ -18,7 +18,13 @@ const planEffect = (mailFrom: unknown, php = true) =>
           mail: { type: "mailpit", ...(mailFrom === undefined ? {} : { mailFrom }) },
           ...(php
             ? {
-                first: { type: "php:8.3", via: "cli", composer: false, db_client: false },
+                first: {
+                  type: "php:8.3",
+                  via: "cli",
+                  composer: false,
+                  db_client: false,
+                  ...firstOverrides,
+                },
                 second: { type: "php:8.3", via: "cli", composer: false, db_client: false },
               }
             : {}),
@@ -28,7 +34,34 @@ const planEffect = (mailFrom: unknown, php = true) =>
       TestRuntimeProvider.capabilities,
     ),
   ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive));
-const plan = (mailFrom: unknown, php = true) => Effect.runPromise(planEffect(mailFrom, php));
+const plan = (mailFrom: unknown, php = true, firstOverrides: Record<string, unknown> = {}) =>
+  Effect.runPromise(planEffect(mailFrom, php, firstOverrides));
+
+const plannedService = (
+  result: {
+    readonly services: Readonly<Record<string, { readonly extensions: Readonly<Record<string, unknown>> }>>;
+  },
+  name: string,
+) => {
+  const service = result.services[ServiceName.make(name)];
+  if (service === undefined) throw new Error(`missing planned service ${name}`);
+  return service;
+};
+
+interface PlannedBuildStep {
+  readonly id?: string;
+  readonly command: string;
+  readonly buildKeyInputs?: Record<string, unknown>;
+}
+
+const msmtpStep = (service: { readonly extensions: Readonly<Record<string, unknown>> }): PlannedBuildStep => {
+  const features = service.extensions["@lando/core/service-features"] as
+    | { readonly buildSteps?: ReadonlyArray<PlannedBuildStep> }
+    | undefined;
+  const step = features?.buildSteps?.find((candidate) => candidate.id === "service-lando.php:mailpit");
+  if (step === undefined) throw new Error("no mailpit build step on the selected service");
+  return step;
+};
 
 describe("Mailpit selected PHP senders", () => {
   test.each([
@@ -111,6 +144,55 @@ describe("Mailpit selected PHP senders", () => {
       expect(result).toMatchObject({ _tag: "Left", left: { _tag: "LandofileValidationError" } });
     },
   );
+
+  test("installs msmtp from a pinned snapshot source rather than the live archive", async () => {
+    // Given / When
+    const result = await plan(undefined);
+    const step = msmtpStep(plannedService(result, "first"));
+    // Then
+    expect(step.command).not.toMatch(/install -y --no-install-recommends msmtp(?!=)/u);
+    expect(step.command).toContain("https://snapshot.debian.org/archive/debian/");
+    expect(step.command).toContain(" bookworm main");
+    expect(step.command).toContain("-o Dir::Etc::SourceParts=-");
+    expect(step.command).toContain("msmtp=1.8.23-1");
+    expect(step.command).toContain('sendmail_path = "/usr/bin/msmtp --host=mail --port=1025');
+    expect(step.buildKeyInputs).toMatchObject({
+      mailpit: { host: "mail", port: 1025 },
+      msmtp: { family: "debian-bookworm", suite: "bookworm", version: "1.8.23-1" },
+    });
+    expect(step.buildKeyInputs?.msmtp).not.toHaveProperty("families");
+  });
+
+  test("pins a custom bullseye-tagged PHP image to the bullseye family", async () => {
+    // Given / When
+    const result = await plan(["first"], true, { image: "php:8.3-cli-bullseye", home: false });
+    const step = msmtpStep(plannedService(result, "first"));
+    // Then
+    expect(step.command).toContain(" bullseye main");
+    expect(step.command).toContain("msmtp=1.8.11-2.1");
+    expect(step.command).not.toContain("bookworm");
+    expect(step.buildKeyInputs).toMatchObject({ msmtp: { family: "debian-bullseye" } });
+  });
+
+  test("fails planning closed when a selected PHP image has no provable base family", async () => {
+    // Given / When
+    const result = await Effect.runPromise(
+      Effect.either(planEffect(undefined, true, { image: "my-registry.example/php:8.3", home: false })),
+    );
+    // Then
+    expect(result).toMatchObject({ _tag: "Left", left: { _tag: "LandofileValidationError" } });
+    if (result._tag !== "Left") return;
+    expect(result.left.message).toContain("first");
+    expect(result.left.message).toContain("my-registry.example/php:8.3");
+  });
+
+  test("an unprovable image still plans when mailFrom excludes it", async () => {
+    // Given / When
+    const result = await plan(["second"], true, { image: "my-registry.example/php:8.3", home: false });
+    // Then
+    expect(msmtpStep(plannedService(result, "second")).command).toContain("msmtp=1.8.23-1");
+    expect(JSON.stringify(plannedService(result, "first").extensions)).not.toContain("sendmail_path");
+  });
 
   test("accepts omitted targets when no PHP service resolves", async () => {
     // Given / When

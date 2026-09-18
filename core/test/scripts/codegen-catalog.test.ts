@@ -75,13 +75,20 @@ const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
   ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
-  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo", ["mutagen-versions"]],
+  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo", ["mutagen-versions", "php-msmtp-pins"]],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo"],
+  ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo"],
-  ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo", ["mutagen-versions"]],
+  [
+    "setup-plugin-flags",
+    "derived",
+    "build-setup-plugin-flags.ts",
+    "repo",
+    ["mutagen-versions", "php-msmtp-pins"],
+  ],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
   [
     "host-proxy-allowlist",
@@ -181,10 +188,10 @@ describe("codegen catalog", () => {
     expect(commands).toEqual(expectedCommands);
   });
 
-  test("generates the mutagen pin before every generator that imports bundled plugins", async () => {
-    // Given: `@lando/file-sync-mutagen` statically imports `mutagen-versions.json`,
+  test("generates pins before every generator that imports bundled plugins", async () => {
+    // Given: bundled plugins statically import the mutagen and PHP msmtp pins,
     // so any generator that imports the bundled plugin list transitively reads
-    // that pin. Derive those generators from source instead of hard-coding ids,
+    // those pins. Derive those generators from source instead of hard-coding ids,
     // so a newly added one is covered automatically.
     const pluginImporters = (
       await Promise.all(
@@ -198,17 +205,19 @@ describe("codegen catalog", () => {
     const waveIndexOf = (id: string): number =>
       waves.findIndex((wave) => wave.some((entry) => entry.id === id));
 
-    // When: the pin generator is placed in a wave.
-    const pinWave = waveIndexOf("mutagen-versions");
+    // When: each pin generator is placed in a wave.
+    const pinWaves = ["mutagen-versions", "php-msmtp-pins"].map((id) => ({ id, wave: waveIndexOf(id) }));
 
     // Then: the pin is fully written before any importer reads it. Sharing a wave
     // lets the import observe the file mid-truncation, because `Bun.write`
     // truncates in place (`JSON Parse error: Unexpected EOF` on Windows CI).
-    expect(pinWave).toBeGreaterThanOrEqual(0);
     expect(pluginImporters.length).toBeGreaterThan(0);
-    for (const entry of pluginImporters) {
-      expect(entry.dependsOn ?? []).toContain("mutagen-versions");
-      expect(waveIndexOf(entry.id)).toBeGreaterThan(pinWave);
+    for (const pin of pinWaves) {
+      expect(pin.wave).toBeGreaterThanOrEqual(0);
+      for (const entry of pluginImporters) {
+        expect(entry.dependsOn ?? []).toContain(pin.id);
+        expect(waveIndexOf(entry.id)).toBeGreaterThan(pin.wave);
+      }
     }
   });
 
@@ -236,7 +245,7 @@ describe("codegen catalog", () => {
 
   test("classifies ownership and references unique existing scripts", async () => {
     // Given
-    const expectedCommittedPins = ["mutagen-versions"];
+    const expectedCommittedPins = ["mutagen-versions", "php-msmtp-pins"];
     const expectedCommittedWorkflows = [
       "ci-workflow",
       "nightly-workflow",
@@ -260,11 +269,11 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(30);
+    expect(catalog).toHaveLength(31);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
-    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(1);
+    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(2);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(11);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(18);
     expect(

@@ -1089,3 +1089,37 @@ in `appLabels`, `lando config get appLabels --format=json` emitted the secret ve
 - Review feedback: fixed — Windows provider-integration failed on a mixed-separator Compose export path; replaced the hand-rolled slash-joining helper in `container-runtime/src/podman/compose.ts` with native `node:path.join` and tightened the shared exact-path tests. Bugbot reported no bugs.
 - Merge: merged (squash)
 ---
+
+## 2026-09-18 03:20 - US-635
+
+Mailpit's msmtp install is now pinned and reproducible, keyed by the selected PHP image's base image family.
+
+- The wiring feature no longer runs a bare `apt-get install msmtp` against the live Debian archive. It installs an exact `msmtp=<version>` from a `snapshot.debian.org` snapshot through an isolated source list (`-o Dir::Etc::SourceList=<tmp> -o Dir::Etc::SourceParts=-`), so the image's own sources stay untouched and ineligible and the whole resolved dependency closure is fixed by the snapshot timestamp rather than by build-time archive state. The `sendmail_path` ini write is unchanged.
+- Two families ship, each with its own snapshot timestamp, package version, and per-arch checksums: `debian-bookworm` (msmtp 1.8.23-1) and `debian-bullseye` (msmtp 1.8.11-2.1). Families are repinned independently; only the selected family's record enters `buildKeyInputs`, so repinning one family leaves every other family's images up to date.
+- Family resolution is provable-only. Stock Lando PHP images are bookworm for every serving mode; a custom image resolves only when it is a canonical upstream `php:` tag ending in `-bookworm` or `-bullseye`. Anything else fails planning with the new tagged `MailpitMsmtpBaseFamilyError` whose remediation names the supported families and the `mailFrom` opt-out, rather than guessing a package source. That mirrors the existing fail-closed policy for unknown custom images.
+- Pins live in a committed manifest beside the PHP build-step modules, regenerated offline by a new `committed-pin` catalog generator whose header documents the exact per-family repin procedure (which `Packages.gz` fields to read and how to update one family without touching the others).
+
+Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules, guide-drift against origin/main). Spot checks: 99 tests pass across the msmtp/mailpit wiring, build-key, and codegen-catalog/drift suites. A failing regression test captured the unpinned install first: four new wiring tests went red against the bare `apt-get install ... msmtp` form and green after the change. Real-surface evidence: all four pinned artifacts fetched live from snapshot.debian.org at HTTP 200 with exact byte size and matching sha256; on the real binary, a stock PHP + mailpit app refreshed its cache with exit 0 while an unprovable custom image exited 1 with `LandofileValidationError` / `issues: appFeatures` before any provider action. The live container build and non-root mail send belong to the separate verify step; this host has no container runtime.
+
+- **Learnings for future iterations:**
+  - A pin manifest imported from `src/` needs the owning package's tsconfig `include` widened to `./src/**/*.json`; the mutagen precedent avoids this only by keeping its JSON outside `rootDir`, which then falls outside the package `files` list.
+  - `check:codegen-drift` counts untracked files, so a brand-new committed-pin output fails `gate:pr` until it is committed. That is the gate working, not a generator defect.
+  - `CATALOG_OUTPUT_PATHS` is locked in two places: `scripts/check-codegen-drift.ts` and `EXPECTED_CATALOG_PATHS` in `core/test/scripts/check-codegen-drift.test.ts`. Adding a pin path to only the first passes tests but fails typecheck.
+  - A custom-image test case trips the pre-existing `HomePathCapabilityError` refusal before reaching feature logic, so such fixtures need `home: false` or the test passes for the wrong reason.
+  - Planned services are keyed by branded `ServiceName`; `result.services.first` typechecks in neither direction — index with `ServiceName.make(name)`.
+---
+
+## 2026-09-18 03:45 - US-635 Review
+- Confirmed family-keyed snapshot.debian.org msmtp pins, selected-family build-key identity, independent per-family repin docs, unpinned-install regression, Mailpit guide, and fail-closed unprovable images. No in-scope product defects; no code changes.
+- Review notes (deferred/rejected): unused pin SHA-256s at install time rejected — AC allows snapshot OR checksum-verified asset; snapshot+exact version is the chosen path and checksums stay as provenance/build-key. Dual generator/runtime schema and hasCustomPhpImage apache-only name are MINOR/NITPICK. Live PHP build + non-root mail send stays Verify. Bugbot found no bugs.
+- Verification: gate:pr passed; guide gates passed (lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, GUIDE_DRIFT_BASE_REF=origin/main); mailpit guide 4/4; focused tests 74/74.
+---
+## 2026-09-18 03:42 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-18 03:50 - US-635 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev, started stock `php:8.3` + mailpit (bookworm msmtp 1.8.23-1) and custom `php:8.3-apache-bullseye` + mailpit (bullseye msmtp 1.8.11-2.1). Both sent mail as www-data into Mailpit. Unprovable `php:8.3-alpine` failed `app:cache:refresh` with `LandofileValidationError` before provider action. Adjacent mailhog lint/refresh stayed green. Apps destroyed.
+- **Out-of-scope finding:** setup/start warned ports 80/443 in use and fell back to 8080/8443. Pre-existing host/WSL bind, not US-635.
+- **Out-of-scope finding:** `lando info --format=json | head` crashed the renderer with `EPIPE` in `renderer-output-journal.ts` (`writeStdout`). Piping a short consumer closes stdout while the journal still writes.
+- **Out-of-scope finding:** `lando destroy --yes` on a never-started invalid Landofile (`php:8.3-alpine` + mailpit) failed `LandofileValidationError` instead of the US-629 never-started idempotent outcome. No applied record existed; dir was `rm -rf`'d.
+---
