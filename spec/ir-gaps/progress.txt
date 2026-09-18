@@ -26,6 +26,7 @@
 - One resolution prefix, many surfaces: `resolveKnownEventSet` (`engine/src/planner/event-set.ts`) is the provider-free prefix of `planApp` — provider precedence, plugin manifests, per-service seeds through `ServiceType.resolve`, effective tooling, and the valid event set. Lint, doctor, and start all call it, and `planApp` consumes the seeds it returns instead of re-resolving, so a service still resolves exactly once per plan.
 - Internal-task exclusion rides a WeakMap keyed on object identity (`tooling-include-provenance`). Nothing between `compileEffectiveTooling` and `validEventNames` may spread, clone, or re-sort the tooling map; `compileEffectiveTooling` already sorts, so `attachEffectiveTooling` must store the object it was handed.
 - A `ServiceType.resolve` that reads `input.capabilities` must treat `undefined` as "not asked", not as "unsupported". Provider-free surfaces pass no capabilities, so a bare `input.capabilities?.x !== true` check fails a service that `lando start` accepts.
+- One Compose serializer, many providers: `renderCompose`/`emitCompose` live only in `container-runtime/src/podman/compose.ts`; each provider exports a thin adapter that injects its own `ProviderErrorContext` and delegates. Values always go through `scalar` (JSON.stringify); every dynamic mapping key goes through `mappingKey`, which emits a plain key only when an allowlist accepts it and YAML cannot re-resolve it.
 - `check:schema-compatibility` reads the WORKING side from the gitignored derived tree (`core/dist/schemas`), which goes stale the moment you merge main. A schema that main added but your local dist predates reports as `BREAKING surface-removed` for a surface your branch never touched. Run `bun run codegen:schema-snapshot` before believing a breaking row, and cross-check the PR's `schema-snapshot` job.
 
 ## 2026-09-11 - US-613 (in progress, not complete)
@@ -1004,4 +1005,63 @@ section.
 - Review notes (deferred/rejected): capability-dependent tooling divergence is out of scope (same resolver; start may pass capabilities it already has; bundled types follow the MSSQL undefined-means-not-asked pattern). Doctor skipping app lint when provider bootstrap fails is pre-existing doctor resilience, not an AC miss. Resolution failures reaching the doctor section isolator (instead of app-config-lint) is the story's designed tagged-error path, not a false unknown-event. `LandofileFormConflictError` is already in the public lint channel via the `LandofileNotFoundError` alias. Extra three-surface/MySQL/provider-init tripwire tests were rejected as coverage preference; lint/planner parity, doctor→lint delegation, and the two guides already satisfy the ACs.
 - Verification: typecheck, lint passed; 31 namespaced-key and tag-detection tests passed, plus 96 parser/round-trip/tag tests; guide gates passed (`lint:guides`, `check:guide-coverage`, `codegen:guide-scenarios`, `check:public-transcripts`, `GUIDE_DRIFT_BASE_REF=origin/main`).
 - **Learnings for future iterations:** Widening YAML mapping keys is not done when only `parseMap` changes. `stripComment` and `detectLandofileTags` still split on the first colon unless they share the same splitter.
+---
+## 2026-09-17 17:46 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-17 19:16 - Babysit
+- PR: #1008 https://github.com/AaronFeledy/core4/pull/1008
+- CI outcome: pass (after triage; `guide-scenarios-windows-arm64` needed one rerun after hitting the 30m cap — it passed in 8m37s on retry)
+- Review feedback: fixed (comment stripping now opts into the compact-mapping splitter so `key:#comment` stays an empty value; lockfile-only devalue 5.9.0→5.9.1 to clear the new GHSA advisory failing `bun audit` in every static-checks job)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-09-17 19:45 - US-633
+
+Secrets in label and environment values now redact regardless of key separator, and the Compose export is
+parseable YAML for every key shape a service can carry.
+
+- Secret-key tokenization in `@lando/redaction` treats dots the same as hyphens and underscores, so
+  `com.example.password`, `dev.example.db-password`, and `DB_PASSWORD` all match one canonical rule. That is the
+  only tokenizer in the repo, and no label- or env-specific redactor was added: label values still reach the
+  canonical `RedactionService` through the existing app-plan token collector and the global-config token walker.
+  The short-token policy is unchanged and now asserted under dotted keys too, so cursor-parameter noise like `32`
+  and `38;2;255;0;0` still never becomes a redaction token.
+- The Compose export serializer routes every dynamic mapping key through one formatter that emits a plain key only
+  when YAML cannot re-resolve it, and double-quotes everything else. Before this, a label or environment key
+  containing a colon, a leading indicator, whitespace, or a bare scalar word produced a document that would not
+  parse at all. Values were already unconditionally quoted; that is now locked by a test rather than assumed.
+- `provider-docker` no longer carries its own hand-written Compose renderer and `Bun.write` exporter. Both providers
+  are thin adapters that inject their own error context into the single container-runtime serializer, so Docker's
+  export gains environment, labels, volumes, tmpfs, and dependency output it never had, writes through the
+  `FileSystem` service under the app-ID path, and fails closed with a tagged provider error instead of emitting an
+  empty image reference. Runtime container creation still goes through the provider HTTP API and is proven to never
+  touch YAML.
+
+Verification: gate:pr passed (typecheck, lint, codegen:check, all thirteen boundary rules, guide-drift against
+origin/main), plus lint:guides and check:guide-coverage. Spot checks: compose emission and redaction suites, the
+provider-docker contract suite, service-lando Compose passthrough, container-runtime plan/config/service-field
+suites, and the CLI config-view redaction matrix all pass with positive counts; the `global-config` guide passes.
+The one failure in `plugins/provider-lando/test/logs-live-container-files.integration.test.ts` needs a real
+container runtime and is unrelated. Manual CLI QA on the real binary with isolated user roots: with a dotted secret
+in `appLabels`, `lando config get appLabels --format=json` emitted the secret verbatim before the change and
+`[redacted]` after, while the non-secret dotted label stayed visible.
+
+- **Learnings for future iterations:**
+  - A redaction canary can pass for the wrong reason. The SDK's key-name pattern masks some structured output
+    independently of tokenization, so prove a tokenization fix by reverting the one-line change and re-running the
+    same test: if it stays green, the canary is measuring the other layer.
+  - Reuse of a canary value across two keys hides a gap. An early label test used one value under both a dotted and
+    a hyphenated key and passed before the fix, because the hyphenated key already matched.
+  - A whole-document YAML round-trip is the only assertion that catches an unparseable export. Substring goldens
+    over `toContain` stayed green while the emitted document could not be parsed at all. Pair the structural
+    round-trip with lexical assertions, because JavaScript object-key coercion makes `true`, `null`, and `123`
+    compare equal after parsing whether or not they were quoted.
+  - YAML caps simple keys at 1024 code points, but the parser accepts longer quoted keys and no Lando key
+    approaches that, so the explicit-key (`? key`) form was deliberately left unimplemented rather than carried as
+    untested branch depth at six call sites.
+  - Prose-only guides have no `<Guide>` block, so `dev:guides` reports no scenario output and exits non-zero for
+    them. That is not a failure; their gates are `lint:guides` and `check:guide-coverage`.
 ---
