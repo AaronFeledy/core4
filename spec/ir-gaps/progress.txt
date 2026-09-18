@@ -1277,3 +1277,6 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
   - The `lando4-dev` sandbox is dependency-free by contract but the projects disk is shared with the host at the same path, so a copy of the host `bun` binary placed outside the repo runs there by absolute path without ever joining `PATH` and without breaking `--check`.
   - mongosh prints 64-bit integers as `Long('...')`. Cast in the `--eval` rather than loosening the assertion, or a real mismatch will look like the same formatting noise.
 ---
+## 2026-09-18 17:54 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
