@@ -1108,3 +1108,9 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
   - A custom-image test case trips the pre-existing `HomePathCapabilityError` refusal before reaching feature logic, so such fixtures need `home: false` or the test passes for the wrong reason.
   - Planned services are keyed by branded `ServiceName`; `result.services.first` typechecks in neither direction — index with `ServiceName.make(name)`.
 ---
+
+## 2026-09-18 03:45 - US-635 Review
+- Confirmed family-keyed snapshot.debian.org msmtp pins, selected-family build-key identity, independent per-family repin docs, unpinned-install regression, Mailpit guide, and fail-closed unprovable images. No in-scope product defects; no code changes.
+- Review notes (deferred/rejected): unused pin SHA-256s at install time rejected — AC allows snapshot OR checksum-verified asset; snapshot+exact version is the chosen path and checksums stay as provenance/build-key. Dual generator/runtime schema and hasCustomPhpImage apache-only name are MINOR/NITPICK. Live PHP build + non-root mail send stays Verify. Bugbot found no bugs.
+- Verification: gate:pr passed; guide gates passed (lint:guides, check:guide-coverage, codegen:guide-scenarios, check:public-transcripts, GUIDE_DRIFT_BASE_REF=origin/main); mailpit guide 4/4; focused tests 74/74.
+---
