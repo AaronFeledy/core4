@@ -599,8 +599,8 @@ describe("Compose mapping-key quoting", () => {
     const parsed = Bun.YAML.parse(renderCompose(plan, ctx)) as Record<string, unknown>;
 
     // `depends_on.required` is computed in the plan but intentionally not
-    // exported: the MVP key allowlist keeps `condition` as the only long-form
-    // key, so the expected model carries `condition` alone.
+    // exported; the serializer emits only `condition` as the long-form
+    // depends_on key, so the expected model carries `condition` alone.
     expect(parsed).toEqual({
       version: "3.9",
       services: {
