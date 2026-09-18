@@ -1082,3 +1082,10 @@ in `appLabels`, `lando config get appLabels --format=json` emitted the secret ve
 - **Out-of-scope finding:** setup warned ports 80/443 in use and fell back to 8000/4443. Pre-existing host/WSL bind, not US-633.
 - **Learnings for future iterations:** `app:config` uses the landofile token collector, not the plan collector. Walking `extensions.compose.labels` on the plan does not redact authored `services.<name>.labels` in config output.
 ---
+
+## 2026-09-18 02:45 - Babysit
+- PR: #1009 https://github.com/AaronFeledy/core4/pull/1009
+- CI outcome: pass (after fix; `guide-scenarios-windows-arm64` hung with zero output and was cancelled at the 30m cap, then passed on rerun of the identical commit — runner flake, not a code defect)
+- Review feedback: fixed — Windows provider-integration failed on a mixed-separator Compose export path; replaced the hand-rolled slash-joining helper in `container-runtime/src/podman/compose.ts` with native `node:path.join` and tightened the shared exact-path tests. Bugbot reported no bugs.
+- Merge: merged (squash)
+---
