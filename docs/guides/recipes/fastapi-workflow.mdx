@@ -1,0 +1,163 @@
+---
+id: fastapi-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, fastapi, python, postgres, redis]
+---
+
+# Run the FastAPI recipe
+
+```sh
+lando init --recipe fastapi --name=fastapi-demo --yes
+cd fastapi-demo
+lando start
+```
+
+`--yes` is consent and skips prompts. The named init creates `fastapi-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis. Drop a FastAPI app in so uvicorn has something to load, then serve it.
+
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `web` | `python:3.12`, `framework: fastapi`, port `8000`, depends on `database` and `cache` |
+| `database` | `type: postgres` |
+| `cache` | `type: redis` |
+| Tooling | `lando uvicorn` and `lando pip` on `web` |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. The recipe declares no options. Pass `--answer=…` anyway and init fails instead of quietly ignoring it.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="fastapi-workflow" display="fastapi-demo" />
+      <Run command="lando init --recipe fastapi --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"python:3\\.12\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"fastapi\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uvicorn\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Scaffold FastAPI with pip
+
+Install into the running `web` service, then put a tiny app next to `.lando.yml`:
+
+```sh
+lando pip install 'fastapi>=0.115' 'uvicorn[standard]>=0.30' 'psycopg[binary]>=3' 'redis>=5'
+mkdir -p app
+```
+
+```python
+# app/main.py
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"hello": "lando"}
+```
+
+Pin what you installed for the next rebuild:
+
+```sh
+lando exec web -- pip freeze > requirements.txt
+```
+
+Then the day-to-day tools work:
+
+```sh
+lando pip --version
+lando uvicorn --version
+lando exec cache -- redis-cli ping
+lando exec database -- psql -U lando -d fastapi-demo -c 'SELECT 1'
+```
+
+`PONG` and `1` mean Redis and Postgres are on the app network. Bind uvicorn to every interface so Traefik can reach it (Uvicorn's default host is loopback only):
+
+```sh
+lando uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Open the URL from `lando info`. Expect JSON like `{"hello":"lando"}`.
+
+## Keep uvicorn answering after restart
+
+`lando pip` installs into the container filesystem. A recreate drops those packages. For a Landofile `command` that survives restart, put a venv on the app mount and point `web` at it:
+
+```sh
+lando exec web -- python -m venv /app/.venv
+lando exec web -- /app/.venv/bin/pip install -r requirements.txt
+```
+
+```yaml
+services:
+  web:
+    type: python:3.12
+    framework: fastapi
+    port: 8000
+    command:
+      - /app/.venv/bin/uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+```
+
+Then:
+
+```sh
+lando restart
+lando info
+```
+
+Bare `lando pip` and `lando uvicorn` still hit the image binaries unless you call `/app/.venv/bin/...` or retarget tooling.
+
+## Connect FastAPI to Postgres and Redis
+
+| Setting | Postgres | Redis |
+| --- | --- | --- |
+| Host | `database` | `cache` |
+| Database | app name (here `fastapi-demo`) | n/a |
+| User | `lando` | n/a (no auth) |
+| Password | from `lando exec database -- printenv POSTGRES_PASSWORD` | n/a |
+| Port | `5432` | `6379` |
+
+Put host `database` in your SQLAlchemy / psycopg DSN, not `127.0.0.1` or `localhost`. `lando info` lists the user and database name and redacts the password; print it from the database service env when you need it in settings. Redis is host `cache` on `6379` with no password.
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [FastAPI recipe](/recipes/fastapi/)
+- [Add Python](../services/python.mdx)
+- [Add Postgres](../services/postgres.mdx)
+- [Add Redis](../services/redis.mdx)
