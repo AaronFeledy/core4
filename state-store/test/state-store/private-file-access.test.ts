@@ -221,7 +221,7 @@ describe("owner-only private file access", () => {
         await rm(dir, { recursive: true, force: true });
       }
     },
-    30_000,
+    120_000,
   );
 
   test.skipIf(process.platform !== "win32")(
@@ -272,5 +272,6 @@ $acl.AddAccessRule($rule)
         await rm(dir, { recursive: true, force: true });
       }
     },
+    120_000,
   );
 });

@@ -3,6 +3,8 @@ import { Schema } from "effect";
 
 const POWERSHELL_RELATIVE_PATH = ["System32", "WindowsPowerShell", "v1.0", "powershell.exe"] as const;
 const MAX_RESPONSE_BYTES = 4_096;
+// Allow a cold, emulated PowerShell start on Windows ARM while still bounding genuine hangs.
+const DEFAULT_TIMEOUT_MS = 60_000;
 
 const ACL_ASSERTIONS = `
 $actual = [IO.File]::GetAccessControl($path, [Security.AccessControl.AccessControlSections]::Access)
@@ -125,7 +127,7 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new TypeError("Private file ACL worker timed out.")),
-            options.timeoutMs ?? 15_000,
+            options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
           );
         }),
       ]);
