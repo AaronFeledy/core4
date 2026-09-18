@@ -9,7 +9,7 @@
  * action rather than guessing a path.
  */
 import { HomePathCapabilityError } from "@lando/sdk/errors";
-import { PortablePath, type ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
+import { type ServiceConfig, type ServicePlan, normalizeContainerDestination } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
 /** What planning knows about one service's home before the plan is finalized. */
@@ -54,10 +54,6 @@ const userPrincipal = (user: string): string => {
   const separator = user.indexOf(":");
   return separator === -1 ? user : user.slice(0, separator);
 };
-
-/** Compares container destinations without letting a trailing slash matter. */
-export const containerTargetKey = (target: string): string =>
-  target.length > 1 && target.endsWith("/") ? target.slice(0, -1) : target;
 
 export const homeStoreName = (appSlug: string, serviceName: string): string =>
   `lando-${appSlug}-${serviceName}-home`;
@@ -132,9 +128,9 @@ export const applyServiceHome = (input: {
   if (resolved instanceof HomePathCapabilityError) return resolved;
   if (resolved === undefined) return input.servicePlan;
 
-  const target = containerTargetKey(resolved);
+  const target = normalizeContainerDestination(resolved);
   const occupied = input.servicePlan.storage.some(
-    (mount) => containerTargetKey(String(mount.target)) === target,
+    (mount) => normalizeContainerDestination(mount.target) === target,
   );
   if (occupied) return input.servicePlan;
 
@@ -144,7 +140,7 @@ export const applyServiceHome = (input: {
       ...input.servicePlan.storage,
       {
         store: homeStoreName(input.appSlug, input.serviceName),
-        target: PortablePath.make(resolved),
+        target,
         readOnly: false,
       },
     ],

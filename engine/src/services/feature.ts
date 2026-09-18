@@ -1,7 +1,7 @@
 import { Effect, Either, ParseResult, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { type ServiceConfig, type ServicePlan, normalizeContainerDestination } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { type DraftServicePlan, deterministicMetadata, sortRecord } from "./draft.ts";
@@ -191,10 +191,21 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan => {
       ? {}
       : {
           // Provider realization is finalized later; composition emits neutral passthrough intent.
-          appMount: { ...draft.appMount, realization: "passthrough" },
+          appMount: {
+            ...draft.appMount,
+            target: normalizeContainerDestination(draft.appMount.target),
+            realization: "passthrough",
+          },
         }),
-    mounts: draft.mounts.map((mount) => ({ ...mount, realization: "passthrough" })),
-    storage: draft.storage.map((storage) => ({ ...storage })),
+    mounts: draft.mounts.map((mount) => ({
+      ...mount,
+      target: normalizeContainerDestination(mount.target),
+      realization: "passthrough",
+    })),
+    storage: draft.storage.map((storage) => ({
+      ...storage,
+      target: normalizeContainerDestination(storage.target),
+    })),
     endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
     routes: [],
     dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),

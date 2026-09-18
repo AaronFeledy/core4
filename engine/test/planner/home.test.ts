@@ -6,7 +6,6 @@ import type { ServiceImageIdentity } from "@lando/sdk/services";
 
 import {
   applyServiceHome,
-  containerTargetKey,
   hasCustomImage,
   homeStoreName,
   resolveHomePath,
@@ -208,6 +207,46 @@ describe("applyServiceHome", () => {
     expect(result.storage).toHaveLength(1);
   });
 
+  it("Given authored storage spelled with dot segments, When applied, Then it is the same destination as the home", () => {
+    const authored = {
+      store: "myapp-web-cache",
+      target: PortablePath.make("/home/./other/../node"),
+      readOnly: false,
+    };
+    const result = applyServiceHome({
+      servicePlan: planWith({ storage: [authored] }),
+      serviceName: "web",
+      appSlug: "myapp",
+      intent: intentFor({} as ServiceConfig),
+    }) as ServicePlan;
+    expect(result.storage).toHaveLength(1);
+  });
+
+  it("Given authored storage with repeated separators, When applied, Then it is the same destination as the home", () => {
+    const authored = {
+      store: "myapp-web-cache",
+      target: PortablePath.make("/home//node"),
+      readOnly: false,
+    };
+    const result = applyServiceHome({
+      servicePlan: planWith({ storage: [authored] }),
+      serviceName: "web",
+      appSlug: "myapp",
+      intent: intentFor({} as ServiceConfig),
+    }) as ServicePlan;
+    expect(result.storage).toHaveLength(1);
+  });
+
+  it("Given a home authored with a trailing slash, When applied, Then the written target is canonical", () => {
+    const result = applyServiceHome({
+      servicePlan: planWith(),
+      serviceName: "web",
+      appSlug: "myapp",
+      intent: intentFor({ home: { path: "/home/node/" } } as ServiceConfig),
+    }) as ServicePlan;
+    expect(result.storage[0]?.target).toBe(PortablePath.make("/home/node"));
+  });
+
   it("Given the planned user on the plan, When applied, Then that user's home is selected", () => {
     const result = applyServiceHome({
       servicePlan: planWith({ user: "root" }),
@@ -226,15 +265,5 @@ describe("applyServiceHome", () => {
       intent: intentFor({ home: false } as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toEqual([]);
-  });
-});
-
-describe("containerTargetKey", () => {
-  it("Given a trailing slash, When keyed, Then it is ignored", () => {
-    expect(containerTargetKey("/root/")).toBe("/root");
-  });
-
-  it("Given the filesystem root, When keyed, Then the slash is preserved", () => {
-    expect(containerTargetKey("/")).toBe("/");
   });
 });

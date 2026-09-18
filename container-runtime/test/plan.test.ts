@@ -10,7 +10,7 @@ import {
   fingerprintPlannedPublishPorts,
   mountSuffix,
 } from "@lando/container-runtime/plan";
-import { type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
 
 const plan = {
   id: "app-id",
@@ -54,6 +54,64 @@ const service = {
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {
+  test.each(["passthrough", "accelerated"] as const)(
+    "preserves colon targets in API Mounts when %s",
+    (realization) => {
+      // Given
+      const target = PortablePath.make("/home/user:ro");
+      const withColons: ServicePlan = {
+        ...service,
+        appMount: {
+          source: AbsolutePath.make("/host/app"),
+          target,
+          readOnly: true,
+          realization,
+          excludes: [],
+          includes: [],
+        },
+        mounts: [
+          { type: "bind", source: "/host/app", target, readOnly: true, realization },
+          {
+            type: "bind",
+            source: "/host/cache",
+            target: PortablePath.make("/cache:v1"),
+            readOnly: false,
+            realization,
+          },
+        ],
+        storage: [{ store: "data", target: PortablePath.make("/data:v1"), readOnly: true }],
+        extensions: { compose: { configs: [{ source: "config", target: "/etc/config:v1" }] } },
+      };
+      // When
+      const host = containerHostConfigFragment(
+        {
+          ...plan,
+          root: AbsolutePath.make("/host"),
+          extensions: { compose: { configs: { config: { file: "config" } } } },
+        },
+        withColons,
+      );
+      // Then
+      expect(host.Mounts).toEqual([
+        {
+          Type: realization === "accelerated" ? "volume" : "bind",
+          Source: realization === "accelerated" ? "myapp-web-app-mount" : "/host/app",
+          Target: target,
+          ReadOnly: true,
+        },
+        {
+          Type: realization === "accelerated" ? "volume" : "bind",
+          Source: realization === "accelerated" ? "myapp-web-mount-1" : "/host/cache",
+          Target: "/cache:v1",
+          ReadOnly: false,
+        },
+        { Type: "volume", Source: "data", Target: "/data:v1", ReadOnly: true },
+        { Type: "bind", Source: "/host/config", Target: "/etc/config:v1", ReadOnly: true },
+      ]);
+      expect(host).not.toHaveProperty("Binds");
+    },
+  );
+
   test("omits ExtraHosts when host aliases are empty", () => {
     // Given
     const withoutAliases = { ...service, hostAliases: [] };

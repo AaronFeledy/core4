@@ -131,9 +131,41 @@ describe("AppPlanner home persistence and host reachability", () => {
     });
   });
 
-  test("Given apache running as www-data, When planned, Then it refuses rather than inventing a home", async () => {
+  test("Given apache running as www-data, When planned, Then one home store targets /home/www-data", async () => {
     await withAppRoot(async (appRoot) => {
-      const failure = await planFailure(appRoot, landofile({ web: { type: "apache", user: "www-data" } }));
+      const appPlan = await plan(appRoot, landofile({ web: { type: "apache", user: "www-data" } }));
+      const web = appPlan.services[ServiceName.make("web")];
+      const store = `lando-${appPlan.slug}-web-home`;
+      expect(web?.storage.filter((mount) => mount.store === store)).toEqual([
+        { store, target: PortablePath.make("/home/www-data"), readOnly: false },
+      ]);
+      expect(appPlan.stores.filter((entry) => entry.name === store)).toEqual([
+        { name: store, scope: "service", kind: "data" },
+      ]);
+    });
+  });
+
+  test("Given apache running as an undeclared user, When planned, Then HomePathCapabilityError is raised", async () => {
+    await withAppRoot(async (appRoot) => {
+      const failure = await planFailure(
+        appRoot,
+        landofile({ web: { type: "apache", user: "lando-nonexistent" } }),
+      );
+      expect(failure).toBeInstanceOf(HomePathCapabilityError);
+      expect(failure).toMatchObject({
+        _tag: "HomePathCapabilityError",
+        service: "web",
+        user: "lando-nonexistent",
+      });
+    });
+  });
+
+  test("Given apache with a custom image running as www-data, When planned, Then HomePathCapabilityError is raised", async () => {
+    await withAppRoot(async (appRoot) => {
+      const failure = await planFailure(
+        appRoot,
+        landofile({ web: { type: "apache", image: "example/custom-httpd:1", user: "www-data" } }),
+      );
       expect(failure).toBeInstanceOf(HomePathCapabilityError);
       expect(failure).toMatchObject({ _tag: "HomePathCapabilityError", service: "web", user: "www-data" });
     });

@@ -64,6 +64,7 @@ export { parseShortVolume } from "./compose-volumes.ts";
 export type { ComposeVolumeEntry } from "./compose-volumes.ts";
 export * from "./config.ts";
 export * from "./config-lint.ts";
+export * from "./container-destination.ts";
 export * from "./data-transfer.ts";
 export * from "./volume-identity.ts";
 export {

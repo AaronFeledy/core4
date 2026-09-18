@@ -1,10 +1,11 @@
 import { LandofileValidationError, NotImplementedError } from "@lando/sdk/errors";
 import {
   type DataStoreMountPlan,
-  PortablePath,
+  type PortablePath,
   type ServiceConfig,
   type ServicePlan,
   type StorageScope,
+  normalizeContainerDestination,
 } from "@lando/sdk/schema";
 
 import { kebab, shortHash } from "./naming.ts";
@@ -57,19 +58,16 @@ export const authoredStorageScopes = (
   return { byStore };
 };
 
-const storageMountTargetKey = (target: PortablePath): string => String(target);
-
 export const applyAuthoredStorage = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.storage ?? [];
   if (authored.length === 0) return servicePlan;
-  const occupiedTargets = new Set(servicePlan.storage.map((mount) => storageMountTargetKey(mount.target)));
+  const occupiedTargets = new Set<string>(servicePlan.storage.map((mount) => String(mount.target)));
   const additions: DataStoreMountPlan[] = [];
   for (const entry of authored) {
     const target = typeof entry === "string" ? entry : entry.target;
-    const mountTarget = PortablePath.make(target);
-    const targetKey = storageMountTargetKey(mountTarget);
-    if (occupiedTargets.has(targetKey)) continue;
-    occupiedTargets.add(targetKey);
+    const mountTarget = normalizeContainerDestination(target);
+    if (occupiedTargets.has(String(mountTarget))) continue;
+    occupiedTargets.add(String(mountTarget));
     let store: string;
     if (typeof entry === "string") {
       store = kebab(target);
@@ -135,7 +133,11 @@ export const expandExcludesToShadows = (
       shadowStoreNames.add(storeName);
       shadowStores.push({ name: storeName, scope: "service" });
     }
-    shadowMounts.push({ store: storeName, target: PortablePath.make(destination), readOnly: false });
+    shadowMounts.push({
+      store: storeName,
+      target: normalizeContainerDestination(destination),
+      readOnly: false,
+    });
   }
 
   const nextPlan: ServicePlan = {

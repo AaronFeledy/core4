@@ -76,11 +76,18 @@ services:
 
 `home: false` is right for anything stateless: a router, a mail catcher, a cache. `home.path` is right when your image does have a real user whose home you want to keep, and you know the path.
 
-You get the same refusal when you run a catalog service as a user the image does not document, for example `user: www-data` on a type that only declares `root`. Same two fixes.
+You get the same refusal when you run a catalog service as a user the image does not document, for example `user: lando-nonexistent` on `type: apache`. Same two fixes.
 
 ## Already mounting something there?
 
-If you already declared storage that lands on the same directory, Lando leaves it alone. Your entry keeps its own store name, scope, and ownership, and nothing is generated on top of it. A trailing slash does not fool it either, so `/home/node` and `/home/node/` are one destination, not two.
+If you already declared storage that lands on the same directory, Lando leaves it alone. Your entry keeps its own store name, scope, and ownership, and nothing is generated on top of it.
+
+Spelling does not fool it. Every container destination is reduced to one canonical POSIX form before anything is compared, so `/home/node`, `/home/node/`, `/home//node`, and `/home/./other/../node` are all the same destination, not four. Two rules follow from that:
+
+- A destination must be absolute. `app/data`, `.`, and `..` are refused, because Lando will not resolve a mount against a working directory it does not control.
+- A destination cannot be the filesystem root. `/`, and anything that reduces to it like `/a/..`, is refused: container engines reject a mount over `/`, so Lando refuses it up front instead of promising a mount the provider will throw out.
+
+A colon is fine in a destination. `/srv/a:b` is a legal POSIX path, so Lando keeps it and switches that mount to the provider's long syntax, because the short `source:target:mode` spelling has nowhere to put the extra colon. Authoring a colon destination as a Compose short volume string is the one place it cannot work; write it as a mount or storage object instead.
 
 Home contents stay out of build keys. Filling up `~/.npm` will not trigger a rebuild.
 

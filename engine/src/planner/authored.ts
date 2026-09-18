@@ -4,11 +4,11 @@ import { type NormalizedRoute, normalizeRoutes } from "@lando/landofile/route-no
 import type { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
 import {
   type LandofileShape,
-  PortablePath,
   type ProviderId,
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
+  normalizeContainerDestination,
 } from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 
@@ -35,7 +35,7 @@ export const applyAuthoredAppMount = (servicePlan: ServicePlan, service: Service
   if (existingMount === undefined) return servicePlan;
   const merged = {
     ...existingMount,
-    target: PortablePath.make(authored.target),
+    target: normalizeContainerDestination(authored.target),
     readOnly: authored.readOnly ?? existingMount.readOnly,
     excludes:
       authored.excludes !== undefined
