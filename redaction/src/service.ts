@@ -69,7 +69,7 @@ export const collectSecretEnvValues = (
   if (sourceEnv === undefined) return [];
   const values: string[] = [];
   for (const [key, value] of Object.entries(sourceEnv)) {
-    const normalizedParts = key.toLowerCase().split(/[_-]+/u).filter(nonEmpty);
+    const normalizedParts = key.toLowerCase().split(/[._-]+/u).filter(nonEmpty);
     const carriesSecret =
       key.toUpperCase() === "REDISCLI_AUTH" || normalizedParts.some((part) => SECRET_ENV_KEY_PARTS.has(part));
     if (carriesSecret && nonEmpty(value) && isUsableExactRedactionValue(value)) {
