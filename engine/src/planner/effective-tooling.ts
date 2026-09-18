@@ -71,7 +71,7 @@ export const validateServiceTypeReservedToolingNames = (input: {
 };
 
 export const attachEffectiveTooling = (plan: AppPlan, tooling: EffectiveTooling): AppPlan => {
-  effectiveToolingByPlan.set(plan, sortedTooling(tooling));
+  effectiveToolingByPlan.set(plan, tooling);
   return plan;
 };
 

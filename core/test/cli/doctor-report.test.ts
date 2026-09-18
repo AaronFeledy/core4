@@ -21,6 +21,7 @@ import {
 import { DeprecationService } from "@lando/sdk/services";
 
 import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
@@ -28,6 +29,7 @@ import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-sta
 import {
   type DoctorReport,
   DoctorReportSchema,
+  appConfigForReport,
   collectDoctorReport,
   doctorDeprecations,
   renderDoctorReport,
@@ -107,6 +109,7 @@ const doctorReport = (options: DoctorOptions = {}) =>
     options,
     provider: doctor(options, []),
     deprecations: doctorDeprecations(),
+    appConfig: appConfigForReport().pipe(Effect.provide(PluginRegistryLive)),
   });
 
 const run = (provider: typeof TestRuntimeProvider): Promise<DoctorReport> =>
