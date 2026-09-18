@@ -83,6 +83,30 @@ describe("AppPlanner home persistence and host reachability", () => {
     });
   });
 
+  test("Given authored storage spelled with a trailing slash at the catalog home, When planned, Then the authored store is kept and no home store is stacked", async () => {
+    await withAppRoot(async (appRoot) => {
+      const appPlan = await plan(
+        appRoot,
+        landofile({
+          web: {
+            type: "node:22",
+            user: "node",
+            storage: [{ store: "keep-home", target: "/home/node/" }],
+          },
+        }),
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      const homeTarget = PortablePath.make("/home/node");
+      expect(web?.storage).toContainEqual({
+        store: "keep-home",
+        target: homeTarget,
+        readOnly: false,
+      });
+      expect(web?.storage.filter((mount) => mount.target === homeTarget)).toHaveLength(1);
+      expect(appPlan.stores.some((entry) => entry.name === `lando-${appPlan.slug}-web-home`)).toBe(false);
+    });
+  });
+
   test("Given a versioned catalog type, When planned, Then the pinned artifact tag does not look like a custom image", async () => {
     await withAppRoot(async (appRoot) => {
       const appPlan = await plan(appRoot, landofile({ db: { type: "mariadb:11.4" } }));

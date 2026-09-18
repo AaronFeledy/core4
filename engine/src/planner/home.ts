@@ -9,7 +9,7 @@
  * action rather than guessing a path.
  */
 import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
-import { type ServiceConfig, type ServicePlan, parseContainerDestination } from "@lando/sdk/schema";
+import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
 import { plannedContainerDestination } from "./storage.ts";
@@ -138,10 +138,7 @@ export const applyServiceHome = (input: {
   );
   if (target instanceof LandofileValidationError) return target;
 
-  const occupied = input.servicePlan.storage.some((mount) => {
-    const existing = parseContainerDestination(String(mount.target));
-    return existing.ok && existing.value === target;
-  });
+  const occupied = input.servicePlan.storage.some((mount) => mount.target === target);
   if (occupied) return input.servicePlan;
 
   return {

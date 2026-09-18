@@ -11,6 +11,7 @@ import {
   resolveHomePath,
   serviceHomeIntent,
 } from "../../src/planner/home.ts";
+import { applyAuthoredStorage } from "../../src/planner/storage.ts";
 
 const identity: ServiceImageIdentity = {
   defaultUser: "node",
@@ -194,52 +195,39 @@ describe("applyServiceHome", () => {
     expect(result.storage).toEqual([authored]);
   });
 
-  it("Given authored storage with a trailing slash, When applied, Then it is still the same destination", () => {
-    const authored = {
-      store: "myapp-web-cache",
-      target: PortablePath.make("/home/node/"),
-      readOnly: false,
-    };
-    const result = applyServiceHome({
-      servicePlan: planWith({ storage: [authored] }),
+  const applyAuthoredThenHome = (target: string): ServicePlan => {
+    const withStorage = applyAuthoredStorage(
+      planWith(),
+      { storage: [{ store: "myapp-web-cache", target, readOnly: false }] } as ServiceConfig,
+      "/tmp/app",
+      "web",
+    );
+    expect(withStorage).not.toBeInstanceOf(LandofileValidationError);
+    return applyServiceHome({
+      servicePlan: withStorage as ServicePlan,
       serviceName: "web",
       appSlug: "myapp",
       appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
-    expect(result.storage).toHaveLength(1);
+  };
+
+  it("Given authored storage with a trailing slash, When applied, Then it is still the same destination", () => {
+    expect(applyAuthoredThenHome("/home/node/").storage).toEqual([
+      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    ]);
   });
 
   it("Given authored storage spelled with dot segments, When applied, Then it is the same destination as the home", () => {
-    const authored = {
-      store: "myapp-web-cache",
-      target: PortablePath.make("/home/./other/../node"),
-      readOnly: false,
-    };
-    const result = applyServiceHome({
-      servicePlan: planWith({ storage: [authored] }),
-      serviceName: "web",
-      appSlug: "myapp",
-      appRoot: "/tmp/app",
-      intent: intentFor({} as ServiceConfig),
-    }) as ServicePlan;
-    expect(result.storage).toHaveLength(1);
+    expect(applyAuthoredThenHome("/home/./other/../node").storage).toEqual([
+      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    ]);
   });
 
   it("Given authored storage with repeated separators, When applied, Then it is the same destination as the home", () => {
-    const authored = {
-      store: "myapp-web-cache",
-      target: PortablePath.make("/home//node"),
-      readOnly: false,
-    };
-    const result = applyServiceHome({
-      servicePlan: planWith({ storage: [authored] }),
-      serviceName: "web",
-      appSlug: "myapp",
-      appRoot: "/tmp/app",
-      intent: intentFor({} as ServiceConfig),
-    }) as ServicePlan;
-    expect(result.storage).toHaveLength(1);
+    expect(applyAuthoredThenHome("/home//node").storage).toEqual([
+      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    ]);
   });
 
   it("Given a home authored with a trailing slash, When applied, Then the written target is canonical", () => {
