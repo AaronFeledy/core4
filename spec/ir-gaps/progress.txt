@@ -1162,3 +1162,9 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - **Out-of-scope finding:** setup/start warned ports 80/443 in use and fell back to 8080/8443. Pre-existing host/WSL bind, not US-637.
 - **Learnings for future iterations:** `lando destroy` without `--purge` leaves named volumes; a later app reusing the same `store:` fails `VolumeOperationError` ("owned by another app root").
 ---
+## 2026-09-18 07:45 - Babysit
+- PR: #1011 https://github.com/AaronFeledy/core4/pull/1011
+- CI outcome: fail (guide-scenarios-windows-arm64)
+- Review feedback: fixed (documented the three new container-destination exports in `sdk/API_COMPATIBILITY.md`, clearing the SDK additive-export gate; the library-api-tests failure had cascaded into the guide-scenarios and provider-integration linux-x64 gates via `build-linux-x64`). Bugbot reported no findings on this PR; a deferred shadow-mount dedup observation in `engine/src/planner/storage.ts` was verified byte-identical to `origin/main` and left out of scope.
+- Merge: deferred (`guide-scenarios-windows-arm64` hangs to its 30m cap emitting zero step output; it timed out identically on `main` at 27bc3abc and passed once on this PR at 9m18s, so it is a pre-existing windows-11-arm hang, not a US-637 regression — all other 56 checks pass and the PR is MERGEABLE with no review objections)
+---
