@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { HomePathCapabilityError } from "@lando/sdk/errors";
+import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
@@ -166,6 +166,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith(),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toEqual([
@@ -187,6 +188,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith({ storage: [authored] }),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toEqual([authored]);
@@ -202,6 +204,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith({ storage: [authored] }),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toHaveLength(1);
@@ -217,6 +220,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith({ storage: [authored] }),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toHaveLength(1);
@@ -232,6 +236,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith({ storage: [authored] }),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toHaveLength(1);
@@ -242,6 +247,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith(),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({ home: { path: "/home/node/" } } as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage[0]?.target).toBe(PortablePath.make("/home/node"));
@@ -252,6 +258,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith({ user: "root" }),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage[0]?.target).toBe(PortablePath.make("/root"));
@@ -262,8 +269,42 @@ describe("applyServiceHome", () => {
       servicePlan: planWith(),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({ home: false } as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toEqual([]);
+  });
+
+  it("Given an explicit home path that is the filesystem root, When applied, Then it is refused", () => {
+    const result = applyServiceHome({
+      servicePlan: planWith(),
+      serviceName: "web",
+      appSlug: "myapp",
+      appRoot: "/tmp/app",
+      intent: intentFor({ home: { path: "/" } } as ServiceConfig),
+    });
+    expect(result).toBeInstanceOf(LandofileValidationError);
+    expect(result).toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: ["services.web.home.path"],
+    });
+    expect(String((result as LandofileValidationError).message)).toContain(
+      "cannot mount over the filesystem root",
+    );
+  });
+
+  it("Given an explicit home path that resolves to root, When applied, Then it is refused", () => {
+    const result = applyServiceHome({
+      servicePlan: planWith(),
+      serviceName: "web",
+      appSlug: "myapp",
+      appRoot: "/tmp/app",
+      intent: intentFor({ home: { path: "/data/.." } } as ServiceConfig),
+    });
+    expect(result).toBeInstanceOf(LandofileValidationError);
+    expect(result).toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: ["services.web.home.path"],
+    });
   });
 });

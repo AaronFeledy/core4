@@ -8,9 +8,11 @@
  * the type nor the author names a home, planning fails before any provider
  * action rather than guessing a path.
  */
-import { HomePathCapabilityError } from "@lando/sdk/errors";
-import { type ServiceConfig, type ServicePlan, normalizeContainerDestination } from "@lando/sdk/schema";
+import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import { type ServiceConfig, type ServicePlan, parseContainerDestination } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
+
+import { plannedContainerDestination } from "./storage.ts";
 
 /** What planning knows about one service's home before the plan is finalized. */
 export interface ServiceHomeIntent {
@@ -118,8 +120,9 @@ export const applyServiceHome = (input: {
   readonly servicePlan: ServicePlan;
   readonly serviceName: string;
   readonly appSlug: string;
+  readonly appRoot: string;
   readonly intent: ServiceHomeIntent;
-}): HomePathCapabilityError | ServicePlan => {
+}): HomePathCapabilityError | LandofileValidationError | ServicePlan => {
   const resolved = resolveHomePath({
     serviceName: input.serviceName,
     intent: input.intent,
@@ -128,10 +131,17 @@ export const applyServiceHome = (input: {
   if (resolved instanceof HomePathCapabilityError) return resolved;
   if (resolved === undefined) return input.servicePlan;
 
-  const target = normalizeContainerDestination(resolved);
-  const occupied = input.servicePlan.storage.some(
-    (mount) => normalizeContainerDestination(mount.target) === target,
+  const target = plannedContainerDestination(
+    resolved,
+    input.appRoot,
+    `services.${input.serviceName}.home.path`,
   );
+  if (target instanceof LandofileValidationError) return target;
+
+  const occupied = input.servicePlan.storage.some((mount) => {
+    const existing = parseContainerDestination(String(mount.target));
+    return existing.ok && existing.value === target;
+  });
   if (occupied) return input.servicePlan;
 
   return {

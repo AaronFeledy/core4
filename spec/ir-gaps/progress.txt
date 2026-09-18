@@ -1146,3 +1146,10 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
   - Provider short mount syntax (`source:target:mode`) is the only real constraint on colons in a destination, and it is an encoding limit, not a path limit. Switching just the affected mount to long syntax preserves the path without churning every other mount's generated output.
   - Auditing colon emitters by grep found more than the obvious two: tmpfs options, Compose config grants, and the ephemeral data plane all interpolate a destination into colon-delimited output.
 ---
+
+## 2026-09-18 - US-637 Review
+- Wired `parseContainerDestination` into author-controlled write seams so `/`, `/data/..`, and `///` fail as `LandofileValidationError` before a plan promises a root mount. Planner and helper regressions lock `home.path: /` and `/data/..`.
+- Review notes (deferred/rejected): cross-kind duplicate-destination uniqueness after canonicalize is out of AC; Compose config/tmpfs extra writers stay on the colon long-syntax path already shipped; app-feature post-draft remounts are not this story's listed write seams. Security lane PASS (root mount is availability, not host escape).
+- Verification: typecheck passed; biome clean on touched files; focused tests 56/56 home/planner/schema plus 19 plugin compose/apache/catalog and 70 container-runtime/plan/emit/data-plane.
+- **Learnings for future iterations:** A parse helper with no production callers is a documentation lie. If policy lives in `parseX` and writes call `normalizeX`, the refusal never happens.
+---

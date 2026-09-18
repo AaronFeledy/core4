@@ -7,7 +7,7 @@ import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
-import { HomePathCapabilityError } from "@lando/sdk/errors";
+import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -168,6 +168,41 @@ describe("AppPlanner home persistence and host reachability", () => {
       );
       expect(failure).toBeInstanceOf(HomePathCapabilityError);
       expect(failure).toMatchObject({ _tag: "HomePathCapabilityError", service: "web", user: "www-data" });
+    });
+  });
+
+  test("Given an explicit home.path that is the filesystem root, When planned, Then LandofileValidationError is raised before provider action", async () => {
+    await withAppRoot(async (appRoot) => {
+      const failure = await planFailure(
+        appRoot,
+        landofile({
+          web: { type: "compose", image: "traefik/whoami:v1.10", home: { path: "/" } },
+        }),
+      );
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      expect(failure).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: ["services.web.home.path"],
+      });
+      expect(String((failure as LandofileValidationError).message)).toContain(
+        "cannot mount over the filesystem root",
+      );
+    });
+  });
+
+  test("Given an explicit home.path that resolves to root, When planned, Then LandofileValidationError is raised", async () => {
+    await withAppRoot(async (appRoot) => {
+      const failure = await planFailure(
+        appRoot,
+        landofile({
+          web: { type: "compose", image: "traefik/whoami:v1.10", home: { path: "/data/.." } },
+        }),
+      );
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      expect(failure).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: ["services.web.home.path"],
+      });
     });
   });
 

@@ -1,7 +1,12 @@
 import { Effect, Either, ParseResult, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { type ServiceConfig, type ServicePlan, normalizeContainerDestination } from "@lando/sdk/schema";
+import {
+  type ServiceConfig,
+  type ServicePlan,
+  containerDestinationRefusalMessage,
+  parseContainerDestination,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { type DraftServicePlan, deterministicMetadata, sortRecord } from "./draft.ts";
@@ -162,7 +167,13 @@ const makeContext = (
   },
 });
 
-const finalizeDraft = (draft: DraftServicePlan): ServicePlan => {
+const destinationError = (target: string, reason: "not-absolute" | "root"): ServiceFeatureError =>
+  new ServiceFeatureError({
+    message: containerDestinationRefusalMessage(reason, target),
+    feature: "destination",
+  });
+
+const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureError => {
   const featureIds = draft.featureIds ?? [];
   const coreExtension =
     draft.buildSteps.length === 0 && featureIds.length === 0
@@ -176,6 +187,38 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan => {
           },
         };
 
+  let appMount: ServicePlan["appMount"];
+  if (draft.appMount !== undefined) {
+    const parsed = parseContainerDestination(draft.appMount.target);
+    if (!parsed.ok) return destinationError(draft.appMount.target, parsed.reason);
+    appMount = {
+      ...draft.appMount,
+      target: parsed.value,
+      realization: "passthrough",
+    };
+  }
+
+  const mounts: Array<ServicePlan["mounts"][number]> = [];
+  for (const mount of draft.mounts) {
+    const parsed = parseContainerDestination(mount.target);
+    if (!parsed.ok) return destinationError(mount.target, parsed.reason);
+    mounts.push({
+      ...mount,
+      target: parsed.value,
+      realization: "passthrough",
+    });
+  }
+
+  const storage: Array<ServicePlan["storage"][number]> = [];
+  for (const entry of draft.storage) {
+    const parsed = parseContainerDestination(entry.target);
+    if (!parsed.ok) return destinationError(entry.target, parsed.reason);
+    storage.push({
+      ...entry,
+      target: parsed.value,
+    });
+  }
+
   return {
     name: draft.name,
     type: draft.type,
@@ -187,25 +230,9 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan => {
     environment: sortRecord(draft.environment),
     ...(draft.user === undefined ? {} : { user: draft.user }),
     ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
-    ...(draft.appMount === undefined
-      ? {}
-      : {
-          // Provider realization is finalized later; composition emits neutral passthrough intent.
-          appMount: {
-            ...draft.appMount,
-            target: normalizeContainerDestination(draft.appMount.target),
-            realization: "passthrough",
-          },
-        }),
-    mounts: draft.mounts.map((mount) => ({
-      ...mount,
-      target: normalizeContainerDestination(mount.target),
-      realization: "passthrough",
-    })),
-    storage: draft.storage.map((storage) => ({
-      ...storage,
-      target: normalizeContainerDestination(storage.target),
-    })),
+    ...(appMount === undefined ? {} : { appMount }),
+    mounts,
+    storage,
     endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
     routes: [],
     dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
@@ -233,5 +260,7 @@ export const composeService = (input: ComposeServiceInput): Effect.Effect<Servic
       { discard: true },
     );
 
-    return finalizeDraft(draft);
+    const finalized = finalizeDraft(draft);
+    if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
+    return finalized;
   });

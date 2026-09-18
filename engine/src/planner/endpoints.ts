@@ -255,7 +255,10 @@ export const finalizeServices = (input: {
       }
 
       const realization = bindRealization(input.providerCapabilities);
-      const shadowResult = expandExcludesToShadows(input.appSlug, name, withArtifact);
+      const shadowResult = expandExcludesToShadows(input.appSlug, name, withArtifact, input.appRoot);
+      if (shadowResult instanceof LandofileValidationError) {
+        return yield* Effect.fail(shadowResult);
+      }
       const planWithShadows = shadowResult.servicePlan;
       const appMount = planWithShadows.appMount;
       const servicePlanWithCapabilityRealization: ServicePlan = {
@@ -270,10 +273,16 @@ export const finalizeServices = (input: {
         servicePlan: servicePlanWithCapabilityRealization,
         serviceName: name,
         appSlug: input.appSlug,
+        appRoot: input.appRoot,
         intent: homeIntent,
       });
-      if (withHome instanceof HomePathCapabilityError) yield* Effect.fail(withHome);
-      const servicePlanWithHome = withHome as ServicePlan;
+      if (withHome instanceof HomePathCapabilityError) {
+        return yield* Effect.fail(withHome);
+      }
+      if (withHome instanceof LandofileValidationError) {
+        return yield* Effect.fail(withHome);
+      }
+      const servicePlanWithHome = withHome;
 
       const endpointNames = new Set<string>();
       for (const endpoint of servicePlanWithHome.endpoints) {

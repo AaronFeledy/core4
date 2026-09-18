@@ -1,14 +1,13 @@
 import { type Context, Effect, Either } from "effect";
 
 import { type NormalizedRoute, normalizeRoutes } from "@lando/landofile/route-normalize";
-import type { LandofileValidationError, RouteInputError } from "@lando/sdk/errors";
+import { LandofileValidationError, type RouteInputError } from "@lando/sdk/errors";
 import {
   type LandofileShape,
   type ProviderId,
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
-  normalizeContainerDestination,
 } from "@lando/sdk/schema";
 import type { PluginRegistry, ServiceTypeHostFacts } from "@lando/sdk/services";
 
@@ -26,16 +25,27 @@ import {
 import { mergeDefaultExcludes } from "./file-sync.ts";
 import { serviceHomeIntent } from "./home.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
-import { applyAuthoredStorage } from "./storage.ts";
+import { applyAuthoredStorage, plannedContainerDestination } from "./storage.ts";
 
-export const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+export const applyAuthoredAppMount = (
+  servicePlan: ServicePlan,
+  service: ServiceConfig,
+  appRoot: string,
+  serviceName: string,
+): ServicePlan | LandofileValidationError => {
   const authored = service.appMount;
   if (authored === undefined || authored === false) return servicePlan;
   const existingMount = servicePlan.appMount;
   if (existingMount === undefined) return servicePlan;
+  const target = plannedContainerDestination(
+    authored.target,
+    appRoot,
+    `services.${serviceName}.appMount.target`,
+  );
+  if (target instanceof LandofileValidationError) return target;
   const merged = {
     ...existingMount,
-    target: normalizeContainerDestination(authored.target),
+    target,
     readOnly: authored.readOnly ?? existingMount.readOnly,
     excludes:
       authored.excludes !== undefined
@@ -177,13 +187,16 @@ export const planServiceDrafts = (input: {
           features,
         }).pipe(Effect.mapError((error) => servicePlanError(input.appRoot, name, error)));
       });
-      const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
-        applyAuthoredStorage(
-          applyAuthoredHealthcheck(applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service), service),
-          service,
-        ),
+      const withAppMount = applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service, input.appRoot, name);
+      if (withAppMount instanceof LandofileValidationError) return yield* Effect.fail(withAppMount);
+      const withStorage = applyAuthoredStorage(
+        applyAuthoredHealthcheck(withAppMount, service),
         service,
+        input.appRoot,
+        name,
       );
+      if (withStorage instanceof LandofileValidationError) return yield* Effect.fail(withStorage);
+      const authoredServicePlanWithoutLabels = applyAuthoredDependencies(withStorage, service);
       const authoredServicePlan = mergeComposeKnobs(
         mergeComposeExtension(authoredServicePlanWithoutLabels, service),
         service,
