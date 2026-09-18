@@ -1153,3 +1153,12 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - Verification: typecheck passed; biome clean on touched files; focused tests 56/56 home/planner/schema plus 19 plugin compose/apache/catalog and 70 container-runtime/plan/emit/data-plane.
 - **Learnings for future iterations:** A parse helper with no production callers is a documentation lie. If policy lives in `parseX` and writes call `normalizeX`, the refusal never happens.
 ---
+## 2026-09-18 05:33 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-18 - US-637 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev. Proved canonical home and colon destinations on the binary: `home.path: /` is `LandofileValidationError` before provider action; compose `alpine` is `HomePathCapabilityError`; `/srv/a:b` round-trips through `app:config` and is writable after start/rebuild; live `httpd:2.4-alpine` `getent passwd www-data` is `/home/www-data`; `home.path: /home/./www-data/` mounts `/home/www-data` for `user: www-data` and the marker survives rebuild. Adjacent node:22 home `/home/node` and `LANDO_HOST_IP` stayed green. Apps destroyed with `--purge`.
+- **Out-of-scope finding:** `type: apache` with `user: www-data` and the default httpd command applies as `stopped` (`ServiceExecError` / later `ServiceStartError` on rebuild). The start script writes `/usr/local/apache2/conf/extra/lando-webroot.conf` as the service user. A `command: ["sleep", "infinity"]` override runs. Not caused by US-637 identity metadata.
+- **Out-of-scope finding:** setup/start warned ports 80/443 in use and fell back to 8080/8443. Pre-existing host/WSL bind, not US-637.
+- **Learnings for future iterations:** `lando destroy` without `--purge` leaves named volumes; a later app reusing the same `store:` fails `VolumeOperationError` ("owned by another app root").
+---
