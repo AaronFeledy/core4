@@ -1123,3 +1123,9 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - **Out-of-scope finding:** `lando info --format=json | head` crashed the renderer with `EPIPE` in `renderer-output-journal.ts` (`writeStdout`). Piping a short consumer closes stdout while the journal still writes.
 - **Out-of-scope finding:** `lando destroy --yes` on a never-started invalid Landofile (`php:8.3-alpine` + mailpit) failed `LandofileValidationError` instead of the US-629 never-started idempotent outcome. No applied record existed; dir was `rm -rf`'d.
 ---
+## 2026-09-18 04:34 - Babysit
+- PR: #1010 https://github.com/AaronFeledy/core4/pull/1010
+- CI outcome: pass (after rerun; `unit-tests-linux-x64-shard (1, ubuntu-24.04)` timed out on `resolveApp > openLandoRuntime exposes a working scratch API`, the known `core/test/app/resolve.test.ts` slow-test flake — same shard passed on ubuntu-26.04 and the rerun was green)
+- Review feedback: none (no Bugbot findings, no reviews)
+- Merge: merged (squash)
+---
