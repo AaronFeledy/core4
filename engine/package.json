@@ -56,6 +56,7 @@
     "./lifecycle/subscriber-loader": "./src/lifecycle/subscriber-loader.ts",
     "./lifecycle/subscribers": "./src/lifecycle/subscribers.ts",
     "./logging/service": "./src/logging/service.ts",
+    "./operations/agent-skills": "./src/operations/agent-skills.ts",
     "./operations/app-config-lint": "./src/operations/app-config-lint.ts",
     "./operations/app-mutation-lock": "./src/operations/app-mutation-lock.ts",
     "./operations/applied-state-target": "./src/operations/applied-state-target.ts",

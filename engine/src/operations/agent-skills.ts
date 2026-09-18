@@ -6,7 +6,15 @@ import type { ManagedFileAction, ManagedFileResult } from "@lando/sdk/schema";
 import { ManagedFileService } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
-import { AGENT_SKILLS_OWNER, agentSkillManagedFiles } from "./pack.ts";
+import { AGENT_SKILLS_OWNER, agentSkillManagedFiles } from "./agent-skills-pack.ts";
+
+export {
+  AGENT_SKILLS_OWNER,
+  AGENT_SKILLS_SKILL_BODY,
+  AGENT_SKILLS_SKILL_ID,
+  AGENT_SKILLS_SKILL_PATH,
+  agentSkillManagedFiles,
+} from "./agent-skills-pack.ts";
 
 export type AgentSkillsVerb = "install" | "update" | "remove";
 

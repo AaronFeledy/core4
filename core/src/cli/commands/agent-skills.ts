@@ -12,7 +12,7 @@ import {
   installAgentSkills as installAgentSkillsOperation,
   removeAgentSkills as removeAgentSkillsOperation,
   updateAgentSkills as updateAgentSkillsOperation,
-} from "../../agent-skills/operations.ts";
+} from "@lando/engine/operations/agent-skills";
 
 export type {
   AgentSkillsError,

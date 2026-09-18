@@ -5,19 +5,17 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect, type Scope } from "effect";
 
-import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
+import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 
-import {
-  installAgentSkills,
-  removeAgentSkills,
-  updateAgentSkills,
-} from "../../src/agent-skills/operations.ts";
 import {
   AGENT_SKILLS_SKILL_BODY,
   AGENT_SKILLS_SKILL_ID,
   AGENT_SKILLS_SKILL_PATH,
   agentSkillManagedFiles,
-} from "../../src/agent-skills/pack.ts";
+  installAgentSkills,
+  removeAgentSkills,
+  updateAgentSkills,
+} from "../../src/operations/agent-skills.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>

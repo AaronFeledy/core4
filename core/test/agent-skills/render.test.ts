@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { AGENT_SKILLS_SKILL_PATH } from "../../src/agent-skills/pack.ts";
+import { AGENT_SKILLS_SKILL_PATH } from "@lando/engine/operations/agent-skills";
 import { renderAgentSkillsResult } from "../../src/cli/commands/agent-skills.ts";
 
 describe("agent skills CLI presentation", () => {

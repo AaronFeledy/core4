@@ -11,9 +11,8 @@ import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
+import { type AgentSkillsResult, installAgentSkills } from "@lando/engine/operations/agent-skills";
 import { ManagedFileServiceLive } from "@lando/managed-file/service";
-import type { AgentSkillsResult } from "../../agent-skills/operations.ts";
-import { installAgentSkills } from "../../agent-skills/operations.ts";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service";
 import { getInteractionServiceOverride } from "../../interaction/testing-override";

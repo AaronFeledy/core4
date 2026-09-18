@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { AGENT_SKILLS_SKILL_ID, AGENT_SKILLS_SKILL_PATH } from "../../src/agent-skills/pack.ts";
+import { AGENT_SKILLS_SKILL_ID, AGENT_SKILLS_SKILL_PATH } from "@lando/engine/operations/agent-skills";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
