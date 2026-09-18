@@ -616,7 +616,10 @@ describe("Compose mapping-key quoting", () => {
             "dev.lando.app-root": "/srv/apps/myapp",
             "dev.lando.service": "web",
           },
-          networks: { "lando-myapp": { aliases: ["web"] }, lando_bridge_network: { aliases: expect.any(Array) } },
+          networks: {
+            "lando-myapp": { aliases: ["web"] },
+            lando_bridge_network: { aliases: expect.any(Array) },
+          },
         },
         database: {
           image: "postgres:16-alpine",
