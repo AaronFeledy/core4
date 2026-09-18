@@ -145,7 +145,7 @@ export const expandExcludesToShadows = (
   if (effectiveExcludes.length === 0) return { servicePlan, shadowStores: [] };
 
   const shadowStores: Array<{ name: string; scope: StorageScope }> = [];
-  const shadowStoreNames = new Set<string>();
+  const shadowTargets = new Set<string>();
   const shadowMounts: Array<{
     readonly store: string;
     readonly target: PortablePath;
@@ -160,11 +160,11 @@ export const expandExcludesToShadows = (
       `services.${serviceName}.appMount.excludes`,
     );
     if (mountTarget instanceof LandofileValidationError) return mountTarget;
-    const storeName = `${appName}-${serviceName}-${kebab(destination)}-${shortHash(destination)}`;
-    if (!shadowStoreNames.has(storeName)) {
-      shadowStoreNames.add(storeName);
-      shadowStores.push({ name: storeName, scope: "service" });
-    }
+    const targetKey = String(mountTarget);
+    if (shadowTargets.has(targetKey)) continue;
+    shadowTargets.add(targetKey);
+    const storeName = `${appName}-${serviceName}-${kebab(targetKey)}-${shortHash(targetKey)}`;
+    shadowStores.push({ name: storeName, scope: "service" });
     shadowMounts.push({
       store: storeName,
       target: mountTarget,
