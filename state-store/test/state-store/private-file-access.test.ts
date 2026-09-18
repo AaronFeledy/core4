@@ -15,6 +15,7 @@ import {
   OWNER_ONLY_FILE_ACL_BODY,
   OWNER_ONLY_FILE_ACL_WORKER_SCRIPT,
   VERIFY_OWNER_ONLY_FILE_ACL_BODY,
+  privateFileAclExecutable,
 } from "../../src/private-file-worker.ts";
 import { nativeProcessRunner } from "../private-file-access.ts";
 import { makeRecordingWorkerSpawn } from "../private-file-worker.ts";
@@ -51,6 +52,8 @@ describe("owner-only private file access", () => {
     expect(worker.commands[0]?.join(" ")).not.toContain(path);
     expect(worker.requests).toEqual([{ id: "1", operation: "enforce", path }]);
     expect(OWNER_ONLY_FILE_ACL_BODY).toContain("SetAccessRuleProtection($true, $false)");
+    expect(OWNER_ONLY_FILE_ACL_BODY).toContain("Set-Acl -LiteralPath $path -AclObject $acl");
+    expect(OWNER_ONLY_FILE_ACL_WORKER_SCRIPT).not.toMatch(/\[IO\.File\]::(?:Get|Set)AccessControl/u);
     expect(OWNER_ONLY_FILE_ACL_WORKER_SCRIPT).toContain("WindowsIdentity]::GetCurrent()");
   });
 
@@ -175,6 +178,8 @@ describe("owner-only private file access", () => {
     // Then the verifier command contains no ACL mutation
     expect(worker.requests[0]?.operation).toBe("verify");
     expect(VERIFY_OWNER_ONLY_FILE_ACL_BODY).not.toContain("SetAccessControl");
+    expect(VERIFY_OWNER_ONLY_FILE_ACL_BODY).not.toContain("Set-Acl");
+    expect(VERIFY_OWNER_ONLY_FILE_ACL_BODY).toContain("Get-Acl -LiteralPath $path");
   });
 
   test("does not spawn PowerShell on non-Windows hosts", async () => {
@@ -246,7 +251,7 @@ describe("owner-only private file access", () => {
     async () => {
       // Given an exclusively created empty file on a native Windows host
       const dir = await mkdtemp(join(tmpdir(), "lando-private-acl-"));
-      const path = join(dir, "private file.json");
+      const path = join(dir, "private [file].json");
       const handle = await open(path, "wx", 0o600);
       await handle.close();
       try {
@@ -283,18 +288,25 @@ describe("owner-only private file access", () => {
           expect(await Bun.file(path).text()).toBe("private payload");
           const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
           if (systemRoot === undefined) throw new Error("native Windows system root is unavailable");
+          const executable = privateFileAclExecutable({
+            systemRoot,
+            env: process.env,
+            arch: process.arch,
+            platform: process.platform,
+          });
+          if (executable === undefined) throw new Error("native PowerShell is unavailable");
           const script = `
 $ErrorActionPreference = 'Stop'
 $path = [Environment]::GetEnvironmentVariable('LANDO_PRIVATE_FILE_PATH', 'Process')
-$acl = [IO.File]::GetAccessControl($path, [Security.AccessControl.AccessControlSections]::Access)
+$acl = Get-Acl -LiteralPath $path
 $everyone = New-Object Security.Principal.SecurityIdentifier('S-1-1-0')
 $rule = New-Object Security.AccessControl.FileSystemAccessRule($everyone, [Security.AccessControl.FileSystemRights]::Read, [Security.AccessControl.AccessControlType]::Allow)
 $acl.AddAccessRule($rule)
-[IO.File]::SetAccessControl($path, $acl)
+Set-Acl -LiteralPath $path -AclObject $acl
 `.trim();
           const tamper = await Effect.runPromise(
             nativeProcessRunner.run({
-              cmd: win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+              cmd: executable,
               args: [
                 "-NoProfile",
                 "-NonInteractive",

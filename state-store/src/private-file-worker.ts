@@ -9,7 +9,7 @@ const MAX_RESPONSE_BYTES = 4_096;
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 const ACL_ASSERTIONS = `
-$actual = [IO.File]::GetAccessControl($path, [Security.AccessControl.AccessControlSections]::Access)
+$actual = Get-Acl -LiteralPath $path
 $rules = @($actual.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
 if (-not $actual.AreAccessRulesProtected -or $rules.Count -ne 1) { throw 'Private file ACL is not exclusive.' }
 $actualRule = $rules[0]
@@ -21,7 +21,7 @@ $acl = New-Object Security.AccessControl.FileSecurity
 $acl.SetAccessRuleProtection($true, $false)
 $rule = New-Object Security.AccessControl.FileSystemAccessRule($sid, [Security.AccessControl.FileSystemRights]::FullControl, [Security.AccessControl.AccessControlType]::Allow)
 $acl.SetAccessRule($rule)
-[IO.File]::SetAccessControl($path, $acl)
+Set-Acl -LiteralPath $path -AclObject $acl
 ${ACL_ASSERTIONS}
 `.trim();
 
