@@ -1187,3 +1187,48 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - Split/excise decisions: none; colon short/long emission stays the encoding dual path AC2 requires
 - Verification: typecheck pass, lint pass, 55 focused destination/home tests pass plus 3 SDK compat tests
 ---
+## 2026-09-18 08:23 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-18 08:23 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-18 08:23 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-18 08:55 - Babysit
+- PR: #1011 https://github.com/AaronFeledy/core4/pull/1011
+- CI outcome: fail (static-checks-platform windows-arm64; static-checks, guide-scenarios-linux-x64 and provider-integration-linux-x64 fail only as cascades of it)
+- Review feedback: none (no Bugbot findings, no review objections, PR MERGEABLE)
+- Merge: deferred (windows-arm64 is now deterministically red, not flaky — the same two `state-store` native ACL tests failed on the original run and on a fresh rerun, and the identical four jobs fail on `main` at the same time. Root cause is runner-side slowness on windows-11-arm hitting fixed timeouts: the ACL worker request exceeds the 15s default in `state-store/src/private-file-worker.ts` (`timeoutMs ?? 15_000`, observed 15062ms and 15092ms), and the follow-on Unicode DACL test has no explicit bun timeout so it dies at the 5s default. Recalibrating those windows-arm64 timeouts is a `state-store` change with no relation to US-637, which touches zero state-store files, so it belongs in its own story on `main` rather than scope expansion during triage.)
+- **Learnings for future iterations:** the earlier "roughly 50/50 flake" read on windows-arm64 is outdated — reruns no longer clear it, so every future PR will stay red until the native-Windows ACL timeouts are recalibrated on `main`.
+---
+## 2026-09-18 08:30 - Babysit
+- [looper] Babysit blocked: CI still red: static-checks-platform (windows-arm64) native ACL tests fail deterministically on both attempts; identical failure on main today; branch touches zero state-store files
+---
+## 2026-09-18 08:30 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-18 08:30 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-18 08:30 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-18 08:30 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-18 08:30 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-18 08:30 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-18 09:05 - Babysit
+- PR: #1011 https://github.com/AaronFeledy/core4/pull/1011
+- CI outcome: fail (static-checks-platform (windows-arm64, windows-11-arm); static-checks, guide-scenarios-linux-x64, provider-integration-linux-x64 are cascade gates off it)
+- Review feedback: none (no Bugbot findings, no review decision); triage categorized the failure as real-issue not owned by this branch — native state-store private-file ACL tests fail the same way on main (runs 35330287129, 35321886924), branch changes zero state-store files, and a --failed rerun reproduced it, so no fix pushed
+- Merge: deferred (required check FAILURE; needs a separate state-store/Windows-ARM CI investigation)
+---
