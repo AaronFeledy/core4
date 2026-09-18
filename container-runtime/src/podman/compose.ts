@@ -292,6 +292,17 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
 
 const scalar = (value: string) => JSON.stringify(value);
 
+// A plain YAML key is only safe when it cannot be re-resolved into a different
+// node: an allowlist is used rather than a denylist so an unanticipated shape
+// fails closed into quotes. Double-quoted form is the escape hatch for every
+// other key, and JSON escaping is a valid YAML double-quoted scalar.
+const SAFE_PLAIN_KEY = /^[A-Za-z_][A-Za-z0-9_./-]*$/u;
+const AMBIGUOUS_PLAIN_WORD = /^(?:true|false|null|yes|no|on|off|y|n)$/iu;
+
+/** Single formatter for every dynamic mapping key the export emits. */
+const mappingKey = (key: string): string =>
+  SAFE_PLAIN_KEY.test(key) && !AMBIGUOUS_PLAIN_WORD.test(key) ? key : JSON.stringify(key);
+
 const writeVolumeList = (
   ctx: ProviderErrorContext,
   lines: Array<string>,
@@ -326,7 +337,7 @@ const writeVolumeList = (
 
 const writeScalarMap = (lines: string[], indent: string, entries: Readonly<Record<string, string>>) => {
   for (const [key, value] of Object.entries(entries).sort(([left], [right]) => left.localeCompare(right))) {
-    lines.push(`${indent}${key}: ${scalar(value)}`);
+    lines.push(`${indent}${mappingKey(key)}: ${scalar(value)}`);
   }
 };
 
@@ -341,7 +352,7 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
   const lines: string[] = [`version: ${scalar(document.version)}`, "services:"];
 
   for (const [serviceName, service] of Object.entries(document.services)) {
-    lines.push(`  ${serviceName}:`, `    image: ${scalar(service.image)}`);
+    lines.push(`  ${mappingKey(serviceName)}:`, `    image: ${scalar(service.image)}`);
 
     if (service.ports !== undefined) {
       lines.push("    ports:");
@@ -373,14 +384,14 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
       for (const [depService, entry] of Object.entries(service.depends_on).sort(([left], [right]) =>
         left.localeCompare(right),
       )) {
-        lines.push(`      ${depService}:`, `        condition: ${scalar(entry.condition)}`);
+        lines.push(`      ${mappingKey(depService)}:`, `        condition: ${scalar(entry.condition)}`);
       }
     }
 
     if (service.networks !== undefined) {
       lines.push("    networks:");
       for (const [networkName, network] of Object.entries(service.networks)) {
-        lines.push(`      ${networkName}:`);
+        lines.push(`      ${mappingKey(networkName)}:`);
         if (network.aliases !== undefined && network.aliases.length > 0) {
           lines.push("        aliases:");
           writeScalarList(lines, "          ", network.aliases);
@@ -396,7 +407,7 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
 
   lines.push("networks:");
   for (const [networkName, network] of Object.entries(document.networks)) {
-    lines.push(`  ${networkName}:`);
+    lines.push(`  ${mappingKey(networkName)}:`);
     if (network.driver !== undefined) {
       lines.push(`    driver: ${scalar(network.driver)}`);
     }
@@ -411,7 +422,7 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
   if (document.volumes !== undefined) {
     lines.push("volumes:");
     for (const [volumeName, volume] of Object.entries(document.volumes)) {
-      lines.push(`  ${volumeName}:`);
+      lines.push(`  ${mappingKey(volumeName)}:`);
       if (volume.driver !== undefined) {
         lines.push(`    driver: ${scalar(volume.driver)}`);
       }
