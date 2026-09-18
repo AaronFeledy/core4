@@ -1169,3 +1169,21 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - Merge: deferred (windows-arm64 runner instability, not a US-637 regression. `static-checks-platform (windows-arm64)` fails its "Native Windows private-file ACL tests" step on three consecutive reruns — the PowerShell DACL enforce takes >15s against a 5s bun test timeout; the earlier `guide-scenarios-windows-arm64` 30m hang is the same runner. Both fail intermittently on `main` today while this branch changes zero `state-store` files, so a recalibration belongs in its own story on `main` rather than scope expansion during triage. Every other check passes, Bugbot reported nothing, and the PR is MERGEABLE with no review objections.)
 - **Learnings for future iterations:** windows-arm64 CI turned unreliable on 2026-09-18 — both the `state-store` native ACL tests and guide scenarios time out there, roughly 50/50 on `main`. Reruns do not clear it; those native-Windows timeouts need recalibrating.
 ---
+## 2026-09-18 08:11 - Babysit
+- [looper] Babysit blocked: CI still red: guide-scenarios-windows-arm64 hangs to its 30m cap with zero step output (pre-existing on main at 27bc3abc; passed once on this PR); all other 56 checks pass
+---
+## 2026-09-18 08:11 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-18 08:11 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-18 08:21 - US-637 Drift Audit
+- Trigger: 3 cycles, 946/123 changed lines, 6 commits
+- Ceremony: unused public `normalizeContainerDestination` left behind after write seams switched to parse
+- Scar tissue: home occupancy re-parsed already-canonical storage instead of comparing equality
+- Weakened proofs: occupancy tests branded non-canonical targets onto the plan; restored through the authored-storage write seam and AppPlanner
+- Fixed: deleted the dead export; occupancy is plain equality; stacking regressions go through production write then compare
+- Split/excise decisions: none; colon short/long emission stays the encoding dual path AC2 requires
+- Verification: typecheck pass, lint pass, 55 focused destination/home tests pass plus 3 SDK compat tests
+---
