@@ -80,10 +80,21 @@ export class PhpMyAdminHostsCredsError extends Schema.TaggedError<PhpMyAdminHost
   { message: Schema.String, feature: Schema.String, remediation: Schema.String },
 ) {}
 
+/**
+ * Mailpit cannot pin msmtp for a selected PHP sender because the service's
+ * image has no provable base image family. Raised before any provider action
+ * rather than guessing a package source.
+ */
+export class MailpitMsmtpBaseFamilyError extends Schema.TaggedError<MailpitMsmtpBaseFamilyError>()(
+  "MailpitMsmtpBaseFamilyError",
+  { message: Schema.String, feature: Schema.String, remediation: Schema.String },
+) {}
+
 export type AppFeatureError =
   | AppFeatureSelectorMatchedNothingError
   | AppFeatureMutationConflictError
   | AppFeatureCycleError
+  | MailpitMsmtpBaseFamilyError
   | PhpMyAdminHostsCredsError;
 
 /**
