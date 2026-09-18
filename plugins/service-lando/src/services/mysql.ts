@@ -29,7 +29,9 @@ const DEFAULT_IMAGE = MYSQL_ARTIFACTS["8.0"];
 const DEFAULT_PORT = 3306;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MYSQL_FEATURE_ID = "service-lando.mysql";
-export const MYSQL_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
+// Read directly by mysqld, even when host AppArmor blocks the image's
+// /etc/my.cnf and its conf.d include directive.
+export const MYSQL_CONFIG_TARGET = PortablePath.make("/etc/mysql/my.cnf");
 
 const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
