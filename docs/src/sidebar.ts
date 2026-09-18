@@ -60,6 +60,7 @@ export const sidebar = [
           { label: "Run the Laravel recipe", slug: "guides/recipes/laravel-workflow" },
           { label: "Run the SvelteKit recipe", slug: "guides/recipes/sveltekit-workflow" },
           { label: "Run the Next.js recipe", slug: "guides/recipes/nextjs-workflow" },
+          { label: "Run the Eleventy recipe", slug: "guides/recipes/eleventy-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },
           { label: "Extend a recipe", slug: "guides/recipes/extending-recipes" },
