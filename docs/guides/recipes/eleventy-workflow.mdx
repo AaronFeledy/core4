@@ -91,6 +91,8 @@ lando eleventy
 
 That writes `_site/index.html`. The recipe already runs `npx @11ty/eleventy --serve --port 8080` on `builder`, so open the `builder` URL `lando info` prints (for example `https://builder.eleventy-demo.lndo.site` or the same host with a fallback port). Live reload rides with that serve.
 
+Skip the bare app hostname for now. `web` mounts `/app` with no `root`, so after a build the app URL can return HTTP 403 until the recipe sets `root: _site` ([#1012](https://github.com/AaronFeledy/core4/issues/1012)).
+
 Need a one-off rebuild while the development server keeps running? Use `lando eleventy`.
 
 ## Destroy without surprises
