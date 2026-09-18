@@ -15,6 +15,7 @@ import {
   OWNER_ONLY_FILE_ACL_BODY,
   OWNER_ONLY_FILE_ACL_WORKER_SCRIPT,
   VERIFY_OWNER_ONLY_FILE_ACL_BODY,
+  privateFileAclExecutable,
 } from "../../src/private-file-worker.ts";
 import { nativeProcessRunner } from "../private-file-access.ts";
 import { makeRecordingWorkerSpawn } from "../private-file-worker.ts";
@@ -40,7 +41,7 @@ describe("owner-only private file access", () => {
 
     // When owner-only access is applied
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       (access) => access.enforce(path),
     );
 
@@ -51,7 +52,50 @@ describe("owner-only private file access", () => {
     expect(worker.commands[0]?.join(" ")).not.toContain(path);
     expect(worker.requests).toEqual([{ id: "1", operation: "enforce", path }]);
     expect(OWNER_ONLY_FILE_ACL_BODY).toContain("SetAccessRuleProtection($true, $false)");
+    expect(OWNER_ONLY_FILE_ACL_BODY).toContain("Set-Acl -LiteralPath $path -AclObject $acl");
+    expect(OWNER_ONLY_FILE_ACL_WORKER_SCRIPT).not.toMatch(/\[IO\.File\]::(?:Get|Set)AccessControl/u);
     expect(OWNER_ONLY_FILE_ACL_WORKER_SCRIPT).toContain("WindowsIdentity]::GetCurrent()");
+  });
+
+  test("starts native pwsh for Windows ARM ACL work", async () => {
+    // Given a Windows ARM host with Program Files
+    const path = "D:\\tmp\\private.json";
+    const worker = makeRecordingWorkerSpawn();
+
+    // When owner-only access is applied
+    await runWithAccess(
+      {
+        platform: "win32",
+        arch: "arm64",
+        env: { SystemRoot: "D:\\Windows", ProgramFiles: "D:\\Program Files" },
+        spawn: worker.spawn,
+      },
+      (access) => access.enforce(path),
+    );
+
+    // Then the worker is native pwsh, not emulated Windows PowerShell 5.1
+    expect(worker.commands[0]?.[0]).toBe(win32.join("D:\\Program Files", "PowerShell", "7", "pwsh.exe"));
+    expect(worker.requests).toEqual([{ id: "1", operation: "enforce", path }]);
+  });
+
+  test("fails closed on Windows ARM when Program Files is unavailable", async () => {
+    // Given a Windows ARM host without Program Files
+    const path = "D:\\tmp\\private.json";
+
+    // When owner-only access is applied, then it fails without spawning
+    const worker = makeRecordingWorkerSpawn();
+    await expect(
+      runWithAccess(
+        {
+          platform: "win32",
+          arch: "arm64",
+          env: { SystemRoot: "D:\\Windows" },
+          spawn: worker.spawn,
+        },
+        (access) => access.enforce(path),
+      ),
+    ).rejects.toThrow(new PrivateFileAccessError(path).message);
+    expect(worker.spawnCount()).toBe(0);
   });
 
   test("reuses one Windows ACL process for sequential operations", async () => {
@@ -60,7 +104,7 @@ describe("owner-only private file access", () => {
 
     // When two private-file operations run sequentially
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       async (access) => {
         await access.enforce("D:\\tmp\\first.json");
         await access.verify("D:\\tmp\\second.json");
@@ -85,7 +129,7 @@ describe("owner-only private file access", () => {
 
     // When private-file operations start concurrently
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       (access) => Promise.all([access.enforce("D:\\tmp\\first.json"), access.verify("D:\\tmp\\second.json")]),
     );
 
@@ -102,7 +146,7 @@ describe("owner-only private file access", () => {
     const worker = makeRecordingWorkerSpawn(() => ({ kind: "response", ok: false }));
     await expect(
       runWithAccess(
-        { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+        { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
         (access) => access.enforce(path),
       ),
     ).rejects.toThrow(new PrivateFileAccessError(path).message);
@@ -127,13 +171,15 @@ describe("owner-only private file access", () => {
 
     // When an existing private file is verified
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       (access) => access.verify("D:\\tmp\\private.json"),
     );
 
     // Then the verifier command contains no ACL mutation
     expect(worker.requests[0]?.operation).toBe("verify");
     expect(VERIFY_OWNER_ONLY_FILE_ACL_BODY).not.toContain("SetAccessControl");
+    expect(VERIFY_OWNER_ONLY_FILE_ACL_BODY).not.toContain("Set-Acl");
+    expect(VERIFY_OWNER_ONLY_FILE_ACL_BODY).toContain("Get-Acl -LiteralPath $path");
   });
 
   test("does not spawn PowerShell on non-Windows hosts", async () => {
@@ -160,7 +206,7 @@ describe("owner-only private file access", () => {
 
     // When the failed operation is followed by a new operation in the same scope
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       async (access) => {
         await expect(access.enforce(failedPath)).rejects.toEqual(new PrivateFileAccessError(failedPath));
         await access.verify(recoveredPath);
@@ -180,7 +226,7 @@ describe("owner-only private file access", () => {
     // When enforcement receives the malformed frame, then only the path-bearing error escapes
     await expect(
       runWithAccess(
-        { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+        { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
         (access) => access.enforce(path),
       ),
     ).rejects.toThrow(new PrivateFileAccessError(path).message);
@@ -192,7 +238,7 @@ describe("owner-only private file access", () => {
 
     // When the service scope closes after a successful operation
     await runWithAccess(
-      { platform: "win32", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
+      { platform: "win32", arch: "x64", env: { SystemRoot: "D:\\Windows" }, spawn: worker.spawn },
       (access) => access.enforce("D:\\tmp\\private.json"),
     );
 
@@ -205,7 +251,7 @@ describe("owner-only private file access", () => {
     async () => {
       // Given an exclusively created empty file on a native Windows host
       const dir = await mkdtemp(join(tmpdir(), "lando-private-acl-"));
-      const path = join(dir, "private file.json");
+      const path = join(dir, "private [file].json");
       const handle = await open(path, "wx", 0o600);
       await handle.close();
       try {
@@ -221,7 +267,7 @@ describe("owner-only private file access", () => {
         await rm(dir, { recursive: true, force: true });
       }
     },
-    30_000,
+    120_000,
   );
 
   test.skipIf(process.platform !== "win32")(
@@ -242,18 +288,25 @@ describe("owner-only private file access", () => {
           expect(await Bun.file(path).text()).toBe("private payload");
           const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
           if (systemRoot === undefined) throw new Error("native Windows system root is unavailable");
+          const executable = privateFileAclExecutable({
+            systemRoot,
+            env: process.env,
+            arch: process.arch,
+            platform: process.platform,
+          });
+          if (executable === undefined) throw new Error("native PowerShell is unavailable");
           const script = `
 $ErrorActionPreference = 'Stop'
 $path = [Environment]::GetEnvironmentVariable('LANDO_PRIVATE_FILE_PATH', 'Process')
-$acl = [IO.File]::GetAccessControl($path, [Security.AccessControl.AccessControlSections]::Access)
+$acl = Get-Acl -LiteralPath $path
 $everyone = New-Object Security.Principal.SecurityIdentifier('S-1-1-0')
 $rule = New-Object Security.AccessControl.FileSystemAccessRule($everyone, [Security.AccessControl.FileSystemRights]::Read, [Security.AccessControl.AccessControlType]::Allow)
 $acl.AddAccessRule($rule)
-[IO.File]::SetAccessControl($path, $acl)
+Set-Acl -LiteralPath $path -AclObject $acl
 `.trim();
           const tamper = await Effect.runPromise(
             nativeProcessRunner.run({
-              cmd: win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+              cmd: executable,
               args: [
                 "-NoProfile",
                 "-NonInteractive",
@@ -272,5 +325,6 @@ $acl.AddAccessRule($rule)
         await rm(dir, { recursive: true, force: true });
       }
     },
+    120_000,
   );
 });

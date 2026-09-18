@@ -126,7 +126,11 @@ export const apacheServiceType: ServiceType = {
   id: "apache",
   name: "apache",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  // Verified from /etc/passwd in docker.io/library/httpd:2.4-alpine (HTTPD_VERSION=2.4.68):
+  // sha256:7ed5668e2fb31c738bcd291847fbb313073998e561ac6d8dc63cfd061dd0fb4d
+  // www-data:x:82:82::/home/www-data:/sbin/nologin
+  // Image config User was empty and HOME was absent, so neither was used as the home source.
+  identity: { defaultUser: "root", homes: { root: "/root", "www-data": "/home/www-data" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.sync(() => {

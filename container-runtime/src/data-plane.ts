@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
+import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import {
   type MountedVolumeTarget,
@@ -544,8 +545,22 @@ const createEphemeralContainer = (
 ) => {
   const name = ephemeralContainerName(options.providerId);
   const mount = firstDataStoreMount(spec);
-  const binds = dataStoreMounts(spec).map(
-    (mount) => `${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`,
+  const binds = dataStoreMounts(spec).flatMap((mount) =>
+    requiresLongMountSyntax(mount.target)
+      ? []
+      : [`${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`],
+  );
+  const mounts = dataStoreMounts(spec).flatMap((mount) =>
+    requiresLongMountSyntax(mount.target)
+      ? [
+          {
+            Type: "volume",
+            Source: volumeName(mount.store),
+            Target: mount.target,
+            ReadOnly: mount.readOnly,
+          },
+        ]
+      : [],
   );
   const attachStdin = spec.stdinStream !== undefined;
   return request(options, "run.create", {
@@ -556,7 +571,7 @@ const createEphemeralContainer = (
       Cmd: spec.command,
       ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
       ...(witnessSource === undefined
-        ? { HostConfig: { Binds: binds } }
+        ? { HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) } }
         : {
             User: "0:0",
             Entrypoint: [],

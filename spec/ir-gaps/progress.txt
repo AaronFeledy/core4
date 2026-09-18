@@ -1129,3 +1129,106 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - Review feedback: none (no Bugbot findings, no reviews)
 - Merge: merged (squash)
 ---
+
+## 2026-09-18 05:55 - US-637
+
+- Container mount destinations now reduce to one canonical POSIX form before anything compares them. A new SDK-level pure canonicalizer resolves dot segments, collapses repeated separators, drops a trailing separator, and clamps `..` at root, so `/home/node`, `/home/node/`, `/home//node`, and `/home/./other/../node` are one destination. The policy is explicit and documented in prose: a relative destination is refused because Lando will not resolve a mount against a working directory it does not control, and root is refused because container engines reject a mount over `/` — refusing up front beats promising a mount the provider throws out.
+- Canonicalization happens once, at the write seams that can receive author input: feature draft finalization (which covers every feature-contributed mount, the bundled service constants, and Compose volumes), authored storage, the authored app mount, exclude shadow stores, and the home store. Finalized-plan consumers keep plain equality, which is now the correct invariant rather than a latent bug. `containerTargetKey` is gone; its direct tests moved to the canonicalizer, where the root case flipped to the new refusal.
+- Fixed the asymmetry that made this reachable: home resolution COMPARED a slash-stripped key but WROTE the raw authored string, so a home authored with a trailing slash landed non-canonical on the plan.
+- Colons stay legal in destinations. Rather than reject a valid POSIX path, every emitter that interpolates a destination into colon-delimited output now switches that mount to long syntax behind one shared predicate: Compose app mounts, binds, named volumes, storage, config grants, and tmpfs; the container API's `Mounts` instead of `Binds`; and ephemeral data-plane mounts. Non-colon destinations keep byte-identical short output, so no fixture churn. Bring-up needed no parser change because colon targets never reach the short-string path any more, and its `Mounts` target recovery still detects collisions.
+- Apache now declares a `www-data` home of `/home/www-data`, read from the shipped image's passwd entry rather than inferred. The image's own config carries an empty `User` and no `HOME`, so the conventional `/var/www` guess would have been wrong; the identity comment records the image digest and the verbatim passwd row so the value stays auditable. Only `root` and `www-data` are declared — system accounts are not plausible run-as identities, and `nobody`'s home is `/`, which the new policy refuses anyway.
+- Verification: typecheck, lint, and boundaries pass. Failing regressions were captured first in every area: non-canonical storage stacking a duplicate home store, and short-syntax corruption such as `"/app:ro:ro"` and a tmpfs target split at its colon. 190 focused tests pass across the canonicalizer, planner home, planner suites, Apache home planning, catalog identity, and six container-runtime emitter suites. Real-runtime check in the sandbox: `getent passwd www-data` inside the live `httpd:2.4-alpine` container returns `/home/www-data` and the image digest matches the one recorded in source. QA app and temporary artifacts removed.
+
+- **Learnings for future iterations:**
+  - A "compare with a normalizing key, write the raw value" pair is a silent correctness bug, not a style issue. When a helper exists to make equality tolerant, check that the WRITE uses it too, or non-canonical values keep entering the plan and only the comparison hides them.
+  - Normalize at the write seams, not at the comparisons. Defensive normalization at every consumer masks a missed writer and re-normalizes canonical constants for nothing; the one exception is a planner-internal comparison whose existing contract already promised tolerance.
+  - Image account metadata must come from the passwd entry, never from the image's `USER`/`HOME` config. `httpd:2.4-alpine` sets neither, and its `www-data` home is `/home/www-data`, not the widely assumed `/var/www`. A digest in the comment is enough to keep that auditable — no fixture or codegen needed.
+  - Provider short mount syntax (`source:target:mode`) is the only real constraint on colons in a destination, and it is an encoding limit, not a path limit. Switching just the affected mount to long syntax preserves the path without churning every other mount's generated output.
+  - Auditing colon emitters by grep found more than the obvious two: tmpfs options, Compose config grants, and the ephemeral data plane all interpolate a destination into colon-delimited output.
+---
+
+## 2026-09-18 - US-637 Review
+- Wired `parseContainerDestination` into author-controlled write seams so `/`, `/data/..`, and `///` fail as `LandofileValidationError` before a plan promises a root mount. Planner and helper regressions lock `home.path: /` and `/data/..`.
+- Review notes (deferred/rejected): cross-kind duplicate-destination uniqueness after canonicalize is out of AC; Compose config/tmpfs extra writers stay on the colon long-syntax path already shipped; app-feature post-draft remounts are not this story's listed write seams. Security lane PASS (root mount is availability, not host escape).
+- Verification: typecheck passed; biome clean on touched files; focused tests 56/56 home/planner/schema plus 19 plugin compose/apache/catalog and 70 container-runtime/plan/emit/data-plane.
+- **Learnings for future iterations:** A parse helper with no production callers is a documentation lie. If policy lives in `parseX` and writes call `normalizeX`, the refusal never happens.
+---
+## 2026-09-18 05:33 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-18 - US-637 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev. Proved canonical home and colon destinations on the binary: `home.path: /` is `LandofileValidationError` before provider action; compose `alpine` is `HomePathCapabilityError`; `/srv/a:b` round-trips through `app:config` and is writable after start/rebuild; live `httpd:2.4-alpine` `getent passwd www-data` is `/home/www-data`; `home.path: /home/./www-data/` mounts `/home/www-data` for `user: www-data` and the marker survives rebuild. Adjacent node:22 home `/home/node` and `LANDO_HOST_IP` stayed green. Apps destroyed with `--purge`.
+- **Out-of-scope finding:** `type: apache` with `user: www-data` and the default httpd command applies as `stopped` (`ServiceExecError` / later `ServiceStartError` on rebuild). The start script writes `/usr/local/apache2/conf/extra/lando-webroot.conf` as the service user. A `command: ["sleep", "infinity"]` override runs. Not caused by US-637 identity metadata.
+- **Out-of-scope finding:** setup/start warned ports 80/443 in use and fell back to 8080/8443. Pre-existing host/WSL bind, not US-637.
+- **Learnings for future iterations:** `lando destroy` without `--purge` leaves named volumes; a later app reusing the same `store:` fails `VolumeOperationError` ("owned by another app root").
+---
+## 2026-09-18 07:45 - Babysit
+- PR: #1011 https://github.com/AaronFeledy/core4/pull/1011
+- CI outcome: fail (static-checks-platform windows-arm64; the static-checks, guide-scenarios-linux-x64 and provider-integration-linux-x64 gates fail only as cascades of it)
+- Review feedback: fixed (documented the three new container-destination exports in `sdk/API_COMPATIBILITY.md`, clearing the SDK additive-export gate; the library-api-tests failure had cascaded into the guide-scenarios and provider-integration linux-x64 gates via `build-linux-x64`). Bugbot reported no findings on this PR; a deferred shadow-mount dedup observation in `engine/src/planner/storage.ts` was verified byte-identical to `origin/main` and left out of scope.
+- Merge: deferred (windows-arm64 runner instability, not a US-637 regression. `static-checks-platform (windows-arm64)` fails its "Native Windows private-file ACL tests" step on three consecutive reruns — the PowerShell DACL enforce takes >15s against a 5s bun test timeout; the earlier `guide-scenarios-windows-arm64` 30m hang is the same runner. Both fail intermittently on `main` today while this branch changes zero `state-store` files, so a recalibration belongs in its own story on `main` rather than scope expansion during triage. Every other check passes, Bugbot reported nothing, and the PR is MERGEABLE with no review objections.)
+- **Learnings for future iterations:** windows-arm64 CI turned unreliable on 2026-09-18 — both the `state-store` native ACL tests and guide scenarios time out there, roughly 50/50 on `main`. Reruns do not clear it; those native-Windows timeouts need recalibrating.
+---
+## 2026-09-18 08:11 - Babysit
+- [looper] Babysit blocked: CI still red: guide-scenarios-windows-arm64 hangs to its 30m cap with zero step output (pre-existing on main at 27bc3abc; passed once on this PR); all other 56 checks pass
+---
+## 2026-09-18 08:11 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-18 08:11 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-18 08:21 - US-637 Drift Audit
+- Trigger: 3 cycles, 946/123 changed lines, 6 commits
+- Ceremony: unused public `normalizeContainerDestination` left behind after write seams switched to parse
+- Scar tissue: home occupancy re-parsed already-canonical storage instead of comparing equality
+- Weakened proofs: occupancy tests branded non-canonical targets onto the plan; restored through the authored-storage write seam and AppPlanner
+- Fixed: deleted the dead export; occupancy is plain equality; stacking regressions go through production write then compare
+- Split/excise decisions: none; colon short/long emission stays the encoding dual path AC2 requires
+- Verification: typecheck pass, lint pass, 55 focused destination/home tests pass plus 3 SDK compat tests
+---
+## 2026-09-18 08:23 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-18 08:23 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-18 08:23 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-18 08:55 - Babysit
+- PR: #1011 https://github.com/AaronFeledy/core4/pull/1011
+- CI outcome: fail (static-checks-platform windows-arm64; static-checks, guide-scenarios-linux-x64 and provider-integration-linux-x64 fail only as cascades of it)
+- Review feedback: none (no Bugbot findings, no review objections, PR MERGEABLE)
+- Merge: deferred (windows-arm64 is now deterministically red, not flaky — the same two `state-store` native ACL tests failed on the original run and on a fresh rerun, and the identical four jobs fail on `main` at the same time. Root cause is runner-side slowness on windows-11-arm hitting fixed timeouts: the ACL worker request exceeds the 15s default in `state-store/src/private-file-worker.ts` (`timeoutMs ?? 15_000`, observed 15062ms and 15092ms), and the follow-on Unicode DACL test has no explicit bun timeout so it dies at the 5s default. Recalibrating those windows-arm64 timeouts is a `state-store` change with no relation to US-637, which touches zero state-store files, so it belongs in its own story on `main` rather than scope expansion during triage.)
+- **Learnings for future iterations:** the earlier "roughly 50/50 flake" read on windows-arm64 is outdated — reruns no longer clear it, so every future PR will stay red until the native-Windows ACL timeouts are recalibrated on `main`.
+---
+## 2026-09-18 08:30 - Babysit
+- [looper] Babysit blocked: CI still red: static-checks-platform (windows-arm64) native ACL tests fail deterministically on both attempts; identical failure on main today; branch touches zero state-store files
+---
+## 2026-09-18 08:30 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-18 08:30 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-18 08:30 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-18 08:30 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-18 08:30 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-18 08:30 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-18 09:05 - Babysit
+- PR: #1011 https://github.com/AaronFeledy/core4/pull/1011
+- CI outcome: fail (static-checks-platform (windows-arm64, windows-11-arm); static-checks, guide-scenarios-linux-x64, provider-integration-linux-x64 are cascade gates off it)
+- Review feedback: none (no Bugbot findings, no review decision); triage categorized the failure as real-issue not owned by this branch — native state-store private-file ACL tests fail the same way on main (runs 35330287129, 35321886924), branch changes zero state-store files, and a --failed rerun reproduced it, so no fix pushed
+- Merge: deferred (required check FAILURE; needs a separate state-store/Windows-ARM CI investigation)
+---

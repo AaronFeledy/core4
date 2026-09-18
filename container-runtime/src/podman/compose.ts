@@ -14,7 +14,9 @@ import {
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 
+import { bindSourceForComposeConfig, composeConfigMounts } from "../compose-configs.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
+import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
 import { volumeSelectorValue } from "./volume-prune.ts";
 
@@ -38,7 +40,7 @@ interface ComposeBindVolume {
   readonly source: string;
   readonly target: string;
   readonly read_only: boolean;
-  readonly bind: { readonly create_host_path: false };
+  readonly bind?: { readonly create_host_path: false };
 }
 
 interface ComposeStorageVolume {
@@ -46,10 +48,18 @@ interface ComposeStorageVolume {
   readonly source: string;
   readonly target: string;
   readonly read_only: boolean;
-  readonly volume: { readonly subpath: string };
+  readonly volume?: { readonly subpath: string };
 }
 
-type ComposeVolumeEntry = string | ComposeBindVolume | ComposeStorageVolume;
+type ComposeVolumeEntry =
+  | string
+  | ComposeBindVolume
+  | ComposeStorageVolume
+  | {
+      readonly type: "tmpfs";
+      readonly target: string;
+      readonly read_only: boolean;
+    };
 
 interface ComposeService {
   readonly image: string;
@@ -94,8 +104,10 @@ const serviceImage = (ctx: ProviderErrorContext, service: ServicePlan) => {
   });
 };
 
-const volumeSpec = (source: string, target: string, readOnly: boolean): string =>
-  `${source}:${target}${mountSuffix(readOnly)}`;
+const volumeSpec = (mount: ComposeBindVolume | ComposeStorageVolume): ComposeVolumeEntry =>
+  requiresLongMountSyntax(mount.target)
+    ? mount
+    : `${mount.source}:${mount.target}${mountSuffix(mount.read_only)}`;
 
 const serviceVolumes = (
   ctx: ProviderErrorContext,
@@ -106,18 +118,21 @@ const serviceVolumes = (
     service.appMount === undefined
       ? []
       : [
-          volumeSpec(
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source,
-            service.appMount.target,
-            service.appMount.readOnly,
-          ),
+          volumeSpec({
+            type: service.appMount.realization === "accelerated" ? "volume" : "bind",
+            source:
+              service.appMount.realization === "accelerated"
+                ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
+                : service.appMount.source,
+            target: service.appMount.target,
+            read_only: service.appMount.readOnly,
+          }),
         ];
   const mounts = service.mounts.flatMap((mount, index): ReadonlyArray<ComposeVolumeEntry> => {
     if (mount.type === "tmpfs") {
-      // tmpfs mounts are emitted under the service-level `tmpfs:` key, not `volumes:`.
-      return [];
+      return requiresLongMountSyntax(mount.target)
+        ? [{ type: "tmpfs", target: mount.target, read_only: mount.readOnly }]
+        : [];
     }
 
     if (mount.type === "bind" && sameAppMountTarget(service.appMount, mount)) return [];
@@ -142,33 +157,43 @@ const serviceVolumes = (
     }
 
     return [
-      volumeSpec(
-        mount.type === "bind" && mount.realization === "accelerated"
-          ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-          : mount.source,
-        mount.target,
-        mount.readOnly,
-      ),
+      volumeSpec({
+        type: mount.type === "volume" || mount.realization === "accelerated" ? "volume" : "bind",
+        source:
+          mount.type === "bind" && mount.realization === "accelerated"
+            ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
+            : mount.source,
+        target: mount.target,
+        read_only: mount.readOnly,
+      }),
     ];
   });
   const storage = service.storage.map(
     (storeMount): ComposeVolumeEntry =>
-      storeMount.subpath === undefined
+      storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
         ? `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`
         : {
             type: "volume",
             source: storeMount.store,
             target: storeMount.target,
             read_only: storeMount.readOnly,
-            volume: { subpath: storeMount.subpath },
+            ...(storeMount.subpath === undefined ? {} : { volume: { subpath: storeMount.subpath } }),
           },
   );
 
-  return [...appMount, ...mounts, ...storage, ...composeConfigBindStrings(plan, service)];
+  const configs = composeConfigMounts(plan, service).flatMap(
+    (mount): ReadonlyArray<ComposeBindVolume> =>
+      requiresLongMountSyntax(mount.target)
+        ? [{ type: "bind", source: bindSourceForComposeConfig(mount), target: mount.target, read_only: true }]
+        : [],
+  );
+  return [...appMount, ...mounts, ...storage, ...composeConfigBindStrings(plan, service), ...configs];
 };
 
 const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>
-  service.mounts.flatMap((mount) => (mount.type === "tmpfs" ? [mount.target] : []));
+  service.mounts.flatMap((mount) =>
+    mount.type === "tmpfs" && !requiresLongMountSyntax(mount.target) ? [mount.target] : [],
+  );
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
   service.endpoints.flatMap((endpoint) => {
@@ -310,16 +335,19 @@ const writeVolumeList = (
 
     lines.push(
       `      - type: ${scalar(entry.type)}`,
-      `        source: ${scalar(entry.source)}`,
+      ...(entry.type === "tmpfs" ? [] : [`        source: ${scalar(entry.source)}`]),
       `        target: ${scalar(entry.target)}`,
       `        read_only: ${entry.read_only ? "true" : "false"}`,
     );
     switch (entry.type) {
       case "bind":
-        lines.push("        bind:", "          create_host_path: false");
+        if (entry.bind !== undefined) lines.push("        bind:", "          create_host_path: false");
         break;
       case "volume":
-        lines.push("        volume:", `          subpath: ${scalar(entry.volume.subpath)}`);
+        if (entry.volume !== undefined)
+          lines.push("        volume:", `          subpath: ${scalar(entry.volume.subpath)}`);
+        break;
+      case "tmpfs":
         break;
       default: {
         const unreachable: never = entry;

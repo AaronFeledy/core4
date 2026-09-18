@@ -2,10 +2,14 @@ import { win32 } from "node:path";
 import { Schema } from "effect";
 
 const POWERSHELL_RELATIVE_PATH = ["System32", "WindowsPowerShell", "v1.0", "powershell.exe"] as const;
+const PWSH_RELATIVE_PATH = ["PowerShell", "7", "pwsh.exe"] as const;
 const MAX_RESPONSE_BYTES = 4_096;
+// Fail fast on a hung worker. Windows ARM uses native pwsh so a cold start
+// stays inside this window; emulated Windows PowerShell 5.1 does not.
+const DEFAULT_TIMEOUT_MS = 15_000;
 
 const ACL_ASSERTIONS = `
-$actual = [IO.File]::GetAccessControl($path, [Security.AccessControl.AccessControlSections]::Access)
+$actual = Get-Acl -LiteralPath $path
 $rules = @($actual.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
 if (-not $actual.AreAccessRulesProtected -or $rules.Count -ne 1) { throw 'Private file ACL is not exclusive.' }
 $actualRule = $rules[0]
@@ -17,7 +21,7 @@ $acl = New-Object Security.AccessControl.FileSecurity
 $acl.SetAccessRuleProtection($true, $false)
 $rule = New-Object Security.AccessControl.FileSystemAccessRule($sid, [Security.AccessControl.FileSystemRights]::FullControl, [Security.AccessControl.AccessControlType]::Allow)
 $acl.SetAccessRule($rule)
-[IO.File]::SetAccessControl($path, $acl)
+Set-Acl -LiteralPath $path -AclObject $acl
 ${ACL_ASSERTIONS}
 `.trim();
 
@@ -72,11 +76,29 @@ export type PrivateFileAccessSpawn = (
   options: PrivateFileAccessSpawnOptions,
 ) => PrivateFileAccessProcess;
 
+export interface PrivateFileAclExecutableInput {
+  readonly systemRoot: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly arch: string;
+  readonly platform: NodeJS.Platform;
+}
+
+export const privateFileAclExecutable = (input: PrivateFileAclExecutableInput): string | undefined => {
+  if (input.platform !== "win32") return undefined;
+  if (input.arch === "arm64") {
+    const programFiles = input.env.ProgramFiles ?? input.env.PROGRAMFILES;
+    if (programFiles === undefined || !win32.isAbsolute(programFiles)) return undefined;
+    return win32.join(programFiles, ...PWSH_RELATIVE_PATH);
+  }
+  return win32.join(input.systemRoot, ...POWERSHELL_RELATIVE_PATH);
+};
+
 export interface PrivateFileAccessWorkerOptions {
   readonly systemRoot: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly spawn: PrivateFileAccessSpawn;
   readonly timeoutMs?: number;
+  readonly powershellPath?: string;
 }
 
 type WorkerOperation = "enforce" | "verify";
@@ -125,7 +147,7 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
         new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new TypeError("Private file ACL worker timed out.")),
-            options.timeoutMs ?? 15_000,
+            options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
           );
         }),
       ]);
@@ -148,7 +170,7 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
   const start = (): PrivateFileAccessProcess => {
     const child = options.spawn(
       [
-        win32.join(options.systemRoot, ...POWERSHELL_RELATIVE_PATH),
+        options.powershellPath ?? win32.join(options.systemRoot, ...POWERSHELL_RELATIVE_PATH),
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",

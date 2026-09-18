@@ -1,17 +1,17 @@
 import { describe, expect, it } from "bun:test";
 
-import { HomePathCapabilityError } from "@lando/sdk/errors";
+import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
 import {
   applyServiceHome,
-  containerTargetKey,
   hasCustomImage,
   homeStoreName,
   resolveHomePath,
   serviceHomeIntent,
 } from "../../src/planner/home.ts";
+import { applyAuthoredStorage } from "../../src/planner/storage.ts";
 
 const identity: ServiceImageIdentity = {
   defaultUser: "node",
@@ -167,6 +167,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith(),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toEqual([
@@ -188,24 +189,56 @@ describe("applyServiceHome", () => {
       servicePlan: planWith({ storage: [authored] }),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toEqual([authored]);
   });
 
-  it("Given authored storage with a trailing slash, When applied, Then it is still the same destination", () => {
-    const authored = {
-      store: "myapp-web-cache",
-      target: PortablePath.make("/home/node/"),
-      readOnly: false,
-    };
-    const result = applyServiceHome({
-      servicePlan: planWith({ storage: [authored] }),
+  const applyAuthoredThenHome = (target: string): ServicePlan => {
+    const withStorage = applyAuthoredStorage(
+      planWith(),
+      { storage: [{ store: "myapp-web-cache", target, readOnly: false }] } as ServiceConfig,
+      "/tmp/app",
+      "web",
+    );
+    expect(withStorage).not.toBeInstanceOf(LandofileValidationError);
+    return applyServiceHome({
+      servicePlan: withStorage as ServicePlan,
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
-    expect(result.storage).toHaveLength(1);
+  };
+
+  it("Given authored storage with a trailing slash, When applied, Then it is still the same destination", () => {
+    expect(applyAuthoredThenHome("/home/node/").storage).toEqual([
+      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    ]);
+  });
+
+  it("Given authored storage spelled with dot segments, When applied, Then it is the same destination as the home", () => {
+    expect(applyAuthoredThenHome("/home/./other/../node").storage).toEqual([
+      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    ]);
+  });
+
+  it("Given authored storage with repeated separators, When applied, Then it is the same destination as the home", () => {
+    expect(applyAuthoredThenHome("/home//node").storage).toEqual([
+      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    ]);
+  });
+
+  it("Given a home authored with a trailing slash, When applied, Then the written target is canonical", () => {
+    const result = applyServiceHome({
+      servicePlan: planWith(),
+      serviceName: "web",
+      appSlug: "myapp",
+      appRoot: "/tmp/app",
+      intent: intentFor({ home: { path: "/home/node/" } } as ServiceConfig),
+    }) as ServicePlan;
+    expect(result.storage[0]?.target).toBe(PortablePath.make("/home/node"));
   });
 
   it("Given the planned user on the plan, When applied, Then that user's home is selected", () => {
@@ -213,6 +246,7 @@ describe("applyServiceHome", () => {
       servicePlan: planWith({ user: "root" }),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage[0]?.target).toBe(PortablePath.make("/root"));
@@ -223,18 +257,42 @@ describe("applyServiceHome", () => {
       servicePlan: planWith(),
       serviceName: "web",
       appSlug: "myapp",
+      appRoot: "/tmp/app",
       intent: intentFor({ home: false } as ServiceConfig),
     }) as ServicePlan;
     expect(result.storage).toEqual([]);
   });
-});
 
-describe("containerTargetKey", () => {
-  it("Given a trailing slash, When keyed, Then it is ignored", () => {
-    expect(containerTargetKey("/root/")).toBe("/root");
+  it("Given an explicit home path that is the filesystem root, When applied, Then it is refused", () => {
+    const result = applyServiceHome({
+      servicePlan: planWith(),
+      serviceName: "web",
+      appSlug: "myapp",
+      appRoot: "/tmp/app",
+      intent: intentFor({ home: { path: "/" } } as ServiceConfig),
+    });
+    expect(result).toBeInstanceOf(LandofileValidationError);
+    expect(result).toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: ["services.web.home.path"],
+    });
+    expect(String((result as LandofileValidationError).message)).toContain(
+      "cannot mount over the filesystem root",
+    );
   });
 
-  it("Given the filesystem root, When keyed, Then the slash is preserved", () => {
-    expect(containerTargetKey("/")).toBe("/");
+  it("Given an explicit home path that resolves to root, When applied, Then it is refused", () => {
+    const result = applyServiceHome({
+      servicePlan: planWith(),
+      serviceName: "web",
+      appSlug: "myapp",
+      appRoot: "/tmp/app",
+      intent: intentFor({ home: { path: "/data/.." } } as ServiceConfig),
+    });
+    expect(result).toBeInstanceOf(LandofileValidationError);
+    expect(result).toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: ["services.web.home.path"],
+    });
   });
 });
