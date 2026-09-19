@@ -236,6 +236,15 @@
 - `RebuildAppOptions` additively gains optional `services?: ReadonlyArray<ServiceName>` for scoped rebuilds. `InfoAppOptions.service` is replaced pre-ship by `services?: ReadonlyArray<ServiceName>` without an alias. `ApplyOptions` additively gains optional `recordedPlan?: AppPlan` so a provider can persist the full app plan while applying a selected subplan. These are type-only interface changes with no JSON Schema artifact or frozen service-tag signature change.
 
 
+## Additive YAML exports
+
+`@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,
+`yamlMappingKeyText`, `emitYamlDocument`, and `YamlEmitError`. This dependency-free
+subpath shares fail-closed scalar and mapping-key quoting without Effect, Bun, or
+Node imports. The block-document emitter accepts JSON-compatible values, rejects
+unsupported values and cycles, and terminates each document with one newline.
+It registers no JSON Schema.
+
 ## Additive schema exports
 
 - `VolumeCreationFact`
@@ -1006,6 +1015,8 @@
 
 ## Additive Beta test helper exports
 
+- `yamlRoundTripCorpus`
+- `yamlRoundTripRecord`
 - `CollectImportBoundaryViolationsOptions`
 - `ImportBoundaryViolation`
 - `collectImportBoundaryViolations`

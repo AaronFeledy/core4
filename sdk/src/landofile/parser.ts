@@ -237,10 +237,15 @@ const parseInlineArray = (
 };
 
 const unescapeDoubleQuotedScalar = (value: string): string =>
-  value.replace(/\\([\\"nrt])/g, (_, escaped: string) => {
+  value.replace(/\\(u[0-9a-fA-F]{4}|[\\"/nrtbf])/g, (_, escaped: string) => {
+    if (escaped.startsWith("u") && escaped.length === 5) {
+      return String.fromCharCode(Number.parseInt(escaped.slice(1), 16));
+    }
     if (escaped === "n") return "\n";
     if (escaped === "r") return "\r";
     if (escaped === "t") return "\t";
+    if (escaped === "b") return "\b";
+    if (escaped === "f") return "\f";
     return escaped;
   });
 

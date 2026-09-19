@@ -37,7 +37,8 @@ const hasDiagnosticOverride = (tokens: ReadonlyArray<string>, env: NodeJS.Proces
 };
 
 const writeLine = async (destination: "stdout" | "stderr", text: string): Promise<void> => {
-  const { writeStdioLine } = await import("@lando/renderer/io");
+  const { installBrokenPipeExitPolicy, writeStdioLine } = await import("@lando/renderer/io");
+  installBrokenPipeExitPolicy();
   writeStdioLine(destination, text);
 };
 const LANDOFILE_BASENAMES = [
@@ -149,6 +150,8 @@ const main = async (): Promise<void> => {
 };
 
 main().catch(async (error: unknown) => {
+  const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/io");
+  if (isBrokenPipeError(error)) process.exit(BROKEN_PIPE_EXIT_CODE);
   await writeLine("stderr", String(error));
   process.exit(1);
 });

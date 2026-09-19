@@ -51,6 +51,11 @@ native registry and dispatcher.
       <Verify command="lando app:config --json" expect={{ stdout: { regex: "^\\s*\\[" } }} />
       <Verify command="lando app:config -j" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
+    <Step name="read-config-as-yaml">
+      <Run command="lando app:config --format=yaml" />
+      <Verify command="lando app:config --format=yaml" expect={{ stdout: { regex: "name:\\s*scripting-demo" } }} />
+      <Verify command="lando app:config --format=yaml" expect={{ stdout: { regex: "services:" } }} />
+    </Step>
     <Step name="project-one-config-key">
       <Run command="lando app:config --json=app" />
       <Verify command="lando app:config --json=app" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
@@ -97,6 +102,38 @@ contains only that key.
 
 `--jq .ok` prints the raw scalar `true`. Do not combine bare `--json` with
 `--jq`. An unknown key exits nonzero.
+
+## Read config as YAML
+
+`lando app:config --format=yaml` prints the Landofile as YAML. What comes
+out parses back into the same document Lando held. Values YAML would
+otherwise reinterpret get quoted on the way out: the redaction sentinel
+`[redacted]`, strings that look like booleans (`yes`, `off`, `true`),
+strings that look like numbers (`8080`, `1e3`), strings that look like
+`null` (`~`, `null`), values containing `: `, and values that start with an
+indicator character such as `*`, `&`, `!`, `%`, `@`, `` ` ``, `|`, or `>`. Parse the
+output with any YAML 1.2 loader and you get strings where Lando had strings.
+
+```sh
+lando app:config --format=yaml > .lando.exported.yml
+```
+
+## Pipe into a consumer that exits early
+
+Machine output survives a closed pipe. When the reader stops early, Lando
+ends output silently and exits with the conventional terminated-pipeline
+status `141`. No stack trace, no partial envelope on stderr.
+
+```sh
+lando app:config --format=json | head -n 1
+lando app:config --format=json | jq -e .ok
+```
+
+Stdout and stderr are handled independently because you can redirect them
+separately. A consumer that closes stdout does not silence a warning headed
+for stderr, and a closed stderr does not truncate the envelope on stdout.
+Grab the Lando exit status from `PIPESTATUS` in bash or `pipestatus` in zsh;
+the pipeline's own status is whatever the last consumer returned.
 
 ## Envelope contract
 

@@ -16,6 +16,7 @@ import {
   parseLandofile,
 } from "@lando/sdk/landofile";
 import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
 
 const roundTrip = async (value: Record<string, unknown>): Promise<unknown> => {
   const yaml = emitLandofileYaml(value);
@@ -41,6 +42,13 @@ describe("@lando/sdk/landofile — round-trip law over the supported domain", ()
   test("escapes newlines and quotes in double-quoted scalars", async () => {
     const value = { multi: "line1\nline2\ttab", quoted: 'say "hi"' };
     expect(await roundTrip(value)).toEqual(value);
+  });
+
+  test("double-quoted scalars unescape the full JSON escape set", async () => {
+    // YAML document carries JSON-style escapes that the emitter may emit via JSON.stringify.
+    const content = 'a: "x\\u0001y\\bz\\f/\\/"';
+    const parsed = await Effect.runPromise(parseLandofile({ file: ".lando.yml", content, cwd: "/tmp" }));
+    expect(parsed).toEqual({ a: "x\u0001y\bz\f//" });
   });
 
   test("nested maps", async () => {
@@ -208,4 +216,59 @@ describe("@lando/sdk/landofile — emitted output is deterministic for a fixed i
     const value = { b: 1, a: 2, svc: { z: 1, a: 2 } };
     expect(emitLandofileYaml(value, { sortKeys: true })).toBe(emitLandofileYaml(value, { sortKeys: true }));
   });
+});
+
+test("emitted Landofile YAML round-trips through Bun.YAML.parse over the danger corpus", () => {
+  // Given
+  const model = { env: yamlRoundTripRecord(), list: [...yamlRoundTripCorpus] };
+  // When / Then
+  expect(Bun.YAML.parse(emitLandofileYaml(model))).toEqual(model);
+});
+
+test("ambiguous scalars are quoted while fixture-critical plain values stay plain", () => {
+  // Given
+  const model = {
+    a: "True",
+    b: "~",
+    c: "1e5",
+    d: "0x10",
+    e: "+5",
+    f: ".inf",
+    g: "-",
+    h: "foo:",
+    i: "[redacted]",
+    j: "8080:80",
+    k: ":host",
+    l: "./relative",
+    m: "docker.io/library/nginx:1.27",
+  };
+  // When
+  const text = emitLandofileYaml(model);
+  // Then
+  for (const line of [
+    'a: "True"',
+    'b: "~"',
+    'c: "1e5"',
+    'd: "0x10"',
+    'e: "+5"',
+    'f: ".inf"',
+    'g: "-"',
+    'h: "foo:"',
+    'i: "[redacted]"',
+    "j: 8080:80",
+    "k: :host",
+    "l: ./relative",
+    "m: docker.io/library/nginx:1.27",
+  ]) {
+    expect(text).toContain(`${line}\n`);
+  }
+});
+
+test("the Landofile subset parser still round-trips the same corpus, including control characters", async () => {
+  // Given
+  const model = { env: yamlRoundTripRecord(), list: [...yamlRoundTripCorpus] };
+  // When
+  const parsed = await roundTrip(model);
+  // Then
+  expect(parsed).toEqual(model);
 });

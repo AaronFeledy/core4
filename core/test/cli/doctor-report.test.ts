@@ -19,6 +19,7 @@ import {
   StreamFrame,
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
+import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
@@ -808,5 +809,40 @@ describe("meta:doctor combined report", () => {
     expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { format: "yaml" } })).toBe(true);
     expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { deprecations: true } })).toBe(false);
     expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { format: "text" } })).toBe(false);
+  });
+
+  test("doctor yaml report round-trips danger-corpus strings through Bun.YAML.parse", async () => {
+    // Given: a collected report whose human-facing strings carry the danger corpus
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const base = await run(provider);
+    const context = yamlRoundTripRecord();
+    const solutions = yamlRoundTripCorpus.map((description) => ({
+      kind: "manual" as const,
+      description,
+    }));
+    const seed = base.subsystems.checks[0];
+    if (seed === undefined) throw new Error("expected a subsystem check");
+    const report: DoctorReport = {
+      ...base,
+      subsystems: {
+        checks: [
+          {
+            ...seed,
+            context,
+            solutions,
+          },
+        ],
+      },
+    };
+
+    // When
+    const rendered = renderDoctorReportAsYaml(report);
+
+    // Then
+    expect(Bun.YAML.parse(rendered)).toMatchObject({
+      subsystems: {
+        checks: [{ context, solutions }],
+      },
+    });
   });
 });
