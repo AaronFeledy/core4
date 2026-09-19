@@ -65,8 +65,8 @@ describe("--format=yaml on a command with no bespoke format handling", () => {
     });
 
     const stdout = io.stdout();
-    // The defect this story closes: the human TSV view leaking out of a
-    // machine format. `service\tstate\tendpoints` is that view's header.
+    // Guard against the human TSV view leaking into machine output.
+    // `service\tstate\tendpoints` is that view's header.
     expect(stdout).not.toContain("\t");
     expect(stdout).not.toContain("service\tstate");
     const parsed = Bun.YAML.parse(stdout) as Record<string, unknown>;
