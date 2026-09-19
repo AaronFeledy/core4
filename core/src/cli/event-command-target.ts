@@ -112,7 +112,14 @@ const toolingSpec = (
   strict: task.arguments === false,
   resultSchema: Schema.Unknown,
   run: (input) =>
-    runEventToolingCommand(plan, declaration.name, task, serializeToolingInput(declaration, input)),
+    Effect.flatMap(
+      serializeToolingInput(declaration, {
+        flags: input.flags,
+        args: input.args,
+        passthroughArgv: input.argv,
+      }),
+      (raw) => runEventToolingCommand(plan, declaration.name, task, raw),
+    ),
   successExitCode: (result) =>
     typeof result === "object" &&
     result !== null &&

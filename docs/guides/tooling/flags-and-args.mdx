@@ -68,7 +68,38 @@ args:
     default: latest
 ```
 
-`choices`, `default`, `required`, and `description` behave the same as they do for flags. A required arg with a lower `order` than an optional one is the only sane layout; Lando rejects gaps in the sequence.
+`choices`, `default`, `required`, and `description` behave the same as they do for flags. A few layout rules apply on top:
+
+- Either every arg declares `order` or none do. Leave them all out and the order follows the YAML key order; mix the two and the Landofile is rejected.
+- Two args can't share an `order`. Gaps are fine: `0` and `5` work, `0` and `0` don't.
+- A required arg can't come after an optional one.
+
+Positions are never compacted. Slot `0` is `$1`, slot `1` is `$2`, and so on. A trailing optional arg can always be left off. An arg with no value (nothing typed, no `default`) that sits in front of an arg that does have a value can't be spelled on a command line, so Lando refuses to run it and fails with `ToolingInputError`. That includes a later arg filled from its own `default`:
+
+```yaml
+tooling:
+  tag:
+    description: Tag a release
+    service: web
+    args:
+      label:
+        order: 0
+        description: Release label
+      channel:
+        order: 1
+        default: stable
+        description: Release channel
+    cmd: echo tagging
+```
+
+`lando tag v1` runs with `channel=stable`, and `lando tag v1 beta` runs with `channel=beta`. Plain `lando tag` fails: `channel` picks up `stable` from its default while `label` has nothing, and the error names `label` in its `field`:
+
+```text
+Positional argument label cannot be omitted because a later positional argument has a value.
+Supply argument label or change the tooling declaration so no later positional value follows it.
+```
+
+Fix the declaration, not the caller: give `label` a `default`, mark it `required` so the help text says so, or drop the `default` on `channel`. Sending positionals by name through MCP follows the same rule and returns the same error; see [Drive Lando through MCP](../agent-native/mcp.mdx).
 
 ## Tasks without declared input
 
@@ -147,6 +178,25 @@ Delete the key when you no longer want the reminder.
     <Step name="run-greet-with-bad-target">
       <Run command="lando greet staging --format=json" expectExit={1} />
       <Verify errorTag="ToolingInputError" expect={{ regex: "staging" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="reject-omitted-leading-positional" render>
+    <Step name="scaffold">
+      <UseFixture name="flags-demo" />
+    </Step>
+    <Step name="compile-tooling">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="run-tag-without-label">
+      <Run command="lando tag --format=json" expectExit={1} />
+      <Verify errorTag="ToolingInputError" expect={{ regex: "label cannot be omitted" }} />
+    </Step>
+    <Step name="run-tag-with-label">
+      <Verify command="lando tag v1 --format=json" expect={{ stdout: { regex: "\"tool\":\\s*\"tag\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

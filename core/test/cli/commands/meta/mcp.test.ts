@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer } from "effect";
+import { Effect, Either, Exit, Layer } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
 import type { GlobalConfig, McpConfig } from "@lando/sdk/schema";
@@ -252,7 +252,7 @@ describe("mcpRegistryWithToolingEntries", () => {
     // Given
     const input = { flags: { loud: true, name: "Lando" }, args: { target: "dev" } };
     // When
-    const argv = mcpCommands.toolingArgvFromInput(command.input, input);
+    const argv = Either.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
     // Then
     expect(argv).toEqual(["--name=Lando", "--loud", "--", "dev"]);
   });
@@ -261,7 +261,7 @@ describe("mcpRegistryWithToolingEntries", () => {
     // Given a declared positional whose value looks like a flag
     const input = { args: { target: "--literal" } };
     // When MCP serializes it
-    const argv = mcpCommands.toolingArgvFromInput(command.input, input);
+    const argv = Either.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
     // Then the shared parser keeps the positional identity
     expect(argv).toEqual(["--", "--literal"]);
   });
@@ -270,9 +270,32 @@ describe("mcpRegistryWithToolingEntries", () => {
     // Given
     const input = { flags: { loud: false, name: "" }, args: { target: "prod", greeting: "hi there" } };
     // When
-    const argv = mcpCommands.toolingArgvFromInput(command.input, input);
+    const argv = Either.getOrThrow(mcpCommands.toolingArgvFromInput("app:greet", command.input, input));
     // Then
     expect(argv).toEqual(["--name=", "--", "prod", "hi there"]);
+  });
+
+  test("names the omitted positional instead of binding a later value to it", () => {
+    // Given a declaration whose leading positional is optional
+    const declaration = {
+      flags: [],
+      args: [
+        { name: "first", order: 0, required: false },
+        { name: "second", order: 1, required: false },
+      ],
+    };
+    // When MCP names only the later positional
+    const result = mcpCommands.toolingArgvFromInput("app:greet", declaration, { args: { second: "b" } });
+    // Then the tool call fails with the same error the CLI parser raises
+    expect(Either.isLeft(result)).toBe(true);
+    expect(Either.isLeft(result) ? result.left : undefined).toMatchObject({
+      _tag: "ToolingInputError",
+      tool: "greet",
+      field: "first",
+      message: "Positional argument first cannot be omitted because a later positional argument has a value.",
+      remediation:
+        "Supply argument first or change the tooling declaration so no later positional value follows it.",
+    });
   });
 
   test("projects visible registered tooling commands into MCP tooling entries", () => {

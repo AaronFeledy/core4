@@ -164,6 +164,11 @@ const invalidInputs: readonly {
     args: [`--svc=${value}`],
     field: "svc",
   })),
+  {
+    task: { cmd: "echo", args: { first: { order: 0 }, second: { order: 1, default: "b" } } },
+    args: [],
+    field: "first",
+  },
 ];
 test.each([...invalidInputs])(
   "rejects invalid input before selecting a provider: $field",
