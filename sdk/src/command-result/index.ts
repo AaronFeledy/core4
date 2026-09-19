@@ -4,6 +4,7 @@ import type { CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
+import { emitYamlDocument } from "../yaml/document.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
 
 export { listSelectableResultKeys, projectEncodedResult } from "./project-result.ts";
@@ -11,6 +12,9 @@ export { listSelectableResultKeys, projectEncodedResult } from "./project-result
 export type CommandResultOutcome =
   | { readonly _tag: "success"; readonly value: unknown }
   | { readonly _tag: "failure"; readonly error: unknown };
+
+/** Serializations of the one command result envelope. Stream frames stay JSON. */
+export type CommandResultEnvelopeFormat = "json" | "yaml";
 
 export interface EncodeCommandResultOptions {
   readonly command: string;
@@ -20,6 +24,8 @@ export interface EncodeCommandResultOptions {
   readonly warnings?: ReadonlyArray<CommandWarning>;
   readonly deprecations?: ReadonlyArray<DeprecationUse>;
   readonly projectResultKeys?: readonly string[];
+  /** Envelope serialization. Defaults to `json`; the frame encoders ignore it. */
+  readonly format?: CommandResultEnvelopeFormat;
 }
 
 export interface EncodeStreamEventFrameOptions {
@@ -103,6 +109,22 @@ const encodeJsonLine = (value: unknown, redactor: Redactor): string =>
   redactor.redactString(JSON.stringify(value));
 
 /**
+ * Serialize one envelope in the requested format. YAML is emitted from the
+ * already-redacted JSON document, so both formats carry the identical model and
+ * the identical redaction. `writeResultLine` supplies the trailing newline.
+ */
+const encodeEnvelopeLine = (
+  value: unknown,
+  redactor: Redactor,
+  format: CommandResultEnvelopeFormat | undefined,
+): string => {
+  const json = encodeJsonLine(value, redactor);
+  if (format !== "yaml") return json;
+  const yaml = emitYamlDocument(JSON.parse(json) as unknown);
+  return yaml.endsWith("\n") ? yaml.slice(0, -1) : yaml;
+};
+
+/**
  * No-op redactor for synchronous callers that carry no secret-bearing fields
  * (the doctor NDJSON renderers), letting a pure `=> string` helper route result
  * serialization through the encode seam without an Effect RedactionService lookup.
@@ -114,11 +136,13 @@ export const identityRedactor: Redactor = {
 
 export const encodeCommandResult = (options: EncodeCommandResultOptions): Effect.Effect<string, never> =>
   encodeCommandEnvelope(options).pipe(
-    Effect.map((envelope) => encodeJsonLine(envelope, options.redactor)),
+    Effect.map((envelope) => encodeEnvelopeLine(envelope, options.redactor, options.format)),
     Effect.catchAll((error) =>
       isJsonProjectionError(error)
         ? Effect.die(error)
-        : Effect.succeed(encodeJsonLine(fallbackEnvelope(options.command), options.redactor)),
+        : Effect.succeed(
+            encodeEnvelopeLine(fallbackEnvelope(options.command), options.redactor, options.format),
+          ),
     ),
   );
 

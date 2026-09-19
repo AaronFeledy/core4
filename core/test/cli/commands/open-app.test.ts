@@ -8,7 +8,12 @@ import { EventService, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 
-import { type OpenAppOptions, openForPlan, renderOpenAppResult } from "../../../src/cli/commands/open.ts";
+import {
+  type OpenAppOptions,
+  openForPlan,
+  openOptionsFromInput,
+  renderOpenAppResult,
+} from "../../../src/cli/commands/open.ts";
 
 const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
   priority: 2,
@@ -253,17 +258,25 @@ describe("openForPlan", () => {
     expect(rec.events).toEqual([]);
   });
 
-  test("--json without explicit selection + tty does not launch", async () => {
-    const rec = record();
-    const exit = await run(
-      httpsPlan(),
-      { json: true, ttyPresent: true, platform: "linux", env: { DISPLAY: ":0" } },
-      rec,
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (Exit.isSuccess(exit)) expect(exit.value.launch).toBe("printed");
-    expect(rec.commands).toEqual([]);
-  });
+  test.each(["json", "yaml"])(
+    "--format=%s without explicit selection + tty does not launch",
+    async (format) => {
+      const rec = record();
+      const exit = await run(
+        httpsPlan(),
+        {
+          ...openOptionsFromInput({ flags: { format } }),
+          ttyPresent: true,
+          platform: "linux",
+          env: { DISPLAY: ":0" },
+        },
+        rec,
+      );
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) expect(exit.value.launch).toBe("printed");
+      expect(rec.commands).toEqual([]);
+    },
+  );
 
   test("--json on a headless host reports headless degradation", async () => {
     const rec = record();

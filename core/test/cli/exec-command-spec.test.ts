@@ -111,7 +111,7 @@ describe("exec command spec", () => {
     expect(commands[0]?.env).not.toHaveProperty("COLORTERM");
   });
 
-  test.each(["explicit non-interactive", "default event"])(
+  test.each(["explicit non-interactive", "default event", "exec json", "exec yaml", "ssh json", "ssh yaml"])(
     "isolates %s exec on an attached terminal",
     async (mode) => {
       // Given
@@ -152,15 +152,15 @@ describe("exec command spec", () => {
                       argv: [],
                       cwd: process.cwd(),
                     })
-                  : execSpec
+                  : ((mode.startsWith("ssh") ? sshSpec : execSpec)
                       .run({
                         argv: [],
                         parsedArgv: ["cat"],
-                        flags: { interactive: true },
+                        flags: { interactive: true, format: mode.split(" ")[1] },
                         args: {},
-                        interaction: "non-interactive",
+                        ...(mode === "explicit non-interactive" ? { interaction: "non-interactive" } : {}),
                       })
-                      .pipe(Effect.provide(context)),
+                      .pipe(Effect.provide(context)) as Effect.Effect<unknown, unknown>),
               ),
             ),
           ),

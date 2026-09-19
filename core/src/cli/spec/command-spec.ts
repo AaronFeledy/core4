@@ -66,6 +66,22 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
     bivarianceHack(result: A, input?: unknown): number | undefined;
   }["bivarianceHack"];
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
+  /**
+   * Declares that this command's own `render` produces a genuine product
+   * document for one machine format, so the boundary must not replace it with
+   * the result envelope. Success only: a failure is always an envelope, and so
+   * is any run that passed `--jq` or `--json=<keys>`, because those controls
+   * select inside the envelope and would otherwise be silently dropped.
+   *
+   * `reason` is the recorded justification for the exception. This is not a
+   * capability list: it describes the representation of a format the command
+   * already supports.
+   */
+  readonly documentOutput?: {
+    readonly format: "yaml";
+    readonly reason: string;
+    readonly when?: (input: unknown) => boolean;
+  };
 }
 
 export type {

@@ -57,12 +57,7 @@ import {
 import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify";
 import { renderDestroyAppResult } from "../commands/destroy";
 import { resilientDoctorReport } from "../commands/doctor-bootstrap";
-import {
-  type DoctorReport,
-  renderDoctorReport,
-  renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
-} from "../commands/doctor-report";
+import { type DoctorReport, renderDoctorReport, renderDoctorReportAsNdjson } from "../commands/doctor-report";
 import { renderInfoAppResult } from "../commands/info-render";
 import { renderLogsAppResult } from "../commands/logs";
 import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open";
@@ -571,6 +566,5 @@ export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
 
 export const renderCompiledDoctorReport = (value: DoctorReport, ctx: RenderContext): string | undefined => {
   if (ctx.format === "ndjson") return renderDoctorReportAsNdjson(value);
-  if (ctx.format === "yaml") return renderDoctorReportAsYaml(value);
   return renderDoctorReport(value, ctx);
 };

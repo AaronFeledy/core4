@@ -138,7 +138,10 @@ test.each(["json", "yaml", "ndjson"])(
     ]);
     expect(exit).toBe(1);
     expect(stderr).toBe("");
-    const result = format === "yaml" ? Bun.YAML.parse(stdout) : JSON.parse(stdout).result;
+    const envelope = Schema.decodeUnknownSync(Schema.Struct({ result: Schema.Unknown }))(
+      format === "yaml" ? Bun.YAML.parse(stdout) : JSON.parse(stdout),
+    );
+    const result = envelope.result;
     expect(result).toMatchObject({
       updatedCore: false,
       hasFailures: true,

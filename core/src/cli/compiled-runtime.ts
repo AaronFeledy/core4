@@ -130,6 +130,13 @@ export const runCompiledCommand = <A, E, R, RE>(
   const invocation = getActiveCommandInvocation();
   const projectResultKeys = activeProjectResultKeys();
   const jqExpression = activeJq;
+  // A command-owned document survives only on a plain success: --jq and
+  // --json=<keys> select inside the envelope, so they take the envelope path.
+  const documentOutput =
+    spec?.documentOutput?.format === activeResultFormat &&
+    (spec.documentOutput.when?.(invocation) ?? true) &&
+    projectResultKeys === undefined &&
+    jqExpression === undefined;
   const rendererOptions = {
     runtime: effectiveRuntime as Layer.Layer<
       Exclude<R, EventService | Renderer | StreamFrameSink>,
@@ -150,6 +157,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(redactionTokens === undefined ? {} : { redactionTokens }),
     ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
     ...(jqExpression === undefined ? {} : { jqExpression }),
+    ...(documentOutput ? { documentOutput: true } : {}),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),

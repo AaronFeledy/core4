@@ -8,7 +8,6 @@ import {
   DoctorReportSchema,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
 } from "../../commands/doctor-report";
 import type { RenderContext } from "../../renderer-boundary";
 
@@ -44,7 +43,6 @@ const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: 
   const options = inputDoctorOptions(input);
   const format = ctx?.format ?? options.format;
   if (format === "ndjson") return renderDoctorReportAsNdjson(report);
-  if (format === "yaml") return renderDoctorReportAsYaml(report);
   return renderDoctorReport(report, ctx);
 };
 
