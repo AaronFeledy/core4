@@ -123,7 +123,7 @@ const expectedCatalogRows = [
   ],
   ["command-reference", "derived", "build-command-reference.ts", "repo", ["command-registry-manifest"]],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
-  ["service-type-reference", "derived", "build-service-type-reference.ts", "repo"],
+  ["service-type-reference", "derived", "build-service-type-reference.ts", "repo", ["php-msmtp-pins"]],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
   ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
@@ -300,6 +300,7 @@ describe("codegen catalog", () => {
     };
 
     // Then: later consumers wait for their inputs, and independent derived work shares a wave.
+    expect(waveOf("php-msmtp-pins")).toBeLessThan(waveOf("service-type-reference"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("command-reference"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("schema-snapshot"));
     expect(waveOf("bundled-plugins")).toBeLessThan(waveOf("schema-snapshot"));
