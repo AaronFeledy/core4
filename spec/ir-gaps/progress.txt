@@ -1375,3 +1375,9 @@ Verification: `gate:pr` passed (typecheck, lint, codegen:check, check:boundaries
   - A claim about a daemon's argument parsing can be proven on this host without a container: `apt-get download` the package, `dpkg-deb -x` it into a temp dir, and run the binary's own syntax check with `LD_LIBRARY_PATH` set. Pair the positive run with a negative control, or the check proves nothing.
   - The persisted app plan cache (`<cache>/apps/<app>-<hash>/plan.bin`) is a binary `LCAP` container, not JSON — do not plan on reading a planned command back out of it for evidence.
 ---
+
+## 2026-09-19 - US-644 Review
+- Corrected the privileged-port residual: `port:` only updates endpoints and the healthcheck, not Apache `Listen`. Guide, audit, and a regression on the existing 8080 plan now say so.
+- Review notes (deferred/rejected): wiring `Listen` into `apacheStartCommand` stays out of scope (US-618E: Apache `port:` is endpoints/health; image `httpd.conf` still has `Listen 80`, and `-c Listen` would add a socket rather than replace it). Other default-command writers stay recorded, not batched. review-work lanes did not start (harness rejected continuation IDs); Bugbot ran.
+- Verification: typecheck/lint/codegen/boundaries/guide-drift already green on the story; apache unit 8/8 (39 expects); lint:guides and `dev:guides docs/guides/services/apache.mdx --once` 2/2.
+---
