@@ -37,8 +37,7 @@ const hasDiagnosticOverride = (tokens: ReadonlyArray<string>, env: NodeJS.Proces
 };
 
 const writeLine = async (destination: "stdout" | "stderr", text: string): Promise<void> => {
-  const { installBrokenPipeExitPolicy, writeStdioLine } = await import("@lando/renderer/io");
-  installBrokenPipeExitPolicy();
+  const { writeStdioLine } = await import("@lando/renderer/io");
   writeStdioLine(destination, text);
 };
 const LANDOFILE_BASENAMES = [
@@ -65,6 +64,8 @@ const hasAppContext = async (cwd: string): Promise<boolean> => {
 };
 
 const main = async (): Promise<void> => {
+  const { installBrokenPipeExitPolicy } = await import("@lando/renderer/io");
+  installBrokenPipeExitPolicy();
   if (
     argv[0] === "--lando-update-replacement" &&
     argv.length === 3 &&

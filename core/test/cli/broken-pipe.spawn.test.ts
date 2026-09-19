@@ -36,6 +36,16 @@ const runPipeline = async (script: string) => {
 };
 
 describe.skipIf(process.platform === "win32")("broken CLI pipes", () => {
+  test("pre-command --json key listing exits 141 when the consumer closes stdout", async () => {
+    // Given / When: close the read end before starting the key-list command.
+    const result = await runPipeline(
+      '{ while [ ! -e "$OUT" ]; do :; done; "$BUN" core/bin/lando.ts version --json 2>"$ERR"; } | ' +
+        '{ head -n 0; exec 0<&-; touch "$OUT"; }; echo "${PIPESTATUS[0]}"; wc -c <"$ERR"',
+    );
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "141\n0\n", stderr: "" });
+  });
+
   test("stdout closed by an early-exiting consumer exits 141 with empty stderr", async () => {
     // Given / When: head closes without consuming any output.
     const result = await runPipeline(
