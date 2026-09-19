@@ -42,23 +42,44 @@ const apacheConfigPath = (webroot: string): string => {
   return webroot.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 };
 
+/**
+ * Apache's compiled default `PidFile` sits under the root-owned
+ * `/usr/local/apache2/logs`, and httpd exits when it cannot create it. Pointing
+ * the pid file somewhere every identity may write is what lets the planned
+ * service user own PID 1.
+ */
+const PID_FILE = "/tmp/lando-httpd.pid";
+
+/**
+ * The launcher for a service whose author declared no `command` or `entrypoint`.
+ *
+ * Every directive is handed to httpd as a repeated `-c` argument instead of
+ * being written to a config file at startup. httpd reads those arguments as
+ * consecutive lines of one synthetic configuration stream at the same stage that
+ * used to process `-c 'Include ...'`, so a `<Directory>` section spans the
+ * arguments exactly as it spanned the file's lines and the resulting
+ * configuration is unchanged. Emitting them directly is what removes the write:
+ * the command mutates no filesystem path, needs no shell, and therefore runs
+ * unchanged as the planned service user rather than only as root.
+ */
 const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
   const path = apacheConfigPath(webroot);
   return [
-    "sh",
+    "httpd-foreground",
     "-c",
-    [
-      "set -eu",
-      "cat > /usr/local/apache2/conf/extra/lando-webroot.conf <<'LANDO_APACHE_WEBROOT'",
-      `DocumentRoot "${path}"`,
-      `<Directory "${path}">`,
-      "  Options -Indexes +FollowSymLinks",
-      "  AllowOverride None",
-      "  Require all granted",
-      "</Directory>",
-      "LANDO_APACHE_WEBROOT",
-      "exec httpd-foreground -c 'Include conf/extra/lando-webroot.conf'",
-    ].join("\n"),
+    `PidFile "${PID_FILE}"`,
+    "-c",
+    `DocumentRoot "${path}"`,
+    "-c",
+    `<Directory "${path}">`,
+    "-c",
+    "Options -Indexes +FollowSymLinks",
+    "-c",
+    "AllowOverride None",
+    "-c",
+    "Require all granted",
+    "-c",
+    "</Directory>",
   ];
 };
 
