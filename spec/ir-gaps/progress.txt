@@ -56,6 +56,7 @@ entry appears after US-637. That is queued as US-656.
 - Compiled-CLI behavior diverges from source. US-629 passed every source-level spot check and then failed CI on compiled teardown, aliases, and flag parsing. A story that changes dispatch, argv, or bootstrap tiers proves itself on the compiled binary too.
 - Raising a command's bootstrap tier is two edits, not one: the `LandoCommandSpec` `bootstrap` field and the `cliRuntimeOptions({ bootstrap })` call in the compiled adapter. Only the second governs the real binary, and a mismatch typechecks.
 - Establish a failure baseline in a detached `git worktree` of `origin/main` before triaging a red suite. It needs its own `bun install` and `bun run codegen`; symlinking the branch's `node_modules` resolves `@lando/*` back to branch source and produces a useless comparison.
+- The spec-reference boundary rule reads a bare `spec/...` path argument as a citation of the specification tree, so `resolve(cliRoot, "spec/x.ts")` fails even though it means `core/src/cli/spec`. Spell such paths relatively (`"./spec/x.ts"`); a separate AST check also rejects a bare `"spec"` path segment argument.
 - Parallel codegen waves are only safe when every entry that imports a generated file declares `dependsOn` for its generator. `Bun.write` is not atomic, so a reader can observe a truncated file. It surfaces first on the slowest runner and looks like a flake.
 
 ## Shipped: US-613 through US-644 (condensed)
