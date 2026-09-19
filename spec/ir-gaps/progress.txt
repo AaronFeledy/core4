@@ -1478,3 +1478,10 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all 13 boundary ru
   - Two existing tests encoded the old formula as a contract ("without path-length or route-count caps", and distinct lexical ranks). Replacing a policy means replacing its tests with stronger invariants, not loosening them: the new ones fail if any plan-size term returns or if the two bands ever overlap.
   - The `lando4-dev` sandbox currently cannot start apps at all: Traefik trips the WSL2 kernel-global inotify instance limit and `lando start` fails closed with `RouterWatcherError`. Any story needing live evidence should check that first, and must not raise the sysctl, because the limit is shared with the host distro.
 ---
+
+## 2026-09-19 08:50 - US-647 Review
+- Reviewed the intrinsic cross-app ranking rewrite against the source ACs. No product blockers were fixed; the shared-space formula, band non-overlap, dashboard pin, diagnostic floor, and two-app file-provider regression already satisfy the Build-owned proofs.
+- Review notes (deferred/rejected): schema-rejecting path prefixes longer than 65,536 was rejected — residual §8 leaves the priority function open, the cap is the documented way to keep hostname bands non-overlapping, and saturation is already tested; live two-app HTTP evidence was rejected as a Review demotion — residual §10 assigns that evidence to Verify, the in-memory file-provider test is the story's failing-test-first, and the sandbox still cannot start apps (`RouterWatcherError` inotify-limit) without a host-wide sysctl that US-642 forbids.
+- Verification: gate:pr passed; guide-drift passed against origin/main; route-shorthand guide 4/4; 60 focused tests across route-identity, cross-app rank, Traefik global service, and cache suites; Bugbot found no bugs.
+- **Learnings for future iterations:** Real-provider two-app curls are a Verify item for this story, not a Review demotion. Do not send Build back around the known lando4-dev inotify limit.
+---
