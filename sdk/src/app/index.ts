@@ -61,6 +61,7 @@ import type {
   RouteInputError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
+  RouterWatcherError,
   ScratchAppError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
@@ -246,6 +247,7 @@ export type StartAppError =
   | ProviderUnavailableError
   | RouterPortPinMismatch
   | RouterPortsExhausted
+  | RouterWatcherError
   | AppLockTimeoutError
   | StateStoreError
   | VolumeOperationError;
