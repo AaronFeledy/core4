@@ -1449,3 +1449,10 @@ A tooling task's declared positional arguments now keep their own identity in bo
   - A `:host` tooling task whose `cmd` is a string containing `$1` or `$@` is refused by Bun Shell. Give it an array `cmd` when you need to observe the argv Lando produced: the tokens appended to it are exactly the resolved canonical argv.
   - `lando mcp` over a pipe needs stdin held open past the request. A `printf ... | lando mcp` that closes immediately answers `initialize` and nothing else, which reads as a silent failure rather than a protocol error.
 ---
+## 2026-09-19 06:42 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-19 06:50 - US-646 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (runtime already present). Started a php:8.3 app (`us646-ok` via exec). CLI: omitted leading positional `lando tag` is `ToolingInputError` naming `label`; `lando tag v1` runs `slots: v1 stable`; `lando tag v1 beta` runs `slots: v1 beta`; trailing hole `lando release` runs `slots: HEAD` with no second token. MCP `--tooling` `args: {channel: "beta"}` is `isError` with tag/message/remediation byte-identical to the CLI envelope; `args: {label: "v1"}` returns `slots: v1 stable`; both named args return `slots: v1 beta`. Adjacent greet/deploy/disabled/passthrough/lint/info stayed green; destroy cleaned the app.
+- **Out-of-scope finding:** `lando setup` exited non-zero with `RouterWatcherError` `failureClass: inotify-limit` while Traefik was already on 8080/8443. Same leftover as US-642–US-645; scenario app used `router.enabled: false`.
+---
