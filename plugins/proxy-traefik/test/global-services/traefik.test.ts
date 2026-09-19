@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { ServiceConfig } from "@lando/sdk/schema";
+import { ROUTE_PRIORITY_MAX, ServiceConfig } from "@lando/sdk/schema";
 
 import traefikGlobalService, {
   TRAEFIK_DASHBOARD_HOSTNAME,
+  TRAEFIK_DASHBOARD_PRIORITY,
   TRAEFIK_DYNAMIC_CONFIG_DIR,
   TRAEFIK_IMAGE,
   buildTraefikServiceConfig,
@@ -92,6 +93,16 @@ describe("traefik global service ServiceConfig", () => {
     // The router is materialized into the dynamic config directory at start.
     expect(text).toContain(TRAEFIK_DYNAMIC_CONFIG_DIR);
     expect(text).toContain("exec traefik");
+  });
+
+  test("pins the dashboard router above every app route priority", async () => {
+    // Given
+    const config = await decodeConfig();
+    // When
+    const text = commandText(config);
+    // Then
+    expect(TRAEFIK_DASHBOARD_PRIORITY).toBeGreaterThan(ROUTE_PRIORITY_MAX);
+    expect(text).toContain(`priority: ${TRAEFIK_DASHBOARD_PRIORITY}`);
   });
 
   test("does not author extra_hosts; host reachability is planner-owned", async () => {
