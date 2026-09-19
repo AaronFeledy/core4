@@ -341,3 +341,9 @@ prose and a success code.
     position, which is what keeps a regenerated golden manifest free of
     ordering churn. `{ ...merged, format }` and `{ format, ...merged }` produce
     the same object and different files.
+---
+## 2026-09-19 18:45 - US-658 Review
+- Review found that eleven write-verb and prose-only commands still advertised `table` because they had historically defaulted `--format` to it. Their renders are sentences or labeled dumps, so `--format=table` exited 0 with text — the same defect this story closed for `version`. Those commands now honor only the universal set; a spawn of `recipes:validate --format=table` exits 2 with `RendererSelectionError`. Ten tabular commands keep `table`.
+- Review notes (rejected): MCP catalog still types `--format` as an unconstrained string because it projects live specs rather than resolved flag options — pre-existing `@lando/mcp` projection, not one of this story's owned surfaces (help, compiled argv, generated manifest). JsonProjectionError winning over RendererSelectionError when `--format=table --jq` is combined is error-precedence, still nonzero. Full `bun test` was not used as a gate (review forbids it); the coordinated-plan Markdown/JSON drift an oracle hit is unchanged from `origin/main`.
+- Verification: lint passed; 85 focused tests across advertisement, rejection-spawn, format-flags, and command-help. `gate:pr` was green before the review fix; codegen regenerated the command-registry manifest after the capability trim.
+---

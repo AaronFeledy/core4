@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Args, Flags } from "../../../spec/metadata";
+import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -15,7 +15,6 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = {
   resultSchema: RecipesDescribeResultSchema,
   id: "meta:recipes:describe",
-  resultFormats: ["table"],
   mcpAllowed: true,
   summary: "Print a recipe's prompts and metadata without running it.",
   namespace: "meta",
@@ -24,12 +23,6 @@ export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = 
   bootstrap: "minimal",
   args: {
     ref: Args.string({ description: "Recipe ref: a bundled recipe id or a local path.", required: true }),
-  },
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
-    }),
   },
   run: (input) => {
     const ref = recipeRefFromInput(input);

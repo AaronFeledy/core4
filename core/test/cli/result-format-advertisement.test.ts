@@ -12,32 +12,21 @@ import {
 } from "../../src/cli/format-flags.ts";
 
 /**
- * Commands whose own render produces a table. Derived from the specs that used
- * to carry `options: ["table", ...]` on their `format` flag, and frozen here so
- * a new spec cannot quietly claim or drop the capability.
+ * Commands whose own render produces a table. Write-verb and prose-only
+ * commands stay off this list even when they once defaulted `--format` to
+ * `table`; advertising a format they do not emit is the defect US-658 closes.
  */
 const TABLE_COMMANDS = [
   "app:config",
-  "app:config:edit",
-  "app:config:set",
   "app:config:translate",
-  "app:config:unset",
-  "app:config:validate",
   "apps:list",
-  "apps:scratch:info",
   "apps:scratch:list",
   "meta:config",
   "meta:global:config",
-  "meta:global:config:edit",
-  "meta:global:config:set",
-  "meta:global:config:unset",
-  "meta:global:config:validate",
   "meta:global:info",
   "meta:global:list",
   "meta:global:status",
-  "meta:recipes:describe",
   "meta:recipes:list",
-  "meta:recipes:validate",
 ] as const;
 
 const NDJSON_COMMANDS = ["meta:doctor"] as const;
@@ -125,6 +114,11 @@ describe("compiled-mode argv definitions", () => {
       "json",
       "yaml",
     ]);
+    expect(flagDefinitionsForCommand(specForId("meta:recipes:validate")).format?.options).toEqual([
+      "text",
+      "json",
+      "yaml",
+    ]);
   });
 
   test("a table command advertises table on top of the universal set", () => {
@@ -161,6 +155,7 @@ describe("generated command-registry manifest", () => {
     expect(manifestFormatOptions("meta:version")).toEqual(["text", "json", "yaml"]);
     expect(manifestFormatOptions("meta:doctor")).toEqual(["text", "json", "yaml", "ndjson"]);
     expect(manifestFormatOptions("apps:list")).toEqual(["text", "json", "yaml", "table"]);
+    expect(manifestFormatOptions("meta:recipes:validate")).toEqual(["text", "json", "yaml"]);
   });
 });
 

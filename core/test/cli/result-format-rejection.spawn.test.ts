@@ -51,6 +51,17 @@ describe("a format the command does not implement", () => {
     expect(result.stderr).not.toContain("@lando/core 0.0.0");
   });
 
+  test("a prose command that advertised table is refused instead of printing text", async () => {
+    const result = await runLando(["recipes:validate", "--format=table"]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("RendererSelectionError");
+    expect(result.stderr).toContain("meta:recipes:validate");
+    expect(result.stderr).toContain("text, json, yaml");
+    expect(result.stderr).not.toContain("valid recipe manifest");
+  });
+
   test("--format=ndjson answers a machine request with a machine failure envelope", async () => {
     const result = await runLando(["version", "--format=ndjson"]);
 

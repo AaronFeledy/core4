@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Args, Flags } from "../../../spec/metadata";
+import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -15,7 +15,6 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = {
   resultSchema: RecipesValidateResultSchema,
   id: "meta:recipes:validate",
-  resultFormats: ["table"],
   mcpAllowed: true,
   summary: "Validate a recipe.yml against the published schema.",
   namespace: "meta",
@@ -26,12 +25,6 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
     path: Args.string({
       description: "Path to a recipe.yml or a recipe directory.",
       required: true,
-    }),
-  },
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      default: "table",
     }),
   },
   run: (input) => {

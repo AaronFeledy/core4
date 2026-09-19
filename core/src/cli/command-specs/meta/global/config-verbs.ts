@@ -14,17 +14,12 @@ const typeFlag = Flags.string({
   options: ["string", "number", "boolean", "json", "yaml"],
   default: "string",
 });
-const formatFlag = Flags.string({
-  description: "Output format.",
-  default: "table",
-});
 const editorFlag = Flags.string({ description: "Editor binary for edit." });
 const dryRunFlag = Flags.boolean({ description: "Report the change without writing.", default: false });
 
 export const metaGlobalConfigSetSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config:set",
-  resultFormats: ["table"],
   summary: "Set a value in the global app's Landofile.",
   description: "Set a value in the global app's Landofile.",
   namespace: "meta",
@@ -34,7 +29,7 @@ export const metaGlobalConfigSetSpec: LandoCommandSpec<GlobalConfigResult> = {
     key: Args.string({ description: "Dot-path key.", required: true }),
     value: Args.string({ description: "Value to set.", required: true }),
   },
-  flags: { type: typeFlag, format: formatFlag, "dry-run": dryRunFlag },
+  flags: { type: typeFlag, "dry-run": dryRunFlag },
   run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand: "set" }),
   render: (result, input) =>
     renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
@@ -43,7 +38,6 @@ export const metaGlobalConfigSetSpec: LandoCommandSpec<GlobalConfigResult> = {
 export const metaGlobalConfigUnsetSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config:unset",
-  resultFormats: ["table"],
   summary: "Remove a key from the global app's Landofile.",
   description: "Remove a key from the global app's Landofile.",
   namespace: "meta",
@@ -52,7 +46,7 @@ export const metaGlobalConfigUnsetSpec: LandoCommandSpec<GlobalConfigResult> = {
   args: {
     key: Args.string({ description: "Dot-path key.", required: true }),
   },
-  flags: { format: formatFlag, "dry-run": dryRunFlag },
+  flags: { "dry-run": dryRunFlag },
   run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand: "unset" }),
   render: (result, input) =>
     renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
@@ -61,13 +55,12 @@ export const metaGlobalConfigUnsetSpec: LandoCommandSpec<GlobalConfigResult> = {
 export const metaGlobalConfigEditSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config:edit",
-  resultFormats: ["table"],
   summary: "Edit the global app's Landofile in $EDITOR.",
   description: "Edit the global app's Landofile in $EDITOR.",
   namespace: "meta",
   topLevelAlias: "global:config:edit",
   bootstrap: "global",
-  flags: { editor: editorFlag, format: formatFlag },
+  flags: { editor: editorFlag },
   run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand: "edit" }),
   render: (result, input) =>
     renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
@@ -76,13 +69,11 @@ export const metaGlobalConfigEditSpec: LandoCommandSpec<GlobalConfigResult> = {
 export const metaGlobalConfigValidateSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config:validate",
-  resultFormats: ["table"],
   summary: "Validate the global app's Landofile against the schema.",
   description: "Validate the global app's Landofile against the schema.",
   namespace: "meta",
   topLevelAlias: "global:config:validate",
   bootstrap: "global",
-  flags: { format: formatFlag },
   run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand: "validate" }),
   render: (result, input) =>
     renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
