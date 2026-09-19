@@ -7,7 +7,7 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
-import { type RendererIO, createStdioRendererIO } from "@lando/renderer/io";
+import { type RendererIO, createStdioRendererIO, onStdioBrokenPipe } from "@lando/renderer/io";
 import {
   makeRendererEventConsumerLiveForMode,
   makeRendererNotificationConsumerLiveForMode,
@@ -97,12 +97,25 @@ const taggedFailureFromCause = (cause: Cause.Cause<unknown>): unknown => {
   return Cause.pretty(cause);
 };
 
+// allow: SIZE_OK — command rendering state machine shares lifecycle, emitters, and failure policy in one closure.
 export const runWithRendererHandling = async <A, E, R, RE>(
   effect: Effect.Effect<A, E, R>,
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
   const { landoRenderer } = await import("./renderer/bundled-renderers");
   const io = options.io ?? createStdioRendererIO();
+  let brokenPipe = false;
+  const brokenPipeSignal = Effect.async<never>((resume) => {
+    const unsubscribe = onStdioBrokenPipe((destination) => {
+      if (destination !== "stdout") return;
+      brokenPipe = true;
+      unsubscribe();
+      resume(Effect.interrupt);
+    });
+    return Effect.sync(unsubscribe);
+  });
+  // Subscribe before command writes; raceFirst waits for interrupted scope finalizers.
+  const commandEffect = Effect.raceFirst(brokenPipeSignal, effect);
   const renderContext: RenderContext = {
     mode: options.rendererMode,
     format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
@@ -192,8 +205,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const executeCommand = Effect.gen(function* () {
       const commandExit =
         options.invocation === undefined
-          ? yield* Effect.exit(effect)
-          : yield* runCommandLifecycle(effect, {
+          ? yield* Effect.exit(commandEffect)
+          : yield* runCommandLifecycle(commandEffect, {
               invocation: options.invocation,
               ...(options.successExitCode === undefined ? {} : { successExitCode: options.successExitCode }),
               ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
@@ -202,6 +215,9 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       if (options.invocation !== undefined) {
         // Terminal subscribers publish to the command-scoped renderer before its scope closes.
         yield* Effect.yieldNow();
+      }
+      if (brokenPipe && Exit.isFailure(commandExit) && Cause.isInterruptedOnly(commandExit.cause)) {
+        return { _tag: "handled-failure" } as const;
       }
       if (
         options.suppressInterruptionDiagnostics === true &&

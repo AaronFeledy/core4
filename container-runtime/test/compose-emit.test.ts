@@ -14,6 +14,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
+import { yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
 
@@ -674,6 +675,44 @@ describe("Compose mapping-key quoting", () => {
       EMPTY: "",
       VERSION: "1.10",
     });
+  });
+
+  test("emitted compose YAML round-trips danger-corpus values and ambiguous keys", () => {
+    const environment = yamlRoundTripRecord();
+    const labeled: ServicePlan = {
+      ...web,
+      name: ServiceName.make("yes"),
+      environment,
+      storage: [
+        {
+          store: "yes",
+          target: PortablePath.make("/data"),
+          readOnly: false,
+        },
+      ],
+      extensions: { compose: { labels: { true: "bool-key", "example.com/role": "web" } } },
+    };
+    const dangerPlan: AppPlan = {
+      ...plan,
+      services: { [labeled.name]: labeled, [database.name]: database },
+      stores: [...plan.stores, { name: "yes", scope: "service", kind: "data" }],
+    };
+    const content = renderCompose(dangerPlan, ctx);
+    const parsed = Bun.YAML.parse(content) as {
+      readonly services: Record<
+        string,
+        {
+          readonly environment: Record<string, string>;
+          readonly labels: Record<string, string>;
+        }
+      >;
+      readonly volumes: Record<string, unknown>;
+    };
+
+    expect(parsed.services.yes?.environment).toEqual(environment);
+    expect(parsed.services.yes?.labels).toMatchObject({ true: "bool-key" });
+    expect(Object.keys(parsed.services)).toContain("yes");
+    expect(parsed.volumes).toHaveProperty("yes");
   });
 
   test("round-trips the whole exported document structurally", () => {
