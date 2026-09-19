@@ -1485,3 +1485,11 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all 13 boundary ru
 - Verification: gate:pr passed; guide-drift passed against origin/main; route-shorthand guide 4/4; 60 focused tests across route-identity, cross-app rank, Traefik global service, and cache suites; Bugbot found no bugs.
 - **Learnings for future iterations:** Real-provider two-app curls are a Verify item for this story, not a Review demotion. Do not send Build back around the known lando4-dev inotify limit.
 ---
+## 2026-09-19 08:51 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-19 09:05 - US-647 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (after a `global:restart` once host Syncthing watches were released). Started two php:8.3 apps concurrently: a 4-route wildcard app and a 2-route exact-host app. Live curls on :8080: `Host: www.us647.lndo.site` → EXACT (priority 65540 vs wildcard 3); `Host: foo.us647.lndo.site` → WILD; `Host: www.path.us647.lndo.site` `/api` → EXACT (65543 vs bare 65540); `/` → WILD. Emitted YAML, dashboard at 131076, diagnostic fallback at 1. Adjacent info/lint/exec/destroy stayed green; apps and volumes torn down.
+- **Out-of-scope finding:** ports 80/443 occupied (`lando-proxy-https.service` / unknown holder); proxy served on 8080/8443. Same leftover as prior stories.
+- **Learnings for future iterations:** `RouterWatcherError` `inotify-limit` / Traefik `error adding file watcher: no space left on device` is host Syncthing exhausting uid-1000 `max_user_watches` (289k of 306200), not a sandbox instance cap. Count watches via `/proc/*/fdinfo`, not inotify fds. Temporarily `systemctl --user stop syncthing` on the host, `lando global:restart`, then start it again after teardown. Do not raise sysctl; do not demote the story.
+---
