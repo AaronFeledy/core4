@@ -1411,3 +1411,11 @@ Verification: gate:pr passed (typecheck, lint, codegen drift, all thirteen bound
   - Construct a closed-pipe repro with a consumer that exits before the writer starts (`| head -n 0`); `| head -n 1` is buffer-size dependent and produces flaky tests.
   - In JSON mode the failure envelope goes to stdout, so closing stderr on a `--format=json` command proves nothing. Exercise the stderr path with a text-format failure.
 ---
+## 2026-09-19 04:18 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-19 04:30 - US-645 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (runtime already present). Started a php:8.3 app (`us645-ok` via exec; env `True ~ 1e5` survived into the container). Closed-pipe: `app:config --format=json`, `config --format=json`, `version`, and `doctor --format=json` piped to `head -n 0` all exited 141 with empty stderr; invalid `--format` with closed stderr also 141; a fully consumed `| cat` stayed 0. YAML: `app:config --format=yaml` quoted `True`, `~`, `1e5`, `0x10`, `+5`, `.inf`, `-`, `foo:`, `a: b`, `*anchor`, `[redacted]` and left `8080:80` / `:host` plain; `Bun.YAML.parse` matched the JSON landofile env. `config --format=yaml` deep-equaled `config --format=json` result.config; doctor YAML parsed with `buildSecrets` as the string `[redacted]`. Adjacent lint/version/apps:list/exec/destroy stayed green.
+- **Out-of-scope finding:** `lando setup` exited non-zero with `RouterWatcherError` `failureClass: inotify-limit` while Traefik was already on 8080/8443. Same leftover as US-642/US-643/US-644; scenario app used `router.enabled: false`.
+- **Out-of-scope finding:** `lando info --format=yaml` emitted the table/TSV info view rather than YAML. Flag accepted, exit 0; info was not in this story's diff.
+---
