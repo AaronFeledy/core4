@@ -486,6 +486,44 @@ describe("watcher diagnostics", () => {
     expect(firstSentence).not.toMatch(/sysctl|sudo/iu);
   });
 
+  test("still fails with RouterWatcherError when diagnostic persistence fails", async () => {
+    // Given: watcher evidence cannot be written.
+    const harness = makeHarness("watcher-diagnostic.json", { readTraefikLogs: readFailure });
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+    // Then: the tagged watcher error is preserved even if the record is missing.
+    const failure = watcherFailure(exit);
+    expect(failure.failureClass).toBe("inotify-limit");
+    expect(harness.files.has(recordPath)).toBe(false);
+    expect(harness.files.has(markerPath)).toBe(false);
+  });
+
+  test("redacts URL userinfo that spans the detail bound", async () => {
+    // Given: a matching line whose userinfo secret starts before char 300 and whose @ is after it.
+    const secret = "watcher-url-secret-credential-ABCDEFGH";
+    const head =
+      'level=error msg="Cannot start the provider *file.Provider" error="error adding file watcher for http://user:';
+    const padding = "x".repeat(280 - head.length);
+    const logText = `${head}${padding}${secret}@example.com/etc/traefik/dynamic: no space left on device"`;
+    expect(logText.indexOf("@")).toBeGreaterThan(300);
+    const harness = makeHarness(undefined, {
+      readTraefikLogs: () => Effect.succeed({ providerId: "lando", text: logText }),
+    });
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+    // Then
+    const failure = watcherFailure(exit);
+    const record = readRecord(harness.files);
+    for (const detail of [failure.detail, record.detail]) {
+      expect(detail).not.toContain(secret);
+      expect(detail).toContain("[redacted]");
+    }
+  });
+
   test("reads logs once after services start and before routing files are written", async () => {
     // Given
     let reads = 0;

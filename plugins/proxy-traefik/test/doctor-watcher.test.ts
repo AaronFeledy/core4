@@ -87,15 +87,22 @@ describe("makeRouterFileWatcherCheck", () => {
     expect(reports).toEqual([]);
   });
 
-  test("returns empty when the stored record is for a different provider", async () => {
-    // Given: a record from a different provider is stale for this selection.
-    const readRecord = () => Effect.succeed(matchingRecord({ providerId: "docker" }));
+  test("reports a lando-managed Traefik record when doctor selected a different app provider", async () => {
+    // Given: last observation is from the global Traefik host, which is always the Lando-managed provider.
+    const record = matchingRecord({ providerId: "lando" });
+    const readRecord = () => Effect.succeed(record);
 
-    // When: run under provider lando.
-    const reports = await runCheck(readRecord, baseInput({ providerId: "lando" }));
+    // When: doctor selected docker because setup --provider=docker wrote defaultProviderId.
+    const reports = await runCheck(readRecord, baseInput({ providerId: "docker" }));
 
-    // Then: the docker-provider observation does not apply to lando.
-    expect(reports).toEqual([]);
+    // Then: still report the watcher failure; context keeps the observing provider.
+    expect(reports).toHaveLength(1);
+    const report = reports[0];
+    expect(report).toBeDefined();
+    if (report === undefined) return;
+    expect(report.status).toBe("fail");
+    expect(report.context.providerId).toBe("lando");
+    expect(report.context.failureClass).toBe("inotify-limit");
   });
 
   test("fails with a stale last-observation report for a matching inotify-limit record", async () => {

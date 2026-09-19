@@ -56,7 +56,8 @@ export const makeRouterFileWatcherCheck = (
     return Effect.gen(function* () {
       const record = yield* (readRecord ?? (() => readStoredRecord(paths)))(input);
       if (record === undefined) return [];
-      if (record.providerId !== input.providerId) return [];
+      // Traefik always runs on the Lando-managed provider. Doctor's selected
+      // providerId is the user's app default and must not hide this record.
       return [watcherReport(record)];
     });
   },

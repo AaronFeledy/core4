@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { classifyWatcherFailure, watcherHostLabel, watcherRemediations } from "../src/watcher-diagnostics.ts";
+import {
+  boundWatcherDetail,
+  classifyWatcherFailure,
+  watcherHostLabel,
+  watcherRemediations,
+} from "../src/watcher-diagnostics.ts";
 
 type WatcherFailureClass = "inotify-limit" | "disk" | "permission" | "other";
 
@@ -166,6 +171,47 @@ describe("classifyWatcherFailure", () => {
     expect(result).toBeUndefined();
   });
 
+  test("returns undefined for Traefik Starting provider *file.Provider INFO", () => {
+    // Given: the normal Traefik v3 INFO line that names the file provider.
+    const logText = 'level=info msg="Starting provider *file.Provider"';
+
+    // When: classify the log text.
+    const result = classifyWatcherFailure(logText);
+
+    // Then: healthy provider start is not a watcher failure.
+    expect(result).toBeUndefined();
+  });
+
+  test("classifies ENOSPC after a healthy Starting provider *file.Provider line as inotify-limit", () => {
+    // Given: realistic Traefik framing, healthy start then inotify ENOSPC.
+    const logText = [
+      'level=info msg="Starting provider *file.Provider"',
+      'level=error msg="Cannot start the provider *file.Provider" error="error adding file watcher for /etc/traefik/dynamic: no space left on device"',
+    ].join("\n");
+
+    // When: classify the log text.
+    const result = classifyWatcherFailure(logText);
+
+    // Then: the healthy start line does not mask the inotify failure.
+    expect(result).toBeDefined();
+    expect(result?.failureClass).toBe("inotify-limit");
+  });
+
+  test("ignores a historical watcher error before the latest Starting provider *file.Provider", () => {
+    // Given: an earlier ENOSPC, then a later clean file-provider start.
+    const logText = [
+      'level=error msg="Cannot start the provider *file.Provider" error="error adding file watcher for /etc/traefik/dynamic: no space left on device"',
+      'level=info msg="Starting provider *file.Provider"',
+      'level=info msg="Configuration loaded from flags."',
+    ].join("\n");
+
+    // When: classify the log text.
+    const result = classifyWatcherFailure(logText);
+
+    // Then: only the latest startup window is classified.
+    expect(result).toBeUndefined();
+  });
+
   test("returns undefined for multi-line healthy INFO logs", () => {
     // Given: healthy Traefik INFO lines with no provider start failure.
     const logText = [
@@ -196,7 +242,8 @@ describe("classifyWatcherFailure", () => {
     expect(result?.failureClass).toBe("inotify-limit");
     expect(result?.detail.length).toBeGreaterThan(0);
     expect(result?.detail).toContain("no space left on device");
-    expect(result?.detail.length).toBeLessThanOrEqual(300);
+    expect(result?.detail.length).toBe(2000);
+    expect(boundWatcherDetail(result?.detail ?? "").length).toBeLessThanOrEqual(300);
   });
 
   test("detail from multi-line log excludes non-matching lines", () => {
@@ -295,9 +342,7 @@ describe("watcherRemediations", () => {
       // Then: first entry description and command contain no sysctl (case-insensitive).
       expect(first).toBeDefined();
       expect(first?.description.toLowerCase()).not.toContain("sysctl");
-      if (first?.command !== undefined) {
-        expect(first.command.toLowerCase()).not.toContain("sysctl");
-      }
+      expect(first?.command).toBe("lando global:restart");
     }
   });
 

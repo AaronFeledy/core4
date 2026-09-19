@@ -63,7 +63,12 @@ import {
   removeAppCertificates,
 } from "./tls.ts";
 import { clearWatcherDiagnostic, writeWatcherDiagnostic } from "./watcher-diagnostic-state.ts";
-import { classifyWatcherFailure, watcherHostLabel, watcherRemediations } from "./watcher-diagnostics.ts";
+import {
+  boundWatcherDetail,
+  classifyWatcherFailure,
+  watcherHostLabel,
+  watcherRemediations,
+} from "./watcher-diagnostics.ts";
 
 export { renderTraefikDynamicConfig } from "./routing.ts";
 
@@ -107,10 +112,22 @@ const observeWatcherStartup = (dependencies: TraefikProxyDependencies) =>
       return;
     }
     const redact = dependencies.redactDiagnostic ?? secretsRedactor.redactString;
-    const detail = redact(hit.detail);
+    const detail = boundWatcherDetail(redact(hit.detail));
     const watcherHost = watcherHostLabel({
       providerId: observation.providerId,
       platform: dependencies.paths.platform,
+    });
+    const error = new RouterWatcherError({
+      message: `The Traefik router encountered a ${hit.failureClass} file watcher failure on ${watcherHost}.`,
+      proxyId: TRAEFIK_PROXY_ID,
+      failureClass: hit.failureClass,
+      watcherHost,
+      detail,
+      // Descriptions already end in a period, so a space keeps the ordered
+      // remediation readable as prose with the non-privileged action first.
+      remediation: watcherRemediations(hit.failureClass, watcherHost)
+        .map(({ description }) => description)
+        .join(" "),
     });
     yield* writeWatcherDiagnostic(dependencies.fileSystem, dependencies.paths, {
       version: 1,
@@ -119,22 +136,11 @@ const observeWatcherStartup = (dependencies: TraefikProxyDependencies) =>
       watcherHost,
       failureClass: hit.failureClass,
       detail,
-    });
-    yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
-    return yield* Effect.fail(
-      new RouterWatcherError({
-        message: `The Traefik router encountered a ${hit.failureClass} file watcher failure on ${watcherHost}.`,
-        proxyId: TRAEFIK_PROXY_ID,
-        failureClass: hit.failureClass,
-        watcherHost,
-        detail,
-        // Descriptions already end in a period, so a space keeps the ordered
-        // remediation readable as prose with the non-privileged action first.
-        remediation: watcherRemediations(hit.failureClass, watcherHost)
-          .map(({ description }) => description)
-          .join(" "),
-      }),
-    );
+    }).pipe(Effect.catchAll(() => Effect.void));
+    yield* dependencies.fileSystem
+      .remove(routingStateFile(dependencies.paths))
+      .pipe(Effect.catchAll(() => Effect.void));
+    return yield* Effect.fail(error);
   });
 
 const applyError = (app: AppId, cause: unknown): ProxyApplyError =>

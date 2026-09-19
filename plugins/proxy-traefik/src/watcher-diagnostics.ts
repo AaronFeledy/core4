@@ -20,8 +20,9 @@ export type WatcherRemediation = {
   readonly command?: string;
 };
 
+const START_MARKER = "starting provider *file.provider";
+
 const CONTEXT_MARKERS = [
-  "*file.provider",
   "error creating file watcher",
   "error adding file watcher",
   "unable to read directory",
@@ -29,8 +30,8 @@ const CONTEXT_MARKERS = [
 
 const hasContextMarker = (lower: string): boolean => CONTEXT_MARKERS.some((marker) => lower.includes(marker));
 
-const truncateDetail = (line: string): string => {
-  const trimmed = line.trim();
+export const boundWatcherDetail = (text: string): string => {
+  const trimmed = text.trim();
   if (trimmed.length <= DETAIL_MAX_CHARS) return trimmed;
   return `${trimmed.slice(0, DETAIL_MAX_CHARS - 1)}…`;
 };
@@ -78,12 +79,23 @@ export const classifyWatcherFailure = (
 ): { readonly failureClass: WatcherFailureClass; readonly detail: string } | undefined => {
   if (logText.length === 0) return undefined;
 
-  for (const line of logText.split("\n")) {
+  const lines = logText.split("\n");
+  let start = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line?.toLowerCase().includes(START_MARKER) === true) {
+      start = index + 1;
+    }
+  }
+
+  for (let index = start; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === undefined) continue;
     const failureClass = classifyLine(line);
     if (failureClass === undefined) continue;
     return {
       failureClass,
-      detail: truncateDetail(line),
+      detail: line.trim(),
     };
   }
 
@@ -117,8 +129,8 @@ export const watcherRemediations = (
       return [
         {
           kind: "manual",
-          description: `Reduce what is being watched on ${watcherHost} by stopping other Lando apps or file watchers, then run lando restart.`,
-          command: "lando restart",
+          description: `Reduce what is being watched on ${watcherHost} by stopping other Lando apps or file watchers, then run lando global:restart.`,
+          command: "lando global:restart",
         },
         {
           kind: "manual",
@@ -135,8 +147,8 @@ export const watcherRemediations = (
       return [
         {
           kind: "manual",
-          description: `Fix ownership or mode of the Lando proxy config directory on ${watcherHost} as your own user, then run lando restart.`,
-          command: "lando restart",
+          description: `Fix ownership or mode of the Lando proxy config directory on ${watcherHost} as your own user, then run lando global:restart.`,
+          command: "lando global:restart",
         },
         {
           kind: "manual",
@@ -147,8 +159,8 @@ export const watcherRemediations = (
       return [
         {
           kind: "manual",
-          description: `Free space or check the filesystem backing the Lando config directory on ${watcherHost}, then run lando restart.`,
-          command: "lando restart",
+          description: `Free space or check the filesystem backing the Lando config directory on ${watcherHost}, then run lando global:restart.`,
+          command: "lando global:restart",
         },
         {
           kind: "manual",
@@ -159,8 +171,8 @@ export const watcherRemediations = (
       return [
         {
           kind: "manual",
-          description: `Run lando restart on ${watcherHost}, then re-check with lando doctor.`,
-          command: "lando restart",
+          description: `Run lando global:restart on ${watcherHost}, then re-check with lando doctor.`,
+          command: "lando global:restart",
         },
         {
           kind: "manual",
