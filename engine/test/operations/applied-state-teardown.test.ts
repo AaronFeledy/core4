@@ -98,6 +98,7 @@ const makeLayer = (input: {
   const destroyTargets: Array<{
     readonly app: string;
     readonly hasPlan: boolean;
+    readonly planRoot: string | undefined;
     readonly volumes: boolean;
   }> = [];
   const removedVolumes: Array<{ readonly store: string; readonly generation: string }> = [];
@@ -115,6 +116,7 @@ const makeLayer = (input: {
         destroyTargets.push({
           app: String(target.app),
           hasPlan: target.plan !== undefined,
+          planRoot: target.plan === undefined ? undefined : String(target.plan.root),
           volumes: options.volumes === true,
         });
       }).pipe(
@@ -400,7 +402,11 @@ describe("applied-state teardown", () => {
           expect(result.outcome).toBe("destroyed");
           expect(result.servicesDestroyed).toEqual(["appserver", "database"]);
         }
-        expect(harness.destroyTargets).toEqual([{ app: "applied-teardown", hasPlan: false, volumes: false }]);
+        expect(harness.destroyTargets).toEqual([
+          { app: "applied-teardown", hasPlan: true, planRoot: root, volumes: false },
+        ]);
+        expect(String(harness.destroyCalls[0]?.root)).toBe(root);
+        expect(harness.destroyCalls[0]?.services).toEqual({});
         expect(harness.desiredLoads).toEqual([]);
       });
     },
