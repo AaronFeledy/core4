@@ -101,6 +101,7 @@ describe("native argv parser seam", () => {
       cwd: process.cwd(),
       destination: resolve(process.cwd(), "demo"),
       full: true,
+      agentSkills: false,
       name: "demo",
       recipe: "node-postgres",
       answers: { database: "option-wins" },
@@ -307,6 +308,16 @@ describe("native argv parser seam", () => {
       "meta:recipes:validate",
       "./",
     ]);
+    expect(normalizeCompiledCommandArgv(["agent:skills", "install"])).toEqual(["app:agent:skills:install"]);
+    expect(normalizeCompiledCommandArgv(["agent:skills", "update", "--format=json"])).toEqual([
+      "app:agent:skills:update",
+      "--format=json",
+    ]);
+    expect(normalizeCompiledCommandArgv(["agent", "skills", "remove"])).toEqual(["app:agent:skills:remove"]);
+    expect(normalizeCompiledCommandArgv(["app", "agent", "skills", "install"])).toEqual([
+      "app:agent:skills:install",
+    ]);
+    expect(normalizeCompiledCommandArgv(["app:agent:skills", "update"])).toEqual(["app:agent:skills:update"]);
     expect(normalizeCompiledCommandArgv(["share", "list"])).toEqual(["app:share:list"]);
     expect(normalizeCompiledCommandArgv(["share", "stop", "sess"])).toEqual(["app:share:stop", "sess"]);
     expect(normalizeCompiledCommandArgv(["scratch"])).toEqual(["scratch"]);

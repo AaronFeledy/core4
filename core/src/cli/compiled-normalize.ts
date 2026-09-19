@@ -31,6 +31,8 @@ export const SCRATCH_COMMAND_VERBS = new Set([
 ]);
 export const SHARE_COMMAND_VERBS = new Set(["list", "stop"]);
 
+export const AGENT_SKILLS_COMMAND_VERBS = new Set(["install", "update", "remove"]);
+
 export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
   if (argv[0] === "scratch") {
     const verb = argv[1];
@@ -86,6 +88,28 @@ export const normalizeCompiledCommandArgv = (argv: ReadonlyArray<string>): Reado
       }
     }
     return [`global:${verb}`, ...argv.slice(2)];
+  }
+
+  if (argv[0] === "app:agent:skills" || argv[0] === "agent:skills") {
+    const verb = argv[1];
+    if (verb !== undefined && AGENT_SKILLS_COMMAND_VERBS.has(verb)) {
+      return [`app:agent:skills:${verb}`, ...argv.slice(2)];
+    }
+    return argv;
+  }
+  if (argv[0] === "agent" && argv[1] === "skills") {
+    const verb = argv[2];
+    if (verb !== undefined && AGENT_SKILLS_COMMAND_VERBS.has(verb)) {
+      return [`app:agent:skills:${verb}`, ...argv.slice(3)];
+    }
+    return argv;
+  }
+  if (argv[0] === "app" && argv[1] === "agent" && argv[2] === "skills") {
+    const verb = argv[3];
+    if (verb !== undefined && AGENT_SKILLS_COMMAND_VERBS.has(verb)) {
+      return [`app:agent:skills:${verb}`, ...argv.slice(4)];
+    }
+    return argv;
   }
 
   if (argv[0] !== "app") return argv;

@@ -144,6 +144,7 @@ export const sidebar = [
         items: [
           { label: "Drive Lando through MCP", slug: "guides/agent-native/mcp" },
           { label: "Inspect a running app", slug: "guides/agent-native/in-container-context" },
+          { label: "Install project-local agent skills", slug: "guides/agent-native/project-skills" },
         ],
       },
     ],
