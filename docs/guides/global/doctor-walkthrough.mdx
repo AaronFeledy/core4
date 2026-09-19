@@ -30,6 +30,30 @@ The check passes and reports the generated dist Landofile (`<userDataRoot>/globa
 
 If the dist file exists but cannot be read, the check fails and tells you to fix permissions or rerun `lando global:install`.
 
+## Read the router file-watcher check
+
+The router reads its route configuration from a directory Lando mounts into the Traefik container and watches with inotify. If that watch never starts, Traefik keeps running but loads no routes, so every app URL fails without saying why. Lando reads the router's own log once after starting it and records any watcher failure it finds. The `router-file-watcher` check reports that record.
+
+It is a record, not a live probe. The check shows what the last router setup observed, and it stays reported until the next `lando restart` observes a clean start. If the check still fails after you fixed the host, restart the app and run doctor again.
+
+The watcher runs on the provider runtime host, which is not always the operating system you typed the command on:
+
+| Where you run Lando | Where the watcher runs |
+| --- | --- |
+| Linux | the local host |
+| WSL | the WSL distribution |
+| macOS or Windows with the default `lando` provider | the Lando-managed Podman machine |
+
+The check sorts failures into `inotify-limit`, `permission`, `disk`, and `other`. One of those is misleading, courtesy of the kernel: an inotify watch that fails with "no space left on device" means the per-user watch limit was reached, not that the disk is full. Doctor reports that as `inotify-limit`. To read the current limit on a Linux runtime host:
+
+```sh
+cat /proc/sys/fs/inotify/max_user_watches
+```
+
+The first remediation is always something you can do without privileges, such as closing other watch-heavy tools and restarting the app. Lando never runs `sysctl` and never restarts system services for you. Raising a kernel limit is listed last and stays the administrator's call.
+
+A watcher that starts but never delivers events, which some virtual filesystems cause, is not detected by this check.
+
 ## Verify
 
 ```sh
