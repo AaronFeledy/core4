@@ -227,3 +227,43 @@ handed back rather than claimed.
   - `compiled-input.ts` writes `flags.format = effectiveResultFormat`, so a command can observe `"yaml"` directly. That is why every `flags.format === "json"` check was a live corruption path and not merely a style problem: the command took its interactive branch while the boundary emitted a document.
   - A format flag has two different questions behind it. "Does the boundary own this output?" and "does the command render a document for it?" are not the same, and collapsing them into one per-command list would have pre-empted the per-command capability work. A success-only `documentOutput` declaration with a recorded reason keeps them separate.
 ---
+
+## 2026-09-19 17:20 - US-649 (completed)
+
+The handed-back defect was not an async settle. Under Bun, `process.exitCode =
+undefined` is a **no-op** that leaves the previous value in place, so every
+`beforeEach`/`afterEach` reset written that way is a placebo — which is why a
+`defineProperty` trap never fired and why draining a tick changed nothing. A
+proxy over `globalThis.process` named the writer in one run: the boundary's
+default exit-code setter, reached from the one call site in the new YAML suite
+that forgot to inject `setExitCode`. That site now injects like its neighbours,
+and asserts the failure code it captures, so the file never touches the shared
+exit code at all. The reset in the suite that holds the victim assertion was
+changed from `undefined` to `0` so it is a real guard rather than a placebo, and
+the drain ceremony built on the wrong hypothesis is gone.
+
+Widening the spot check past the new file's immediate neighbours found a real
+regression the story had shipped: `framedJson` gated the live-streaming terminal
+emit on the command declaring a frame schema, where the code it replaced gated
+only on the format. A live JSON command without a declared schema therefore
+terminated in a bare envelope line instead of a result frame, breaking the
+frame sequence its stdout/stderr frames had already started. Live JSON runs are
+framed again regardless of the schema, and YAML still emits the envelope
+document alone; a new invariant pins both halves so the ternary cannot be
+"simplified" back.
+
+`gate:pr` also caught a boundary violation the previous pass never ran into:
+the spec-reference scanner reads a bare `spec/...` argument as a citation of the
+specification tree, and the dynamic-tooling suite spelled `core/src/cli/spec`
+that way. Spelling it relative resolves it to the CLI directory it actually
+means and keeps the scanner honest.
+
+- Verification: `gate:pr` green end to end (typecheck, lint, codegen drift clean, all 13 boundary rules, guide-drift a real pass against `origin/main`). 2701 pass / 2 fail across 234 CLI files; both failures are `uninstall-runtime-service` and reproduce identically on an installed, codegen'd `origin/main` worktree, so they are pre-existing and host-dependent. RED first in both directions: the cross-file pair failed on the leaked exit code and went 44/44; reverting the framing fix put the live-framing pair at 2 fail and restoring it returned 36/36. The scripting guide passes 3/3.
+- Real-binary QA on the compiled `core/dist/lando` in the sandbox: `version --format=yaml` parses to the same model as `--format=json`; `info --format=yaml` outside an app is a YAML failure envelope on stdout with no tab anywhere and exit 1, where the text path still writes its diagnostic to stderr; `config --format=yaml` is the envelope now, not the old hand-rolled document; `doctor --format=yaml` and `app:config:translate --list --format=yaml` are envelopes; `app:config --format=yaml` still prints the Landofile itself; `--format yaml`, last-wins `--format=json --format=yaml`, an unknown-command pre-command failure, `--json=core`, and `--jq .ok` all behave under yaml as under json, and a genuinely broken pipe exits 141.
+- **Learnings for future iterations:**
+  - Bun's `process.exitCode = undefined` is a no-op, unlike Node's. Reset with `0`. Any `undefined` reset in a test hook is decoration, and a leaked exit code survives it to fail the next file in the shard. Diagnose an unattributable global write with a `Proxy` over `globalThis.process`; `Object.defineProperty(process, "exitCode", ...)` cannot work because the property is non-configurable.
+  - A test that drives a failure envelope must inject `setExitCode`, or the boundary's default writes the real process exit code. One missed injection in a new file is enough to break a stranger's assertion three files later.
+  - When a refactor renames a condition, diff what the condition *meant*, not just where it is used. `streamingJson` and `framedJson` are the same expression, but one of its four call sites had been reading only half of it, and the rename made the wrong half look intentional.
+  - Spot-check the package's whole test directory, not the story's own files. The framing regression lived in a suite the story never touched and would have reached `main` otherwise, and an `origin/main` worktree is what separates "my regression" from "this host".
+  - `gate:pr` is not typecheck plus lint. It caught a boundary violation that a clean typecheck, a clean lint, and a green suite all missed.
+---
