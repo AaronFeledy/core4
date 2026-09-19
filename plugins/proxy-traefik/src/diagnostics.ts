@@ -1,3 +1,5 @@
+import { ROUTE_PRIORITY_DIAGNOSTIC } from "@lando/sdk/schema";
+
 export const TRAEFIK_DIAGNOSTICS_ID = "traefik-diagnostics" as const;
 export const TRAEFIK_DIAGNOSTICS_HOSTNAME = `${TRAEFIK_DIAGNOSTICS_ID}.global.internal` as const;
 export const TRAEFIK_DIAGNOSTICS_PORT = 8080;
@@ -87,12 +89,12 @@ export const renderTraefikFallbackConfig = (): string =>
     "    lando-fallback-http:",
     '      rule: "PathPrefix(`/`)"',
     "      entryPoints: [web]",
-    "      priority: 1",
+    `      priority: ${ROUTE_PRIORITY_DIAGNOSTIC}`,
     `      service: ${TRAEFIK_DIAGNOSTICS_ID}`,
     "    lando-fallback-https:",
     '      rule: "PathPrefix(`/`)"',
     "      entryPoints: [websecure]",
-    "      priority: 1",
+    `      priority: ${ROUTE_PRIORITY_DIAGNOSTIC}`,
     `      service: ${TRAEFIK_DIAGNOSTICS_ID}`,
     "      tls: {}",
     "  services:",

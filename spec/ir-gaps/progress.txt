@@ -1456,3 +1456,40 @@ A tooling task's declared positional arguments now keep their own identity in bo
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (runtime already present). Started a php:8.3 app (`us646-ok` via exec). CLI: omitted leading positional `lando tag` is `ToolingInputError` naming `label`; `lando tag v1` runs `slots: v1 stable`; `lando tag v1 beta` runs `slots: v1 beta`; trailing hole `lando release` runs `slots: HEAD` with no second token. MCP `--tooling` `args: {channel: "beta"}` is `isError` with tag/message/remediation byte-identical to the CLI envelope; `args: {label: "v1"}` returns `slots: v1 stable`; both named args return `slots: v1 beta`. Adjacent greet/deploy/disabled/passthrough/lint/info stayed green; destroy cleaned the app.
 - **Out-of-scope finding:** `lando setup` exited non-zero with `RouterWatcherError` `failureClass: inotify-limit` while Traefik was already on 8080/8443. Same leftover as US-642–US-645; scenario app used `router.enabled: false`.
 ---
+
+## 2026-09-19 08:55 - US-647
+
+Route rank is now a property of the route instead of its position in its own plan, so apps planned independently compose correctly in the one router table every running app shares.
+
+- `routePriority` replaces the old sort-and-rank: exact hostnames occupy a band strictly above every wildcard hostname, and path-prefix length widens the priority inside its own band. The sort, the plan-size term, and the lexical hostname/path/scheme tie-break are gone; a route ranked alone, ranked among a thousand others, and ranked after input reversal now gets the identical number.
+- The priority space moved into `@lando/sdk/schema` as band constants, because three packages have to agree on it. The planner computes inside the bands, the diagnostic fallback keeps the reserved lowest priority, and the Traefik dashboard router is now pinned explicitly above the top of the app band. Without that pin the new exact band would have let any app declaring the dashboard hostname capture the dashboard, which the old numbering made impossible.
+- Equally specific routes deliberately share a priority. No hostname registry, cross-app refusal, or per-app banding was added: two apps may still claim the same hostname, and the guide now says that overlap has no defined winner.
+- The app-plan cache schema advanced because cached plans carry route priorities, with a refreshed binary fixture.
+- The route-shorthand guide no longer claims the ordering is "within an app", nor that ties resolve in code-point order, nor that priorities are distinct.
+
+Verification: gate:pr passed (typecheck, lint, codegen:check, all 13 boundary rules, guide-drift) and guide-drift reported a real pass rather than a skip; 711 focused tests across 70 files passed covering planner, cross-app proxy, cache, lifecycle, proxy-traefik, SDK schema and contract, and the CLI open surfaces; the flags-and-args route guide passed. The new cross-app regression was RED first with the wildcard at priority 4 beating the exact host at 2, and the rewritten invariants were RED before the fix; both are green after it.
+
+**Real-runtime evidence is NOT captured and remains open.** Both QA apps failed to start in the `lando4-dev` sandbox with `RouterWatcherError` ("inotify-limit file watcher failure on this WSL distribution"), which blocks `lando start` for every app there and is unrelated to this change. No route files were emitted, so the three planned curls only observed the fallback 404. Raising `fs.inotify.*` was refused on purpose: WSL2 shares one kernel across distros, so that is a host-wide change. QA apps and volumes were destroyed and `/tmp/us647` removed.
+
+- **Learnings for future iterations:**
+  - A per-plan ranking is a cross-app bug whenever the artifacts are merged downstream. Before assigning any rank, ask whether the consumer sees one plan or all of them; here Traefik's file provider merges one directory into a single priority space, so `routes.length + 1 - rank` could never be correct.
+  - "Exact always beats wildcard" plus an unbounded secondary term cannot fit in one integer. A cap is unavoidable; put it far beyond any real input so the saturation case is unreachable, and keep the bands non-overlapping by construction.
+  - Changing a priority formula silently re-ranks routers that never set a priority at all. Traefik defaults an unset priority to the rule's byte length, so the dashboard sat at 25 and was quietly overtaken by the new exact band. Grep for every router the product emits, not just the ones the planner produces.
+  - Two existing tests encoded the old formula as a contract ("without path-length or route-count caps", and distinct lexical ranks). Replacing a policy means replacing its tests with stronger invariants, not loosening them: the new ones fail if any plan-size term returns or if the two bands ever overlap.
+  - The `lando4-dev` sandbox currently cannot start apps at all: Traefik trips the WSL2 kernel-global inotify instance limit and `lando start` fails closed with `RouterWatcherError`. Any story needing live evidence should check that first, and must not raise the sysctl, because the limit is shared with the host distro.
+---
+
+## 2026-09-19 08:50 - US-647 Review
+- Reviewed the intrinsic cross-app ranking rewrite against the source ACs. No product blockers were fixed; the shared-space formula, band non-overlap, dashboard pin, diagnostic floor, and two-app file-provider regression already satisfy the Build-owned proofs.
+- Review notes (deferred/rejected): schema-rejecting path prefixes longer than 65,536 was rejected — residual §8 leaves the priority function open, the cap is the documented way to keep hostname bands non-overlapping, and saturation is already tested; live two-app HTTP evidence was rejected as a Review demotion — residual §10 assigns that evidence to Verify, the in-memory file-provider test is the story's failing-test-first, and the sandbox still cannot start apps (`RouterWatcherError` inotify-limit) without a host-wide sysctl that US-642 forbids.
+- Verification: gate:pr passed; guide-drift passed against origin/main; route-shorthand guide 4/4; 60 focused tests across route-identity, cross-app rank, Traefik global service, and cache suites; Bugbot found no bugs.
+- **Learnings for future iterations:** Real-provider two-app curls are a Verify item for this story, not a Review demotion. Do not send Build back around the known lando4-dev inotify limit.
+---
+## 2026-09-19 08:51 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-19 09:05 - US-647 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (after a `global:restart` once host Syncthing watches were released). Started two php:8.3 apps concurrently: a 4-route wildcard app and a 2-route exact-host app. Live curls on :8080: `Host: www.us647.lndo.site` → EXACT (priority 65540 vs wildcard 3); `Host: foo.us647.lndo.site` → WILD; `Host: www.path.us647.lndo.site` `/api` → EXACT (65543 vs bare 65540); `/` → WILD. Emitted YAML, dashboard at 131076, diagnostic fallback at 1. Adjacent info/lint/exec/destroy stayed green; apps and volumes torn down.
+- **Out-of-scope finding:** ports 80/443 occupied (`lando-proxy-https.service` / unknown holder); proxy served on 8080/8443. Same leftover as prior stories.
+- **Learnings for future iterations:** `RouterWatcherError` `inotify-limit` / Traefik `error adding file watcher: no space left on device` is host Syncthing exhausting uid-1000 `max_user_watches` (289k of 306200), not a sandbox instance cap. Count watches via `/proc/*/fdinfo`, not inotify fds. Temporarily `systemctl --user stop syncthing` on the host, `lando global:restart`, then start it again after teardown. Do not raise sysctl; do not demote the story.
+---

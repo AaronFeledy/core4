@@ -31,6 +31,25 @@ export const RouteRef = Schema.Struct({
 });
 export type RouteRef = typeof RouteRef.Type;
 
+/** Reserved priority for a router's own diagnostic fallback; below every app route. */
+export const ROUTE_PRIORITY_DIAGNOSTIC = 1;
+
+/**
+ * Largest path-prefix length that still widens a route's priority. Longer
+ * prefixes share the top of their own specificity band rather than crossing
+ * into the band above, which keeps the hostname classes strictly separated.
+ */
+export const ROUTE_PATH_WEIGHT_CAP = 65_536;
+
+/** Lowest priority a wildcard-hostname route can receive. */
+export const ROUTE_PRIORITY_WILDCARD_BASE = 2;
+
+/** Lowest priority an exact-hostname route can receive; above every wildcard route. */
+export const ROUTE_PRIORITY_EXACT_BASE = ROUTE_PRIORITY_WILDCARD_BASE + ROUTE_PATH_WEIGHT_CAP + 1;
+
+/** Highest priority any app route can receive; routers own the space above it. */
+export const ROUTE_PRIORITY_MAX = ROUTE_PRIORITY_EXACT_BASE + ROUTE_PATH_WEIGHT_CAP;
+
 /**
  * Route plan — host-facing HTTP/TLS mapping.
  */

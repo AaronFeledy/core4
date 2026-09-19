@@ -23,6 +23,14 @@
   authored source keys. Equivalent ordered filter operations ignore filter merge
   names; `both` participates in both HTTP and HTTPS conflict checks.
 
+- Route priorities are intrinsic specificity bands, so plans ranked in isolation
+  compose correctly once a router merges every running app into one table.
+  Wildcard hostnames occupy 2 through 65,538 and exact hostnames 65,539 through
+  131,075, each widened by path-prefix length; the diagnostic fallback keeps 1.
+  Routes of equal specificity receive equal priority and no ownership is assigned
+  between apps. A router that contributes its own routers must pin them above
+  `ROUTE_PRIORITY_MAX`.
+
 - `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
 
 - `RuntimeProviderShape.resume(target, identity)` and `suspend(target, identity)` are additive optional exact-runtime lifecycle methods. Bundled providers address the inspected container ID directly; recovery callers fail closed when a provider cannot preserve that immutable identity across temporary observation.
@@ -759,6 +767,12 @@ It registers no JSON Schema.
 - `ComposeTmpfsField`
 - `ComposeUlimit`
 - `ComposeUlimitsField`
+
+- `ROUTE_PRIORITY_DIAGNOSTIC`
+- `ROUTE_PATH_WEIGHT_CAP`
+- `ROUTE_PRIORITY_WILDCARD_BASE`
+- `ROUTE_PRIORITY_EXACT_BASE`
+- `ROUTE_PRIORITY_MAX`
 
 ## Additive Beta service fields
 
