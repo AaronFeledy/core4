@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
 import { AppId, ServiceName } from "@lando/sdk/schema";
@@ -43,7 +43,15 @@ const unusedPrivilege = {
   elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
 };
 
-const makeHarness = (failingPathSuffix?: string) => {
+type WatcherDependencies = {
+  readonly readTraefikLogs?: () => Effect.Effect<
+    { readonly providerId: string; readonly text: string },
+    unknown
+  >;
+  readonly redactDiagnostic?: (text: string) => string;
+};
+
+const makeHarness = (failingPathSuffix?: string, watcherDependencies: WatcherDependencies = {}) => {
   const ensured: Array<ReadonlyArray<string>> = [];
   const files = new Map<string, string>();
   const socketProxy = {
@@ -56,6 +64,7 @@ const makeHarness = (failingPathSuffix?: string) => {
     classifyOverride: highPortOverride,
   };
   const service = makeTraefikRouterService({
+    ...watcherDependencies,
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,
@@ -308,5 +317,193 @@ describe("Traefik RouterService", () => {
     expect(harness.files.has("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).toBe(false);
     expect(harness.files.has("/lando/global/proxy-traefik/dynamic/fallback.yml")).toBe(true);
     expect(harness.files.has("/lando/global/proxy-traefik/diagnostic/nginx.conf")).toBe(true);
+  });
+});
+
+describe("watcher diagnostics", () => {
+  const recordPath = "/lando/global/proxy-traefik/watcher-diagnostic.json";
+  const markerPath = "/lando/global/proxy-traefik/dynamic/.lando-routing-state";
+  const fallbackPath = "/lando/global/proxy-traefik/dynamic/fallback.yml";
+  const failureText =
+    'level=error msg="Cannot start the provider *file.Provider" error="error adding file watcher for /etc/traefik/dynamic: no space left on device"';
+  const readFailure = () => Effect.succeed({ providerId: "lando", text: failureText });
+  const previousRecord = JSON.stringify({
+    version: 1,
+    providerId: "lando",
+    failureClass: "inotify-limit",
+    observedAt: "2026-09-01T00:00:00.000Z",
+    watcherHost: "lando VM",
+    detail: "Previous file watcher failure",
+  });
+  const diagnosticRecord = Schema.Struct({
+    version: Schema.Literal(1),
+    providerId: Schema.Literal("lando"),
+    failureClass: Schema.Literal("inotify-limit"),
+    observedAt: Schema.String,
+    watcherHost: Schema.String,
+    detail: Schema.String,
+  });
+  const watcherFailure = (exit: Exit.Exit<unknown, unknown>) => {
+    expect(exit._tag).toBe("Failure");
+    const failure = Exit.match(exit, {
+      onFailure: (cause) => Option.getOrUndefined(Cause.failureOption(cause)),
+      onSuccess: () => undefined,
+    });
+    expect(failure).toMatchObject({ _tag: "RouterWatcherError" });
+    return Schema.decodeUnknownSync(
+      Schema.Struct({
+        _tag: Schema.Literal("RouterWatcherError"),
+        failureClass: Schema.Literal("inotify-limit"),
+        proxyId: Schema.Literal("traefik"),
+        watcherHost: Schema.NonEmptyTrimmedString,
+        detail: Schema.NonEmptyTrimmedString,
+        remediation: Schema.NonEmptyTrimmedString,
+      }),
+    )(failure);
+  };
+  const readRecord = (files: ReadonlyMap<string, string>) => {
+    const content = files.get(recordPath);
+    expect(content).toBeDefined();
+    const parsed: unknown = JSON.parse(content ?? "null");
+    return Schema.decodeUnknownSync(diagnosticRecord)(parsed);
+  };
+
+  test("fails setup with a tagged diagnostic when inotify watches are exhausted", async () => {
+    // Given
+    const harness = makeHarness(undefined, { readTraefikLogs: readFailure });
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+    // Then
+    const failure = watcherFailure(exit);
+    expect(failure.failureClass).toBe("inotify-limit");
+    expect(failure.proxyId).toBe("traefik");
+    expect(harness.files.has(fallbackPath)).toBe(false);
+    expect(harness.files.has(markerPath)).toBe(false);
+  });
+
+  test("persists versioned evidence when the file watcher fails", async () => {
+    // Given
+    const harness = makeHarness(undefined, { readTraefikLogs: readFailure });
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+    // Then
+    const record = readRecord(harness.files);
+    expect(record).toMatchObject({ version: 1, providerId: "lando", failureClass: "inotify-limit" });
+    expect(record.observedAt).toEqual(expect.any(String));
+    expect(record.watcherHost).toEqual(expect.any(String));
+    expect(record.detail).toEqual(expect.any(String));
+    expect(exit._tag).toBe("Failure");
+  });
+
+  test("removes a stale routing marker when the file watcher fails", async () => {
+    // Given
+    const harness = makeHarness(undefined, { readTraefikLogs: readFailure });
+    harness.files.set(markerPath, "http://127.0.0.1:8080\nhttps://127.0.0.1:8443");
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+    // Then: leaving it would let the router report running while the doctor check reports failure.
+    expect(harness.files.has(markerPath)).toBe(false);
+    expect(exit._tag).toBe("Failure");
+  });
+
+  test("clears prior evidence and enables routing when logs are healthy", async () => {
+    // Given
+    const harness = makeHarness(undefined, {
+      readTraefikLogs: () =>
+        Effect.succeed({ providerId: "lando", text: 'level=info msg="Configuration loaded from flags."' }),
+    });
+    harness.files.set(recordPath, previousRecord);
+    // When
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    // Then
+    expect(harness.files.has(recordPath)).toBe(false);
+    expect(harness.files.has(markerPath)).toBe(true);
+  });
+
+  test("preserves evidence when no log reader is supplied", async () => {
+    // Given: this preserves today's behavior when the provider cannot supply logs.
+    const harness = makeHarness();
+    harness.files.set(recordPath, previousRecord);
+    // When
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    // Then
+    expect(harness.files.get(recordPath)).toBe(previousRecord);
+  });
+
+  test("preserves evidence without failing start or retrying when logs are unreadable", async () => {
+    // Given
+    let reads = 0;
+    const harness = makeHarness(undefined, {
+      readTraefikLogs: () => {
+        reads += 1;
+        return Effect.fail(new Error("boom"));
+      },
+    });
+    harness.files.set(recordPath, previousRecord);
+    // When
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    // Then: an unreadable stream must never clear evidence or fail a start.
+    expect(harness.files.get(recordPath)).toBe(previousRecord);
+    expect(reads).toBe(1);
+  });
+
+  test("redacts pattern-matched secrets from the failure and persisted detail", async () => {
+    // Given: the secrets profile masks TOKEN assignments without seeded values.
+    const secret = "watcher-test-credential-123456";
+    const harness = makeHarness(undefined, {
+      readTraefikLogs: () => Effect.succeed({ providerId: "lando", text: `${failureText} TOKEN=${secret}` }),
+    });
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+    // Then
+    const failure = watcherFailure(exit);
+    const record = readRecord(harness.files);
+    for (const detail of [failure.detail, record.detail]) {
+      expect(detail).not.toContain(secret);
+      expect(detail).toContain("[redacted]");
+    }
+  });
+
+  test("offers non-privileged recovery before host tuning when the watcher fails", async () => {
+    // Given
+    const harness = makeHarness(undefined, { readTraefikLogs: readFailure });
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),
+    );
+    // Then
+    const { remediation } = watcherFailure(exit);
+    const firstSentence = remediation.split(/[.!?](?:\s|$)/u)[0] ?? "";
+    expect(firstSentence.trim().length).toBeGreaterThan(0);
+    expect(firstSentence).not.toMatch(/sysctl|sudo/iu);
+  });
+
+  test("reads logs once after services start and before routing files are written", async () => {
+    // Given
+    let reads = 0;
+    const harness = makeHarness(undefined, {
+      readTraefikLogs: () =>
+        Effect.sync(() => {
+          reads += 1;
+          expect(harness.ensured).toEqual([["traefik", "traefik-diagnostics"]]);
+          expect(harness.files.has(fallbackPath)).toBe(false);
+          expect(harness.files.has(markerPath)).toBe(false);
+          return { providerId: "lando", text: 'level=info msg="Configuration loaded from flags."' };
+        }),
+    });
+    // When
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    // Then
+    expect(reads).toBe(1);
+    expect(harness.files.has(fallbackPath)).toBe(true);
+    expect(harness.files.has(markerPath)).toBe(true);
   });
 });
