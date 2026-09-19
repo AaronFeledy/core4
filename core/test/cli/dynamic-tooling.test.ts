@@ -12,7 +12,7 @@ test.each(["json", "yaml"])(
     import { Effect, Layer } from "effect";
     let terminalCalls = 0;
     let invocation;
-    mock.module(${JSON.stringify(resolve(cliRoot, "spec/command-boundary.ts"))}, () => ({ renderPreCommandFailure: () => {} }));
+    mock.module(${JSON.stringify(resolve(cliRoot, "./spec/command-boundary.ts"))}, () => ({ renderPreCommandFailure: () => {} }));
     mock.module(${JSON.stringify(resolve(cliRoot, "tooling-router.ts"))}, () => ({
       resolveToolingRoute: () => Effect.void,
       toolingName: (name) => name,

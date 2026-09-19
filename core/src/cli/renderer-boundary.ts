@@ -241,9 +241,13 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       if (liveStreaming) {
         if (envelopeFormat) {
           const tokens = options.redactionTokens?.(commandExit.value) ?? [];
-          const emitTerminal = framedJson
-            ? emitStreamResult({ _tag: "success", value: commandExit.value }, tokens)
-            : emitJsonResult({ _tag: "success", value: commandExit.value }, tokens);
+          // A live run already wrote frames, so its terminal result stays a frame
+          // under JSON even when the command declares no frame schema. YAML has no
+          // frame transport and emits the envelope document alone.
+          const emitTerminal =
+            renderContext.format === "json"
+              ? emitStreamResult({ _tag: "success", value: commandExit.value }, tokens)
+              : emitJsonResult({ _tag: "success", value: commandExit.value }, tokens);
           yield* emitTerminal.pipe(Effect.catchAllCause((cause) => renderFailure(cause)));
         }
         return { _tag: "handled-success" } as const;

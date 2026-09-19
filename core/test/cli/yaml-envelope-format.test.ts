@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
 import { StreamFrame } from "@lando/sdk/schema";
@@ -37,19 +37,17 @@ const infoResult = {
   ],
 } as const;
 
+// Every boundary call below injects `setExitCode`, so this file never writes
+// the shared exit code. These resets are the second line of defence, and they
+// assign 0 rather than undefined: under Bun `process.exitCode = undefined` is a
+// no-op that leaves the previous value in place, so an `undefined` reset would
+// silently do nothing and leak a failure code into the next file in a shard.
 beforeEach(() => {
-  process.exitCode = undefined;
+  process.exitCode = 0;
 });
 
 afterEach(() => {
-  process.exitCode = undefined;
-});
-
-// This file deliberately drives failure envelopes, whose emit paths can settle
-// after the owning test. Reset once more so the shared exit code never leaks
-// into the next file in a shard.
-afterAll(() => {
-  process.exitCode = undefined;
+  process.exitCode = 0;
 });
 
 describe("--format=yaml on a command with no bespoke format handling", () => {
@@ -165,11 +163,6 @@ describe("--format=yaml on a live-streaming command", () => {
       formatError: String,
       setExitCode: () => undefined,
     });
-    // A live-streaming run settles its sink scope on a later tick, and that
-    // continuation can write the shared process exit code after the test has
-    // returned. Drain it here so this file cannot poison the next one.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    process.exitCode = undefined;
     return io;
   };
 
@@ -198,6 +191,35 @@ describe("--format=yaml on a live-streaming command", () => {
       .map((line) => JSON.parse(line) as { readonly _tag: string; readonly envelope?: unknown })
       .find((frame) => frame._tag === "result");
     expect(Bun.YAML.parse(stdout)).toEqual(terminal?.envelope);
+  });
+
+  test("a live run with no frame schema still frames under json and documents under yaml", async () => {
+    // Frame transport is the JSON concern, not the frame schema: a live command
+    // that declares none still terminates in a result frame under json, while
+    // yaml terminates in the envelope document.
+    const emit = async (resultFormat: "json" | "yaml") => {
+      const io = createBufferedRendererIO();
+      await runWithRendererHandling(Effect.succeed({ message: "done" }), {
+        runtime: Layer.empty,
+        rendererMode: "json",
+        resultFormat,
+        command: "app:exec",
+        resultSchema: ResultSchema,
+        streamingMode: "live",
+        io,
+        render: () => undefined,
+        formatError: String,
+        setExitCode: () => undefined,
+      });
+      return io.stdout();
+    };
+
+    const json = await emit("json");
+    expect(Schema.decodeUnknownSync(StreamFrame)(JSON.parse(json.trim()))._tag).toBe("result");
+
+    const yaml = await emit("yaml");
+    expect(yaml.startsWith("apiVersion: v4\n")).toBe(true);
+    expect(Bun.YAML.parse(yaml)).toEqual(JSON.parse(json.trim()).envelope);
   });
 
   test("a streaming failure under yaml is one envelope document", async () => {
@@ -252,6 +274,7 @@ describe("documentOutput keeps a command's own document on success only", () => 
 
   const run = async (options: { readonly documentOutput?: boolean; readonly fail?: boolean }) => {
     const io = createBufferedRendererIO();
+    let exitCode: number | undefined;
     await runWithRendererHandling(
       options.fail === true ? Effect.fail(new Error("no")) : Effect.succeed(value),
       {
@@ -264,27 +287,32 @@ describe("documentOutput keeps a command's own document on success only", () => 
         ...(options.documentOutput === undefined ? {} : { documentOutput: options.documentOutput }),
         render: () => "name: demo",
         formatError: String,
+        setExitCode: (code) => {
+          exitCode = code;
+        },
       },
     );
-    return io;
+    return { io, exitCode };
   };
 
   test("a matching success renders the command document, not the envelope", async () => {
-    const io = await run({ documentOutput: true });
+    const { io, exitCode } = await run({ documentOutput: true });
     expect(io.stdout()).toBe("name: demo\n");
     expect(io.stdout()).not.toContain("apiVersion");
+    expect(exitCode).toBeUndefined();
   });
 
   test("without the declaration the same command emits the envelope", async () => {
-    const io = await run({});
+    const { io } = await run({});
     expect((Bun.YAML.parse(io.stdout()) as Record<string, unknown>).apiVersion).toBe("v4");
   });
 
-  test("a failure is always the envelope", async () => {
-    const io = await run({ documentOutput: true, fail: true });
+  test("a failure is always the envelope, and still carries the failure exit code", async () => {
+    const { io, exitCode } = await run({ documentOutput: true, fail: true });
     const parsed = Bun.YAML.parse(io.stdout()) as Record<string, unknown>;
     expect(parsed.ok).toBe(false);
     expect(io.stderr()).toBe("");
+    expect(exitCode).toBe(1);
   });
 });
 
