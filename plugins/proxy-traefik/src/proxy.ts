@@ -350,9 +350,7 @@ export const proxy = Layer.effect(
                 .pipe(Stream.runCollect);
               return {
                 providerId: provider.id,
-                text: Array.from(chunks)
-                  .map((chunk) => chunk.line)
-                  .join("\n"),
+                text: Array.from(chunks, (chunk) => chunk.line).join("\n"),
               };
             }),
         }),
