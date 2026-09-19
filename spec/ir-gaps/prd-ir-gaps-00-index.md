@@ -28,5 +28,11 @@ Priorities continue the global sequence in `../config-translation/`. Every imple
 | 54 | US-637 | canonical home destinations and verified metadata | US-617A, US-618E |
 | 55 | US-638 | live file-backed catalog config verification | US-618A |
 | 56 | US-642 | router file-watcher diagnostics | US-615 |
+| 57 | US-643 | teardown independent of desired config | US-629, US-617A |
+| 58 | US-644 | Apache under a non-root service user | US-618E, US-637 |
+| 59 | US-645 | durable machine output | US-626, US-633 |
+| 60 | US-646 | positional tooling argv round trip | US-613, US-623 |
+| 61 | US-647 | cross-app route rank safety | US-615, US-624 |
+| 62 | US-648 | live provider socket gate | US-638 |
 
-Priorities 45..56 are follow-up stories from the audit of US-613..US-618E; priorities 33..44 belong to `../lando3-compat/`. Story ids are sparse on purpose: twenty audit follow-ups were consolidated into twelve PR-sized stories, each keeping its original id, and the retired ids were absorbed into the story that now owns their scope. Follow-up stories reproduce on current source before fixing and treat audit findings as leads, not as present defects. Non-queued maintainer items live in the checklist at the end of `prd-ir-gaps-01-stories.md`.
+Priorities 45..56 are follow-up stories from the audit of US-613..US-618E; priorities 33..44 belong to `../lando3-compat/`. Priorities 57..62 are residual defects recorded during the QA and review of priorities 21..56 and never queued; [`spec-ir-residual.md`](./spec-ir-residual.md) is normative for them. Story ids are sparse on purpose: twenty audit follow-ups were consolidated into twelve PR-sized stories, each keeping its original id, and the retired ids were absorbed into the story that now owns their scope. Follow-up stories reproduce on current source before fixing and treat audit findings as leads, not as present defects. Non-queued maintainer items live in the checklist at the end of `prd-ir-gaps-01-stories.md`.

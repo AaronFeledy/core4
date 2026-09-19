@@ -183,6 +183,7 @@ import type {
 } from "./process.ts";
 import type {
   AppSelector,
+  AppliedTeardownEvidence,
   ApplyOptions,
   ApplyResult,
   ArtifactBuildSpec,
@@ -591,6 +592,9 @@ export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/Ru
     readonly resolveAppliedPlan?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly resolveTeardownEvidence?: (
+      root: AbsolutePath,
+    ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
   }
 >() {}
 

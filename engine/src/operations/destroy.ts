@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 import { DateTime, Effect, Option, Schema } from "effect";
 
 import type {
@@ -32,10 +34,15 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
-import { resolveAppliedStateTarget, validateResolvedAppTarget } from "./applied-state-target.ts";
+import {
+  type TeardownResolution,
+  resolveTeardownResolution,
+  validateResolvedAppTarget,
+} from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { terminateFileSyncSessions } from "./file-sync.ts";
+import { tearDownOrphans } from "./orphan-teardown.ts";
 
 export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
@@ -71,16 +78,12 @@ const resolveDesiredTarget = Effect.gen(function* () {
   return { plan, root: plan.root, app: appRef(plan), landofile } satisfies ResolvedAppTarget;
 });
 
-const resolveDestroyTarget = resolveDesiredTarget.pipe(
-  Effect.map((target) => ({ source: "desired" as const, target })),
-  Effect.catchAll((error) =>
-    resolveAppliedStateTarget.pipe(
-      Effect.flatMap((target) =>
-        target === undefined ? Effect.fail(error) : Effect.succeed({ source: "applied" as const, target }),
-      ),
-    ),
-  ),
-);
+const unchangedResult = (app: string): DestroyAppResult => ({
+  app,
+  outcome: "unchanged",
+  servicesDestroyed: [],
+  volumesRemoved: false,
+});
 
 const destroyAppForTargetUncoordinated = (
   options: DestroyAppOptions | undefined,
@@ -231,24 +234,65 @@ export const destroyAppForTarget = (
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
   destroyAppWithResolvedTarget(options, target, true, target.landofile !== undefined);
 
+const destroyOrphans = (
+  options: DestroyAppOptions,
+  resolution: Extract<TeardownResolution, { readonly kind: "orphans" }>,
+): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
+  tearDownOrphans({
+    root: resolution.root,
+    groups: resolution.groups,
+    options: { removeVolumes: options.volumes === true || options.purgeCaches === true },
+  }).pipe(
+    Effect.map(
+      (removed): DestroyAppResult =>
+        removed.services.length === 0 && !removed.volumesRemoved
+          ? unchangedResult(removed.app)
+          : {
+              app: removed.app,
+              outcome: "destroyed",
+              servicesDestroyed: removed.services,
+              volumesRemoved: removed.volumesRemoved,
+            },
+    ),
+  );
+
+const destroyDesiredOrUnchanged = (
+  options: DestroyAppOptions,
+  resolution: Extract<TeardownResolution, { readonly kind: "absent" }>,
+): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
+  resolveDesiredTarget.pipe(
+    Effect.map((desired): ResolvedAppTarget | undefined => desired),
+    Effect.catchAll((error) =>
+      resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error),
+    ),
+    Effect.flatMap((desired) =>
+      desired === undefined
+        ? Effect.succeed(unchangedResult(basename(resolution.root)))
+        : runAppInitEvents(desired.plan).pipe(
+            Effect.zipRight(destroyAppWithResolvedTarget(options, desired, false, true)),
+          ),
+    ),
+  );
+
 export const destroyApp = (
   options: DestroyAppOptions = {},
   target?: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
   target !== undefined
     ? destroyAppForTarget(options, target)
-    : resolveDestroyTarget.pipe(
-        Effect.flatMap((resolved) =>
-          (resolved.source === "desired"
-            ? runAppInitEvents(resolved.target.plan).pipe(
-                Effect.zipRight(destroyAppWithResolvedTarget(options, resolved.target, false, true)),
-              )
-            : destroyAppWithResolvedTarget(options, resolved.target, false, false)
-          ).pipe(
-            Effect.map(
-              (result): DestroyAppResult =>
-                result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
-            ),
-          ),
+    : resolveTeardownResolution.pipe(
+        Effect.flatMap((resolution) => {
+          switch (resolution.kind) {
+            case "applied":
+              return destroyAppWithResolvedTarget(options, resolution.target, false, false);
+            case "orphans":
+              return destroyOrphans(options, resolution);
+            case "absent":
+              return destroyDesiredOrUnchanged(options, resolution);
+          }
+        }),
+        Effect.map(
+          (result): DestroyAppResult =>
+            result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
         ),
       );
