@@ -7,12 +7,7 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { SecretStoreLive } from "@lando/engine/services/secret-store";
 import { RedactionService, RedactionServiceLive } from "@lando/redaction/service";
-import {
-  type RendererIO,
-  createStdioRendererIO,
-  installBrokenPipeExitPolicy,
-  onStdioBrokenPipe,
-} from "@lando/renderer/io";
+import { type RendererIO, createStdioRendererIO, onStdioBrokenPipe } from "@lando/renderer/io";
 import {
   makeRendererEventConsumerLiveForMode,
   makeRendererNotificationConsumerLiveForMode,
@@ -108,7 +103,6 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
   const { landoRenderer } = await import("./renderer/bundled-renderers");
-  if (options.io === undefined) installBrokenPipeExitPolicy();
   const io = options.io ?? createStdioRendererIO();
   let brokenPipe = false;
   const brokenPipeSignal = Effect.async<never>((resume) => {
