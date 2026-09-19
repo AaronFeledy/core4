@@ -209,12 +209,7 @@ const destroyAppWithResolvedTarget = (
       if (requireAppliedEvidence && registry.resolveAppliedPlan !== undefined) {
         const appliedPlan = yield* registry.resolveAppliedPlan(validatedTarget.plan.root);
         if (appliedPlan === undefined) {
-          return {
-            app: validatedTarget.plan.name,
-            outcome: "unchanged" as const,
-            servicesDestroyed: [],
-            volumesRemoved: false,
-          };
+          return unchangedResult(validatedTarget.plan.name);
         }
       }
       const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);

@@ -29,8 +29,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
-import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
-import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
+import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -139,14 +138,15 @@ const makeLayer = (input: {
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (_cwd: AbsolutePath) => Effect.succeed(appliedPlan),
-    resolveTeardownEvidence: (_root: AbsolutePath) =>
-      Effect.succeed(
-        appliedPlan !== undefined
-          ? ({ kind: "applied", plan: appliedPlan } as const)
-          : input.orphans !== undefined && input.orphans.length > 0
-            ? ({ kind: "orphans", groups: input.orphans } as const)
-            : ({ kind: "absent" } as const),
-      ),
+    resolveTeardownEvidence: (_root: AbsolutePath) => {
+      if (appliedPlan !== undefined) {
+        return Effect.succeed({ kind: "applied", plan: appliedPlan } as const);
+      }
+      if (input.orphans !== undefined && input.orphans.length > 0) {
+        return Effect.succeed({ kind: "orphans", groups: input.orphans } as const);
+      }
+      return Effect.succeed({ kind: "absent" } as const);
+    },
   };
   const layer = Layer.mergeAll(
     PrivateFileAccessLive,

@@ -86,8 +86,7 @@ export const tearDownOrphans = (input: {
         Effect.gen(function* () {
           const provider = yield* registry.select(plan);
           if (group.services.length > 0) {
-            // App ids are not unique across roots. Pass the root-scoped selection plan so destroy
-            // cannot load another project's applied plan, and never forget provider state by id.
+            // App ids are not unique across roots, so never forget provider state by id.
             yield* provider.destroy({ app: group.appId, plan }, { volumes: false, removeState: false });
             services.push(...group.services.map((service) => String(service.service)));
           }

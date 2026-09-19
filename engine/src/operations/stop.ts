@@ -180,11 +180,7 @@ const stopAppWithResolvedPlan = (
         const appliedPlan = yield* registry.resolveAppliedPlan(validatedTarget.plan.root);
         if (appliedPlan === undefined) {
           return {
-            result: {
-              app: validatedTarget.plan.name,
-              outcome: "unchanged" as const,
-              servicesStopped: [],
-            },
+            result: unchangedResult(validatedTarget.plan.name),
             plan: validatedTarget.plan,
           };
         }
