@@ -35,6 +35,18 @@ tooling:
         default: web
     service: ":service"
     cmd: echo deploying
+  tag:
+    description: Tag a release
+    service: web
+    args:
+      label:
+        order: 0
+        description: Release label
+      channel:
+        order: 1
+        default: stable
+        description: Release channel
+    cmd: echo tagging
   legacy:
     description: Retired task
     disabled: true
