@@ -1381,3 +1381,12 @@ Verification: `gate:pr` passed (typecheck, lint, codegen:check, check:boundaries
 - Review notes (deferred/rejected): wiring `Listen` into `apacheStartCommand` stays out of scope (US-618E: Apache `port:` is endpoints/health; image `httpd.conf` still has `Listen 80`, and `-c Listen` would add a socket rather than replace it). Other default-command writers stay recorded, not batched. review-work lanes did not start (harness rejected continuation IDs); Bugbot ran.
 - Verification: typecheck/lint/codegen/boundaries/guide-drift already green on the story; apache unit 8/8 (39 expects); lint:guides and `dev:guides docs/guides/services/apache.mdx --once` 2/2.
 ---
+## 2026-09-19 02:17 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-19 02:30 - US-644 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (runtime already present). `type: apache` + `user: www-data` + `webroot: /app/public` with no `command:` applied and rebuilt without `ServiceExecError`; logs show httpd-foreground with `-c PidFile /tmp/lando-httpd.pid` then die on `Permission denied` bind `:80`. Adjacent default (root) Apache stayed `running`, command line matched the new `-c` launcher, and `wget http://127.0.0.1/` returned `us644-root-ok` from `/app/public` (not repo-root `index.html`). Lint, stop, start, exec, destroy stayed green.
+- **Out-of-scope finding:** `lando setup` exited non-zero with `RouterWatcherError` `failureClass: inotify-limit` while Traefik was already on 8080/8443. Same leftover as US-642/US-643; scenario apps used `router.enabled: false`.
+- **Out-of-scope finding:** non-root Apache cannot bind image `Listen 80` on the default `lando` provider. Documented residual (Review deferred wiring `Listen`); did not block proving the write-free launcher or a served DocumentRoot on the root path.
+---
