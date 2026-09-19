@@ -1348,3 +1348,10 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - Verification: typecheck, lint, and boundaries passed; 36 focused teardown/resolver tests passed.
 - **Learnings for future iterations:** Never call `provider.destroy({ app })` without a plan. Bundled destroy falls back to `loadAppliedPlan(appId)`, and app ids are not unique across roots.
 ---
+## 2026-09-19 00:07 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-19 00:17 - US-643 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (runtime already present; proxy step failed closed on the existing Traefik inotify-limit observation). Started a php:8.3 + postgres app, proved `us643-ok` via exec and a postgres `SELECT 1`. Never-started invalid Landofile: `stop`/`destroy` returned `outcome: "unchanged"` exit 0 (JSON and text `unchanged: … - no services`). Running app with Landofile then broken: `start` still `HomePathCapabilityError`; `stop` returned `stopped`; `destroy -y` returned `destroyed` with services from applied state; follow-up `destroy -y --volumes` returned `destroyed` with `volumesRemoved: true` (text: `destroyed: … (volumes removed)`) instead of `AppResolveError` `provider-resources`. Adjacent `info`, `exec`, `stop`/`start`, and `apps:list` stayed green.
+- **Out-of-scope finding:** `lando setup` exited non-zero with `RouterWatcherError` `failureClass: inotify-limit` while Traefik was already running on 8080/8443. Same leftover as US-642; did not block teardown verification. `router.enabled: false` used on the scenario app so start did not re-enter that path.
+---
