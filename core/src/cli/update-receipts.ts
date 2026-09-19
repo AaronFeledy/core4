@@ -50,10 +50,7 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
       result.hasFailures === true || result.coreFailure !== undefined || result.coreBlocked === true
         ? 1
         : undefined,
-    render: (result) =>
-      format === "yaml"
-        ? Bun.YAML.stringify(result)
-        : `Previous Windows update result:\n${renderUpdateResult(result)}`,
+    render: (result) => `Previous Windows update result:\n${renderUpdateResult(result)}`,
     formatError: String,
   });
   return true;

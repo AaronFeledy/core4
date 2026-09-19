@@ -7,6 +7,7 @@ import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
 import { StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
+import { isEnvelopeResultFormat } from "../../format-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
 
@@ -45,13 +46,14 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
     const parsedArgv = extractSpecParsedArgv(input);
     if (typeof flags.subsystem === "string") return Effect.fail(subsystemDeferred("subsystem"));
     if (flags.sidecar === true) return Effect.fail(subsystemDeferred("sidecar"));
-    const json = flags.format === "json" || flags.json === true;
+    const envelope =
+      (typeof flags.format === "string" && isEnvelopeResultFormat(flags.format)) || flags.json === true;
     const base = {
       command: parsedArgv.length === 0 ? DEFAULT_SSH_COMMAND : parsedArgv,
       ...(typeof flags.service === "string" ? { service: flags.service } : {}),
       ...(typeof flags.user === "string" ? { user: flags.user } : {}),
     };
-    if (json) return execApp({ ...base, interactive: false, tty: false });
+    if (envelope) return execApp({ ...base, interactive: false, tty: false });
     const tty = true;
     const interactive = process.stdin.isTTY === true;
     return withInheritedStdinRawMode(interactive, execApp(attachExecHostIo({ ...base, tty, interactive })));

@@ -27,6 +27,14 @@ export const JSON_FIELD_LIST = /^[A-Za-z_][\w.-]*(,[A-Za-z_][\w.-]*)*$/;
 export const isResultFormat = (value: string): value is ResultFormat =>
   (RESULT_FORMATS as ReadonlyArray<string>).includes(value);
 
+/**
+ * Formats the command boundary serializes from the result envelope itself.
+ * Everything else reaches the command's own `render`. Commands that decide
+ * "am I producing machine output?" must ask this, not compare against `json`.
+ */
+export const isEnvelopeResultFormat = (value: ResultFormat | string | undefined): value is "json" | "yaml" =>
+  value === "json" || value === "yaml";
+
 const validate = (value: string): ResultFormat => {
   if (isResultFormat(value)) return value;
   throw new RendererSelectionError({

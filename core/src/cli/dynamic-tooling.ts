@@ -27,6 +27,7 @@ import {
 } from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { attachedHostTerminal } from "./exec-host-io";
+import { isEnvelopeResultFormat } from "./format-flags";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { type ToolingRoute, resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
 
@@ -62,7 +63,9 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
   const hostTerminal =
-    activeResultFormat === "json" || activeRendererMode === "json" ? undefined : attachedHostTerminal();
+    isEnvelopeResultFormat(activeResultFormat) || activeRendererMode === "json"
+      ? undefined
+      : attachedHostTerminal();
   return runCompiledCommand(
     runTooling({
       name,
@@ -80,7 +83,7 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
     renderRunToolingResult,
     {
       ...dynamicToolingOptions,
-      ...(activeResultFormat === "json" ? {} : { streamingMode: "live" }),
+      ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
     },
   );
 };

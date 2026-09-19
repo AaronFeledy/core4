@@ -57,6 +57,7 @@ import {
   DEFAULT_RESULT_FORMAT,
   JSON_CONTROL_OFF,
   extractFormatFlags,
+  isEnvelopeResultFormat,
   resolveJsonControl,
   resolveResultFormat,
 } from "./format-flags";
@@ -95,13 +96,16 @@ const jsonControlConflict = (): JsonJqConflictError | JsonProjectionError | unde
       remediation: "cannot use --jq with bare --json; pass --json key1,key2 or omit --json",
     });
   }
-  if ((activeJsonControl.mode === "keys" || activeJq !== undefined) && activeResultFormat !== "json") {
+  if (
+    (activeJsonControl.mode === "keys" || activeJq !== undefined) &&
+    !isEnvelopeResultFormat(activeResultFormat)
+  ) {
     return new JsonProjectionError({
-      message: "JSON projection requires --format=json.",
+      message: "JSON projection requires an envelope format.",
       keys: activeJsonControl.mode === "keys" ? [...activeJsonControl.keys] : [],
       available: [],
       reason: "format_conflict",
-      remediation: "Use --format=json or omit --format when projecting or using --jq.",
+      remediation: "Use --format=json or --format=yaml, or omit --format when projecting or using --jq.",
     });
   }
   return undefined;
@@ -166,7 +170,10 @@ const printRootHelpPage = async (): Promise<void> => {
 };
 
 const printHelpCatalogPage = async (): Promise<void> => {
-  printHelpCatalogJson(await readAppCommandCacheOrNull());
+  printHelpCatalogJson(
+    await readAppCommandCacheOrNull(),
+    isEnvelopeResultFormat(activeResultFormat) ? activeResultFormat : "json",
+  );
 };
 
 const dispatchHelpTarget = async (token: string): Promise<void> => {
@@ -289,8 +296,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         await renderPreCommandFailure({
           commandId: "cli:format-selection",
           error,
-          rendererMode: activeRendererMode,
-          resultFormat: activeRendererMode === "json" ? "json" : "text",
+          ...preCommandOutputMode({ argv, env: process.env }),
         });
         return;
       }
@@ -307,7 +313,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   if (argv[0] === "help") {
     const helpArgv = argv.slice(1);
     if (await rejectUnknownHelpFlags(helpArgv)) return;
-    if (activeResultFormat === "json") {
+    if (isEnvelopeResultFormat(activeResultFormat)) {
       setActiveCommandId("cli:help");
       await printHelpCatalogPage();
       return;
@@ -431,7 +437,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (builtInCommand?.status.kind === "deferred") {
     const error = notImplementedErrorForCommand(builtInCommand.spec.id);
-    if (activeResultFormat === "json") {
+    if (isEnvelopeResultFormat(activeResultFormat)) {
       await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
       return;
     }

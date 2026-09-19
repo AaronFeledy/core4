@@ -18,6 +18,7 @@ import { publishedEndpointHost, publishedEndpointUrl } from "@lando/engine/opera
 import { canOpenHost, openUrl } from "@lando/engine/services/host-opener";
 import { RedactionService } from "@lando/redaction/service";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution";
+import { isEnvelopeResultFormat } from "../format-flags";
 import type { RenderContext } from "../renderer-boundary";
 
 export const OpenTargetSchema = Schema.Struct({
@@ -169,7 +170,7 @@ export const openOptionsFromInput = (input: unknown): OpenAppOptions => {
     ...(flags.route === undefined ? {} : { route: flags.route }),
     ...(flags.all === undefined ? {} : { all: flags.all }),
     ...(flags.print === undefined ? {} : { print: flags.print }),
-    json: flags.format === "json",
+    json: isEnvelopeResultFormat(flags.format),
     ttyPresent: process.stdout.isTTY === true,
   };
 };

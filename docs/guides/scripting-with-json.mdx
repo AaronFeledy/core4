@@ -69,6 +69,11 @@ native registry and dispatcher.
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
+    <Step name="read-lint-as-yaml">
+      <Run command="lando app:config:lint --format=yaml" />
+      <Verify command="lando app:config:lint --format=yaml" expect={{ stdout: { regex: "^apiVersion: v4" } }} />
+      <Verify command="lando app:config:lint --format=yaml" expect={{ stdout: { regex: "ok:\\s*true" } }} />
+    </Step>
     <Step name="cleanup-scaffold">
       <Cleanup />
     </Step>
@@ -103,9 +108,57 @@ contains only that key.
 `--jq .ok` prints the raw scalar `true`. Do not combine bare `--json` with
 `--jq`. An unknown key exits nonzero.
 
+## Read anything as YAML
+
+`--format=yaml` is the envelope again, serialized as YAML. Any command that
+does not print a document of its own emits the same `CommandResultEnvelope`
+it emits for `--format=json`. Parse either one and you hold the same model.
+
+```sh
+lando app:info --format=yaml
+```
+
+```yaml
+apiVersion: v4
+command: app:info
+ok: true
+result:
+  app: demo
+  services:
+    - service: appserver
+      status: running
+warnings: []
+deprecations: []
+```
+
+The controls carry over unchanged. Redaction runs first. `--json=<key>`
+projects inside `result`. Warnings land in `warnings`. A closed pipe exits
+`141`. A failure is a YAML envelope on stdout with `ok: false` and the tagged
+`error`, and the command keeps its non-zero exit code. Streaming commands
+such as `app:logs` and `app:exec` emit only the terminal envelope under
+`yaml`; per-frame streaming stays a JSON concern.
+
+`--jq` output is jq's output, whatever the format. `--format=yaml --jq .ok`
+prints `true`, byte for byte what `--format=json --jq .ok` prints. Do not
+expect a YAML document from a jq selection.
+
+Two commands print a product document instead of the envelope, and only on
+success:
+
+- `lando app:config --format=yaml` (the bare `view` verb) prints the
+  Landofile. `lando app:config get ... --format=yaml` and the write verbs
+  emit the envelope.
+- `lando app:config:translate --format=yaml` (the default preview) prints the
+  translated v4 Landofile. `--list`, `--detect`, and `--write` emit the
+  envelope.
+
+Pass `--jq` or `--json=<key>` to either of those and you get the envelope,
+because those controls select inside it.
+
 ## Read config as YAML
 
-`lando app:config --format=yaml` prints the Landofile as YAML. What comes
+`lando app:config --format=yaml` is the export exception described above: on
+success it prints the Landofile itself as YAML, not the envelope. What comes
 out parses back into the same document Lando held. Values YAML would
 otherwise reinterpret get quoted on the way out: the redaction sentinel
 `[redacted]`, strings that look like booleans (`yes`, `off`, `true`),
@@ -137,7 +190,8 @@ the pipeline's own status is whatever the last consumer returned.
 
 ## Envelope contract
 
-The full-envelope aliases are `--format json`, `--format=json`, and `-j`.
+The full-envelope aliases are `--format json`, `--format=json`, `-j`, and
+`--format yaml` (or `--format=yaml`) for the same envelope as YAML.
 The failure envelope has the shape `{ "ok": false, "error": <tagged-error> }`.
 A failing command keeps its non-zero exit code alongside the envelope so
 scripts can branch on both. The tagged error exposes a machine `_tag` plus

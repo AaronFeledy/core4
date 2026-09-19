@@ -48,7 +48,6 @@ export {
   buildDoctorReportSummary,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
 } from "./doctor-report-render";
 
 export const appConfigForReport = () =>
