@@ -42,6 +42,8 @@ The data-store, search-engine, and webserver `ServiceType`s (`mariadb`,
 
 Apache serves `/app` by default. Set `webroot:` to change the generated httpd document root and the `APACHE_DOCUMENT_ROOT` and `LANDO_WEBROOT` environment values. An authored `APACHE_DOCUMENT_ROOT` environment value wins; an authored `command:` or `entrypoint:` owns its own Apache startup config.
 
+A generated start command runs as the service's planned `user:`. [Default start commands and the planned service user](./DEFAULT_COMMAND_AUDIT.md) records what each bundled default writes and which ones still assume root.
+
 Node exposes port `3000` and sets `PORT=3000` by default. Set `port:` to change the endpoint and default `PORT`. A Node service with the idle default command has no healthcheck. When `command:` is authored, Lando generates a TCP healthcheck against the configured service port. An authored `environment.PORT` still wins without changing the endpoint or healthcheck target.
 
 ## Capture PHP mail

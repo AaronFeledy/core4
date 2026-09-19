@@ -25,6 +25,29 @@ const decodeService = (raw: unknown): ServiceConfig => {
   return service;
 };
 
+/**
+ * Reads the generated launcher as argv and returns the Apache directives it
+ * carries, failing on any `-c` flag that lost its directive. Asserting on
+ * directives instead of one serialized string keeps this a behavioral proof
+ * rather than a snapshot of the command's spelling.
+ */
+const apacheDirectives = (command: ServicePlan["command"]): ReadonlyArray<string> => {
+  if (!Array.isArray(command)) throw new Error(`Apache command must be argv, got ${typeof command}.`);
+  const [launcher, ...rest] = command as ReadonlyArray<string>;
+  if (launcher !== "httpd-foreground") {
+    throw new Error(`Apache launcher must be httpd-foreground, got ${String(launcher)}.`);
+  }
+  const directives: Array<string> = [];
+  for (let index = 0; index < rest.length; index += 2) {
+    const flag = rest[index];
+    const directive = rest[index + 1];
+    if (flag !== "-c") throw new Error(`Expected a -c flag at argv position ${index}, got ${String(flag)}.`);
+    if (directive === undefined) throw new Error(`The -c flag at argv position ${index} has no directive.`);
+    directives.push(directive);
+  }
+  return directives;
+};
+
 const composeApachePlan = (raw: unknown, serviceName = "web"): Promise<ServicePlan> =>
   composeServicePlan({
     serviceType: apacheServiceType,
@@ -102,14 +125,9 @@ describe("apache ServiceType", () => {
       APACHE_DOCUMENT_ROOT: "/app/public files/$site",
       LANDO_WEBROOT: "/app/public files/$site",
     });
-    expect(plan.command).toEqual([
-      "sh",
-      "-c",
-      expect.stringContaining('DocumentRoot "/app/public files/$site"'),
-    ]);
-    expect(Array.isArray(plan.command) ? plan.command[2] : undefined).toContain(
-      '<Directory "/app/public files/$site">',
-    );
+    const directives = apacheDirectives(plan.command);
+    expect(directives).toContain('DocumentRoot "/app/public files/$site"');
+    expect(directives).toContain('<Directory "/app/public files/$site">');
   });
 
   test("rejects line breaks in an authored webroot before generating Apache config", async () => {
@@ -132,7 +150,7 @@ describe("apache ServiceType", () => {
       LANDO_PROJECT_MOUNT: "/app",
       LANDO_WEBROOT: "/app",
     });
-    expect(Array.isArray(plan.command) ? plan.command[2] : undefined).toContain('DocumentRoot "/app/custom"');
+    expect(apacheDirectives(plan.command)).toContain('DocumentRoot "/app/custom"');
   });
 
   test("preserves authored command and entrypoint instead of installing the generated launcher", async () => {
@@ -149,14 +167,47 @@ describe("apache ServiceType", () => {
     expect(plan.entrypoint).toEqual(["custom-entrypoint"]);
   });
 
-  test("overwrites Apache webroot config instead of appending on each start", async () => {
+  test("starts a non-root Apache service without writing config from PID 1", async () => {
+    // Given / When
+    const plan = await composeApachePlan({ type: "apache", user: "www-data", webroot: "/app/public" });
+
+    // Then: the planned user reaches the container and the launcher it runs needs
+    // nothing that only root can do.
+    expect(plan.user).toBe("www-data");
+    const directives = apacheDirectives(plan.command);
+    expect(directives).toContain('DocumentRoot "/app/public"');
+    expect(directives).toContain('PidFile "/tmp/lando-httpd.pid"');
+
+    const open = directives.indexOf('<Directory "/app/public">');
+    const close = directives.indexOf("</Directory>");
+    expect(open).toBeGreaterThanOrEqual(0);
+    expect(close).toBeGreaterThan(open);
+    expect(directives.slice(open + 1, close)).toEqual([
+      "Options -Indexes +FollowSymLinks",
+      "AllowOverride None",
+      "Require all granted",
+    ]);
+
+    const argv = plan.command as ReadonlyArray<string>;
+    expect(argv).not.toContain("sh");
+    expect(argv.filter((token) => token.includes("/usr/local/apache2"))).toEqual([]);
+    expect(argv.join("\n")).not.toMatch(/>\s*\//u);
+  });
+
+  test("declares the webroot once per start instead of accumulating config", async () => {
     // Given / When
     const plan = await composeApachePlan({ type: "apache", webroot: "/app/public" });
-    const script = Array.isArray(plan.command) ? plan.command[2] : undefined;
+    const directives = apacheDirectives(plan.command);
 
-    // Then
-    expect(script).toContain("cat > /usr/local/apache2/conf/extra/lando-webroot.conf");
-    expect(script).not.toContain("cat >>");
-    expect(script).toContain('DocumentRoot "/app/public"');
+    // Then: the launcher declares the webroot inline, so repeated starts cannot
+    // append to a config file the previous start left behind.
+    expect(directives.filter((directive) => directive.startsWith("DocumentRoot "))).toEqual([
+      'DocumentRoot "/app/public"',
+    ]);
+    expect(directives.filter((directive) => directive.startsWith("<Directory "))).toEqual([
+      '<Directory "/app/public">',
+    ]);
+    expect(directives.filter((directive) => directive === "</Directory>")).toHaveLength(1);
+    expect(directives.join("\n")).not.toContain("Include");
   });
 });
