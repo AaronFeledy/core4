@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { link, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +22,18 @@ const closeServer = (server: Server): Promise<void> =>
   new Promise((resolve) => {
     server.close(() => resolve());
   });
+
+/**
+ * Produces a socket path that exists on disk but refuses connection, exactly
+ * as a dead daemon leaves one behind. Node unlinks the listening path on
+ * close, so hard-link the socket inode first: the link survives the close
+ * while nothing is left listening on it.
+ */
+const makeStaleSocket = async (livePath: string, stalePath: string): Promise<void> => {
+  const server = await listenOnSocket(livePath);
+  await link(livePath, stalePath);
+  await closeServer(server);
+};
 
 describe("resolveLiveProviderSocket", () => {
   const savedEnv: Record<string, string | undefined> = {};
@@ -91,5 +103,76 @@ describe("resolveLiveProviderSocket", () => {
     process.env.LANDO_USER_DATA_ROOT = dir;
     process.env[LANDO_TEST_PODMAN_SOCKET_ENV] = "";
     expect(resolveLiveProviderSocket()).toBeUndefined();
+  });
+  test("treats a managed socket left behind by a dead daemon as absent", async () => {
+    process.env.LANDO_USER_DATA_ROOT = dir;
+    const managedSocketPath = makeLandoPaths().providerSocketPath;
+    await mkdir(join(dir, "runtime", "run"), { recursive: true });
+    await makeStaleSocket(join(dir, "runtime", "run", "listening.sock"), managedSocketPath);
+
+    expect(resolveLiveProviderSocket()).toBeUndefined();
+    expect(hasLiveProviderSocket()).toBe(false);
+  });
+
+  test("treats an override naming a dead socket as absent", async () => {
+    process.env.LANDO_USER_DATA_ROOT = dir;
+    const overridePath = join(dir, "dead-override.sock");
+    await makeStaleSocket(join(dir, "listening.sock"), overridePath);
+    process.env[LANDO_TEST_PODMAN_SOCKET_ENV] = overridePath;
+
+    expect(resolveLiveProviderSocket()).toBeUndefined();
+    expect(hasLiveProviderSocket()).toBe(false);
+  });
+
+  test("falls through to a live managed socket when the override is dead", async () => {
+    process.env.LANDO_USER_DATA_ROOT = dir;
+    const overridePath = join(dir, "dead-override.sock");
+    await makeStaleSocket(join(dir, "listening.sock"), overridePath);
+    process.env[LANDO_TEST_PODMAN_SOCKET_ENV] = overridePath;
+
+    const managedSocketPath = makeLandoPaths().providerSocketPath;
+    await mkdir(join(dir, "runtime", "run"), { recursive: true });
+    servers.push(await listenOnSocket(managedSocketPath));
+
+    expect(resolveLiveProviderSocket()).toEqual({ socketPath: managedSocketPath, source: "paths" });
+  });
+
+  test("keeps override precedence when both the override and the managed socket answer", async () => {
+    process.env.LANDO_USER_DATA_ROOT = dir;
+    const overridePath = join(dir, "override.sock");
+    servers.push(await listenOnSocket(overridePath));
+    process.env[LANDO_TEST_PODMAN_SOCKET_ENV] = overridePath;
+
+    const managedSocketPath = makeLandoPaths().providerSocketPath;
+    await mkdir(join(dir, "runtime", "run"), { recursive: true });
+    servers.push(await listenOnSocket(managedSocketPath));
+
+    expect(resolveLiveProviderSocket()).toEqual({ socketPath: overridePath, source: "env" });
+  });
+
+  test("never probes a host that has no socket at all", () => {
+    process.env.LANDO_USER_DATA_ROOT = dir;
+    const spawnSync = spyOn(Bun, "spawnSync");
+    try {
+      expect(resolveLiveProviderSocket()).toBeUndefined();
+      expect(spawnSync).not.toHaveBeenCalled();
+    } finally {
+      spawnSync.mockRestore();
+    }
+  });
+
+  test("probes exactly once when a single candidate socket exists on disk", async () => {
+    process.env.LANDO_USER_DATA_ROOT = dir;
+    const managedSocketPath = makeLandoPaths().providerSocketPath;
+    await mkdir(join(dir, "runtime", "run"), { recursive: true });
+    servers.push(await listenOnSocket(managedSocketPath));
+
+    const spawnSync = spyOn(Bun, "spawnSync");
+    try {
+      expect(resolveLiveProviderSocket()).toEqual({ socketPath: managedSocketPath, source: "paths" });
+      expect(spawnSync).toHaveBeenCalledTimes(1);
+    } finally {
+      spawnSync.mockRestore();
+    }
   });
 });
