@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Socket } from "node:net";
-import { createStdioRendererIO, installBrokenPipeExitPolicy } from "@lando/renderer/io";
+import { createStdioRendererIO } from "@lando/renderer/io";
 import { writeResultLine } from "@lando/renderer/output";
 import { Deferred, Effect, Layer } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
@@ -44,9 +44,7 @@ test("a command that writes forever is interrupted when stdout breaks, resolves,
   const stdout = fakeStream(3);
   const stderr = fakeStream();
   const exitCodes: number[] = [];
-  const originalExitCode = process.exitCode ?? 0;
-  // Earlier in-process CLI tests may already have installed this process-lifetime policy.
-  const uninstallExitPolicy = installBrokenPipeExitPolicy();
+  const originalExitCode = process.exitCode;
   const stop = Effect.runSync(Deferred.make<void>());
   let finalized = false;
   const command = Effect.gen(function* () {
@@ -75,15 +73,13 @@ test("a command that writes forever is interrupted when stdout breaks, resolves,
         timer = setTimeout(() => resolve("timeout"), 2000);
       }),
     ]);
-    // Then: cleanup completes quietly; only the broken-pipe policy sets the process status.
+    // Then: injected IO completes cleanup quietly without changing the host process status.
     expect(outcome).toBe("resolved");
     expect(finalized).toBe(true);
     expect(stderr.chunks.join("")).toBe("");
     expect(exitCodes).toEqual([]);
-    expect(process.exitCode).toBe(141);
+    expect(process.exitCode).toBe(originalExitCode);
   } finally {
-    uninstallExitPolicy();
-    process.exitCode = originalExitCode;
     clearTimeout(timer);
     await Effect.runPromise(Deferred.succeed(stop, undefined));
     await running;
