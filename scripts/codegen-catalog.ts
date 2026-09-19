@@ -142,6 +142,8 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Imports @lando/service-lando and its PHP msmtp pins; see `bundled-plugins`.
+    dependsOn: ["php-msmtp-pins"],
     id: "service-type-reference",
     ownership: "derived",
     script: "build-service-type-reference.ts",

@@ -10,6 +10,8 @@
 - Tooling metadata normalizes ONCE via `normalizeToolingTask` in `@lando/landofile/tooling-normalize`; every consumer (command cache, CLI help, machine index, MCP, execution) reads that IR instead of re-deriving from the authored `ToolingTaskShape`. Argv validation lives beside it in `@lando/landofile/tooling-input` so CLI and MCP share one validation path and emit identical error tags.
 - Adding a publicly registered schema needs THREE edits, not one: the schema itself, `JSON_SCHEMA_REGISTRY` in `sdk/src/schema/json-schema.ts`, and a fixture row in `sdk/test/schema/public-schema-contracts.ts`. Missing the third fails `codegen:schema-snapshot` with "Public schema contract fixture list does not match JSON_SCHEMA_NAMES".
 - Widening a Landofile value type ripples into expression resolution: `engine/src/tooling/step-runner.ts` walks the same shape and must handle every new union member, and `Effect.forEach` over a heterogeneous union needs an explicit callback return annotation under `exactOptionalPropertyTypes`.
+- A hand-built `AppPlan` in a live test needs `stores` populated from each service plan's `storage`, or `bringDown({ volumes: true })` has nothing to remove and every run leaks its named data volume. `removeAppScopedVolumes` iterates `plan.stores`; the label-based prune does not cover a store the plan never declared.
+- `bringUp` never pulls an image. A live test that introduces a new image must also add it to the pre-pull list in `scripts/build-ci-workflow.ts` and regenerate `.github/workflows/ci.yml`, or CI fails with `no such image` instead of a useful assertion.
 - `check:guide-coverage` only scans PRDs listed in `docs/guides/prd-sources.json`. A PRD outside that list needs no `docs/guides/INDEX.md` row, so do not add one speculatively.
 - Guide fixtures resolve from `docs/guides/<frontmatter-id>/fixtures/<name>/`, never from the MDX's own subdirectory.
 - A non-zero exit from a tooling command is a RESULT, not an Effect failure: `runTooling` stops at the first non-zero step and returns the accumulated streams carrying that exit code, and the CLI maps it through `successExitCode`. Reserve tagged failures for compile, input, and disabled errors so CLI, MCP, and library surfaces stay uniform.
@@ -1231,4 +1233,50 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all boundary rules
 - CI outcome: fail (static-checks-platform (windows-arm64, windows-11-arm); static-checks, guide-scenarios-linux-x64, provider-integration-linux-x64 are cascade gates off it)
 - Review feedback: none (no Bugbot findings, no review decision); triage categorized the failure as real-issue not owned by this branch — native state-store private-file ACL tests fail the same way on main (runs 35330287129, 35321886924), branch changes zero state-store files, and a --failed rerun reproduced it, so no fix pushed
 - Merge: deferred (required check FAILURE; needs a separate state-store/Windows-ARM CI investigation)
+---
+## 2026-09-18 08:53 - Babysit
+- [looper] Babysit blocked: CI red: static-checks-platform (windows-arm64, windows-11-arm) fails native state-store private-file ACL tests; triage confirms pre-existing intermittent failure also on main, branch touches zero state-store files
+---
+## 2026-09-18 08:54 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-18 08:54 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-18 08:54 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-18 08:54 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-18 08:54 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-18 08:54 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-18 17:15 - Babysit
+- PR: #1011 https://github.com/AaronFeledy/core4/pull/1011
+- CI outcome: pass (after fixing guide-scenarios-windows-arm64, which hung to its 30m cap twice)
+- Review feedback: none (no Bugbot findings, no review decision); triage root-caused the Windows ARM private-file ACL worker — emulated PowerShell 5.1 never produced a usable worker, so it now selects native pwsh 7, restores the 15s fail-fast timeout over the earlier 60s band-aid, and uses Get-Acl/Set-Acl cmdlets that work on both PowerShell 5.1 and 7
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-09-18 17:40 - US-638
+- Every file-backed catalog config option now has a permanent live test that asks the running daemon what it loaded. MySQL and MariaDB answer `SELECT @@global.max_connections` from a mounted `conf.d` drop-in, PostgreSQL answers `SHOW config_file` plus `SHOW max_connections` from a replaced server config, MongoDB answers `getParameter` for a `setParameter` block in the mounted `mongod.conf`, and Solr answers the Config API with a `userProps` value overlaid from the mounted config dir. Each probe runs inside the container through provider `exec`, so nothing is proven by reading a mount path or a generated command, and no host port is published.
+- Cleanup moved from the `try/finally` shape the older live tests use to an Effect `Scope`: the temp app root and the started app are both acquired with `acquireRelease`, so teardown runs on a failing assertion too, and it releases in the right order (app down first, bind-mount sources removed after). Teardown takes the named volumes with it and a teardown failure is a defect rather than a swallowed warning, because a stale data volume both blocks the next run that reuses the store and lets a database skip initialization.
+- Populating `stores` on the composed app plan was a real fix, not bookkeeping: with an empty `stores` array the first pass left eight named volumes behind. The re-run after the fix left zero volumes and zero containers.
+- Added the three missing catalog images to the CI pre-pull list; `bringUp` does not pull, so without them these tests would fail with `no such image` rather than an assertion.
+- No product change was needed. The one red run that looked like a defect was mongosh printing a 64-bit int as `Long('123456')`; the daemon had loaded the file correctly, so the probe casts instead.
+- Verification: `gate:pr` passed (typecheck, lint, codegen drift, boundaries, guide-drift). Helper unit test 8/8 on the host. In the sandbox, all five suites pass against live daemons, and each was first run with its `config` key removed to prove the probe discriminates: MySQL saw `151` instead of `314`, MariaDB `151` instead of `271`, PostgreSQL `/var/lib/postgresql/data/postgresql.conf` and `100` instead of `/etc/lando/postgresql.conf` and `137`, MongoDB `600000` instead of `123456`, and Solr no `userProps` at all.
+- **Out-of-scope finding:** the host distro carries a dead `~/.local/share/lando/runtime/run/podman.sock` from an earlier setup, so `resolveLiveProviderSocket()` resolves it and live integration tests fail to connect on the host instead of skipping. Pre-existing: `plugins/service-lando/test/solr.integration.test.ts` behaves identically. Only the sandbox has a live socket.
+- **Learnings for future iterations:**
+  - A live test that only asserts "the daemon is up" proves nothing about config. Pick a setting whose stock default is well known, then run the same test once with the config removed; that run is the only evidence the probe can discriminate, and it is cheap to produce by copying the test with the `config` key stripped.
+  - `bringUp` does not wait for a healthcheck. Poll the daemon with the real probe until it answers instead of sleeping, and let the poll deadline sit below the test timeout so the scope always closes before the runner kills the test.
+  - The `lando4-dev` sandbox is dependency-free by contract but the projects disk is shared with the host at the same path, so a copy of the host `bun` binary placed outside the repo runs there by absolute path without ever joining `PATH` and without breaking `--check`.
+  - mongosh prints 64-bit integers as `Long('...')`. Cast in the `--eval` rather than loosening the assertion, or a real mismatch will look like the same formatting noise.
+---
+## 2026-09-18 17:54 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
 ---

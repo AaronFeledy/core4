@@ -174,7 +174,7 @@ describe("mysql ServiceType", () => {
         realization: "passthrough",
       },
     ]);
-    expect(String(MYSQL_CONFIG_TARGET)).toBe("/etc/mysql/conf.d/99-lando.cnf");
+    expect(String(MYSQL_CONFIG_TARGET)).toBe("/etc/mysql/my.cnf");
     expect(plan.command).toEqual(baseline.command);
     expect(plan.entrypoint).toEqual(baseline.entrypoint);
   });
