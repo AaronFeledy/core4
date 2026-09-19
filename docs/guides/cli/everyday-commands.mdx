@@ -67,6 +67,8 @@ A mutating command that shells out to another `lando` mutate on the same app reu
 ## Tear down
 
 `destroy` deletes this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+Run it again with `--volumes` when you want those volumes gone; Lando removes them from what the provider
+still holds, and reports `unchanged` when there is nothing left to remove.
 
 ```sh
 lando destroy -y

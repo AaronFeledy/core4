@@ -1,9 +1,10 @@
 import { Effect } from "effect";
 
 import { AppResolveError } from "@lando/sdk/errors";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import type { AbsolutePath, AppPlan, AppRef } from "@lando/sdk/schema";
+import { type AppliedOrphanGroup, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { findAppRoot } from "@lando/landofile/discovery";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 
@@ -47,6 +48,15 @@ export const validateResolvedAppTarget = (target: ResolvedAppTarget) =>
     return target;
   });
 
+const appliedStateTarget = (plan: AppPlan) =>
+  plan.identity === undefined
+    ? Effect.fail(mismatch("identity"))
+    : validateResolvedAppTarget({
+        plan,
+        root: plan.root,
+        app: appRef(plan),
+      } satisfies ResolvedAppTarget);
+
 export const resolveAppliedStateTarget = Effect.gen(function* () {
   const registry = yield* RuntimeProviderRegistry;
   const cwdIdentity = yield* resolveAppIdentity(process.cwd());
@@ -63,10 +73,48 @@ export const resolveAppliedStateTarget = Effect.gen(function* () {
   }
   const plan = yield* resolveAppliedPlan(cwdIdentity.appRoot);
   if (plan === undefined) return undefined;
-  if (plan.identity === undefined) return yield* Effect.fail(mismatch("identity"));
-  return yield* validateResolvedAppTarget({
-    plan,
-    root: plan.root,
-    app: appRef(plan),
-  } satisfies ResolvedAppTarget);
+  return yield* appliedStateTarget(plan);
+});
+
+/** What teardown may act on for the discovered app root, decided before any desired config loads. */
+export type TeardownResolution =
+  | { readonly kind: "applied"; readonly target: ResolvedAppTarget }
+  | {
+      readonly kind: "orphans";
+      readonly root: AbsolutePath;
+      readonly groups: ReadonlyArray<AppliedOrphanGroup>;
+    }
+  | { readonly kind: "absent"; readonly root: AbsolutePath; readonly landofilePresent: boolean };
+
+/**
+ * Resolves the app root by discovery, which succeeds while the Landofile is unreadable, then asks
+ * the providers what they hold for that root. Callers load the desired config only afterwards, and
+ * only when this reports nothing to remove.
+ */
+export const resolveTeardownResolution = Effect.gen(function* () {
+  const discovered = yield* Effect.promise(() => findAppRoot(process.cwd()).catch(() => undefined));
+  const identity = yield* resolveAppIdentity(discovered ?? process.cwd());
+  const root = identity.appRoot;
+  const landofilePresent = discovered !== undefined;
+  const registry = yield* RuntimeProviderRegistry;
+  const resolveEvidence = registry.resolveTeardownEvidence;
+  if (resolveEvidence === undefined) {
+    const resolveAppliedPlan = registry.resolveAppliedPlan;
+    if (resolveAppliedPlan === undefined) {
+      return { kind: "absent" as const, root, landofilePresent };
+    }
+    const plan = yield* resolveAppliedPlan(root);
+    return plan === undefined
+      ? { kind: "absent" as const, root, landofilePresent }
+      : { kind: "applied" as const, target: yield* appliedStateTarget(plan) };
+  }
+  const evidence = yield* resolveEvidence(root);
+  switch (evidence.kind) {
+    case "applied":
+      return { kind: "applied" as const, target: yield* appliedStateTarget(evidence.plan) };
+    case "orphans":
+      return { kind: "orphans" as const, root, groups: evidence.groups };
+    case "absent":
+      return { kind: "absent" as const, root, landofilePresent };
+  }
 });

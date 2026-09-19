@@ -120,6 +120,11 @@ missing or invalid. That means you can still tear down an app after deleting its
 directory or breaking its config. Lando verifies the stored app root, owner, and
 provider before it touches anything.
 
+Teardown looks at what is actually running before it reads your config. An app
+that was never started reports `unchanged` and exits 0, even when its Landofile
+does not validate. If a plain `destroy` kept your data volumes, a later
+`lando destroy -y --volumes` still removes them and tells you what it removed.
+
 To see or stop everything Lando is running on this host:
 
 ```sh
