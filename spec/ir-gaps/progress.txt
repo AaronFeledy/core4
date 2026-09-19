@@ -268,3 +268,76 @@ means and keeps the scanner honest.
   - Spot-check the package's whole test directory, not the story's own files. The framing regression lived in a suite the story never touched and would have reached `main` otherwise, and an `origin/main` worktree is what separates "my regression" from "this host".
   - `gate:pr` is not typecheck plus lint. It caught a boundary violation that a clean typecheck, a clean lint, and a green suite all missed.
 ---
+
+## 2026-09-19 19:35 - US-658
+
+`--format` now offers a command exactly the values that command produces. The
+flag had advertised all five formats on every command while the boundary
+honored three, so `lando version --format=table` and `--format=ndjson` both
+printed the human text at exit 0 — a program asking for a machine format got
+prose and a success code.
+
+- `text`, `json`, and `yaml` are the universal set, and a command cannot narrow
+  them: `text` is its own render and the other two are the boundary's envelope.
+  `table` and `ndjson` became opt-in capabilities declared by
+  `LandoCommandSpec.resultFormats`. Twenty-one commands declare `table`;
+  `meta:doctor` alone declares `ndjson`, which it had rendered for a year
+  without ever advertising.
+- The nineteen specs that carried their own `format` option list no longer do.
+  Those lists were wrong in both directions — they advertised `table` where the
+  boundary owns nothing, and omitted `yaml`, which every command honors. One
+  resolved list is now computed centrally and overwrites any spec-local one, so
+  a spec cannot reintroduce a competing vocabulary; a conformance test fails if
+  one appears.
+- Help, compiled-mode argv definitions, and the generated command-registry
+  manifest all read that one resolved list. The global-flags footer names the
+  command's own formats (`--format (text, json, yaml, ndjson)` under doctor)
+  rather than the bare flag name, which is the only place a reader learns the
+  values at all.
+- An unsupported value is refused with the existing `RendererSelectionError`
+  naming the supported list, at exit 2 — command-line misuse, matching flag
+  validation, not an operational failure. The refusal is carried by the surface
+  the caller already asked for: `ndjson` and any run with `--renderer=json`,
+  `--json`, or `--jq` get the JSON failure envelope; a bare `--format=table`
+  gets the plain diagnostic.
+- Enforcement sits at three resolution-aware points — built-in dispatch, the
+  dynamic-tooling route, and plugin-owned dispatch — each placed *before*
+  `--json` key listing, because that path can return exit 0 on its own and
+  `--format=table --json` would otherwise still launder an unsupported format
+  into a successful listing.
+- `surfaceDeferredUpdateReceipts` silently remapped `ndjson` to `json`. It now
+  leaves the receipt unconsumed for a later run instead, so the receipt is
+  never re-serialized into a format nobody asked for.
+- Verification: `gate:pr` green (typecheck, lint, codegen drift clean, all 13
+  boundary rules, guide-drift a real pass against `origin/main`). RED first on
+  the real entry: `version --format=table` and `--format=ndjson` both exited 0
+  printing `@lando/core 0.0.0`, and `--format=table --json` emitted the key
+  list at exit 0. 86 focused tests green across the new advertisement,
+  rejection-spawn, format-flags, command-help, and dynamic-tooling suites, plus
+  204 across the adjacent help, manifest, yaml-envelope, pre-command-failure
+  and registry suites.
+- Real-binary QA on `core/bin/lando.ts`: `version --format=table` exits 2 with
+  `RendererSelectionError` naming `text, json, yaml`; `version --format=ndjson`
+  exits 2 with that error as a JSON envelope on stdout; `version --help` and
+  `doctor --help` print their own format lists; `recipes:list --format=table`
+  still renders its table at exit 0.
+- **Learnings for future iterations:**
+  - A capability check has to run before every surface that can succeed on its
+    own. `emitJsonListModeIfRequested` returns exit 0 without touching the
+    command, so a guard placed after it is not a guard. Grep for the early
+    success paths before choosing where to stand.
+  - Narrowing an advertisement is not only a subtraction. Nineteen specs were
+    also *under*-advertising: they never listed `yaml`, which the boundary has
+    honored for every command since the envelope work. Deriving the list in one
+    place fixed both directions at once, and leaving the spec-local lists in
+    place would have kept the under-advertisement alive.
+  - A partial `mock.module` fixture breaks the moment the module under test
+    gains a new transitive import. `dynamic-tooling.test.ts` stubs
+    `compiled-runtime` with the handful of names it needed; adding two session
+    reads to a new dependency made every case fail with a module-resolution
+    `SyntaxError`, not an assertion. Read the error before assuming a product
+    regression.
+  - Spreading over an already-merged record preserves the original key
+    position, which is what keeps a regenerated golden manifest free of
+    ordering churn. `{ ...merged, format }` and `{ format, ...merged }` produce
+    the same object and different files.
