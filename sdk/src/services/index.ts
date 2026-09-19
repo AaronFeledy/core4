@@ -128,6 +128,7 @@ import type {
   RouteInputError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
+  RouterWatcherError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -825,7 +826,11 @@ export declare class RouterService extends Context.Tag("@lando/core/RouterServic
     readonly capabilities: ProxyCapabilities;
     readonly setup: (
       config: ProxyConfig,
-    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch, Scope.Scope>;
+    ) => Effect.Effect<
+      void,
+      ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
+      Scope.Scope
+    >;
     readonly applyRoutes: (
       routes: ReadonlyArray<RoutePlan>,
       appId: AppId,
