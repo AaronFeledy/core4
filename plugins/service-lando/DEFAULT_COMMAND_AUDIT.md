@@ -97,7 +97,9 @@ below 1024. Apache still listens on `80` by default, `static:caddy` and
 `1024` in a fresh container network namespace. Docker sets that sysctl to `0`
 for its containers; Podman does not, so a non-root service that keeps a
 privileged port can still fail to bind on a Podman-backed provider even with a
-write-free launcher. Setting `port:` to `1024` or above avoids it.
+write-free launcher. Apache's image still has `Listen 80`; `port:` only updates
+Lando endpoints and the healthcheck. An authored `command:` or `entrypoint:` is
+what owns `Listen`.
 
 Two mechanisms were considered and rejected for the service type itself:
 
@@ -109,5 +111,5 @@ Two mechanisms were considered and rejected for the service type itself:
   deliberately exposes no provider or capability accessor; a feature may only
   emit intent.
 
-That leaves the port to the provider's runtime policy or to the author's
-`port:`, not to the service type's command surface.
+That leaves the bind to the provider's runtime policy or to an authored
+`command:`/`entrypoint:`, not to `port:`.

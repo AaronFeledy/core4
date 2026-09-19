@@ -74,7 +74,7 @@ services:
     user: www-data
 ```
 
-Apache still listens on `80` by default. A non-root process can't bind a port below 1024 on providers that don't grant it, so set `port:` to `1024` or higher if the service fails to bind. Your own `command:` or `entrypoint:` owns the PID file along with the rest of the config.
+Apache still listens on `80` from the image config. `port:` only changes Lando's endpoint and healthcheck, not Apache's `Listen`. A non-root process can't bind below 1024 on the default `lando` provider. If start fails on that bind, replace `command:` or `entrypoint:` so your launcher owns `Listen` and the PID file.
 
 ## Pin a version
 

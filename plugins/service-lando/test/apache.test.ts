@@ -106,6 +106,7 @@ describe("apache ServiceType", () => {
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "backend" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
+    expect(apacheDirectives(plan.command).some((directive) => directive.startsWith("Listen "))).toBe(false);
     expect(plan.environment).toMatchObject({
       APACHE_DOCUMENT_ROOT: "/app",
       LANDO_APP_ROOT: "/app",
