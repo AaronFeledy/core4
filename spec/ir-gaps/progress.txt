@@ -1493,3 +1493,9 @@ Verification: gate:pr passed (typecheck, lint, codegen:check, all 13 boundary ru
 - **Out-of-scope finding:** ports 80/443 occupied (`lando-proxy-https.service` / unknown holder); proxy served on 8080/8443. Same leftover as prior stories.
 - **Learnings for future iterations:** `RouterWatcherError` `inotify-limit` / Traefik `error adding file watcher: no space left on device` is host Syncthing exhausting uid-1000 `max_user_watches` (289k of 306200), not a sandbox instance cap. Count watches via `/proc/*/fdinfo`, not inotify fds. Temporarily `systemctl --user stop syncthing` on the host, `lando global:restart`, then start it again after teardown. Do not raise sysctl; do not demote the story.
 ---
+## 2026-09-19 09:57 - Babysit
+- PR: #1020 https://github.com/AaronFeledy/core4/pull/1020
+- CI outcome: pass after rerun (first run: provider-integration-linux-x64-runner ubuntu-24.04 + ubuntu-26.04 and their matrix rollup)
+- Review feedback: none — both runner failures were live-runtime flake unrelated to the route-rank diff (24.04 mongodb readiness died on `Podman failed to create an exec session` after 150s while 26.04 ran the same test in 7s; 26.04 elasticsearch reported cluster health `red` while 24.04 passed). Both failing tests plan with `routes: []` and never touch route ranking, Traefik, or the app-plan cache, so `gh run rerun --failed` was the fix; no code changed and neither the mongodb timeout nor the elasticsearch health assertion was loosened.
+- Merge: merged (squash)
+---
