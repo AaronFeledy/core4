@@ -13,6 +13,7 @@ import { PluginManifest } from "@lando/sdk/schema";
 
 import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
+import { routerFileWatcherCheck } from "./doctor-watcher.ts";
 import diagnosticsGlobalService from "./global-services/diagnostics.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
@@ -26,6 +27,7 @@ export { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
+export { routerFileWatcherCheck } from "./doctor-watcher.ts";
 export { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE } from "./global-services/traefik.ts";
 export {
   TRAEFIK_DIAGNOSTICS_COMMAND,
@@ -94,5 +96,6 @@ export const plugin = definePlugin({
     leftoverProxyPortsCheck,
     preferredHostPortsCheck,
     advertisedProxyPortsCheck,
+    routerFileWatcherCheck,
   ],
 });

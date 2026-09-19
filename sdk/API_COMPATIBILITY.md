@@ -10,6 +10,8 @@
 
 - `RuntimeProviderShape.appliedPlans` optionally exposes provider-owned applied state, and `RuntimeProviderRegistry.resolveAppliedPlan(root)` optionally resolves it by canonical app root for teardown recovery. `StopAppResult` and `DestroyAppResult` add optional explicit recovery outcomes, and their error unions add `AppResolveError` for fail-closed ownership mismatches.
 
+- `RuntimeProviderRegistry.resolveTeardownEvidence(root)` is an optional teardown-only resolver that reports whether an app root is covered by an applied plan, holds orphaned runtime resources, or holds nothing at all. It additively exports `AppliedTeardownEvidence` and `AppliedOrphanGroup` from `@lando/sdk/services`. `resolveAppliedPlan(root)` keeps its fail-closed refusal of orphaned resources for every other caller.
+
 - `GlobalConfigView` is the additive curated effective-config schema used by config view and get. It explicitly selects public settings from `GlobalConfig`, including both app-default maps, without exposing loader bookkeeping.
 
 - `@lando/sdk/errors` additively exports `AppLockTimeoutError` (`message`, `app`, `timeoutMs`, `remediation`, optional `cause`) when a mutating app operation waits for the per-app advisory lock and the finite wait expires. It registers no JSON Schema. The type-only `StartAppError` and `StopAppError` unions additively include the tag; restart, rebuild, and destroy inherit it. Override the wait with `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds).
@@ -72,6 +74,7 @@
 
 - The `ConfigTranslator` contract was replaced pre-release: tagged document-set and recipe-request inputs produce set outputs with wire authoring fragments. Detection consumes core-read snapshots, encoding is optional, and all methods require `never` in their Effect context. No compatibility adapter preserves the former one-way contract.
 - `@lando/sdk/errors` additively exports `RouterPortsExhausted` (`message`, `proxyId`, `bindAddress`, `httpTried`, `httpsTried`, `exhausted` of `http`|`https`|`both`, `remediation`) and `RouterPortPinMismatch` (`message`, `proxyId`, `runningHttp`, `runningHttps`, optional `requestedHttp`/`requestedHttps`, `remediation`). They register no JSON Schema. `RouterService.setup`'s error channel additively includes both tags. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include both tags. `GlobalConfig.router` and `LandofileShape.router` are additive optional fields decoding against `RouterConfig`. `ProxyConfig` additively accepts optional `router` and `routerPin`.
+- `@lando/sdk/errors` additively exports `RouterWatcherError` (`message`, `proxyId`, `failureClass` of `inotify-limit`|`disk`|`permission`|`other`, `watcherHost`, `detail`, `remediation`) for router file-provider watcher failures. It registers no JSON Schema. `RouterService.setup`'s error channel additively includes the tag. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include it.
 - Replaces the unreleased PluginContribution.proxyServices key with the normative typed routerServices manifest entries, replaces the unreleased ProxyService tag (@lando/core/ProxyService) with RouterService (@lando/core/RouterService), replaces the unreleased ProxyServiceContribution public schema with RouterServiceContribution, and replaces GlobalConfig.defaultProxyService (and TemplateRenderContext.global.defaultProxyService) with defaultRouterService. The removed tag, contribution key, public schema, and config spelling have no alias or compatibility path.
 - `@lando/sdk/errors` additively exports `ConfigExpressionError` (`message`, `expression`, `path`, `filePath`, `remediation`) for plan-time Landofile config expression failures such as authored route hostnames. It registers no JSON Schema. `AppPlanner.plan`'s error channel additively gains the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match.
 
@@ -82,6 +85,8 @@
 - `RoutePlan.backend` additively accepts optional `host` so a proxy can dial a host-reachable backend when the app does not share the managed Traefik network.
 
 - `@lando/sdk/errors` additively exports `PhpMyAdminHostsCredsError` and `AppFeatureError` additively includes it; `ServiceInfo` / `InfoAppService` additively gain optional `creds`.
+
+- `@lando/sdk/errors` additively exports `MailpitMsmtpBaseFamilyError` and `AppFeatureError` additively includes it; Mailpit fails closed at plan time when a selected PHP sender's image has no provable base image family for pinned msmtp acquisition.
 
 - `AppPlanner.plan`'s error channel additively gains `CommandAliasConflictError` for plan-time rejection of surviving service-type reserved tooling names; the frozen service-surface fixture is updated to match. The type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions additively include the same tag because those App-handle methods plan through `AppPlanner`.
 
@@ -280,6 +285,7 @@
 - `AuthoringExpressionForm`
 - `authoringExpressionSlot`
 - `classifyAuthoringSource`
+- `containerDestinationRefusalMessage`
 - `isPlainAuthoringString`
 - `deriveAuthoringAst`
 - `LandofileAuthoringShape`
@@ -474,6 +480,7 @@
 - `ManagedFilePlan`
 - `ManagedFileResult`
 - `JSON_SCHEMA_NAMES`
+- `parseContainerDestination`
 - `parseShortVolume`
 - `publicSchemaMetadataIndex`
 - `publicSchemaRegistry`

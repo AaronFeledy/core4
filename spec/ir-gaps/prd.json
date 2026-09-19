@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 IR gaps for config frontends",
   "branchName": "feat/lando3-compat",
-  "description": "Native IR homes for retained tooling, events, routes, build users, runtime defaults, catalog options, scoped commands, and global defaults.",
+  "description": "Native IR homes for retained tooling, events, routes, build users, runtime defaults, catalog options, scoped commands, and global defaults. Priorities 57..62 close residual defects recorded during the QA and review of priorities 21..56.",
   "userStories": [
     {
       "id": "US-613",
@@ -327,6 +327,94 @@
       "dependsOn": ["US-615"],
       "priority": 56,
       "notes": "Follow-up to US-615 routing. Watcher runs inside the provider host (managed Podman machine on macOS/Windows), so the diagnostic must name that host."
+    },
+    {
+      "id": "US-643",
+      "title": "Keep teardown independent of the desired config",
+      "description": "As a user, `lando stop` and `lando destroy` remove what is actually present, even when the Landofile no longer validates or plans.",
+      "acceptanceCriteria": [
+        "Teardown resolves the app root from discovery and consults applied state plus runtime evidence for that root before it loads or plans the desired config; a never-started app whose Landofile fails validation or refuses at plan time returns `outcome: \"unchanged\"` with no provider action and exit 0, for both `stop` and `destroy`.",
+        "Runtime resources whose recorded owner is the app root under teardown are removed as orphans of that root rather than refused; a plain `destroy` followed by `destroy --volumes` removes the retained data volumes instead of failing `AppResolveError` with `detail: \"provider-resources\"`, and the orphan teardown reports what it removed.",
+        "Every non-teardown caller keeps the current fail-closed orphan refusal in the shared applied-state evidence resolver; the relaxation is scoped to teardown callers and is not implemented by widening that resolver's default, and `lando start` still refuses an unplannable app.",
+        "`unchanged` stays distinguishable from `destroyed` in every renderer and in `--format=json`; no public error shape is widened.",
+        "The existing assertion that teardown preserves the desired-config failure when no applied plan exists is deliberately replaced rather than deleted, with the new contract asserted in its place; failing regression tests first capture both the invalid never-started refusal and the blocked second `destroy --volumes`; focused tests with a positive count, the app-lifecycle and everyday-commands guides, real-runtime teardown evidence, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-629", "US-617A"],
+      "priority": 57,
+      "notes": "Residual from US-629 and US-635 QA. Seams: resolveDesiredTarget/resolveDestroyTarget and the requireAppliedEvidence branch in engine/src/operations/destroy.ts, the same pattern in stop.ts, and the orphan raise in engine/src/providers/applied-state-resolution.ts. engine/test/operations/applied-state-teardown.test.ts currently locks the old contract in."
+    },
+    {
+      "id": "US-644",
+      "title": "Run the Apache default start command as the planned service user",
+      "description": "As a service author, `type: apache` with a non-root `user:` starts and stays running without an authored `command:` override.",
+      "acceptanceCriteria": [
+        "An Apache service planned with `user: www-data` and no authored `command` or `entrypoint` applies as running and serves the configured `DocumentRoot`; the webroot configuration is not dropped, and the author is not required to supply a `command:` to work around it.",
+        "The fix removes the root requirement from the default start path rather than documenting it; evidence is the running service and a served response, not the absence of `ServiceExecError` or `ServiceStartError`, since those tags depend on which operation runs next.",
+        "A rebuild of that service succeeds rather than failing exec against a container that died on its own start command.",
+        "Every other bundled service type that emits a default command is checked for the same pattern of writing outside the planned user's reach, and each is either fixed in this story or recorded with its reproduction; the service-type command surface is not redesigned.",
+        "A failing regression test first captures the non-root Apache plan; focused tests with a positive count, the Apache service guide, real-runtime evidence of the running service, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-618E", "US-637"],
+      "priority": 58,
+      "notes": "Residual from US-637 verify. apacheStartCommand in plugins/service-lando/src/services/apache.ts writes lando-webroot.conf from PID 1, while the same feature applies setUser(service.user) which reaches the container create body as User. The catalog already declares a verified www-data identity, so the type advertises the user that fails."
+    },
+    {
+      "id": "US-645",
+      "title": "Make machine output survive a closed pipe and a YAML round trip",
+      "description": "As a script or agent author, I can pipe Lando's machine output into a short-lived consumer and parse the YAML it emits without either one corrupting.",
+      "acceptanceCriteria": [
+        "A downstream consumer that closes the pipe early ends output cleanly on every renderer write path: no unhandled stream error, no internal-error report, no stack trace, and the conventional terminated-pipeline exit status; stdout and stderr are each handled independently because they can be redirected separately.",
+        "One YAML scalar and key quoting policy serves both the Compose export serializer and the CLI config emitter; the hand-rolled unquoted emitter is deleted rather than kept beside the shared one, and the policy lives where both callers may import it under the package DAG.",
+        "Every `--format=yaml` surface satisfies a round-trip law: parsing emitted YAML yields a document structurally equal to the source model, proven over the redaction sentinel, boolean-like and numeric-like strings, `null`-like strings, values containing `: `, and values with leading indicator characters — not over the redaction sentinel alone.",
+        "Publishing the shared policy on a public SDK subpath is optional; if chosen it follows `sdk/AGENTS.md`, records the additive export, and refreshes the schema artifact set.",
+        "Failing regression tests first capture the piped crash and at least one corrupted round trip; focused tests with a positive count, the JSON scripting guide, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-626", "US-633"],
+      "priority": 59,
+      "notes": "Residual from US-626 and US-635 QA. renderer/src/io.ts builds writeStdout as a bare stdout.write with no EPIPE handling; formatYaml in core/src/cli/commands/config.ts emits every scalar unquoted. US-633 already established the quoting policy in container-runtime/src/podman/compose.ts, where scalar and mappingKey are private to that module."
+    },
+    {
+      "id": "US-646",
+      "title": "Round-trip positional tooling arguments between CLI and MCP",
+      "description": "As an agent or tooling author, a task's declared positional arguments keep their declared identity through serialization and parsing.",
+      "acceptanceCriteria": [
+        "Argv serialization and argv parsing round-trip for every declared argument shape, including a declaration whose non-trailing optional positional is omitted; an omitted optional positional never lets a later positional occupy its slot on either the MCP or the CLI path.",
+        "Where a declaration cannot express the caller's intent unambiguously, the surface fails with `ToolingInputError` naming the argument rather than binding a value to the wrong name; CLI and MCP emit the identical tag and message for the same input.",
+        "If the chosen resolution rejects non-trailing optional positionals at normalization, the Landofile tooling surface change carries a compatibility acceptance and a guide update; if it fills or reorders instead, the canonical argv remains stable across repeated round trips.",
+        "A failing regression test first captures the mis-bound positional through the MCP serializer and through the CLI parser; focused tests with a positive count, the flags-and-args and MCP guides, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-613", "US-623"],
+      "priority": 60,
+      "notes": "The toolingArgv positional-order item deferred from US-613 and again from US-614. Both halves live in landofile/src/tooling-input.ts: serializeToolingInput drops absent positionals with flatMap while parseToolingArgv assigns them by declaration index, so a hole collapses. The MCP tool projection reaches the serializer through core/src/cli/commands/meta/mcp.ts."
+    },
+    {
+      "id": "US-647",
+      "title": "Rank routes safely across concurrently running apps",
+      "description": "As a user running more than one app, a specific hostname is served by the app that declared it, not by another app's wildcard.",
+      "acceptanceCriteria": [
+        "For any two routes on concurrently applied apps that match the same request, an exact hostname is selected over a wildcard hostname and a longer path prefix over a shorter one, independently of how many routes each app declared.",
+        "The outcome is determined by Lando's emitted priorities rather than by the router's rule-length tie-break; priorities for competing specificity classes are distinct, so an equal-priority wildcard can no longer outrank an exact host.",
+        "Route rank derives from properties of the route itself — hostname specificity and path length — rather than from the route's index within its own plan, so plans ranked in isolation compose correctly in the merged router table; the diagnostic fallback keeps its reserved lowest priority and stays below every app route.",
+        "Cross-app hostname ownership is not introduced: two apps may still claim overlapping hostnames, and no hostname registry, cross-app conflict refusal, or per-app priority banding is added.",
+        "A failing regression test first writes two apps' dynamic configs into one watched directory and shows the wildcard winning; the route-shorthand guide is corrected from \"within an app\" to the actual policy; focused tests with a positive count, real-runtime evidence from two concurrently started apps with overlapping hostnames, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-615", "US-624"],
+      "priority": 61,
+      "notes": "Security finding deferred from US-624 review, re-confirmed. prioritizeRoutes in engine/src/planner/route-identity.ts assigns routes.length + 1 - rank per AppPlan, while plugins/proxy-traefik writes one file per app into one watched directory that the router merges into a single priority space. Two failure modes: a multi-route app's wildcard outranking a single-route app's exact host, and the router's longer-rule tie-break preferring a generated HostRegexp over a Host at equal priority."
+    },
+    {
+      "id": "US-648",
+      "title": "Gate live provider tests on a socket that answers",
+      "description": "As a maintainer, live integration suites skip on a host with a stale provider socket instead of failing to connect.",
+      "acceptanceCriteria": [
+        "The live provider socket gate proves the endpoint answers rather than that the path exists, so a socket file left behind by a dead daemon resolves to absent and the suites skip.",
+        "Resolution stays synchronous and cheap enough for a module-level skip predicate, and no live suite is made slower on a host that has no socket at all.",
+        "The explicit socket environment override keeps its precedence; an override naming a dead socket also resolves to absent rather than being exempted from the liveness check.",
+        "A failing regression test first captures a socket path that exists but refuses connection; focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only test infrastructure: no public guide."
+      ],
+      "dependsOn": ["US-638"],
+      "priority": 62,
+      "notes": "Residual from US-638 QA. isSocketOnDisk in engine/src/testing/live-provider-socket.ts keys on statSync(path).isSocket(), which a stale socket inode satisfies, so every test.skipIf gate opens against a dead daemon."
     }
   ]
 }

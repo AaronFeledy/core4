@@ -222,6 +222,20 @@ export interface ListFilter {
   readonly app?: AppId;
 }
 
+/** Runtime resources owned by one app root that no applied plan accounts for. */
+export interface AppliedOrphanGroup {
+  readonly providerId: ProviderId;
+  readonly appId: AppId;
+  readonly services: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly volumes: ReadonlyArray<VolumeInfo>;
+}
+
+/** What a teardown caller may act on for one app root, before any desired config is loaded. */
+export type AppliedTeardownEvidence =
+  | { readonly kind: "applied"; readonly plan: AppPlan }
+  | { readonly kind: "orphans"; readonly groups: ReadonlyArray<AppliedOrphanGroup> }
+  | { readonly kind: "absent" };
+
 export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
   RuntimeProviderRegistry,
   {
@@ -239,6 +253,9 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
     readonly resolveAppliedPlan?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly resolveTeardownEvidence?: (
+      root: AbsolutePath,
+    ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
   }
 >() {}
 

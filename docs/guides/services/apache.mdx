@@ -63,6 +63,19 @@ services:
 
 An explicit `environment.APACHE_DOCUMENT_ROOT` still wins for custom setups. If you replace `command:` or `entrypoint:`, your launcher owns the Apache config too.
 
+## Run as a non-root user
+
+Set `user: www-data` to run Apache as the image's `www-data` account. Lando hands its directives to `httpd-foreground` as `-c` arguments and points the PID file at `/tmp/lando-httpd.pid`, so nothing gets written into the image's root-owned config tree at start:
+
+```yaml
+services:
+  web:
+    type: apache
+    user: www-data
+```
+
+Apache still listens on `80` from the image config. `port:` only changes Lando's endpoint and healthcheck, not Apache's `Listen`. A non-root process can't bind below 1024 on the default `lando` provider. If start fails on that bind, replace `command:` or `entrypoint:` so your launcher owns `Listen` and the PID file.
+
 ## Pin a version
 
 Set `image:` when `httpd:2.4-alpine` isn't the version you want. For example, a Debian-based image:

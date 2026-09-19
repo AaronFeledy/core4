@@ -8,9 +8,11 @@
  * the type nor the author names a home, planning fails before any provider
  * action rather than guessing a path.
  */
-import { HomePathCapabilityError } from "@lando/sdk/errors";
-import { PortablePath, type ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
+import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
+
+import { plannedContainerDestination } from "./storage.ts";
 
 /** What planning knows about one service's home before the plan is finalized. */
 export interface ServiceHomeIntent {
@@ -54,10 +56,6 @@ const userPrincipal = (user: string): string => {
   const separator = user.indexOf(":");
   return separator === -1 ? user : user.slice(0, separator);
 };
-
-/** Compares container destinations without letting a trailing slash matter. */
-export const containerTargetKey = (target: string): string =>
-  target.length > 1 && target.endsWith("/") ? target.slice(0, -1) : target;
 
 export const homeStoreName = (appSlug: string, serviceName: string): string =>
   `lando-${appSlug}-${serviceName}-home`;
@@ -122,8 +120,9 @@ export const applyServiceHome = (input: {
   readonly servicePlan: ServicePlan;
   readonly serviceName: string;
   readonly appSlug: string;
+  readonly appRoot: string;
   readonly intent: ServiceHomeIntent;
-}): HomePathCapabilityError | ServicePlan => {
+}): HomePathCapabilityError | LandofileValidationError | ServicePlan => {
   const resolved = resolveHomePath({
     serviceName: input.serviceName,
     intent: input.intent,
@@ -132,10 +131,14 @@ export const applyServiceHome = (input: {
   if (resolved instanceof HomePathCapabilityError) return resolved;
   if (resolved === undefined) return input.servicePlan;
 
-  const target = containerTargetKey(resolved);
-  const occupied = input.servicePlan.storage.some(
-    (mount) => containerTargetKey(String(mount.target)) === target,
+  const target = plannedContainerDestination(
+    resolved,
+    input.appRoot,
+    `services.${input.serviceName}.home.path`,
   );
+  if (target instanceof LandofileValidationError) return target;
+
+  const occupied = input.servicePlan.storage.some((mount) => mount.target === target);
   if (occupied) return input.servicePlan;
 
   return {
@@ -144,7 +147,7 @@ export const applyServiceHome = (input: {
       ...input.servicePlan.storage,
       {
         store: homeStoreName(input.appSlug, input.serviceName),
-        target: PortablePath.make(resolved),
+        target,
         readOnly: false,
       },
     ],

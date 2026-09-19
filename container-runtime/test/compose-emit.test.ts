@@ -178,6 +178,85 @@ const serviceKeys = (content: string, service: string): string[] => {
 };
 
 describe("Podman Compose emission", () => {
+  test.each(["passthrough", "accelerated"] as const)(
+    "preserves colon targets in Compose long mounts when %s",
+    (realization) => {
+      // Given
+      const withColons: ServicePlan = {
+        ...web,
+        appMount: {
+          source: appRoot,
+          target: PortablePath.make("/app:ro"),
+          readOnly: true,
+          realization,
+          excludes: [],
+          includes: [],
+        },
+        mounts: [
+          {
+            type: "bind",
+            source: "/host/config",
+            target: PortablePath.make("/config:v1"),
+            readOnly: false,
+            realization,
+          },
+          {
+            type: "volume",
+            source: "named",
+            target: PortablePath.make("/named:v1"),
+            readOnly: true,
+            realization: "passthrough",
+          },
+          {
+            type: "tmpfs",
+            target: PortablePath.make("/tmp:v1"),
+            readOnly: false,
+            realization: "passthrough",
+          },
+        ],
+        storage: [{ store: "data", target: PortablePath.make("/data:v1"), readOnly: true }],
+        extensions: { compose: { configs: [{ source: "config", target: "/etc/config:v1" }] } },
+      };
+      // When
+      const parsed = Bun.YAML.parse(
+        renderCompose(
+          {
+            ...plan,
+            services: { [withColons.name]: withColons },
+            extensions: { compose: { configs: { config: { file: "config" } } } },
+          },
+          ctx,
+        ),
+      );
+      // Then
+      expect(parsed).toMatchObject({
+        services: {
+          web: {
+            volumes: [
+              {
+                type: realization === "accelerated" ? "volume" : "bind",
+                source: realization === "accelerated" ? "My-App-web-app-mount" : appRoot,
+                target: "/app:ro",
+                read_only: true,
+              },
+              {
+                type: realization === "accelerated" ? "volume" : "bind",
+                source: realization === "accelerated" ? "My-App-web-mount-0" : "/host/config",
+                target: "/config:v1",
+                read_only: false,
+              },
+              { type: "volume", source: "named", target: "/named:v1", read_only: true },
+              { type: "tmpfs", target: "/tmp:v1", read_only: false },
+              { type: "volume", source: "data", target: "/data:v1", read_only: true },
+              { type: "bind", source: "/srv/apps/myapp/config", target: "/etc/config:v1", read_only: true },
+            ],
+          },
+        },
+      });
+      expect(parsed).not.toHaveProperty("services.web.tmpfs");
+    },
+  );
+
   test("renders AppPlan services, networks, volumes, and ports as Compose v3 YAML", () => {
     const content = renderCompose(plan, ctx);
 

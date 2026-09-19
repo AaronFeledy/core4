@@ -97,6 +97,17 @@ describe("podman Compose runtime knob realization", () => {
 });
 
 describe("podman Compose runtime knob value coercion", () => {
+  test("preserves colon targets in normalized tmpfs objects", () => {
+    // Given / When
+    const result = realize({
+      tmpfs: [{ target: "/run:app", read_only: true, size: 67108864, mode: 1770 }, "/ordinary:size=32m"],
+    });
+    // Then
+    expect(result.hostConfig).toEqual({
+      Tmpfs: { "/run:app": "ro,size=67108864,mode=1770", "/ordinary": "size=32m" },
+    });
+  });
+
   test("Given a device without target or permissions, when realized, then both default", () => {
     expect(realize({ devices: [{ source: "/dev/fuse" }] }).hostConfig).toEqual({
       Devices: [{ PathOnHost: "/dev/fuse", PathInContainer: "/dev/fuse", CgroupPermissions: "rwm" }],

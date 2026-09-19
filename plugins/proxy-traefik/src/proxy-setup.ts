@@ -1,6 +1,11 @@
 import { DateTime, Effect } from "effect";
 
-import { ProxySetupError, RouterPortPinMismatch, RouterPortsExhausted } from "@lando/sdk/errors";
+import {
+  ProxySetupError,
+  RouterPortPinMismatch,
+  RouterPortsExhausted,
+  RouterWatcherError,
+} from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
@@ -12,8 +17,11 @@ const TRAEFIK_PROXY_ID = "traefik";
 
 export const mapSetupError = (
   cause: unknown,
-): ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch => {
+): ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError => {
   if (cause instanceof RouterPortsExhausted || cause instanceof RouterPortPinMismatch) {
+    return cause;
+  }
+  if (cause instanceof RouterWatcherError) {
     return cause;
   }
   return new ProxySetupError({

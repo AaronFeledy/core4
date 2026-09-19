@@ -122,6 +122,7 @@
       "capabilities: Effect.Effect<ProviderCapabilities, ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError>",
       "list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>",
       "resolveAppliedPlan?: (root: AbsolutePath) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>",
+      "resolveTeardownEvidence?: (root: AbsolutePath) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>",
       "select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError>"
     ],
     "ShellRunner": [

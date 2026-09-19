@@ -26,6 +26,12 @@ Global priorities, dependencies, and standard gates are recorded in the index an
 | US-637 | canonical home destinations and verified metadata | `docs/guides/services/home-and-host.mdx` |
 | US-638 | live file-backed catalog config verification | maintainer-only: isolated live tests, no public guide |
 | US-642 | router file-watcher diagnostics | `docs/guides/global/doctor-walkthrough.mdx` |
+| US-643 | teardown independent of desired config | `docs/guides/tutorial/app-lifecycle.mdx`, `docs/guides/cli/everyday-commands.mdx` |
+| US-644 | Apache under a non-root service user | `docs/guides/services/apache.mdx` |
+| US-645 | durable machine output | `docs/guides/scripting-with-json.mdx` |
+| US-646 | positional tooling argv round trip | `docs/guides/tooling/flags-and-args.mdx`, `docs/guides/agent-native/mcp.mdx` |
+| US-647 | cross-app route rank safety | `docs/guides/proxy/route-shorthand.mdx` |
+| US-648 | live provider socket gate | maintainer-only: test infrastructure, no public guide |
 
 ### US-613: Normalize and execute tooling definitions
 
@@ -264,6 +270,70 @@ Shared gates for every follow-up: focused tests with a positive count, typecheck
 - [ ] The failure is surfaced without logging secrets, using the canonical redaction path for any captured output.
 - [ ] Deterministic tests inject each failure class; live evidence is recorded when a reproduction is feasible in an isolated sandbox; focused tests with a positive count, the doctor-walkthrough guide, typecheck, lint, and boundaries pass.
 
+### US-643: Keep teardown independent of the desired config
+
+**Description:** As a user, `lando stop` and `lando destroy` remove what is actually present, even when the Landofile no longer validates or plans.
+
+**Acceptance Criteria:**
+- [ ] Teardown resolves the app root from discovery and consults applied state plus runtime evidence for that root before it loads or plans the desired config; a never-started app whose Landofile fails validation or refuses at plan time returns `outcome: "unchanged"` with no provider action and exit 0, for both `stop` and `destroy`.
+- [ ] Runtime resources whose recorded owner is the app root under teardown are removed as orphans of that root rather than refused; a plain `destroy` followed by `destroy --volumes` removes the retained data volumes instead of failing `AppResolveError` with `detail: "provider-resources"`, and the orphan teardown reports what it removed.
+- [ ] Every non-teardown caller keeps the current fail-closed orphan refusal in the shared applied-state evidence resolver; the relaxation is scoped to teardown callers and is not implemented by widening that resolver's default, and `lando start` still refuses an unplannable app.
+- [ ] `unchanged` stays distinguishable from `destroyed` in every renderer and in `--format=json`; no public error shape is widened.
+- [ ] The existing assertion that teardown preserves the desired-config failure when no applied plan exists is deliberately replaced rather than deleted, with the new contract asserted in its place; failing regression tests first capture both the invalid never-started refusal and the blocked second `destroy --volumes`; focused tests with a positive count, the app-lifecycle and everyday-commands guides, real-runtime teardown evidence, typecheck, lint, and boundaries pass.
+
+### US-644: Run the Apache default start command as the planned service user
+
+**Description:** As a service author, `type: apache` with a non-root `user:` starts and stays running without an authored `command:` override.
+
+**Acceptance Criteria:**
+- [ ] An Apache service planned with `user: www-data` and no authored `command` or `entrypoint` applies as running and serves the configured `DocumentRoot`; the webroot configuration is not dropped, and the author is not required to supply a `command:` to work around it.
+- [ ] The fix removes the root requirement from the default start path rather than documenting it; evidence is the running service and a served response, not the absence of `ServiceExecError` or `ServiceStartError`, since those tags depend on which operation runs next.
+- [ ] A rebuild of that service succeeds rather than failing exec against a container that died on its own start command.
+- [ ] Every other bundled service type that emits a default command is checked for the same pattern of writing outside the planned user's reach, and each is either fixed in this story or recorded with its reproduction; the service-type command surface is not redesigned.
+- [ ] A failing regression test first captures the non-root Apache plan; focused tests with a positive count, the Apache service guide, real-runtime evidence of the running service, typecheck, lint, and boundaries pass.
+
+### US-645: Make machine output survive a closed pipe and a YAML round trip
+
+**Description:** As a script or agent author, I can pipe Lando's machine output into a short-lived consumer and parse the YAML it emits without either one corrupting.
+
+**Acceptance Criteria:**
+- [ ] A downstream consumer that closes the pipe early ends output cleanly on every renderer write path: no unhandled stream error, no internal-error report, no stack trace, and the conventional terminated-pipeline exit status; stdout and stderr are each handled independently because they can be redirected separately.
+- [ ] One YAML scalar and key quoting policy serves both the Compose export serializer and the CLI config emitter; the hand-rolled unquoted emitter is deleted rather than kept beside the shared one, and the policy lives where both callers may import it under the package DAG.
+- [ ] Every `--format=yaml` surface satisfies a round-trip law: parsing emitted YAML yields a document structurally equal to the source model, proven over the redaction sentinel, boolean-like and numeric-like strings, `null`-like strings, values containing `: `, and values with leading indicator characters — not over the redaction sentinel alone.
+- [ ] Publishing the shared policy on a public SDK subpath is optional; if chosen it follows `sdk/AGENTS.md`, records the additive export, and refreshes the schema artifact set.
+- [ ] Failing regression tests first capture the piped crash and at least one corrupted round trip; focused tests with a positive count, the JSON scripting guide, typecheck, lint, and boundaries pass.
+
+### US-646: Round-trip positional tooling arguments between CLI and MCP
+
+**Description:** As an agent or tooling author, a task's declared positional arguments keep their declared identity through serialization and parsing.
+
+**Acceptance Criteria:**
+- [ ] Argv serialization and argv parsing round-trip for every declared argument shape, including a declaration whose non-trailing optional positional is omitted; an omitted optional positional never lets a later positional occupy its slot on either the MCP or the CLI path.
+- [ ] Where a declaration cannot express the caller's intent unambiguously, the surface fails with `ToolingInputError` naming the argument rather than binding a value to the wrong name; CLI and MCP emit the identical tag and message for the same input.
+- [ ] If the chosen resolution rejects non-trailing optional positionals at normalization, the Landofile tooling surface change carries a compatibility acceptance and a guide update; if it fills or reorders instead, the canonical argv remains stable across repeated round trips.
+- [ ] A failing regression test first captures the mis-bound positional through the MCP serializer and through the CLI parser; focused tests with a positive count, the flags-and-args and MCP guides, typecheck, lint, and boundaries pass.
+
+### US-647: Rank routes safely across concurrently running apps
+
+**Description:** As a user running more than one app, a specific hostname is served by the app that declared it, not by another app's wildcard.
+
+**Acceptance Criteria:**
+- [ ] For any two routes on concurrently applied apps that match the same request, an exact hostname is selected over a wildcard hostname and a longer path prefix over a shorter one, independently of how many routes each app declared.
+- [ ] The outcome is determined by Lando's emitted priorities rather than by the router's rule-length tie-break; priorities for competing specificity classes are distinct, so an equal-priority wildcard can no longer outrank an exact host.
+- [ ] Route rank derives from properties of the route itself — hostname specificity and path length — rather than from the route's index within its own plan, so plans ranked in isolation compose correctly in the merged router table; the diagnostic fallback keeps its reserved lowest priority and stays below every app route.
+- [ ] Cross-app hostname ownership is not introduced: two apps may still claim overlapping hostnames, and no hostname registry, cross-app conflict refusal, or per-app priority banding is added.
+- [ ] A failing regression test first writes two apps' dynamic configs into one watched directory and shows the wildcard winning; the route-shorthand guide is corrected from "within an app" to the actual policy; focused tests with a positive count, real-runtime evidence from two concurrently started apps with overlapping hostnames, typecheck, lint, and boundaries pass.
+
+### US-648: Gate live provider tests on a socket that answers
+
+**Description:** As a maintainer, live integration suites skip on a host with a stale provider socket instead of failing to connect.
+
+**Acceptance Criteria:**
+- [ ] The live provider socket gate proves the endpoint answers rather than that the path exists, so a socket file left behind by a dead daemon resolves to absent and the suites skip.
+- [ ] Resolution stays synchronous and cheap enough for a module-level skip predicate, and no live suite is made slower on a host that has no socket at all.
+- [ ] The explicit socket environment override keeps its precedence; an override naming a dead socket also resolves to absent rather than being exempted from the liveness check.
+- [ ] A failing regression test first captures a socket path that exists but refuses connection; focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only test infrastructure: no public guide.
+
 ## Maintainer checklist (not queued)
 
 These items came out of the same audit but are not stories, carry no id or priority, and block none of the twelve follow-ups. Pick them up when a PR already touches the area, or when a current reproduction exists. None of them grants authority to push, merge, or mark work complete.
@@ -272,4 +342,7 @@ These items came out of the same audit but are not stories, carry no id or prior
 - **Unit-suite baseline.** Re-establish the baseline on current clean source with `bun run test:unit` before fixing anything. The historical count of thirteen failures is a lead, not a present fact. Transcript reader, uninstall, resolve-cwd, and timeout failures that reproduce today each get their own change with a failing test first; never group unrelated failures under one cause, and justify any raised timeout per test in a comment.
 - **PR and merge evidence.** Before appending a reconciliation entry to the append-only progress log, check actual PR and commit state. A missing record means unrecorded, not unmerged.
 - **Audit diagnostics.** Distinguish skipped from failed per gate; differing non-zero exits are never one shared cause. Find the real owner of each gate; external or workspace-local automation stays untouched and is recorded with an explicit owner and handoff instead of silent edits.
+- **Looper Drift Audit gate.** The Drift Audit step has exited 1 on every run since roughly US-631, so the last several stories shipped with no drift audit. That is workspace-local automation outside this repository's product surface: find the real owner of the gate, record the handoff, and do not silently edit it. Distinguish a skipped gate from a failed one before assuming a shared cause.
+- **Plain HTTP through the router on fallback ports.** Several verify passes recorded a router 404 on the HTTP fallback port while HTTPS served the same app, and at least one was another server on the host answering instead of Lando. Host-port acquisition is owned by `../alpha/prd-alpha-08-proxy-host-ports.md`; hand any residual HTTP-entrypoint question there rather than opening it here, and confirm which server answered before calling it a Lando defect.
+- **Ghost entries in `apps:list`.** A destroyed app once remained listed with empty services from leftover managed-runtime network state. This predates the teardown and inventory work at US-629 and was never re-reproduced afterward. Re-reproduce on current source before acting; a stale note is a lead, not a present defect.
 - **Scope of this list.** None of these require a failing product test to act on, and none are prerequisites for the stories above.

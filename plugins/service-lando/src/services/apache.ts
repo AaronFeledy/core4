@@ -42,23 +42,44 @@ const apacheConfigPath = (webroot: string): string => {
   return webroot.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 };
 
+/**
+ * Apache's compiled default `PidFile` sits under the root-owned
+ * `/usr/local/apache2/logs`, and httpd exits when it cannot create it. Pointing
+ * the pid file somewhere every identity may write is what lets the planned
+ * service user own PID 1.
+ */
+const PID_FILE = "/tmp/lando-httpd.pid";
+
+/**
+ * The launcher for a service whose author declared no `command` or `entrypoint`.
+ *
+ * Every directive is handed to httpd as a repeated `-c` argument instead of
+ * being written to a config file at startup. httpd reads those arguments as
+ * consecutive lines of one synthetic configuration stream at the same stage that
+ * used to process `-c 'Include ...'`, so a `<Directory>` section spans the
+ * arguments exactly as it spanned the file's lines and the resulting
+ * configuration is unchanged. Emitting them directly is what removes the write:
+ * the command mutates no filesystem path, needs no shell, and therefore runs
+ * unchanged as the planned service user rather than only as root.
+ */
 const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
   const path = apacheConfigPath(webroot);
   return [
-    "sh",
+    "httpd-foreground",
     "-c",
-    [
-      "set -eu",
-      "cat > /usr/local/apache2/conf/extra/lando-webroot.conf <<'LANDO_APACHE_WEBROOT'",
-      `DocumentRoot "${path}"`,
-      `<Directory "${path}">`,
-      "  Options -Indexes +FollowSymLinks",
-      "  AllowOverride None",
-      "  Require all granted",
-      "</Directory>",
-      "LANDO_APACHE_WEBROOT",
-      "exec httpd-foreground -c 'Include conf/extra/lando-webroot.conf'",
-    ].join("\n"),
+    `PidFile "${PID_FILE}"`,
+    "-c",
+    `DocumentRoot "${path}"`,
+    "-c",
+    `<Directory "${path}">`,
+    "-c",
+    "Options -Indexes +FollowSymLinks",
+    "-c",
+    "AllowOverride None",
+    "-c",
+    "Require all granted",
+    "-c",
+    "</Directory>",
   ];
 };
 
@@ -126,7 +147,11 @@ export const apacheServiceType: ServiceType = {
   id: "apache",
   name: "apache",
   base: "lando",
-  identity: { defaultUser: "root", homes: { root: "/root" } },
+  // Verified from /etc/passwd in docker.io/library/httpd:2.4-alpine (HTTPD_VERSION=2.4.68):
+  // sha256:7ed5668e2fb31c738bcd291847fbb313073998e561ac6d8dc63cfd061dd0fb4d
+  // www-data:x:82:82::/home/www-data:/sbin/nologin
+  // Image config User was empty and HOME was absent, so neither was used as the home source.
+  identity: { defaultUser: "root", homes: { root: "/root", "www-data": "/home/www-data" } },
   schema: Schema.Unknown,
   resolve: (input) =>
     Effect.sync(() => {
