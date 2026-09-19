@@ -1,0 +1,165 @@
+---
+id: node-api-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, node-api, node, express, fastify, hono, postgres]
+---
+
+# Run the Node API recipe
+
+```sh
+lando init --recipe node-api --name=node-api-demo --yes
+cd node-api-demo
+lando start
+```
+
+The named init creates `node-api-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps Node `lts`, Express, and Postgres. First start brings `api` and `database` up. Until something listens on port `3000`, proxy URLs return HTTP 502. That is expected.
+
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `api` | `node:lts` (or `node:22` with `--answer=node=22`), port `3000`, `API_FRAMEWORK` set to your framework pick |
+| `database` | `type: postgres` by default; omitted with `--answer=database=none` |
+| Tooling | `lando npm` and `lando node` on `api`; `lando psql` on `database` when Postgres is present |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Framework choices are `express`, `fastify`, and `hono`.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="node-api-workflow" display="node-api-demo" />
+      <Run command="lando init --recipe node-api --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"api\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"API_FRAMEWORK\":\\s*\"express\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"service\":\\s*\"api\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="hono-no-database" render>
+    <Step name="init">
+      <Variable name="appName" value="node-api-workflow-hono" display="node-api-hono" />
+      <Run command="lando init --recipe node-api --name={{appName}} --yes --answer=node=22 --answer=framework=hono --answer=database=none" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"API_FRAMEWORK\":\\s*\"hono\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\"none\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Install the framework and serve it
+
+Init does not drop an app scaffold. Install into the running `api` service, then add an entrypoint that listens on `PORT` (Lando sets `3000`):
+
+```sh
+lando npm init -y
+lando npm install express
+lando npm --version
+lando node --version
+```
+
+`API_FRAMEWORK` is already `express` on `api`. When you picked Fastify or Hono at init, install that package instead (`lando npm install fastify` or `lando npm install hono`). The recipe still exposes port `3000` and the same `api` tooling either way.
+
+Drop a minimal `server.js` in the app root that calls `app.listen(process.env.PORT || 3000, "0.0.0.0")`. Delete the `# lando-generated:...` line at the top of `.lando.yml` so Lando stops managing that file, then point `api` at it permanently:
+
+```yaml
+services:
+  api:
+    type: node:lts
+    port: 3000
+    command: node server.js
+```
+
+Then:
+
+```sh
+lando restart
+lando info
+```
+
+Open the URL `lando info` prints. Prefer a one-shot serve without editing the Landofile?
+
+```sh
+lando node server.js
+```
+
+That binds port `3000` inside `api` until you stop it.
+
+## Talk to Postgres
+
+When you keep the default database, connect on the app network:
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Port | `5432` |
+| Database | app name (here `node-api-demo`) |
+| User | `lando` |
+| Password | from `lando exec database -- printenv POSTGRES_PASSWORD` |
+
+Use host `database`, not `127.0.0.1` or `localhost`. `lando info` lists the user and database name and redacts the password; print it from the database service env when you need it in settings. Ping from tooling:
+
+```sh
+lando psql -c 'SELECT 1'
+```
+
+Install a client in the API when you need it from Node:
+
+```sh
+lando npm install pg
+```
+
+## Pick Fastify, or skip Postgres with Hono
+
+Fastify keeps the default Postgres service and sets `API_FRAMEWORK=fastify` on `api` (still port `3000`):
+
+```sh
+lando init --recipe node-api --name=node-api-fastify --yes \
+  --answer=framework=fastify
+```
+
+Hono without Postgres drops the `database` service entirely and sets `API_FRAMEWORK=hono`:
+
+```sh
+lando init --recipe node-api --name=node-api-hono --yes \
+  --answer=node=22 \
+  --answer=framework=hono \
+  --answer=database=none
+```
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Node API recipe](/recipes/node-api/)
+- [Add Node](../services/node.mdx)
+- [Add PostgreSQL](../services/postgres.mdx)
