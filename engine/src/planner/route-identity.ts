@@ -1,5 +1,11 @@
 import { RouteInputError } from "@lando/sdk/errors";
-import type { RouteFilter, RoutePlan } from "@lando/sdk/schema";
+import {
+  ROUTE_PATH_WEIGHT_CAP,
+  ROUTE_PRIORITY_EXACT_BASE,
+  ROUTE_PRIORITY_WILDCARD_BASE,
+  type RouteFilter,
+  type RoutePlan,
+} from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 export interface RouteSource {
@@ -88,20 +94,18 @@ export const makeRouteAccumulator = () => {
   };
 };
 
-const lexical = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
+/**
+ * Rank from the route alone: exact hostnames occupy the band above every wildcard
+ * hostname, and a longer path prefix widens the priority inside its own band. A
+ * plan ranked in isolation therefore composes correctly once a router merges every
+ * running app into one table. Equally specific routes share a priority, because
+ * Lando assigns no hostname ownership between apps. A path prefix longer than the
+ * cap shares the top of its band rather than crossing into the band above.
+ */
+export const routePriority = (route: RoutePlan): number =>
+  (route.hostname.includes("*") ? ROUTE_PRIORITY_WILDCARD_BASE : ROUTE_PRIORITY_EXACT_BASE) +
+  Math.min((route.pathPrefix ?? "/").length, ROUTE_PATH_WEIGHT_CAP);
 
-/** Exact hosts first, then longest path; ties use ascending hostname, path and scheme. */
-export const prioritizeRoutes = (routes: readonly RoutePlan[]): readonly RoutePlan[] => {
-  const ordered = routes
-    .map((route, index) => ({ route, index }))
-    .sort(
-      (left, right) =>
-        Number(left.route.hostname.includes("*")) - Number(right.route.hostname.includes("*")) ||
-        (right.route.pathPrefix ?? "/").length - (left.route.pathPrefix ?? "/").length ||
-        lexical(left.route.hostname, right.route.hostname) ||
-        lexical(left.route.pathPrefix ?? "/", right.route.pathPrefix ?? "/") ||
-        lexical(left.route.scheme, right.route.scheme),
-    );
-  const priorities = new Map(ordered.map(({ index }, rank) => [index, routes.length + 1 - rank]));
-  return routes.map((route, index) => ({ ...route, priority: priorities.get(index) ?? 2 }));
-};
+/** Stamps every route with its intrinsic rank, preserving accumulator indexes. */
+export const prioritizeRoutes = (routes: readonly RoutePlan[]): readonly RoutePlan[] =>
+  routes.map((route) => ({ ...route, priority: routePriority(route) }));
