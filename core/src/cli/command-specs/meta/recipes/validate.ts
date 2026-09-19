@@ -15,6 +15,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = {
   resultSchema: RecipesValidateResultSchema,
   id: "meta:recipes:validate",
+  resultFormats: ["table"],
   mcpAllowed: true,
   summary: "Validate a recipe.yml against the published schema.",
   namespace: "meta",
@@ -30,7 +31,6 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json"],
       default: "table",
     }),
   },

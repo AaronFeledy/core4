@@ -42,7 +42,7 @@ export const appConfigMigrateSpec: LandoCommandSpec<AppConfigMigrateResult> = {
       description: "Never prompt for migration approval.",
       default: false,
     }),
-    format: Flags.string({ description: "Output format.", options: ["text", "json"], default: "text" }),
+    format: Flags.string({ description: "Output format.", default: "text" }),
   },
   run: (input) =>
     Effect.gen(function* () {

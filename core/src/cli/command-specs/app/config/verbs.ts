@@ -17,7 +17,6 @@ const typeFlag = Flags.string({
 });
 const formatFlag = Flags.string({
   description: "Output format.",
-  options: ["table", "json"],
   default: "table",
 });
 const editorFlag = Flags.string({ description: "Editor binary for edit." });
@@ -30,6 +29,7 @@ const makeSpec = (
 ): LandoCommandSpec<AppConfigResult> => ({
   resultSchema: AppConfigResultSchema,
   id: `app:config:${subcommand}`,
+  resultFormats: ["table"],
   summary,
   namespace: "app",
   topLevelAlias: false,

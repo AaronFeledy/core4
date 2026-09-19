@@ -15,6 +15,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = {
   resultSchema: RecipesDescribeResultSchema,
   id: "meta:recipes:describe",
+  resultFormats: ["table"],
   mcpAllowed: true,
   summary: "Print a recipe's prompts and metadata without running it.",
   namespace: "meta",
@@ -27,7 +28,6 @@ export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = 
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json"],
       default: "table",
     }),
   },

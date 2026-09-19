@@ -15,6 +15,7 @@ import { extractSpecFlags } from "../../../spec/command-boundary";
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
   resultSchema: AppConfigTranslateResultSchema,
   id: "app:config:translate",
+  resultFormats: ["table"],
   summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",
   recipePostInitAllowed: true,
@@ -48,7 +49,6 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
     }),
     format: Flags.string({
       description: "Output format.",
-      options: ["yaml", "table", "json"],
       default: "yaml",
     }),
   },

@@ -13,6 +13,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
   resultSchema: GlobalListResultSchema,
   id: "meta:global:list",
+  resultFormats: ["table"],
   summary:
     "List every contributed global service, its source plugin, enabled state, and per-service commands.",
   description:
@@ -23,7 +24,6 @@ export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json"],
       default: "table",
     }),
   },

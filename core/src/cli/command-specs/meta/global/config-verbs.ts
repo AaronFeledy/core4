@@ -16,7 +16,6 @@ const typeFlag = Flags.string({
 });
 const formatFlag = Flags.string({
   description: "Output format.",
-  options: ["table", "json"],
   default: "table",
 });
 const editorFlag = Flags.string({ description: "Editor binary for edit." });
@@ -25,6 +24,7 @@ const dryRunFlag = Flags.boolean({ description: "Report the change without writi
 export const metaGlobalConfigSetSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config:set",
+  resultFormats: ["table"],
   summary: "Set a value in the global app's Landofile.",
   description: "Set a value in the global app's Landofile.",
   namespace: "meta",
@@ -43,6 +43,7 @@ export const metaGlobalConfigSetSpec: LandoCommandSpec<GlobalConfigResult> = {
 export const metaGlobalConfigUnsetSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config:unset",
+  resultFormats: ["table"],
   summary: "Remove a key from the global app's Landofile.",
   description: "Remove a key from the global app's Landofile.",
   namespace: "meta",
@@ -60,6 +61,7 @@ export const metaGlobalConfigUnsetSpec: LandoCommandSpec<GlobalConfigResult> = {
 export const metaGlobalConfigEditSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config:edit",
+  resultFormats: ["table"],
   summary: "Edit the global app's Landofile in $EDITOR.",
   description: "Edit the global app's Landofile in $EDITOR.",
   namespace: "meta",
@@ -74,6 +76,7 @@ export const metaGlobalConfigEditSpec: LandoCommandSpec<GlobalConfigResult> = {
 export const metaGlobalConfigValidateSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config:validate",
+  resultFormats: ["table"],
   summary: "Validate the global app's Landofile against the schema.",
   description: "Validate the global app's Landofile against the schema.",
   namespace: "meta",

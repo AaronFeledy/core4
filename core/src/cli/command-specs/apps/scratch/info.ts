@@ -13,6 +13,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
   resultSchema: ScratchInfoResultSchema,
   id: "apps:scratch:info",
+  resultFormats: ["table"],
   summary: "Show information for a scratch Lando app.",
   namespace: "apps",
   topLevelAlias: "scratch:info",
@@ -22,7 +23,7 @@ export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
     id: Args.string({ description: "Scratch app id.", required: false }),
   },
   flags: {
-    format: Flags.string({ description: "Output format.", options: ["table", "json"], default: "table" }),
+    format: Flags.string({ description: "Output format.", default: "table" }),
   },
   run: (input) => scratchInfo(scratchIdFromInput(input)),
   render: (result, input) =>

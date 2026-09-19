@@ -6,7 +6,6 @@ import type { ShareListOptions, ShareOptions, ShareStopOptions } from "@lando/en
 
 export const shareFormatFlag = Flags.string({
   description: "Output format.",
-  options: ["text", "json"],
   default: "text",
 });
 

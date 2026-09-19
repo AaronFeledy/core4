@@ -51,6 +51,7 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
 export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   resultSchema: AppConfigResultSchema,
   id: "app:config",
+  resultFormats: ["table"],
   summary: "Read or write the current app's Landofile.",
   namespace: "app",
   topLevelAlias: false,
@@ -67,7 +68,6 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json", "yaml"],
       default: "table",
     }),
     type: Flags.string({
