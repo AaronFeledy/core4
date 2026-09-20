@@ -58,6 +58,8 @@ entry appears after US-637. That is queued as US-656.
 - Establish a failure baseline in a detached `git worktree` of `origin/main` before triaging a red suite. It needs its own `bun install` and `bun run codegen`; symlinking the branch's `node_modules` resolves `@lando/*` back to branch source and produces a useless comparison.
 - The spec-reference boundary rule reads a bare `spec/...` path argument as a citation of the specification tree, so `resolve(cliRoot, "spec/x.ts")` fails even though it means `core/src/cli/spec`. Spell such paths relatively (`"./spec/x.ts"`); a separate AST check also rejects a bare `"spec"` path segment argument.
 - Parallel codegen waves are only safe when every entry that imports a generated file declares `dependsOn` for its generator. `Bun.write` is not atomic, so a reader can observe a truncated file. It surfaces first on the slowest runner and looks like a flake.
+- `RuntimeProviderShape` is declared TWICE: in `sdk/src/services/provider.ts` and again in `sdk/src/services/index.ts`, where the local declaration shadows the `export *`. A contract change must edit both or consumers keep the old shape while the file that looks canonical is already correct.
+- A provider-contract signature change lands in ~45 files at once, because every scenario test builds its own provider literal instead of spreading `TestRuntimeProvider`. Change the contract, then sweep by directory; `bun run typecheck` is the only honest list of what is left.
 - Apache `Listen` is additive and `-c` directives are read after the configuration tree, so no generated directive can withdraw the image's own `Listen 80`. Moving the listener means deleting that line during the image build; emitting a directive alone opens a second socket. Prove which one you produced by reading the container's listening sockets, not by a successful request on the new port.
 
 ## Shipped: US-613 through US-644 (condensed)
@@ -655,4 +657,61 @@ on the image's `Listen 80`.
 - Reviewed the Apache/PHP listen-port work against the source ACs. Blocker: a custom Apache image with `port:` still got `Listen` and the fail-closed `httpd.conf` edit. PHP already skipped custom images; the guide and audit claimed Apache did too. Apache now skips only the listen directive and image edit on a non-bundled `image:`, and still generates the historical start command.
 - Review notes (deferred/rejected): skipping the entire Apache launcher on custom images was rejected — that would change pre-existing DocumentRoot/PidFile generation; quoting `configPath` as `$1` in the build step was rejected as optional hardening on constant paths.
 - Verification: gate:pr passed; guide-drift passed against origin/main; apache guide 2/2; php guide 2/2; apache 14 and php 35 unit tests green. Bugbot's custom-image finding is the one that was fixed.
+---
+
+## 2026-09-20 05:30 - US-652
+
+Tearing down an app whose applied state is gone now actually removes the
+containers the provider still holds, and the result names only what went away.
+
+- Orphan teardown had been handing providers a selection plan with an empty
+  `services` map and then reporting every observed service as removed. Planful
+  bring-down iterates that map, so nothing was stopped while everything was
+  claimed. Containers now go through `RuntimeProvider.removeObservedService`,
+  a new required contract member that takes back one `ServiceRuntimeInfo` the
+  provider itself reported from `list` and removes that container by its
+  observed id, resolving no applied plan on the way. All three bundled
+  adapters implement it in the same revision, over one shared
+  `removeObservedContainer` helper; a stop that 404s short-circuits, because a
+  container that is already gone has nothing left to remove.
+- A service reaches the teardown result only when its removal answered
+  `removed`. An observation with no container id is the provider saying it
+  found nothing, so it is neither removed nor reported.
+- `provider.destroy` answers `DestroyOutcome` instead of `void`: a provider
+  handed no plan that finds no applied record returns
+  `{ kind: "no-op", reason: "no-applied-plan" }` rather than an empty success.
+- Orphan volume removal reads class and scope from the labels every provider
+  writes at creation, so `--volumes` takes data volumes, `--purge-caches`
+  takes cache volumes, both takes both, and a globally scoped volume is left
+  alone. That is the same table planful bring-down uses; both now call one
+  `teardownVolumeClasses`.
+- Verification: gate:pr passed, including all 13 boundary rules, `codegen:check`,
+  and a real guide-drift pass against origin/main. RED first: eight failing
+  cases in the applied-state teardown suite, including an orphan group
+  reporting two removed services while both containers survived; 25 green
+  after. 13 new container-runtime cases cover the removal helper and the class
+  table; 58 green across teardown plus the destroy and stop CLI scenarios. Real
+  binary `lando destroy --yes` and `lando stop` on a runtime-free host both
+  reported `unchanged` with empty service lists.
+- **Learnings for future iterations:**
+  - `RuntimeProviderShape` exists twice, in `sdk/src/services/provider.ts` and
+    again in `sdk/src/services/index.ts`. The second shadows the `export *`, so
+    it is the one consumers actually see. Editing only the first compiles and
+    changes nothing.
+  - Changing one provider-contract return type is a ~45-file edit, because
+    nearly every scenario test writes its own provider literal rather than
+    spreading `TestRuntimeProvider`. The sweep is mechanical and parallelizes by
+    directory; `bun run typecheck` is the only reliable worklist.
+  - `dev.lando.storage-kind` is written by the shared `volumeCreationLabels` for
+    cache stores only, which makes it the one class signal available to teardown
+    that has no plan left. `dev.lando.volume-selector` carries the same fact but
+    only on the podman-shaped creation path.
+  - Orphan networks are still not removed by either teardown path; that was true
+    before this story and remains out of scope.
+---
+## 2026-09-20 04:55 - US-652 Review
+- Reviewed orphan-container teardown against the source ACs. No product blockers were fixed; observed-identity removal, truthful service reporting, explicit planless destroy no-op, and shared cache/data volume class filtering already satisfy the Build-owned proofs.
+- Review notes (deferred/rejected): daemon-backed `list()` on provider-lando/provider-podman was rejected as a Review demotion — it is pre-existing, this story's diff does not touch `list`, and the ACs own `removeObservedService` given observations rather than rewriting discovery; live container present-before/absent-after evidence was rejected as a Review demotion — residual §7.1 assigns that proof to Verify; binding `removeObservedService` to ownership labels was rejected — the primitive is the trusted engine-to-provider seam, and teardown already filters observations by `appRoot`.
+- Verification: gate:pr passed; guide-drift passed against origin/main; Bugbot found no bugs; 83 focused tests across remove-observed-container, applied-state-teardown, provider contract, and unchanged destroy/stop render cases.
+- Guide-Coverage-Skip: orphan teardown implements the already-documented destroy/stop applied-state path; lifecycle guides already promise owned containers are removed.
 ---

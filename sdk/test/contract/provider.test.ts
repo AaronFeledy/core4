@@ -137,6 +137,16 @@ describe("RuntimeProvider contract", () => {
     expect(TestRuntimeProvider.capabilities.serviceLogs).toBe(true);
     expect(Effect.isEffect(TestRuntimeProvider.destroy({ app: TEST_APP_ID }, { volumes: true }))).toBe(true);
     expect(
+      Effect.isEffect(
+        TestRuntimeProvider.removeObservedService({
+          app: TEST_APP_ID,
+          service: TEST_SERVICE_NAME,
+          providerId: TEST_PROVIDER_ID,
+          status: "running",
+        }),
+      ),
+    ).toBe(true);
+    expect(
       Stream.StreamTypeId in
         Object(
           TestRuntimeProvider.execStream(

@@ -192,6 +192,7 @@ import type {
   ArtifactRef,
   CommandSpec,
   DestroyOptions,
+  DestroyOutcome,
   EphemeralRunSpec,
   ExecChunk,
   ExecResult,
@@ -200,6 +201,7 @@ import type {
   LogChunk,
   LogOptions,
   LogTarget,
+  ObservedServiceRemoval,
   ProviderError,
   ProviderSetupInspectOptions,
   ProviderSetupOptions,
@@ -303,7 +305,18 @@ export interface RuntimeProviderShape {
     target: ServiceSelector,
     options?: WaitForExitOptions,
   ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
-  readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
+  readonly destroy: (
+    target: AppSelector,
+    options: DestroyOptions,
+  ) => Effect.Effect<DestroyOutcome, ProviderError>;
+  /**
+   * Stops and removes the single container behind one observation this provider reported from
+   * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
+   * the identity they were observed under. An observation carrying no container id is `absent`.
+   */
+  readonly removeObservedService: (
+    observed: ServiceRuntimeInfo,
+  ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
   readonly execStream: (

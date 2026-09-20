@@ -27,6 +27,7 @@
     "./log-file-helper-payloads": "./src/log-file-helper-payloads.ts",
     "./data-plane": "./src/data-plane.ts",
     "./capabilities": "./src/capabilities.ts",
+    "./volume-classes": "./src/volume-classes.ts",
     "./dependency-gates": "./src/dependency-gates.ts",
     "./dependency-schedule": "./src/dependency-schedule.ts",
     "./service-start-schedule": "./src/service-start-schedule.ts",

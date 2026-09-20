@@ -12,6 +12,7 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
+import { teardownVolumeClasses } from "../volume-classes.ts";
 import {
   type VolumeSelectorClass,
   buildLandoVolumeFilters,
@@ -243,17 +244,12 @@ const removeAppScopedVolumes = (deps: BringDownDeps, plan: AppPlan): Effect.Effe
     return changed;
   });
 
-const pruneVolumeClasses = (options: BringDownOptions): ReadonlyArray<VolumeSelectorClass> => {
-  if (options.volumes === true && options.purgeCaches === true) return ["cache", "data"];
-  return options.purgeCaches === true ? ["cache"] : ["data"];
-};
-
 const pruneAppScopedVolumes = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolean, BringDownError> =>
   pruneVolumes(deps.api, {
     filters: buildLandoVolumeFilters(plan.id, {
       providerId: plan.provider,
       ownerKey: plan.identity?.ownerKey ?? plan.root,
-      volumeClasses: pruneVolumeClasses(deps.options),
+      volumeClasses: teardownVolumeClasses(deps.options),
     }),
     ctx: deps.options.ctx,
     all: deps.options.volumes === true,

@@ -207,6 +207,7 @@ const makeHarness = async (
     destroy: (target, options) =>
       Effect.sync(() => {
         calls.destroy.push({ target, options });
+        return { kind: "destroyed" as const };
       }),
     inspect: (target) => {
       calls.inspect.push({ target });

@@ -618,10 +618,9 @@ const makeScratchAppService = (
             Effect.flatMap((provider) => {
               const plan = input.plan;
               if (plan === undefined) return Effect.void;
-              return provider.destroy(
-                { app: plan.id, plan },
-                { volumes: input.keepVolumes !== true, removeState: true },
-              );
+              return provider
+                .destroy({ app: plan.id, plan }, { volumes: input.keepVolumes !== true, removeState: true })
+                .pipe(Effect.asVoid);
             }),
             Effect.mapError((cause) =>
               scratchAppError(
