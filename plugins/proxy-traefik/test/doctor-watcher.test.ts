@@ -241,7 +241,6 @@ describe("routerFileWatcherCheck", () => {
       const { service, input } = await makeDiskHarness(userDataRoot, failureText);
 
       // When: revalidation observes an inotify failure, then doctor reads its persisted evidence.
-      expect(service.revalidateStartup).toBeDefined();
       const failure = await Effect.runPromise(Effect.flip(service.revalidateStartup));
       expect(failure).toBeInstanceOf(RouterWatcherError);
       const reports = await Effect.runPromise(routerFileWatcherCheck.run(input));
@@ -269,7 +268,6 @@ describe("routerFileWatcherCheck", () => {
       );
 
       // When: revalidation succeeds, then doctor reads from the same filesystem.
-      expect(service.revalidateStartup).toBeDefined();
       await expect(Effect.runPromise(service.revalidateStartup)).resolves.toBeUndefined();
       const reports = await Effect.runPromise(routerFileWatcherCheck.run(input));
 

@@ -746,7 +746,6 @@ describe("meta:global command effects", () => {
       expect(result.distLandofile).toBe(distPath(harness.dataRoot));
       expect(result.userLandofile).toBe(join(harness.dataRoot, "global", ".lando.yml"));
       if (result.landofile === undefined) throw new Error("expected landofile");
-      if (result.landofile === undefined) throw new Error("expected landofile");
       expect(result.landofile.services).toHaveProperty("proxy");
     });
   });
