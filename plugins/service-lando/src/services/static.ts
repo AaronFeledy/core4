@@ -6,6 +6,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
+import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 
 export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
 export type SupportedStaticServer = (typeof SUPPORTED_STATIC_SERVERS)[number];
@@ -27,17 +28,15 @@ export const defaultStaticCommand = (
   server: SupportedStaticServer,
   docRoot: string,
   port: number,
+  user: string | undefined,
 ): ReadonlyArray<string> => {
   if (server === "caddy") {
     return ["caddy", "file-server", "--listen", `:${port}`, "--root", docRoot];
   }
 
-  return [
-    "sh",
-    "-c",
-    [
-      "set -eu",
-      "cat > /etc/nginx/conf.d/default.conf <<'LANDO_STATIC_NGINX'",
+  return nginxLauncherCommand({
+    user,
+    serverBlock: [
       "server {",
       `  listen ${port};`,
       "  server_name _;",
@@ -46,10 +45,8 @@ export const defaultStaticCommand = (
       ...nginxErrorPageConfigLines(),
       "  location / { try_files $uri $uri/ =404; }",
       "}",
-      "LANDO_STATIC_NGINX",
-      "exec nginx -g 'daemon off;'",
-    ].join("\n"),
-  ];
+    ],
+  });
 };
 
 const StaticFeatureConfigSchema = Schema.Struct({
@@ -84,8 +81,14 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   const port = service.port ?? DEFAULT_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? STATIC_SERVER_IMAGES[server] });
-  if (server !== "caddy") ctx.addBuildStep(landoErrorPagesBuildStep());
-  ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port));
+  const ownsCommand = service.command === undefined && service.entrypoint === undefined;
+  if (server !== "caddy") {
+    ctx.addBuildStep(landoErrorPagesBuildStep());
+    // The removal only makes sense while the generated launcher, which declares
+    // its own server block, is still the planned command.
+    if (ownsCommand) ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
+  }
+  ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   if (service.user !== undefined) ctx.setUser(service.user);
   const passthrough = { realization: "passthrough" as const };

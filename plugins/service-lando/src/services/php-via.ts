@@ -133,12 +133,27 @@ export const apacheStartCommand = (webroot: string, allowOverride: boolean): Rea
   return ["apache2-foreground", ...directives.flatMap((directive) => ["-c", directive])];
 };
 
+/** Where an FPM launcher writes its pool override; `/tmp` is mode `1777`. */
+export const PHP_FPM_CONFIG_PATH = "/tmp/lando-php-fpm.conf" as const;
+
+/**
+ * The launcher for an FPM-served PHP service whose author declared no
+ * `command` or `entrypoint`.
+ *
+ * php-fpm takes a configuration file, not directives, so the override is
+ * written where the planned user can write and php-fpm is pointed at it with
+ * `-y` instead of dropping a file into the image's root-owned pool directory.
+ * The image's own `php-fpm.conf` is a `[global]` section plus an absolute
+ * include of that directory, so pulling it in first keeps every bundled
+ * setting; re-opening `[www]` merges into the pool the bundled files already
+ * declare three times over, and the later `listen` wins.
+ */
 export const fpmStartCommand = (port: number): ReadonlyArray<string> => [
   "sh",
   "-c",
   [
     "set -eu",
-    `printf '[www]\\nlisten = ${String(port)}\\n' > /usr/local/etc/php-fpm.d/zz-lando-listen.conf`,
-    "exec php-fpm",
+    `printf 'include=/usr/local/etc/php-fpm.conf\\n[www]\\nlisten = ${String(port)}\\n' > ${PHP_FPM_CONFIG_PATH}`,
+    `exec php-fpm -y ${PHP_FPM_CONFIG_PATH}`,
   ].join("\n"),
 ];
