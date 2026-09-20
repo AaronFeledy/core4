@@ -35,7 +35,7 @@ import {
   serviceArtifactBuildRemediation,
   serviceBindRemediation,
 } from "./compose-capabilities.ts";
-import { DATA_TREE_OWNERSHIP_STEP_ID, dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
+import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
 import { LOG_SOURCES_EXTENSION_KEY, isRecord, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { applyServiceHome } from "./home.ts";
@@ -243,7 +243,7 @@ export const finalizeServices = (input: {
               ...draft,
               buildSteps: [
                 ...(ownershipStep === undefined ? [] : [ownershipStep]),
-                ...draft.buildSteps.filter((step) => step.id !== DATA_TREE_OWNERSHIP_STEP_ID),
+                ...draft.buildSteps,
                 ...redirectSteps,
               ],
             };

@@ -19,7 +19,7 @@ import { DataTreeOwnershipCapabilityError } from "@lando/sdk/errors";
 import type { ServiceBuildStepIntent, ServiceImageIdentity } from "@lando/sdk/services";
 
 /** One mounted tree a service writes to, and the owners its image already seeds. */
-export interface DataTreeIntent {
+interface DataTreeIntent {
   /** Container path the data store is mounted at. */
   readonly target: string;
   /**
@@ -30,7 +30,7 @@ export interface DataTreeIntent {
 }
 
 /** A tree that has to be prepared in the image, and the principal to give it to. */
-export interface DataTreeOwnership {
+interface DataTreeOwnership {
   readonly target: string;
   readonly owner: string;
 }

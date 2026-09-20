@@ -88,7 +88,7 @@ export const serviceFeatureBuildSteps = (extensions: ServicePlan["extensions"]):
 };
 
 /** Data trees a service declared the planned user must own, across passes. */
-export const serviceFeatureDataTrees = (
+const serviceFeatureDataTrees = (
   extensions: ServicePlan["extensions"],
 ): Array<{ target: string; seededOwners: ReadonlyArray<string> }> => {
   const trees = serviceFeatureExtension(extensions)?.dataTrees;
