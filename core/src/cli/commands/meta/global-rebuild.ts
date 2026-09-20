@@ -21,8 +21,10 @@ import type {
   PluginManifestError,
   ProviderConfigError,
   ProviderUnavailableError,
+  ProxyError,
   PublicationUnsupportedError,
   RouteInputError,
+  RouterWatcherError,
   SecretNotFoundError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
@@ -36,6 +38,7 @@ import {
   type GlobalAppService,
   type PluginRegistry,
   type ProviderError,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -98,6 +101,8 @@ export type GlobalRebuildError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
+  | ProxyError
+  | RouterWatcherError
   | SecretNotFoundError;
 
 export type GlobalRebuildServices =
@@ -107,6 +112,7 @@ export type GlobalRebuildServices =
   | FileSystem
   | GlobalAppService
   | PluginRegistry
+  | RouterService
   | RuntimeProviderRegistry;
 
 export const globalRebuild = (
@@ -158,6 +164,11 @@ export const globalRebuild = (
         })),
       ),
     );
+
+    // Re-observe the router before the post event: a rebuild that leaves the
+    // router's startup observation broken has not finished rebuilding.
+    const router = yield* RouterService;
+    yield* router.revalidateStartup;
 
     yield* events.publish(
       PostGlobalRebuildEvent.make({
