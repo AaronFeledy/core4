@@ -1,7 +1,7 @@
 ---
 id: app-lifecycle
 provider: test
-timeout: 90000
+timeout: 300000
 tags: [beta, docs, tutorial, lifecycle]
 ---
 
@@ -134,5 +134,28 @@ lando apps:list
 # Stop every running Lando app and the shared services at once
 lando apps:poweroff
 ```
+
+## Run the whole loop on the real provider
+
+The same loop, end to end, against the default `lando` provider. `start`
+reports the app ready, `info` shows both services `running`, `stop` names what
+it stopped, and nothing lands on stderr along the way:
+
+  <Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>
+    <Step name="start">
+      <UseFixture name="app-lifecycle-demo" />
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: "" }} />
+    </Step>
+    <Step name="inspect">
+      <Verify command="lando info" expect={{ stdout: { regex: "(^|\\n)app\\trunning\\t[\\s\\S]*\\ndb\\trunning\\t" }, stderr: "" }} />
+    </Step>
+    <Step name="stop">
+      <Verify command="lando stop" expect={{ stdout: { regex: "stopped: app-lifecycle-demo" }, stderr: "" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
 
 </Guide>
