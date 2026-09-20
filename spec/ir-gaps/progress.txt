@@ -434,3 +434,67 @@ under a non-root `user:` without an authored `command:`.
 - Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (complete). A `php:8.3` app with `user: www-data` and `home: false` planned the generated `apache2-foreground -c …` launcher as PID 1; Apache left the write-free path and died only with `AH00072` bind `:80`. The same launcher as root served `us650-root-ok` from `/app/index.php` (DocumentRoot is the main server, not Debian's `/var/www/html` vhost) and the shared Lando `404 Page not found` page. Adjacent `php -v` was 8.3.33. Destroyed both apps with `--purge`.
 - **Out-of-scope finding:** `user: www-data` on the default `lando` provider cannot bind Apache `Listen 80` (`Permission denied: AH00072`). Documented residual for US-651; `port:` only moves the healthcheck.
 ---
+
+## 2026-09-19 23:15 - US-659
+
+The nginx-family and FPM launchers no longer write into a tree only root owns,
+so `nginx` with a `backend:`, a `static` site, and a `php:*` FPM service all
+start under a non-root `user:`.
+
+- All three now write where the planned user can write and point the daemon at
+  that file. nginx gets `/tmp/lando-nginx.conf` plus
+  `nginx -c /tmp/lando-nginx.conf -g 'daemon off;'`; php-fpm gets
+  `/tmp/lando-php-fpm.conf` plus `php-fpm -y`. `static:caddy` is untouched.
+- `-c` replaces nginx's *main* configuration, not a `conf.d` drop-in, so the
+  generated file is a whole configuration now. It reproduces the image's own
+  `nginx.conf` and differs in three places: the pid moves to `/tmp`, five temp
+  paths move to `/tmp`, and the Lando `server { }` block is declared inline. The
+  rest of `conf.d` is still included and a root build step retires the image's
+  `default.conf`, so an author's own drop-in keeps working while the stock
+  `localhost` server stops competing for the port.
+- `php-fpm -y` replaces the whole configuration too. Pulling
+  `include=/usr/local/etc/php-fpm.conf` in first keeps every bundled setting,
+  and re-opening `[www]` merges into the pool the image's own files already
+  declare three times over, so the later `listen` wins.
+- `user nginx;` is emitted only when Lando planned a root service. A non-root
+  master cannot act on it and nginx warns twice per start when asked to, while
+  dropping it for the root case would silently move workers to `nobody`.
+- Real containers found the one defect the suites could not: `-c` makes the
+  configuration file's own directory nginx's configuration prefix, so the
+  inherited `include fastcgi_params;` resolved to `/tmp/fastcgi_params` and
+  nginx refused to start. Every include in the generated file is absolute now.
+- Deliberately not done: these service types still record a home only for
+  `root`, so a non-root `user:` needs `home: false` or `home.path:`, exactly as
+  the PHP guide already says for Apache. Unlike Apache, `port:` is templated
+  into the generated `listen`, so the privileged-port residual has a real
+  author-side answer here and the guides give it.
+- Verification: `gate:pr` green, including a real guide-drift pass against
+  `origin/main` and all 13 boundary rules; typecheck and lint clean. RED first:
+  four launcher cases failed with `Expected to contain: "exec nginx -c
+  /tmp/lando-nginx.conf -g 'daemon off;'"` and the FPM equivalent. 321 focused
+  tests green across static, nginx, php, registration, static.scenario, readme,
+  service-contract, env-contract, and service-identity. Real runtime in
+  lando4-dev, running the exact planned argv against images built from the
+  exact planned build steps: static as uid 101 served `us659-static-ok` and the
+  Lando `Page not found` page on a miss; nginx as uid 101 in front of php-fpm as
+  uid 33 served `us659-fpm-ok 8.3.33` through FastCGI; php-fpm as uid 33 had
+  9000 open.
+- **Learnings for future iterations:**
+  - `nginx -c <file>` sets the configuration prefix to that file's directory.
+    Every relative `include` in a generated nginx config has to be spelled
+    absolutely or it resolves next to the config, not under `/etc/nginx`. Both
+    an oracle and a planning pass asserted the opposite; only a real container
+    settled it.
+  - nginx creates each temp directory with a single `mkdir`, not `mkdir -p`, so
+    `client_body_temp_path /tmp/lando-nginx/client-body` fails at startup while
+    a flat `/tmp/lando-nginx-client-body` works.
+  - Replacing a main config is not only an addition: dropping
+    `include /etc/nginx/conf.d/*.conf;` would silently retire every author
+    drop-in. Keeping the include costs one root build step to remove the stock
+    `default.conf`, which would otherwise claim the same port under
+    `server_name localhost`.
+  - A launcher rewrite can be proven without `lando start`: emit the planned
+    argv and build steps from the compose harness, render the steps as a
+    Dockerfile, and run the real image. That caught a start-blocking defect in
+    minutes.
+---
