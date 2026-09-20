@@ -4,6 +4,7 @@ import {
   type CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type DataTreeOwnershipCapabilityError,
   GlobalAppError,
   type GlobalDistConflictError,
   type HomePathCapabilityError,
@@ -59,6 +60,7 @@ export const GlobalUninstallResultSchema = Schema.Struct({
 type GlobalUninstallError =
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

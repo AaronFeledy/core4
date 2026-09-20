@@ -4,6 +4,7 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
+  DataTreeOwnershipCapabilityError,
   EventError,
   GlobalAppError,
   HomePathCapabilityError,
@@ -51,6 +52,7 @@ export const GlobalStopResultSchema = Schema.Struct({
 export type GlobalStopError =
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

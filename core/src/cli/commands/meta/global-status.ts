@@ -5,6 +5,7 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
+  DataTreeOwnershipCapabilityError,
   GlobalAppError,
   HomePathCapabilityError,
   LandofileParseError,
@@ -81,6 +82,7 @@ export const GlobalStatusResultSchema = Schema.Struct({
 type GlobalStatusError =
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

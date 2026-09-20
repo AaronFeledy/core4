@@ -23,6 +23,7 @@ import type {
   ComposeKeyRejectedError,
   ConfigError,
   ConfigExpressionError,
+  DataTreeOwnershipCapabilityError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
@@ -232,6 +233,7 @@ export type StartAppError =
   | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | GlobalAutoStartError
   | SecretNotFoundError
@@ -289,6 +291,7 @@ export type StopAppError =
   | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -411,6 +414,7 @@ export type InfoAppError =
   | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
@@ -444,6 +448,7 @@ export type ExecAppError =
   | ComposeKeyRejectedError
   | CapabilityError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | ConfigError
   | LandofileNotFoundError
@@ -501,6 +506,7 @@ export type ToolingError =
   | BunShellScriptFrontMatterError
   | CapabilityError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | ConfigError
   | ComposeKeyRejectedError
@@ -558,6 +564,7 @@ export type LogsAppError =
   | CommandAliasConflictError
   | ConfigExpressionError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError

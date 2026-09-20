@@ -498,3 +498,6 @@ start under a non-root `user:`.
     Dockerfile, and run the real image. That caught a start-blocking defect in
     minutes.
 ---
+## 2026-09-19 23:52 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---

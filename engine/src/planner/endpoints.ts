@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import {
   type CapabilityError,
   type ConfigExpressionError,
+  DataTreeOwnershipCapabilityError,
   HomePathCapabilityError,
   LandofileValidationError,
   PublicationUnsupportedError,
@@ -34,6 +35,7 @@ import {
   serviceArtifactBuildRemediation,
   serviceBindRemediation,
 } from "./compose-capabilities.ts";
+import { DATA_TREE_OWNERSHIP_STEP_ID, dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
 import { LOG_SOURCES_EXTENSION_KEY, isRecord, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { applyServiceHome } from "./home.ts";
@@ -145,6 +147,7 @@ export const finalizeServices = (input: {
   | LandofileValidationError
   | CapabilityError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | ConfigExpressionError
   | RouteInputError
@@ -217,10 +220,33 @@ export const finalizeServices = (input: {
               },
             };
       const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
+      // Data-tree ownership resolves here, where the composed `draft.user` and
+      // the service type's image identity are both final. The step it produces
+      // prepares the tree during the image build, so the planned user owns the
+      // named volume the runtime seeds from that path.
+      const ownedTrees = resolveDataTreeOwnership({
+        serviceName: name,
+        serviceType: homeIntent.serviceType,
+        identity: homeIntent.identity,
+        hasCustomImage: homeIntent.customImage === true,
+        trees: draft.storageOwnership ?? [],
+        plannedUser: draft.user,
+      });
+      if (ownedTrees instanceof DataTreeOwnershipCapabilityError) {
+        return yield* Effect.fail(ownedTrees);
+      }
+      const ownershipStep = dataTreeOwnershipStep(ownedTrees);
       const draftForPlan =
-        redirectSteps.length === 0
+        ownershipStep === undefined && redirectSteps.length === 0
           ? draft
-          : { ...draft, buildSteps: [...draft.buildSteps, ...redirectSteps] };
+          : {
+              ...draft,
+              buildSteps: [
+                ...(ownershipStep === undefined ? [] : [ownershipStep]),
+                ...draft.buildSteps.filter((step) => step.id !== DATA_TREE_OWNERSHIP_STEP_ID),
+                ...redirectSteps,
+              ],
+            };
       const planned = applyHostReachability(
         servicePlanFromDraft(draftForPlan, [], input.metadata, extensionsForPlan),
         input.providerCapabilities.hostReachability,

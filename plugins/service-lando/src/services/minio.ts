@@ -47,11 +47,17 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
     "MC_HOST_local",
     `http://${encodeURIComponent(rootUser)}:${encodeURIComponent(rootPassword)}@127.0.0.1:${apiPort}`,
   );
-  ctx.addStorage({
-    store: `${appName}-minio-data`,
-    target: DATA_TARGET,
-    readOnly: false,
-  });
+  ctx.addStorage(
+    {
+      store: `${appName}-minio-data`,
+      target: DATA_TARGET,
+      readOnly: false,
+    },
+    // The image declares /data as a bare volume with nothing behind it, so the
+    // only owner it guarantees is the root identity it runs as. Every other
+    // planned user needs the tree prepared before the bucket mkdir can work.
+    { seededOwners: ["root", "0"] },
+  );
   ctx.addEndpoint({
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(apiPort),

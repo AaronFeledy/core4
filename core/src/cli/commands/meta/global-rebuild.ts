@@ -6,6 +6,7 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
+  DataTreeOwnershipCapabilityError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -77,6 +78,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 export type GlobalRebuildError =
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError
