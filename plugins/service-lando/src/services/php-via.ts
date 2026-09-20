@@ -118,10 +118,19 @@ export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => (
  * lines. Emitting them directly is what removes the write: the command mutates
  * no filesystem path, needs no shell, and therefore runs unchanged as the
  * planned service user rather than only as root.
+ *
+ * An authored `port:` moves the site into a virtual host bound to that port and
+ * declares the matching listener, still in the same directive stream. The
+ * default shape stays on the main server, so a service that authored no port
+ * keeps the launcher it has today.
  */
-export const apacheStartCommand = (webroot: string, allowOverride: boolean): ReadonlyArray<string> => {
+export const apacheStartCommand = (
+  webroot: string,
+  allowOverride: boolean,
+  listenPort: number | undefined,
+): ReadonlyArray<string> => {
   const path = apacheDirectivePath(webroot);
-  const directives = [
+  const site = [
     `DocumentRoot "${path}"`,
     `<Directory "${path}">`,
     "Options -Indexes +FollowSymLinks",
@@ -130,6 +139,10 @@ export const apacheStartCommand = (webroot: string, allowOverride: boolean): Rea
     "</Directory>",
     ...apacheErrorPageDirectives(),
   ];
+  const directives =
+    listenPort === undefined
+      ? site
+      : [`Listen ${String(listenPort)}`, `<VirtualHost *:${String(listenPort)}>`, ...site, "</VirtualHost>"];
   return ["apache2-foreground", ...directives.flatMap((directive) => ["-c", directive])];
 };
 

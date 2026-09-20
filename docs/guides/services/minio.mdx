@@ -84,8 +84,9 @@ For local development, the root credentials default to user `lando` and password
 Override `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` under `environment` when
 your app needs different credentials.
 
-A `port:` override changes the API listen address, the internal endpoint, and
-the `mc` alias used for readiness. The console stays on `9001`.
+A `port:` override changes the S3 API listen address, the internal endpoint, and
+the `mc` alias used for readiness. Known limit: the console port is fixed at
+`9001`. `port:` moves only the API, and no Landofile key moves the console.
 
 ## Console and client
 

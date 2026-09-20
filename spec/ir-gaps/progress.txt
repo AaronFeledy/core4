@@ -58,6 +58,7 @@ entry appears after US-637. That is queued as US-656.
 - Establish a failure baseline in a detached `git worktree` of `origin/main` before triaging a red suite. It needs its own `bun install` and `bun run codegen`; symlinking the branch's `node_modules` resolves `@lando/*` back to branch source and produces a useless comparison.
 - The spec-reference boundary rule reads a bare `spec/...` path argument as a citation of the specification tree, so `resolve(cliRoot, "spec/x.ts")` fails even though it means `core/src/cli/spec`. Spell such paths relatively (`"./spec/x.ts"`); a separate AST check also rejects a bare `"spec"` path segment argument.
 - Parallel codegen waves are only safe when every entry that imports a generated file declares `dependsOn` for its generator. `Bun.write` is not atomic, so a reader can observe a truncated file. It surfaces first on the slowest runner and looks like a flake.
+- Apache `Listen` is additive and `-c` directives are read after the configuration tree, so no generated directive can withdraw the image's own `Listen 80`. Moving the listener means deleting that line during the image build; emitting a directive alone opens a second socket. Prove which one you produced by reading the container's listening sockets, not by a successful request on the new port.
 
 ## Shipped: US-613 through US-644 (condensed)
 
@@ -591,4 +592,67 @@ non-root `user:` or say at plan time that they cannot.
 - Fixed: unused exports dropped, the defensive filter removed, the addStorage ownership intent recorded.
 - Split/excise decisions: none. Docker classic-builder VOLUME writes were never absorbed; Reviews already left that as a later story, so the PRD index is unchanged.
 - Verification: typecheck pass, lint pass, 19 data-tree tests pass, SDK backward-compat pass.
+---
+
+## 2026-09-20 03:30 - US-651
+
+Setting `port:` on an `apache` service, or on a `php:*` service served through
+`apache`, now moves the port the daemon actually listens on. It already moved
+the endpoint, the healthcheck, and the route target; the daemon kept answering
+on the image's `Listen 80`.
+
+- `apache` emits `Listen <port>` into the same repeated-`-c` stream its other
+  directives already travel in. `php:*` via `apache` emits the same directive
+  and wraps its document-root, directory, and error-page directives in a
+  `<VirtualHost *:<port>>`, which keeps the launcher shell-free and write-free
+  so it still runs under a non-root `user:`.
+- A directive alone would have opened a second socket, because `Listen` is
+  additive and command-line directives are read after the configuration tree.
+  One shared root build step deletes the image's own `Listen 80` instead, from
+  `httpd.conf` for the httpd family and `ports.conf` for the Debian family. It
+  is fail-closed on both sides of the edit: if a future base image stops
+  declaring exactly one active `Listen 80`, the build stops rather than shipping
+  a service that quietly answers on two ports.
+- Everything is gated on an authored `port:`. Without one, the launcher argv,
+  the build steps, and the image are exactly what they were, so no existing app
+  gains a derived build. An authored `command:`, `entrypoint:`, or custom
+  `image:` also skips both the directive and the image edit, because Lando does
+  not own that startup path.
+- The authored value is decoded through `PortNumber` before it reaches a
+  directive. `addServicePortEndpoints` skips that decode when `ports:` is also
+  set, so the launcher path had to do its own.
+- Verification: gate:pr passed, including all 13 boundary rules and a real
+  guide-drift pass against origin/main; guide-coverage, public-transcripts, and
+  lint:guides passed. RED first, twice: `port: 8080` produced no matching listen
+  directive, and the PHP launcher produced no virtual host. 1,033 service-lando
+  tests plus 1,685 recipe and engine service tests green. Real runtime in
+  lando4-dev, building derived images from the exact planned build steps and
+  running the exact planned argv: both families listened on 8080 and nothing
+  else, served from the planned document root, and refused a connection to 80;
+  the PHP one served mod_php and still rendered the Lando 404 from inside the
+  virtual host. The real binary accepted both Landofiles and rejected
+  `port: 70000` with a tagged `LandofileValidationError`.
+- **Learnings for future iterations:**
+  - Reading the container's listening sockets is the only honest proof here.
+    `/proc/net/tcp` plus `/proc/net/tcp6`, filtered on state `0A`, prints the
+    listening ports in hex with no tooling the image has to ship. A successful
+    request on the new port proves nothing about the old one.
+  - The bundled Apache images do not ship the same probes. `httpd:2.4-alpine`
+    has busybox `wget`; `php:*-apache-bookworm` has neither `wget` nor `curl`,
+    so its HTTP probe has to go through `php -r`.
+  - Debian's `ports.conf` also declares `Listen 443` twice, tab-indented inside
+    `<IfModule ssl_module>` and `<IfModule mod_gnutls.c>`. Neither module is
+    enabled on the stock PHP image, so deleting only the exact `Listen 80` line
+    is both sufficient and narrower than commenting every `Listen`.
+  - A spec finding can go stale between the wave that recorded it and the story
+    that closes it. This one described `php:*` via `apache` as having a
+    hardcoded `<VirtualHost *:80>`; US-650 had already replaced that with
+    main-server directives. Re-read the code the finding describes before
+    designing against the finding's description of it.
+---
+
+## 2026-09-20 03:28 - US-651 Review
+- Reviewed the Apache/PHP listen-port work against the source ACs. Blocker: a custom Apache image with `port:` still got `Listen` and the fail-closed `httpd.conf` edit. PHP already skipped custom images; the guide and audit claimed Apache did too. Apache now skips only the listen directive and image edit on a non-bundled `image:`, and still generates the historical start command.
+- Review notes (deferred/rejected): skipping the entire Apache launcher on custom images was rejected — that would change pre-existing DocumentRoot/PidFile generation; quoting `configPath` as `$1` in the build step was rejected as optional hardening on constant paths.
+- Verification: gate:pr passed; guide-drift passed against origin/main; apache guide 2/2; php guide 2/2; apache 14 and php 35 unit tests green. Bugbot's custom-image finding is the one that was fixed.
 ---
