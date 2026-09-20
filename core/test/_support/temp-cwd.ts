@@ -22,6 +22,11 @@
  * Rule 1 means the cwd is handed to the anchor rather than to an enclosing
  * call: these fixtures overlap in time without nesting lexically, and the two
  * are indistinguishable from a plain stack.
+ *
+ * The same three rules apply to process-global env vars such as
+ * `LANDO_USER_CACHE_ROOT`: restoring the ambient value captured on entry lets
+ * an outlived call wipe a later test's root and then delete the directory the
+ * abandoned body is still reading.
  */
 import { sep } from "node:path";
 
@@ -75,6 +80,40 @@ export const withCwd = async <T>(
       else if (here === undefined || roots.some((root) => isInside(here, root))) {
         process.chdir(frames.at(-1)?.dir ?? anchor);
       }
+    }
+  }
+};
+
+const envAnchors = new Map<string, string | undefined>();
+const envFrames = new Map<string, Array<{ readonly token: symbol; readonly value: string }>>();
+
+const restoreEnv = (name: string, value: string | undefined): void => {
+  if (value === undefined) process.env[name] = undefined;
+  else process.env[name] = value;
+};
+
+/**
+ * Sets `process.env[name]` for `body`. Unlike {@link withCwd}, a later owner
+ * that exits while an earlier call remains restores that earlier value rather
+ * than the module-load anchor: the earlier cache directory still exists, and
+ * unsetting the variable sends the abandoned body into the host cache.
+ */
+export const withEnvVar = async <T>(name: string, value: string, body: () => Promise<T>): Promise<T> => {
+  if (!envAnchors.has(name)) envAnchors.set(name, process.env[name]);
+  const stack = envFrames.get(name) ?? [];
+  envFrames.set(name, stack);
+  const token = Symbol(name);
+  stack.push({ token, value });
+  process.env[name] = value;
+  try {
+    return await body();
+  } finally {
+    const index = stack.findIndex((frame) => frame.token === token);
+    if (index >= 0) {
+      const holdsEnv = index === stack.length - 1;
+      stack.splice(index, 1);
+      if (holdsEnv) restoreEnv(name, stack.at(-1)?.value ?? envAnchors.get(name));
+      else if (process.env[name] === value) restoreEnv(name, stack.at(-1)?.value ?? envAnchors.get(name));
     }
   }
 };

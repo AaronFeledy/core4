@@ -10,7 +10,7 @@ import { AbsolutePath, AppId, type LandofileShape, ProviderId, ServiceName } fro
 import { PrivilegeService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
-import { withCwd } from "../_support/temp-cwd.ts";
+import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
@@ -45,7 +45,7 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-resolve-app-")));
   await Bun.write(join(dir, ".lando.yml"), landofileYaml());
   try {
-    return await withCwd(dir, () => run(dir));
+    return await withTempUserCache(() => withCwd(dir, () => run(dir)));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -53,13 +53,9 @@ const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 
 const withTempUserCache = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-runtime-cache-")));
-  const original = process.env.LANDO_USER_CACHE_ROOT;
-  process.env.LANDO_USER_CACHE_ROOT = dir;
   try {
-    return await run(dir);
+    return await withEnvVar("LANDO_USER_CACHE_ROOT", dir, () => run(dir));
   } finally {
-    if (original === undefined) process.env.LANDO_USER_CACHE_ROOT = undefined;
-    else process.env.LANDO_USER_CACHE_ROOT = original;
     await rm(dir, { recursive: true, force: true });
   }
 };
@@ -70,7 +66,7 @@ const withTwoTempApps = async <T>(run: (left: string, right: string) => Promise<
   await Bun.write(join(left, ".lando.yml"), landofileYaml("embedded-app"));
   await Bun.write(join(right, ".lando.yml"), landofileYaml("other-app"));
   try {
-    return await withCwd(left, () => run(left, right), [left, right]);
+    return await withTempUserCache(() => withCwd(left, () => run(left, right), [left, right]));
   } finally {
     await rm(left, { recursive: true, force: true });
     await rm(right, { recursive: true, force: true });

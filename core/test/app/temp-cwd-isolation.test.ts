@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { withCwd } from "../_support/temp-cwd.ts";
+import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
 const roots: string[] = [];
 
@@ -126,5 +126,59 @@ describe("withCwd", () => {
     });
 
     expect(observed).toBe(follower);
+  });
+});
+
+describe("withEnvVar", () => {
+  const name = "LANDO_USER_CACHE_ROOT";
+
+  test("restores the captured env value once the body completes", async () => {
+    const before = process.env[name];
+    const observed = await withEnvVar(name, "/tmp/lando-env-restore", async () => process.env[name]);
+
+    expect(observed).toBe("/tmp/lando-env-restore");
+    expect(process.env[name]).toBe(before);
+  });
+
+  test("a later owner keeps its value when an outlived call restores", async () => {
+    const held = gate();
+    const outlived = withEnvVar(name, "/tmp/lando-env-abandoned", () => held.reached);
+    const observed = await withEnvVar(name, "/tmp/lando-env-follower", async () => {
+      held.release();
+      await outlived;
+      return process.env[name];
+    });
+
+    expect(observed).toBe("/tmp/lando-env-follower");
+  });
+
+  test("a later owner hands the env back to an outlived call rather than the host default", async () => {
+    const before = process.env[name];
+    const held = gate();
+    const outlived = withEnvVar(name, "/tmp/lando-env-abandoned-keep", () => held.reached);
+    await withEnvVar(name, "/tmp/lando-env-follower-keep", async () => undefined);
+    const afterFollower = process.env[name];
+    held.release();
+    await outlived;
+
+    expect(afterFollower).toBe("/tmp/lando-env-abandoned-keep");
+    expect(process.env[name]).toBe(before);
+  });
+
+  test("an outlived call does not restore the ambient value a later call captured on entry", async () => {
+    const before = process.env[name];
+    const abandonedGate = gate();
+    const followerGate = gate();
+
+    const outlived = withEnvVar(name, "/tmp/lando-env-abandoned-ambient", () => abandonedGate.reached);
+    const following = withEnvVar(name, "/tmp/lando-env-follower-ambient", () => followerGate.reached);
+
+    abandonedGate.release();
+    await outlived;
+    expect(process.env[name]).toBe("/tmp/lando-env-follower-ambient");
+
+    followerGate.release();
+    await following;
+    expect(process.env[name]).toBe(before);
   });
 });
