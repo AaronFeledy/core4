@@ -313,6 +313,7 @@ const makeScratchForkLayer = (
             id: "recording",
             capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
             setup: () => Effect.void,
+            revalidateStartup: Effect.void,
             applyRoutes: (routes, app) =>
               Effect.sync(() => {
                 routeRecorder.applied.push(String(app));

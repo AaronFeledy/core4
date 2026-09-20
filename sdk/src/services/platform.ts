@@ -68,6 +68,12 @@ export interface RouterServiceShape {
     ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
     Scope.Scope
   >;
+  /**
+   * Re-observe router startup against the running router and refresh whatever
+   * persisted startup observation the implementation keeps. Distinct from
+   * `setup`: it acquires no ports, starts no services, and takes no Scope.
+   */
+  readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
   readonly applyRoutes: (
     routes: ReadonlyArray<RoutePlan>,
     appId: AppId,

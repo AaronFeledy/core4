@@ -50,7 +50,12 @@ import {
   publishFallbackWarn,
 } from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
-import { DEFAULT_AUTHORITY_PORTS, authoritiesFor, renderTraefikDynamicConfig } from "./routing.ts";
+import {
+  type AuthorityPorts,
+  DEFAULT_AUTHORITY_PORTS,
+  authoritiesFor,
+  renderTraefikDynamicConfig,
+} from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { stopSockets } from "./socket-proxy-install.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
@@ -143,6 +148,23 @@ const observeWatcherStartup = (dependencies: TraefikProxyDependencies) =>
     return yield* Effect.fail(error);
   });
 
+// observeWatcherStartup removes .lando-routing-state on failure; persistedStatus
+// reports stopped without it. Every successful observation must rewrite the
+// fallback config and routing marker together.
+const finalizeRouterStartup = (dependencies: TraefikProxyDependencies, advertised: AuthorityPorts) =>
+  Effect.gen(function* () {
+    yield* assertAdvertisedForward(dependencies, advertised);
+    yield* observeWatcherStartup(dependencies);
+    yield* dependencies.fileSystem.writeAtomic(
+      fallbackConfigFile(dependencies.paths),
+      renderTraefikFallbackConfig(),
+    );
+    yield* dependencies.fileSystem.writeAtomic(
+      routingStateFile(dependencies.paths),
+      [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
+    );
+  });
+
 const applyError = (app: AppId, cause: unknown): ProxyApplyError =>
   new ProxyApplyError({
     message: `Traefik route application failed for ${String(app)}.`,
@@ -162,6 +184,9 @@ const proxyError = (operation: string, cause: unknown): ProxyError =>
     remediation: "Check the global Traefik service and its route-config directory, then retry.",
     cause,
   });
+
+const mapStartupRevalidationError = (cause: unknown): ProxyError | RouterWatcherError =>
+  cause instanceof RouterWatcherError ? cause : proxyError("startup revalidation", cause);
 
 const resolveLiveSocketProxy = Effect.gen(function* () {
   const privilege = yield* Effect.serviceOption(PrivilegeService);
@@ -233,17 +258,15 @@ export const makeTraefikRouterService = (
         }
         yield* prepareTraefikDiagnostics(dependencies);
         yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
-        yield* assertAdvertisedForward(dependencies, advertised);
-        yield* observeWatcherStartup(dependencies);
-        yield* dependencies.fileSystem.writeAtomic(
-          fallbackConfigFile(dependencies.paths),
-          renderTraefikFallbackConfig(),
-        );
-        yield* dependencies.fileSystem.writeAtomic(
-          routingStateFile(dependencies.paths),
-          [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
-        );
+        yield* finalizeRouterStartup(dependencies, advertised);
       }).pipe(Effect.mapError(mapSetupError)),
+    revalidateStartup: Effect.gen(function* () {
+      const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+      const advertised =
+        state === undefined ? authorityPorts : { http: state.httpPort, https: state.httpsPort };
+      authorityPorts = advertised;
+      yield* finalizeRouterStartup(dependencies, advertised);
+    }).pipe(Effect.mapError(mapStartupRevalidationError)),
     applyRoutes: (nextRoutes, app) =>
       Effect.gen(function* () {
         const appKey = String(app);

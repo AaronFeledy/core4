@@ -850,6 +850,7 @@ export declare class RouterService extends Context.Tag("@lando/core/RouterServic
       ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
       Scope.Scope
     >;
+    readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
     readonly applyRoutes: (
       routes: ReadonlyArray<RoutePlan>,
       appId: AppId,

@@ -262,6 +262,7 @@ const makeDestroyLayer = (
     id: "recording",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () => Effect.void,
+    revalidateStartup: Effect.void,
     applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
     removeRoutes: (app) =>
       Effect.sync(() => void routeRemovals.push(String(app))).pipe(
