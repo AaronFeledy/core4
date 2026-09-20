@@ -88,8 +88,7 @@ const envAnchors = new Map<string, string | undefined>();
 const envFrames = new Map<string, Array<{ readonly token: symbol; readonly value: string }>>();
 
 const restoreEnv = (name: string, value: string | undefined): void => {
-  if (value === undefined) process.env[name] = undefined;
-  else process.env[name] = value;
+  process.env[name] = value;
 };
 
 /**
@@ -112,8 +111,9 @@ export const withEnvVar = async <T>(name: string, value: string, body: () => Pro
     if (index >= 0) {
       const holdsEnv = index === stack.length - 1;
       stack.splice(index, 1);
-      if (holdsEnv) restoreEnv(name, stack.at(-1)?.value ?? envAnchors.get(name));
-      else if (process.env[name] === value) restoreEnv(name, stack.at(-1)?.value ?? envAnchors.get(name));
+      if (holdsEnv || process.env[name] === value) {
+        restoreEnv(name, stack.at(-1)?.value ?? envAnchors.get(name));
+      }
     }
   }
 };
