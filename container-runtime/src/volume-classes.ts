@@ -1,4 +1,4 @@
-import type { LabelMap } from "@lando/sdk/schema";
+import type { AppPlan, LabelMap } from "@lando/sdk/schema";
 
 import type { VolumeSelectorClass } from "./podman/volume-prune.ts";
 
@@ -7,6 +7,10 @@ export const STORAGE_KIND_LABEL = "dev.lando.storage-kind";
 
 /** Written by `volumeCreationLabels` from `store.scope` for every Lando-created volume. */
 export const STORAGE_SCOPE_LABEL = "dev.lando.scope";
+
+/** The class a planned store belongs to; the write-side counterpart of {@link volumeClassFromLabels}. */
+export const volumeClassForStore = (store: AppPlan["stores"][number]): VolumeSelectorClass =>
+  store.kind === "cache" ? "cache" : "data";
 
 /**
  * The class a volume was created under, read from the labels the creating provider wrote. Teardown

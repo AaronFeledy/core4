@@ -3,8 +3,10 @@ import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import {
+  VOLUME_OWNER_LABEL,
   VOLUME_WITNESS_IMAGE,
   makeProviderDataPlane,
+  planVolumeOwnership,
   volumeCreationFact,
   volumeCreationLabels,
 } from "@lando/container-runtime/data-plane";
@@ -1011,7 +1013,7 @@ const removeOwnedVolume = (
     if (typeof decoded !== "object" || decoded === null) return;
     const labels = Reflect.get(decoded, "Labels");
     if (typeof labels !== "object" || labels === null) return;
-    if (Reflect.get(labels, "dev.lando.volume-owner") !== plan.root) return;
+    if (Reflect.get(labels, VOLUME_OWNER_LABEL) !== planVolumeOwnership(plan).appRoot) return;
     const removed = yield* request(api, "destroy", { method: "DELETE", path });
     if (removed.status === 404 || removed.status === 204 || removed.status === 200) return;
     return yield* Effect.fail(

@@ -5,7 +5,7 @@ import { Option, Schema } from "effect";
 import { AbsolutePath, type AppPlan, type VolumeCreationFact } from "@lando/sdk/schema";
 
 import { STORAGE_KIND_LABEL, STORAGE_SCOPE_LABEL } from "./volume-classes.ts";
-import { volumeCreationOwnerLabels } from "./volume-observation.ts";
+import { volumeOwnershipLabels } from "./volume-ownership.ts";
 
 export const volumeCreationLabels = (
   plan: AppPlan,
@@ -15,7 +15,7 @@ export const volumeCreationLabels = (
   "dev.lando.store": store.name,
   [STORAGE_SCOPE_LABEL]: store.scope,
   "dev.lando.volume-instance": randomUUID(),
-  ...volumeCreationOwnerLabels(plan.identity),
+  ...volumeOwnershipLabels(plan, store),
   ...(store.kind === "cache" ? { [STORAGE_KIND_LABEL]: "cache" } : {}),
 });
 

@@ -258,6 +258,7 @@ It registers no JSON Schema.
 
 ## Additive schema exports
 
+- `appIdentityKey`
 - `VolumeCreationFact`
 - `VolumeInitializationRecord`
 - `VolumeLocator`
