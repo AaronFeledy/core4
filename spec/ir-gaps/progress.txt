@@ -427,3 +427,10 @@ under a non-root `user:` without an authored `command:`.
 - Verification: `gate:pr` green; 68 focused tests across php, php-wave-d, php-prerequisites, nginx, and static, then 31 on php.test.ts after the command and entrypoint gates.
 - **Learnings for future iterations:** A build step that exists so a generated command can run must be gated on that command remaining the planned command. Overwriting `setCommand` later does not unschedule the step.
 ---
+## 2026-09-19 21:23 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-19 21:35 - US-650 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in lando4-dev (complete). A `php:8.3` app with `user: www-data` and `home: false` planned the generated `apache2-foreground -c …` launcher as PID 1; Apache left the write-free path and died only with `AH00072` bind `:80`. The same launcher as root served `us650-root-ok` from `/app/index.php` (DocumentRoot is the main server, not Debian's `/var/www/html` vhost) and the shared Lando `404 Page not found` page. Adjacent `php -v` was 8.3.33. Destroyed both apps with `--purge`.
+- **Out-of-scope finding:** `user: www-data` on the default `lando` provider cannot bind Apache `Listen 80` (`Permission denied: AH00072`). Documented residual for US-651; `port:` only moves the healthcheck.
+---
