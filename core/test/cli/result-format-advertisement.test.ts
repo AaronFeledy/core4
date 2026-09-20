@@ -14,7 +14,7 @@ import {
 /**
  * Commands whose own render produces a table. Write-verb and prose-only
  * commands stay off this list even when they once defaulted `--format` to
- * `table`; advertising a format they do not emit is the defect US-658 closes.
+ * `table`; advertising a format they do not emit is refused at the boundary.
  */
 const TABLE_COMMANDS = [
   "app:config",
