@@ -787,3 +787,60 @@ containers the provider still holds, and the result names only what went away.
 ## 2026-09-20 07:20 - Drift Audit
 - [looper] gate skipped Drift Audit: gate: script exited with code 1
 ---
+## 2026-09-20 08:35 - US-654 Build
+- The command doctor names as the first remediation can now affect the
+  condition it remediates. `RouterService` gained a required
+  `revalidateStartup: Effect<void, ProxyError | RouterWatcherError>` — a
+  re-observation that acquires no ports, starts no services, and takes no
+  Scope — and `meta:global:restart` and `meta:global:rebuild` call it.
+  Restart calls it after the start phase returns; rebuild calls it after the
+  inspect loop and before `PostGlobalRebuildEvent`, so a rebuild that leaves
+  the router's observation broken never publishes a post event.
+- Traefik implements it over the same tail `setup` runs: the last four steps of
+  `setup` are now one `finalizeRouterStartup` helper, so a healthy
+  re-observation clears `watcher-diagnostic.json` AND rewrites
+  `.lando-routing-state` and `fallback.yml`. That pairing is the point:
+  `observeWatcherStartup` deletes the routing marker when it records a failure
+  and `persistedStatus` reports the router stopped without it, so clearing the
+  record alone would have left a recovered router permanently reported as
+  stopped. The advertised ports come from persisted acquisition state, not
+  closure state, so a fresh process revalidates correctly.
+- A still-failing watcher rewrites the record with a fresh `observedAt`,
+  unchanged classification, and fails the command — a remediation that exits
+  zero while the router is unusable would be a lie. Unreadable or absent logs
+  stay a no-op that preserves prior evidence rather than assuming health.
+- The unavailable-router fallback revalidates to `Effect.void`: no router ran,
+  so nothing re-observes, and a record an earlier router left behind stays
+  reported. Doctor still never probes live; only the wording changed, because
+  the record is no longer a `setup`-only observation.
+- Verification: typecheck, lint, all 13 boundary rules, `codegen:check`, and
+  guide-drift against origin/main all pass. RED first: four core cases
+  (restart leaves the record, restart does not fail on a broken watcher,
+  rebuild publishes its post event anyway, rebuild never revalidates) plus
+  five plugin cases and two real-doctor cases; 82 green across proxy,
+  doctor-watcher, global-commands, and the Traefik contract suite afterward,
+  and 72 green across the seven adjacent suites that build RouterService
+  literals. Real binary `lando global:restart` reached the provider and failed
+  with a tagged `ServiceStartError` on a host port already held by a leftover
+  rootlessport — a pre-existing host condition, and correct behavior: the
+  command fails before revalidation when the router never started.
+- **Learnings for future iterations:**
+  - `RouterServiceShape` is declared twice, like `RuntimeProviderShape`: once
+    in `sdk/src/services/platform.ts` and again inline inside the tag
+    declaration in `sdk/src/services/index.ts`, where it shadows the
+    `export *`. Grepping for the interface name finds only the first.
+  - `RouterService` is NOT in `sdk/test/fixtures/sdk-mvp-surface.json`, so a
+    member added to its shape does not touch the frozen service-tag fixture.
+    `sdk/API_COMPATIBILITY.md` still needs the additive row.
+  - Adding a required RouterService member cost only four test-literal edits,
+    not the ~15 the call-site count suggested: most sites spread
+    `TestRouterService`/`makeTestRouterService()` and were fixed for free.
+    `bun run typecheck` is the only honest worklist, and it is worth re-running
+    after each batch — an indentation-matched insertion landed in a neighboring
+    `RuntimeProviderShape` literal in the same file and only typecheck caught it.
+  - `ProxyError` is exported from `@lando/sdk/errors`, not `@lando/sdk/services`,
+    even though `ProviderError` is available from the latter.
+  - The global bootstrap graph already provides `RouterService` live through the
+    provider base layer; only the typed channels were missing
+    (`GlobalRuntimeServices` and the `globalRuntimeLayer()` cast).
+---
