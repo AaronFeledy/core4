@@ -37,7 +37,14 @@ import {
 } from "@lando/container-runtime/podman/compose";
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
-import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import {
+  DESTROYED,
+  DESTROY_NO_OP,
+  observedRemoval,
+  postExactServiceLifecycle,
+  postServiceLifecycle,
+  removeObservedContainer,
+} from "@lando/container-runtime/service-lifecycle";
 import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import {
   makeAttachDecoder as makeRuntimeAttachDecoder,
@@ -1783,7 +1790,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           resolvePlan(target).pipe(
             Effect.flatMap((plan) =>
               plan === undefined
-                ? Effect.void
+                ? Effect.succeed(DESTROY_NO_OP)
                 : bringDown(plan, dockerApi, {
                     volumes: destroyOptions.volumes,
                     ...(destroyOptions.purgeCaches === undefined
@@ -1793,8 +1800,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     Effect.tap(() =>
                       destroyOptions.removeState === false ? Effect.void : forgetPlan(target.app),
                     ),
+                    Effect.as(DESTROYED),
                   ),
             ),
+          ),
+        removeObservedService: (observed) =>
+          removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }).pipe(
+            Effect.map(observedRemoval),
           ),
         logs: (target, logOptions) =>
           Stream.unwrap(

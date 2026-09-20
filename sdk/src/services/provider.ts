@@ -301,7 +301,18 @@ export interface RuntimeProviderShape {
     target: ServiceSelector,
     options?: WaitForExitOptions,
   ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
-  readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
+  readonly destroy: (
+    target: AppSelector,
+    options: DestroyOptions,
+  ) => Effect.Effect<DestroyOutcome, ProviderError>;
+  /**
+   * Stops and removes the single container behind one observation this provider reported from
+   * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
+   * the identity they were observed under. An observation carrying no container id is `absent`.
+   */
+  readonly removeObservedService: (
+    observed: ServiceRuntimeInfo,
+  ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
   readonly execStream: (
@@ -354,6 +365,17 @@ export interface DestroyOptions {
   readonly purgeCaches?: boolean;
   readonly removeState?: boolean;
 }
+
+/**
+ * What a `destroy` call actually did. A provider handed no plan that finds no applied record for
+ * the app removed nothing, and says so, so no caller can read silent success as teardown.
+ */
+export type DestroyOutcome =
+  | { readonly kind: "destroyed" }
+  | { readonly kind: "no-op"; readonly reason: "no-applied-plan" };
+
+/** Whether `removeObservedService` removed the container behind an observation, or found none. */
+export type ObservedServiceRemoval = { readonly kind: "removed" } | { readonly kind: "absent" };
 
 export class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
   RuntimeProvider,

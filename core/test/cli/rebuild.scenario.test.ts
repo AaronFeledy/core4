@@ -265,6 +265,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
       Effect.sync(() => {
         lifecycleOrder.push("destroy");
         destroyCalls.push({ target, options });
+        return { kind: "destroyed" as const };
       }),
     inspect: (target) =>
       Effect.succeed({
@@ -331,7 +332,6 @@ const makeCachedBuildLayer = () => {
     id: "lando",
     capabilities,
     apply: () => Effect.succeed({ changed: true }),
-    destroy: () => Effect.void,
     inspect: (target) =>
       Effect.succeed({
         app: planWithAppBuild.id,

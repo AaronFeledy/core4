@@ -421,6 +421,9 @@ const runTestEphemeral = (spec: Parameters<RuntimeProviderShape["run"]>[0]) =>
 /**
  * In-memory `RuntimeProvider` reference implementation for SDK contract tests.
  */
+/** Observed containers this double has already removed, so a second removal is honestly absent. */
+const testRemovedObservations = new Set<string>();
+
 export const TestRuntimeProvider: RuntimeProviderShape = {
   id: TEST_PROVIDER_ID,
   displayName: "Test Runtime Provider",
@@ -484,7 +487,18 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   stop: (_target) => Effect.void,
   restart: (_target) => Effect.void,
   waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
-  destroy: (_target, _options) => Effect.void,
+  destroy: (target, _options) =>
+    Effect.succeed(
+      target.plan === undefined ? { kind: "no-op", reason: "no-applied-plan" } : { kind: "destroyed" },
+    ),
+  removeObservedService: (observed) =>
+    Effect.sync(() => {
+      if (observed.containerId === undefined) return { kind: "absent" };
+      const key = `${observed.app}\u0000${observed.service}\u0000${observed.containerId}`;
+      if (testRemovedObservations.has(key)) return { kind: "absent" };
+      testRemovedObservations.add(key);
+      return { kind: "removed" };
+    }),
 
   exec: (_target, command) =>
     Effect.succeed({

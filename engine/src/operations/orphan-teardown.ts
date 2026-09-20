@@ -1,5 +1,10 @@
 import { DateTime, Effect } from "effect";
 
+import {
+  isGlobalScopedVolume,
+  teardownVolumeClasses,
+  volumeClassFromLabels,
+} from "@lando/container-runtime/volume-classes";
 import type {
   AppLockTimeoutError,
   NoProviderInstalledError,
@@ -20,11 +25,14 @@ import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 
 export interface OrphanTeardownOptions {
   /** Remove the data volumes recorded against the root; `stop` never does. */
-  readonly removeVolumes: boolean;
+  readonly volumes: boolean;
+  /** Remove the cache volumes recorded against the root; `stop` never does. */
+  readonly purgeCaches: boolean;
 }
 
 export interface OrphanTeardownResult {
   readonly app: string;
+  /** Exactly the services whose container the provider stopped and removed. */
   readonly services: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
 }
@@ -40,10 +48,10 @@ export type OrphanTeardownError =
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 /**
- * `RuntimeProviderRegistry.select` resolves a provider from `plan.provider` alone, and an orphan
- * group has no applied plan left. This carries the observed provider, app id, and teardown root so
- * destroy cannot fall back to another project's applied plan for the same app id. Empty `services`
- * means it never describes resources; volume removal stays on observed identity.
+ * `RuntimeProviderRegistry.select` resolves a provider from `plan.provider` alone, and the app
+ * mutation lock is keyed on the app being torn down, so an orphan group still needs a plan-shaped
+ * value for both even though no plan survives. It describes no resources: every container and
+ * volume here is removed by the identity the provider itself observed.
  */
 const selectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan => ({
   id: group.appId,
@@ -62,9 +70,8 @@ const selectionPlan = (group: AppliedOrphanGroup, root: AbsolutePath): AppPlan =
 
 /**
  * Removes the runtime resources recorded against an app root that no applied plan accounts for.
- * Container teardown is handed a root-scoped selection plan so providers never look up applied
- * state by app id; data volumes are removed by observed identity so the caller can report exactly
- * what went away.
+ * Containers and volumes alike go by observed identity, never through provider state looked up by
+ * app id, so the caller reports exactly what went away and nothing else.
  */
 export const tearDownOrphans = (input: {
   readonly root: AbsolutePath;
@@ -77,6 +84,8 @@ export const tearDownOrphans = (input: {
 > =>
   Effect.gen(function* () {
     const registry = yield* RuntimeProviderRegistry;
+    const removeVolumes = input.options.volumes || input.options.purgeCaches;
+    const volumeClasses = teardownVolumeClasses(input.options);
     const services: string[] = [];
     let volumesRemoved = false;
     for (const group of input.groups) {
@@ -85,15 +94,16 @@ export const tearDownOrphans = (input: {
         appLockTarget(plan),
         Effect.gen(function* () {
           const provider = yield* registry.select(plan);
-          if (group.services.length > 0) {
-            // App ids are not unique across roots, so never forget provider state by id.
-            yield* provider.destroy({ app: group.appId, plan }, { volumes: false, removeState: false });
-            services.push(...group.services.map((service) => String(service.service)));
+          for (const service of group.services) {
+            const removal = yield* provider.removeObservedService(service);
+            if (removal.kind === "removed") services.push(String(service.service));
           }
-          if (!input.options.removeVolumes) return;
+          if (!removeVolumes) return;
           for (const volume of group.volumes) {
             const generation = volume.identity?.generation;
             if (generation === undefined) continue;
+            if (isGlobalScopedVolume(volume.labels)) continue;
+            if (!volumeClasses.includes(volumeClassFromLabels(volume.labels))) continue;
             yield* provider.removeVolume(volume.ref, generation);
             volumesRemoved = true;
           }

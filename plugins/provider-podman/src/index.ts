@@ -40,7 +40,14 @@ import {
 } from "@lando/container-runtime/podman/version-floor";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
-import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import {
+  DESTROYED,
+  DESTROY_NO_OP,
+  observedRemoval,
+  postExactServiceLifecycle,
+  postServiceLifecycle,
+  removeObservedContainer,
+} from "@lando/container-runtime/service-lifecycle";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import {
   type ProviderCapabilityError,
@@ -799,7 +806,7 @@ export const makeRuntimeProvider = (
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
             const plan = target.plan ?? (yield* resolvePlan(target.app));
-            if (plan === undefined) return;
+            if (plan === undefined) return DESTROY_NO_OP;
             yield* bringDown(plan, {
               api: podmanApi,
               ctx: PODMAN_CTX,
@@ -811,7 +818,12 @@ export const makeRuntimeProvider = (
             if (destroyOptions.removeState !== false) {
               yield* forgetPlan(target.app);
             }
+            return DESTROYED;
           }),
+        removeObservedService: (observed) =>
+          removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
+            Effect.map(observedRemoval),
+          ),
         logs: (target, logOptions) =>
           Stream.unwrap(
             (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(

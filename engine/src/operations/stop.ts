@@ -226,7 +226,7 @@ const stopOrphans = (
   tearDownOrphans({
     root: resolution.root,
     groups: resolution.groups,
-    options: { removeVolumes: false },
+    options: { volumes: false, purgeCaches: false },
   }).pipe(
     Effect.map(
       (removed): StopAppResult =>
