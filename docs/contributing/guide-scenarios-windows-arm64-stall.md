@@ -6,8 +6,7 @@ not a guide.
 
 The point of measuring is attribution. A cancelled job tells you that a cap
 fired, not what was running when it fired. Every figure below comes from the
-GitHub Actions job records and the raw step logs for the window named, and the
-page states plainly where the evidence stops.
+GitHub Actions job records and the raw step logs for the window named.
 
 ## How to re-measure
 

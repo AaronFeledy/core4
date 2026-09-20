@@ -1,4 +1,4 @@
-// allow: SIZE_OK — Keep the reporter contract fixtures and wrapper regressions in this PR-sharded suite; the RED task preserves existing tests and permits only two test files.
+// allow: SIZE_OK — Keep reporter contract fixtures and wrapper regressions together in one sharded suite; do not split.
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
