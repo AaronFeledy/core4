@@ -926,3 +926,11 @@ containers the provider still holds, and the result names only what went away.
     `result.failed === false` is implicitly asserting every unrelated step too.
     Sandbox the host-reaching steps rather than narrowing the assertion.
 ---
+## 2026-09-20 10:55 - US-655 Review
+- Review corrected the baseline record rather than splitting start.scenario into six queued defects. A first isolation pass reported 41/6; a later file run is 46/1, and the file minus the live-Podman case is 46/0. Only `scaffolds an app and starts it against the live Podman socket` still reproduces (skipIf opened, then start exited 1). The other five are leads, not independent queue items.
+- 187 is the residual `205 − 18` from the suite measurement, not a sum of in-suite victim counts. The transport chmod-after-bind flake is queued on its own, outside that residual.
+- Review notes (deferred/rejected): splitting the five non-reproducing start.scenario symptoms into six PRD stories or GitHub issues — they do not reproduce, and AC2 queues reproducing failures, not new story ids; omitting the live-socket reproduction command as host-unsafe — AC2 requires a reproduction, and the case is already skipIf-gated; rewriting the measured 205; an INDEX link for the contributing evidence page.
+- Verification: gate:pr passed; guide gates passed against origin/main; uninstall-runtime-service 5/5; start.scenario minus live-socket 46/0; Bugbot found no bugs.
+- Guide-Coverage-Skip: Maintainer-only unit-suite baseline evidence and a test sandbox completion; no public CLI or Landofile contract changed.
+- **Learnings for future iterations:** A file-level isolation count that does not survive a second run is a lead. Filter by test name before treating heterogeneous symptoms in one file as unrelated causes.
+---

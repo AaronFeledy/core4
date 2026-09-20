@@ -35,14 +35,19 @@ to the leaking file, not to the 160 files that report it.
 The historical figure of thirteen failures was carried forward without
 re-measurement and is retired. It was never accurate for the current tree.
 
-**205 reported failures resolve to 18 real ones.** Ten non-generated files and
-155 generated guide-scenario files reported failures; running each alone leaves
-four files failing. The other 187 reported failures come from a single leaked
+**205 reported failures resolve to 18 on the first isolation pass** (9 + 6 + 1 +
+2). Ten non-generated files and 155 generated guide-scenario files reported
+failures. 187 is the residual `205 − 18`, not a sum of the in-suite victim
+counts below. A later isolation re-check dropped `start.scenario.test.ts` from
+6 fails to 1, so the reproducing isolated set is 13 (9 + 1 + 1 + 2); the extra
+five do not get their own queue entries. The other 187 remain one leaked
 `process.chdir` (see *Cross-file contamination*).
 
 ## Reproducing failures
 
-Each is its own item with its own reproduction. They share no cause.
+Each reproducing isolated failure is its own item with its own reproduction.
+They share no cause. A first isolation pass that does not survive a second run
+is a lead, not a queued defect.
 
 ### `core/test/app/resolve.test.ts` — 9 failures
 
@@ -58,19 +63,30 @@ so the count is not stable across runs.
 to be an isolation fix in `withTempApp` / `withTwoTempApps` rather than a raised
 timeout.
 
-### `core/test/cli/start.scenario.test.ts` — 6 failures
+### `core/test/cli/start.scenario.test.ts` — 1 reproducing failure
 
 ```bash
-bun --no-orphans test core/test/cli/start.scenario.test.ts   # 41 pass, 6 fail
+bun --no-orphans test core/test/cli/start.scenario.test.ts
 ```
 
-Three interruption/rollback cases time out at ~5,010 ms; one fails with
-`Expected task event was not published`; one reports a malformed-Landofile path;
-one (`scaffolds an app and starts it against the live Podman socket`) runs for
-60 s and needs a live Podman socket this host does not provide.
+A first isolation pass during measurement reported 41 pass / 6 fail. Re-running
+the file is 46 pass / 1 fail. The only reproducing case is `scaffolds an app
+and starts it against the live Podman socket`.
 
-**Queued.** Not one cause: the live-socket case is environment-gated and the
-other five are not. Splitting it is part of the work.
+That case is already `test.skipIf(resolveLiveProviderSocket() === undefined)`.
+On this host the gate opened (a socket answered) and `lando start` then exited
+1 after ~16 s. **Queued** as environment-gated, not as a code defect. Reproduce
+only where a live provider is intended:
+
+```bash
+bun --no-orphans test core/test/cli/start.scenario.test.ts --test-name-pattern 'live Podman socket'
+```
+
+The other five from the first isolation pass — three interruption/rollback
+timeouts at ~5,010 ms, `Expected task event was not published`, and a
+malformed-Landofile path — do not reproduce. Selected by name they pass, and
+the file minus the live-socket case is 46 pass / 0 fail. They are not
+independent queued items.
 
 ### `core/test/scenario/mvp-exit-criteria.scenario.test.ts` — 1 failure
 
@@ -110,7 +126,9 @@ assertion was weakened: `result.failed === false` still holds.
 ## Cross-file contamination
 
 Six non-generated files and all 155 generated guide-scenario files reported
-failures under `test:unit` and pass when run alone:
+failures under `test:unit` and pass when run alone. The in-suite fail counts
+on the commands below illustrate victim files; they are not addends of the
+187 residual.
 
 ```bash
 bun --no-orphans test engine/test/operations/applied-state-teardown.test.ts   # 29 pass in isolation, 27 fail in suite
@@ -149,7 +167,8 @@ story is the grouping this work exists to avoid.
 
 `engine/test/subsystems/host-proxy/transport.test.ts`'s `closes the listener when
 chmod fails after bind` is separately flaky on an unmodified `main`, racing a
-`setInterval(…, 0)` socket remover against bind/chmod. It is queued on its own.
+`setInterval(…, 0)` socket remover against bind/chmod. It is **queued on its
+own**, not counted in the 187 chdir residual.
 
 ## Named candidates
 
