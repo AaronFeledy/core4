@@ -35,7 +35,7 @@ const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
 export const APACHE_FEATURE_ID = "service-lando.apache" as const;
 export const APACHE_FEATURE_PRIORITY = 600;
 
-const apacheConfigPath = (webroot: string): string => {
+export const apacheDirectivePath = (webroot: string): string => {
   if (/\r|\n/u.test(webroot)) {
     throw new Error("Apache webroot must not contain line breaks.");
   }
@@ -63,7 +63,7 @@ const PID_FILE = "/tmp/lando-httpd.pid";
  * unchanged as the planned service user rather than only as root.
  */
 const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
-  const path = apacheConfigPath(webroot);
+  const path = apacheDirectivePath(webroot);
   return [
     "httpd-foreground",
     "-c",

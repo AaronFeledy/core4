@@ -3,6 +3,19 @@ import { readFile } from "node:fs/promises";
 import { Schema } from "effect";
 
 describe("@lando/sdk package exports", () => {
+  test("yaml entry point exports the shared scalar policy and document emitter", async () => {
+    // Given / When: a consumer imports the public YAML entry point.
+    const yaml = await import("@lando/sdk/yaml");
+    // Then: all six runtime exports are available through that subpath.
+    expect(Object.keys(yaml).sort()).toEqual([
+      "YamlEmitError",
+      "emitYamlDocument",
+      "isYamlPlainSafe",
+      "quoteYamlScalar",
+      "yamlMappingKeyText",
+      "yamlScalarText",
+    ]);
+  });
   test("landofile entry point exports translation validation", async () => {
     const landofile = await import("@lando/sdk/landofile");
     expect(landofile.validateConfigTranslateResult).toBeDefined();

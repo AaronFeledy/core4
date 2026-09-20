@@ -23,6 +23,14 @@
   authored source keys. Equivalent ordered filter operations ignore filter merge
   names; `both` participates in both HTTP and HTTPS conflict checks.
 
+- Route priorities are intrinsic specificity bands, so plans ranked in isolation
+  compose correctly once a router merges every running app into one table.
+  Wildcard hostnames occupy 2 through 65,538 and exact hostnames 65,539 through
+  131,075, each widened by path-prefix length; the diagnostic fallback keeps 1.
+  Routes of equal specificity receive equal priority and no ownership is assigned
+  between apps. A router that contributes its own routers must pin them above
+  `ROUTE_PRIORITY_MAX`.
+
 - `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
 
 - `RuntimeProviderShape.resume(target, identity)` and `suspend(target, identity)` are additive optional exact-runtime lifecycle methods. Bundled providers address the inspected container ID directly; recovery callers fail closed when a provider cannot preserve that immutable identity across temporary observation.
@@ -91,6 +99,7 @@
 - `AppPlanner.plan`'s error channel additively gains `CommandAliasConflictError` for plan-time rejection of surviving service-type reserved tooling names; the frozen service-surface fixture is updated to match. The type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions additively include the same tag because those App-handle methods plan through `AppPlanner`.
 
 - `@lando/sdk/errors` additively exports `HomePathCapabilityError` (`message`, `service`, `serviceType`, optional `user`, `remediation`) when a service persists its home but the planner cannot know the destination. `AppPlanner.plan`'s error channel additively includes the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match. `ServiceConfig` additively accepts optional `home` (`false` or `{ path? }`). `ServiceType` additively accepts optional `identity` (`ServiceImageIdentity`).
+- `@lando/sdk/errors` additively exports `DataTreeOwnershipCapabilityError` (`message`, `service`, `serviceType`, `target`, `option`, optional `user`, `remediation`) when a service mounts a data tree its planned user cannot be made to own. `AppPlanner.plan`'s error channel additively includes the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `ToolingError`, and `LogsAppError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match. `ServiceFeatureContext.addStorage` additively accepts optional `DataStoreOwnershipIntent` (`seededOwners`) so a feature can declare that the planned user must own the mounted tree.
 
 - `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, `SqlCommandFailedError`, and `SqlDumpNotFoundError` (`message`, `path`, `appRoot`, `remediation`) for database helper target selection, confirmation, failed in-service dump/load/reset commands, and missing/unreadable import dump files.
 
@@ -235,6 +244,15 @@
 - `@lando/sdk/expressions` additively exports `expressionInterpolationsTouchOnlyScopes`, a second scope predicate that asks whether every `{{ ... }}` interpolation reads only the given context scopes through pure helpers while treating `${VAR}` and `${secret:...}` text as inert. It is for a caller that replays that shell and secret text verbatim instead of evaluating it; `expressionTouchesOnlyScopes` keeps its stricter meaning and still reports such a template as unanalyzable. Same contracts-only tier as the rest of `@lando/sdk/expressions`: pure, no Effect runtime, no Bun, no IO, and no schema or service-tag freeze.
 - `RebuildAppOptions` additively gains optional `services?: ReadonlyArray<ServiceName>` for scoped rebuilds. `InfoAppOptions.service` is replaced pre-ship by `services?: ReadonlyArray<ServiceName>` without an alias. `ApplyOptions` additively gains optional `recordedPlan?: AppPlan` so a provider can persist the full app plan while applying a selected subplan. These are type-only interface changes with no JSON Schema artifact or frozen service-tag signature change.
 
+
+## Additive YAML exports
+
+`@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,
+`yamlMappingKeyText`, `emitYamlDocument`, and `YamlEmitError`. This dependency-free
+subpath shares fail-closed scalar and mapping-key quoting without Effect, Bun, or
+Node imports. The block-document emitter accepts JSON-compatible values, rejects
+unsupported values and cycles, and terminates each document with one newline.
+It registers no JSON Schema.
 
 ## Additive schema exports
 
@@ -751,6 +769,12 @@
 - `ComposeUlimit`
 - `ComposeUlimitsField`
 
+- `ROUTE_PRIORITY_DIAGNOSTIC`
+- `ROUTE_PATH_WEIGHT_CAP`
+- `ROUTE_PRIORITY_WILDCARD_BASE`
+- `ROUTE_PRIORITY_EXACT_BASE`
+- `ROUTE_PRIORITY_MAX`
+
 ## Additive Beta service fields
 
 - `CaSetupOptions.privilege`
@@ -882,6 +906,7 @@
 - `HttpTrustError`
 - `HttpUploadError`
 - `HomePathCapabilityError`
+- `DataTreeOwnershipCapabilityError`
 - `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
 - `DeprecationContradictionError`
@@ -1006,6 +1031,8 @@
 
 ## Additive Beta test helper exports
 
+- `yamlRoundTripCorpus`
+- `yamlRoundTripRecord`
 - `CollectImportBoundaryViolationsOptions`
 - `ImportBoundaryViolation`
 - `collectImportBoundaryViolations`

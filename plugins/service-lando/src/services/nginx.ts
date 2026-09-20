@@ -19,7 +19,8 @@ import type {
 } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
-import { landoErrorPageSetupLines, nginxErrorPageConfigLines } from "./http-errors.ts";
+import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
+import { nginxDefaultSiteRemovalBuildStep, nginxLauncherCommand } from "./nginx-config.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
@@ -55,32 +56,30 @@ const phpFastcgiCommand = (
   backend: string,
   webroot: string,
   ports: { readonly listen: number; readonly fpm: number },
-): ReadonlyArray<string> => [
-  "sh",
-  "-c",
-  [
-    "set -eu",
-    ...landoErrorPageSetupLines(),
-    "cat > /etc/nginx/conf.d/default.conf <<'LANDO_NGINX_PHP'",
-    "server {",
-    `  listen ${String(ports.listen)};`,
-    `  root ${webroot};`,
-    "  index index.php index.html;",
-    ...nginxErrorPageConfigLines(),
-    "  location / {",
-    "    try_files $uri $uri/ /index.php?$query_string;",
-    "  }",
-    "  location ~ \\.php$ {",
-    `    fastcgi_pass ${backend}:${String(ports.fpm)};`,
-    "    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;",
-    "    include fastcgi_params;",
-    "    fastcgi_index index.php;",
-    "  }",
-    "}",
-    "LANDO_NGINX_PHP",
-    "exec nginx -g 'daemon off;'",
-  ].join("\n"),
-];
+  user: string | undefined,
+): ReadonlyArray<string> =>
+  nginxLauncherCommand({
+    user,
+    serverBlock: [
+      "server {",
+      `  listen ${String(ports.listen)};`,
+      `  root ${webroot};`,
+      "  index index.php index.html;",
+      ...nginxErrorPageConfigLines(),
+      "  location / {",
+      "    try_files $uri $uri/ /index.php?$query_string;",
+      "  }",
+      "  location ~ \\.php$ {",
+      `    fastcgi_pass ${backend}:${String(ports.fpm)};`,
+      "    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;",
+      // Absolute: `-c` makes the config file's own directory nginx's
+      // configuration prefix, so a bare name would resolve under `/tmp`.
+      "    include /etc/nginx/fastcgi_params;",
+      "    fastcgi_index index.php;",
+      "  }",
+      "}",
+    ],
+  });
 
 const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -126,7 +125,9 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
       required: true,
     });
     if (service.command === undefined && service.entrypoint === undefined) {
-      ctx.setCommand(phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }));
+      ctx.addBuildStep(landoErrorPagesBuildStep());
+      ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
+      ctx.setCommand(phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }, service.user));
     }
   }
 
@@ -170,7 +171,9 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     if (fpm === undefined) return;
     const listen = service.port ?? DEFAULT_PORT;
     const webroot = service.webroot ?? APP_MOUNT_TARGET;
-    mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }));
+    mutator.addBuildStep(landoErrorPagesBuildStep());
+    mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());
+    mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }, service.user));
   });
 };
 

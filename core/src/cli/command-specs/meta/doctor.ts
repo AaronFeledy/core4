@@ -8,7 +8,6 @@ import {
   DoctorReportSchema,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
 } from "../../commands/doctor-report";
 import type { RenderContext } from "../../renderer-boundary";
 
@@ -44,7 +43,6 @@ const renderDoctorReportForInput = (report: DoctorReport, input: unknown, ctx?: 
   const options = inputDoctorOptions(input);
   const format = ctx?.format ?? options.format;
   if (format === "ndjson") return renderDoctorReportAsNdjson(report);
-  if (format === "yaml") return renderDoctorReportAsYaml(report);
   return renderDoctorReport(report, ctx);
 };
 
@@ -61,6 +59,7 @@ const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
 export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLayerFactory> = {
   resultSchema: DoctorReportSchema,
   id: "meta:doctor",
+  resultFormats: ["ndjson"],
   helpGroup: "common",
   mcpAllowed: true,
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
@@ -86,7 +85,6 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLaye
     }),
     format: Flags.string({
       description: "Output format for doctor reports.",
-      options: ["text", "json", "yaml"],
       default: "text",
     }),
   },

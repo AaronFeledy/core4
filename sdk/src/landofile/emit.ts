@@ -1,5 +1,6 @@
 import { Either } from "effect";
 
+import { quoteYamlScalar, yamlScalarText } from "../yaml/index.ts";
 import { LandofileEmitError } from "./errors.ts";
 
 const INDENT = "  ";
@@ -51,20 +52,6 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return proto === Object.prototype || proto === null;
 };
 
-const NUMBER_LIKE = /^-?\d+(?:\.\d+)?$/u;
-const BARE_SAFE = /^(?!@)[A-Za-z0-9._~:/@+-]+$/u;
-const RESERVED = new Set(["true", "false", "null"]);
-
-const quoteScalar = (value: string): string => {
-  const escaped = value
-    .replace(/\\/gu, "\\\\")
-    .replace(/"/gu, '\\"')
-    .replace(/\n/gu, "\\n")
-    .replace(/\r/gu, "\\r")
-    .replace(/\t/gu, "\\t");
-  return `"${escaped}"`;
-};
-
 const emitScalar = (value: unknown, path: string): string => {
   if (value === null) return "null";
   if (value === true) return "true";
@@ -78,10 +65,7 @@ const emitScalar = (value: unknown, path: string): string => {
     return String(value);
   }
   if (typeof value === "string") {
-    if (value !== "" && BARE_SAFE.test(value) && !RESERVED.has(value) && !NUMBER_LIKE.test(value)) {
-      return value;
-    }
-    return quoteScalar(value);
+    return yamlScalarText(value);
   }
   throw new LandofileEmitError({
     message: `Cannot emit value of type ${typeof value} at ${path} in a Landofile.`,
@@ -107,7 +91,7 @@ const entriesOf = (
   for (const [key] of entries) {
     if (!KEY_SHAPE.test(key)) {
       throw new LandofileEmitError({
-        message: `Cannot emit map key ${JSON.stringify(key)} at ${path === "" ? "<root>" : path} in a Landofile; keys must match ${KEY_SHAPE.source}.`,
+        message: `Cannot emit map key ${quoteYamlScalar(key)} at ${path === "" ? "<root>" : path} in a Landofile; keys must match ${KEY_SHAPE.source}.`,
       });
     }
   }
@@ -238,9 +222,9 @@ const emitArrayItems = (
  * The input is the **encoded (wire) form** of a Landofile — the merged tree of
  * plain records, arrays, strings, finite numbers, booleans, and `null`, i.e.
  * `LandofileShape.Encoded`, not a decoded runtime `LandofileShape.Type` whose
- * leaves may be branded or `DateTime` values. Strings that would otherwise parse
- * as a number, boolean, `null`, or that carry structural characters are quoted
- * so the emitted text re-parses to the exact same value.
+ * leaves may be branded or `DateTime` values. Strings are quoted according to
+ * the shared `@lando/sdk/yaml` scalar policy so the emitted text re-parses to
+ * the exact same value.
  *
  * Throws {@link LandofileEmitError} on a non-emittable input: a map key outside
  * `^[A-Za-z0-9_.-]+$`, a non-finite number, an unsupported value type

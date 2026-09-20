@@ -5,6 +5,7 @@ import {
   type CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type DataTreeOwnershipCapabilityError,
   type HomePathCapabilityError,
   type LandofileUnknownEventError,
   type NoProviderInstalledError,
@@ -77,6 +78,7 @@ type AppPlanResolutionError =
   | CapabilityError
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | NoProviderInstalledError
   | ProviderConfigError

@@ -116,11 +116,14 @@ The shorthand `:port` selects a **backend endpoint**, not a new listener. Two
 declarations that differ only in backend port therefore conflict, rather than
 creating two public ports. Set listener ports under `router:` instead.
 
-Within an app, exact hosts outrank wildcard hosts, then longer path prefixes win.
-Ties use ascending hostname, path and scheme in code-point order, independent of
-declaration order. The planner assigns distinct priorities; the diagnostic fallback
-always sits below app routes. Overlapping wildcard patterns follow that same tie
-rule, not the number of literal characters in the pattern.
+The proxy merges every running app into one router table, so this ordering spans
+all apps running at the same time, not just yours. Exact hostnames beat wildcard
+hostnames, then a longer path prefix beats a shorter one. A route's rank comes
+only from its own hostname specificity and path prefix length, never from how
+many routes an app declares or the order you declare them in. The diagnostic
+fallback always sits below every app route. Two routes of equal specificity have
+no defined winner, including the same hostname and path claimed by two running
+apps: Lando does not assign hostname ownership between apps.
 
 Equivalent declarations of one match dedupe. Different backends or ordered filter
 operations for the same match fail planning with `RouteInputError`, naming the

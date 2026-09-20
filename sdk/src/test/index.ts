@@ -5,6 +5,7 @@
  * treated as conforming to the SDK surface.
  */
 export { ContractFailure } from "./_shared.ts";
+export { yamlRoundTripCorpus, yamlRoundTripRecord } from "./yaml-round-trip-corpus.ts";
 export { type PluginContractInput, TestPluginManifest } from "./plugin-contract.ts";
 /**
  * runPluginContract arguments:

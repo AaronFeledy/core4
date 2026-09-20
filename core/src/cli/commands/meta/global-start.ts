@@ -9,6 +9,7 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
+  DataTreeOwnershipCapabilityError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -79,6 +80,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 export type GlobalStartError =
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

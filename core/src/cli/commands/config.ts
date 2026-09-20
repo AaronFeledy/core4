@@ -1,33 +1,6 @@
 import type { ConfigResult } from "@lando/engine/operations/config";
 import { TELEMETRY_RETENTION_POLICY_DOC } from "@lando/telemetry/policy";
 
-const formatYaml = (value: unknown, indent = 0): string => {
-  const prefix = " ".repeat(indent);
-  if (value === null || value === undefined) return `${prefix}null`;
-  if (typeof value === "string") return `${prefix}${value}`;
-  if (typeof value === "number" || typeof value === "boolean") return `${prefix}${String(value)}`;
-  if (Array.isArray(value)) {
-    if (value.length === 0) return `${prefix}[]`;
-    return value.map((v) => `${prefix}- ${formatYaml(v, 0).trimStart()}`).join("\n");
-  }
-  if (typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    if (entries.length === 0) return `${prefix}{}`;
-    return entries
-      .map(([k, v]) => {
-        if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-          return `${prefix}${k}:\n${formatYaml(v, indent + 2)}`;
-        }
-        if (Array.isArray(v) && v.length > 0) {
-          return `${prefix}${k}:\n${formatYaml(v, indent + 2)}`;
-        }
-        return `${prefix}${k}: ${formatYaml(v, 0).trimStart()}`;
-      })
-      .join("\n");
-  }
-  return `${prefix}${String(value)}`;
-};
-
 const formatTable = (value: unknown): string => {
   if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) {
     return String(value ?? "");
@@ -91,6 +64,5 @@ export const renderConfigResult = (result: ConfigResult): string => {
       : result.value !== undefined
         ? result.value
         : (result.config ?? {});
-  if (result.format === "yaml") return formatYaml(target);
   return formatTable(target);
 };

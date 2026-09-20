@@ -15,6 +15,7 @@ import { extractSpecFlags } from "../../../spec/command-boundary";
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
   resultSchema: AppConfigTranslateResultSchema,
   id: "app:config:translate",
+  resultFormats: ["table"],
   summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",
   recipePostInitAllowed: true,
@@ -48,7 +49,6 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
     }),
     format: Flags.string({
       description: "Output format.",
-      options: ["yaml", "table", "json"],
       default: "yaml",
     }),
   },
@@ -69,5 +69,14 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
         privateFileAccess,
       });
     }),
+  documentOutput: {
+    format: "yaml",
+    reason:
+      "the default preview emits the translated v4 Landofile itself, the artifact `--write` would persist, so it is a product document rather than the result envelope in another shape. The list, detect and write modes emit status text and use the envelope.",
+    when: (input) => {
+      const flags = extractSpecFlags(input);
+      return flags.list !== true && flags.detect !== true && flags.write !== true;
+    },
+  },
   render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, "yaml"),
 };

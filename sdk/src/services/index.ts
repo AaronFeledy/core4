@@ -81,6 +81,7 @@ import type {
   ConfigError,
   ConfigExpressionError,
   ConfigTranslatorConflictError,
+  DataTreeOwnershipCapabilityError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
   EventError,
@@ -616,6 +617,7 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       | CapabilityError
       | NotImplementedError
       | HomePathCapabilityError
+      | DataTreeOwnershipCapabilityError
       | PublicationUnsupportedError
       | CommandAliasConflictError
       | ConfigExpressionError

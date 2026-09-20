@@ -91,6 +91,8 @@ describe("stock PHP prerequisite plan", () => {
       "lando.boot:scaffold",
       "service-lando.php:prerequisites",
       "service-lando.php:composer",
+      "service-lando.php:apache-default-site",
+      "service-lando.http-errors:pages",
     ]);
     expect(steps[1]?.buildKeyInputs).toEqual({
       aptPackages: PHP_APT_PACKAGE_PINS,
@@ -115,7 +117,12 @@ describe("stock PHP prerequisite plan", () => {
   test("omits the Composer build step when composer is false", async () => {
     const steps = buildStepsFor(await composePhpPlan({ composer: false }));
 
-    expect(steps.map(({ id }) => id)).toEqual(["lando.boot:scaffold", "service-lando.php:prerequisites"]);
+    expect(steps.map(({ id }) => id)).toEqual([
+      "lando.boot:scaffold",
+      "service-lando.php:prerequisites",
+      "service-lando.php:apache-default-site",
+      "service-lando.http-errors:pages",
+    ]);
   });
 
   test("installs an exact Composer release into build-key identity", async () => {
@@ -178,7 +185,12 @@ describe("PHP Composer compatibility", () => {
   test("omits composer build step when php:8.5 sets composer false", async () => {
     const steps = buildStepsFor(await composePhpPlan({ composer: false }, php85ServiceType));
 
-    expect(steps.map(({ id }) => id)).toEqual(["lando.boot:scaffold", "service-lando.php:prerequisites"]);
+    expect(steps.map(({ id }) => id)).toEqual([
+      "lando.boot:scaffold",
+      "service-lando.php:prerequisites",
+      "service-lando.php:apache-default-site",
+      "service-lando.http-errors:pages",
+    ]);
   });
 
   test("plans composer 2.7.7 when php is 8.4", async () => {

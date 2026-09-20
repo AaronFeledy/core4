@@ -19,6 +19,7 @@ import {
   StreamFrame,
 } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
+import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";
@@ -34,7 +35,6 @@ import {
   doctorDeprecations,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
 import {
   appVersionConstraintsForReport,
@@ -561,7 +561,21 @@ describe("meta:doctor combined report", () => {
       );
 
       const text = renderDoctorReport(report);
-      const yaml = renderDoctorReportAsYaml(report);
+      const io = createBufferedRendererIO();
+      await runWithRendererHandling(Effect.succeed(report), {
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        resultFormat: "yaml",
+        command: "meta:doctor",
+        resultSchema: DoctorReportSchema,
+        io,
+        render: () => undefined,
+        formatError: String,
+      });
+      const yaml = io.stdout();
+      expect(
+        (Bun.YAML.parse(yaml) as { readonly result: DoctorReport }).result.appVersionConstraints,
+      ).toEqual(report.appVersionConstraints);
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
 
       expect(text).not.toContain(">=99.0.0");
@@ -728,10 +742,27 @@ describe("meta:doctor combined report", () => {
         id: "LANDO_LEGACY",
       });
 
-      const yaml = renderDoctorReportAsYaml(report);
+      const io = createBufferedRendererIO();
+      await runWithRendererHandling(Effect.succeed(report), {
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        resultFormat: "yaml",
+        command: "meta:doctor",
+        resultSchema: DoctorReportSchema,
+        io,
+        render: () => undefined,
+        formatError: String,
+      });
+      const yaml = io.stdout();
       expect(yaml).toContain("deprecations:");
       expect(yaml).toContain("kind: env-override");
       expect(yaml).toContain("id: LANDO_LEGACY");
+      const yamlDeprecations = (Bun.YAML.parse(yaml) as { readonly result: DoctorReport }).result
+        .deprecations;
+      expect(yamlDeprecations?.entries?.[0]).toMatchObject({
+        kind: "env-override",
+        id: "LANDO_LEGACY",
+      });
 
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
       const deprecations = eventPayloads(ndjson).find((line) => line.name === "deprecations");
@@ -808,5 +839,55 @@ describe("meta:doctor combined report", () => {
     expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { format: "yaml" } })).toBe(true);
     expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { deprecations: true } })).toBe(false);
     expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { format: "text" } })).toBe(false);
+  });
+
+  test("doctor yaml report round-trips danger-corpus strings through Bun.YAML.parse", async () => {
+    // Given: a collected report whose human-facing strings carry the danger corpus
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const base = await run(provider);
+    const context = yamlRoundTripRecord();
+    const solutions = yamlRoundTripCorpus.map((description) => ({
+      kind: "manual" as const,
+      description,
+    }));
+    const seed = base.subsystems.checks[0];
+    if (seed === undefined) throw new Error("expected a subsystem check");
+    const report: DoctorReport = {
+      ...base,
+      subsystems: {
+        checks: [
+          {
+            ...seed,
+            context,
+            solutions,
+          },
+        ],
+      },
+    };
+
+    // When
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(Effect.succeed(report), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      resultFormat: "yaml",
+      command: "meta:doctor",
+      resultSchema: DoctorReportSchema,
+      io,
+      render: () => undefined,
+      formatError: String,
+    });
+
+    // Then
+    expect((Bun.YAML.parse(io.stdout()) as { readonly result: DoctorReport }).result).toMatchObject({
+      subsystems: {
+        checks: [{ context, solutions }],
+      },
+    });
+    const ctx = { mode: "plain", format: "yaml", columns: undefined, isTTY: false } as const;
+    expect(metaDoctorSpec.render?.(report, { flags: { format: "yaml" } }, ctx)).toBe(
+      renderDoctorReport(report, ctx),
+    );
+    expect(renderCompiledDoctorReport(report, ctx)).toBe(renderDoctorReport(report, ctx));
   });
 });
