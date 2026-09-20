@@ -1080,3 +1080,10 @@ takes elevation attempts from four per run to one.
     lines from later stack frames and appends globally deduped annotations, so any
     liveness work has to sit beside the buffered document, never replace it.
 ---
+
+## 2026-09-20 15:56 - US-656 Review
+- Reviewed live guide-scenario output, the windows-arm64 stall record, and the Drift Audit runbook against the source ACs. No product blockers were fixed.
+- Review notes (deferred/rejected): demanding a hang fix or windows-arm64 quarantine was rejected — AC2's quarantine branch is conditional on a proven runner cause, residual §13 closes the item by recording that the child-versus-runner hang is undetermined until an instrumented stall, and Build cannot wait for the next CI cap-hit; a mapped-banner leading newline was rejected as a visual nit, not a stall-attribution defect.
+- Verification: gate:pr passed; guide-drift passed against origin/main; lint:guides, check:guide-coverage, codegen:guide-scenarios, and check:public-transcripts passed; 70 focused tests across the wrapper, reporter, codegen-ci, and ci-workflow suites; Bugbot found no bugs.
+- **Learnings for future iterations:** Live output is the stall-attribution instrument, not the hang resolution. Do not send Build back around a windows-arm64 hang that has not recurred with the live region on.
+---
