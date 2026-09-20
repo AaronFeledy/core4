@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 
+import { ProviderUnavailableError } from "@lando/core/errors";
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
   PathsService,
@@ -17,7 +18,7 @@ import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import { DataMoverLive } from "@lando/data-mover/service";
 import { CacheServiceLive } from "@lando/engine/cache/service";
 import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
-import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
+import { ScratchRegistry, ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
 import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
 import { ConfigServiceLive } from "@lando/engine/services/config";
@@ -160,7 +161,11 @@ const withTempProject = async <T>(run: (dir: string) => Promise<T>): Promise<T> 
 const die = (operation: string) =>
   Effect.dieMessage(`scratch finalizer test provider should not call ${operation}`);
 
-const makeRecordingLayer = (appliedPlans: AppPlan[], destroyCalls: DestroyCall[]) => {
+const makeRecordingLayer = (
+  appliedPlans: AppPlan[],
+  destroyCalls: DestroyCall[],
+  options: { readonly failApply?: boolean } = {},
+) => {
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
@@ -176,10 +181,19 @@ const makeRecordingLayer = (appliedPlans: AppPlan[], destroyCalls: DestroyCall[]
     pullArtifact: () => die("pullArtifact"),
     removeArtifact: () => Effect.void,
     apply: (plan) =>
-      Effect.sync(() => {
-        appliedPlans.push(plan);
-        return { changed: true };
-      }),
+      Effect.sync(() => appliedPlans.push(plan)).pipe(
+        Effect.zipRight(
+          options.failApply === true
+            ? Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: String(providerId),
+                  operation: "apply",
+                  message: "injected apply failure",
+                }),
+              )
+            : Effect.succeed({ changed: true }),
+        ),
+      ),
     start: () => die("start"),
     stop: () => die("stop"),
     restart: () => die("restart"),
@@ -254,6 +268,38 @@ const waitUntil = (predicate: () => boolean) =>
   });
 
 describe("ScratchAppServiceLive scope-bound finalizer", () => {
+  test("keep-on-failure leaves the registry entry and scratch root after apply fails", async () => {
+    await withTempProject(async () => {
+      const appliedPlans: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const retained = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          const registry = yield* ScratchRegistry;
+          const outcome = yield* Effect.scoped(
+            service.acquire({
+              source: { kind: "fork" },
+              detached: true,
+              keepOnFailure: true,
+            }),
+          ).pipe(Effect.either);
+          const entries = yield* registry.list();
+          return { outcome, entries };
+        }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls, { failApply: true }))),
+      );
+
+      expect(retained.outcome._tag).toBe("Left");
+      expect(retained.entries).toHaveLength(1);
+      expect(retained.entries[0]?.status).toBe("acquiring");
+      expect(destroyCalls).toEqual([]);
+      expect(
+        await directoryExists(
+          join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", retained.entries[0]?.id ?? ""),
+        ),
+      ).toBe(true);
+    });
+  });
+
   test("foreground (detached:false) destroys the scratch when the acquire scope closes", async () => {
     await withTempProject(async () => {
       const appliedPlans: AppPlan[] = [];

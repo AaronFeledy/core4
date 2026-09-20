@@ -65,6 +65,29 @@ describe("apps:scratch:start recipe flag mapping", () => {
     expect(options.answers).toEqual({ php: "8.4", name: "ignored" });
   });
 
+  test("maps scratch lifecycle, copy, and hostname flags", () => {
+    const options = parseScratchStartArgv([
+      "--fork",
+      "--exclude",
+      "coverage/",
+      "--exclude=tmp/*.log",
+      "--keep-on-failure",
+      "--run-post-init",
+      "--no-local-overrides",
+      "--no-hostname-suffix",
+      "--hostname",
+      "api.example.test",
+      "--hostname=admin.example.test",
+    ]);
+
+    expect(options.excludes).toEqual(["coverage/", "tmp/*.log"]);
+    expect(options.keepOnFailure).toBe(true);
+    expect(options.runPostInit).toBe(true);
+    expect(options.noLocalOverrides).toBe(true);
+    expect(options.noHostnameSuffix).toBe(true);
+    expect(options.hostnames).toEqual(["api.example.test", "admin.example.test"]);
+  });
+
   test("rejects passing both --fork and --from", async () => {
     expect(await failureTag(scratchStart({ fork: true, from: "lamp" }))).toBe("ScratchSourceUnresolvedError");
   });
