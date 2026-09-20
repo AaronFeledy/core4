@@ -4,6 +4,8 @@ import { Schema } from "effect";
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
+import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
+import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
@@ -45,6 +47,19 @@ const composePhpPlan = (serviceType: ServiceType, raw: unknown, appRoot = APP_RO
     metadata,
     featureOverrides,
   });
+
+interface PlannedBuildStep {
+  readonly id?: string;
+  readonly user?: string;
+  readonly command: string | ReadonlyArray<string>;
+}
+
+const buildStepsFor = (plan: ServicePlan): ReadonlyArray<PlannedBuildStep> => {
+  const features = plan.extensions["@lando/core/service-features"] as
+    | { readonly buildSteps?: ReadonlyArray<PlannedBuildStep> }
+    | undefined;
+  return features?.buildSteps ?? [];
+};
 
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
   let rejected = false;
@@ -325,6 +340,19 @@ describe("php serving modes (via:)", () => {
     expect(argv).not.toContain("sh");
     expect(argv.filter((token) => token.includes("/etc/apache2"))).toEqual([]);
     expect(argv.join("\n")).not.toMatch(/>\s*\//u);
+  });
+
+  test("authored command keeps the image default site", async () => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      via: "apache",
+      command: ["apache2-foreground"],
+    });
+
+    expect(plan.command).toEqual(["apache2-foreground"]);
+    const ids = buildStepsFor(plan).map((step) => step.id);
+    expect(ids).not.toContain(APACHE_DEFAULT_SITE_BUILD_STEP_ID);
+    expect(ids).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
   });
 
   test("via fpm uses the fpm image and listens on 9000", async () => {

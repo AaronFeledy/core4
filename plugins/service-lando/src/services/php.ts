@@ -97,7 +97,7 @@ const configFor = (ctx: ServiceFeatureContext): PhpFeatureConfig => ctx.config a
 
 const applyApacheShape = (ctx: ServiceFeatureContext, webroot: string, allowOverride: boolean): void => {
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
-  if (!hasCustomPhpImage(ctx.normalizedConfig)) {
+  if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
     ctx.addBuildStep(apacheDefaultSiteRemovalBuildStep());
     ctx.addBuildStep(landoErrorPagesBuildStep());
     ctx.setCommand(apacheStartCommand(webroot, allowOverride));
