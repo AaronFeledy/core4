@@ -4,7 +4,9 @@ import { RendererSelectionError } from "@lando/sdk/errors";
 
 import {
   DEFAULT_RESULT_FORMAT,
+  OPT_IN_RESULT_FORMATS,
   RESULT_FORMATS,
+  UNIVERSAL_RESULT_FORMATS,
   extractFormatFlags,
   isResultFormat,
   parseJsonFieldList,
@@ -35,7 +37,13 @@ describe("format-flags constants", () => {
 
   test("universalFormatFlagDefs exposes format plus json shortcut definitions", () => {
     expect(universalFormatFlagDefs.format.type).toBe("option");
-    expect(universalFormatFlagDefs.format.options).toEqual([...RESULT_FORMATS]);
+    // The universal defs advertise only what every command honors; `table` and
+    // `ndjson` stay in the vocabulary but are advertised per command.
+    expect(universalFormatFlagDefs.format.options).toEqual([...UNIVERSAL_RESULT_FORMATS]);
+    for (const optIn of OPT_IN_RESULT_FORMATS) {
+      expect(universalFormatFlagDefs.format.options).not.toContain(optIn);
+      expect(RESULT_FORMATS).toContain(optIn);
+    }
     expect(universalFormatFlagDefs.json.type).toBe("boolean");
     expect(universalFormatFlagDefs.json.char).toBe("j");
   });

@@ -67,6 +67,7 @@ import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { applyDebugRendererFlip, readConfigCliGlobals } from "./renderer-mode-resolution";
 import { setActiveLogLevel } from "./renderer-mode-state";
+import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { runBuiltInCommand } from "./run-built-in-command";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
@@ -412,13 +413,17 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     !isBunOrX &&
     !scratchRunHasToolCommand
   ) {
-    const versionSchema = resolveBuiltInCommand("meta:version")?.spec.resultSchema;
-    if (emitJsonListModeIfRequested(versionSchema)) return;
+    const versionSpec = resolveBuiltInCommand("meta:version")?.spec;
+    if (await rejectUnsupportedResultFormat("meta:version", versionSpec)) return;
+    if (emitJsonListModeIfRequested(versionSpec?.resultSchema)) return;
     await runMetaVersion();
     return;
   }
 
   if (found !== undefined) {
+    // Before flag validation and before --json key listing: an unsupported
+    // format must not be laundered into a successful listing.
+    if (await rejectUnsupportedResultFormat(canonicalCommandId, found[1])) return;
     const flagError = validateCommandCliFlags({
       commandId: canonicalCommandId,
       argv: argv.slice(1),

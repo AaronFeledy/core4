@@ -30,6 +30,7 @@ export const appsListPruneFromInput = (input: unknown): boolean => {
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
   resultSchema: AppsListResultSchema,
   id: "apps:list",
+  resultFormats: ["table"],
   mcpAllowed: true,
   helpGroup: "common",
   summary: "List Lando apps applied across discovered providers on this host.",
@@ -38,7 +39,7 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
   aliases: ["list"],
   bootstrap: "minimal",
   flags: {
-    format: Flags.string({ description: "Output format.", options: ["json", "table"], default: "table" }),
+    format: Flags.string({ description: "Output format.", default: "table" }),
     path: Flags.string({ description: "Filter apps whose root contains the given substring." }),
     prune: Flags.boolean({ description: "Remove stale inventory only after provider absence is confirmed." }),
   },

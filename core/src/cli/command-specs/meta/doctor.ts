@@ -59,6 +59,7 @@ const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
 export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLayerFactory> = {
   resultSchema: DoctorReportSchema,
   id: "meta:doctor",
+  resultFormats: ["ndjson"],
   helpGroup: "common",
   mcpAllowed: true,
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
@@ -84,7 +85,6 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLaye
     }),
     format: Flags.string({
       description: "Output format for doctor reports.",
-      options: ["text", "json", "yaml"],
       default: "text",
     }),
   },

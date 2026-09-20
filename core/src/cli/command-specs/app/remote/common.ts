@@ -12,7 +12,6 @@ import type {
 
 export const remoteFormatFlag = Flags.string({
   description: "Output format.",
-  options: ["text", "json"],
   default: "text",
 });
 export const remoteNameArg = Args.string({ description: "Remote name.", required: false });

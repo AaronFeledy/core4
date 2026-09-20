@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 
 import type { BuiltInCommandEntry } from "../core/src/cli/built-in-command-registry.ts";
 import { COMMAND_TOPICS } from "../core/src/cli/command-topics.ts";
-import { universalFormatFlagDefs } from "../core/src/cli/format-flags.ts";
+import { formatFlagDefsForCommand } from "../core/src/cli/format-flags.ts";
 import { resolveTopLevelAliases } from "../core/src/cli/spec/command-spec.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
@@ -63,6 +63,7 @@ const projectSpec = (entry: BuiltInCommandEntry): JsonValue => {
       deferred: spec.deferred,
       bootstrap: spec.bootstrap,
       helpGroup: spec.helpGroup,
+      resultFormats: spec.resultFormats,
       flags: spec.flags,
       args: spec.args,
       streamingMode: spec.streamingMode,
@@ -77,7 +78,7 @@ const projectCommand = (entry: BuiltInCommandEntry): JsonValue => {
       aliases: resolveTopLevelAliases(spec),
       args: spec.args,
       description: spec.description,
-      flags: { ...universalFormatFlagDefs, ...(spec.flags ?? {}) },
+      flags: formatFlagDefsForCommand(spec),
       hidden: spec.hidden === true,
       spec: projectSpec(entry),
       strict: spec.strict,

@@ -29,6 +29,8 @@ test.each(["json", "yaml"])(
     mock.module(${JSON.stringify(resolve(cliRoot, "compiled-runtime.ts"))}, () => ({
       activeRendererMode: "plain",
       activeResultFormat: ${JSON.stringify(format)},
+      activeJq: undefined,
+      activeJsonControl: { mode: "off" },
       emitJsonListModeIfRequested: () => false,
       resetActiveCommandInvocation: () => {},
       setActiveCommandId: () => {},

@@ -8,6 +8,7 @@ import { assertMcpAllowlistSafe } from "@lando/mcp/allowlist";
 import { assertHostProxyAllowlistSafe } from "../allowlists/host-proxy";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report";
 import type { DeferredCommandPlan } from "../deferred-commands";
+import type { OptInResultFormat } from "../format-flags";
 import type { RenderContext, StreamOutputFrame } from "../renderer-boundary";
 
 export type LandoCommandNamespace = "app" | "apps" | "meta";
@@ -49,6 +50,13 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   readonly helpGroup?: LandoHelpGroup;
   readonly hidden?: boolean;
   readonly deferred?: DeferredCommandPlan;
+  /**
+   * Result formats this command's own `render` produces beyond the universal
+   * `text`/`json`/`yaml` set. A command is only ever offered — and only ever
+   * accepts — a format it declares here, so `--format` cannot name a value the
+   * command would silently drop.
+   */
+  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
   /** Present only for commands that stream incremental output (logs/exec/build). */
   readonly streaming?: StreamFrameSchema;
   readonly streamingMode?: "live" | ((input: unknown) => "live" | undefined);

@@ -15,11 +15,6 @@ const typeFlag = Flags.string({
   options: ["string", "number", "boolean", "json", "yaml"],
   default: "string",
 });
-const formatFlag = Flags.string({
-  description: "Output format.",
-  options: ["table", "json"],
-  default: "table",
-});
 const editorFlag = Flags.string({ description: "Editor binary for edit." });
 const dryRunFlag = Flags.boolean({ description: "Report the change without writing.", default: false });
 
@@ -45,17 +40,17 @@ export const appConfigSetSpec = makeSpec("set", "Set a value in the app's Landof
     key: Args.string({ description: "Dot-path key.", required: true }),
     value: Args.string({ description: "Value to set.", required: true }),
   },
-  flags: { type: typeFlag, format: formatFlag, "dry-run": dryRunFlag },
+  flags: { type: typeFlag, "dry-run": dryRunFlag },
 });
 export const appConfigUnsetSpec = makeSpec("unset", "Remove a key from the app's Landofile.", {
   args: { key: Args.string({ description: "Dot-path key.", required: true }) },
-  flags: { format: formatFlag, "dry-run": dryRunFlag },
+  flags: { "dry-run": dryRunFlag },
 });
 export const appConfigEditSpec = makeSpec("edit", "Edit the app's Landofile in $EDITOR.", {
-  flags: { editor: editorFlag, format: formatFlag },
+  flags: { editor: editorFlag },
 });
 export const appConfigValidateSpec = makeSpec(
   "validate",
   "Validate the app's Landofile against the schema.",
-  { flags: { format: formatFlag } },
+  {},
 );

@@ -1,4 +1,4 @@
-import { Args, Flags } from "../../../spec/metadata";
+import { Args } from "../../../spec/metadata";
 
 import type { ScratchInfo } from "@lando/sdk/services";
 import {
@@ -20,9 +20,6 @@ export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
   bootstrap: "scratch",
   args: {
     id: Args.string({ description: "Scratch app id.", required: false }),
-  },
-  flags: {
-    format: Flags.string({ description: "Output format.", options: ["table", "json"], default: "table" }),
   },
   run: (input) => scratchInfo(scratchIdFromInput(input)),
   render: (result, input) =>

@@ -34,7 +34,6 @@ export const appIncludesVerifySpec: LandoCommandSpec<
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["text", "json"],
       default: "text",
     }),
   },

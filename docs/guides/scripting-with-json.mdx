@@ -79,6 +79,17 @@ native registry and dispatcher.
     </Step>
   </Scenario>
 
+  <Scenario id="reject-unadvertised-formats" render={false} reason="A format the command does not produce must fail">
+    <Step name="reject-table-on-a-command-without-one">
+      <Run command="lando version --format=table" expectExit={2} />
+      <Verify errorTag="RendererSelectionError" />
+    </Step>
+    <Step name="reject-ndjson-on-a-command-without-a-stream">
+      <Run command="lando version --format=ndjson" expectExit={2} />
+      <Verify errorTag="RendererSelectionError" />
+    </Step>
+  </Scenario>
+
   <Scenario id="reject-json-jq-conflicts" render={false} reason="Unknown keys and --json plus --jq must fail">
     <Step name="unknown-json-key">
       <Run command="lando version --json=not-a-real-key" expectExit={1} />
@@ -187,6 +198,29 @@ separately. A consumer that closes stdout does not silence a warning headed
 for stderr, and a closed stderr does not truncate the envelope on stdout.
 Grab the Lando exit status from `PIPESTATUS` in bash or `pipestatus` in zsh;
 the pipeline's own status is whatever the last consumer returned.
+
+## Ask only for a format the command produces
+
+`--format` offers `text`, `json`, and `yaml` on every command. Those three are
+universal: `text` is the command's human rendering, and `json` and `yaml` are
+the same result envelope.
+
+Two more values exist, and a command offers them only when it produces them.
+`table` is a human rendering that the list, config, and recipe commands emit.
+`ndjson` is the per-check stream `lando doctor` emits. Ask a command for a
+format it does not produce and it fails with `RendererSelectionError` naming
+the formats it does support, rather than quietly printing its text form at
+exit 0:
+
+```sh
+lando version --format=table
+# RendererSelectionError
+# meta:version does not support result format "table". Allowed: text, json, yaml.
+```
+
+`lando <command> --help` names the same list in its global-flags footer, and
+the generated command reference carries it too, so a program never has to
+guess.
 
 ## Envelope contract
 
