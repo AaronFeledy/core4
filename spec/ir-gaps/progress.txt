@@ -853,3 +853,76 @@ containers the provider still holds, and the result names only what went away.
   - `makeLandoPaths()` with no overrides is still isolated when the enclosing harness sets `LANDO_USER_DATA_ROOT` first; do not treat that call as host pollution without checking the env overlay.
   - A prose-only MDX guide fails `bun run dev:guides <path> --once` with `no generated scenario output found`. That is not a missing executable-guide requirement when lint/coverage/drift already passed and the page never had `<Run>`/`<Verify>`.
 ---
+## 2026-09-20 08:58 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-20 10:40 - US-655 Build
+- The unit-suite baseline is measured rather than inherited. `bun run test:unit`
+  on a clean checkout reports 14,569 pass / 14 skip / **205 fail** across 1,655
+  files in 1,534s. The carried figure of thirteen is retired; it was never
+  accurate for this tree.
+- 205 reported failures resolve to **18 real ones**. Ten non-generated files and
+  155 generated guide-scenario files reported failures; run alone, only four
+  files still fail. `docs/contributing/unit-suite-baseline.md` records the
+  measurement, one entry per reproducing failure with its own single-file
+  reproduction, and the rule that made the count legible: a file that fails in
+  the suite and passes alone is a victim, not a defect, and the cause belongs to
+  the leaking file rather than to the 160 files that report it.
+- The other 187 are one leaked `process.chdir`. Every generated guide scenario
+  failed with the same `GuideFixtureNotFoundError` whose candidate paths named
+  `/tmp/lando-at-race-left-*` — a root created only by the race test in
+  `engine/test/operations/app-resolution.test.ts`, which starts two
+  `loadUserLandofileAt` resolutions without awaiting them and whose `finally`
+  releases the parked fibers and then removes both temp roots without waiting.
+  A released fiber resumes during the `rm`, runs the `withResolvedCwd` release
+  that chdirs back into the left root, and the `rm` deletes it underneath. The
+  process then spends the rest of the run with its cwd on a removed path, so
+  later fixture lookups misresolve and later `withResolvedCwd` callers block on
+  the held `cwdResolutionLock` permit and time out at the 5,000 ms default.
+  Queued, not absorbed: it is one mechanism across three surfaces (the landofile
+  primitive, the engine harness, the cwd-relative fixture resolver), and
+  grouping it into a measurement story is what this story exists to prevent.
+- One named candidate was resolved here. `uninstall-runtime-service.test.ts`'s
+  two failures were not about runtime-service teardown at all: the file's local
+  `sandboxUninstallIo` redirected only the cgroups drop-in and shell profile into
+  its temp root, leaving the socket-proxy helper step pointed at the real
+  `/etc/systemd/system/lando-proxy-*` units and polkit rule. A host carrying
+  Lando-owned proxy units — this one does — classifies that step as owned,
+  attempts `systemctl stop` without privilege, and fails the whole uninstall
+  run. Completing the sandbox to match the helper `uninstall.test.ts` already
+  uses fixes both, with no assertion weakened.
+- Remaining candidates: `resolve.test.ts` reproduces with 9 timeouts and is
+  already queued as US-661; `transcript-tail-reader.test.ts` does **not**
+  reproduce — 10 pass alone, and it reported no failure in the whole-suite run
+  either. Newly queued with their own reproductions: `start.scenario.test.ts`
+  (6, split because one needs a live Podman socket and five do not),
+  `mvp-exit-criteria.scenario.test.ts` (1, environment-gated on a provider and
+  free host ports), and the `transport.test.ts` chmod-after-bind flake.
+- Verification: gate:pr passed twice (typecheck, lint, codegen:check, all 13
+  boundary rules, guide-drift against origin/main) and `docs:check` is clean.
+  RED first: 3 pass / 2 fail isolated on `uninstall-runtime-service.test.ts`
+  with both failures on `result.failed`; 5 pass / 0 fail after. Adjacent spot
+  checks: 63 green across `uninstall.test.ts`, `uninstall-socket-proxy.test.ts`,
+  and `uninstall.test.ts` in engine. Real-surface evidence for the attribution
+  came from driving `uninstall()` directly against a temp root and reading the
+  per-step outcomes, which named `socket-proxy-helper` as the failing step while
+  `runtime-service` reported `completed`.
+- **Learnings for future iterations:**
+  - `bun run test:unit` is not the CI unit suite. It applies no shard
+    exclusions, so it also runs `test/scenarios/generated/guides/**`, which CI
+    gives its own job family. A raw count from it over-reports badly.
+  - Attribute before counting. Bun runs every test file in one process, so a
+    single leaked `process.chdir` or unreleased semaphore permit is reported
+    once per victim. The cheap discriminator is running each failing file alone;
+    here that collapsed 205 reported failures to 18 real ones in a few minutes.
+  - A uniform `~5000ms` failure time across unrelated files is the signature of
+    a held lock, not of slow tests. Both `resolve.test.ts` and the engine
+    chdir-region tests fail at exactly the default timeout.
+  - A test that spreads a local `sandbox*Io` helper is only as isolated as that
+    helper is complete. `core/test/cli/uninstall.test.ts` has the canonical one;
+    the partial copy in `uninstall-runtime-service.test.ts` silently reached
+    host `/etc`. Compare against the canonical helper before trusting a sandbox.
+  - `uninstall()` fails the whole run if any step fails, so a test asserting
+    `result.failed === false` is implicitly asserting every unrelated step too.
+    Sandbox the host-reaching steps rather than narrowing the assertion.
+---
