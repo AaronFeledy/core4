@@ -1027,3 +1027,66 @@ takes elevation attempts from four per run to one.
 - Review feedback: none — the only failure was the pre-existing mongodb live-integration flake (`Podman failed to create an exec session`), which fails identically on main at `0f3bb107d` and passes at its child `cb27d6123`; ubuntu-26.04 passed in the same run. Rejected as not-an-issue and reran only the failed jobs; no code changed.
 - Merge: merged (squash)
 ---
+
+## 2026-09-20 16:05 - US-656
+- The guide-scenario CI step no longer hides what it was doing. The wrapper
+  buffered both child streams to completion and wrote nothing until the child
+  exited, so a child that never exits produced a permanently silent step. CI now
+  sets `LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1` (through the generator, on all seven
+  guide-scenario run steps) and the wrapper tees the child's raw output as it
+  arrives, between two banners, still printing the authoritative source-mapped
+  document after exit. A hung step now names the generated file it stopped in.
+- The stall was measured rather than assumed: 872 guide-scenario job records
+  across 114 runs, of which `guide-scenarios-windows-arm64` is the only cell that
+  ever hit the 30 minute cap (5 of 89; the other seven cells are 0 of 644). All
+  five died in the same step with zero bytes emitted for 26 minutes, against a
+  healthy maximum of 10.0 minutes. `docs/contributing/guide-scenarios-windows-arm64-stall.md`
+  records the distribution, the job ids, and the three-way decision the next
+  stall's live region will settle.
+- Quarantine was declined on purpose and the reason is recorded. That job is a
+  required status check, `continue-on-error` would also swallow the 4 genuine
+  failures in the same window, and the story's quarantine branch is conditional on
+  a runner cause that the silent log cannot establish. `timeout-minutes: 30` is
+  untouched: the cap is not the defect.
+- The external `Drift Audit` gate is now documented in the CI runbook as
+  workspace-local looper automation this repository does not contain and must not
+  edit. The important correction: it never failed. Its gate script uses exit 1 to
+  mean "thresholds not met, skip", so `gate skipped ... exited with code 1` is a
+  by-design skip, and the audit did fire for US-660. The real defect is one exit
+  code carrying two meanings, which is what let a skip read as a failure.
+- Verification: `gate:pr` green end to end (typecheck, lint, codegen drift clean,
+  all 13 boundary rules, guide-drift a real pass against `origin/main`). docs:check
+  0 errors, docs:test 90/90, codegen-ci 21/21 by path, and 49/49 across the wrapper,
+  reporter and ci-workflow suites, run three times for a stable count. Manual QA on
+  the real surface: against a deliberately hung scenario, off mode printed 0 bytes
+  in 10 seconds and live mode named the scenario file within 4 seconds and kept it
+  after the kill.
+- **Learnings for future iterations:**
+  - A hand-rolled `getReader()` loop over a `Bun.spawn` subprocess stream
+    intermittently drops trailing bytes; `new Response(stream).text()` does not.
+    Measured 11/12 versus 12/12 on a 256 KiB stderr payload, and reordering
+    `proc.exited` out of the `Promise.all` made it worse (10/12), so it is the
+    reader and not the exit race. To tee and buffer the same stream, use
+    `stream.tee()` and keep `Response.text()` on the buffered branch.
+  - `process.exit()` truncates a large pending `process.stdout.write`. The
+    pre-existing wrapper emitted 16,384 bytes of a ~525,000 byte document and
+    called it done, so any guide-scenario job with a big failure dump has been
+    losing the tail of its own report. End both streams before exiting.
+  - Both defects were invisible to every green suite and to `lsp_diagnostics`.
+    The heavy-stream test that exposed them only failed once three test files ran
+    together; a single-file run passed. When a subagent reports a pass, re-run the
+    suite the way CI will run it.
+  - `rewriteScenarioSourceMappedOutput` cannot be streamed. It rewrites earlier
+    lines from later stack frames and appends globally deduped annotations, so any
+    liveness work has to sit beside the buffered document, never replace it.
+---
+
+## 2026-09-20 15:56 - US-656 Review
+- Reviewed live guide-scenario output, the windows-arm64 stall record, and the Drift Audit runbook against the source ACs. No product blockers were fixed.
+- Review notes (deferred/rejected): demanding a hang fix or windows-arm64 quarantine was rejected — AC2's quarantine branch is conditional on a proven runner cause, residual §13 closes the item by recording that the child-versus-runner hang is undetermined until an instrumented stall, and Build cannot wait for the next CI cap-hit; a mapped-banner leading newline was rejected as a visual nit, not a stall-attribution defect.
+- Verification: gate:pr passed; guide-drift passed against origin/main; lint:guides, check:guide-coverage, codegen:guide-scenarios, and check:public-transcripts passed; 70 focused tests across the wrapper, reporter, codegen-ci, and ci-workflow suites; Bugbot found no bugs.
+- **Learnings for future iterations:** Live output is the stall-attribution instrument, not the hang resolution. Do not send Build back around a windows-arm64 hang that has not recurred with the live region on.
+---
+## 2026-09-20 15:57 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---

@@ -59,6 +59,20 @@ bun run test:unit
 
 Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; per-PR workflow drift is covered by `bun run codegen:check` in `static-checks-platform`.
 
+## Tell a skipped gate from a failed one
+
+Some maintainers run this repository through a workspace-local looper harness whose loop includes a `Drift Audit` step. That step is not a repository gate. It belongs to the harness, is configured per workspace by a gitignored `.local/looper/looper.yaml` (the repository `.gitignore` ignores `.local/`), and is owned by the maintainer running the loop. Nothing in this repository defines, schedules, or can fix it. The evidence: there is no `.looper/` directory; `package.json` declares no drift-audit script (only `audit`, `audit:fix`, `check:codegen-drift`, and `check:guide-drift`); and there is no `scripts/*audit*` file, the one tracked path matching `audit` being the unrelated `plugins/service-lando/DEFAULT_COMMAND_AUDIT.md`. Do not edit that automation from this repository.
+
+Do not confuse it with the three repository scripts whose names look similar:
+
+| Script | What it checks |
+| --- | --- |
+| `check:codegen-drift` | Pure drift over the catalog-owned generated outputs; wrapped by `codegen:check`. |
+| `check:guide-drift` | Semantic gate that fires when a covered source path changed and no owned guide was touched. |
+| `bun audit` (the `audit` script) | Dependency vulnerability advisories. Nothing to do with drift. |
+
+The harness gate script exits 0 to run the step and exits 1 to skip it because its thresholds were not met. A line reading `[looper] gate skipped Drift Audit: gate: script exited with code 1` is therefore a by-design skip, not a failure. The gate does still fire: a `.drift-gate-US-660` state file holding `3 828 6 0` sits beside a real `US-660 Drift Audit` progress-log entry from 2026-09-20 02:02. The defect is that one exit code carries two meanings, so a false predicate and a failed evaluation look identical in the log. That is what let a skip read as a failure across roughly a dozen stories. When you read loop output, treat `gate skipped` as a skip and treat only a step reported as failed as a failure.
+
 ## Generated schema and bundled-codegen gates
 
 CI fails if the generated schema artifact set or bundled plugin/recipe tables drift. Update all generated outputs with `bun run codegen`:
@@ -212,7 +226,15 @@ Provider integration also runs as platform-specific jobs (`provider-integration-
 
 ## Guide e2e smoke subset
 
-The scenario-layer generated guide tests run on all five PR platforms through `guide-scenarios-<platform>` jobs. Each job regenerates guides with `bun run codegen:guide-scenarios`, validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
+The scenario-layer generated guide tests run on all six PR platforms (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, `windows-arm64`) through `guide-scenarios-<platform>` jobs. Each job runs the full `bun run codegen` (there is no standalone guide-scenario codegen step; `core/test/build/ci-workflow.test.ts` asserts one is absent), validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
+
+CI sets `LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1` on both guide-scenario run steps. With it set, the wrapper tees the child's raw stdout and stderr as they arrive, between two banner lines, and still prints the source-mapped document after the child exits. The source-mapped document stays the authoritative output: the mapper is a whole-document transform that rewrites earlier lines from later stack frames, so it cannot be streamed line by line. That is why the live region is raw and unmapped, and why it repeats what the mapped document later shows. Without the variable, a local run keeps the single mapped document it prints today. Reproduce the CI shape locally:
+
+```bash
+LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
+```
+
+The live region exists so a hung job leaves evidence of where it stopped; see the [windows-arm64 stall record](./guide-scenarios-windows-arm64-stall.md).
 
 `bun run check:public-transcripts` is also a standalone clean-tree gate. When `dist/transcripts/public/guides` is empty after `bun run clean` or on a fresh clone, the command deterministically emits the public transcript corpus before checking its inventory. Existing or partially populated corpora are checked without regeneration, so missing-artifact diagnostics remain actionable. The generated corpus is gitignored and must not be committed.
 
