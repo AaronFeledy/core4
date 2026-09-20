@@ -281,7 +281,9 @@ describe("scenario source-mapper reporter", async () => {
         testPath,
         [
           'import { test } from "bun:test";',
-          'test("heavy", () => { process.stdout.write("o".repeat(262144)); process.stderr.write("e".repeat(262144)); });',
+          'test("heavy", async () => {',
+          '  await Promise.all([Bun.write(Bun.stdout, "o".repeat(262144)), Bun.write(Bun.stderr, "e".repeat(262144))]);',
+          "});",
         ].join("\n"),
       );
       for (const live of [false, true]) {
@@ -292,10 +294,11 @@ describe("scenario source-mapper reporter", async () => {
           new Response(proc.stdout).text(),
           new Response(proc.stderr).text(),
         ]);
-        // Then: neither stream blocks or loses its payload.
+        // Then: every mapped and live copy is complete, not merely one of the copies.
         expect(exitCode).toBe(0);
-        expect(stdout.includes("o".repeat(262144))).toBe(true);
-        expect(`${stdout}${stderr}`.includes("e".repeat(262144))).toBe(true);
+        expect(stdout.split("o".repeat(262144)).length - 1).toBe(live ? 2 : 1);
+        expect(stdout.split("e".repeat(262144)).length - 1).toBe(1);
+        expect(stderr.split("e".repeat(262144)).length - 1).toBe(live ? 1 : 0);
       }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
