@@ -44,9 +44,9 @@ permission denial on the write target in the table — rather than a daemon erro
 | --- | --- | --- | --- | --- |
 | `apache` | `src/services/apache.ts` `apacheStartCommand` | none | works | **fixed** |
 | `php:*` via `apache` (default) | `src/services/php-via.ts` `apacheStartCommand` | none | works | **fixed** |
-| `php:*` via `fpm` | `src/services/php-via.ts` `fpmStartCommand` | `/usr/local/etc/php-fpm.d/zz-lando-listen.conf` | fails | needs-fix |
-| `nginx` with `backend:` | `src/services/nginx.ts` `phpFastcgiCommand` | `/etc/nginx/conf.d/default.conf` | fails | needs-fix |
-| `static` / `static:nginx` | `src/services/static.ts` `defaultStaticCommand` | `/etc/nginx/conf.d/default.conf` | fails | needs-fix |
+| `php:*` via `fpm` | `src/services/php-via.ts` `fpmStartCommand` | `/tmp/lando-php-fpm.conf` | works | **fixed** |
+| `nginx` with `backend:` | `src/services/nginx.ts` `phpFastcgiCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
+| `static` / `static:nginx` | `src/services/static.ts` `defaultStaticCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
 | `solr` with `cores:` | `src/services/solr.ts` | `/var/solr/data/<core>/conf` | fails unless the user owns the Solr data tree | needs-fix |
 | `minio` | `src/services/minio.ts` | `mkdir` under `/data` | depends on volume ownership | needs-fix |
 | `varnish` without a VCL bind | `src/services/varnish.ts` | `/tmp/lando-backend.vcl` | write works; the daemon still needs root for its default `:80` | safe write, privileged port |
@@ -82,11 +82,11 @@ compiled default resolves under the root-owned `/usr/local/apache2/logs`, and
 `httpd` exits when it cannot create its pid file, so the override is the second
 half of removing root from the start path.
 
-The same two moves do not transfer verbatim to the other rows. Nginx and
-php-fpm read a configuration directory rather than accepting arbitrary
-command-line directives, and Solr and MinIO write into data trees whose
-ownership is a storage question. Each needs its own decision, which is why they
-are recorded here rather than batched into one change.
+The same two moves do not transfer verbatim to every row. Nginx and php-fpm
+took a different shape, described below: neither accepts arbitrary
+command-line directives, so each is pointed at a whole file under `/tmp`
+instead. Solr and MinIO write into data trees whose ownership is a storage
+question, so they still need their own decision and stay `needs-fix` here.
 
 ## How the Apache-served PHP launcher was fixed
 
@@ -105,6 +105,65 @@ No `PidFile` override is needed here, unlike the `apache` row. The PHP image
 already creates `APACHE_RUN_DIR` and `APACHE_LOCK_DIR` mode `1777` and hands
 `APACHE_LOG_DIR` to `www-data`, so the paths `apache2-foreground` touches before
 `exec` are writable by any identity.
+
+## How the nginx-family launchers were fixed
+
+`nginx` with `backend:` and `static` / `static:nginx` used to write a server
+block into `/etc/nginx/conf.d/default.conf`, which is root-owned on the image.
+Each launcher now writes a complete nginx main configuration to
+`/tmp/lando-nginx.conf` and runs `nginx -c /tmp/lando-nginx.conf -g 'daemon off;'`.
+
+The generated file is a whole configuration rather than a `conf.d` snippet
+because `-c` replaces the main configuration file; there is no flag that adds
+one more include. The file follows the image's own `nginx.conf` with three
+deltas:
+
+- `pid /tmp/lando-nginx.pid;`. The compiled default lives under `/var/run`,
+  which a non-root master cannot create.
+- Five flat temp paths under `/tmp`: `lando-nginx-client-body`, `-proxy`,
+  `-fastcgi`, `-uwsgi`, and `-scgi`. They are flat on purpose. nginx creates
+  each temp directory with a single `mkdir`, not `mkdir -p`, so a nested path
+  such as `/tmp/lando-nginx/client-body` fails at startup when the parent is
+  missing.
+- The Lando `server { }` block inlined where the image had
+  `include /etc/nginx/conf.d/*.conf;`.
+
+`-c` makes the configuration file's own directory the configuration prefix, so
+every `include` in the generated file names an absolute path. A bare
+`include fastcgi_params;` would resolve to `/tmp/fastcgi_params` and nginx would
+refuse to start. The image's `access_log` and `error_log`
+targets are symlinks to the container's stdout and stderr, so any identity can
+open them and no log path needed to move.
+
+`user nginx;` is emitted only when Lando planned a root service. Under a
+non-root master nginx ignores the directive and prints a warning on every
+start, so the launcher leaves it out in that case rather than ship a known
+warning.
+
+Verified against the real image: as uid `101`, a static site serves `200` with
+`Content-Type: text/html` and a missing path serves the Lando 404 page.
+
+## How the FPM launcher was fixed
+
+`php:*` via `fpm` used to write its `listen` override into
+`/usr/local/etc/php-fpm.d/zz-lando-listen.conf`, also root-owned. The launcher
+now writes `/tmp/lando-php-fpm.conf` and runs
+`php-fpm -y /tmp/lando-php-fpm.conf`.
+
+The generated file is two parts: `include=/usr/local/etc/php-fpm.conf`, then a
+`[www]` section carrying `listen = <port>`. The image's own `php-fpm.conf` is
+only `[global]` plus an absolute `include=/usr/local/etc/php-fpm.d/*.conf`, so
+including it pulls the whole stock tree in unchanged. `[www]` is already
+declared by three of the bundled files; re-opening the pool merges into the
+same pool, and the later `listen` wins.
+
+Under a non-root master php-fpm logs that the pool's `user` and `group`
+directives are ignored. That is a notice, not a failure, and the right response
+is to leave it alone. Silencing it by writing into `php-fpm.d` would put the
+root-owned write back.
+
+Verified against the real image: as uid `33`, php-fpm listens on the authored
+port.
 
 ## Where the shared error pages live
 
@@ -130,6 +189,11 @@ write-free launcher. Apache's image still has `Listen 80`; `port:` only updates
 Lando endpoints and the healthcheck. An authored `command:` or `entrypoint:` is
 what owns `Listen`.
 
+`nginx` and `static` are different. Their launchers template `port:` into the
+generated `listen` directive, so the residual has an author-side answer there:
+set `port: 8080` (or any port at or above 1024) and the non-root master binds
+it. `php:*` via `fpm` listens on `9000` and never had the problem.
+
 Two mechanisms were considered and rejected for the service type itself:
 
 - Requesting `cap_add: ["NET_BIND_SERVICE"]` through the Compose extension.
@@ -140,5 +204,5 @@ Two mechanisms were considered and rejected for the service type itself:
   deliberately exposes no provider or capability accessor; a feature may only
   emit intent.
 
-That leaves the bind to the provider's runtime policy or to an authored
-`command:`/`entrypoint:`, not to `port:`.
+For Apache, `static:caddy`, and `varnish` that leaves the bind to the provider's
+runtime policy or to an authored `command:`/`entrypoint:`, not to `port:`.

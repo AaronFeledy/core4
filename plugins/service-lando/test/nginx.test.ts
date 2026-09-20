@@ -138,6 +138,32 @@ describe("nginx PHP FastCGI preset", () => {
       { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
     ]);
   });
+
+  test("starts a non-root FastCGI front without writing into the image config tree", async () => {
+    // Given / When: an identity the nginx image ships, with home persistence
+    // declined so the planned user is the only thing under test.
+    const plan = await composeNginxPlan({
+      type: "nginx",
+      backend: "appserver",
+      webroot: "/app/web",
+      user: "nginx",
+      home: false,
+    });
+
+    // Then: the planned user reaches the container and the launcher writes only
+    // where that user can write, pointing nginx at that file explicitly.
+    expect(plan.user).toBe("nginx");
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    const script = String(plan.command?.[2] ?? "");
+    expect(script).toContain("exec nginx -c /tmp/lando-nginx.conf -g 'daemon off;'");
+    expect(script).toContain("pid /tmp/lando-nginx.pid;");
+    expect(script).toContain("fastcgi_temp_path /tmp/lando-nginx-fastcgi;");
+    expect(script).toContain("fastcgi_pass appserver:9000");
+    expect(script).toContain("include /etc/nginx/fastcgi_params;");
+    expect(script).not.toContain("/etc/nginx/conf.d/default.conf");
+    expect(script).not.toContain("user nginx;");
+    expect([...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1])).toEqual(["/tmp/lando-nginx.conf"]);
+  });
 });
 
 describe("nginx PHP FPM app-feature wire", () => {
@@ -166,6 +192,7 @@ describe("nginx PHP FPM app-feature wire", () => {
     readonly via?: string;
     readonly webroot?: string;
     readonly command?: ReadonlyArray<string>;
+    readonly user?: string;
   }): AppFeatureServiceView => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
@@ -177,6 +204,7 @@ describe("nginx PHP FPM app-feature wire", () => {
           ...(input.via === undefined ? {} : { via: input.via }),
           ...(input.webroot === undefined ? {} : { webroot: input.webroot }),
           ...(input.command === undefined ? {} : { command: input.command }),
+          ...(input.user === undefined ? {} : { user: input.user, home: false }),
         },
       },
     });
@@ -245,6 +273,20 @@ describe("nginx PHP FPM app-feature wire", () => {
     await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
 
     expect(commandText(commands.get("edge"))).toContain("fastcgi_pass appserver:9000");
+  });
+
+  test("the wired FastCGI command honours the edge service's planned user", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm", port: 9070 }),
+      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver", user: "nginx" }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    const script = commandText(commands.get("edge"));
+    expect(script).toContain("nginx -c /tmp/lando-nginx.conf");
+    expect(script).not.toContain("user nginx;");
+    expect(script).not.toContain("/etc/nginx/conf.d/default.conf");
   });
 
   test("does not rewrite when the backend is not via fpm", async () => {

@@ -381,6 +381,30 @@ describe("php serving modes (via:)", () => {
     expect(plan.command).not.toContain("apache2-foreground");
   });
 
+  test("starts a non-root FPM PHP service without writing into the image config tree", async () => {
+    // Given / When: an identity the image ships, with home persistence declined
+    // so the planned user is the only thing under test.
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      via: "fpm",
+      user: "www-data",
+      home: false,
+    });
+
+    // Then: the pool override lands where that user can write and php-fpm is
+    // pointed at it explicitly, rather than at the image's own pool directory.
+    expect(plan.user).toBe("www-data");
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    const script = String(plan.command?.[2] ?? "");
+    expect(script).toContain("exec php-fpm -y /tmp/lando-php-fpm.conf");
+    expect(script).toContain("include=/usr/local/etc/php-fpm.conf");
+    expect(script).toContain("listen = 9000");
+    expect(script).not.toContain("/usr/local/etc/php-fpm.d");
+    expect([...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1])).toEqual(["/tmp/lando-php-fpm.conf"]);
+    // FPM serves no HTML, so it installs none of the shared error pages.
+    expect(buildStepsFor(plan).map((step) => step.id)).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
+  });
+
   test("via fpm listens on an authored port", async () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm", port: 9070 });
 
