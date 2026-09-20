@@ -934,3 +934,10 @@ containers the provider still holds, and the result names only what went away.
 - Guide-Coverage-Skip: Maintainer-only unit-suite baseline evidence and a test sandbox completion; no public CLI or Landofile contract changed.
 - **Learnings for future iterations:** A file-level isolation count that does not survive a second run is a lead. Filter by test name before treating heterogeneous symptoms in one file as unrelated causes.
 ---
+## 2026-09-20 10:57 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-20 11:02 - US-655 Verify
+- Compiled `core/dist/lando` 4.0.0-dev.1013+3.g600e5e596.dirty; `lando setup --yes --no-interactive` completed (managed runtime ready). Init lamp `us655verify`, start, info (appserver php:8.3 + mariadb running), HTTP 200 `us655-ok` via `php` on http://us655verify.lndo.site:8080, `exec appserver -- php -v` → PHP 8.3.33. Adjacent: `uninstall --help`, `uninstall --dry-run` (ok, socket-proxy-helper owned at real /etc units — the condition the test sandbox now isolates), `apps:list`, `--version`. Destroyed the scenario app; no code changes.
+- **Out-of-scope finding:** `.local/bin/lando4-dev --check` fails on leftover dpkg `uidmap` (no podman/docker on PATH). `lando setup`/`start` hopped 80/443 → 8080/8443 because leftover `lando-proxy-https` systemd socket (pid 90102) holds 443; doctor also warns orphan runtime pid 1544. Not caused by this diff.
+---
