@@ -576,3 +576,8 @@ non-root `user:` or say at plan time that they cannot.
 - Verification: gate:pr passed; guide-drift passed against origin/main; lint:guides, guide-coverage, public-transcripts passed; 19 data-tree tests and 43 solr/minio planner tests passed; Bugbot found the phase bug then found none after the fix.
 - **Learnings for future iterations:** Feature `phase` is not free text. `prepareDerivedBuild` keeps only `phase === "build"`; any other spelling is a silent no-op that still dirties the artifact build key. Assert the phase a derived Dockerfile would actually run.
 ---
+
+## 2026-09-20 01:35 - US-660 Review
+- Guide wording now matches the resolver: a numeric uid still plans with a custom image; only a named user is refused.
+- Review notes (deferred/rejected): Docker BuildKit and VOLUME-write preservation were rejected as a Review demotion. Changing derived-build framing is a different surface, already recorded in the Build entry as its own story, and inventing a provider capability here would grow this story past its ACs. Shell quoting of plugin-supplied targets was rejected: bundled Solr and MinIO targets are constants. Gating ownership on an authored command was rejected: the AC is the cores and bucket writes, not launcher identity.
+---
