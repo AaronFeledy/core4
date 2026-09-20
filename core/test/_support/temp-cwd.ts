@@ -88,7 +88,8 @@ const envAnchors = new Map<string, string | undefined>();
 const envFrames = new Map<string, Array<{ readonly token: symbol; readonly value: string }>>();
 
 const restoreEnv = (name: string, value: string | undefined): void => {
-  process.env[name] = value;
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 };
 
 /**

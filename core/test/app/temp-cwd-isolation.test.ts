@@ -181,4 +181,16 @@ describe("withEnvVar", () => {
     await following;
     expect(process.env[name]).toBe(before);
   });
+
+  test("restores an unset variable by deleting it instead of storing the string undefined", async () => {
+    const before = process.env[name];
+    delete process.env[name];
+    try {
+      await withEnvVar(name, "/tmp/lando-env-was-unset", async () => undefined);
+      expect(name in process.env).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env[name];
+      else process.env[name] = before;
+    }
+  });
 });
