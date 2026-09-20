@@ -4,6 +4,7 @@ import {
   type CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type DataTreeOwnershipCapabilityError,
   GlobalAppError,
   type HomePathCapabilityError,
   type LandofileParseError,
@@ -49,6 +50,7 @@ export type LoadGlobalPlanError =
   | CapabilityError
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | FileSystemError
   | GlobalAppError

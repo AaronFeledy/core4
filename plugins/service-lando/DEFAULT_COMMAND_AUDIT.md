@@ -18,7 +18,8 @@ or changes a default command.
 
 ## Reproducing a failure
 
-Each row below marked `needs-fix` reproduces the same way. Put the listed
+Every row in the table has been checked the same way, and a newly added default
+command should be checked the same way before its row is written. Put the
 service in a Landofile with a non-root `user:` that exists in the image, then
 start it:
 
@@ -35,8 +36,11 @@ lando start
 lando logs -s web
 ```
 
-The container exits during start. The logs carry the launcher's own error — a
-permission denial on the write target in the table — rather than a daemon error.
+A launcher that still assumes root exits during start. The logs carry the
+launcher's own error, a permission denial on the write target in the table,
+rather than a daemon error. A launcher that survives goes in the table as
+`works`; one that does not gets a row describing the write target and a fix
+section below.
 
 ## Audit
 
@@ -47,8 +51,8 @@ permission denial on the write target in the table — rather than a daemon erro
 | `php:*` via `fpm` | `src/services/php-via.ts` `fpmStartCommand` | `/tmp/lando-php-fpm.conf` | works | **fixed** |
 | `nginx` with `backend:` | `src/services/nginx.ts` `phpFastcgiCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
 | `static` / `static:nginx` | `src/services/static.ts` `defaultStaticCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
-| `solr` with `cores:` | `src/services/solr.ts` | `/var/solr/data/<core>/conf` | fails unless the user owns the Solr data tree | needs-fix |
-| `minio` | `src/services/minio.ts` | `mkdir` under `/data` | depends on volume ownership | needs-fix |
+| `solr` with `cores:` | `src/services/solr.ts` | `/var/solr/data/<core>/conf`, under a `/var/solr` tree prepared in the image for the planned user | works | **fixed** |
+| `minio` | `src/services/minio.ts` | `mkdir` under `/data`, a tree prepared in the image for the planned user | works | **fixed** |
 | `varnish` without a VCL bind | `src/services/varnish.ts` | `/tmp/lando-backend.vcl` | write works; the daemon still needs root for its default `:80` | safe write, privileged port |
 | `redis` with `password:` | `src/services/redis.ts` | `/tmp/lando-redis.conf` | works | safe |
 | `php:*` via `cli` | `src/services/php-via.ts` `PHP_CLI_KEEP_ALIVE` | none | works | safe |
@@ -85,8 +89,9 @@ half of removing root from the start path.
 The same two moves do not transfer verbatim to every row. Nginx and php-fpm
 took a different shape, described below: neither accepts arbitrary
 command-line directives, so each is pointed at a whole file under `/tmp`
-instead. Solr and MinIO write into data trees whose ownership is a storage
-question, so they still need their own decision and stay `needs-fix` here.
+instead. Solr and MinIO write into data trees that live on named volumes, so
+moving the write was never an option there; the tree's ownership is set in the
+image instead, described in its own section below.
 
 ## How the Apache-served PHP launcher was fixed
 
@@ -164,6 +169,52 @@ root-owned write back.
 
 Verified against the real image: as uid `33`, php-fpm listens on the authored
 port.
+
+## How the Solr and MinIO data trees were fixed
+
+Both launchers write into a named volume at start: Solr's `precreate-core` and
+the `config.dir` overlay copy under `/var/solr`, MinIO's bucket `mkdir` under
+`/data`. Those writes cannot move to `/tmp`; the volume is the point. So the
+fix changes who owns the tree rather than where the write goes.
+
+When a service plans a `user:` that the image does not already seed ownership
+for, the service type adds one root build step that creates the data tree and
+chowns it to that user. A container runtime seeds a fresh named volume from the
+image directory at the mount path, ownership included, so the planned user
+owns the tree from the first start and the launcher's write succeeds.
+
+The step is emitted only when it is needed. Solr's image ships `/var/solr`
+owned by `solr` (uid `8983`), so `solr`, `8983`, `root`, `0`, and the default
+plan get no build step and no rebuild. MinIO's image runs as root and declares
+only `root`; its `/data` is a bare `VOLUME` with nothing behind it, so any
+non-root user gets the step and `root` or the default plan gets nothing.
+
+A numeric uid is always accepted, because a uid can always be given ownership.
+A user name is accepted only when the service type declares it for its image.
+When the planner cannot know the user exists, because the name is undeclared or
+because the Landofile supplies its own `image:` or `build:` so the type's
+identity no longer describes the container, it refuses during planning with a
+`DataTreeOwnershipCapabilityError`. The error names the service, the mounted
+data tree (`target`), and the fully qualified Landofile option that has to
+change, and it fires before any provider action.
+
+Two limits:
+
+- An existing volume is not repaired. The runtime seeds ownership only when it
+  creates the volume, so a volume left by an earlier start keeps whatever
+  ownership it already has until it is removed.
+- MinIO's `/data` sits under the base image's own `VOLUME` declaration, so the
+  fix relies on the builder preserving writes beneath an inherited `VOLUME`.
+  Verified preserved on the Lando-managed Podman provider through its `/build`
+  endpoint, with byte-identical image ids with and without
+  `compatvolumes=false`. Docker's classic builder discards such writes, so a
+  derived build there would need BuildKit.
+
+Verified against the real images on Podman 6.0.1: as uid `10001`, Solr
+precreates its cores and applies a `config.dir` overlay, and MinIO creates its
+bucket and serves. One host-side requirement surfaced for Solr: the
+`config.dir` directory is bind-mounted read-only, so it has to be readable by
+the planned user. A `0700` host directory is not, and `0755` is.
 
 ## Where the shared error pages live
 

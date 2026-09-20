@@ -96,11 +96,17 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.setCommand(service.command ?? defaultCommand(port, cores, hasConfigDir));
-  ctx.addStorage({
-    store: `${appName}-solr-data`,
-    target: DATA_TARGET,
-    readOnly: false,
-  });
+  ctx.addStorage(
+    {
+      store: `${appName}-solr-data`,
+      target: DATA_TARGET,
+      readOnly: false,
+    },
+    // The image ships /var/solr owned by solr, and a fresh volume inherits
+    // that. Any other planned user needs the tree prepared for it, because
+    // init-var-solr, precreate-core, and the config overlay all write here.
+    { seededOwners: ["solr", "8983"] },
+  );
   if (hasConfigDir) {
     ctx.addMount({
       type: "bind",

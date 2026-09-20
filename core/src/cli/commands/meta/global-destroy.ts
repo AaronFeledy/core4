@@ -4,6 +4,7 @@ import {
   type CapabilityError,
   type CommandAliasConflictError,
   type ConfigExpressionError,
+  type DataTreeOwnershipCapabilityError,
   type GlobalAppError,
   GlobalDestroyConfirmationError,
   type HomePathCapabilityError,
@@ -51,6 +52,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
 type GlobalDestroyError =
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

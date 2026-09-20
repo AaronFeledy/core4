@@ -13,6 +13,7 @@ import {
   type ComposeKeyRejectedError,
   type ConfigError,
   type ConfigExpressionError,
+  type DataTreeOwnershipCapabilityError,
   type DeprecatedSurfaceError,
   type HomePathCapabilityError,
   type LandofileFormConflictError,
@@ -132,6 +133,7 @@ export type ShellAppError =
   | CapabilityError
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | ComposeKeyRejectedError
   | PublicationUnsupportedError

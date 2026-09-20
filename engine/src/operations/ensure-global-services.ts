@@ -4,6 +4,7 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
+  DataTreeOwnershipCapabilityError,
   EventError,
   GlobalAppError,
   GlobalDistConflictError,
@@ -70,6 +71,7 @@ export interface EnsureGlobalServicesResult {
 export type EnsureGlobalServicesError =
   | CommandAliasConflictError
   | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
   | ConfigExpressionError
   | CapabilityError
   | PublicationUnsupportedError

@@ -92,6 +92,7 @@ const makeDraft = (base: BaseSeed): DraftServicePlan => ({
   featureIds: base.defaultFeatures.map((feature) => feature.id),
   buildSteps: [],
   storage: [],
+  storageOwnership: [],
   endpoints: [],
   dependsOn: [],
   hostAliases: [],
@@ -132,8 +133,13 @@ const makeContext = (
     if (draft.extensions === undefined) draft.extensions = {};
     draft.extensions[key] = value;
   },
-  addStorage: (storage) => {
+  addStorage: (storage, ownership) => {
     draft.storage.push({ ...storage });
+    if (ownership !== undefined) {
+      const owned = draft.storageOwnership ?? [];
+      owned.push({ target: String(storage.target), seededOwners: [...ownership.seededOwners] });
+      draft.storageOwnership = owned;
+    }
   },
   addEndpoint: (endpoint) => {
     draft.endpoints.push({ ...endpoint });
@@ -175,12 +181,14 @@ const destinationError = (target: string, reason: "not-absolute" | "root"): Serv
 
 const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureError => {
   const featureIds = draft.featureIds ?? [];
+  const dataTrees = draft.storageOwnership ?? [];
   const coreExtension =
-    draft.buildSteps.length === 0 && featureIds.length === 0
+    draft.buildSteps.length === 0 && featureIds.length === 0 && dataTrees.length === 0
       ? {}
       : {
           "@lando/core/service-features": {
             ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
+            ...(dataTrees.length === 0 ? {} : { dataTrees: dataTrees.map((tree) => ({ ...tree })) }),
             ...(draft.buildSteps.length === 0
               ? {}
               : { buildSteps: draft.buildSteps.map((step) => ({ ...step })) }),

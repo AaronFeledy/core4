@@ -5,6 +5,7 @@ import type {
   CapabilityError,
   CommandAliasConflictError,
   ConfigExpressionError,
+  DataTreeOwnershipCapabilityError,
   EventError,
   HomePathCapabilityError,
   LandofileUnknownEventError,
@@ -39,6 +40,7 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
       | PublicationUnsupportedError
       | CommandAliasConflictError
       | HomePathCapabilityError
+      | DataTreeOwnershipCapabilityError
       | ConfigExpressionError
       | LandofileUnknownEventError
     >;
