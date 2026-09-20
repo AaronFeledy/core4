@@ -784,3 +784,6 @@ containers the provider still holds, and the result names only what went away.
 - Verification: gate:pr passed; guide gates passed against origin/main; Bugbot found no bugs; 39 focused tests across volume-ownership, compose-emit, app-identity, and volume-observation.
 - Guide-Coverage-Skip: volume ownership selector is maintainer-only internal metadata with no public guide.
 ---
+## 2026-09-20 07:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
