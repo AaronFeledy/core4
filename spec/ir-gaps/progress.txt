@@ -1090,3 +1090,10 @@ takes elevation attempts from four per run to one.
 ## 2026-09-20 15:57 - Drift Audit
 - [looper] gate skipped Drift Audit: gate: script exited with code 1
 ---
+
+## 2026-09-20 17:26 - Babysit
+- PR: #1033 https://github.com/AaronFeledy/core4/pull/1033
+- CI outcome: pass (after one triage round; initial `unit-tests-linux-x64-shard (3)` failure)
+- Review feedback: fixed (heavy-output deadlock fixture dropped unflushed stderr — awaited `Bun.write` for both streams and tightened the assertion to exact per-mode copy counts)
+- Merge: merged (squash)
+---
