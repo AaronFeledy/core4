@@ -77,7 +77,7 @@ services:
 Two things to know:
 
 - It only applies to a **new** volume. A volume created by an earlier start keeps the ownership it already has. Remove the volume (`lando destroy` with volume purge) to get a fresh one that is seeded again.
-- Lando has to know your user exists in the image. A numeric uid always works, because a uid can always be given ownership. A name the `solr` type doesn't declare (`solr` and `root` are the only two), or any `user:` on a service that supplies its own `image:` or `build:`, is refused while Lando plans the app, before anything starts. The refusal is a `DataTreeOwnershipCapabilityError` that names the service, the data tree (`/var/solr`), and the Landofile option to change. Fix it with a numeric uid, or use `root`.
+- Lando has to know your user exists in the image. A numeric uid always works, because a uid can always be given ownership, even when you supply your own `image:` or `build:`. A name the `solr` type doesn't declare (`solr` and `root` are the only two) is refused. A named `user:` on a service that supplies its own `image:` or `build:` is refused too, because that image is no longer the one the type described. The refusal is a `DataTreeOwnershipCapabilityError` that names the service, the data tree (`/var/solr`), and the Landofile option to change. Fix it with a numeric uid, or use `root`.
 
 ## Hit the admin API
 
