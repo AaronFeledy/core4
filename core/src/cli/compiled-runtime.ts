@@ -11,6 +11,7 @@ import type {
   PluginRegistry,
   ProcessRunner,
   Renderer,
+  RouterService,
   RuntimeProviderRegistry,
   ScratchAppService,
 } from "@lando/sdk/services";
@@ -211,7 +212,8 @@ export const globalRuntimeLayer = () =>
     | AppPlanner
     | BuildOrchestrator
     | FileSystem
-    | EventService,
+    | EventService
+    | RouterService,
     ConfigError | LandoRuntimeBootstrapError
   >;
 
