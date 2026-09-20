@@ -88,18 +88,17 @@ malformed-Landofile path — do not reproduce. Selected by name they pass, and
 the file minus the live-socket case is 46 pass / 0 fail. They are not
 independent queued items.
 
-### `core/test/scenario/mvp-exit-criteria.scenario.test.ts` — 1 failure
+### `core/test/scenario/mvp-exit-criteria.scenario.test.ts` — 1 failure — **retired**
 
-```bash
-bun --no-orphans test core/test/scenario/mvp-exit-criteria.scenario.test.ts
-```
+The `@smoke` case drove the compiled binary through init/start/info/stop and
+failed on a runtime-free host with `GlobalAutoStartError` → `ServiceStartError`
+on the `traefik` service, because it ran whenever any provider socket resolved.
 
-The `@smoke` case drives the compiled binary through init/start/info/stop and
-fails after ~126 s with `GlobalAutoStartError` → `ServiceStartError` on the
-`traefik` service. It needs a working provider and free host ports.
-
-**Queued** as environment-gated rather than as a code defect. The open question
-is whether a runtime-free host should skip it explicitly instead of failing.
+Retired in favor of the `real-provider-loop` e2e scenario in
+`docs/guides/tutorial/app-lifecycle.mdx`, which makes the same promise but is
+`test.skip` unless `LANDO_GUIDE_E2E=1`, `LANDO_SCENARIO_E2E_BINARY`, and a live
+provider socket are all set. The remaining live suites moved from
+`core/test/scenario/` to `core/test/live/`.
 
 ### `core/test/cli/uninstall-runtime-service.test.ts` — 2 failures — **fixed here**
 
