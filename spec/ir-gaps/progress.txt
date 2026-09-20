@@ -844,3 +844,12 @@ containers the provider still holds, and the result names only what went away.
     provider base layer; only the typed channels were missing
     (`GlobalRuntimeServices` and the `globalRuntimeLayer()` cast).
 ---
+
+## 2026-09-20 08:55 - US-654 Review
+- Reviewed restart/rebuild revalidation against the source ACs. No product blockers were fixed; both commands call `revalidateStartup` on the same `finalizeRouterStartup` tail as setup, a healthy observation clears the record and restores routing state, a still-failing watcher rewrites `observedAt` with unchanged classification, and doctor still only reads the persisted file.
+- Review notes (deferred/rejected): treating unreadable/absent Traefik logs as a restart failure was rejected — AC1 requires the same terms as setup, which preserves prior evidence rather than assuming health, and AC2 is the healthy-watcher clear path already covered; converting `docs/guides/global/doctor-walkthrough.mdx` into an executable `<Run>`/`<Verify>` guide was rejected — it was already prose-only, the wording update is the owned guide change, and lint/coverage/transcripts/drift against origin/main all passed (`dev:guides --once` has no scenario to generate); an extra restart-then-doctor command test was rejected — the plugin disk harness already revalidates then runs the real doctor reader on the same temp root; host-path pollution in `global-commands.test.ts` was rejected — `withTempRoots` sets `LANDO_USER_DATA_ROOT` before `makeLandoPaths()`, and QA confirmed no leftover at the real user data root.
+- Verification: guide gates passed against origin/main; Bugbot found no bugs; 103 focused tests across global-commands, proxy, doctor-watcher, watcher-diagnostic-state, router-service contract, and proxy registry.
+- **Learnings for future iterations:**
+  - `makeLandoPaths()` with no overrides is still isolated when the enclosing harness sets `LANDO_USER_DATA_ROOT` first; do not treat that call as host pollution without checking the env overlay.
+  - A prose-only MDX guide fails `bun run dev:guides <path> --once` with `no generated scenario output found`. That is not a missing executable-guide requirement when lint/coverage/drift already passed and the page never had `<Run>`/`<Verify>`.
+---
