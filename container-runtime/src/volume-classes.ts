@@ -15,7 +15,7 @@ export const STORAGE_SCOPE_LABEL = "dev.lando.scope";
 export const volumeClassFromLabels = (labels: LabelMap | undefined): VolumeSelectorClass =>
   labels?.[STORAGE_KIND_LABEL] === "cache" ? "cache" : "data";
 
-/** Global-scoped volumes outlive any one app root, so app teardown never removes them. */
+/** Global scope protects data volumes from app teardown; caches remain eligible for explicit purging. */
 export const isGlobalScopedVolume = (labels: LabelMap | undefined): boolean =>
   labels?.[STORAGE_SCOPE_LABEL] === "global";
 
