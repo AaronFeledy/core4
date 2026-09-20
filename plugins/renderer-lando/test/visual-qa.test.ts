@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
+import { AppId } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -214,9 +215,10 @@ describe("provider-free injected-event pipeline", () => {
       Effect.scoped(TestRuntimeProvider.apply(undefined as never, undefined as never)),
     );
     expect(applied).toEqual({ changed: false });
-    await Effect.runPromise(
-      Effect.scoped(TestRuntimeProvider.destroy(undefined as never, undefined as never)),
+    const destroyed = await Effect.runPromise(
+      TestRuntimeProvider.destroy({ app: AppId.make("visual-qa") }, { volumes: false }),
     );
+    expect(destroyed).toEqual({ kind: "no-op", reason: "no-applied-plan" });
 
     const io = {
       ...createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }),
