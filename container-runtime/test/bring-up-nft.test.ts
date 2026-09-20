@@ -110,7 +110,7 @@ describe("bringUp start-failure remediation hook", () => {
     // Then
     const first = seen[0];
     expect(first?.service).toBe("web");
-    expect(first?.message).toContain("Podman container start failed with HTTP 500.");
+    expect(first?.message).toContain("provider-podman container start failed with HTTP 500.");
     expect(first?.message).toContain("synthetic start failure");
     expect(first?.details).toMatchObject({ status: 500 });
   });

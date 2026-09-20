@@ -5,6 +5,7 @@ import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, ProviderId, type ServicePlan } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
+import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
   EngineHttpRequest,
@@ -29,6 +30,7 @@ interface StopResult {
 export interface BringDownOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
+  readonly dialect?: LifecycleDialect;
   readonly eventService?: EventPublisher;
   readonly volumes?: boolean;
   readonly purgeCaches?: boolean;
@@ -56,7 +58,7 @@ const missingApi = (ctx: ProviderErrorContext) =>
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation: "bringDown",
-    message: `provider-${ctx.providerId} bringDown requires a Podman API client.`,
+    message: `provider-${ctx.providerId} bringDown requires an engine API client.`,
     remediation: ctx.remediation,
   });
 
@@ -107,7 +109,7 @@ const stopContainer = (deps: BringDownDeps, name: string): Effect.Effect<boolean
         podmanFailure(
           deps.options.ctx,
           "bringDown.stop",
-          `Podman container stop failed with HTTP ${response.status}.`,
+          `provider-${deps.options.ctx.providerId} container stop failed with HTTP ${response.status}.`,
           { name, body: response.body },
         ),
       );
@@ -127,7 +129,7 @@ const removeContainer = (deps: BringDownDeps, name: string): Effect.Effect<boole
         podmanFailure(
           deps.options.ctx,
           "bringDown.remove",
-          `Podman container remove failed with HTTP ${response.status}.`,
+          `provider-${deps.options.ctx.providerId} container remove failed with HTTP ${response.status}.`,
           { name, body: response.body },
         ),
       );
@@ -148,7 +150,7 @@ const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolea
         podmanFailure(
           deps.options.ctx,
           "bringDown.network",
-          `Podman network remove failed with HTTP ${response.status}.`,
+          `provider-${deps.options.ctx.providerId} network remove failed with HTTP ${response.status}.`,
           { name, body: response.body },
         ),
       );
@@ -189,7 +191,7 @@ const removeVolume = (
         podmanFailure(
           deps.options.ctx,
           "bringDown.volume.inspect",
-          `Podman volume inspect failed with HTTP ${inspected.status}.`,
+          `provider-${deps.options.ctx.providerId} volume inspect failed with HTTP ${inspected.status}.`,
           { name, body: inspected.body },
         ),
       );
@@ -209,7 +211,7 @@ const removeVolume = (
       podmanFailure(
         deps.options.ctx,
         "bringDown.volume",
-        `Podman volume remove failed with HTTP ${response.status}.`,
+        `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
         { name, body: response.body },
       ),
     );
@@ -294,12 +296,14 @@ export const bringDown = (
       changed = changed || result.changed;
     }
     const networkRemoved = yield* removeNetwork(deps, plan);
-    const volumesRemoved =
-      options.volumes === true || options.purgeCaches === true
-        ? yield* removeAppScopedVolumes(deps, plan).pipe(
-            Effect.zipWith(pruneAppScopedVolumes(deps, plan), (removed, pruned) => removed || pruned),
-          )
-        : false;
+    let volumesRemoved = false;
+    if (options.volumes === true || options.purgeCaches === true) {
+      volumesRemoved = yield* removeAppScopedVolumes(deps, plan);
+      if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
+        const pruned = yield* pruneAppScopedVolumes(deps, plan);
+        volumesRemoved = volumesRemoved || pruned;
+      }
+    }
 
     return { changed: changed || networkRemoved || volumesRemoved };
   });

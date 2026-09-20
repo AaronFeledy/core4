@@ -65,9 +65,11 @@ const makeFakeApi = (
 ) => {
   const requests: string[] = [];
   const existingNames = new Set(existing);
+  const runningNames = new Set<string>();
   const failedStartNames = new Set(failedStarts);
   const images = new Set<string>();
   const responseFor = (method: string, path: string): DockerHttpResponse => {
+    if (method === "GET" && path.startsWith("/networks/")) return { status: 404, body: "" };
     if (path === "/networks/create") return { status: 201, body: "" };
     if (method === "GET" && path.startsWith("/images/") && path.endsWith("/json")) {
       const ref = decodeURIComponent(path.slice("/images/".length, -"/json".length));
@@ -91,24 +93,32 @@ const makeFakeApi = (
     if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
       const name = path.slice("/containers/".length, -"/json".length);
       return existingNames.has(name)
-        ? { status: 200, body: '{"State":{"Running":false}}' }
+        ? { status: 200, body: JSON.stringify({ State: { Running: runningNames.has(name) } }) }
         : { status: 404, body: "" };
     }
-    if (path.startsWith("/containers/create?")) return { status: 201, body: "" };
+    if (path.startsWith("/containers/create?")) {
+      const name = new URL(`http://localhost${path}`).searchParams.get("name");
+      if (name !== null) existingNames.add(name);
+      return { status: 201, body: "" };
+    }
     if (path.endsWith("/start")) {
       const name = path.slice("/containers/".length, -"/start".length);
-      return failedStartNames.has(name)
-        ? { status: 500, body: '{"message":"synthetic start failure"}' }
-        : { status: 204, body: "" };
+      if (failedStartNames.has(name)) return { status: 500, body: '{"message":"synthetic start failure"}' };
+      runningNames.add(name);
+      return { status: 204, body: "" };
     }
     if (method === "POST" && path.endsWith("/exec")) return { status: 201, body: '{"Id":"health"}' };
     if (path === "/exec/health/json") {
       return { status: 200, body: JSON.stringify({ ExitCode: healthExitCode }) };
     }
-    if (path.endsWith("/stop")) return { status: 204, body: "" };
+    if (path.endsWith("/stop")) {
+      runningNames.delete(path.slice("/containers/".length, -"/stop".length));
+      return { status: 204, body: "" };
+    }
     if (method === "DELETE") {
       if (path.startsWith("/containers/")) {
         existingNames.delete(path.slice("/containers/".length).split("?")[0] ?? "");
+        runningNames.delete(path.slice("/containers/".length).split("?")[0] ?? "");
       }
       return { status: 204, body: "" };
     }
