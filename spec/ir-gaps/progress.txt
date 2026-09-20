@@ -347,3 +347,76 @@ prose and a success code.
 - Review notes (rejected): MCP catalog still types `--format` as an unconstrained string because it projects live specs rather than resolved flag options — pre-existing `@lando/mcp` projection, not one of this story's owned surfaces (help, compiled argv, generated manifest). JsonProjectionError winning over RendererSelectionError when `--format=table --jq` is combined is error-precedence, still nonzero. Full `bun test` was not used as a gate (review forbids it); the coordinated-plan Markdown/JSON drift an oracle hit is unchanged from `origin/main`.
 - Verification: lint passed; 85 focused tests across advertisement, rejection-spawn, format-flags, and command-help. `gate:pr` was green before the review fix; codegen regenerated the command-registry manifest after the capability trim.
 ---
+## 2026-09-19 19:03 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-19 20:08 - Babysit
+- PR: #1023 https://github.com/AaronFeledy/core4/pull/1023
+- CI outcome: pass (after fixing unit-tests-linux-x64-shard 2)
+- Review feedback: fixed (NDJSON case in `update-deferred-receipt.test.ts` still encoded the pre-US-658 silent JSON fallback; rewritten to assert exit 2 with `RendererSelectionError`, receipt left byte-identical, and a later JSON invocation consuming it)
+- Merge: merged (squash)
+---
+## 2026-09-19 20:40 - Babysit
+- [looper] gate skipped Babysit: gate: branch is not a story branch (current 'main'; expected a name matching ^([a-z]+-[0-9]+[a-z]?)- or prefixed with an exact configured PRD story ID followed by '-')
+---
+## 2026-09-19 22:15 - US-650
+
+An Apache-served `php:*` service no longer writes anything as PID 1, so it runs
+under a non-root `user:` without an authored `command:`.
+
+- `apacheStartCommand` is argv again: `apache2-foreground` plus repeated `-c`
+  directives carrying `DocumentRoot`, the webroot `<Directory>` block, and the
+  error-page aliases. No shell, no heredoc, no site file.
+- The US-644 shape did not transfer unchanged. The PHP image is Debian's Apache,
+  which reads `IncludeOptional sites-enabled/*.conf` and ships `000-default.conf`
+  enabled with `DocumentRoot /var/www/html`. `-c` is applied after the whole tree
+  is read but lands on the main server, and a virtual host keeps its own
+  `DocumentRoot` through the merge, so a directive alone could never move the
+  document root. A build step retires the enabled site; the main server then
+  answers every request and the launcher's directives are the configuration.
+- No `PidFile` override was needed, unlike the `apache` row: the PHP image
+  already creates `APACHE_RUN_DIR` and `APACHE_LOCK_DIR` mode `1777` and hands
+  `APACHE_LOG_DIR` to `www-data`, so every path `apache2-foreground` touches
+  before `exec` is writable by any identity. Access logging also survives the
+  vhost removal, because Debian's `other-vhosts-access-log` `CustomLog` sits at
+  server scope and covers the main server once no vhost defines its own.
+- The shared 403/404 pages became image content. `landoErrorPagesBuildStep()` in
+  `http-errors.ts` is one root build step that all three launchers install and
+  US-659 will consume; the nginx and static launchers stopped writing the pages
+  in the same pass and now only reference them. Each page travels base64-encoded
+  because a derived build renders the step as a Dockerfile `RUN` and refuses a
+  build-step token carrying CR or LF.
+- The live error-page harness now builds each service artifact through the
+  provider before `bringUp` instead of running the stock base image, which is
+  the only way it can observe image-resident pages. It removes what it built.
+- Deliberately not done: php's `identity.homes` still lists only `root`, so
+  `user: www-data` needs `home: false` or `home.path`. This repository records an
+  image-verified home with the image digest (see `apache.ts`), no runtime was
+  available to verify one, and home ownership under a non-root user is US-660's
+  mechanism. The guide says so plainly. Binding `80` as a non-root process is
+  still the standing residual that US-651 closes.
+- Verification: `gate:pr` green (typecheck, lint, codegen drift clean, all 13
+  boundary rules, guide-drift a real pass against `origin/main`). RED first: the
+  php-apache launcher tests failed with `Apache launcher must be
+  apache2-foreground, got sh`, and the new non-root case failed the same way.
+  185 focused tests green across php, php-wave-d, php-xdebug, php-prerequisites,
+  php-composer-packages, php-db-client, php-msmtp, nginx, static, apache, boot,
+  mailpit-wiring, readme, catalog-coverage, service-identity, features, and
+  mysql-php-client. Real binary: `app:cache:refresh` on a Landofile with
+  `user: www-data`, `home: false`, `webroot: /app/web` resolves at exit 0.
+- **Learnings for future iterations:**
+  - A build step is the write-free mechanism for generated file content, but a
+    derived build renders it as a Dockerfile `RUN` and `validateDockerfileToken`
+    rejects any token containing CR or LF. Multi-line content has to be encoded,
+    not inlined, even in the argv form.
+  - Enumerated build-step id lists are a hidden blast radius. Four suites assert
+    the exact ordered list for a php plan, and feature-emitted steps append after
+    the ones `applyPhpFeature` adds later in its body, not in source order.
+  - The live provider harnesses only `pullImage` + `bringUp`; they never build.
+    Anything a story moves into the image is invisible to them until the harness
+    calls `provider.buildArtifact` itself, and that failure looks like a product
+    regression rather than a harness gap.
+  - Do not assume one Apache fix transfers between images. `httpd:2.4-alpine`
+    has no `sites-enabled`, so main-server `-c` directives govern; Debian's
+    layout defeats exactly the directive US-644 relied on most.
+---
