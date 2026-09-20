@@ -555,6 +555,15 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(
         "run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**",
       );
+      expect(workflow.match(/^ {10}LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"$/gm) ?? []).toHaveLength(7);
+      expect(workflow).toContain(
+        [
+          "      - name: Run generated guide scenarios",
+          "        env:",
+          '          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"',
+          "        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**",
+        ].join("\n"),
+      );
       expect(workflow).toContain("name: lando-linux-x64");
       expect(workflow).toContain('LANDO_GUIDE_E2E: "1"');
       expect(workflow).toContain(

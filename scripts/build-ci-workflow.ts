@@ -716,6 +716,7 @@ ${renderLinuxX64MatrixGate(
 
 const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
+const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"`;
 
 const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 
@@ -735,6 +736,7 @@ ${linuxGuideE2eProviderSetupSteps}
       - name: Run e2e smoke guide scenarios
         env:
           LANDO_GUIDE_E2E: "1"
+${guideScenarioLiveOutputEnv}
         run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"
 
       - name: Teardown guide e2e provider
@@ -820,6 +822,8 @@ ${codegenStep}
           GUIDE_DRIFT_PR_BODY="$(gh pr view \${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift
 
       - name: Run generated guide scenarios
+        env:
+${guideScenarioLiveOutputEnv}
         run: ${guideScenarioRunCommand}${
           isLinuxX64
             ? `

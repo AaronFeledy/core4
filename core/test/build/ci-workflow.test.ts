@@ -13,6 +13,13 @@ const runtimeBundleWorkflowPath = resolve(repoRoot, ".github/workflows/runtime-b
 const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 const guideScenarioRunLine = `        run: ${guideScenarioRunCommand}`;
+const guideScenarioLiveOutputEnvLine = '          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"';
+const guideScenarioStepWithLiveOutput = [
+  "      - name: Run generated guide scenarios",
+  "        env:",
+  guideScenarioLiveOutputEnvLine,
+  guideScenarioRunLine,
+].join("\n");
 
 const readWorkflow = async (): Promise<string> => Bun.file(workflowPath).text();
 const readNightlyWorkflow = async (): Promise<string> => Bun.file(nightlyWorkflowPath).text();
@@ -892,6 +899,16 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain(
       `        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"`,
     );
+    expect(guideScenariosRunner).toContain(guideScenarioStepWithLiveOutput);
+    expect(guideScenariosRunner).toContain(
+      [
+        "      - name: Run e2e smoke guide scenarios",
+        "        env:",
+        '          LANDO_GUIDE_E2E: "1"',
+        guideScenarioLiveOutputEnvLine,
+      ].join("\n"),
+    );
+    expect(guideScenariosRunner.split(guideScenarioLiveOutputEnvLine).length - 1).toBe(2);
     expect(guideScenariosRunner).toContain("      - name: Teardown guide e2e provider");
     expect(guideScenariosRunner).toContain("          dist/lando poweroff || true");
     expect(guideScenariosRunner).toContain(
@@ -960,6 +977,8 @@ describe("ci workflow", () => {
       expect(guideScenarios).toContain("        run: bun run check:public-transcripts");
       expect(guideScenarios).toContain("      - name: Check guide drift");
       expect(guideScenarios).toContain(guideScenarioRunLine);
+      expect(guideScenarios).toContain(guideScenarioStepWithLiveOutput);
+      expect(guideScenarios.split(guideScenarioLiveOutputEnvLine).length - 1).toBe(1);
       expect(guideScenarios).not.toContain("      - name: Run e2e smoke guide scenarios");
       expect(guideScenarios).not.toContain("      - name: Install Podman");
       expect(guideScenarios).not.toContain("      - name: Download Linux x64 binary artifact");
