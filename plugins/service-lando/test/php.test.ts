@@ -355,6 +355,19 @@ describe("php serving modes (via:)", () => {
     expect(ids).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
   });
 
+  test("authored entrypoint keeps the image default site", async () => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      via: "apache",
+      entrypoint: ["/custom-start"],
+    });
+
+    expect(plan.entrypoint).toEqual(["/custom-start"]);
+    const ids = buildStepsFor(plan).map((step) => step.id);
+    expect(ids).not.toContain(APACHE_DEFAULT_SITE_BUILD_STEP_ID);
+    expect(ids).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
+  });
+
   test("via fpm uses the fpm image and listens on 9000", async () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm" });
 
