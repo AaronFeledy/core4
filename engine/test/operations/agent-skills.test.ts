@@ -60,12 +60,15 @@ describe("agent skill pack ownership", () => {
       );
       expect(unchanged.entries[0]?.action).toBe("skip-unchanged");
 
-      const [current] = agentSkillManagedFiles();
+      const current = agentSkillManagedFiles()[0];
+      if (current === undefined) {
+        throw new Error("agent skill pack must declare the managed skill file");
+      }
       await runScoped(
         store.service.apply([
           {
             ...current,
-            content: { kind: "text", value: "prior pack body\n" },
+            content: { kind: "text" as const, value: "prior pack body\n" },
           },
         ]),
       );

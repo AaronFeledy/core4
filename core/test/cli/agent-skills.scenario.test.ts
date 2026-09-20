@@ -63,7 +63,11 @@ describe("lando agent:skills CLI", () => {
         readonly ok: boolean;
         readonly result: {
           readonly verb: string;
-          readonly entries: ReadonlyArray<{ readonly action: string; readonly path: string }>;
+          readonly entries: ReadonlyArray<{
+            readonly action: string;
+            readonly path: string;
+            readonly id: string;
+          }>;
         };
       };
       expect(installResult.ok).toBe(true);
