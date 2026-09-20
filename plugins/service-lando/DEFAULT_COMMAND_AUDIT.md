@@ -43,10 +43,10 @@ permission denial on the write target in the table — rather than a daemon erro
 | Service type / mode | Source | Runtime write targets | Non-root `user:` | Status |
 | --- | --- | --- | --- | --- |
 | `apache` | `src/services/apache.ts` `apacheStartCommand` | none | works | **fixed** |
-| `php:*` via `apache` (default) | `src/services/php-via.ts` `apacheStartCommand`, `src/services/http-errors.ts` | `/etc/apache2/sites-available/000-default.conf`, `/usr/share/lando/errors/*` | fails | needs-fix |
+| `php:*` via `apache` (default) | `src/services/php-via.ts` `apacheStartCommand` | none | works | **fixed** |
 | `php:*` via `fpm` | `src/services/php-via.ts` `fpmStartCommand` | `/usr/local/etc/php-fpm.d/zz-lando-listen.conf` | fails | needs-fix |
-| `nginx` with `backend:` | `src/services/nginx.ts` `phpFastcgiCommand`, `src/services/http-errors.ts` | `/etc/nginx/conf.d/default.conf`, `/usr/share/lando/errors/*` | fails | needs-fix |
-| `static` / `static:nginx` | `src/services/static.ts` `defaultStaticCommand`, `src/services/http-errors.ts` | `/etc/nginx/conf.d/default.conf`, `/usr/share/lando/errors/*` | fails | needs-fix |
+| `nginx` with `backend:` | `src/services/nginx.ts` `phpFastcgiCommand` | `/etc/nginx/conf.d/default.conf` | fails | needs-fix |
+| `static` / `static:nginx` | `src/services/static.ts` `defaultStaticCommand` | `/etc/nginx/conf.d/default.conf` | fails | needs-fix |
 | `solr` with `cores:` | `src/services/solr.ts` | `/var/solr/data/<core>/conf` | fails unless the user owns the Solr data tree | needs-fix |
 | `minio` | `src/services/minio.ts` | `mkdir` under `/data` | depends on volume ownership | needs-fix |
 | `varnish` without a VCL bind | `src/services/varnish.ts` | `/tmp/lando-backend.vcl` | write works; the daemon still needs root for its default `:80` | safe write, privileged port |
@@ -84,10 +84,39 @@ half of removing root from the start path.
 
 The same two moves do not transfer verbatim to the other rows. Nginx and
 php-fpm read a configuration directory rather than accepting arbitrary
-command-line directives, the shared error pages are real files, and Solr and
-MinIO write into data trees whose ownership is a storage question. Each needs
-its own decision, which is why they are recorded here rather than batched into
-one change.
+command-line directives, and Solr and MinIO write into data trees whose
+ownership is a storage question. Each needs its own decision, which is why they
+are recorded here rather than batched into one change.
+
+## How the Apache-served PHP launcher was fixed
+
+The PHP image is Debian's Apache, not the Alpine `httpd` layout, so the same
+directives needed one extra move. `apache2.conf` reads
+`IncludeOptional sites-enabled/*.conf` and the package ships `000-default.conf`
+enabled, whose `<VirtualHost *:80>` pins `DocumentRoot /var/www/html`. A `-c`
+directive is applied after the whole configuration tree is read, but it lands on
+the main server, and a virtual host keeps its own `DocumentRoot` through the
+merge — so a directive alone cannot move the document root while that site is
+enabled. A build step retires the enabled site, which leaves the main server
+answering every request and makes the launcher's directives the whole
+configuration.
+
+No `PidFile` override is needed here, unlike the `apache` row. The PHP image
+already creates `APACHE_RUN_DIR` and `APACHE_LOCK_DIR` mode `1777` and hands
+`APACHE_LOG_DIR` to `www-data`, so the paths `apache2-foreground` touches before
+`exec` are writable by any identity.
+
+## Where the shared error pages live
+
+`/usr/share/lando/errors/403.html` and `404.html` are served by three Lando-owned
+web servers. They are produced once, by `landoErrorPagesBuildStep()` in
+`src/services/http-errors.ts`, as a build step that runs as root during the
+image build. Nothing writes them as PID 1, so a non-root service user never
+needs permission on that tree. Each page travels base64-encoded because a
+derived build renders the step as a Dockerfile `RUN` and refuses a build-step
+token carrying CR or LF; the decoded bytes are byte-identical to the page the
+module defines. A launcher that needs the pages installs that one step and then
+only references the paths.
 
 ## Residual: privileged ports under a non-root user
 

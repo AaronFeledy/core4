@@ -13,6 +13,7 @@ import {
   php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
+import { apacheLauncherDirectives } from "./support/apache-directives.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -113,8 +114,7 @@ describe("php:8.2 ServiceType", () => {
       version: "8.2",
       via: "apache",
     });
-    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
-    expect(plan.command?.[2]).not.toContain("AllowOverride All");
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).not.toContain("AllowOverride All");
   });
 
   test("derives appName from appRoot basename when no explicit appName is provided", async () => {
@@ -137,7 +137,7 @@ describe("php:8.2 ServiceType", () => {
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app");
-    expect(plan.command?.[2]).not.toContain("AllowOverride All");
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).not.toContain("AllowOverride All");
     expect(plan.extensions["lando-service-php"]).toMatchObject({ allowOverride: false, webroot: "/app" });
   });
 
@@ -158,8 +158,7 @@ describe("php:8.2 ServiceType", () => {
 
     expect(String(plan.workingDirectory)).toBe("/app/public");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/public");
-    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
-    expect(plan.command?.[2]).not.toContain("AllowOverride All");
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).not.toContain("AllowOverride All");
   });
 
   test("enables AllowOverride only when the service explicitly requests it", async () => {
@@ -171,8 +170,7 @@ describe("php:8.2 ServiceType", () => {
 
     expect(String(plan.workingDirectory)).toBe("/app/web");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/web");
-    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
-    expect(plan.command?.[2]).toContain("AllowOverride All");
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).toContain("AllowOverride All");
   });
 
   test("user environment overrides framework defaults", async () => {
@@ -304,7 +302,29 @@ describe("php serving modes (via:)", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
-    expect(plan.command?.[2]).toContain("apache2-foreground");
+    expect(plan.command?.[0]).toBe("apache2-foreground");
+  });
+
+  test("starts a non-root Apache-served PHP service without writing config from PID 1", async () => {
+    // Given / When: an identity the image ships, with home persistence declined
+    // so the planned user is the only thing under test.
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      via: "apache",
+      user: "www-data",
+      home: false,
+    });
+
+    // Then: the planned user reaches the container and the launcher it runs
+    // needs nothing that only root can do.
+    expect(plan.user).toBe("www-data");
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    expect(directives).toContain('DocumentRoot "/app"');
+
+    const argv = plan.command as ReadonlyArray<string>;
+    expect(argv).not.toContain("sh");
+    expect(argv.filter((token) => token.includes("/etc/apache2"))).toEqual([]);
+    expect(argv.join("\n")).not.toMatch(/>\s*\//u);
   });
 
   test("via fpm uses the fpm image and listens on 9000", async () => {
@@ -317,7 +337,7 @@ describe("php serving modes (via:)", () => {
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain("listen = 9000");
     expect(plan.command?.[2]).toContain("exec php-fpm");
-    expect(plan.command?.[2]).not.toContain("apache2-foreground");
+    expect(plan.command).not.toContain("apache2-foreground");
   });
 
   test("via fpm listens on an authored port", async () => {
