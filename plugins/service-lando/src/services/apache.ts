@@ -174,8 +174,10 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   });
 
   if (service.command === undefined && service.entrypoint === undefined) {
-    ctx.setCommand(apacheStartCommand(documentRoot, listenPort));
-    if (listenPort !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
+    const ownedListen =
+      service.image === undefined || service.image === DEFAULT_IMAGE ? listenPort : undefined;
+    ctx.setCommand(apacheStartCommand(documentRoot, ownedListen));
+    if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
   }
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);

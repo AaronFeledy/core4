@@ -201,6 +201,20 @@ describe("apache ServiceType", () => {
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
+  test("a custom image owns its own listener", async () => {
+    // Given / When: an image Lando did not ship.
+    const plan = await composeApachePlan({
+      type: "apache",
+      image: "registry.example.com/httpd:custom",
+      port: 8080,
+    });
+
+    // Then: Lando still generates the start command, but neither emits Listen
+    // nor edits a config path that image may not have.
+    expect(apacheDirectives(plan.command).some((directive) => directive.startsWith("Listen "))).toBe(false);
+    expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
+  });
+
   test("serves an authored webroot through Apache config and LANDO env", async () => {
     // Given / When
     const plan = await composeApachePlan({ type: "apache", webroot: "/app/public files/$site" });

@@ -247,9 +247,11 @@ from `port:`, so the residual has an author-side answer there: set `port: 8080`
 and error-page directives in `<VirtualHost *:<port>>`, and deletes the image's
 `Listen 80` from `/etc/apache2/ports.conf` during the build. Without an
 authored `port:` neither type changes its launcher, image, or build steps. An
-authored `command:`, `entrypoint:`, or custom `image:` skips the generated
-launcher and the image edit, so that launcher owns `Listen`. `php:*` via `fpm`
-listens on `9000` and never had the problem.
+authored `command:` or `entrypoint:` skips the generated launcher and the image
+edit, so that launcher owns `Listen`. A custom `image:` on `php:*` does the same.
+A custom `image:` on `apache` still gets the generated start command, but skips
+`Listen` and the image edit, because that image may not ship `httpd.conf`.
+`php:*` via `fpm` listens on `9000` and never had the problem.
 
 Two mechanisms were considered and rejected for the service type itself:
 

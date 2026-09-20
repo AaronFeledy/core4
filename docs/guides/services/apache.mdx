@@ -84,7 +84,7 @@ services:
     port: 8080
 ```
 
-Leave `port:` out and nothing changes: same launcher, same image, no extra build step. If you set your own `command:` or `entrypoint:`, or point `image:` at a custom image, Lando does not generate the launcher or touch the image config. Your launcher owns `Listen` and the PID file.
+Leave `port:` out and nothing changes: same launcher, same image, no extra build step. If you set your own `command:` or `entrypoint:`, Lando does not generate the launcher or touch the image config. Point `image:` at something other than `httpd:2.4-alpine` and Lando still generates the start command, but it does not emit `Listen` or edit `httpd.conf`. That image owns its own listener.
 
 ## Pin a version
 
