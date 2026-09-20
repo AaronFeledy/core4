@@ -74,6 +74,7 @@ const ownershipCommand = (appPlan: Awaited<ReturnType<typeof plan>>, service: st
   );
   if (step === undefined) return "";
   expect(step.user).toBe("root");
+  expect(step.phase).toBe("build");
   return Array.isArray(step.command) ? step.command.join(" ") : String(step.command);
 };
 

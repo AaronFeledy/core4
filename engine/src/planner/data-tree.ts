@@ -137,6 +137,9 @@ export const DATA_TREE_OWNERSHIP_STEP_ID = "lando.storage:own-data-trees" as con
  * needs write permission anywhere to get it. Both the path and the principal
  * are single-quoted: a container path and a container user are validated
  * shapes, and quoting keeps the rendered `RUN` a single shell word each.
+ *
+ * `phase` is `"build"` because derived-image materialization (`parseStep` in
+ * `@lando/container-runtime`) drops every other phase.
  */
 export const dataTreeOwnershipStep = (
   trees: ReadonlyArray<DataTreeOwnership>,
@@ -149,7 +152,7 @@ export const dataTreeOwnershipStep = (
   ]);
   return {
     id: DATA_TREE_OWNERSHIP_STEP_ID,
-    phase: "prebuild",
+    phase: "build",
     user: "root",
     command: ["sh", "-c", ["set -eu", ...commands].join("; ")],
   };

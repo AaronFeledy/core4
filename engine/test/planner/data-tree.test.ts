@@ -84,13 +84,13 @@ describe("resolveDataTreeOwnership", () => {
 });
 
 describe("dataTreeOwnershipStep", () => {
-  test("Given resolved trees, When a step is built, Then it runs as root and prepares every tree once", () => {
+  test("Given resolved trees, When a step is built, Then it runs as root during the derived image build and prepares every tree once", () => {
     const step = dataTreeOwnershipStep([
       { target: "/var/solr", owner: "10001" },
       { target: "/data", owner: "10001" },
     ]);
     expect(step?.user).toBe("root");
-    expect(step?.phase).toBe("prebuild");
+    expect(step?.phase).toBe("build");
     expect(step?.id).toBe("lando.storage:own-data-trees");
     const command = Array.isArray(step?.command) ? step.command.join(" ") : String(step?.command);
     expect(command).toContain("mkdir -p '/var/solr'");
