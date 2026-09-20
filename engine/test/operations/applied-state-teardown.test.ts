@@ -514,6 +514,27 @@ describe("applied-state teardown", () => {
     });
   });
 
+  test.each([
+    { volumes: false, purgeCaches: false, removed: [] },
+    { volumes: true, purgeCaches: false, removed: [] },
+    { volumes: false, purgeCaches: true, removed: [{ store: "cache", generation: "generation-cache" }] },
+    { volumes: true, purgeCaches: true, removed: [{ store: "cache", generation: "generation-cache" }] },
+  ])("destroy selects global orphan volumes with %j", async ({ volumes, purgeCaches, removed }) => {
+    await withTempRoot(async (root) => {
+      // Given globally scoped cache and data volumes with no surviving applied plan.
+      const harness = makeLayer({ orphans: [orphanGroup({ root, globalVolumes: ["cache", "shared"] })] });
+
+      // When the requested volume classes are torn down.
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ volumes, purgeCaches })).pipe(Effect.provide(harness.layer)),
+      );
+
+      // Then only an explicitly purged cache is removed; global data always survives.
+      expect(harness.removedVolumes).toEqual([...removed]);
+      expect(result.volumesRemoved).toBe(purgeCaches);
+    });
+  });
+
   test("destroy leaves a globally scoped orphan volume alone", async () => {
     await withTempRoot(async (root) => {
       const harness = makeLayer({

@@ -102,8 +102,9 @@ export const tearDownOrphans = (input: {
           for (const volume of group.volumes) {
             const generation = volume.identity?.generation;
             if (generation === undefined) continue;
-            if (isGlobalScopedVolume(volume.labels)) continue;
-            if (!volumeClasses.includes(volumeClassFromLabels(volume.labels))) continue;
+            const volumeClass = volumeClassFromLabels(volume.labels);
+            if (volumeClass === "data" && isGlobalScopedVolume(volume.labels)) continue;
+            if (!volumeClasses.includes(volumeClass)) continue;
             yield* provider.removeVolume(volume.ref, generation);
             volumesRemoved = true;
           }
