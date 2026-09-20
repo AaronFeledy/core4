@@ -581,3 +581,14 @@ non-root `user:` or say at plan time that they cannot.
 - Guide wording now matches the resolver: a numeric uid still plans with a custom image; only a named user is refused.
 - Review notes (deferred/rejected): Docker BuildKit and VOLUME-write preservation were rejected as a Review demotion. Changing derived-build framing is a different surface, already recorded in the Build entry as its own story, and inventing a provider capability here would grow this story past its ACs. Shell quoting of plugin-supplied targets was rejected: bundled Solr and MinIO targets are constants. Gating ownership on an authored command was rejected: the AC is the cores and bucket writes, not launcher identity.
 ---
+
+## 2026-09-20 02:02 - US-660 Drift Audit
+- Trigger: 3 cycles, 802 changed lines, 6 commits
+- Scar tissue: finalize dropped a build-step id nothing else emits; removed.
+- Ceremony: two internal types and a same-file helper were exported with no production importers; unexported.
+- Contract completeness: `addStorage`'s ownership argument was a public additive export without an API_COMPATIBILITY note; recorded.
+- Category 7: Docker VOLUME/BuildKit, the docker.io MinIO pin, and two-service live evidence were re-examined and stay deferred; none is a regression this branch owns.
+- Fixed: unused exports dropped, the defensive filter removed, the addStorage ownership intent recorded.
+- Split/excise decisions: none. Docker classic-builder VOLUME writes were never absorbed; Reviews already left that as a later story, so the PRD index is unchanged.
+- Verification: typecheck pass, lint pass, 19 data-tree tests pass, SDK backward-compat pass.
+---
