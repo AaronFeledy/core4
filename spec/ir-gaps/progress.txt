@@ -778,3 +778,9 @@ containers the provider still holds, and the result names only what went away.
     routing one comparison through the shared accessor would pull the whole
     data-plane module graph into engine for a single line.
 ---
+## 2026-09-20 07:15 - US-653 Review
+- Reviewed the volume-ownership collapse against the source ACs. No product blockers were fixed; the four selector sites, hashed identity-less migration, documented proof-vs-selection split, and identity-less matching tests already satisfy the Build-owned proofs.
+- Review notes (deferred/rejected): always re-deriving selector ownerKey from appRoot (and rejecting mismatched identities) was rejected — AC2 allows documenting why both labels exist, and planner-stamped identity.ownerKey is the selection value; extracting a shared resolver to replace identity?.appRoot ?? plan.root in volume-coordination and SQL recovery was rejected — AC1 names only the four selector sites, those leftovers compare proof roots not selector keys, and sql cannot depend on container-runtime; compose-fixtures 3-part selector writer leaking live volumes was rejected — pre-existing since that suite landed, 3-part selectors never matched either reader form, and this branch did not touch that file.
+- Verification: gate:pr passed; guide gates passed against origin/main; Bugbot found no bugs; 39 focused tests across volume-ownership, compose-emit, app-identity, and volume-observation.
+- Guide-Coverage-Skip: volume ownership selector is maintainer-only internal metadata with no public guide.
+---
