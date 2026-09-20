@@ -1087,3 +1087,6 @@ takes elevation attempts from four per run to one.
 - Verification: gate:pr passed; guide-drift passed against origin/main; lint:guides, check:guide-coverage, codegen:guide-scenarios, and check:public-transcripts passed; 70 focused tests across the wrapper, reporter, codegen-ci, and ci-workflow suites; Bugbot found no bugs.
 - **Learnings for future iterations:** Live output is the stall-attribution instrument, not the hang resolution. Do not send Build back around a windows-arm64 hang that has not recurred with the live region on.
 ---
+## 2026-09-20 15:57 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
