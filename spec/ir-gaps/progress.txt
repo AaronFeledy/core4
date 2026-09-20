@@ -501,3 +501,71 @@ start under a non-root `user:`.
 ## 2026-09-19 23:52 - Drift Audit
 - [looper] gate skipped Drift Audit: gate: script exited with code 1
 ---
+
+## 2026-09-20 01:55 - US-660
+
+A `solr` service with `cores:` and a `minio` service now either run under a
+non-root `user:` or say at plan time that they cannot.
+
+- Ownership of a volume-backed data tree is decided in the image, not at start.
+  A feature declares the requirement next to the mount — `ctx.addStorage(mount,
+  { seededOwners })` names the principals the type's own image already gives
+  the target to — and planning emits one root build step that creates the tree
+  and chowns it to the planned user. A container runtime seeds a fresh named
+  volume from the image directory at the mount point, ownership included, so
+  the planned user owns the tree from first start.
+- The step is emitted only when the planned user is not already an owner the
+  image seeds, so a default, `root`, `solr`, or `8983` plan gains no build step
+  and no rebuild. Numeric uids are always preparable; a named user has to be one
+  the service type declares.
+- `DataTreeOwnershipCapabilityError` refuses the rest before any provider
+  action, naming the service, the tree, and the Landofile key to change:
+  `services.<n>.user` for an undeclared name, `services.<n>.image` when the
+  Landofile supplies the image so the type's identity no longer describes it,
+  `services.<n>.type` when the type declares no identities at all. Joined once
+  to each of the sixteen plan-carrying unions plus the compatibility record and
+  the frozen service-tag fixture.
+- Writing the test first paid immediately: the custom-image case proved that a
+  Landofile-supplied `image:` also invalidates the type's *seeded-owner* claim,
+  not just its identity, which the first implementation had missed.
+- Deliberately not done: a data tree under a base image's `VOLUME` relies on the
+  builder preserving writes beneath an inherited `VOLUME`. Verified preserved on
+  the Lando-managed Podman provider through its own `/build` endpoint, with
+  byte-identical image ids with and without `compatvolumes=false`. Docker's
+  classic builder discards such writes, and `buildPath` sends no `version=2`, so
+  a derived build on `@lando/provider-docker` would need BuildKit first. Left
+  out rather than flipped blind: switching that endpoint changes the build
+  response framing for every derived build, which is its own story.
+- Verification: typecheck, lint, all 13 boundary rules, `codegen:check` clean,
+  and a real guide-drift pass against `origin/main`. RED first: the resolver
+  suite failed on a missing module, then on the custom-image case. 132 focused
+  tests green across data-tree, app-planner-data-tree, solr, minio, home,
+  app-planner-home, app-feature, compose, and features, plus the SDK backward
+  compatibility, catalog-coverage, and service-identity suites. Real runtime in
+  lando4-dev: as uid 33 a derived solr image reported `Created probecore` and
+  copied the overlay, while stock solr on the same fresh volume died with
+  `Cannot write to /var/solr as 33:33`; derived minio created its bucket at uid
+  1000. Real binary `app:cache:refresh` refused both undeclared-user Landofiles
+  with the tagged error and accepted the numeric-uid and default ones.
+- **Out-of-scope finding:** `docker.io/minio/minio:latest`, the tag `minio.ts`
+  pins, is no longer anonymously pullable — it answers `requested access to the
+  resource is denied`. `quay.io/minio/minio:latest` serves the same image. Every
+  MinIO start on a clean host is broken until that pin moves.
+- **Learnings for future iterations:**
+  - A named volume inherits the ownership and mode of the image directory at its
+    mount point, so image preparation is the portable way to hand a data tree to
+    a non-root user. It applies once, to a volume that does not exist yet; an
+    existing volume keeps what it has.
+  - Podman and Docker diverge when that path is absent from the image. Podman
+    chowns the fresh volume to the container user, Docker leaves it root-owned.
+    So `mkdir`-ing such a path into the image without also chowning it would
+    regress Podman by switching it onto image-path ownership.
+  - Feature composition finalizes a draft through `finalizeDraft`, not through
+    `servicePlanExtensionsFromDraft`, so any new draft field has to be persisted
+    into the `@lando/core/service-features` extension there or it is silently
+    dropped before the app-feature pass. The end-to-end test caught it; the unit
+    tests could not.
+  - `ServiceHomeIntent` collapses "custom image" and "type declares no identity"
+    into one absent `identity`. Telling a user which Landofile key to change
+    needs them kept apart.
+---
