@@ -95,7 +95,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("LANDO_RUNTIME_BUNDLE_MANIFEST");
     expect(runbook).toContain("dist/lando setup --yes --provider=lando");
     expect(runbook).toContain("`LANDO_TEST_PODMAN_SOCKET` rehearsal fallback");
-    expect(runbook).toContain("LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario");
+    expect(runbook).toContain("LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live");
     expect(runbook).toContain("podman system service --time=0 unix:///tmp/podman.sock");
     expect(runbook).toContain("Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64");
     expect(runbook).toContain("bun install --frozen-lockfile --os=* --cpu=*");

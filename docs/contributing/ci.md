@@ -206,7 +206,7 @@ LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=land
 LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
 LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
 "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine
-LANDO_MVP_BINARY_PATH="$PWD/dist/lando" bun test core/test/scenario
+bun test core/test/live
 bun test plugins/provider-lando/test --filter=integration
 bun test plugins/provider-docker/test --filter=integration
 bun test plugins/service-lando/test --filter=integration
@@ -219,7 +219,7 @@ podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
-LANDO_MVP_BINARY_PATH="$PWD/dist/lando" LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 ```
 
 Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (25 minutes for Linux jobs, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
@@ -238,11 +238,10 @@ The live region exists so a hung job leaves evidence of where it stopped; see th
 
 `bun run check:public-transcripts` is also a standalone clean-tree gate. When `dist/transcripts/public/guides` is empty after `bun run clean` or on a fresh clone, the command deterministically emits the public transcript corpus before checking its inventory. Existing or partially populated corpora are checked without regeneration, so missing-artifact diagnostics remain actionable. The generated corpus is gitignored and must not be committed.
 
-Only `guide-scenarios-linux-x64` runs the e2e `@smoke` second pass. It downloads the Linux x64 compiled binary, provisions the same Podman socket used by provider integration, sets `LANDO_GUIDE_E2E=1`, and runs only generated tests whose names contain `@smoke` and `[e2e]`:
+Only `guide-scenarios-linux-x64` runs the e2e `@smoke` second pass. It downloads the Linux x64 compiled binary, provisions the same Podman socket used by provider integration, sets `LANDO_GUIDE_E2E=1`, and runs only generated tests whose names contain `@smoke` and `[e2e]`. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario:
 
 ```bash
 LANDO_GUIDE_E2E=1 \
-LANDO_MVP_BINARY_PATH="$PWD/dist/lando" \
 LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock \
 bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"
@@ -252,18 +251,18 @@ Failures still upload guide internal transcripts, plus `guide-e2e-provider-diagn
 
 ## Nightly provider-lando e2e
 
-The nightly workflow keeps host-mutating provider-lando e2e coverage out of the per-PR gate. The `provider-lando-e2e-linux-x64` job installs Podman on `ubuntu-24.04`, sets `net.ipv4.ip_unprivileged_port_start=0` for rootless low-port binds, provisions a private Podman socket, builds the Linux x64 compiled binary, then runs smoke and non-smoke scenario tests against that binary:
+The nightly workflow keeps host-mutating provider-lando e2e coverage out of the per-PR gate. The `provider-lando-e2e-linux-x64` job runs `bun run codegen`, installs Podman on `ubuntu-24.04`, sets `net.ipv4.ip_unprivileged_port_start=0` for rootless low-port binds, provisions a private Podman socket, builds the Linux x64 compiled binary, then runs every generated `[e2e]` guide scenario (smoke or not) against that binary, followed by the `core/test/live` integration suites:
 
 ```bash
 sudo sysctl net.ipv4.ip_unprivileged_port_start=0
 podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
-LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun test core/test/scenario --test-name-pattern="@smoke"
-LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun test core/test/scenario --test-name-pattern="^(?!.*@smoke).*$"
+LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
+bun test core/test/live
 ```
 
-Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
+Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
 
 ## Provider matrix
 
