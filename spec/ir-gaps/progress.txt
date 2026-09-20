@@ -709,3 +709,9 @@ containers the provider still holds, and the result names only what went away.
   - Orphan networks are still not removed by either teardown path; that was true
     before this story and remains out of scope.
 ---
+## 2026-09-20 04:55 - US-652 Review
+- Reviewed orphan-container teardown against the source ACs. No product blockers were fixed; observed-identity removal, truthful service reporting, explicit planless destroy no-op, and shared cache/data volume class filtering already satisfy the Build-owned proofs.
+- Review notes (deferred/rejected): daemon-backed `list()` on provider-lando/provider-podman was rejected as a Review demotion — it is pre-existing, this story's diff does not touch `list`, and the ACs own `removeObservedService` given observations rather than rewriting discovery; live container present-before/absent-after evidence was rejected as a Review demotion — residual §7.1 assigns that proof to Verify; binding `removeObservedService` to ownership labels was rejected — the primitive is the trusted engine-to-provider seam, and teardown already filters observations by `appRoot`.
+- Verification: gate:pr passed; guide-drift passed against origin/main; Bugbot found no bugs; 83 focused tests across remove-observed-container, applied-state-teardown, provider contract, and unchanged destroy/stop render cases.
+- Guide-Coverage-Skip: orphan teardown implements the already-documented destroy/stop applied-state path; lifecycle guides already promise owned containers are removed.
+---
