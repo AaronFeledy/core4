@@ -74,6 +74,30 @@ services:
     </Step>
   </Scenario>
 
+## Run as a non-root user
+
+Set `user:` to run an Apache-served PHP service as an account the image already
+ships. Lando hands its Apache directives to `apache2-foreground` as `-c`
+arguments and bakes the branded error pages into the image, so nothing is
+written into the image's root-owned configuration tree at start:
+
+```yaml
+services:
+  appserver:
+    type: php:8.3
+    user: www-data
+    home: false
+```
+
+`home: false` is there because Lando persists the planned user's home directory
+and only knows where `root`'s home is on the PHP images. Drop it and set
+`home.path:` instead when you want that directory to survive a rebuild.
+
+Apache still listens on `80`, which a non-root process cannot bind on the
+default `lando` provider. `port:` moves Lando's endpoint and healthcheck, not
+Apache's `Listen`. If start fails on that bind, replace `command:` or
+`entrypoint:` so your launcher owns `Listen`.
+
 ## Set the webroot yourself
 
 There's no `framework:` key on the `php` service. It has no built-in preset that switches the served webroot for Drupal, Laravel, Symfony, or WordPress. The apache docroot is `/app` unless you set `webroot:`. To serve a framework public directory, point `webroot:` at that path, or put nginx in front with `via: fpm`. Compose's `configs:` block isn't realized by `provider-lando`, so a custom `php.ini` or vhost file has to be mounted in, not declared under `configs:`.

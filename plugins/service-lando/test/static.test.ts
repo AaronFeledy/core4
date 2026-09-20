@@ -13,6 +13,7 @@ import {
 
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
+import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -128,8 +129,8 @@ describe("static ServiceType", () => {
     const plan = await composeStaticPlan({ type: "static" });
 
     const command = Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command ?? "");
-    expect(command).toContain("/usr/share/lando/errors/403.html");
-    expect(command).toContain("/usr/share/lando/errors/404.html");
+    expectSharedErrorPagesBuildStep(plan);
+    expect(command).toContain("alias /usr/share/lando/errors/;");
     expect(command).toContain("error_page 403 /_lando/errors/403.html;");
     expect(command).toContain("error_page 404 /_lando/errors/404.html;");
     expect(command).toContain("internal;");

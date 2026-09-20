@@ -19,7 +19,7 @@ import type {
 } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
-import { landoErrorPageSetupLines, nginxErrorPageConfigLines } from "./http-errors.ts";
+import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
@@ -60,7 +60,6 @@ const phpFastcgiCommand = (
   "-c",
   [
     "set -eu",
-    ...landoErrorPageSetupLines(),
     "cat > /etc/nginx/conf.d/default.conf <<'LANDO_NGINX_PHP'",
     "server {",
     `  listen ${String(ports.listen)};`,
@@ -126,6 +125,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
       required: true,
     });
     if (service.command === undefined && service.entrypoint === undefined) {
+      ctx.addBuildStep(landoErrorPagesBuildStep());
       ctx.setCommand(phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }));
     }
   }
@@ -170,6 +170,7 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     if (fpm === undefined) return;
     const listen = service.port ?? DEFAULT_PORT;
     const webroot = service.webroot ?? APP_MOUNT_TARGET;
+    mutator.addBuildStep(landoErrorPagesBuildStep());
     mutator.setCommand(phpFastcgiCommand(backend, webroot, { listen, fpm }));
   });
 };

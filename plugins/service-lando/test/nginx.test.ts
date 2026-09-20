@@ -15,6 +15,7 @@ import {
   nginxServiceType,
 } from "../src/services/nginx.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -128,8 +129,8 @@ describe("nginx PHP FastCGI preset", () => {
         : "";
     expect(command).toContain("fastcgi_pass appserver:9000");
     expect(command).toContain("root /app/web");
-    expect(command).toContain("/usr/share/lando/errors/403.html");
-    expect(command).toContain("/usr/share/lando/errors/404.html");
+    expectSharedErrorPagesBuildStep(plan);
+    expect(command).toContain("alias /usr/share/lando/errors/;");
     expect(command).toContain("error_page 403 /_lando/errors/403.html;");
     expect(command).toContain("error_page 404 /_lando/errors/404.html;");
     expect(command).not.toContain("fastcgi_intercept_errors");

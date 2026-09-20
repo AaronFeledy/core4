@@ -1,3 +1,7 @@
+import { Buffer } from "node:buffer";
+
+import type { ServiceBuildStepIntent } from "@lando/sdk/services";
+
 export const LANDO_ERROR_PAGE_DIR = "/usr/share/lando/errors" as const;
 
 export const landoErrorPage = (status: 403 | 404): string => {
@@ -34,15 +38,43 @@ export const landoErrorPage = (status: 403 | 404): string => {
 </html>`;
 };
 
-export const landoErrorPageSetupLines = (): ReadonlyArray<string> => [
-  `mkdir -p ${LANDO_ERROR_PAGE_DIR}`,
-  `cat > ${LANDO_ERROR_PAGE_DIR}/403.html <<'LANDO_ERROR_403'`,
-  landoErrorPage(403),
-  "LANDO_ERROR_403",
-  `cat > ${LANDO_ERROR_PAGE_DIR}/404.html <<'LANDO_ERROR_404'`,
-  landoErrorPage(404),
-  "LANDO_ERROR_404",
-];
+export const LANDO_ERROR_PAGES_BUILD_STEP_ID = "service-lando.http-errors:pages" as const;
+
+const LANDO_ERROR_PAGE_STATUSES = [403, 404] as const;
+
+/** The exact bytes a server sends for a Lando-owned error page. */
+export const landoErrorPageBytes = (status: 403 | 404): string => `${landoErrorPage(status)}\n`;
+
+/**
+ * The shared 403/404 pages every Lando-owned web server serves.
+ *
+ * The pages are image content, produced once during the image build as root,
+ * rather than written by each launcher as PID 1. That is what lets a service
+ * keep serving them under a non-root `user:`: a start command that writes
+ * nothing needs no write permission anywhere.
+ *
+ * Each page travels base64-encoded because a derived build renders this step as
+ * a Dockerfile `RUN`, and a build-step token carrying CR or LF is refused
+ * there. Encoding keeps the served bytes identical to the page this module
+ * defines without putting a newline in the command.
+ */
+export const landoErrorPagesBuildStep = (): ServiceBuildStepIntent => ({
+  id: LANDO_ERROR_PAGES_BUILD_STEP_ID,
+  phase: "build",
+  user: "root",
+  command: [
+    "sh",
+    "-c",
+    [
+      "set -eu",
+      `mkdir -p ${LANDO_ERROR_PAGE_DIR}`,
+      ...LANDO_ERROR_PAGE_STATUSES.map(
+        (status) =>
+          `printf '%s' '${Buffer.from(landoErrorPageBytes(status), "utf8").toString("base64")}' | base64 -d > ${LANDO_ERROR_PAGE_DIR}/${String(status)}.html`,
+      ),
+    ].join("; "),
+  ],
+});
 
 export const nginxErrorPageConfigLines = (): ReadonlyArray<string> => [
   "  error_page 403 /_lando/errors/403.html;",
@@ -53,12 +85,13 @@ export const nginxErrorPageConfigLines = (): ReadonlyArray<string> => [
   "  }",
 ];
 
-export const apacheErrorPageConfigLines = (): ReadonlyArray<string> => [
-  `  Alias "/_lando/errors/" "${LANDO_ERROR_PAGE_DIR}/"`,
-  `  <Directory "${LANDO_ERROR_PAGE_DIR}">`,
-  "    AllowOverride None",
-  "    Require all granted",
-  "  </Directory>",
-  "  ErrorDocument 403 /_lando/errors/403.html",
-  "  ErrorDocument 404 /_lando/errors/404.html",
+/** Apache directives, one per element, ready to hand to a launcher as `-c` arguments. */
+export const apacheErrorPageDirectives = (): ReadonlyArray<string> => [
+  `Alias "/_lando/errors/" "${LANDO_ERROR_PAGE_DIR}/"`,
+  `<Directory "${LANDO_ERROR_PAGE_DIR}">`,
+  "AllowOverride None",
+  "Require all granted",
+  "</Directory>",
+  "ErrorDocument 403 /_lando/errors/403.html",
+  "ErrorDocument 404 /_lando/errors/404.html",
 ];

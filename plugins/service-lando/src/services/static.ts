@@ -5,7 +5,7 @@ import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schem
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
-import { landoErrorPageSetupLines, nginxErrorPageConfigLines } from "./http-errors.ts";
+import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
 
 export const SUPPORTED_STATIC_SERVERS = ["nginx", "caddy"] as const;
 export type SupportedStaticServer = (typeof SUPPORTED_STATIC_SERVERS)[number];
@@ -37,7 +37,6 @@ export const defaultStaticCommand = (
     "-c",
     [
       "set -eu",
-      ...landoErrorPageSetupLines(),
       "cat > /etc/nginx/conf.d/default.conf <<'LANDO_STATIC_NGINX'",
       "server {",
       `  listen ${port};`,
@@ -85,6 +84,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   const port = service.port ?? DEFAULT_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? STATIC_SERVER_IMAGES[server] });
+  if (server !== "caddy") ctx.addBuildStep(landoErrorPagesBuildStep());
   ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port));
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   if (service.user !== undefined) ctx.setUser(service.user);

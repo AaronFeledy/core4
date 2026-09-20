@@ -6,6 +6,7 @@ import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import {
@@ -18,6 +19,7 @@ import {
   PHP_CLI_KEEP_ALIVE,
   PHP_FPM_LOG_SOURCES,
   type PhpVia,
+  apacheDefaultSiteRemovalBuildStep,
   apacheStartCommand,
   assertPhpViaKeys,
   fpmStartCommand,
@@ -95,7 +97,13 @@ const configFor = (ctx: ServiceFeatureContext): PhpFeatureConfig => ctx.config a
 
 const applyApacheShape = (ctx: ServiceFeatureContext, webroot: string, allowOverride: boolean): void => {
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
-  if (!hasCustomPhpImage(ctx.normalizedConfig)) {
+  if (
+    !hasCustomPhpImage(ctx.normalizedConfig) &&
+    ctx.normalizedConfig.command === undefined &&
+    ctx.normalizedConfig.entrypoint === undefined
+  ) {
+    ctx.addBuildStep(apacheDefaultSiteRemovalBuildStep());
+    ctx.addBuildStep(landoErrorPagesBuildStep());
     ctx.setCommand(apacheStartCommand(webroot, allowOverride));
   }
 };
