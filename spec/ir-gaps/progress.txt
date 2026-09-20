@@ -422,8 +422,8 @@ under a non-root `user:` without an authored `command:`.
 ---
 
 ## 2026-09-19 21:45 - US-650 Review
-- An authored `command:` on a stock PHP Apache image no longer retires Debian's enabled default site during the image build. The generated launcher installs that step, and the shared error pages, only when it actually owns PID 1, matching FPM and CLI.
+- An authored `command:` or `entrypoint:` on a stock PHP Apache image no longer retires Debian's enabled default site during the image build. The generated launcher installs that step, and the shared error pages, only when it actually owns PID 1.
 - Review notes (rejected): the five-agent review-work harness could not spawn (it treated every launch as a continuation). Bugbot's finding was confirmed from source. A live served-response under a non-root user is Verify's evidence, not a missing AC in the planner work. Extra error-page files on nginx/static with a custom command are unused image content, not a default-site regression.
-- Verification: `gate:pr` green; 68 focused tests across php, php-wave-d, php-prerequisites, nginx, and static, then 30 on php.test.ts after the fix.
+- Verification: `gate:pr` green; 68 focused tests across php, php-wave-d, php-prerequisites, nginx, and static, then 31 on php.test.ts after the command and entrypoint gates.
 - **Learnings for future iterations:** A build step that exists so a generated command can run must be gated on that command remaining the planned command. Overwriting `setCommand` later does not unschedule the step.
 ---
