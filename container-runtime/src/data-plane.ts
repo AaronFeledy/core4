@@ -12,7 +12,12 @@ import {
   resolveNativeVolumeIdentity,
 } from "./volume-observation.ts";
 import { VOLUME_WITNESS_FILE, VOLUME_WITNESS_IMAGE, VOLUME_WITNESS_MOUNT } from "./volume-witness-helper.ts";
-export { volumeCreationOwnerLabels } from "./volume-observation.ts";
+export {
+  VOLUME_OWNER_LABEL,
+  VOLUME_SELECTOR_LABEL,
+  planVolumeOwnership,
+  volumeOwnershipLabels,
+} from "./volume-ownership.ts";
 import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
 export { VOLUME_WITNESS_IMAGE } from "./volume-witness-helper.ts";

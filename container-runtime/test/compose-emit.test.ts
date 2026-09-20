@@ -12,6 +12,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
@@ -160,6 +161,9 @@ const plan: AppPlan = {
   metadata,
   extensions: {},
 };
+
+/** The plan carries no identity, so ownership is derived from its root the way the writer derives it. */
+const ownerKey = appIdentityKey("owner", appRoot);
 
 const topLevelKeys = (content: string): string[] =>
   content
@@ -768,7 +772,8 @@ describe("Compose mapping-key quoting", () => {
             "dev.lando.provider": "lando",
             "dev.lando.scope": "service",
             "dev.lando.store": "myapp_database_data",
-            "dev.lando.volume-selector": expect.any(String),
+            "dev.lando.volume-owner": "/srv/apps/myapp",
+            "dev.lando.volume-selector": `lando:myapp:${ownerKey}:data`,
           },
         },
         "lando-cache-npm": {
@@ -778,7 +783,8 @@ describe("Compose mapping-key quoting", () => {
             "dev.lando.scope": "global",
             "dev.lando.storage-kind": "cache",
             "dev.lando.store": "lando-cache-npm",
-            "dev.lando.volume-selector": expect.any(String),
+            "dev.lando.volume-owner": "/srv/apps/myapp",
+            "dev.lando.volume-selector": `lando:myapp:${ownerKey}:cache`,
           },
         },
       },

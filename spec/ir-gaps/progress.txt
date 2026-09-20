@@ -715,3 +715,75 @@ containers the provider still holds, and the result names only what went away.
 - Verification: gate:pr passed; guide-drift passed against origin/main; Bugbot found no bugs; 83 focused tests across remove-observed-container, applied-state-teardown, provider contract, and unchanged destroy/stop render cases.
 - Guide-Coverage-Skip: orphan teardown implements the already-documented destroy/stop applied-state path; lifecycle guides already promise owned containers are removed.
 ---
+## 2026-09-20 06:26 - Babysit
+- PR: #1028 https://github.com/AaronFeledy/core4/pull/1028
+- CI outcome: pass (after triage; unit-tests-linux-x64-shard 3 failed on both ubuntu images at first)
+- Review feedback: fixed — renderer visual-QA called the test provider's `destroy` with an undefined target, and orphan teardown skipped every global-scoped volume while planful bring-down purges global caches under `--purge-caches`, so global scope now protects data volumes only and the divergence is pinned by four flag-combination cases.
+- Drift check: clean
+- Merge: merged (squash)
+---
+## 2026-09-20 06:55 - US-653 Build
+- A volume's ownership identity is now written one way and read the same way.
+  `container-runtime/src/volume-ownership.ts` is the only producer of the two
+  ownership labels and the only builder of the selector filters that read them
+  back, and its header states the invariant so the next reader need not
+  reconstruct it: `dev.lando.volume-owner` carries the canonical app root and is
+  authoritative for ownership PROOF (docker's planful delete gate, create-race
+  detection, adoption, SQL recovery); `dev.lando.volume-selector` packs
+  provider, app, owner key, and class into one value and is authoritative for
+  SELECTION, because the daemon ORs the values listed under one label key.
+- The `plan.identity?.ownerKey ?? plan.root` fallback is gone from all four
+  selector sites. A plan carrying no identity is migrated at read time from its
+  root through `appIdentityKey("owner", root)` — the same derivation the planner
+  stamps onto `AppPlan.identity`, now shared from `@lando/sdk/schema` instead of
+  being spelled privately in the planner. Because the planner assigns
+  `root` from `identity.appRoot`, the migrated key is byte-identical to the
+  planned one, so no value that was ever written changes.
+- Neither label can now be written without the other: both come from one
+  accessor, so compose-emitted volumes gained the owner label (docker's delete
+  gate reads only that label, so a compose-created volume was previously
+  undeletable through it) and docker-created volumes gained the selector.
+- No legacy selector format is accepted and none is needed. The owner key
+  entered the selector in the same revision that made the planner stamp every
+  plan with an identity, so nothing shipped can carry a raw-root selector;
+  volumes older than that revision carry a three-part selector that never
+  matched either form. The labels are not collapsed into one, so the
+  conditional migration path the story allows for does not apply.
+- Verification: gate:pr passed — typecheck, lint, codegen:check clean, all 13
+  boundary rules, and guide-drift against origin/main. RED first: four failing
+  cases proving a selector written without `identity.ownerKey` went unmatched by
+  the reading side, that the owner label was absent for such a plan, and that
+  the selector carried a raw root; 7 green after. Focused spot checks: 627
+  container-runtime, 475 provider-lando, 259 provider-docker/podman, 205
+  sql/data-mover, 1797 engine. Real-surface evidence came from driving the
+  writers and the prune request builder directly: every create body and compose
+  volume carries both labels, the selector's owner key equals
+  `appIdentityKey("owner", <owner label>)`, and the planner-shaped and
+  identity-less plans produce byte-identical create bodies, compose documents,
+  and `/libpod/volumes/prune?filters=...` query strings. Real binary
+  `lando destroy --yes --volumes --purge-caches` and `lando stop` on a
+  runtime-free host reported `unchanged` in both human and JSON output.
+- **Learnings for future iterations:**
+  - `engine/test/subsystems/host-proxy/transport.test.ts` "closes the listener
+    when chmod fails after bind" is flaky on `main` itself — it races a
+    `setInterval(..., 0)` socket remover against bind/chmod and failed two of
+    three baseline runs on an unmodified checkout. Do not attribute it to a
+    branch; it belongs on US-655's measured baseline.
+  - `renderCompose(plan, ctx)` takes a required provider context, and
+    `yamlRoundTripRecord` from `@lando/sdk/test` is a corpus fixture that takes
+    no arguments, not a YAML parser. Compose tests parse with `Bun.YAML.parse`.
+  - Two ownership reads keep an appRoot-flavoured fallback and were left alone:
+    `plugins/sql/src/recovery-target.ts` (sql cannot depend on
+    container-runtime) and `engine/src/lifecycle/volume-coordination.ts`, where
+    routing one comparison through the shared accessor would pull the whole
+    data-plane module graph into engine for a single line.
+---
+## 2026-09-20 07:15 - US-653 Review
+- Reviewed the volume-ownership collapse against the source ACs. No product blockers were fixed; the four selector sites, hashed identity-less migration, documented proof-vs-selection split, and identity-less matching tests already satisfy the Build-owned proofs.
+- Review notes (deferred/rejected): always re-deriving selector ownerKey from appRoot (and rejecting mismatched identities) was rejected — AC2 allows documenting why both labels exist, and planner-stamped identity.ownerKey is the selection value; extracting a shared resolver to replace identity?.appRoot ?? plan.root in volume-coordination and SQL recovery was rejected — AC1 names only the four selector sites, those leftovers compare proof roots not selector keys, and sql cannot depend on container-runtime; compose-fixtures 3-part selector writer leaking live volumes was rejected — pre-existing since that suite landed, 3-part selectors never matched either reader form, and this branch did not touch that file.
+- Verification: gate:pr passed; guide gates passed against origin/main; Bugbot found no bugs; 39 focused tests across volume-ownership, compose-emit, app-identity, and volume-observation.
+- Guide-Coverage-Skip: volume ownership selector is maintainer-only internal metadata with no public guide.
+---
+## 2026-09-20 07:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---

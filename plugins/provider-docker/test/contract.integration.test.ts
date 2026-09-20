@@ -1560,6 +1560,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
         "dev.lando.volume-owner": "/canonical/creation-root",
+        "dev.lando.volume-selector": `docker:${appId}:creation-owner:cache`,
       },
     });
     expect(

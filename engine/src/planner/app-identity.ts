@@ -1,15 +1,11 @@
-import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { type Context, Effect } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppIdentity } from "@lando/sdk/schema";
+import { AbsolutePath, type AppIdentity, appIdentityKey } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
-
-const identityKey = (kind: "owner" | "repository", path: string): string =>
-  createHash("sha256").update(`${kind}\0${path}`).digest("hex");
 
 const canonicalPath = (path: string): Effect.Effect<string, LandofileValidationError> =>
   Effect.tryPromise({
@@ -47,7 +43,7 @@ export const resolveAppIdentity = (
             );
     return {
       appRoot: AbsolutePath.make(canonicalAppRoot),
-      ownerKey: identityKey("owner", canonicalAppRoot),
-      ...(commonDir === undefined ? {} : { repoGroupKey: identityKey("repository", commonDir) }),
+      ownerKey: appIdentityKey("owner", canonicalAppRoot),
+      ...(commonDir === undefined ? {} : { repoGroupKey: appIdentityKey("repository", commonDir) }),
     };
   });

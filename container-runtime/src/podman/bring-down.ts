@@ -12,13 +12,9 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
-import { teardownVolumeClasses } from "../volume-classes.ts";
-import {
-  type VolumeSelectorClass,
-  buildLandoVolumeFilters,
-  pruneVolumes,
-  volumeMatchesFilters,
-} from "./volume-prune.ts";
+import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
+import { planVolumeFilters } from "../volume-ownership.ts";
+import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 type BringDownError = ProviderUnavailableError | ProviderInternalError;
@@ -199,18 +195,8 @@ const removeVolume = (
       );
     }
     const labels = parseVolumeLabels(inspected.body);
-    const volumeClass: VolumeSelectorClass = store.kind === "cache" ? "cache" : "data";
-    if (
-      labels === undefined ||
-      !volumeMatchesFilters(
-        labels,
-        buildLandoVolumeFilters(plan.id, {
-          providerId: plan.provider,
-          ownerKey: plan.identity?.ownerKey ?? plan.root,
-          volumeClasses: [volumeClass],
-        }),
-      )
-    ) {
+    const volumeClass = volumeClassForStore(store);
+    if (labels === undefined || !volumeMatchesFilters(labels, planVolumeFilters(plan, [volumeClass]))) {
       return false;
     }
     const response = yield* request(deps, {
@@ -246,11 +232,7 @@ const removeAppScopedVolumes = (deps: BringDownDeps, plan: AppPlan): Effect.Effe
 
 const pruneAppScopedVolumes = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolean, BringDownError> =>
   pruneVolumes(deps.api, {
-    filters: buildLandoVolumeFilters(plan.id, {
-      providerId: plan.provider,
-      ownerKey: plan.identity?.ownerKey ?? plan.root,
-      volumeClasses: teardownVolumeClasses(deps.options),
-    }),
+    filters: planVolumeFilters(plan, teardownVolumeClasses(deps.options)),
     ctx: deps.options.ctx,
     all: deps.options.volumes === true,
   }).pipe(Effect.map((report) => report.pruned.length > 0 || report.errors.length > 0));

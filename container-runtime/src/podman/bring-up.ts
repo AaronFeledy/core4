@@ -36,7 +36,6 @@ import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts"
 import { waitForExit } from "../wait-for-exit.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
-import { volumeSelectorValue } from "./volume-prune.ts";
 
 const appNetworkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
@@ -352,12 +351,6 @@ export const podmanVolumeCreationLabels = (
 ): Readonly<Record<string, string>> => ({
   ...volumeCreationLabels(plan, store),
   "dev.lando.provider": plan.provider,
-  "dev.lando.volume-selector": volumeSelectorValue({
-    providerId: plan.provider,
-    appId: plan.id,
-    ownerKey: plan.identity?.ownerKey ?? plan.root,
-    volumeClass: store.kind === "cache" ? "cache" : "data",
-  }),
 });
 
 const ensureVolume = (
