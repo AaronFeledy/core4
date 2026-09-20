@@ -231,19 +231,25 @@ only references the paths.
 ## Residual: privileged ports under a non-root user
 
 Removing the writes does not grant a non-root process the right to bind a port
-below 1024. Apache still listens on `80` by default, `static:caddy` and
-`varnish` do the same, and `net.ipv4.ip_unprivileged_port_start` defaults to
-`1024` in a fresh container network namespace. Docker sets that sysctl to `0`
-for its containers; Podman does not, so a non-root service that keeps a
-privileged port can still fail to bind on a Podman-backed provider even with a
-write-free launcher. Apache's image still has `Listen 80`; `port:` only updates
-Lando endpoints and the healthcheck. An authored `command:` or `entrypoint:` is
-what owns `Listen`.
+below 1024. `static:caddy` and `varnish` still listen on `80` by default, and
+`net.ipv4.ip_unprivileged_port_start` defaults to `1024` in a fresh container
+network namespace. Docker sets that sysctl to `0` for its containers; Podman
+does not, so a non-root service that keeps a privileged port can still fail to
+bind on a Podman-backed provider even with a write-free launcher.
 
-`nginx` and `static` are different. Their launchers template `port:` into the
-generated `listen` directive, so the residual has an author-side answer there:
-set `port: 8080` (or any port at or above 1024) and the non-root master binds
-it. `php:*` via `fpm` listens on `9000` and never had the problem.
+`nginx`, `static`, `apache`, and `php:*` via `apache` derive their listener
+from `port:`, so the residual has an author-side answer there: set `port: 8080`
+(or any port at or above 1024) and the non-root master binds it. `nginx` and
+`static` template `port:` into the generated `listen` directive. `apache` emits
+`Listen <port>` as a `-c` directive and deletes the image's `Listen 80` from
+`/usr/local/apache2/conf/httpd.conf` during the image build; `php:*` via
+`apache` emits `Listen <port>`, wraps the generated document-root, directory,
+and error-page directives in `<VirtualHost *:<port>>`, and deletes the image's
+`Listen 80` from `/etc/apache2/ports.conf` during the build. Without an
+authored `port:` neither type changes its launcher, image, or build steps. An
+authored `command:`, `entrypoint:`, or custom `image:` skips the generated
+launcher and the image edit, so that launcher owns `Listen`. `php:*` via `fpm`
+listens on `9000` and never had the problem.
 
 Two mechanisms were considered and rejected for the service type itself:
 
@@ -255,5 +261,5 @@ Two mechanisms were considered and rejected for the service type itself:
   deliberately exposes no provider or capability accessor; a feature may only
   emit intent.
 
-For Apache, `static:caddy`, and `varnish` that leaves the bind to the provider's
+For `static:caddy` and `varnish` that leaves the bind to the provider's
 runtime policy or to an authored `command:`/`entrypoint:`, not to `port:`.

@@ -93,10 +93,26 @@ services:
 and only knows where `root`'s home is on the PHP images. Drop it and set
 `home.path:` instead when you want that directory to survive a rebuild.
 
-Apache still listens on `80`, which a non-root process cannot bind on the
-default `lando` provider. `port:` moves Lando's endpoint and healthcheck, not
-Apache's `Listen`. If start fails on that bind, replace `command:` or
-`entrypoint:` so your launcher owns `Listen`.
+A non-root process still can't bind a port below 1024 on the default `lando`
+provider, and the image's own `ports.conf` says `Listen 80`. Set `port:` to
+1024 or above and Apache listens there instead. Lando emits `Listen <port>`,
+serves the app from a `<VirtualHost *:<port>>` that carries the generated
+document-root, directory, and error-page directives, and drops the image's
+`Listen 80` from `/etc/apache2/ports.conf` during the build:
+
+```yaml
+services:
+  appserver:
+    type: php:8.3
+    user: www-data
+    home: false
+    port: 8080
+```
+
+Leave `port:` out and nothing changes: same launcher, same image, no extra
+build step. If you set your own `command:` or `entrypoint:`, or point `image:`
+at a custom image, Lando does not generate the launcher or touch the image
+config. Your launcher owns `Listen`.
 
 `via: fpm` works the same way with a different file. Lando writes its pool
 override to `/tmp/lando-php-fpm.conf` and starts the daemon with

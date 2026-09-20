@@ -1,8 +1,13 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, type LogSource, LogSourceId, PortablePath } from "@lando/sdk/schema";
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import { AbsolutePath, type LogSource, LogSourceId, PortNumber, PortablePath } from "@lando/sdk/schema";
+import type {
+  ServiceBuildStepIntent,
+  ServiceFeatureContext,
+  ServiceFeatureDefinition,
+  ServiceType,
+} from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
 
@@ -35,6 +40,49 @@ const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
 export const APACHE_FEATURE_ID = "service-lando.apache" as const;
 export const APACHE_FEATURE_PRIORITY = 600;
 
+export const APACHE_LISTEN_BUILD_STEP_ID = "service-lando.apache:listen" as const;
+
+/** Where each bundled Apache family declares the listener Lando has to retire. */
+export const HTTPD_CONF_PATH = "/usr/local/apache2/conf/httpd.conf" as const;
+export const DEBIAN_APACHE_PORTS_CONF_PATH = "/etc/apache2/ports.conf" as const;
+
+/** The authored `port:`, validated as a port before it reaches a directive. */
+export const authoredListenPort = (port: number | undefined): number | undefined =>
+  port === undefined ? undefined : Schema.decodeUnknownSync(PortNumber)(port);
+
+/**
+ * Retires the listener the base image declares, so a generated `Listen` is the
+ * only one left.
+ *
+ * `Listen` is additive and command-line directives are read after the
+ * configuration tree, so no directive can withdraw the image's own `Listen 80`.
+ * Emitting one alone would open a second socket rather than move the first.
+ * Deleting the line during the image build is what leaves exactly one listener,
+ * and it costs a derived image only for a service that authored a `port:`.
+ *
+ * The step is fail-closed on both sides of the edit. If the base image ever
+ * stops declaring exactly one active `Listen 80`, the build stops here instead
+ * of producing a service that quietly answers on two ports.
+ */
+export const apacheListenBuildStep = (configPath: string): ServiceBuildStepIntent => ({
+  id: APACHE_LISTEN_BUILD_STEP_ID,
+  phase: "build",
+  user: "root",
+  command: [
+    "sh",
+    "-c",
+    [
+      "set -eu",
+      `test -f ${configPath}`,
+      `before=$(grep -c '^Listen 80$' ${configPath} || true)`,
+      `test "$before" = "1" || { echo "lando: expected one active Listen 80 in ${configPath}, found $before" >&2; exit 1; }`,
+      `sed -i '/^Listen 80$/d' ${configPath}`,
+      `after=$(grep -c '^Listen 80$' ${configPath} || true)`,
+      `test "$after" = "0" || { echo "lando: Listen 80 survived in ${configPath}" >&2; exit 1; }`,
+    ].join("; "),
+  ],
+});
+
 export const apacheDirectivePath = (webroot: string): string => {
   if (/\r|\n/u.test(webroot)) {
     throw new Error("Apache webroot must not contain line breaks.");
@@ -61,11 +109,15 @@ const PID_FILE = "/tmp/lando-httpd.pid";
  * configuration is unchanged. Emitting them directly is what removes the write:
  * the command mutates no filesystem path, needs no shell, and therefore runs
  * unchanged as the planned service user rather than only as root.
+ *
+ * An authored `port:` becomes a `Listen` directive in that same stream, paired
+ * with the build step that retires the image's own listener.
  */
-const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
+const apacheStartCommand = (webroot: string, listenPort: number | undefined): ReadonlyArray<string> => {
   const path = apacheDirectivePath(webroot);
   return [
     "httpd-foreground",
+    ...(listenPort === undefined ? [] : ["-c", `Listen ${String(listenPort)}`]),
     "-c",
     `PidFile "${PID_FILE}"`,
     "-c",
@@ -85,7 +137,8 @@ const apacheStartCommand = (webroot: string): ReadonlyArray<string> => {
 
 const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  const listenPort = authoredListenPort(service.port);
+  const port = listenPort ?? DEFAULT_PORT;
   const webroot = service.webroot ?? DEFAULT_WEBROOT;
   const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
 
@@ -121,7 +174,8 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   });
 
   if (service.command === undefined && service.entrypoint === undefined) {
-    ctx.setCommand(apacheStartCommand(documentRoot));
+    ctx.setCommand(apacheStartCommand(documentRoot, listenPort));
+    if (listenPort !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
   }
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);

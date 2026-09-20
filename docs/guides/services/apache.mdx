@@ -74,7 +74,17 @@ services:
     user: www-data
 ```
 
-Apache still listens on `80` from the image config. `port:` only changes Lando's endpoint and healthcheck, not Apache's `Listen`. A non-root process can't bind below 1024 on the default `lando` provider. If start fails on that bind, replace `command:` or `entrypoint:` so your launcher owns `Listen` and the PID file.
+A non-root process still can't bind a port below 1024 on the default `lando` provider, and the image's own config says `Listen 80`. Set `port:` to 1024 or above and Apache listens there instead. Lando passes `Listen <port>` as a `-c` directive and drops the image's `Listen 80` from `httpd.conf` during the build, so the daemon binds only the port you picked:
+
+```yaml
+services:
+  web:
+    type: apache
+    user: www-data
+    port: 8080
+```
+
+Leave `port:` out and nothing changes: same launcher, same image, no extra build step. If you set your own `command:` or `entrypoint:`, or point `image:` at a custom image, Lando does not generate the launcher or touch the image config. Your launcher owns `Listen` and the PID file.
 
 ## Pin a version
 
