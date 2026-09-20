@@ -569,3 +569,10 @@ non-root `user:` or say at plan time that they cannot.
     into one absent `identity`. Telling a user which Landofile key to change
     needs them kept apart.
 ---
+
+## 2026-09-20 01:20 - US-660 Review
+- Reviewed data-tree ownership against the source ACs. Blocker fixed: the ownership step used phase `prebuild`, which derived-image materialization drops, so mkdir/chown never reached the Dockerfile. It now emits phase `build` like every other image step, and the planner tests lock that.
+- Review notes (deferred/rejected): missing the error on tooling-router, dynamic-tooling, and app-config-lint was rejected — those are alias/cache/lint channels, not plan-carrying unions; Docker BuildKit for MinIO VOLUME writes was already left to a later story; the docker.io MinIO pull pin is out of scope; live two-service evidence stays a Verify item.
+- Verification: gate:pr passed; guide-drift passed against origin/main; lint:guides, guide-coverage, public-transcripts passed; 19 data-tree tests and 43 solr/minio planner tests passed; Bugbot found the phase bug then found none after the fix.
+- **Learnings for future iterations:** Feature `phase` is not free text. `prepareDerivedBuild` keeps only `phase === "build"`; any other spelling is a silent no-op that still dirties the artifact build key. Assert the phase a derived Dockerfile would actually run.
+---
