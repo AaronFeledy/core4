@@ -52,6 +52,8 @@ entry appears after US-637. That is queued as US-656.
 - A generated default `command` runs as the service's planned `user:`: the feature that emits the command also calls `ctx.setUser`, so any launcher that writes a config file at start fails for a non-root user. Prefer directives the daemon accepts on its command line. Compose knobs are not an escape hatch — `findUnsupportedComposeKnob` fails closed when the active provider declares no `composeKnobs`, and `@lando/provider-docker` declares none.
 - `check:schema-compatibility` reads the WORKING side from the gitignored derived tree (`core/dist/schemas`), which goes stale the moment you merge main. A schema that main added but your local dist predates reports as `BREAKING surface-removed` for a surface your branch never touched. Run `bun run codegen:schema-snapshot` before believing a breaking row, and cross-check the PR's `schema-snapshot` job.
 - Prove a "did not happen" claim with `spyOn` plus `not.toHaveBeenCalled()`, never a wall-clock threshold; Bun's `spyOn` calls through, so behavior stays real while the count becomes deterministic. To fixture a socket that exists but refuses connection, listen on a temp path, hard-link the socket inode elsewhere, then close the server: Node unlinks the listening path, the link survives with nothing behind it.
+- Bun does not cancel the body of a test that exceeds its time budget: it records the failure, starts the next test, and the abandoned body keeps running, so its teardown lands mid-test. Any fixture that mutates process-global state (cwd and `LANDO_USER_CACHE_ROOT` above all) needs an ownership rule, or one slow test corrupts every test after it and the file's failure count stops being reproducible. `core/test/_support/temp-cwd.ts` owns both cases (`withCwd`, `withEnvVar`). Restoring an env var to unset is not the cwd-style anchor: it sends the abandoned body into the host cache.
+- An unstable failure count is the signature of shared-state leakage, not of flakiness in the code under test. Measure it by running the same file on the same tree three times: a count that moves is a harness defect, and the first failing test in the file is the trigger rather than the bug.
 - Manual CLI QA on the real binary catches what green suites do not; it found the only two defects in US-613 and the one in US-633 after hundreds of passing tests. `bun core/src/cli/index.ts` exits 0 silently — `core/bin/lando.ts` is the only faithful source entry, and the compiled `core/dist/lando` is a third behavior worth checking separately when a story touches argv or dispatch.
 - Compiled-CLI behavior diverges from source. US-629 passed every source-level spot check and then failed CI on compiled teardown, aliases, and flag parsing. A story that changes dispatch, argv, or bootstrap tiers proves itself on the compiled binary too.
 - Raising a command's bootstrap tier is two edits, not one: the `LandoCommandSpec` `bootstrap` field and the `cliRuntimeOptions({ bootstrap })` call in the compiled adapter. Only the second governs the real binary, and a mismatch typechecks.
@@ -947,4 +949,74 @@ containers the provider still holds, and the result names only what went away.
 - CI outcome: pass (after rerun; `provider-integration-windows-x64` first failed `bun run codegen`)
 - Review feedback: none — triage classified the Windows failure as a pre-existing codegen wave-0 race (`bootstrap-layers` imports `core-service-env.ts` while its generator rewrites it; no catalog dependency between them), not a US-655 regression and out of story scope; rerun of the job passed, no code changes.
 - Merge: merged (squash)
+---
+
+## 2026-09-20 - US-661
+
+One slow test in `core/test/app/resolve.test.ts` no longer takes the rest of
+the file with it. The cascade was never a timeout: `withTempApp` and
+`withTwoTempApps` captured the *ambient* cwd on entry and restored it
+unconditionally on exit. Because Bun leaves a timed-out body running, the next
+test captured the previous test's temp root as its own restore target, that
+root was then removed, and the restore died with
+`ENOENT ... chdir '<cwd>' -> '/tmp/lando-resolve-app-XXXX'`. Every later test
+inherited the wreckage. Back-to-back runs on an unchanged tree reported 7, then
+9, then 4, then 5 failures - never the same number twice.
+
+The fixtures now route the cwd through one helper with three rules: the call
+holding the cwd restores a fixed anchor no test removes; a call that has lost
+the cwd does not move it; and a call whose own body chdir'd back into a root
+its caller is about to delete repairs the cwd before that delete lands. The
+third rule is the one that is easy to miss - five tests in the file chdir
+mid-test and put the cwd back through `Effect.ensuring`, which fires long
+after the test was abandoned, and the cleanup that follows would otherwise
+delete the live test's working directory. The file is now 21 pass / 0 fail
+across three consecutive runs.
+
+Two things were raised rather than fixed, both deliberately. The four scratch
+tests really do need more than the 5s default - they fork an app and build a
+runtime against a cold per-test cache root, measured at 7-15s - so each carries
+its own 60s budget and a comment saying why. And the tests were invoking host
+`sudo`: acquiring a scratch app reaches the proxy subsystem, which elevates
+`systemctl start lando-proxy-http.socket lando-proxy-https.socket`. On a host
+with an askpass helper that is an interactive password prompt, so the file's
+duration depended on a human - 97s answered versus 34s refused - and the run
+mutated host state. A neutral `PrivilegeService` fake in the test's layers
+takes elevation attempts from four per run to one.
+
+- Verification: gate:pr passed (typecheck, lint, codegen:check, boundaries,
+  guide-drift). The new isolation test went red against the extracted
+  pre-existing semantics with the exact production ENOENT before it went green.
+  `core/test/app` (44 tests) and the adjacent app-handle and scratch suites
+  pass. No public guide: maintainer-only.
+- **Out of scope, for whoever picks it up:** one elevation per run survives the
+  fake, from `openLandoRuntime exposes a working scratch API` only. Host-layer
+  overrides passed as `plugins.layers` reach the plugin contribution graph,
+  while `PrivilegeServiceLive` is baked into the minimal tier, so a nested
+  runtime raised during scratch acquisition does not inherit the test's layers.
+  Closing it means changing runtime composition, not the test. Worth asking
+  separately why resolving and forking an app starts host proxy sockets at all.
+- **Learnings for future iterations:**
+  - Treat an unstable failure count as shared-state leakage. Three runs of the
+    same file on the same tree is the cheapest diagnostic there is.
+  - A test fixture that restores ambient state is a latent cascade wherever
+    bodies can outlive their test. Restore a fixed anchor instead, and make
+    teardown check that it still owns what it is about to release.
+  - A fake `sudo` first on PATH turns "does this test touch the host?" into a
+    one-line answer and never prompts anyone while you find out.
+---
+
+## 2026-09-20 - US-661 Review
+- Review found the cwd helper stopped the ENOENT chdir cascade but left the same ownership defect on `LANDO_USER_CACHE_ROOT`. A timed-out scratch acquire still deleted its cache root, restored the ambient env to unset, and later tests inherited `~/.cache/lando` plus a 5s lock hang — 12 pass / 9 fail / unhandled `plan.bin` FileNotFoundError. Cache env now uses the same owned-stack helper, every temp-app fixture takes a cache owner, and a later owner that exits while an earlier call remains hands the variable back rather than unsetting it.
+- Review notes (deferred/rejected): nested `PrivilegeServiceLive` elevation on `openLandoRuntime exposes a working scratch API` — already recorded out of scope as runtime composition; sibling `lifecycle.test.ts` / `remote-handle.test.ts` ambient cwd restore — outside this story's resolve.test.ts surface; leaking a `withCwd` frame on a failed initial `chdir` — mkdtemp roots exist, not a reproduced failure.
+- Verification: typecheck passed; biome clean on the touched tests. Isolation helper 9/0. `resolve.test.ts` 21/0 on three consecutive runs (63s, 46s, 33s). Adjacent `core/test/app` 47/1 — the one failure was that scratch timeout, with no 5s cascade after it.
+- Guide-Coverage-Skip: Maintainer-only test harness isolation; no public CLI or Landofile contract changed.
+- **Learnings for future iterations:** Unsetting a process env var is not a safe restore target. The host default (`~/.cache/lando`) is shared mutable state, and an abandoned body that falls through to it locks every later test that did not set its own root.
+---
+## 2026-09-20 13:12 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-20 13:20 - US-661 Verify
+- Compiled `core/dist/lando` 4.0.0-dev.1014+5.g90a76b7af; `lando setup --yes --no-interactive` completed in lando4-dev (managed runtime already present). Started php:8.3 `us661verify`: cwd resolve and nested-dir walk both return that app running; unrelated `/tmp` is `LandofileNotFoundError`; a sibling landofile at `/tmp/us661other` resolves as `us661other` stopped. Live: `exec appserver -- php -r` → `us661-ok` / PHP 8.3.33; logs show Apache/2.4.68. Scratch `--fork` from the app cwd acquired `scratch-us661verify-b289c2` (source fork, attached) while `lando info` still named the original app. Adjacent lint/apps:list/logs/scratch-list stayed green; destroy + temp dirs cleaned; isolation helper 9/0. No code changes.
+- **Out-of-scope finding:** `lando setup` warned ports 80/443 occupied (`systemd-socket-` pid 90102) and used 8080/8443. Same leftover as US-655/US-647; scenario used `router.enabled: false`.
 ---
