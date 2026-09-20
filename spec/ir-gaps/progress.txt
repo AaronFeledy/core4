@@ -1020,3 +1020,10 @@ takes elevation attempts from four per run to one.
 - Compiled `core/dist/lando` 4.0.0-dev.1014+5.g90a76b7af; `lando setup --yes --no-interactive` completed in lando4-dev (managed runtime already present). Started php:8.3 `us661verify`: cwd resolve and nested-dir walk both return that app running; unrelated `/tmp` is `LandofileNotFoundError`; a sibling landofile at `/tmp/us661other` resolves as `us661other` stopped. Live: `exec appserver -- php -r` → `us661-ok` / PHP 8.3.33; logs show Apache/2.4.68. Scratch `--fork` from the app cwd acquired `scratch-us661verify-b289c2` (source fork, attached) while `lando info` still named the original app. Adjacent lint/apps:list/logs/scratch-list stayed green; destroy + temp dirs cleaned; isolation helper 9/0. No code changes.
 - **Out-of-scope finding:** `lando setup` warned ports 80/443 occupied (`systemd-socket-` pid 90102) and used 8080/8443. Same leftover as US-655/US-647; scenario used `router.enabled: false`.
 ---
+
+## 2026-09-20 14:22 - Babysit
+- PR: #1032 https://github.com/AaronFeledy/core4/pull/1032
+- CI outcome: pass (after rerun; first pass failed `provider-integration-linux-x64-runner (ubuntu-24.04)`)
+- Review feedback: none — the only failure was the pre-existing mongodb live-integration flake (`Podman failed to create an exec session`), which fails identically on main at `0f3bb107d` and passes at its child `cb27d6123`; ubuntu-26.04 passed in the same run. Rejected as not-an-issue and reran only the failed jobs; no code changed.
+- Merge: merged (squash)
+---
