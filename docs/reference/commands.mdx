@@ -541,6 +541,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--include-scratch` | Include running scratch apps in the inventory. |
 | `--path` | Filter apps whose root contains the given substring. |
 | `--prune` | Remove stale inventory only after provider absence is confirmed. |
 
@@ -647,14 +648,20 @@ Flags:
 | `--answer` | Recipe answer in key=value form (repeatable). |
 | `--answers` | Path to a JSON answers file. |
 | `--detach` | Return after acquiring the scratch app. |
+| `--exclude` | Exclude a path pattern from a fully isolated fork (repeatable). |
 | `--fork` | Use the current app as the scratch source. |
 | `--from` | Recipe reference to materialize as a scratch app. |
+| `--hostname` | Keep this exact planned route hostname unchanged (repeatable). |
 | `--interactive` | Force interactive prompting even when stdin is not detected as a TTY. |
 | `--isolate` | Scratch isolation mode; 'none' is a legacy alias for 'cwd'. (one of `none`, `full`, `baked`, `cwd`) |
+| `--keep-on-failure` | Keep the scratch root and registry entry when startup fails. |
 | `--mount-cwd` | Mount the current working directory into the scratch app's primary service. |
 | `--name` | Base name for the generated scratch id. |
+| `--no-hostname-suffix` | Keep every planned route hostname unchanged. |
 | `--no-interactive` | Never prompt; recipe prompts must be satisfied by defaults or --answer. |
+| `--no-local-overrides` | Remove local and user Landofile overrides from a fully isolated fork. |
 | `--option` | Alias for --answer in key=value form (repeatable). |
+| `--run-post-init` | Run recipe post-init hooks after materialization. |
 | `--share-global-storage` | Join the shared cross-app network and expose the global app's storage scope. |
 | `--yes, -y` | Accept every recipe prompt's default without asking. |
 

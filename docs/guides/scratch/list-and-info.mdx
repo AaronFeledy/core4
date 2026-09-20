@@ -25,6 +25,15 @@ lando scratch:list --format json
 
 `lando scratch:list` is the alias of `apps:scratch:list`. The table columns are `ID`, `SOURCE`, `MODE`, `CREATED`, and `STATUS`. `--format json` emits the same fields as an array.
 
+Include running scratch apps in the host-wide app inventory when you need one list:
+
+```sh
+lando list --include-scratch
+lando list --all
+```
+
+Plain `lando list` still omits scratch apps. `--all` includes them too.
+
 Source is `fork` or `recipe:<ref>`. Mode is `full`, `baked`, or `cwd`.
 
 ## Read status
