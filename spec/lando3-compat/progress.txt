@@ -75,3 +75,8 @@ Verification: gate:pr green (typecheck, lint, codegen:check, boundaries, guide-d
 - Split/excise decisions: none; deferred missing-record fallback and compiled-artifact rename remain justified and unlaundered.
 - Verification: typecheck pass, lint pass, core/test/cli/shellenv.test.ts 21 pass
 ---
+
+## 2026-09-21 - US-619B1 Verify
+- Compiled `core/dist/lando` plus `scripts/install.sh` against a seeded v3 `lando`: installed executable is `lando4`, record is mode 0600, repeat install succeeds, foreign/symlink destinations refuse, `lando4 shellenv` is record-backed and idempotent, digest-mismatch fails closed with `InstallRecordError`, v3 bytes/mode/`~/.lando` never change. Setup + lamp init/start served HTTP 200 PHP 8.3.33; exec, info, logs, uninstall --yes/--purge leave v3 and the compiled binary (user-owned) intact.
+- **Out-of-scope finding:** `./core/dist/lando setup --yes --no-interactive` and `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. App still came up on `http://us619b1.lndo.site:8080`. Host had no `rootlessport` on 38080/38443; likely WSL mirrored 80/443. Not caused by this identity/shellenv diff.
+---
