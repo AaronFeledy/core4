@@ -18,7 +18,7 @@ services:
 ```
 
 MinIO listens on API port `9000` and console port `9001`. Lando starts the
-official `minio/minio` image with `server /data --address :9000 --console-address
+official `quay.io/minio/minio` image with `server /data --address :9000 --console-address
 :9001`, stores object data in the persistent `/data` volume, and uses username `lando` with password `landolando`.
 MinIO requires the root password to be at least eight characters.
 
