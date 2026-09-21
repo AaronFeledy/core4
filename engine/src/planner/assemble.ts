@@ -3,18 +3,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import {
-  CapabilityError,
-  type CommandAliasConflictError,
-  type ConfigExpressionError,
-  type DataTreeOwnershipCapabilityError,
-  type HomePathCapabilityError,
-  type LandofileUnknownEventError,
-  LandofileValidationError,
-  type NotImplementedError,
-  type PublicationUnsupportedError,
-  type RouteInputError,
-} from "@lando/sdk/errors";
+import { CapabilityError, LandofileValidationError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -27,6 +16,7 @@ import {
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
 import {
+  type AppPlannerError,
   CacheService,
   type ConfigService,
   type FileSystem,
@@ -92,19 +82,7 @@ export const planApp = (
   certificateAuthorityResolver: Context.Tag.Service<typeof CertificateAuthorityResolver> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
-): Effect.Effect<
-  AppPlan,
-  | LandofileValidationError
-  | RouteInputError
-  | CapabilityError
-  | HomePathCapabilityError
-  | DataTreeOwnershipCapabilityError
-  | NotImplementedError
-  | PublicationUnsupportedError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | LandofileUnknownEventError
-> =>
+): Effect.Effect<AppPlan, AppPlannerError> =>
   Effect.gen(function* () {
     const {
       services: seeds,

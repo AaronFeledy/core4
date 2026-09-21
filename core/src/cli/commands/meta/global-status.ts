@@ -1,35 +1,17 @@
 import { Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
-import type {
-  CapabilityError,
-  CommandAliasConflictError,
-  ConfigExpressionError,
-  DataTreeOwnershipCapabilityError,
-  GlobalAppError,
-  HomePathCapabilityError,
-  LandofileParseError,
-  LandofileUnknownEventError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-  PublicationUnsupportedError,
-  RouteInputError,
-} from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type FileSystem,
-  type FileSystemError,
   type GlobalAppService,
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import {
   type SummaryDocument,
   type SummaryTone,
@@ -79,25 +61,7 @@ export const GlobalStatusResultSchema = Schema.Struct({
   services: Schema.Array(GlobalStatusServiceSchema),
 });
 
-type GlobalStatusError =
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
-  | CapabilityError
-  | PublicationUnsupportedError
-  | FileSystemError
-  | GlobalAppError
-  | LandofileParseError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
-  | ToolingExecError;
+type GlobalStatusError = LoadGlobalPlanError | ProviderError | ToolingExecError;
 
 type GlobalStatusServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 

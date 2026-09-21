@@ -1,26 +1,10 @@
 import { DateTime, Effect } from "effect";
 
 import type {
-  CapabilityError,
-  CommandAliasConflictError,
-  ConfigExpressionError,
-  DataTreeOwnershipCapabilityError,
-  EventError,
-  GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
-  HomePathCapabilityError,
-  LandofileParseError,
-  LandofileUnknownEventError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
   PluginManifestError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-  PublicationUnsupportedError,
-  RouteInputError,
   SecretNotFoundError,
   ToolingExecError,
 } from "@lando/sdk/errors";
@@ -29,13 +13,12 @@ import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  type BuildError,
   BuildOrchestrator,
   EventService,
   type FileSystem,
-  type FileSystemError,
   type GlobalAppService,
   type PluginRegistry,
-  type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -46,7 +29,7 @@ import { resolveServiceEnvironmentSecrets } from "../services/secret-environment
 import { publishedEndpointUrls } from "./authority-url.ts";
 
 import { globalInstall } from "./global-install.ts";
-import { loadGlobalPlan } from "./global-plan.ts";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -69,29 +52,13 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
-  | CapabilityError
-  | PublicationUnsupportedError
-  | EventError
-  | FileSystemError
-  | GlobalAppError
+  | LoadGlobalPlanError
+  | BuildError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
   | GlobalServiceMissingError
-  | LandofileParseError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | NoProviderInstalledError
-  | NotImplementedError
   | PluginManifestError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
   | SecretNotFoundError
   | ToolingExecError;
 

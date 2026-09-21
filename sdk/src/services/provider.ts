@@ -63,6 +63,11 @@ export type ProviderError =
   | ServiceCopyError
   | ArtifactTransferError;
 
+export type ProviderSelectionError =
+  | NoProviderInstalledError
+  | ProviderConfigError
+  | ProviderUnavailableError;
+
 export interface ProviderSetupOptions {
   readonly force: boolean;
   readonly runtimeBundleUrl?: string;
@@ -242,16 +247,8 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
   RuntimeProviderRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
-    readonly capabilities: Effect.Effect<
-      ProviderCapabilities,
-      ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
-    >;
-    readonly select: (
-      plan?: AppPlan,
-    ) => Effect.Effect<
-      RuntimeProviderShape,
-      ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
-    >;
+    readonly capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>;
+    readonly select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
     readonly resolveAppliedPlan?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
