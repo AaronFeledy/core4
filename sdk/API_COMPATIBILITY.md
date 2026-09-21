@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- `@lando/sdk/services` additively exports the type-only aliases `LandofileServiceError`, `UserLandofileError`, `ProviderSelectionError`, `AppPlannerError`, `BuildError`, `BuildAppError`, and `@lando/sdk/app` exports `AppPlanResolutionError`; `LandofileService.discover`, `RuntimeProviderRegistry.capabilities`/`select`, `AppPlanner.plan`, and `BuildOrchestrator.build`/`buildApp` are respelled with them with identical member sets (guarded by `sdk/test/types/plan-error-channels.test.ts`); `StopAppError`, `LogsAppError`, and `AppConfigApi.lint` keep their narrower explicit sets.
+- `@lando/sdk/services` additively exports the type-only aliases `LandofileServiceError`, `UserLandofileError`, `ProviderSelectionError`, `AppPlannerError`, `BuildError`, `BuildAppError`, and `@lando/sdk/app` exports `AppPlanResolutionError`; `LandofileService.discover`, `RuntimeProviderRegistry.capabilities`/`select`, `AppPlanner.plan`, and `BuildOrchestrator.build`/`buildApp` are respelled with them with identical member sets (guarded by `sdk/test/types/plan-error-channels.test.ts`); `AppConfigApi.lint` remains fully explicit, while `StopAppError` and `LogsAppError` inherit planner/provider aliases but keep their narrower landofile-load subsets explicit.
 
 - `App.config.lint()` also resolves service-contributed tooling and authored event names. Its error channel includes `LandofileValidationError`, `CommandAliasConflictError`, and `NotImplementedError` for resolution failures; those failures are not schema violations or unknown-event diagnostics.
 
