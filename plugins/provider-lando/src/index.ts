@@ -1019,7 +1019,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                   plan,
                   { app: plan.id, service: service.name },
                   { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
-                ).pipe(Effect.map((snapshot) => ({ ...snapshot, appRoot: plan.root }))),
+                ).pipe(
+                  Effect.map((snapshot) => ({
+                    ...snapshot,
+                    appRoot: plan.root,
+                    labels: scratchLabelsForPlan(plan),
+                  })),
+                ),
               ),
             ),
           ),

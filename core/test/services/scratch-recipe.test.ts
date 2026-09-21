@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, realpath, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Stream } from "effect";
@@ -19,7 +19,7 @@ import { CacheServiceLive } from "@lando/engine/cache/service";
 import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
+import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
@@ -137,7 +137,7 @@ const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Pr
 const die = (operation: string) =>
   Effect.dieMessage(`scratch recipe test provider should not call ${operation}`);
 
-const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
+const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: boolean[]) => {
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
@@ -178,6 +178,28 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
     capabilities: Effect.succeed(capabilities),
     select: () => Effect.succeed(provider),
   });
+  const initPortLive =
+    runPostInitCalls === undefined
+      ? ScratchInitAppPortLive
+      : Layer.succeed(ScratchInitAppPort, {
+          initApp: async (input) => {
+            runPostInitCalls.push(input.runPostInit);
+            await writeFile(
+              join(input.destination, ".lando.yml"),
+              [
+                `name: ${input.name}`,
+                "runtime: 4",
+                "provider: lando",
+                "services:",
+                "  app:",
+                "    image: node:20-alpine",
+                "    primary: true",
+                "    home: false",
+                "",
+              ].join("\n"),
+            );
+          },
+        });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
     PrivateFileAccessLive,
@@ -186,7 +208,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
     registryLive,
     ScratchRegistryLive,
     ScratchResourceScannerLive,
-    ScratchInitAppPortLive,
+    initPortLive,
     DataMoverLive.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -214,6 +236,25 @@ const fileExists = async (path: string): Promise<boolean> => {
 };
 
 describe("ScratchAppServiceLive recipe acquire", () => {
+  test("forwards --run-post-init to recipe initialization", async () => {
+    await withTempEnv(async () => {
+      const calls: boolean[] = [];
+      await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(
+            service.acquire({
+              source: { kind: "recipe", ref: "empty" },
+              detached: true,
+              runPostInit: true,
+            }),
+          ),
+        ).pipe(Effect.provide(makeScratchRecipeLayer([], calls))),
+      );
+
+      expect(calls).toEqual([true]);
+    });
+  });
+
   test("renders a bundled recipe into the scratch root and plans under a fresh identity", async () => {
     await withTempEnv(async () => {
       const appliedPlans: AppPlan[] = [];

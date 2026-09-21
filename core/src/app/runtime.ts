@@ -51,13 +51,13 @@ export const openLandoRuntime = (
     const scratchDeps = Layer.mergeAll(
       appLayer,
       ScratchRegistryWithPrivateFileAccessLive.pipe(Layer.provide(appLayer)),
-      ScratchResourceScannerLive,
+      ScratchResourceScannerLive.pipe(Layer.provide(appLayer)),
       ScratchInitAppPortLive.pipe(Layer.provide(appLayer)),
     );
     const layer = Layer.mergeAll(
       appLayer,
       ScratchRegistryWithPrivateFileAccessLive.pipe(Layer.provide(appLayer)),
-      ScratchResourceScannerLive,
+      ScratchResourceScannerLive.pipe(Layer.provide(appLayer)),
       ScratchInitAppPortLive.pipe(Layer.provide(appLayer)),
       ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
     );

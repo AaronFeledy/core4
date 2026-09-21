@@ -28,6 +28,7 @@ import {
   type BringUpOptions,
   bringUp,
   podmanVolumeCreationLabels,
+  scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
@@ -870,6 +871,7 @@ export const makeRuntimeProvider = (
                     ...snapshot,
                     appRoot: plan.root,
                     providerId: providerIdBranded,
+                    labels: scratchLabelsForPlan(plan),
                   })),
                 ),
               ),

@@ -208,6 +208,7 @@ export interface ServiceRuntimeInfo {
   readonly health?: "healthy" | "starting" | "unhealthy";
   readonly state?: string;
   readonly containerId?: string;
+  readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly endpoints?: ReadonlyArray<EndpointInfo>;
   readonly lastStartedAt?: Date;
@@ -220,6 +221,7 @@ export interface ServiceRuntimeIdentity {
 
 export interface ListFilter {
   readonly app?: AppId;
+  readonly includeScratch?: boolean;
 }
 
 /** Runtime resources owned by one app root that no applied plan accounts for. */

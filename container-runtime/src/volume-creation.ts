@@ -7,6 +7,14 @@ import { AbsolutePath, type AppPlan, type VolumeCreationFact } from "@lando/sdk/
 import { STORAGE_KIND_LABEL, STORAGE_SCOPE_LABEL } from "./volume-classes.ts";
 import { volumeOwnershipLabels } from "./volume-ownership.ts";
 
+const scratchVolumeLabels = (plan: AppPlan): Readonly<Record<string, string>> => {
+  const scratch = plan.extensions["@lando/core/scratch"];
+  const scratchId = typeof scratch === "object" && scratch !== null ? Reflect.get(scratch, "id") : undefined;
+  return scratchId === plan.id && typeof scratchId === "string"
+    ? { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratchId }
+    : {};
+};
+
 export const volumeCreationLabels = (
   plan: AppPlan,
   store: AppPlan["stores"][number],
@@ -16,6 +24,7 @@ export const volumeCreationLabels = (
   [STORAGE_SCOPE_LABEL]: store.scope,
   "dev.lando.volume-instance": randomUUID(),
   ...volumeOwnershipLabels(plan, store),
+  ...scratchVolumeLabels(plan),
   ...(store.kind === "cache" ? { [STORAGE_KIND_LABEL]: "cache" } : {}),
 });
 

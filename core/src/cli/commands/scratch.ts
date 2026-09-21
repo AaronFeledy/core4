@@ -39,6 +39,12 @@ export interface ScratchStartOptions {
   readonly isolate?: IsolateMode;
   readonly mountCwd?: { readonly target?: string };
   readonly shareGlobalStorage?: boolean;
+  readonly excludes?: ReadonlyArray<string>;
+  readonly keepOnFailure?: boolean;
+  readonly runPostInit?: boolean;
+  readonly noLocalOverrides?: boolean;
+  readonly noHostnameSuffix?: boolean;
+  readonly hostnames?: ReadonlyArray<string>;
   readonly signal?: AbortSignal;
 }
 
@@ -197,6 +203,8 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
   const isolate = asIsolateMode(flags.isolate);
   const mountCwd = mountCwdFromValue(flags["mount-cwd"]);
   const signal = signalFromInput(input);
+  const excludes = stringArrayFlag(flags, "exclude");
+  const hostnames = stringArrayFlag(flags, "hostname");
   return {
     fork: flags.fork === true,
     ...(typeof flags.from === "string" ? { from: flags.from } : {}),
@@ -212,6 +220,12 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
     ...(isolate === undefined ? {} : { isolate }),
     ...(mountCwd === undefined ? {} : { mountCwd }),
     ...(flags["share-global-storage"] === true ? { shareGlobalStorage: true } : {}),
+    ...(excludes.length === 0 ? {} : { excludes }),
+    ...(flags["keep-on-failure"] === true ? { keepOnFailure: true } : {}),
+    ...(flags["run-post-init"] === true ? { runPostInit: true } : {}),
+    ...(flags["no-local-overrides"] === true ? { noLocalOverrides: true } : {}),
+    ...(flags["no-hostname-suffix"] === true ? { noHostnameSuffix: true } : {}),
+    ...(hostnames.length === 0 ? {} : { hostnames }),
     ...(signal === undefined ? {} : { signal }),
   };
 };
@@ -285,6 +299,12 @@ export const scratchStart = (
       ...(options.isolate === undefined ? {} : { isolate: options.isolate }),
       ...(options.mountCwd === undefined ? {} : { mountCwd: options.mountCwd }),
       ...(options.shareGlobalStorage === undefined ? {} : { shareGlobalStorage: options.shareGlobalStorage }),
+      ...(options.excludes === undefined ? {} : { excludes: options.excludes }),
+      ...(options.keepOnFailure === undefined ? {} : { keepOnFailure: options.keepOnFailure }),
+      ...(options.runPostInit === undefined ? {} : { runPostInit: options.runPostInit }),
+      ...(options.noLocalOverrides === undefined ? {} : { noLocalOverrides: options.noLocalOverrides }),
+      ...(options.noHostnameSuffix === undefined ? {} : { noHostnameSuffix: options.noHostnameSuffix }),
+      ...(options.hostnames === undefined ? {} : { hostnames: options.hostnames }),
     };
 
     if (options.detach === true) {

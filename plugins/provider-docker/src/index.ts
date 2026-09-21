@@ -1865,11 +1865,16 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               Effect.forEach(
                 containers.filter((container) => {
                   const appId = container.labels["dev.lando.app"];
-                  return (
-                    appId !== undefined &&
-                    (filter.app === undefined || appId === filter.app) &&
-                    container.labels["dev.lando.scratch"] !== "TRUE"
-                  );
+                  if (appId === undefined) return false;
+                  if (filter.app !== undefined && appId !== filter.app) return false;
+                  if (
+                    filter.includeScratch !== true &&
+                    filter.app === undefined &&
+                    container.labels["dev.lando.scratch"] === "TRUE"
+                  ) {
+                    return false;
+                  }
+                  return true;
                 }),
                 (container) =>
                   Effect.gen(function* () {
@@ -1898,6 +1903,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                       status,
                       state: status,
                       containerId: container.id,
+                      labels: container.labels,
                       endpoints,
                       ...(container.startedAt === undefined
                         ? {}
