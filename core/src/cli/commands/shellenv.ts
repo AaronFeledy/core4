@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { Context, Effect } from "effect";
 
@@ -92,10 +92,7 @@ const parseExecutable = (json: string, file: string) => {
   return { path: executable.path, sha256: executable.sha256, size: executable.size };
 };
 
-export const shellenvBinDir = (
-  userDataRoot = resolveLandoRoots().userDataRoot,
-  destination?: string,
-): string => {
+export const shellenvBinDir = (userDataRoot = resolveLandoRoots().userDataRoot): string => {
   const paths = makeLandoPaths({ userDataRoot });
   const file = paths.installRecordFile;
   try {
@@ -109,10 +106,7 @@ export const shellenvBinDir = (
       );
     }
     const executable = parseExecutable(readFileSync(file, "utf8"), file);
-    const target = destination ?? executable.path;
-    if (resolve(executable.path) !== resolve(target)) {
-      throw new ShellenvInstallRecordError("schema", file, "Executable ownership failed: path-mismatch.");
-    }
+    const target = executable.path;
     const stat = lstatSync(target);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.isDirectory()) {
       throw new ShellenvInstallRecordError(

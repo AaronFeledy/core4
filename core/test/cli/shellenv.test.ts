@@ -243,17 +243,11 @@ describe("record-backed shellenv", () => {
     expect(shellenvBinDir(root)).toBe(alias);
   });
   test("agrees with the engine ownership predicate for owned and every rejection verdict", async () => {
-    for (const reason of [
-      "owned",
-      "path-mismatch",
-      "not-regular-file",
-      "digest-mismatch",
-      "size-mismatch",
-    ] as const) {
+    for (const reason of ["owned", "not-regular-file", "digest-mismatch", "size-mismatch"] as const) {
       await using fixture = await installFixture();
       const { record, root, paths } = fixture;
       const executable = record.data.executable;
-      const destination = reason === "path-mismatch" ? join(root, "elsewhere") : executable.path;
+      const destination = executable.path;
       const stat = {
         isFile: reason !== "not-regular-file",
         isSymbolicLink: false,
@@ -278,9 +272,9 @@ describe("record-backed shellenv", () => {
       }
       if (reason === "digest-mismatch") await writeFile(destination, "changed");
       const expected = installRecordOwnsDestination(candidate, destination, stat, digest);
-      if (expected.owned) expect(shellenvBinDir(root, destination)).toBe(fixture.custom);
+      if (expected.owned) expect(shellenvBinDir(root)).toBe(fixture.custom);
       else
-        expect(() => shellenvBinDir(root, destination)).toThrow(
+        expect(() => shellenvBinDir(root)).toThrow(
           expect.objectContaining({
             _tag: "InstallRecordError",
             detail: expect.stringContaining(expected.reason),
