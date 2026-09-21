@@ -134,6 +134,17 @@ describe("loadUserLandofile includes", () => {
   });
 });
 
+const cwdAnchor = process.cwd();
+
+const currentDir = (): string | undefined => {
+  try {
+    return process.cwd();
+  } catch (cause) {
+    if (cause instanceof Error) return undefined;
+    throw cause;
+  }
+};
+
 describe("loadUserLandofileAt root-aware seam", () => {
   test("resolves at an explicit root and restores the host cwd", async () => {
     const left = await realpath(await mkdtemp(join(tmpdir(), "lando-at-left-")));
@@ -180,9 +191,10 @@ describe("loadUserLandofileAt root-aware seam", () => {
   test("serializes same-root resolution while another chdir region is active", async () => {
     const left = await realpath(await mkdtemp(join(tmpdir(), "lando-at-race-left-")));
     const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-race-right-")));
-    const previous = process.cwd();
     let releaseFirst: (() => void) | undefined;
     let allowSecondObserve: (() => void) | undefined;
+    let first: Promise<unknown> | undefined;
+    let second: Promise<unknown> | undefined;
     process.chdir(left);
     try {
       const firstCanRestore = new Promise<void>((resolve) => {
@@ -212,11 +224,9 @@ describe("loadUserLandofileAt root-aware seam", () => {
         }),
       } as Context.Tag.Service<typeof LandofileService>;
 
-      const first = Effect.runPromise(loadUserLandofileAt(firstService, right));
+      first = Effect.runPromise(loadUserLandofileAt(firstService, right));
       await firstInDiscover;
-      const second = Effect.runPromise(
-        loadUserLandofileAt(secondService, right).pipe(Effect.timeout("1 second")),
-      );
+      second = Effect.runPromise(loadUserLandofileAt(secondService, right).pipe(Effect.timeout("1 second")));
       await new Promise((resolve) => setTimeout(resolve, 10));
       releaseFirst?.();
       await first;
@@ -229,7 +239,9 @@ describe("loadUserLandofileAt root-aware seam", () => {
     } finally {
       releaseFirst?.();
       allowSecondObserve?.();
-      process.chdir(previous);
+      await Promise.allSettled([first ?? Promise.resolve(), second ?? Promise.resolve()]);
+      const here = currentDir();
+      if (here === undefined || here === left || here === right) process.chdir(cwdAnchor);
       await rm(left, { recursive: true, force: true });
       await rm(right, { recursive: true, force: true });
     }
