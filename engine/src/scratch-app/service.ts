@@ -663,8 +663,8 @@ const makeScratchAppService = (
     const removeRoutes = input.plan === undefined ? Effect.void : removeScratchRoutes(input.plan.id);
 
     return removeRoutes.pipe(
-      Effect.zipRight(pruneProvider.pipe(Effect.catchAll(() => Effect.void))),
-      Effect.zipRight(cleanupScratchInstance(input.instanceRoot).pipe(Effect.catchAll(() => Effect.void))),
+      Effect.zipRight(pruneProvider),
+      Effect.zipRight(cleanupScratchInstance(input.instanceRoot)),
       Effect.zipRight(scratchRegistry.remove(input.id)),
     );
   };
