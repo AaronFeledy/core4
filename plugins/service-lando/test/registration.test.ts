@@ -178,7 +178,7 @@ describe("@lando/service-lando registration", () => {
     });
     expect(queue.healthcheck?.command).toEqual(["rabbitmq-diagnostics", "-q", "ping"]);
 
-    expect(objectStore.artifact).toEqual({ kind: "ref", ref: "minio/minio:latest" });
+    expect(objectStore.artifact).toEqual({ kind: "ref", ref: "quay.io/minio/minio:latest" });
     expect(
       objectStore.endpoints.flatMap((endpoint) =>
         "port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [],

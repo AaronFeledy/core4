@@ -328,6 +328,9 @@ const makeFakeApi = () => {
         const imageResponse = imageInspectAndPullResponse(images, request);
         if (imageResponse !== undefined) return imageResponse;
 
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          return { status: 404, body: "{}" };
+        }
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
@@ -728,6 +731,8 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
 interface FakeDockerApiHooks {
   readonly failStartFor?: ReadonlySet<string>;
   readonly failCreateFor?: ReadonlySet<string>;
+  readonly createFailureResponse?: DockerHttpResponse;
+  readonly sharedNetworkConnectResponse?: DockerHttpResponse;
   readonly startFailureBody?: string;
   readonly volumes?: Set<string>;
 }
@@ -749,11 +754,14 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
         calls.push(request);
         const imageResponse = imageInspectAndPullResponse(images, request);
         if (imageResponse !== undefined) return imageResponse;
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          return { status: 404, body: "{}" };
+        }
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
         if (request.path === "/networks/lando_bridge_network/connect") {
-          return { status: 200, body: "{}" };
+          return hooks.sharedNetworkConnectResponse ?? { status: 200, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           return { status: 204, body: "" };
@@ -763,7 +771,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
           const requestedName = requested.Name ?? "";
           const existed = volumes.has(requestedName);
           volumes.add(requestedName);
-          if (!existed) volumeLabels.set(requestedName, requested.Labels ?? {});
+          volumeLabels.set(requestedName, requested.Labels ?? {});
           return { status: existed ? 409 : 201, body: "{}" };
         }
         if (request.method === "GET" && request.path.startsWith("/volumes/")) {
@@ -784,10 +792,12 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
         if (request.path.startsWith("/containers/create?name=")) {
           const createdName = decodeURIComponent(request.path.slice("/containers/create?name=".length));
           if (hooks.failCreateFor?.has(createdName) === true) {
-            return {
-              status: 500,
-              body: `forced create failure for ${createdName}: env DB_PASSWORD=hunter2 rejected`,
-            };
+            return (
+              hooks.createFailureResponse ?? {
+                status: 500,
+                body: `forced create failure for ${createdName}: env DB_PASSWORD=hunter2 rejected`,
+              }
+            );
           }
           if (existing.has(createdName)) {
             return { status: 409, body: "already exists" };
@@ -1158,11 +1168,13 @@ describe("provider-docker RuntimeProvider contract", () => {
       EndpointConfig: { Aliases: ["web.myapp.internal"] },
     });
     expect(fake.calls.filter((call) => call.path === "/networks/create").map((call) => call.body)).toEqual([
-      { Name: "lando-myapp", Driver: "bridge", CheckDuplicate: true },
-      { Name: "lando_bridge_network", Driver: "bridge", CheckDuplicate: true },
+      { Name: "lando-myapp", Driver: "bridge" },
+      { Name: "lando_bridge_network", Driver: "bridge" },
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /networks/lando-myapp",
       "POST /networks/create",
+      "GET /networks/lando_bridge_network",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
       "GET /images/node%3A22-alpine/json",
@@ -1171,6 +1183,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
+      "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web/exec",
       "POST /exec/lando-myapp-web-exec/start",
@@ -1560,6 +1573,7 @@ describe("provider-docker RuntimeProvider contract", () => {
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
         "dev.lando.volume-owner": "/canonical/creation-root",
+        "dev.lando.volume-selector": `docker:${appId}:creation-owner:cache`,
       },
     });
     expect(
@@ -1679,7 +1693,9 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "GET /networks/lando-myapp",
       "POST /networks/create",
+      "GET /networks/lando_bridge_network",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
       "GET /images/node%3A22-alpine/json",
@@ -1688,6 +1704,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
+      "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web/exec",
       "POST /exec/lando-myapp-web-exec/start",
@@ -1904,7 +1921,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(startError).toBeDefined();
     if (startError === undefined) return;
     expect(startError.providerId).toBe("docker");
-    expect(startError.operation).toBe("apply");
+    expect(startError.operation).toBe("bringUp.create");
     expect(startError.service).toBe("db");
     expect(typeof startError.remediation).toBe("string");
     expect(startError.remediation).toMatch(/lando destroy/u);
@@ -1912,6 +1929,61 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(details?.status).toBe(500);
     expect(details?.body).toContain("[redacted]");
     expect(details?.body).not.toContain("hunter2");
+  });
+
+  test("a shared-network 404 keeps generic apply remediation", async () => {
+    const fake = makeFakeApiWithHooks({
+      sharedNetworkConnectResponse: { status: 404, body: '{"message":"network not found"}' },
+    });
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(provider.apply(makeMultiServicePlan(), { reconcile: true })),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const startError = Array.from(Cause.failures(exit.cause)).find(
+      (error) =>
+        typeof error === "object" &&
+        error !== null &&
+        "_tag" in error &&
+        (error as { _tag: string })._tag === "ServiceStartError",
+    ) as ServiceStartError | undefined;
+    expect(startError?.operation).toBe("bringUp.network.connect");
+    expect(startError?.remediation).toMatch(/lando destroy/u);
+    expect(startError?.remediation).not.toContain("The image is not present");
+  });
+
+  test("a non-404 missing-image create failure keeps image remediation after its retry", async () => {
+    const fake = makeFakeApiWithHooks({
+      failCreateFor: new Set(["lando-myapp-web"]),
+      createFailureResponse: { status: 500, body: '{"message":"No such image: node:22-alpine"}' },
+    });
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(provider.apply(makeMultiServicePlan(), { reconcile: true })),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const startError = Array.from(Cause.failures(exit.cause)).find(
+      (error) =>
+        typeof error === "object" &&
+        error !== null &&
+        "_tag" in error &&
+        (error as { _tag: string })._tag === "ServiceStartError",
+    ) as ServiceStartError | undefined;
+    expect(startError?.operation).toBe("bringUp.create");
+    expect(startError?.remediation).toContain("The image is not present");
+    expect(fake.calls.filter((call) => call.path === "/containers/create?name=lando-myapp-web")).toHaveLength(
+      2,
+    );
   });
 
   test("surfaces the Docker API failure reason in the error message", async () => {
@@ -1941,7 +2013,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     ) as ServiceStartError | undefined;
     expect(startError).toBeDefined();
     if (startError === undefined) return;
-    expect(startError.message).toContain("Docker container start failed with HTTP 500.");
+    expect(startError.message).toContain("provider-docker container start failed with HTTP 500.");
     expect(startError.message).toContain("bind 0.0.0.0:80: address already in use");
     expect(startError.message).not.toContain("hunter2");
     expect(startError.message).toContain("APP_TOKEN=[redacted]");

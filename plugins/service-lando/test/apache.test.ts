@@ -3,7 +3,12 @@ import { Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
-import { APACHE_FEATURE_ID, apacheServiceFeature, apacheServiceType } from "../src/services/apache.ts";
+import {
+  APACHE_FEATURE_ID,
+  APACHE_LISTEN_BUILD_STEP_ID,
+  apacheServiceFeature,
+  apacheServiceType,
+} from "../src/services/apache.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -46,6 +51,19 @@ const apacheDirectives = (command: ServicePlan["command"]): ReadonlyArray<string
     directives.push(directive);
   }
   return directives;
+};
+
+interface PlannedBuildStep {
+  readonly id?: string;
+  readonly user?: string;
+  readonly command: string | ReadonlyArray<string>;
+}
+
+const buildStepsFor = (plan: ServicePlan): ReadonlyArray<PlannedBuildStep> => {
+  const features = plan.extensions["@lando/core/service-features"] as
+    | { readonly buildSteps?: ReadonlyArray<PlannedBuildStep> }
+    | undefined;
+  return features?.buildSteps ?? [];
 };
 
 const composeApachePlan = (raw: unknown, serviceName = "web"): Promise<ServicePlan> =>
@@ -106,7 +124,7 @@ describe("apache ServiceType", () => {
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "backend" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
-    expect(apacheDirectives(plan.command).some((directive) => directive.startsWith("Listen "))).toBe(false);
+    expect(apacheDirectives(plan.command)).toContain("Listen 8080");
     expect(plan.environment).toMatchObject({
       APACHE_DOCUMENT_ROOT: "/app",
       LANDO_APP_ROOT: "/app",
@@ -115,6 +133,86 @@ describe("apache ServiceType", () => {
       LANDO_SERVICE_TYPE: "apache",
       LANDO_WEBROOT: "/app",
     });
+  });
+
+  test("derives the Apache listen port and retires the image's own Listen 80", async () => {
+    // Given / When: an authored port.
+    const plan = await composeApachePlan({ type: "apache", port: 8080 });
+
+    // Then: the daemon is told to listen there, and the image's own listener is
+    // deleted during the build so the service answers on one socket, not two.
+    expect(apacheDirectives(plan.command)).toContain("Listen 8080");
+    const step = buildStepsFor(plan).find(({ id }) => id === APACHE_LISTEN_BUILD_STEP_ID);
+    expect(step?.user).toBe("root");
+    const script = String((step?.command as ReadonlyArray<string> | undefined)?.[2] ?? "");
+    expect(script).toContain("/usr/local/apache2/conf/httpd.conf");
+    expect(script).toContain("Listen");
+  });
+
+  test("keeps the default launcher and adds no build step without an authored port", async () => {
+    // Given / When: no port, which is the shape every existing app already has.
+    const plan = await composeApachePlan({ type: "apache" });
+
+    // Then: byte-identical argv, and the image is left alone.
+    expect(plan.command).toEqual([
+      "httpd-foreground",
+      "-c",
+      'PidFile "/tmp/lando-httpd.pid"',
+      "-c",
+      'DocumentRoot "/app"',
+      "-c",
+      '<Directory "/app">',
+      "-c",
+      "Options -Indexes +FollowSymLinks",
+      "-c",
+      "AllowOverride None",
+      "-c",
+      "Require all granted",
+      "-c",
+      "</Directory>",
+    ]);
+    expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
+  });
+
+  test("an authored port of 80 still owns the listener", async () => {
+    // Given / When: the image default, written out.
+    const plan = await composeApachePlan({ type: "apache", port: 80 });
+
+    // Then: Lando's directive is the only listener, rather than the image's.
+    expect(apacheDirectives(plan.command)).toContain("Listen 80");
+    expect(buildStepsFor(plan).map(({ id }) => id)).toContain(APACHE_LISTEN_BUILD_STEP_ID);
+  });
+
+  test("an authored command owns the listener and the image config", async () => {
+    // Given / When: a launcher Lando did not generate.
+    const plan = await composeApachePlan({ type: "apache", port: 8080, command: ["httpd-foreground"] });
+
+    // Then: Lando neither emits a directive nor edits the image.
+    expect(plan.command).toEqual(["httpd-foreground"]);
+    expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
+  });
+
+  test("an authored entrypoint owns the listener and the image config", async () => {
+    // Given / When: an entrypoint Lando did not generate.
+    const plan = await composeApachePlan({ type: "apache", port: 8080, entrypoint: ["/custom-start"] });
+
+    // Then: Lando neither emits a directive nor edits the image.
+    expect(plan.entrypoint).toEqual(["/custom-start"]);
+    expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
+  });
+
+  test("a custom image owns its own listener", async () => {
+    // Given / When: an image Lando did not ship.
+    const plan = await composeApachePlan({
+      type: "apache",
+      image: "registry.example.com/httpd:custom",
+      port: 8080,
+    });
+
+    // Then: Lando still generates the start command, but neither emits Listen
+    // nor edits a config path that image may not have.
+    expect(apacheDirectives(plan.command).some((directive) => directive.startsWith("Listen "))).toBe(false);
+    expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
   test("serves an authored webroot through Apache config and LANDO env", async () => {

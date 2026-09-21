@@ -6,7 +6,7 @@ import { StateStore } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
 import { Effect, Layer } from "effect";
 import { renderUpdateResult } from "./command-specs/meta/update.ts";
-import { extractFormatFlags, resolveResultFormat } from "./format-flags.ts";
+import { extractFormatFlags, resolveResultFormat, supportsResultFormat } from "./format-flags.ts";
 import { runWithRendererHandling } from "./renderer-boundary.ts";
 import { resolveCliRendererMode } from "./renderer-mode-resolution.ts";
 
@@ -17,6 +17,10 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
   if (formatFlags.jsonList) return false;
   const renderer = await resolveCliRendererMode({ argv, env: process.env });
   const { format } = resolveResultFormat({ argv, rendererMode: renderer.mode });
+  // meta:update declares no opt-in format. Leave the receipt for a later run
+  // rather than remapping it into a format the user did not ask for; the
+  // requested command then refuses the format on its own terms.
+  if (!supportsResultFormat(undefined, format)) return false;
   const receipt = await Effect.runPromise(
     Effect.gen(function* () {
       const handoff = makeUpdateHandoff(yield* StateStore);
@@ -43,17 +47,14 @@ export const surfaceDeferredUpdateReceipts = async (argv: ReadonlyArray<string>)
     runtime: Layer.empty,
     command: "meta:update",
     rendererMode: renderer.mode,
-    resultFormat: format === "ndjson" ? "json" : format,
+    resultFormat: format,
     resultSchema: UpdateResultSchema,
     deprecationWarnings: false,
     successExitCode: (result) =>
       result.hasFailures === true || result.coreFailure !== undefined || result.coreBlocked === true
         ? 1
         : undefined,
-    render: (result) =>
-      format === "yaml"
-        ? Bun.YAML.stringify(result)
-        : `Previous Windows update result:\n${renderUpdateResult(result)}`,
+    render: (result) => `Previous Windows update result:\n${renderUpdateResult(result)}`,
     formatError: String,
   });
   return true;

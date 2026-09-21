@@ -236,7 +236,7 @@ const destroyOrphans = (
   tearDownOrphans({
     root: resolution.root,
     groups: resolution.groups,
-    options: { removeVolumes: options.volumes === true || options.purgeCaches === true },
+    options: { volumes: options.volumes === true, purgeCaches: options.purgeCaches === true },
   }).pipe(
     Effect.map(
       (removed): DestroyAppResult =>

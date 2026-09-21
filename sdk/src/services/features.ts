@@ -58,6 +58,15 @@ export type ServiceCaFileDescriptor = typeof ServiceCaFileDescriptor.Type;
  * the draft retains build-step intent for the build-orchestration
  * consumer. Provider-neutral: a feature never names a provider here.
  */
+/**
+ * A declaration that the planned service user must own a mounted data tree.
+ * Filesystem-free: it names principals, never paths on the host.
+ */
+export interface DataStoreOwnershipIntent {
+  /** Principals the service type's own image already gives the target to. */
+  readonly seededOwners: ReadonlyArray<string>;
+}
+
 export interface ServiceBuildStepIntent {
   /** Optional stable id for ordering/dedup by the build orchestrator. */
   readonly id?: string;
@@ -117,8 +126,17 @@ export interface ServiceFeatureContext {
   addBuildStep(step: ServiceBuildStepIntent): void;
   /** Add or overwrite a provider-neutral service plan extension. */
   addExtension(key: string, value: unknown): void;
-  /** Add a data-store mount. */
-  addStorage(storage: DataStoreMountPlan): void;
+  /**
+   * Add a data-store mount, optionally declaring that the planned service user
+   * has to own the mounted tree.
+   *
+   * A feature states the requirement; planning decides whether the planned user
+   * can be given that ownership and refuses before any provider action when it
+   * cannot. `seededOwners` names the principals the type's own image already
+   * gives the target to, which a fresh volume inherits and which therefore need
+   * no preparation.
+   */
+  addStorage(storage: DataStoreMountPlan, ownership?: DataStoreOwnershipIntent): void;
   /** Add a service endpoint. */
   addEndpoint(endpoint: EndpointPlan): void;
   /** Add a service dependency. */

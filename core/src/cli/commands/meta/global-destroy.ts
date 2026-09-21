@@ -1,32 +1,15 @@
 import { Effect, Schema } from "effect";
 
-import {
-  type CapabilityError,
-  type CommandAliasConflictError,
-  type ConfigExpressionError,
-  type GlobalAppError,
-  GlobalDestroyConfirmationError,
-  type HomePathCapabilityError,
-  type LandofileParseError,
-  type LandofileUnknownEventError,
-  type LandofileValidationError,
-  type NoProviderInstalledError,
-  type NotImplementedError,
-  type ProviderConfigError,
-  type ProviderUnavailableError,
-  type PublicationUnsupportedError,
-  type RouteInputError,
-} from "@lando/sdk/errors";
+import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
 import {
   type AppPlanner,
   type FileSystem,
-  type FileSystemError,
   type GlobalAppService,
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
 export interface GlobalDestroyOptions {
@@ -48,24 +31,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
   volumesRemoved: Schema.Boolean,
 });
 
-type GlobalDestroyError =
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | ConfigExpressionError
-  | CapabilityError
-  | PublicationUnsupportedError
-  | FileSystemError
-  | GlobalAppError
-  | GlobalDestroyConfirmationError
-  | LandofileParseError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
+type GlobalDestroyError = LoadGlobalPlanError | GlobalDestroyConfirmationError | ProviderError;
 
 type GlobalDestroyServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 

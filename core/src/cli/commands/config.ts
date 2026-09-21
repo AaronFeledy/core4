@@ -1,5 +1,4 @@
 import type { ConfigResult } from "@lando/engine/operations/config";
-import { emitYamlDocument } from "@lando/sdk/yaml";
 import { TELEMETRY_RETENTION_POLICY_DOC } from "@lando/telemetry/policy";
 
 const formatTable = (value: unknown): string => {
@@ -65,7 +64,5 @@ export const renderConfigResult = (result: ConfigResult): string => {
       : result.value !== undefined
         ? result.value
         : (result.config ?? {});
-  // emitYamlDocument ends with `\n`; writeResultLine adds another, so strip one.
-  if (result.format === "yaml") return emitYamlDocument(target).replace(/\n$/, "");
   return formatTable(target);
 };

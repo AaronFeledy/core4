@@ -15,7 +15,7 @@ describe("startFailureRemediation", () => {
     const message =
       'netavark: nftables error: unable to execute "nft": No such file or directory (os error 2)';
     expect(isManagedNftMissingMessage(message)).toBe(true);
-    const remediation = startFailureRemediation("Podman container start failed with HTTP 500.", {
+    const remediation = startFailureRemediation("provider-lando container start failed with HTTP 500.", {
       body: message,
     });
     expect(remediation).toMatch(/lando setup/u);
@@ -26,7 +26,7 @@ describe("startFailureRemediation", () => {
 
   test("nft-missing network-create copy tells the user to run lando setup, not destroy", () => {
     const message =
-      'Podman network create failed with HTTP 500. netavark: nftables error: unable to execute "nft": No such file or directory (os error 2)';
+      'provider-lando network create failed with HTTP 500. netavark: nftables error: unable to execute "nft": No such file or directory (os error 2)';
     expect(isManagedNftMissingMessage(message)).toBe(true);
     const remediation = startFailureRemediation(message, { body: message });
     expect(remediation).toMatch(/lando setup/u);
@@ -44,7 +44,10 @@ describe("startFailureRemediation", () => {
     // Given
     const details = { body: "address already in use 38080" };
     // When
-    const remediation = startFailureRemediation("Podman container start failed with HTTP 500.", details);
+    const remediation = startFailureRemediation(
+      "provider-lando container start failed with HTTP 500.",
+      details,
+    );
     // Then
     expect(isLeftoverProxyPortBindMessage(details.body)).toBe(true);
     expect(remediation).toMatch(/lando global:stop/u);
@@ -95,7 +98,7 @@ describe("startFailureRemediation", () => {
     const message =
       'netavark: nftables error: unable to execute "nft": No such file or directory (os error 2) 38080';
     // When
-    const remediation = startFailureRemediation("Podman container start failed with HTTP 500.", {
+    const remediation = startFailureRemediation("provider-lando container start failed with HTTP 500.", {
       body: message,
     });
     // Then

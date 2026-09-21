@@ -61,6 +61,7 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   resultSchema: ConfigResultSchema,
   redactionTokens: configRedactionTokens,
   id: "meta:config",
+  resultFormats: ["table"],
   summary: "Read or write the global Lando config.",
   description: "Read or write the global Lando config.",
   namespace: "meta",
@@ -78,7 +79,6 @@ export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["json", "yaml", "table"],
       default: "table",
     }),
     type: Flags.string({

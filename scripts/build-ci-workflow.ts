@@ -486,13 +486,11 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
           docker_pull_image docker.io/library/node:22-alpine
           docker_pull_image docker.io/library/node:22`;
 
-const landoRuntimeLiveTestSteps = (
-  platform: CiPlatform,
-): string => `      - name: Run provider integration tests
+const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
-          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/${platform.binaryName}" bun test core/test/scenario | tee /tmp/lando-provider-test-logs/core-scenario.log
+          bun test core/test/live | tee /tmp/lando-provider-test-logs/core-live.log
           bun test plugins/provider-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
           bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
           bun test plugins/service-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/service-lando-integration.log
@@ -528,8 +526,7 @@ ${landoManagedPodmanTeardownCommands}
               > provider-diagnostics/managed-podman-service.log 2>&1 || true
           fi`;
 
-const landoProviderIntegrationSteps = (platform: CiPlatform): string =>
-  `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps(platform)}`;
+const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps}`;
 
 const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
 
@@ -642,7 +639,7 @@ const windowsManagedSetupSteps = `      - name: Download current-commit Windows 
           powershell.exe -NoProfile -Command '$podman = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\bin\\podman.exe"; if (Test-Path $podman) { $env:CONTAINERS_CONF = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\config\\containers.conf"; & $podman machine rm --force lando; if ($LASTEXITCODE -ne 0) { Write-Warning "managed machine teardown exited $LASTEXITCODE" } }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:LANDO_USER_DATA_ROOT, $env:LANDO_USER_CACHE_ROOT, $env:LANDO_USER_CONF_ROOT; exit 0'`;
 
 const providerIntegrationSteps = (platform: CiPlatform): string => {
-  if (platform.liveProviderIntegration) return landoProviderIntegrationSteps(platform);
+  if (platform.liveProviderIntegration) return landoProviderIntegrationSteps;
   if (platform.id === "windows-x64") {
     return `${windowsManagedSetupSteps}\n\n${contractProviderTestSteps}`;
   }
@@ -716,6 +713,7 @@ ${renderLinuxX64MatrixGate(
 
 const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
+const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"`;
 
 const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 
@@ -735,7 +733,8 @@ ${linuxGuideE2eProviderSetupSteps}
       - name: Run e2e smoke guide scenarios
         env:
           LANDO_GUIDE_E2E: "1"
-        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"
+${guideScenarioLiveOutputEnv}
+        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"
 
       - name: Teardown guide e2e provider
         if: always()
@@ -820,6 +819,8 @@ ${codegenStep}
           GUIDE_DRIFT_PR_BODY="$(gh pr view \${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift
 
       - name: Run generated guide scenarios
+        env:
+${guideScenarioLiveOutputEnv}
         run: ${guideScenarioRunCommand}${
           isLinuxX64
             ? `

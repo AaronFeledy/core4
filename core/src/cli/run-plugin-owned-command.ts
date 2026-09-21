@@ -33,6 +33,7 @@ import {
   validateCommandCliFlags,
 } from "./flag-value-validation";
 import { universalFormatFlagDefs } from "./format-flags";
+import { rejectUnsupportedResultFormat } from "./result-format-guard";
 
 const PLUGIN_OWNED_COMMAND_ID = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
 
@@ -281,6 +282,9 @@ const dispatchPluginOwnedCommand = async (
     emitResultLine(renderPluginOwnedCommandHelp(spec));
     return "dispatched";
   }
+  // A plugin-owned command declares no opt-in format, so it honors exactly the
+  // universal set. Refuse before --json key listing can report success.
+  if (await rejectUnsupportedResultFormat(spec.id, undefined)) return "dispatched";
   const flagError = pluginOwnedCliFlagError(spec, argv);
   if (flagError !== undefined) {
     await renderPluginOwnedPreCommandFailure(flagError);

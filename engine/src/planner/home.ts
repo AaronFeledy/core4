@@ -22,6 +22,8 @@ export interface ServiceHomeIntent {
   readonly identity?: ServiceImageIdentity;
   /** Authored `home:` value; `undefined` means enabled with no explicit path. */
   readonly home?: ServiceConfig["home"];
+  /** True when the Landofile supplied the image, so `identity` cannot describe it. */
+  readonly customImage?: boolean;
 }
 
 /**
@@ -43,9 +45,11 @@ export const serviceHomeIntent = (input: {
   readonly identity: ServiceImageIdentity | undefined;
   readonly pinnedArtifactTag?: string | undefined;
 }): ServiceHomeIntent => {
-  const known = hasCustomImage(input.service, input.pinnedArtifactTag) ? undefined : input.identity;
+  const customImage = hasCustomImage(input.service, input.pinnedArtifactTag);
+  const known = customImage ? undefined : input.identity;
   return {
     serviceType: input.serviceTypeId,
+    customImage,
     ...(known === undefined ? {} : { identity: known }),
     ...(input.service.home === undefined ? {} : { home: input.service.home }),
   };

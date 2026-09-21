@@ -26,6 +26,9 @@ export const RouterServiceUnavailableLive = Layer.succeed(RouterService, {
         remediation: "Install and select a RouterService plugin, then rerun setup.",
       }),
     ),
+  // No router ran, so there is no startup to re-observe. A record an earlier
+  // router left behind stays reported until a selected router revalidates it.
+  revalidateStartup: Effect.void,
   applyRoutes: (_routes, _appId) =>
     Effect.fail(
       new ProxyApplyError({

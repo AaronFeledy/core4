@@ -10,6 +10,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import { volumeSelectorValue } from "@lando/container-runtime/podman/volume-prune";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
   HOST_PROXY_CONTAINER_LANDO,
@@ -27,6 +28,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
@@ -36,6 +38,9 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("crossprocessapp");
 const appRoot = AbsolutePath.make("/tmp/lando-crossprocess-app");
+/** The selector the writer produces for this fixture root, derived the way production derives it. */
+const volumeSelector = (id: string, volumeClass: "cache" | "data"): string =>
+  volumeSelectorValue({ providerId, appId: id, ownerKey: appIdentityKey("owner", appRoot), volumeClass });
 
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
@@ -220,7 +225,7 @@ const makeFakePodmanState = () => {
     plan.stores.map((store): readonly [string, Readonly<Record<string, string>>] => [
       store.name,
       {
-        "dev.lando.volume-selector": `lando:${plan.id}:${appRoot}:${store.kind === "cache" ? "cache" : "data"}`,
+        "dev.lando.volume-selector": volumeSelector(plan.id, store.kind === "cache" ? "cache" : "data"),
       },
     ]),
   );

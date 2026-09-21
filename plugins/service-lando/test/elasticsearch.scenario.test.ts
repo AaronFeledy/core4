@@ -92,7 +92,6 @@ const makeProvider = (
     stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.void,
     exec: (target, spec) => {
       calls.push({ service: String(target.service), command: spec.command });
       const response = responses[i] ?? { exitCode: 0 };

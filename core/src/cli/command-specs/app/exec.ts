@@ -10,6 +10,7 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
+import { isEnvelopeResultFormat } from "../../format-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
 
@@ -44,7 +45,8 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   streamingMode: "live",
   run: (input) => {
     const flags = extractSpecFlags(input);
-    const json = flags.format === "json" || flags.json === true;
+    const envelope =
+      (typeof flags.format === "string" && isEnvelopeResultFormat(flags.format)) || flags.json === true;
     const base = {
       command: extractSpecParsedArgv(input),
       ...(typeof flags.user === "string" ? { user: flags.user } : {}),
@@ -55,7 +57,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
       input !== null &&
       "interaction" in input &&
       input.interaction === "non-interactive";
-    if (json || nonInteractive) return execApp({ ...base, tty: false, interactive: false });
+    if (envelope || nonInteractive) return execApp({ ...base, tty: false, interactive: false });
     const tty = process.stdout.isTTY === true;
     const interactive = flags.interactive === true;
     return withInheritedStdinRawMode(

@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Args, Flags } from "../../../spec/metadata";
+import { Args } from "../../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -25,13 +25,6 @@ export const metaRecipesValidateSpec: LandoCommandSpec<RecipesValidateResult> = 
     path: Args.string({
       description: "Path to a recipe.yml or a recipe directory.",
       required: true,
-    }),
-  },
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      options: ["table", "json"],
-      default: "table",
     }),
   },
   run: (input) => {

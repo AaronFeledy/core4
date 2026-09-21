@@ -1,7 +1,7 @@
 import { LandoCommandError, RendererSelectionError } from "@lando/sdk/errors";
 
 import type { OpenAppOptions } from "../commands/open";
-import { resolveResultFormat } from "../format-flags";
+import { isEnvelopeResultFormat, resolveResultFormat } from "../format-flags";
 
 const OPEN_COMMAND = "app:open" as const;
 
@@ -21,9 +21,9 @@ type FormatParseResult =
   | { readonly _tag: "success"; readonly json: boolean }
   | { readonly _tag: "failure"; readonly error: LandoCommandError };
 
-const parseFormatJson = (argv: ReadonlyArray<string>): FormatParseResult => {
+const parseEnvelopeFormat = (argv: ReadonlyArray<string>): FormatParseResult => {
   try {
-    return { _tag: "success", json: resolveResultFormat({ argv }).format === "json" };
+    return { _tag: "success", json: isEnvelopeResultFormat(resolveResultFormat({ argv }).format) };
   } catch (cause) {
     if (cause instanceof RendererSelectionError)
       return { _tag: "failure", error: invalidOpenArgvError(cause.message) };
@@ -59,7 +59,7 @@ export const parseOpenOptionsFromRunLandoArgv = (
       if (routeValue.length === 0) return invalidOpenArgv("Missing value for --route.");
       route = routeValue;
     } else if (formatValue !== undefined) {
-      const parsedFormat = parseFormatJson([`--format=${formatValue}`]);
+      const parsedFormat = parseEnvelopeFormat([`--format=${formatValue}`]);
       if (parsedFormat._tag === "failure") return parsedFormat;
       formatSeen = true;
       json = parsedFormat.json;
@@ -82,7 +82,7 @@ export const parseOpenOptionsFromRunLandoArgv = (
       index += 1;
       const value = tokens[index];
       if (value === undefined || value.startsWith("-")) return invalidOpenArgv("Missing value for --format.");
-      const parsedFormat = parseFormatJson(["--format", value]);
+      const parsedFormat = parseEnvelopeFormat(["--format", value]);
       if (parsedFormat._tag === "failure") return parsedFormat;
       formatSeen = true;
       json = parsedFormat.json;

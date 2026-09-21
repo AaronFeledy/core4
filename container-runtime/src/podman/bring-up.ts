@@ -16,7 +16,7 @@ import {
 import type { ApplyOptions, ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
-import { libpodWaitDialect } from "../dialect.ts";
+import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
   EngineHttpRequest,
@@ -36,7 +36,6 @@ import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts"
 import { waitForExit } from "../wait-for-exit.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
-import { volumeSelectorValue } from "./volume-prune.ts";
 
 const appNetworkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
@@ -79,6 +78,7 @@ interface StartResult {
  */
 export type StartFailureRemediation = (input: {
   readonly service?: string;
+  readonly operation: string;
   readonly message: string;
   readonly details?: unknown;
 }) => string | undefined;
@@ -86,7 +86,14 @@ export type StartFailureRemediation = (input: {
 export interface BringUpOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
+  readonly dialect?: LifecycleDialect;
+  readonly ensureImage?: (input: {
+    readonly service: ServicePlan;
+    readonly ref: string;
+    readonly force: boolean;
+  }) => Effect.Effect<void, BringUpError>;
   readonly eventService?: EventPublisher;
+  readonly retryCreateOnMissingImage?: boolean;
   readonly signal?: AbortSignal;
   readonly reconcile?: boolean;
   readonly startFailureRemediation?: StartFailureRemediation;
@@ -127,7 +134,7 @@ const missingApi = (ctx: ProviderErrorContext) =>
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation: "bringUp",
-    message: `provider-${ctx.providerId} bringUp requires a Podman API client.`,
+    message: `provider-${ctx.providerId} bringUp requires an engine API client.`,
     remediation: ctx.remediation,
   });
 
@@ -136,6 +143,7 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
   const remediation =
     deps.options.startFailureRemediation?.({
       service: String(input.service.name),
+      operation: input.operation,
       message,
       ...(input.details === undefined ? {} : { details: input.details }),
     }) ?? APPLY_REMEDIATION;
@@ -167,7 +175,7 @@ const parseJson = (
       new ProviderInternalError({
         providerId: deps.options.ctx.providerId,
         operation,
-        message: "Podman API returned malformed JSON.",
+        message: `provider-${deps.options.ctx.providerId} API returned malformed JSON.`,
         details: redactDetails({ status: response.status, body: response.body }),
         remediation: APPLY_REMEDIATION,
         cause,
@@ -191,10 +199,13 @@ const inspectContainer = (
         new ProviderUnavailableError({
           providerId: deps.options.ctx.providerId,
           operation: "bringUp.inspect",
-          message: withApiReason(`Podman inspect failed with HTTP ${response.status}.`, {
-            status: response.status,
-            body: response.body,
-          }),
+          message: withApiReason(
+            `provider-${deps.options.ctx.providerId} inspect failed with HTTP ${response.status}.`,
+            {
+              status: response.status,
+              body: response.body,
+            },
+          ),
           details: redactDetails({ name, status: response.status, body: response.body }),
           remediation: APPLY_REMEDIATION,
         }),
@@ -277,14 +288,17 @@ const createContainerRequest = (deps: BringUpDeps, plan: AppPlan, service: Servi
         ...mergedExtraHosts,
       },
       networkingConfig: {
-        EndpointsConfig: Object.fromEntries(
-          networkNames(plan).map((name) => [
-            name,
-            name === sharedNetworkName(plan)
-              ? { Aliases: serviceNetworkAliases(plan, service) }
-              : { Aliases: [service.name] },
-          ]),
-        ),
+        EndpointsConfig:
+          (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create"
+            ? { [appNetworkName(plan)]: { Aliases: [service.name] } }
+            : Object.fromEntries(
+                networkNames(plan).map((name) => [
+                  name,
+                  name === sharedNetworkName(plan)
+                    ? { Aliases: serviceNetworkAliases(plan, service) }
+                    : { Aliases: [service.name] },
+                ]),
+              ),
       },
       onMissingArtifact: (artifact) => {
         throw podmanFailure(deps, {
@@ -328,7 +342,7 @@ const ensureNetwork = (
           }
           const details = { status: response.status, body: response.body };
           const message = withApiReason(
-            `Podman network create failed with HTTP ${response.status}.`,
+            `provider-${deps.options.ctx.providerId} network create failed with HTTP ${response.status}.`,
             details,
           );
           return Effect.fail(
@@ -337,7 +351,12 @@ const ensureNetwork = (
               operation: "bringUp.network",
               message,
               details: redactDetails(details),
-              remediation: deps.options.startFailureRemediation?.({ message, details }) ?? APPLY_REMEDIATION,
+              remediation:
+                deps.options.startFailureRemediation?.({
+                  operation: "bringUp.network",
+                  message,
+                  details,
+                }) ?? APPLY_REMEDIATION,
             }),
           );
         }),
@@ -352,12 +371,6 @@ export const podmanVolumeCreationLabels = (
 ): Readonly<Record<string, string>> => ({
   ...volumeCreationLabels(plan, store),
   "dev.lando.provider": plan.provider,
-  "dev.lando.volume-selector": volumeSelectorValue({
-    providerId: plan.provider,
-    appId: plan.id,
-    ownerKey: plan.identity?.ownerKey ?? plan.root,
-    volumeClass: store.kind === "cache" ? "cache" : "data",
-  }),
 });
 
 const ensureVolume = (
@@ -382,10 +395,13 @@ const ensureVolume = (
         new ProviderUnavailableError({
           providerId: deps.options.ctx.providerId,
           operation: "bringUp.volume",
-          message: withApiReason(`Podman volume create failed with HTTP ${response.status}.`, {
-            status: response.status,
-            body: response.body,
-          }),
+          message: withApiReason(
+            `provider-${deps.options.ctx.providerId} volume create failed with HTTP ${response.status}.`,
+            {
+              status: response.status,
+              body: response.body,
+            },
+          ),
           details: redactDetails({ name: store.name, status: response.status, body: response.body }),
           remediation: APPLY_REMEDIATION,
         }),
@@ -394,33 +410,96 @@ const ensureVolume = (
   );
 };
 
+export const isMissingImageCreateResponse = (response: EngineHttpResponse): boolean =>
+  response.status === 404 || /no such image/iu.test(response.body);
+
 const createContainer = (
   deps: BringUpDeps,
   plan: AppPlan,
   service: ServicePlan,
   name: string,
 ): Effect.Effect<void, BringUpError> =>
-  Effect.try({
-    try: () => createContainerRequest(deps, plan, service, name),
-    catch: (cause) =>
-      cause instanceof ServiceStartError
-        ? cause
-        : podmanFailure(deps, {
-            service,
-            operation: "bringUp.create",
-            message: "Failed to build Podman container create payload.",
-            cause,
-          }),
+  Effect.gen(function* () {
+    if (service.artifact?.kind === "ref" && deps.options.ensureImage !== undefined) {
+      yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: false });
+    }
+    const createRequest = yield* Effect.try({
+      try: () => createContainerRequest(deps, plan, service, name),
+      catch: (cause) =>
+        cause instanceof ServiceStartError
+          ? cause
+          : podmanFailure(deps, {
+              service,
+              operation: "bringUp.create",
+              message: `Failed to build provider-${deps.options.ctx.providerId} container create payload.`,
+              cause,
+            }),
+    });
+    const response = yield* request(deps, { method: "POST", ...createRequest });
+    if (response.status === 201 || response.status === 409) return;
+    if (
+      deps.options.retryCreateOnMissingImage === true &&
+      deps.options.ensureImage !== undefined &&
+      service.artifact?.kind === "ref" &&
+      isMissingImageCreateResponse(response)
+    ) {
+      yield* deps.options.ensureImage({ service, ref: service.artifact.ref, force: true });
+      const retry = yield* request(deps, { method: "POST", ...createRequest });
+      if (retry.status === 201 || retry.status === 409) return;
+      return yield* Effect.fail(
+        podmanFailure(deps, {
+          service,
+          operation: "bringUp.create",
+          message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${retry.status}.`,
+          details: {
+            status: response.status,
+            body: response.body,
+            retryStatus: retry.status,
+            retryBody: retry.body,
+          },
+        }),
+      );
+    }
+    return yield* Effect.fail(
+      podmanFailure(deps, {
+        service,
+        operation: "bringUp.create",
+        message: `provider-${deps.options.ctx.providerId} container create failed with HTTP ${response.status}.`,
+        details: { status: response.status, body: response.body },
+      }),
+    );
+  });
+
+const isAlreadyConnectedResponse = (response: EngineHttpResponse): boolean =>
+  response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
+
+const connectSharedNetwork = (
+  deps: BringUpDeps,
+  plan: AppPlan,
+  service: ServicePlan,
+  name: string,
+  sharedNetwork: string,
+): Effect.Effect<void, BringUpError> =>
+  request(deps, {
+    method: "POST",
+    path: `/networks/${encodeURIComponent(sharedNetwork)}/connect`,
+    body: {
+      Container: name,
+      EndpointConfig: { Aliases: serviceNetworkAliases(plan, service) },
+    },
   }).pipe(
-    Effect.flatMap(({ body, path }) => request(deps, { method: "POST", path, body })),
     Effect.flatMap((response) =>
-      response.status === 201 || response.status === 409
+      response.status === 200 ||
+      response.status === 201 ||
+      response.status === 204 ||
+      response.status === 409 ||
+      isAlreadyConnectedResponse(response)
         ? Effect.void
         : Effect.fail(
             podmanFailure(deps, {
               service,
-              operation: "bringUp.create",
-              message: `Podman container create failed with HTTP ${response.status}.`,
+              operation: "bringUp.network.connect",
+              message: `provider-${deps.options.ctx.providerId} network connect failed with HTTP ${response.status}.`,
               details: { status: response.status, body: response.body },
             }),
           ),
@@ -440,7 +519,7 @@ const startContainer = (
             podmanFailure(deps, {
               service,
               operation: "bringUp.start",
-              message: `Podman container start failed with HTTP ${response.status}.`,
+              message: `provider-${deps.options.ctx.providerId} container start failed with HTTP ${response.status}.`,
               details: { status: response.status, body: response.body },
             }),
           ),
@@ -470,7 +549,7 @@ const removeContainer = (
             podmanFailure(deps, {
               service,
               operation: "bringUp.remove",
-              message: `Podman container remove failed with HTTP ${response.status}.`,
+              message: `provider-${deps.options.ctx.providerId} container remove failed with HTTP ${response.status}.`,
               details: { status: response.status, body: response.body },
             }),
           ),
@@ -530,7 +609,7 @@ const startService = (
         podmanFailure(deps, {
           service,
           operation: "bringUp",
-          message: "Podman bringUp was cancelled before service start.",
+          message: `provider-${deps.options.ctx.providerId} bringUp was cancelled before service start.`,
         }),
       );
     }
@@ -573,6 +652,13 @@ const startService = (
       yield* createContainer(deps, plan, service, name);
       changed = true;
     }
+    const sharedNetwork = sharedNetworkName(plan);
+    if (
+      (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
+      sharedNetwork !== undefined
+    ) {
+      yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
+    }
     if (!before.running) {
       yield* startContainer(deps, service, name);
       changed = true;
@@ -584,7 +670,7 @@ const startService = (
         podmanFailure(deps, {
           service,
           operation: "bringUp.start",
-          message: "Podman container did not reach running state.",
+          message: `provider-${deps.options.ctx.providerId} container did not reach running state.`,
         }),
       );
     }
@@ -697,7 +783,7 @@ export const bringUp = (plan: AppPlan, options: BringUpOptions): Effect.Effect<A
           {
             api,
             ctx: options.ctx,
-            dialect: libpodWaitDialect,
+            dialect: (options.dialect ?? libpodLifecycleDialect).wait,
             ...(options.signal === undefined ? {} : { signal: options.signal }),
           },
         ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
@@ -712,7 +798,7 @@ export const bringUp = (plan: AppPlan, options: BringUpOptions): Effect.Effect<A
         new ProviderInternalError({
           providerId: options.ctx.providerId,
           operation: "bringUp.schedule",
-          message: "Podman bringUp service schedule contains a dependency cycle.",
+          message: `provider-${options.ctx.providerId} bringUp service schedule contains a dependency cycle.`,
           remediation: APPLY_REMEDIATION,
           details: redactDetails({ edges: result.edges }),
         }),
@@ -727,7 +813,7 @@ export const bringUp = (plan: AppPlan, options: BringUpOptions): Effect.Effect<A
           new ProviderInternalError({
             providerId: options.ctx.providerId,
             operation: "bringUp.schedule",
-            message: "Podman bringUp schedule blocked an unknown service.",
+            message: `provider-${options.ctx.providerId} bringUp schedule blocked an unknown service.`,
             remediation: APPLY_REMEDIATION,
             details: redactDetails(blocked),
           }),

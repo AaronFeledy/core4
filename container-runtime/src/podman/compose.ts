@@ -19,7 +19,7 @@ import { bindSourceForComposeConfig, composeConfigMounts } from "../compose-conf
 import type { ProviderErrorContext } from "../engine-api.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
-import { volumeSelectorValue } from "./volume-prune.ts";
+import { volumeOwnershipLabels } from "../volume-ownership.ts";
 
 export interface EmitComposeOptions {
   readonly userDataRoot: string;
@@ -279,12 +279,7 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
           "dev.lando.provider": plan.provider,
           "dev.lando.store": store.name,
           "dev.lando.scope": store.scope,
-          "dev.lando.volume-selector": volumeSelectorValue({
-            providerId: plan.provider,
-            appId: plan.id,
-            ownerKey: plan.identity?.ownerKey ?? plan.root,
-            volumeClass: store.kind === "cache" ? "cache" : "data",
-          }),
+          ...volumeOwnershipLabels(plan, store),
           ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
         };
         return [

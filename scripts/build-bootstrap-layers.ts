@@ -164,7 +164,7 @@ const renderScratch = (): string =>
     "    routerRegistryLive,",
     "    routerServiceLive,",
     "    ScratchRegistryWithPrivateFileAccessLive.pipe(Layer.provide(providerBase)),",
-    "    ScratchResourceScannerLive,",
+    "    ScratchResourceScannerLive.pipe(Layer.provide(providerBase)),",
     "    ScratchInitAppPortLive,",
     "  ).pipe(Layer.provideMerge(scratchBase));",
     "  return Layer.mergeAll(",

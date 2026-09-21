@@ -34,5 +34,17 @@ Priorities continue the global sequence in `../config-translation/`. Every imple
 | 60 | US-646 | positional tooling argv round trip | US-613, US-623 |
 | 61 | US-647 | cross-app route rank safety | US-615, US-624 |
 | 62 | US-648 | live provider socket gate | US-638 |
+| 63 | US-649 | YAML from the result envelope | US-645, US-626 |
+| 64 | US-658 | per-command format advertisement | US-649 |
+| 65 | US-650 | Apache PHP launcher under a non-root user | US-644, US-637 |
+| 66 | US-659 | nginx-family and FPM launchers under a non-root user | US-650 |
+| 67 | US-660 | volume-backed data trees under a non-root user | US-650, US-631 |
+| 68 | US-651 | Apache listen port from `port:` | US-618E, US-650 |
+| 69 | US-652 | orphan container teardown | US-643 |
+| 70 | US-653 | volume ownership selector | US-629, US-643 |
+| 71 | US-654 | router observation on global lifecycle | US-642 |
+| 72 | US-655 | unit-suite baseline | — |
+| 73 | US-661 | resolve-test isolation cascade | US-655 |
+| 74 | US-656 | pipeline gate legibility | — |
 
-Priorities 45..56 are follow-up stories from the audit of US-613..US-618E; priorities 33..44 belong to `../lando3-compat/`. Priorities 57..62 are residual defects recorded during the QA and review of priorities 21..56 and never queued; [`spec-ir-residual.md`](./spec-ir-residual.md) is normative for them. Story ids are sparse on purpose: twenty audit follow-ups were consolidated into twelve PR-sized stories, each keeping its original id, and the retired ids were absorbed into the story that now owns their scope. Follow-up stories reproduce on current source before fixing and treat audit findings as leads, not as present defects. Non-queued maintainer items live in the checklist at the end of `prd-ir-gaps-01-stories.md`.
+Priorities 45..56 are follow-up stories from the audit of US-613..US-618E; priorities 33..44 belong to `../lando3-compat/`. Priorities 57..62 are residual defects recorded during the QA and review of priorities 21..56 and never queued; [`spec-ir-residual.md`](./spec-ir-residual.md) is normative for them. Priorities 63..74 are the second residual wave, recorded during the QA, review, and babysit passes of priorities 57..62 and likewise never queued; [`spec-ir-residual-2.md`](./spec-ir-residual-2.md) is normative for them and also absorbs the maintainer and CI items the first wave left on a checklist. Four of its findings were split or merged to stay inside this repository's measured pull-request size, which `spec-ir-residual-2.md` §12 records with the evidence. Story ids are sparse on purpose: twenty audit follow-ups were consolidated into twelve PR-sized stories, each keeping its original id, and the retired ids were absorbed into the story that now owns their scope. Follow-up stories reproduce on current source before fixing and treat audit findings as leads, not as present defects. Non-queued maintainer items live in the checklist at the end of `prd-ir-gaps-01-stories.md`.

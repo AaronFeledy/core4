@@ -44,6 +44,9 @@ const providerLandoE2eJob = `
       - uses: actions/checkout@v5
 ${bunSetupStep}
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
 ${renderInstallPodman6Step()}
 
 ${renderAssertPodman6Step()}
@@ -67,16 +70,18 @@ ${renderAssertPodman6Step()}
           bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
           ./core/dist/lando --version
 
-      - name: Run smoke e2e scenarios
+      - name: Run e2e guide scenarios
         run: |
-          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/scenario --test-name-pattern="@smoke"
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\\[e2e\\]"
         env:
+          LANDO_GUIDE_E2E: "1"
+          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"
           LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
-      - name: Run non-smoke e2e scenarios
+      - name: Run live integration suites
         run: |
-          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/scenario --test-name-pattern="^(?!.*@smoke).*$"
+          bun test core/test/live
         env:
           LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
@@ -94,6 +99,7 @@ ${renderAssertPodman6Step()}
         run: |
           mkdir -p provider-lando-e2e-diagnostics
           cp /tmp/podman-service.log provider-lando-e2e-diagnostics/podman-service.log || true
+          cp -r dist/transcripts/guides provider-lando-e2e-diagnostics/guide-transcripts || true
           journalctl --no-pager --since "-30 minutes" > provider-lando-e2e-diagnostics/journalctl.log 2>&1 || true
 
       - name: Upload provider-lando e2e diagnostics

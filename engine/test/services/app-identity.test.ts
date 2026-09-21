@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Context, Effect, Exit, Stream } from "effect";
 
+import { appIdentityKey } from "@lando/sdk/schema";
 import type { ProcessRunner } from "@lando/sdk/services";
 
 import { resolveAppIdentity } from "../../src/planner/app-identity.ts";
@@ -94,6 +95,7 @@ test("retains canonical ownership when Git grouping is unavailable", async () =>
     // Then: canonical ownership remains available without an unsafe group fallback.
     expect(String(identity.appRoot)).toBe(root);
     expect(identity.ownerKey).toMatch(/^[a-f0-9]{64}$/u);
+    expect(identity.ownerKey).toBe(appIdentityKey("owner", await realpath(root)));
     expect(identity.repoGroupKey).toBeUndefined();
   });
 });

@@ -13,7 +13,8 @@ export type { WatcherDiagnosticRecord };
 
 type DoctorRunInput = Parameters<PluginDoctorCheckContribution["run"]>[0];
 
-const LAST_OBSERVATION = "This is the last router setup observation and has not been revalidated.";
+const LAST_OBSERVATION =
+  "Doctor has not independently revalidated this persisted router startup observation.";
 
 const readStoredRecord = (paths: ProxyPaths): Effect.Effect<WatcherDiagnosticRecord | undefined> =>
   Effect.tryPromise(() => readFile(watcherDiagnosticFile(paths), "utf8")).pipe(
@@ -54,7 +55,7 @@ export const makeRouterFileWatcherCheck = (
     const resolved = makeLandoPaths({ userDataRoot: input.userDataRoot, platform: input.platform });
     const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
     return Effect.gen(function* () {
-      const record = yield* (readRecord ?? (() => readStoredRecord(paths)))(input);
+      const record = yield* readRecord ? readRecord(input) : readStoredRecord(paths);
       if (record === undefined) return [];
       // Traefik always runs on the Lando-managed provider. Doctor's selected
       // providerId is the user's app default and must not hide this record.

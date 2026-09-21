@@ -32,6 +32,18 @@ Global priorities, dependencies, and standard gates are recorded in the index an
 | US-646 | positional tooling argv round trip | `docs/guides/tooling/flags-and-args.mdx`, `docs/guides/agent-native/mcp.mdx` |
 | US-647 | cross-app route rank safety | `docs/guides/proxy/route-shorthand.mdx` |
 | US-648 | live provider socket gate | maintainer-only: test infrastructure, no public guide |
+| US-649 | YAML from the result envelope | `docs/guides/scripting-with-json.mdx` |
+| US-658 | per-command format advertisement | `docs/guides/scripting-with-json.mdx` |
+| US-650 | Apache PHP launcher under a non-root user | `docs/guides/services/php.mdx` |
+| US-659 | nginx-family and FPM launchers under a non-root user | `docs/guides/services/nginx.mdx`, `docs/guides/services/static.mdx`, `docs/guides/services/php.mdx` |
+| US-660 | volume-backed data trees under a non-root user | `docs/guides/services/solr.mdx`, `docs/guides/services/minio.mdx` |
+| US-651 | Apache listen port from `port:` | `docs/guides/services/apache.mdx`, `docs/guides/services/php.mdx` |
+| US-652 | orphan container teardown | `docs/guides/tutorial/app-lifecycle.mdx`, `docs/guides/cli/everyday-commands.mdx` |
+| US-653 | volume ownership selector | maintainer-only: internal volume metadata, no public guide |
+| US-654 | router observation on global lifecycle | `docs/guides/global/doctor-walkthrough.mdx` |
+| US-655 | unit-suite baseline | maintainer-only: test infrastructure, no public guide |
+| US-661 | resolve-test isolation cascade | maintainer-only: test infrastructure, no public guide |
+| US-656 | pipeline gate legibility | maintainer-only: CI and contributing docs, no public guide |
 
 ### US-613: Normalize and execute tooling definitions
 
@@ -334,15 +346,149 @@ Shared gates for every follow-up: focused tests with a positive count, typecheck
 - [ ] The explicit socket environment override keeps its precedence; an override naming a dead socket also resolves to absent rather than being exempted from the liveness check.
 - [ ] A failing regression test first captures a socket path that exists but refuses connection; focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only test infrastructure: no public guide.
 
+## Second residual wave (US-649..US-661)
+
+These twelve follow the same rules as the stories above and are normative against [`spec-ir-residual-2.md`](./spec-ir-residual-2.md). Each was re-confirmed against current source before being queued; two recorded findings were retired instead (`spec-ir-residual-2.md` §10), and four findings were split or merged to stay inside this repository's measured pull-request size (§12). US-653, US-655, US-656, and US-661 are maintainer-only and record internal evidence instead of a public guide.
+
+### US-649: Emit YAML from the command result envelope
+
+**Description:** As a script or agent, a command that accepts `--format=yaml` emits the same result envelope it emits as JSON, not its human text.
+
+**Acceptance Criteria:**
+- [ ] `yaml` becomes a boundary-owned machine format derived from the same encoded envelope `json` produces, serialized through `@lando/sdk/yaml`; parsing the YAML yields the same model as parsing the JSON for a command with no bespoke format handling.
+- [ ] Redaction, `--json` field projection, `--jq`, warning capture, and the broken-pipe exit policy apply to `yaml` identically to `json`, through the one existing seam rather than a parallel one.
+- [ ] The hand-rolled YAML in `meta:config`, `meta:global:config`, `app:config`, and `app:config:translate` is reconciled against the boundary: envelope duplicates are deleted, and any survivor records in its spec why its document differs.
+- [ ] `meta:doctor`'s report projection is decided explicitly — kept with a recorded reason or folded into the envelope — rather than left as an unexamined exception.
+- [ ] A failing test first captures `lando info --format=yaml` emitting a tab-separated document; the scripting guide covers the format; applicable standard gates pass.
+
+### US-658: Advertise a result format only where it is honored
+
+**Description:** As a script or agent, every value a command offers in `--format` is a value that command actually produces.
+
+**Acceptance Criteria:**
+- [ ] `table` and `ndjson` leave `universalFormatFlagDefs` and are advertised per command, only by the commands that implement them; `text`, `json`, and `yaml` stay universal.
+- [ ] A command asked for a format it does not implement fails with the existing `RendererSelectionError` naming the formats it does support, instead of emitting text at exit 0.
+- [ ] `lando help`, compiled-mode argv parsing, and the generated command-registry manifest all reflect the per-command list, so an MCP client is never offered a format the command drops.
+- [ ] Manifest regeneration lands in the same revision as the capability change, and `codegen:check` is clean afterward.
+- [ ] A failing test first captures a command that implements neither format accepting both at exit 0; applicable standard gates pass.
+
+### US-650: Run the Apache PHP launcher as the planned service user
+
+**Description:** As an author, a `php:*` service served through Apache starts under a non-root `user:` without an authored `command:` workaround.
+
+**Acceptance Criteria:**
+- [ ] `php-via.ts` `apacheStartCommand` passes its configuration as repeated `-c` arguments and writes no site configuration, following the US-644 precedent, and serves the same document root and override behavior as before.
+- [ ] The shared error-page writer in `http-errors.ts` is resolved once, for every current and future caller, rather than per launcher; whatever replaces the start-time write is the mechanism the nginx-family launchers consume in US-659.
+- [ ] Anything else the daemon writes before PID 1 stabilizes is checked and resolved in the same pass, as Apache's `PidFile` was in US-644.
+- [ ] A failing regression captures the mode failing to start under a non-root `user:` present in its image, through the planner, before the fix.
+- [ ] `DEFAULT_COMMAND_AUDIT.md` moves this row out of `needs-fix`; the PHP guide stops implying the launcher requires root; real-runtime evidence shows a served response under a non-root user; applicable standard gates pass.
+
+### US-659: Run the nginx-family and FPM launchers as the planned service user
+
+**Description:** As an author, `nginx` with a backend, a `static` site, and a `php:*` FPM service all start under a non-root `user:`.
+
+**Acceptance Criteria:**
+- [ ] `nginx.ts` `phpFastcgiCommand`, `static.ts` `defaultStaticCommand`, and `php-via.ts` `fpmStartCommand` each write their generated configuration somewhere the planned user can write, and point the daemon at that path explicitly.
+- [ ] No resolution places a writable file inside a root-owned tree, and none widens permissions on a path the image owns.
+- [ ] All three consume the shared error-page resolution US-650 established rather than reintroducing a per-launcher write.
+- [ ] `static:caddy` keeps its current write-free command byte-identically, and a service with no authored `user:` keeps its current generated output byte-identically.
+- [ ] A failing regression per mode is captured first; `DEFAULT_COMMAND_AUDIT.md` moves all three rows out of `needs-fix`; the nginx, static, and PHP guides are corrected; real-runtime evidence shows a served response under a non-root user; applicable standard gates pass.
+
+### US-660: Own the volume-backed data trees under the planned service user
+
+**Description:** As an author, a Solr service with cores and a MinIO service either work under my non-root `user:` or tell me at plan time that they cannot.
+
+**Acceptance Criteria:**
+- [ ] `solr` with `cores:` and `minio` make the ownership of their volume-backed data trees correct for the planned user rather than assuming it, so `precreate-core`, the config overlay copy, and the bucket `mkdir` all succeed.
+- [ ] A service whose data tree cannot be owned by its planned user refuses at plan time with a tagged error naming the service and the option, before any provider action, in the manner `HomePathCapabilityError` already refuses an unknowable home.
+- [ ] The new error joins every plan-carrying union in one pass, is inserted once per union, and is recorded in `sdk/API_COMPATIBILITY.md` and the frozen service-tag fixture.
+- [ ] The US-631 core-name rules and the US-618A config-overlay identity contract are unchanged; the empty-overlay identity tests still hold.
+- [ ] A failing regression per mode is captured first; `DEFAULT_COMMAND_AUDIT.md` ends with no `needs-fix` row and keeps its reproduction section current; the Solr and MinIO guides document the refusal; real-runtime evidence covers both; applicable standard gates pass.
+
+### US-651: Derive the Apache listen port from the planned service port
+
+**Description:** As an author, setting `port:` on an Apache or PHP-via-Apache service moves the port the daemon actually listens on, not only its endpoint and healthcheck.
+
+**Acceptance Criteria:**
+- [ ] `apache` emits `Listen <port>` from the planned `port:` through the repeated-`-c` mechanism, and `php:*` via `apache` derives its `<VirtualHost *:<port>>` from the same value.
+- [ ] The service ends up listening on the planned port and not additionally on the image's own `Listen 80`; the story proves which it produced and lands the resolution rather than adding a second socket.
+- [ ] The existing `apache.test.ts` assertion that no `Listen` directive is emitted is replaced with a stronger one, not deleted: directives contain `Listen` at the planned port, and a service with no authored `port:` emits byte-identical output to today.
+- [ ] `minio`'s fixed `9001` console port is recorded as a known limit in its guide; the Apache and PHP guides state plainly that a non-root service still cannot bind below 1024 and that `port:` is the author-side answer.
+- [ ] A failing test first captures `port: 8080` producing no matching listen directive; real-runtime evidence answers a request on the planned port; applicable standard gates pass.
+
+### US-652: Remove orphaned containers by observed identity
+
+**Description:** As a user tearing down an app whose applied state is gone, the containers the provider still holds are actually removed, and the result names only what was removed.
+
+**Acceptance Criteria:**
+- [ ] Orphan container teardown removes observed containers through a provider-contract target that does not depend on the provider resolving its own applied plan; all three bundled adapters implement it in the same revision as the contract.
+- [ ] A teardown result lists a service only when that service was stopped and removed; the current `selectionPlan` path, which reports `group.services` while iterating an empty `services` map, no longer reports unremoved containers.
+- [ ] `provider.destroy` no longer returns a silent success when it resolved no plan and took no action; a planless destroy that finds no record yields an explicit no-op outcome.
+- [ ] Orphan volume removal under `--volumes` distinguishes cache from data volumes the way planful bring-down already does through `pruneVolumeClasses`.
+- [ ] The contract change is recorded in `sdk/API_COMPATIBILITY.md` and the frozen service-tag fixture; a failing test first captures an orphan group reporting a removed service while the container survives; real-runtime evidence shows the container present before and absent after; guides plus applicable standard gates pass.
+
+### US-653: Collapse the volume ownership selector to one path
+
+**Description:** As a maintainer, a volume's ownership identity is written one way and read the same way, with no pre-ship fallback.
+
+**Acceptance Criteria:**
+- [ ] The `plan.identity?.ownerKey ?? plan.root` fallback is removed from all four selector sites (`bring-up.ts`, `compose.ts`, and both in `bring-down.ts`); a plan without `identity.ownerKey` is migrated at read time or refused, never silently written in a second format.
+- [ ] The relationship between `dev.lando.volume-selector` and `dev.lando.volume-owner` is stated in one place and enforced: one is derived from the other, or the story records why both exist and which is authoritative for which operation.
+- [ ] Whatever remains carries a source comment naming the invariant, so it need not be reconstructed from a progress log.
+- [ ] If the labels collapse, volumes created by an earlier build keep working through a recorded migration path.
+- [ ] A failing test first captures a selector written without `identity.ownerKey` going unmatched by the reading side; focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only: no public guide.
+
+### US-654: Revalidate the router observation on global lifecycle commands
+
+**Description:** As a user following the doctor's advice, running the remediation it names clears the diagnostic it reported.
+
+**Acceptance Criteria:**
+- [ ] `meta:global:restart` and `meta:global:rebuild` re-observe the router's watcher startup and update or clear `watcher-diagnostic.json` on the same terms as `RouterService.setup`.
+- [ ] A successful `lando global:restart` on a healthy watcher clears a previously written record, so the command named as the first remediation can actually affect the condition it remediates.
+- [ ] A watcher that is still failing rewrites the record rather than clearing it, and the failure classification is unchanged from US-642.
+- [ ] The doctor check keeps reporting the record as an unrevalidated observation; this story makes the record fresher and does not make doctor probe live.
+- [ ] A failing test first captures `global:restart` leaving a stale record that doctor keeps reporting; guide plus applicable standard gates pass.
+
+### US-655: Re-measure and record the unit-suite baseline
+
+**Description:** As a maintainer, the current red unit tests are a measured list with named owners rather than an inherited count.
+
+**Acceptance Criteria:**
+- [ ] The baseline is re-measured on a clean checkout with `bun run test:unit` before anything is changed; the historical count of thirteen is treated as a lead, not a fact, and the measured result is recorded.
+- [ ] Every failure that reproduces is recorded as its own queued item with its own reproduction; unrelated failures are never grouped under one cause.
+- [ ] Failures that are self-contained are fixed in this story with a failing test captured first; anything larger is queued rather than absorbed.
+- [ ] Each named candidate is resolved, queued, or explicitly recorded as not reproducing: `uninstall-runtime-service.test.ts`, `resolve.test.ts`, and `transcript-tail-reader.test.ts`.
+- [ ] Focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only: no public guide.
+
+### US-661: Fix the resolve-test isolation cascade
+
+**Description:** As a maintainer, one slow test in `core/test/app/resolve.test.ts` fails alone instead of taking every later test in the file with it.
+
+**Acceptance Criteria:**
+- [ ] A test that exceeds its time budget no longer removes the temp directory out from under the tests that follow it; a single failure stays a single failure.
+- [ ] The fix is an isolation defect fix in the harness, not a raised timeout; any timeout that is raised carries a per-test comment justifying that specific test.
+- [ ] `withTempApp`, `withTwoTempApps`, and the five tests that chdir mid-test keep proving what they prove today, including cwd capture and cross-root isolation.
+- [ ] The file's failure count is stable across repeated runs on the same tree, which is the observable the current cascade destroys.
+- [ ] A failing test first captures the cascade; focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only: no public guide.
+
+### US-656: Make pipeline gate outcomes legible
+
+**Description:** As a maintainer, a pipeline step says what happened, so a failing gate is diagnosed once rather than every story.
+
+**Acceptance Criteria:**
+- [ ] The guide-scenarios job emits enough progress output to attribute a stall to a step, before any timeout value is changed; raising the hardcoded `timeout-minutes: 30` in `scripts/build-ci-workflow.ts` without that evidence is out of scope.
+- [ ] The windows-arm64 stall point is identified from that output and the resolution lands where the stall is; if the cause is the runner rather than the repository, the finding is recorded with evidence and the job is quarantined explicitly rather than left to flake.
+- [ ] Contributing documentation records that the looper Drift Audit step is workspace-local automation outside this repository, names its real owner, and distinguishes it from the in-repo `check:codegen-drift` and `check:guide-drift` gates and from `bun audit`, citing the evidence: no `.looper/` directory, no drift-audit package script, no `scripts/*audit*` file.
+- [ ] That record distinguishes a skipped gate from a failed one, since conflating them is what let a gate fail for roughly a dozen stories unnoticed; no external automation is edited.
+- [ ] The workflow change goes through the generator rather than the generated `ci.yml` and `codegen:check` stays clean; docs gates pass. Maintainer-only: no public guide.
+
 ## Maintainer checklist (not queued)
 
-These items came out of the same audit but are not stories, carry no id or priority, and block none of the twelve follow-ups. Pick them up when a PR already touches the area, or when a current reproduction exists. None of them grants authority to push, merge, or mark work complete.
+These items came out of the same audits but are not stories, carry no id or priority, and block none of the queued follow-ups. The unit-suite baseline and the looper Drift Audit gate were promoted out of this list into US-655 and US-656 in the second residual wave. Pick them up when a PR already touches the area, or when a current reproduction exists. None of them grants authority to push, merge, or mark work complete.
 
 - **`RedisServiceConfig` schema consistency.** Publishing the Redis service config as an SDK schema is optional and belongs to whichever SDK PR already owns an additive export; follow `sdk/AGENTS.md`, record it in `sdk/API_COMPATIBILITY.md`, and rebuild `sdk/dist` before engine and core typecheck.
-- **Unit-suite baseline.** Re-establish the baseline on current clean source with `bun run test:unit` before fixing anything. The historical count of thirteen failures is a lead, not a present fact. Transcript reader, uninstall, resolve-cwd, and timeout failures that reproduce today each get their own change with a failing test first; never group unrelated failures under one cause, and justify any raised timeout per test in a comment.
 - **PR and merge evidence.** Before appending a reconciliation entry to the append-only progress log, check actual PR and commit state. A missing record means unrecorded, not unmerged.
-- **Audit diagnostics.** Distinguish skipped from failed per gate; differing non-zero exits are never one shared cause. Find the real owner of each gate; external or workspace-local automation stays untouched and is recorded with an explicit owner and handoff instead of silent edits.
-- **Looper Drift Audit gate.** The Drift Audit step has exited 1 on every run since roughly US-631, so the last several stories shipped with no drift audit. That is workspace-local automation outside this repository's product surface: find the real owner of the gate, record the handoff, and do not silently edit it. Distinguish a skipped gate from a failed one before assuming a shared cause.
+- **Audit diagnostics.** Distinguish skipped from failed per gate; differing non-zero exits are never one shared cause. Find the real owner of each gate; external or workspace-local automation stays untouched and is recorded with an explicit owner and handoff instead of silent edits. The looper Drift Audit case is now queued as US-656; this remains the general rule for any other gate.
 - **Plain HTTP through the router on fallback ports.** Several verify passes recorded a router 404 on the HTTP fallback port while HTTPS served the same app, and at least one was another server on the host answering instead of Lando. Host-port acquisition is owned by `../alpha/prd-alpha-08-proxy-host-ports.md`; hand any residual HTTP-entrypoint question there rather than opening it here, and confirm which server answered before calling it a Lando defect.
-- **Ghost entries in `apps:list`.** A destroyed app once remained listed with empty services from leftover managed-runtime network state. This predates the teardown and inventory work at US-629 and was never re-reproduced afterward. Re-reproduce on current source before acting; a stale note is a lead, not a present defect.
+- **Ghost entries in `apps:list`.** A destroyed app once remained listed with empty services from leftover managed-runtime network state. This predates the teardown and inventory work at US-629 and was never re-reproduced afterward. Re-reproduce on current source before acting; a stale note is a lead, not a present defect. Re-confirmed as still unreproduced during the second residual wave (`spec-ir-residual-2.md` §10).
 - **Scope of this list.** None of these require a failing product test to act on, and none are prerequisites for the stories above.

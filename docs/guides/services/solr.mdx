@@ -58,6 +58,27 @@ A core name has to name exactly one directory under `/var/solr/data`. Use letter
 services.search.cores[0] "../escape" is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\" are not allowed. Rename the core to a plain directory name.
 ```
 
+### Run Solr as another user
+
+`precreate-core` writes into `/var/solr`, and that path is a named volume. The container runs as whatever `user:` you set, so the planned user has to own that tree or the first start dies on a permission error before Solr ever listens.
+
+The image ships `/var/solr` owned by `solr` (uid `8983`), so `user: solr`, `user: "8983"`, `user: root`, and no `user:` at all just work. Nothing changes for those.
+
+For any other user, Lando prepares the tree in the image before the volume exists: one root build step creates `/var/solr` and chowns it to your user. A container runtime seeds a fresh named volume from the image directory at that path, ownership included, so your user owns the data tree from the first start.
+
+```yaml
+services:
+  search:
+    type: solr
+    user: "10001"
+    cores: [default, products]
+```
+
+Two things to know:
+
+- It only applies to a **new** volume. A volume created by an earlier start keeps the ownership it already has. Remove the volume (`lando destroy` with volume purge) to get a fresh one that is seeded again.
+- Lando has to know your user exists in the image. A numeric uid always works, because a uid can always be given ownership, even when you supply your own `image:` or `build:`. A name the `solr` type doesn't declare (`solr` and `root` are the only two) is refused. A named `user:` on a service that supplies its own `image:` or `build:` is refused too, because that image is no longer the one the type described. The refusal is a `DataTreeOwnershipCapabilityError` that names the service, the data tree (`/var/solr`), and the Landofile option to change. Fix it with a numeric uid, or use `root`.
+
 ## Hit the admin API
 
 Expose a tooling alias that curls the Solr admin API after start to confirm the HTTP surface is reachable:
@@ -88,6 +109,8 @@ The path has to stay inside the app root. Absolute paths, paths that climb out o
 That copy is an overlay, not a replace. `cp -a` lays your files over whatever `precreate-core` just wrote into `/var/solr/data/<core>/conf`, so anything you ship wins and anything you leave out keeps the stock file. It runs on every start, so an edited file lands on the next `lando start`. If the copy fails, the container exits instead of serving a half-configured core.
 
 Lando identifies that directory by its contents, not by where it sits. Move the directory and the service keeps its build key. Change a file inside it and the service rebuilds. An empty directory is a legal overlay and hashes to one fixed identity, so two empty directories in different places give the same build key, and the first file you add changes it.
+
+The copy runs as the planned `user:`, so the same ownership rule as [precreating cores](#run-solr-as-another-user) applies: your user has to own `/var/solr`, and Lando arranges that for a numeric uid on a fresh volume. The overlay side has its own requirement. The host directory is bind-mounted read-only, and a non-root user still has to be able to read it. A `0700` directory on the host is not readable by uid `10001` inside the container, and the copy fails. `0755` works.
 
 If you also set `command:` on the service, yours wins. Lando won't copy that config into each core unless your command does it.
 

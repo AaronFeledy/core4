@@ -68,6 +68,23 @@ services:
     type: static:caddy
 ```
 
+## Run as a non-root user
+
+Set `user: nginx` to run the default `static:nginx` server as the image's own `nginx` account. Lando writes its whole nginx configuration to `/tmp/lando-nginx.conf`, points the PID file and temp directories at `/tmp` too, and starts the daemon with `nginx -c /tmp/lando-nginx.conf`, so nothing gets written into the image's root-owned config tree at start:
+
+```yaml
+services:
+  web:
+    type: static
+    user: nginx
+    home: false
+    port: 8080
+```
+
+`home: false` is there because Lando persists the planned user's home directory and only knows where `root`'s home is on this image. Use `home.path:` instead when you want that directory to survive a rebuild. `port:` moves the listen port itself, not just Lando's endpoint, because Lando templates it into the generated config. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
+
+`static:caddy` writes nothing at start either, but it still listens on `80` by default, so the same port rule applies there.
+
 ## Pin a version
 
 Set `image:` to pin a specific nginx or Caddy version:
