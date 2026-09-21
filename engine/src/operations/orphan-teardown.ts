@@ -5,18 +5,13 @@ import {
   teardownVolumeClasses,
   volumeClassFromLabels,
 } from "@lando/container-runtime/volume-classes";
-import type {
-  AppLockTimeoutError,
-  NoProviderInstalledError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-  StateStoreError,
-} from "@lando/sdk/errors";
+import type { AppLockTimeoutError, StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import {
   type AppliedOrphanGroup,
   type PathsService,
   type ProviderError,
+  type ProviderSelectionError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -39,9 +34,7 @@ export interface OrphanTeardownResult {
 
 export type OrphanTeardownError =
   | ProviderError
-  | ProviderUnavailableError
-  | ProviderConfigError
-  | NoProviderInstalledError
+  | ProviderSelectionError
   | AppLockTimeoutError
   | StateStoreError;
 

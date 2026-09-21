@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Effect } from "effect";
 
-import type { RemoteSyncError } from "@lando/sdk/app";
+import type { AppPlanResolutionError, RemoteSyncError } from "@lando/sdk/app";
 import type {
   AppLockTimeoutError,
   CapabilityError,
@@ -30,9 +30,16 @@ import type {
   ToolingExecError,
   TunnelProviderUnavailableError,
 } from "@lando/sdk/errors";
-import type { FileSystemError, ProviderError, TunnelError } from "@lando/sdk/services";
+import type {
+  AppPlannerError,
+  BuildError,
+  FileSystemError,
+  ProviderError,
+  ProviderSelectionError,
+  TunnelError,
+  UserLandofileError,
+} from "@lando/sdk/services";
 
-import type { UserLandofileError } from "../../src/landofile/app-resolution.ts";
 import type { EnsureGlobalServicesError } from "../../src/operations/ensure-global-services.ts";
 import type { globalInstall } from "../../src/operations/global-install.ts";
 import type { LoadGlobalPlanError } from "../../src/operations/global-plan.ts";
@@ -155,16 +162,29 @@ describe("Engine plan-carrying error channels", () => {
   // When: extract each operation channel. Then: require exact member-set equality under tsc.
   test("LoadGlobalPlanError retains its pre-refactor members", () => {
     assertType<Equal<LoadGlobalPlanError, LegacyLoadGlobalPlanError>>(true);
+    assertType<
+      Equal<
+        LoadGlobalPlanError,
+        AppPlannerError | ProviderSelectionError | FileSystemError | GlobalAppError | LandofileParseError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 
   test("planApp retains its pre-refactor error members", () => {
     assertType<Equal<ErrOf<ReturnType<typeof planApp>>, LegacyPlanAppChannel>>(true);
+    assertType<Equal<ErrOf<ReturnType<typeof planApp>>, AppPlannerError>>(true);
     expect(true).toBe(true);
   });
 
   test("OrphanTeardownError retains its pre-refactor members", () => {
     assertType<Equal<OrphanTeardownError, LegacyOrphanTeardownError>>(true);
+    assertType<
+      Equal<
+        OrphanTeardownError,
+        ProviderError | ProviderSelectionError | AppLockTimeoutError | StateStoreError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 
@@ -175,16 +195,37 @@ describe("Engine plan-carrying error channels", () => {
 
   test("EnsureGlobalServicesError retains its pre-refactor members", () => {
     assertType<Equal<EnsureGlobalServicesError, LegacyEnsureGlobalServicesError>>(true);
+    assertType<
+      Equal<
+        EnsureGlobalServicesError,
+        | LoadGlobalPlanError
+        | BuildError
+        | GlobalDistConflictError
+        | GlobalLandofilePathConflictError
+        | GlobalServiceCollisionError
+        | GlobalServiceMissingError
+        | PluginManifestError
+        | SecretNotFoundError
+        | ToolingExecError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 
   test("RemoteSyncCommandError retains its pre-refactor members", () => {
     assertType<Equal<RemoteSyncCommandError, LegacyRemoteSyncCommandError>>(true);
+    assertType<Equal<RemoteSyncCommandError, RemoteSyncError | AppPlanResolutionError>>(true);
     expect(true).toBe(true);
   });
 
   test("ShareListCommandError retains its pre-refactor members", () => {
     assertType<Equal<ShareListCommandError, LegacyShareListCommandError>>(true);
+    assertType<
+      Equal<
+        ShareListCommandError,
+        AppPlanResolutionError | TunnelError | TunnelProviderUnavailableError | StateStoreError
+      >
+    >(true);
     expect(true).toBe(true);
   });
 });
