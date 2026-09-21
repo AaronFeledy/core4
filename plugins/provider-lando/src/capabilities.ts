@@ -1,4 +1,10 @@
-import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import {
+  type HostProxyContainerTarget,
+  buildProviderCapabilities,
+  engineInfoArchitecture,
+  hostProxyCapabilities,
+  hostProxyContainerTargets,
+} from "@lando/container-runtime/capabilities";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import { Effect, Schema } from "effect";
@@ -16,42 +22,6 @@ const bindMountPerformanceForPlatform = (
   platform: HostPlatform,
 ): ProviderCapabilities["bindMountPerformance"] => {
   return hostPlatformFamily(platform) === "linux" ? "native" : "slow";
-};
-
-type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
-type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
-
-const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
-  hostPlatformFamily(platform) === "win32" ? "host.containers.internal" : undefined;
-
-const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
-  if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
-    return [{ os: "linux", arch: "x64" }];
-  }
-  if (arch === "arm64" || arch === "aarch64") return [{ os: "linux", arch: "arm64" }];
-  return [];
-};
-
-const hostProxyCapabilities = (
-  platform: HostPlatform,
-  containerTargets: ReadonlyArray<HostProxyContainerTarget>,
-): HostProxyCapabilities | undefined => {
-  const tcpHostGateway = hostProxyTcpHostGateway(platform);
-  if (containerTargets.length === 0 && tcpHostGateway === undefined) return undefined;
-  return {
-    containerTargets,
-    ...(tcpHostGateway === undefined ? {} : { tcpHostGateway }),
-  };
-};
-
-const podmanInfoArchitecture = (info: unknown): string | undefined => {
-  if (typeof info !== "object" || info === null) return undefined;
-  const host = "host" in info ? info.host : undefined;
-  if (typeof host === "object" && host !== null && "arch" in host && typeof host.arch === "string") {
-    return host.arch;
-  }
-  if ("Architecture" in info && typeof info.Architecture === "string") return info.Architecture;
-  return undefined;
 };
 
 export const decodeProviderCapabilities = (input: unknown) =>
@@ -119,7 +89,7 @@ export const providerLandoCapabilitiesForPlatform = (
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
-    hostProxy: hostProxyCapabilities(family, containerTargets),
+    hostProxy: hostProxyCapabilities(family, containerTargets, "host.containers.internal"),
   });
 };
 
@@ -127,7 +97,7 @@ export const linuxMvpCapabilities: ProviderCapabilities = providerLandoCapabilit
 export const macosMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("darwin");
 export const windowsMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("win32");
 export const mvpProviderCapabilities = (platform: HostPlatform, arch?: string): ProviderCapabilities =>
-  providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTarget(arch));
+  providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTargets(arch));
 
 export const introspectProviderCapabilities = (
   api: PodmanApiClient,
@@ -148,7 +118,7 @@ export const introspectProviderCapabilities = (
         : cause,
     ),
     Effect.map((info) => {
-      const containerArch = podmanInfoArchitecture(info);
-      return providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTarget(containerArch));
+      const containerArch = engineInfoArchitecture(info);
+      return providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTargets(containerArch));
     }),
   );

@@ -211,7 +211,15 @@ describe("provider-lando inspect", () => {
         const snapshot = await Effect.runPromise(inspect(plan, { app: appId, service: node.name }, { api }));
 
         expect(snapshot.state).toBe("running");
-        expect(snapshot.endpoints).toEqual(node.endpoints);
+        expect(snapshot.endpoints).toEqual([
+          {
+            _tag: "published",
+            port: 31082,
+            protocol: "http",
+            name: "31082/tcp",
+            publication: { bindAddress: "127.0.0.1", hostPort: 31082 },
+          },
+        ]);
       } finally {
         await Effect.runPromise(bringDown(plan, { api }));
       }
