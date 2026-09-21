@@ -1146,7 +1146,7 @@ describe("meta:setup command", () => {
     expect(providerSetupOptions).toEqual([expect.objectContaining({ privilege })]);
     expect(caSetupOptions).toEqual([expect.objectContaining({ privilege })]);
     expect(elevated).toHaveLength(1);
-    expect(elevated[0]?.join(" ")).toContain("LANDO shellenv");
+    expect(elevated[0]?.join(" ")).toContain("LANDO4 shellenv");
     expect(elevated[0]?.join(" ")).toContain("/tmp/Lando User");
   });
 
@@ -2820,7 +2820,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(compiled.stdout).toBe(source.stdout);
     expect(normalizeSetupFailure(compiled.stderr)).toBe(normalizeSetupFailure(source.stderr));
     expect(shellenv.stdout).toContain(`LANDO_USER_DATA_ROOT='${commandEnv.LANDO_USER_DATA_ROOT}'`);
-    expect(shellenv.stdout).toContain('export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"');
+    expect(shellenv.stdout).toContain(`export PATH='${commandEnv.LANDO_USER_DATA_ROOT}/bin'":\${PATH}"`);
     expect(compiled.stderr).toContain(`LANDO_INSTALL_DIR="${dirname(binaryPath)}"`);
   }, 120_000);
 });

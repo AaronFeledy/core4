@@ -211,8 +211,8 @@ const isLandoManagedCgroupsDelegateContent = (content: string): boolean =>
 // Lockstep with core/src/cli/commands/shellenv.ts: same delimiters, and the same
 // LANDO_SHELL_PROFILE override setup uses when writing the block.
 // Engine must not import @lando/core.
-export const LANDO_SHELLENV_BEGIN = "# >>> LANDO shellenv >>>";
-export const LANDO_SHELLENV_END = "# <<< LANDO shellenv <<<";
+export const LANDO_SHELLENV_BEGIN = "# >>> LANDO4 shellenv >>>";
+export const LANDO_SHELLENV_END = "# <<< LANDO4 shellenv <<<";
 
 export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
   const override = env.LANDO_SHELL_PROFILE;

@@ -1,3 +1,4 @@
+# allow: SIZE_OK — downloadable bootstrap must remain standalone, including signature verification and ownership checks.
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
@@ -68,65 +69,6 @@ function Detect-Platform {
   }
 }
 
-function Resolve-ConfigFileRoot {
-  $override = EnvValue "LANDO_CONFIG__user_conf_root"
-  if (-not [string]::IsNullOrWhiteSpace($override)) { return $override }
-
-  $userConfRoot = EnvValue "LANDO_USER_CONF_ROOT"
-  if (-not [string]::IsNullOrWhiteSpace($userConfRoot)) { return $userConfRoot }
-
-  $homeRoot = EnvValue "HOME"
-  if (-not [string]::IsNullOrWhiteSpace($homeRoot)) { return (Join-Path $homeRoot ".lando") }
-
-  return (Join-Path (Get-Location).Path ".lando")
-}
-
-function Read-ConfigUserDataRoot([string] $ConfRoot) {
-  $config = Join-Path $ConfRoot "config.yml"
-  if (-not (Test-Path -LiteralPath $config -PathType Leaf)) { return $null }
-
-  $value = $null
-  $depth = 0
-  $indentStack = New-Object 'int[]' 64
-  $rootStack = New-Object 'bool[]' 64
-  $indentStack[0] = -1
-  $rootStack[0] = $true
-  foreach ($rawLine in Get-Content -LiteralPath $config) {
-    $line = ($rawLine -replace "[ \t]+#.*$", "").TrimEnd()
-    $trimmedLine = $line.Trim()
-    if ([string]::IsNullOrWhiteSpace($trimmedLine) -or $trimmedLine.StartsWith("#")) { continue }
-    if ($trimmedLine -notmatch "^([A-Za-z0-9_-]+)\s*:\s*(.*)$") { return $null }
-
-    $indentMatch = [regex]::Match($line, "[^ ]")
-    $indent = if ($indentMatch.Success) { $indentMatch.Index } else { 0 }
-    while ($depth -gt 0 -and $indent -le $indentStack[$depth]) { $depth-- }
-    if ($indent -le $indentStack[$depth]) { return $null }
-
-    $key = $Matches[1]
-    $parentIsRoot = $rootStack[$depth]
-    $candidate = $Matches[2].Trim()
-    if ([string]::IsNullOrWhiteSpace($candidate)) {
-      if ($parentIsRoot -and $key -eq "userDataRoot") { $value = $null }
-      $depth++
-      $indentStack[$depth] = $indent
-      $rootStack[$depth] = $false
-      continue
-    }
-
-    $isQuoted = ($candidate.StartsWith('"') -and $candidate.EndsWith('"')) -or ($candidate.StartsWith("'") -and $candidate.EndsWith("'"))
-    $isString = $true
-    if (-not $isQuoted -and $candidate -in @("null", "true", "false")) { $isString = $false }
-    elseif (-not $isQuoted -and ($candidate.StartsWith("[") -or $candidate.StartsWith("{"))) { return $null }
-    elseif ($isQuoted) { $candidate = $candidate.Substring(1, $candidate.Length - 2) }
-
-    if (-not $parentIsRoot -or $key -ne "userDataRoot") { continue }
-    if (-not $isString -or [string]::IsNullOrWhiteSpace($candidate)) { $value = $null; continue }
-    $value = $candidate
-  }
-
-  return $value
-}
-
 function Default-InstallDir {
   $installDir = EnvValue "LANDO_INSTALL_DIR"
   if (-not [string]::IsNullOrWhiteSpace($installDir)) { return $installDir }
@@ -138,15 +80,17 @@ function Quote-PowerShellString([string] $Value) {
   return "'$($Value.Replace("'", "''"))'"
 }
 
+# Reproduces the shellenv renderer byte for byte; install-windows.test.ts pins the agreement.
 function Write-PathGuidance([string] $InstallDir) {
   $userDataRoot = Default-UserDataRoot
-  $installedPath = Join-Path $InstallDir "lando.exe"
+  $installedPath = Join-Path $InstallDir "lando4.exe"
+  $binDir = Quote-PowerShellString (Split-Path -Parent $installedPath)
   Write-Output ""
   Write-Output "Run this command to add Lando to PATH:"
   Write-Output "& $(Quote-PowerShellString $installedPath) shellenv --shell=powershell"
   Write-Output "The command prints:"
   Write-Output "`$Env:LANDO_USER_DATA_ROOT = $(Quote-PowerShellString $userDataRoot)"
-  Write-Output '$Env:PATH = "$($Env:LANDO_USER_DATA_ROOT)/bin$([System.IO.Path]::PathSeparator)$Env:PATH"'
+  Write-Output ('if (-not (($Env:PATH -split [IO.Path]::PathSeparator) -contains ' + $binDir + ')) { $Env:PATH = ' + $binDir + ' + [IO.Path]::PathSeparator + $Env:PATH }')
 }
 
 function Invoke-PostInstallSetup([string] $InstalledPath) {
@@ -156,7 +100,7 @@ function Invoke-PostInstallSetup([string] $InstalledPath) {
     if (-not $shouldSkipPrompt) { $shouldSkipPrompt = (EnvValue "LANDO_INSTALL_NONINTERACTIVE") -eq "1" }
     if (-not $shouldSkipPrompt) { $shouldSkipPrompt = [Console]::IsInputRedirected }
     if (-not $shouldSkipPrompt) {
-      $answer = Read-Host "Run lando setup now? [y/N]"
+      $answer = Read-Host "Run lando4.exe setup now? [y/N]"
       $shouldRunSetup = $answer -in @("y", "Y", "yes", "YES")
     }
   }
@@ -174,18 +118,40 @@ function Invoke-PostInstallSetup([string] $InstalledPath) {
 
 function Default-UserDataRoot {
   $userDataRoot = EnvValue "LANDO_USER_DATA_ROOT"
-  if (-not [string]::IsNullOrWhiteSpace($userDataRoot)) { return $userDataRoot }
+  if (-not [string]::IsNullOrEmpty($userDataRoot)) { return $userDataRoot }
+  $localAppData = EnvValue "LOCALAPPDATA"
+  if ([string]::IsNullOrEmpty($localAppData)) {
+    $homeRoot = EnvValue "HOME"
+    if ($null -eq $homeRoot) { $homeRoot = EnvValue "USERPROFILE" }
+    if ($null -eq $homeRoot) { $homeRoot = "." }
+    $localAppData = Join-Path $homeRoot "AppData/Local"
+  }
+  return (Join-Path $localAppData "Lando/Data")
+}
 
-  $configured = Read-ConfigUserDataRoot (Resolve-ConfigFileRoot)
-  if (-not [string]::IsNullOrWhiteSpace($configured)) { return $configured }
+function Get-InstallItem([string] $Path) {
+  try { return Get-Item -LiteralPath $Path -Force -ErrorAction Stop }
+  catch [System.Management.Automation.ItemNotFoundException] { return $null }
+}
 
-  $xdgDataHome = EnvValue "XDG_DATA_HOME"
-  if (-not [string]::IsNullOrWhiteSpace($xdgDataHome)) { return (Join-Path $xdgDataHome "lando") }
-
-  $homeRoot = EnvValue "HOME"
-  if (-not [string]::IsNullOrWhiteSpace($homeRoot)) { return (Join-Path $homeRoot ".local/share/lando") }
-
-  return (Join-Path (Get-Location).Path ".local/share/lando")
+function Assert-OwnedDestination([string] $Destination, [string] $RecordPath) {
+  $message = "Refusing to replace unowned destination $Destination. Choose a different LANDO_INSTALL_DIR."
+  try {
+    $item = Get-InstallItem $Destination
+    if ($null -ne $item -and ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint))) { Fail $message }
+    $recordItem = Get-InstallItem $RecordPath
+    if ($null -ne $recordItem -and ($recordItem.PSIsContainer -or ($recordItem.Attributes -band [IO.FileAttributes]::ReparsePoint))) { Fail $message }
+    if ($null -eq $item) { return }
+    if ($null -eq $recordItem) { Fail $message }
+    $record = Get-Content -Raw -LiteralPath $RecordPath | ConvertFrom-Json
+    if (($record.version -isnot [long] -and $record.version -isnot [int]) -or $record.version -ne 1) { Fail $message }
+    $owned = $record.data.executable
+    if ($owned.path -isnot [string] -or -not [string]::Equals([IO.Path]::GetFullPath($owned.path), [IO.Path]::GetFullPath($Destination), [StringComparison]::Ordinal)) { Fail $message }
+    if ($owned.sha256 -isnot [string] -or $owned.sha256 -cnotmatch '^[0-9a-f]{64}$') { Fail $message }
+    if (($owned.size -isnot [long] -and $owned.size -isnot [int]) -or $owned.size -ne $item.Length) { Fail $message }
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Destination).Hash.ToLowerInvariant() -cne $owned.sha256) { Fail $message }
+  }
+  catch { Fail $message }
 }
 
 function Basename-FromUrl([string] $Url) {
@@ -277,7 +243,12 @@ $baseUrl = EnvValue "LANDO_INSTALL_BASE_URL"
 if ([string]::IsNullOrWhiteSpace($baseUrl)) { $baseUrl = "https://update.lando.dev/v4" }
 $manifestUrl = EnvValue "LANDO_INSTALL_MANIFEST_URL"
 if ([string]::IsNullOrWhiteSpace($manifestUrl)) { $manifestUrl = "$($baseUrl.TrimEnd('/'))/$channel.json" }
-$installDir = Default-InstallDir
+$installDir = [IO.Path]::GetFullPath((Default-InstallDir))
+$installedPath = Join-Path $installDir "lando4.exe"
+$recordPath = Join-Path ([IO.Path]::GetFullPath((Default-UserDataRoot))) "install/record.json"
+Assert-OwnedDestination $installedPath $recordPath
+$binaryStage = Join-Path $installDir ".lando4-$([Guid]::NewGuid().ToString('n')).tmp"
+$recordStage = "$recordPath.$([Guid]::NewGuid().ToString('n')).tmp"
 $tmp = Join-Path ([IO.Path]::GetTempPath()) "lando-install-$([Guid]::NewGuid().ToString('n'))"
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 
@@ -285,7 +256,7 @@ try {
   $manifestPath = Join-Path $tmp "manifest.json"
   $sums = Join-Path $tmp "SHA256SUMS"
   $signature = Join-Path $tmp "SHA256SUMS.signature"
-  $binary = Join-Path $tmp "lando.exe"
+  $binary = Join-Path $tmp "lando4.exe"
 
   Download-File $manifestUrl $manifestPath
   $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
@@ -302,8 +273,24 @@ try {
   Verify-Checksum $sums $binary $artifact
 
   New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-  $installedPath = Join-Path $installDir "lando.exe"
-  Copy-Item -LiteralPath $binary -Destination $installedPath -Force
+  Copy-Item -LiteralPath $binary -Destination $binaryStage
+  $record = [ordered]@{
+    version = 1
+    data = [ordered]@{
+      executable = [ordered]@{
+        path = $installedPath
+        sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $binaryStage).Hash.ToLowerInvariant()
+        size = (Get-Item -LiteralPath $binaryStage -Force).Length
+        channel = $channel
+        platform = $platform
+      }
+      shellProfiles = @()
+    }
+  }
+  Move-Item -LiteralPath $binaryStage -Destination $installedPath -Force
+  New-Item -ItemType Directory -Path (Split-Path -Parent $recordPath) -Force | Out-Null
+  [IO.File]::WriteAllText($recordStage, ($record | ConvertTo-Json -Depth 4 -Compress), (New-Object Text.UTF8Encoding $false))
+  Move-Item -LiteralPath $recordStage -Destination $recordPath -Force
 
   Write-Output "channel: $channel"
   Write-Output "platform: $platform"
@@ -312,5 +299,6 @@ try {
   Invoke-PostInstallSetup $installedPath
 }
 finally {
+  Remove-Item -LiteralPath $binaryStage, $recordStage -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }

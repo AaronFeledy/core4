@@ -1404,9 +1404,12 @@ describe("meta:uninstall", () => {
         [
           "export USER_LINE=keep-me",
           "# >>> LANDO shellenv >>>",
-          "export LANDO_USER_DATA_ROOT='/tmp/lando'",
-          'export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"',
+          "export LANDO3_LINE=leave-me",
           "# <<< LANDO shellenv <<<",
+          "# >>> LANDO4 shellenv >>>",
+          "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+          "export PATH='/tmp/lando/bin'\":${PATH}\"",
+          "# <<< LANDO4 shellenv <<<",
           "export AFTER=still-here",
           "",
         ].join("\n"),
@@ -1435,9 +1438,13 @@ describe("meta:uninstall", () => {
       const rewritten = readFileSync(customProfilePath, "utf8");
       expect(rewritten).toContain("export USER_LINE=keep-me");
       expect(rewritten).toContain("export AFTER=still-here");
-      expect(rewritten).not.toContain("# >>> LANDO shellenv >>>");
-      expect(rewritten).not.toContain("# <<< LANDO shellenv <<<");
+      expect(rewritten).not.toContain("# >>> LANDO4 shellenv >>>");
+      expect(rewritten).not.toContain("# <<< LANDO4 shellenv <<<");
       expect(rewritten).not.toContain("LANDO_USER_DATA_ROOT");
+      // A Lando 3 era block is a foreign PATH entry and must survive untouched.
+      expect(rewritten).toContain("# >>> LANDO shellenv >>>");
+      expect(rewritten).toContain("export LANDO3_LINE=leave-me");
+      expect(rewritten).toContain("# <<< LANDO shellenv <<<");
     } finally {
       if (previousProfile === undefined) Reflect.deleteProperty(process.env, "LANDO_SHELL_PROFILE");
       else process.env.LANDO_SHELL_PROFILE = previousProfile;
