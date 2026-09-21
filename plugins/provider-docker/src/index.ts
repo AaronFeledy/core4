@@ -630,20 +630,20 @@ const dockerEnsureImage =
 
 const isMissingImageDetails = (details: unknown): boolean => {
   if (typeof details !== "object" || details === null) return false;
-  const status = Reflect.get(details, "status");
-  const body = Reflect.get(details, "body");
   const retryStatus = Reflect.get(details, "retryStatus");
   const retryBody = Reflect.get(details, "retryBody");
-  return (
-    isMissingImageCreateResponse({
-      status: typeof status === "number" ? status : 0,
-      body: typeof body === "string" ? body : "",
-    }) ||
-    isMissingImageCreateResponse({
+  if (typeof retryStatus === "number" || typeof retryBody === "string") {
+    return isMissingImageCreateResponse({
       status: typeof retryStatus === "number" ? retryStatus : 0,
       body: typeof retryBody === "string" ? retryBody : "",
-    })
-  );
+    });
+  }
+  const status = Reflect.get(details, "status");
+  const body = Reflect.get(details, "body");
+  return isMissingImageCreateResponse({
+    status: typeof status === "number" ? status : 0,
+    body: typeof body === "string" ? body : "",
+  });
 };
 
 const dockerStartFailureRemediation: StartFailureRemediation = ({ operation, details }) =>

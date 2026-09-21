@@ -55,9 +55,10 @@ const plan: AppPlan = {
 
 const makeBringUpApi = (
   createResponses: ReadonlyArray<EngineHttpResponse> = [{ status: 201, body: "{}" }],
+  options: { readonly existing?: boolean } = {},
 ) => {
   const requests: EngineHttpRequest[] = [];
-  let created = false;
+  let created = options.existing === true;
   let createIndex = 0;
   const api: EngineHttpApi = {
     request: (request) =>
@@ -131,6 +132,30 @@ describe("lifecycle dialect", () => {
         EndpointsConfig: { "lando-lifecycle-dialect-app": { Aliases: ["web"] } },
       },
     });
+  });
+
+  test("reconnects an existing container to the shared network", async () => {
+    const fake = makeBringUpApi([{ status: 201, body: "{}" }], { existing: true });
+
+    await Effect.runPromise(
+      bringUp(plan, {
+        api: fake.api,
+        ctx,
+        dialect: dockerLifecycleDialect,
+      }),
+    );
+
+    expect(fake.requests.some((request) => request.path.startsWith("/containers/create?"))).toBe(false);
+    expect(fake.requests.filter((request) => request.path.endsWith("/connect"))).toEqual([
+      {
+        method: "POST",
+        path: "/networks/lando_bridge_network/connect",
+        body: {
+          Container: "lando-lifecycle-dialect-app-web",
+          EndpointConfig: { Aliases: ["web.lifecycle-dialect-app.internal"] },
+        },
+      },
+    ]);
   });
 
   test("forces one image ensure and retries create once after a missing-image response", async () => {

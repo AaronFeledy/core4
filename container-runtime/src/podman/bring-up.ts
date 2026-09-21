@@ -650,14 +650,14 @@ const startService = (
     let changed = false;
     if (!before.exists) {
       yield* createContainer(deps, plan, service, name);
-      const sharedNetwork = sharedNetworkName(plan);
-      if (
-        (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
-        sharedNetwork !== undefined
-      ) {
-        yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
-      }
       changed = true;
+    }
+    const sharedNetwork = sharedNetworkName(plan);
+    if (
+      (deps.options.dialect ?? libpodLifecycleDialect).sharedNetworkAttachment === "connect-after-create" &&
+      sharedNetwork !== undefined
+    ) {
+      yield* connectSharedNetwork(deps, plan, service, name, sharedNetwork);
     }
     if (!before.running) {
       yield* startContainer(deps, service, name);
