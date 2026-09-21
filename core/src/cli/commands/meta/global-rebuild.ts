@@ -3,27 +3,11 @@ import { DateTime, Effect, Schema } from "effect";
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
-  CapabilityError,
-  CommandAliasConflictError,
-  ConfigExpressionError,
-  DataTreeOwnershipCapabilityError,
-  EventError,
-  GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
-  HomePathCapabilityError,
-  LandofileParseError,
-  LandofileUnknownEventError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
   PluginManifestError,
-  ProviderConfigError,
-  ProviderUnavailableError,
   ProxyError,
-  PublicationUnsupportedError,
-  RouteInputError,
   RouterWatcherError,
   SecretNotFoundError,
 } from "@lando/sdk/errors";
@@ -31,19 +15,18 @@ import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  type BuildError,
   BuildOrchestrator,
   EventService,
   type FileSystem,
-  type FileSystemError,
   type GlobalAppService,
   type PluginRegistry,
-  type ProviderError,
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
-import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
@@ -79,28 +62,12 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 });
 
 export type GlobalRebuildError =
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
-  | CapabilityError
-  | PublicationUnsupportedError
-  | EventError
-  | FileSystemError
-  | GlobalAppError
+  | LoadGlobalPlanError
+  | BuildError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
-  | LandofileParseError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | NoProviderInstalledError
-  | NotImplementedError
   | PluginManifestError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
   | ProxyError
   | RouterWatcherError
   | SecretNotFoundError;

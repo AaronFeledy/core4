@@ -1,36 +1,17 @@
 import { DateTime, Effect, Schema } from "effect";
 
-import type {
-  CapabilityError,
-  CommandAliasConflictError,
-  ConfigExpressionError,
-  DataTreeOwnershipCapabilityError,
-  EventError,
-  GlobalAppError,
-  HomePathCapabilityError,
-  LandofileParseError,
-  LandofileUnknownEventError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-  PublicationUnsupportedError,
-  RouteInputError,
-} from "@lando/sdk/errors";
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  type BuildError,
   EventService,
   type FileSystem,
-  type FileSystemError,
   type GlobalAppService,
-  type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
@@ -49,25 +30,7 @@ export const GlobalStopResultSchema = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String),
 });
 
-export type GlobalStopError =
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
-  | CapabilityError
-  | PublicationUnsupportedError
-  | EventError
-  | FileSystemError
-  | GlobalAppError
-  | LandofileParseError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
+export type GlobalStopError = LoadGlobalPlanError | BuildError;
 
 export type GlobalStopServices =
   | AppPlanner
