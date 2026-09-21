@@ -14,11 +14,11 @@ const MISSING_TRANSCRIPT = join(
   "transcripts",
   "public",
   "guides",
-  "e2e-smoke-scenarios",
-  "compiled-provider-smoke.json",
+  "app-lifecycle",
+  "real-provider-loop.json",
 );
 const CAPTURED_PAGE = join(DOCS_DIST, "guides", "recipes", "canonical-public-transcript", "index.html");
-const MISSING_PAGE = join(DOCS_DIST, "guides", "authoring", "e2e-smoke-scenarios", "index.html");
+const MISSING_PAGE = join(DOCS_DIST, "guides", "tutorial", "app-lifecycle", "index.html");
 
 let capturedHtml = "";
 let missingHtml = "";

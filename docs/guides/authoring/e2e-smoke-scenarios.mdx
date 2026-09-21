@@ -1,30 +1,75 @@
 ---
 id: e2e-smoke-scenarios
 provider: test
-defaultLayer: e2e
-platforms: [linux]
-timeout: 300000
-tags: [beta, docs, authoring, "@smoke"]
+timeout: 60000
+tags: [beta, docs, authoring, e2e]
 ---
 
 # E2E smoke scenarios
 
+Mark a scenario `layer="e2e"` when the promise it makes only holds against a
+real provider. The harness then spawns the compiled `lando` binary instead of
+the in-process test provider, so `start` boots containers, `info` reports
+what is actually running, and `destroy` tears real resources down.
 
-<Guide>
-  <Scenario id="compiled-provider-smoke" render>
-    <Step name="scaffold">
-      <Variable name="appName" value="guide-e2e-smoke" display="Guide e2e smoke app" />
-      <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
-    </Step>
-    <Step name="start">
-      <Run command="lando start" />
-    </Step>
-    <Step name="inspect">
-      <Run command="lando info" />
-    </Step>
-    <Step name="cleanup">
-      <Cleanup />
-      <Run command="lando destroy -y" />
-    </Step>
-  </Scenario>
-</Guide>
+The everyday loop in the
+[app lifecycle tutorial](/guides/tutorial/app-lifecycle/) is the reference
+example. Its `real-provider-loop` scenario starts a two-service app, checks
+`lando info` for `running` rows, stops it, and destroys it, all through the
+binary.
+
+## Write one
+
+Set the layer and tag on the scenario, not the guide, unless every scenario
+on the page needs a real provider:
+
+```mdx
+<Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>
+  <Step name="start">
+    <UseFixture name="app-lifecycle-demo" />
+    <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: "" }} />
+  </Step>
+  <Step name="cleanup">
+    <Cleanup />
+    <Run command="lando destroy -y" />
+  </Step>
+</Scenario>
+```
+
+Rules the generator and linter enforce:
+
+- Every `layer="e2e"` scenario has a `<Cleanup />` step, normally right
+  before the teardown command. The provider is shared across scenarios, so a leaked app
+  breaks the next one.
+- `<Run runtime="library">` cannot appear in an e2e scenario. The binary is
+  the only entry point.
+- `<Verify event>` has nothing to match. The binary does not stream events
+  back to the harness. Assert on stdout, stderr, exit code, or files instead.
+
+## Where it runs
+
+An e2e scenario is `test.skip` unless three things are set: `LANDO_GUIDE_E2E=1`,
+`LANDO_SCENARIO_E2E_BINARY` pointing at a compiled binary, and a live provider
+socket (either the managed one from `lando setup` or `LANDO_TEST_PODMAN_SOCKET`).
+
+Tag the scenario `@smoke` when it should gate every pull request. The Linux x64
+guide-scenario job runs only `@smoke` e2e scenarios. Untagged e2e scenarios
+run in the nightly workflow, so a scenario that takes minutes or pulls large
+images belongs there.
+
+Run one locally against a binary you built:
+
+```sh
+bun run codegen
+LANDO_GUIDE_E2E=1 \
+LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
+bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/app-lifecycle/** --test-name-pattern="\[e2e\]"
+```
+
+## What stays out of guides
+
+Guides prove promises a reader can see. Tests that drive a provider through
+its library API, inspect containers over the Podman socket, race two
+processes, or send signals mid-run verify the model behind the promise. Keep
+those as `*.integration.test.ts` under the package that owns the code, for
+example `core/test/live/` or `plugins/service-lando/test/`.

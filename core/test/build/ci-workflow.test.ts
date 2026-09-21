@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const scenarioSmokePath = resolve(repoRoot, "core/test/scenario/mvp-exit-criteria.scenario.test.ts");
+const appLifecycleGuidePath = resolve(repoRoot, "docs/guides/tutorial/app-lifecycle.mdx");
 const workflowsDir = resolve(repoRoot, ".github/workflows");
 const workflowPath = resolve(repoRoot, ".github/workflows/ci.yml");
 const nightlyWorkflowPath = resolve(repoRoot, ".github/workflows/nightly.yml");
@@ -229,11 +229,13 @@ describe("ci workflow", () => {
 
   test("runs nightly provider-lando e2e on Linux x64", async () => {
     const workflow = await readNightlyWorkflow();
-    const smokeScenario = await Bun.file(scenarioSmokePath).text();
+    const appLifecycleGuide = await Bun.file(appLifecycleGuidePath).text();
     const jobs = findIndentedBlock(workflow, "jobs");
     const providerLandoE2e = findIndentedBlock(jobs, "provider-lando-e2e-linux-x64", 2);
 
-    expect(smokeScenario).toContain('test("@smoke reproduces the full init/start/info/stop flow');
+    expect(appLifecycleGuide).toContain(
+      '<Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>',
+    );
     expect(workflow).toContain("name: nightly");
     expect(providerLandoE2e).toContain("    runs-on: ubuntu-24.04");
     expect(providerLandoE2e).toContain("    timeout-minutes: 60");
@@ -241,26 +243,33 @@ describe("ci workflow", () => {
     expect(providerLandoE2e).toContain("      - name: Assert Podman 6 host contract");
     expect(providerLandoE2e).toContain("        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
     expect(providerLandoE2e).toContain("      - name: Start Podman socket");
+    expect(providerLandoE2e).toContain("      - name: Regenerate derived sources");
+    expect(providerLandoE2e).toContain("        run: bun run codegen");
     expect(providerLandoE2e).toContain("      - name: Build Linux x64 binary");
-    expect(providerLandoE2e).toContain("      - name: Run smoke e2e scenarios");
+    expect(providerLandoE2e).toContain("      - name: Run e2e guide scenarios");
     expect(providerLandoE2e).toContain(
-      '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/scenario --test-name-pattern="@smoke"',
+      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\\[e2e\\]"',
     );
+    expect(providerLandoE2e).toContain('          LANDO_GUIDE_E2E: "1"');
+    expect(providerLandoE2e).toContain('          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"');
     expect(providerLandoE2e).toContain("          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock");
     expect(providerLandoE2e).toContain("          LANDO_CONFIG__default_provider_id: lando");
-    expect(providerLandoE2e).toContain("      - name: Run non-smoke e2e scenarios");
-    expect(providerLandoE2e).toContain(
-      '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/scenario --test-name-pattern="^(?!.*@smoke).*$"',
-    );
+    expect(providerLandoE2e).toContain("      - name: Run live integration suites");
+    expect(providerLandoE2e).toContain("          bun test core/test/live");
+    expect(providerLandoE2e).not.toContain("LANDO_MVP_BINARY_PATH");
+    expect(providerLandoE2e).not.toContain("core/test/scenario");
     expect(providerLandoE2e).toContain("      - name: Teardown Podman");
     expect(providerLandoE2e).toContain("          rm -f /tmp/podman.sock /tmp/podman-service.pid");
     expect(providerLandoE2e).toContain("      - name: Collect provider-lando e2e diagnostics");
     expect(providerLandoE2e).toContain("      - name: Upload provider-lando e2e diagnostics");
     expect(providerLandoE2e).toContain("          name: provider-lando-e2e-diagnostics-linux-x64");
-    expect(providerLandoE2e.indexOf("Run smoke e2e scenarios")).toBeLessThan(
-      providerLandoE2e.indexOf("Run non-smoke e2e scenarios"),
+    expect(providerLandoE2e).toContain(
+      "          cp -r dist/transcripts/guides provider-lando-e2e-diagnostics/guide-transcripts || true",
     );
-    expect(providerLandoE2e.indexOf("Run non-smoke e2e scenarios")).toBeLessThan(
+    expect(providerLandoE2e.indexOf("Run e2e guide scenarios")).toBeLessThan(
+      providerLandoE2e.indexOf("Run live integration suites"),
+    );
+    expect(providerLandoE2e.indexOf("Run live integration suites")).toBeLessThan(
       providerLandoE2e.indexOf("Upload provider-lando e2e diagnostics"),
     );
   });
@@ -897,7 +906,7 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("      - name: Run e2e smoke guide scenarios");
     expect(guideScenariosRunner).toContain('          LANDO_GUIDE_E2E: "1"');
     expect(guideScenariosRunner).toContain(
-      `        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"`,
+      `        run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"`,
     );
     expect(guideScenariosRunner).toContain(guideScenarioStepWithLiveOutput);
     expect(guideScenariosRunner).toContain(
@@ -1123,8 +1132,9 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("      - name: Restore binary executable bit");
     expect(providerIntegration).toContain("        run: chmod +x dist/lando");
     expect(providerIntegration).toContain(
-      '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario',
+      "          bun test core/test/live | tee /tmp/lando-provider-test-logs/core-live.log",
     );
+    expect(providerIntegration).not.toContain("LANDO_MVP_BINARY_PATH");
     expect(providerIntegration).toContain(
       "          bun test plugins/provider-lando/test/*.integration.test.ts",
     );
@@ -1234,9 +1244,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).not.toContain("      - name: Pre-pull container images");
     expect(providerIntegration).not.toContain("          docker pull node:22-alpine");
     expect(providerIntegration).not.toContain("      - name: Run provider integration tests");
-    expect(providerIntegration).not.toContain(
-      '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario',
-    );
+    expect(providerIntegration).not.toContain("          bun test core/test/live");
     expect(providerIntegration).not.toContain(
       "          bun test plugins/provider-lando/test/*.integration.test.ts",
     );
