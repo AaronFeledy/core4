@@ -77,7 +77,7 @@ export type InstallRecordOwnership =
         | "no-record";
     };
 
-// Four arguments preserve the requested pure comparison API: record, path, metadata, and content proof.
+// Four required arguments prevent callers from omitting the record, path, metadata, or content proof.
 export const installRecordOwnsDestination = (
   record: InstallRecord,
   destination: string,

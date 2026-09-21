@@ -15,7 +15,7 @@ describe("@lando/core package bin", () => {
     // When: the bin field is read.
     const bin = isJsonObject(parsed) ? parsed.bin : undefined;
 
-    // Then: Alpha/Beta ships exactly one executable named lando4, pointing at the unchanged entry module.
+    // Then: the package ships exactly one executable named lando4, pointing at the unchanged entry module.
     expect(bin).toEqual({ lando4: "./bin/lando.ts" });
   });
 });
