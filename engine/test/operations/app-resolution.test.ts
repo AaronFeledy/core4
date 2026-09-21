@@ -193,8 +193,8 @@ describe("loadUserLandofileAt root-aware seam", () => {
     const right = await realpath(await mkdtemp(join(tmpdir(), "lando-at-race-right-")));
     let releaseFirst: (() => void) | undefined;
     let allowSecondObserve: (() => void) | undefined;
-    let first: Promise<unknown> | undefined;
-    let second: Promise<unknown> | undefined;
+    let first: Promise<LandofileShape> | undefined;
+    let second: Promise<LandofileShape> | undefined;
     process.chdir(left);
     try {
       const firstCanRestore = new Promise<void>((resolve) => {
@@ -231,6 +231,7 @@ describe("loadUserLandofileAt root-aware seam", () => {
       releaseFirst?.();
       await first;
       allowSecondObserve?.();
+      if (second === undefined) throw new Error("second resolution never started");
       const secondResult = await second;
 
       expect(secondResult.name).toBe("second");
