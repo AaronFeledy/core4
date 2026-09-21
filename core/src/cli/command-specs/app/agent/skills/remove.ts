@@ -1,5 +1,3 @@
-import { Flags } from "../../../../spec/metadata";
-
 import type { AgentSkillsError, AgentSkillsResult } from "../../../../commands/agent-skills";
 import {
   AgentSkillsResultSchema,
@@ -15,13 +13,6 @@ export const appAgentSkillsRemoveSpec: LandoCommandSpec<AgentSkillsResult, Agent
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "minimal",
-  flags: {
-    format: Flags.string({
-      description: "Output format.",
-      options: ["text", "json"],
-      default: "text",
-    }),
-  },
   run: () => removeAgentSkills(),
   render: (result) => renderAgentSkillsResult(result as AgentSkillsResult),
 };
