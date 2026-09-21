@@ -31,6 +31,8 @@ Init writes `.lando.yml` only. Put a Hugo site in after start.
 
 ## Init, start, and tear down
 
+Park `builder` on `sleep infinity` before the first start (same Landofile change as [Install Hugo into the app](#install-hugo-into-the-app)) so post-start stays stable until `hugo-extended` is installed.
+
 <Guide>
   <Scenario id="reader-path" render>
     <Step name="scaffold">
@@ -45,6 +47,11 @@ Init writes `.lando.yml` only. Put a Hugo site in after start.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hugo\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+    </Step>
+    <Step name="park-builder">
+      <UseFixture name="park-builder" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "sleep infinity" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
