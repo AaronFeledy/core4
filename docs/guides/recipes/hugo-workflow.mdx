@@ -10,16 +10,15 @@ tags: [beta, docs, recipes, hugo, static, node]
 ```sh
 lando init --recipe hugo --name=hugo-demo --yes
 cd hugo-demo
-lando start
 ```
 
-`--yes` skips prompts. Hugo declares no recipe options, so the only prompt is the app name. First start builds `builder` and `web`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
+`--yes` skips prompts. Hugo declares no recipe options, so the only prompt is the app name. Before the first start, park `builder` on `sleep infinity`, install Hugo, scaffold the site, then restore the server command. That avoids an unintended `npx` package download while the app is still empty.
 
 Stock start runs `npx hugo server` on `builder`. Install Hugo into the app before you expect that server to stay up. The steps below are the day-to-day install path.
 
 ## See what the recipe writes
 
-Init writes `.lando.yml` only. Put a Hugo site in after start.
+Init writes `.lando.yml` only. Add the Hugo dependency and site while `builder` is parked.
 
 | Piece | What you get |
 | --- | --- |
@@ -29,12 +28,8 @@ Init writes `.lando.yml` only. Put a Hugo site in after start.
 
 `builder` is the day-to-day browse target while Hugo serves. `web` is the nginx sidecar on the app hostname. Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
 
-## Init, start, and tear down
-
-Park `builder` on `sleep infinity` before the first start (same Landofile change as [Install Hugo into the app](#install-hugo-into-the-app)) so post-start stays stable until `hugo-extended` is installed.
-
 <Guide>
-  <Scenario id="reader-path" render>
+  <Scenario id="parked-first-start" render={false} reason="Test provider validates the parked first start without claiming live Hugo output">
     <Step name="scaffold">
       <Variable name="appName" value="hugo-workflow" display="hugo-demo" />
       <Run command="lando init --recipe hugo --name={{appName}} --yes" />
@@ -107,7 +102,17 @@ lando npm --version
 
 `lando hugo version` prints something like `hugo v0.166.0+extended`. The patch may float; check the printed version rather than hardcoding it.
 
-Restore the recipe server command when the install is done:
+## Scaffold the site
+
+`.lando.yml` already lives in the app root, so tell Hugo to write into this directory while `builder` is still parked:
+
+```sh
+lando hugo new site . --force
+```
+
+## Restore the server command
+
+Restore the recipe server command after the dependency and site are in place:
 
 ```yaml
 services:
@@ -121,13 +126,9 @@ services:
 lando restart
 ```
 
-## Scaffold the site, then add content
+Run `lando info` and open the `builder` URL it prints. If host ports 80 or 443 are already taken, the URL may use a fallback port such as `:8443`.
 
-`.lando.yml` already lives in the app root, so tell Hugo to write into this directory:
-
-```sh
-lando hugo new site . --force
-```
+## Add content
 
 Add a post (Hugo marks new content as draft by default):
 
