@@ -47,6 +47,28 @@ const composeNginxPlan = (raw: unknown, serviceName = "web"): Promise<ServicePla
     featureOverrides,
   });
 
+const planCommandText = (command: ServicePlan["command"]): string =>
+  Array.isArray(command) ? command.join(" ") : typeof command === "string" ? command : "";
+
+/**
+ * Shared PHP-FPM nginx wire: PATH_INFO for `/script.php/extra`, first `.php`
+ * wins, and a missing script file 404s before FastCGI (so `/uploads/x.phar/y.php`
+ * cannot execute).
+ */
+const expectPhpFpmPathInfoWire = (command: string): void => {
+  expect(command).toContain("location ~ [^/]\\.php(/|$) {");
+  expect(command).not.toContain("location ~ \\.php$ {");
+  expect(command).toContain("fastcgi_split_path_info ^(.+?\\.php)(/.*)$;");
+  expect(command).not.toContain("fastcgi_split_path_info ^(.+\\.php)(/.*)$;");
+  expect(command).toContain("if (!-f $document_root$fastcgi_script_name) { return 404; }");
+  const includeAt = command.indexOf("include /etc/nginx/fastcgi_params;");
+  const pathInfoAt = command.indexOf("fastcgi_param PATH_INFO $fastcgi_path_info;");
+  expect(includeAt).toBeGreaterThan(-1);
+  expect(pathInfoAt).toBeGreaterThan(includeAt);
+  expect(command).not.toContain("PATH_TRANSLATED");
+  expect(command).not.toMatch(/location\s+\^~\s+\/uploads/u);
+};
+
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
   let rejected = false;
   await promise.then(
@@ -122,13 +144,10 @@ describe("nginx PHP FastCGI preset", () => {
       webroot: "/app/web",
     });
 
-    const command = Array.isArray(plan.command)
-      ? plan.command.join(" ")
-      : typeof plan.command === "string"
-        ? plan.command
-        : "";
+    const command = planCommandText(plan.command);
     expect(command).toContain("fastcgi_pass appserver:9000");
     expect(command).toContain("root /app/web");
+    expectPhpFpmPathInfoWire(command);
     expectSharedErrorPagesBuildStep(plan);
     expect(command).toContain("alias /usr/share/lando/errors/;");
     expect(command).toContain("error_page 403 /_lando/errors/403.html;");
@@ -160,6 +179,7 @@ describe("nginx PHP FastCGI preset", () => {
     expect(script).toContain("fastcgi_temp_path /tmp/lando-nginx-fastcgi;");
     expect(script).toContain("fastcgi_pass appserver:9000");
     expect(script).toContain("include /etc/nginx/fastcgi_params;");
+    expectPhpFpmPathInfoWire(script);
     expect(script).not.toContain("/etc/nginx/conf.d/default.conf");
     expect(script).not.toContain("user nginx;");
     expect([...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1])).toEqual(["/tmp/lando-nginx.conf"]);
@@ -261,7 +281,21 @@ describe("nginx PHP FPM app-feature wire", () => {
     expect(commandText(commands.get("edge"))).toContain("root /app/web");
     expect(commandText(commands.get("edge"))).toContain("error_page 404 /_lando/errors/404.html;");
     expect(commandText(commands.get("edge"))).not.toContain("fastcgi_intercept_errors");
+    expectPhpFpmPathInfoWire(commandText(commands.get("edge")));
     expect(commands.get("appserver")).toBeUndefined();
+  });
+
+  test("wired FastCGI command carries PATH_INFO after fastcgi_params and 404s a missing script file", async () => {
+    const { context, commands } = applyWire([
+      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm" }),
+      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver" }),
+    ]);
+
+    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+
+    // `/uploads/x.phar/y.php` matches the widened PHP location, then `!-f` 404s
+    // because `y.php` is not a real file. The shared wire does not deny /uploads.
+    expectPhpFpmPathInfoWire(commandText(commands.get("edge")));
   });
 
   test("FastCGI upstream stays on 9000 when the PHP FPM service omits port", async () => {
