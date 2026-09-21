@@ -202,6 +202,8 @@ lando hugo build
 
 Day to day, leave the recipe command on `npx hugo server --bind 0.0.0.0 --port 1313` and open the **builder** URL `lando info` prints (for example `https://builder.hugo-demo.lndo.site` or the same host with a fallback port such as `:8443`). Live reload rides with that serve.
 
+Skip the bare app hostname for now. `web` mounts `/app` with no `root`, so Hugo's `public/` build is not the document root until you set `root: public` on `web` (same class of gap as Eleventy `_site` in [#1012](https://github.com/AaronFeledy/core4/issues/1012)).
+
 Need a one-off rebuild while the development server keeps running? Use `lando hugo build`.
 
 ## Destroy without surprises
