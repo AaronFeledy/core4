@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/services` additively exports the type-only aliases `LandofileServiceError`, `UserLandofileError`, `ProviderSelectionError`, `AppPlannerError`, `BuildError`, `BuildAppError`, and `@lando/sdk/app` exports `AppPlanResolutionError`; `LandofileService.discover`, `RuntimeProviderRegistry.capabilities`/`select`, `AppPlanner.plan`, and `BuildOrchestrator.build`/`buildApp` are respelled with them with identical member sets (guarded by `sdk/test/types/plan-error-channels.test.ts`); `StopAppError`, `LogsAppError`, and `AppConfigApi.lint` keep their narrower explicit sets.
+
 - `App.config.lint()` also resolves service-contributed tooling and authored event names. Its error channel includes `LandofileValidationError`, `CommandAliasConflictError`, and `NotImplementedError` for resolution failures; those failures are not schema violations or unknown-event diagnostics.
 
 - `RuntimeProviderContribution.appliedPlans(ctx)` is required for provider contributions. It reads persisted ownership claims without initializing or connecting to the runtime; providers with no persisted claims return an empty list. Applied-state recovery reads every contribution's claims before selecting an owner, so an unrelated offline runtime cannot block a valid saved plan. Inventory-read failures and conflicting claims still fail closed. When no plan matches, runtime resource inspection remains required before reporting an unchanged teardown.

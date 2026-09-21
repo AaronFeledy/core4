@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Context, Effect } from "effect";
 
 import type {
+  AppPlanResolutionError,
   ExecAppError,
   InfoAppError,
   LogsAppError,
@@ -74,10 +75,16 @@ import type {
 } from "@lando/sdk/errors";
 import type {
   AppPlanner,
+  AppPlannerError,
+  BuildAppError,
+  BuildError,
   BuildOrchestrator,
   LandofileService,
+  LandofileServiceError,
   ProviderError,
+  ProviderSelectionError,
   RuntimeProviderRegistry,
+  UserLandofileError,
 } from "@lando/sdk/services";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -432,5 +439,57 @@ describe("SDK plan-carrying error channels", () => {
   test("LogsAppError retains its pre-refactor members", () => {
     assertType<Equal<LogsAppError, LegacyLogsAppError>>(true);
     expect(true).toBe(true);
+  });
+});
+
+describe("SDK named error channels", () => {
+  // Given: public aliases and independent legacy channels above.
+  // When: compare each alias. Then: require exact equality under tsc.
+  test("LandofileServiceError retains the discover members", () => {
+    expect(assertType<Equal<LandofileServiceError, LegacyDiscoverChannel>>(true)).toBe(true);
+  });
+
+  test("UserLandofileError adds only user-landofile constraints", () => {
+    expect(
+      assertType<
+        Equal<
+          UserLandofileError,
+          LandofileServiceError | LandofileVersionConstraintError | AppIdReservedError
+        >
+      >(true),
+    ).toBe(true);
+  });
+
+  test("ProviderSelectionError contains only selection failures", () => {
+    expect(
+      assertType<
+        Equal<
+          ProviderSelectionError,
+          NoProviderInstalledError | ProviderConfigError | ProviderUnavailableError
+        >
+      >(true),
+    ).toBe(true);
+  });
+
+  test("AppPlannerError retains the planner members", () => {
+    expect(assertType<Equal<AppPlannerError, LegacyAppPlannerChannel>>(true)).toBe(true);
+  });
+
+  test("BuildError composes event and provider failures", () => {
+    expect(assertType<Equal<BuildError, EventError | ProviderSelectionError | ProviderError>>(true)).toBe(
+      true,
+    );
+  });
+
+  test("BuildAppError adds only build-phase failures", () => {
+    expect(assertType<Equal<BuildAppError, BuildError | BuildPhaseFailedError>>(true)).toBe(true);
+  });
+
+  test("AppPlanResolutionError composes the three resolution channels", () => {
+    expect(
+      assertType<
+        Equal<AppPlanResolutionError, UserLandofileError | ProviderSelectionError | AppPlannerError>
+      >(true),
+    ).toBe(true);
   });
 });

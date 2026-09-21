@@ -10,15 +10,27 @@ import type {
   HomePathCapabilityError,
   LandofileUnknownEventError,
   LandofileValidationError,
-  NoProviderInstalledError,
   NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
   PublicationUnsupportedError,
   RouteInputError,
 } from "../errors/index.ts";
 import type { AppPlan, LandofileShape, ProviderCapabilities } from "../schema/index.ts";
-import type { ProviderError } from "./provider.ts";
+import type { ProviderError, ProviderSelectionError } from "./provider.ts";
+
+export type AppPlannerError =
+  | LandofileValidationError
+  | RouteInputError
+  | CapabilityError
+  | NotImplementedError
+  | PublicationUnsupportedError
+  | CommandAliasConflictError
+  | HomePathCapabilityError
+  | DataTreeOwnershipCapabilityError
+  | ConfigExpressionError
+  | LandofileUnknownEventError;
+
+export type BuildError = EventError | ProviderSelectionError | ProviderError;
+export type BuildAppError = BuildError | BuildPhaseFailedError;
 
 export interface BuildAppOptions {
   readonly force?: boolean;
@@ -31,42 +43,14 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     readonly plan: (
       landofile: LandofileShape,
       providerCapabilities: ProviderCapabilities,
-    ) => Effect.Effect<
-      AppPlan,
-      | LandofileValidationError
-      | RouteInputError
-      | CapabilityError
-      | NotImplementedError
-      | PublicationUnsupportedError
-      | CommandAliasConflictError
-      | HomePathCapabilityError
-      | DataTreeOwnershipCapabilityError
-      | ConfigExpressionError
-      | LandofileUnknownEventError
-    >;
+    ) => Effect.Effect<AppPlan, AppPlannerError>;
   }
 >() {}
 
 export class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
   BuildOrchestrator,
   {
-    readonly build: (
-      plan: AppPlan,
-    ) => Effect.Effect<
-      AppPlan,
-      EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError
-    >;
-    readonly buildApp: (
-      plan: AppPlan,
-      options?: BuildAppOptions,
-    ) => Effect.Effect<
-      void,
-      | BuildPhaseFailedError
-      | EventError
-      | NoProviderInstalledError
-      | ProviderConfigError
-      | ProviderError
-      | ProviderUnavailableError
-    >;
+    readonly build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>;
+    readonly buildApp: (plan: AppPlan, options?: BuildAppOptions) => Effect.Effect<void, BuildAppError>;
   }
 >() {}
