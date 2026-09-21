@@ -72,6 +72,11 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Imports `@lando/sdk/schema`, which re-exports generated/core-service-env.ts.
+    // Sharing a wave with that catalog writer lets the import observe a truncated
+    // file (`Bun.write` is not atomic), which surfaces as a syntax error on the
+    // slowest runner.
+    dependsOn: ["core-service-env-catalog"],
     id: "bootstrap-layers",
     ownership: "derived",
     script: "build-bootstrap-layers.ts",

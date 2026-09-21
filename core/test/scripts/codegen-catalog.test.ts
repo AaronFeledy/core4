@@ -81,7 +81,7 @@ const expectedCatalogRows = [
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
-  ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo"],
+  ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo", ["core-service-env-catalog"]],
   [
     "setup-plugin-flags",
     "derived",
@@ -309,6 +309,7 @@ describe("codegen catalog", () => {
     expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
+    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
       new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
     );
