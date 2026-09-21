@@ -76,7 +76,7 @@ const expectedCatalogRows = [
   ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
   ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo", ["mutagen-versions", "php-msmtp-pins"]],
-  ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo"],
+  ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
@@ -221,6 +221,34 @@ describe("codegen catalog", () => {
     }
   });
 
+  test("generates the core-service-env catalog before every generator that imports it", async () => {
+    // Given: `@lando/sdk/schema` re-exports generated/core-service-env.ts, so any
+    // generator that imports that barrel can observe a truncated write if it
+    // shares a wave with the catalog writer.
+    const schemaImporters = (
+      await Promise.all(
+        catalog.map(async (entry) => {
+          if (entry.id === "core-service-env-catalog") return undefined;
+          const source = await Bun.file(resolve(repositoryRoot, "scripts", entry.script)).text();
+          return source.includes("@lando/sdk/schema") ? entry : undefined;
+        }),
+      )
+    ).filter((entry) => entry !== undefined);
+    const waves = groupCodegenWaves(catalog);
+    const catalogWave = waves.findIndex((wave) =>
+      wave.some((entry) => entry.id === "core-service-env-catalog"),
+    );
+
+    // Then: every importer runs in a later wave than the catalog writer.
+    expect(schemaImporters.length).toBeGreaterThan(0);
+    expect(catalogWave).toBeGreaterThanOrEqual(0);
+    for (const entry of schemaImporters) {
+      expect(waves.findIndex((wave) => wave.some((candidate) => candidate.id === entry.id))).toBeGreaterThan(
+        catalogWave,
+      );
+    }
+  });
+
   test("generates command graph prerequisites before schema artifacts", () => {
     // Given: schema generation imports the complete command and plugin graph.
     const prerequisiteIds = [
@@ -310,6 +338,7 @@ describe("codegen catalog", () => {
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
+    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
       new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
     );
