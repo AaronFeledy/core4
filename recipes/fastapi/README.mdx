@@ -52,10 +52,10 @@ For day-to-day tooling, Postgres/Redis hosts, and a restart-safe venv serve, see
     </Step>
   </Scenario>
 
-  <Scenario id="declared-stack" render>
+  <Scenario id="declared-stack" render={false} reason="Verify framework and Redis defaults without repeating the reader setup">
     <Step name="init">
-      <Variable name="appName" value="fastapi-stack" display="my-fastapi-stack" />
-      <Run command="lando init --recipe fastapi --name={{appName}} --yes" />
+      <Variable name="stackName" value="fastapi-stack" display="my-fastapi-stack" />
+      <Run command="lando init --recipe fastapi --name={{stackName}} --yes" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />

@@ -29,7 +29,7 @@ For day-to-day tooling, Postgres/Redis hosts, and a restart-safe venv serve, see
 ## 1. scaffold
 
 ```bash
-lando init --recipe fastapi --name=my-fastapi-stack --yes
+lando init --recipe fastapi --name=my-fastapi --yes
 ```
 
 ## 2. start
@@ -42,18 +42,6 @@ lando start
 
 ```bash
 lando info
-```
-
-## 4. init
-
-```bash
-lando init --recipe fastapi --name=my-fastapi-stack --yes
-```
-
-## 5. inspect
-
-```bash
-lando app:config --format=json
 ```
 
 ## Cleanup
