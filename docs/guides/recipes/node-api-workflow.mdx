@@ -72,25 +72,66 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Framewo
 
 ## Install the framework and serve it
 
-Init does not drop an app scaffold. Install into the running `api` service, then add an entrypoint that listens on `PORT` (Lando sets `3000`):
+Init does not drop an app scaffold. Initialize npm in the running `api` service, then install the framework you picked:
 
 ```sh
 lando npm init -y
 lando npm install express
-lando npm --version
-lando node --version
 ```
 
-`API_FRAMEWORK` is already `express` on `api`. When you picked Fastify or Hono at init, install that package instead (`lando npm install fastify` or `lando npm install hono`). The recipe still exposes port `3000` and the same `api` tooling either way.
+Use `lando npm install fastify` for Fastify. Hono on Node also needs its server adapter:
 
-Drop a minimal `server.js` in the app root that calls `app.listen(process.env.PORT || 3000, "0.0.0.0")`. Delete the `# lando-generated:...` line at the top of `.lando.yml` so Lando stops managing that file, then point `api` at it permanently:
+```sh
+lando npm install hono @hono/node-server
+```
+
+Add the matching `server.mjs` in the app root. Each version listens on `0.0.0.0:3000`, so the proxy can reach it.
+
+### Serve with Express
+
+```js
+import express from "express";
+
+const app = express();
+const port = Number(process.env.PORT ?? 3000);
+
+app.get("/", (_request, response) => response.send("Hello from Express!\n"));
+app.listen(port, "0.0.0.0");
+```
+
+### Serve with Fastify
+
+```js
+import Fastify from "fastify";
+
+const app = Fastify();
+const port = Number(process.env.PORT ?? 3000);
+
+app.get("/", async () => "Hello from Fastify!\n");
+await app.listen({ port, host: "0.0.0.0" });
+```
+
+### Serve with Hono
+
+```js
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+
+const app = new Hono();
+const port = Number(process.env.PORT ?? 3000);
+
+app.get("/", (context) => context.text("Hello from Hono!\n"));
+serve({ fetch: app.fetch, port, hostname: "0.0.0.0" });
+```
+
+Delete the `# lando-generated:...` line at the top of `.lando.yml` so Lando stops managing that file, then point `api` at the entrypoint permanently:
 
 ```yaml
 services:
   api:
     type: node:lts
     port: 3000
-    command: node server.js
+    command: node server.mjs
 ```
 
 Then:
@@ -103,7 +144,7 @@ lando info
 Open the URL `lando info` prints. Prefer a one-shot serve without editing the Landofile?
 
 ```sh
-lando node server.js
+lando node server.mjs
 ```
 
 That binds port `3000` inside `api` until you stop it.
