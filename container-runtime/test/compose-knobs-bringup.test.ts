@@ -141,9 +141,35 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.service":"web"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
+  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
 
 describe("Podman Compose knob bring-up realization", () => {
+  test("detects a colon target collision through API Mounts", async () => {
+    // Given
+    const fake = makeFakeApi();
+    const plan = planWithCompose();
+    const target = PortablePath.make("/workspace:v1");
+    const service: ServicePlan = {
+      ...baseService,
+      mounts: [{ type: "bind", source: "/host", target, readOnly: false, realization: "passthrough" }],
+      extensions: { compose: { tmpfs: [{ target }] } },
+    };
+    // When
+    const exit = await Effect.runPromiseExit(
+      bringUp({ ...plan, services: { [service.name]: service } }, { api: fake.api, ctx }),
+    );
+    // Then
+    const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
+    expect(failures).toContainEqual(
+      expect.objectContaining({
+        _tag: "ServiceStartError",
+        operation: "bringUp.knobs",
+        details: expect.objectContaining({ knob: "tmpfs", target }),
+      }),
+    );
+    expect(findCreateRequest(fake.calls)).toBeUndefined();
+  });
+
   test("Given knobs and plan-derived networking, when creating a container, then HostConfig merges every source", async () => {
     // Given
     const fake = makeFakeApi();

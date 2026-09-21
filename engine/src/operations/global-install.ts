@@ -5,12 +5,9 @@ import {
   type GlobalDistConflictError,
   type GlobalLandofilePathConflictError,
   type GlobalServiceCollisionError,
-  type NoProviderInstalledError,
   type PluginManifestError,
-  type ProviderConfigError,
-  type ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import type { GlobalAppPaths, GlobalDistResult } from "@lando/sdk/services";
+import type { GlobalAppPaths, GlobalDistResult, ProviderSelectionError } from "@lando/sdk/services";
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
@@ -61,10 +58,8 @@ export const globalInstall = (
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
-  | NoProviderInstalledError
   | PluginManifestError
-  | ProviderConfigError
-  | ProviderUnavailableError,
+  | ProviderSelectionError,
   GlobalAppService | PluginRegistry | RuntimeProviderRegistry
 > =>
   Effect.gen(function* () {

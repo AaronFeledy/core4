@@ -4,6 +4,9 @@ import { Schema } from "effect";
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
+import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
+import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
+import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
@@ -13,6 +16,7 @@ import {
   php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
+import { apacheLauncherDirectives } from "./support/apache-directives.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -44,6 +48,19 @@ const composePhpPlan = (serviceType: ServiceType, raw: unknown, appRoot = APP_RO
     metadata,
     featureOverrides,
   });
+
+interface PlannedBuildStep {
+  readonly id?: string;
+  readonly user?: string;
+  readonly command: string | ReadonlyArray<string>;
+}
+
+const buildStepsFor = (plan: ServicePlan): ReadonlyArray<PlannedBuildStep> => {
+  const features = plan.extensions["@lando/core/service-features"] as
+    | { readonly buildSteps?: ReadonlyArray<PlannedBuildStep> }
+    | undefined;
+  return features?.buildSteps ?? [];
+};
 
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
   let rejected = false;
@@ -113,8 +130,7 @@ describe("php:8.2 ServiceType", () => {
       version: "8.2",
       via: "apache",
     });
-    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
-    expect(plan.command?.[2]).not.toContain("AllowOverride All");
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).not.toContain("AllowOverride All");
   });
 
   test("derives appName from appRoot basename when no explicit appName is provided", async () => {
@@ -137,7 +153,7 @@ describe("php:8.2 ServiceType", () => {
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app");
-    expect(plan.command?.[2]).not.toContain("AllowOverride All");
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).not.toContain("AllowOverride All");
     expect(plan.extensions["lando-service-php"]).toMatchObject({ allowOverride: false, webroot: "/app" });
   });
 
@@ -158,8 +174,7 @@ describe("php:8.2 ServiceType", () => {
 
     expect(String(plan.workingDirectory)).toBe("/app/public");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/public");
-    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
-    expect(plan.command?.[2]).not.toContain("AllowOverride All");
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).not.toContain("AllowOverride All");
   });
 
   test("enables AllowOverride only when the service explicitly requests it", async () => {
@@ -171,8 +186,7 @@ describe("php:8.2 ServiceType", () => {
 
     expect(String(plan.workingDirectory)).toBe("/app/web");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/web");
-    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
-    expect(plan.command?.[2]).toContain("AllowOverride All");
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).toContain("AllowOverride All");
   });
 
   test("user environment overrides framework defaults", async () => {
@@ -304,7 +318,116 @@ describe("php serving modes (via:)", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
-    expect(plan.command?.[2]).toContain("apache2-foreground");
+    expect(plan.command?.[0]).toBe("apache2-foreground");
+  });
+
+  test("starts a non-root Apache-served PHP service without writing config from PID 1", async () => {
+    // Given / When: an identity the image ships, with home persistence declined
+    // so the planned user is the only thing under test.
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      via: "apache",
+      user: "www-data",
+      home: false,
+    });
+
+    // Then: the planned user reaches the container and the launcher it runs
+    // needs nothing that only root can do.
+    expect(plan.user).toBe("www-data");
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    expect(directives).toContain('DocumentRoot "/app"');
+
+    const argv = plan.command as ReadonlyArray<string>;
+    expect(argv).not.toContain("sh");
+    expect(argv.filter((token) => token.includes("/etc/apache2"))).toEqual([]);
+    expect(argv.join("\n")).not.toMatch(/>\s*\//u);
+  });
+
+  test("authored command keeps the image default site", async () => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      via: "apache",
+      port: 8080,
+      command: ["apache2-foreground"],
+    });
+
+    expect(plan.command).toEqual(["apache2-foreground"]);
+    const ids = buildStepsFor(plan).map((step) => step.id);
+    expect(ids).not.toContain(APACHE_DEFAULT_SITE_BUILD_STEP_ID);
+    expect(ids).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
+    expect(ids).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
+  });
+
+  test("authored entrypoint keeps the image default site", async () => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      via: "apache",
+      port: 8080,
+      entrypoint: ["/custom-start"],
+    });
+
+    expect(plan.entrypoint).toEqual(["/custom-start"]);
+    const ids = buildStepsFor(plan).map((step) => step.id);
+    expect(ids).not.toContain(APACHE_DEFAULT_SITE_BUILD_STEP_ID);
+    expect(ids).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
+    expect(ids).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
+  });
+
+  test("via apache derives its virtual host and listener from an authored port", async () => {
+    // Given / When: an authored port on the default Apache-served shape.
+    const plan = await composePhpPlan(php83ServiceType, { type: "php:8.3", via: "apache", port: 8080 });
+
+    // Then: the launcher listens there and serves the app from a virtual host
+    // bound to the same value, still as one synthetic directive stream.
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).toEqual([
+      "Listen 8080",
+      "<VirtualHost *:8080>",
+      'DocumentRoot "/app"',
+      '<Directory "/app">',
+      "Options -Indexes +FollowSymLinks",
+      "AllowOverride None",
+      "Require all granted",
+      "</Directory>",
+      ...apacheErrorPageDirectives(),
+      "</VirtualHost>",
+    ]);
+
+    // And: the image's own listener is deleted during the build, so the service
+    // answers on the planned port and not also on 80.
+    const step = buildStepsFor(plan).find(({ id }) => id === APACHE_LISTEN_BUILD_STEP_ID);
+    expect(step?.user).toBe("root");
+    expect(String((step?.command as ReadonlyArray<string> | undefined)?.[2] ?? "")).toContain(
+      "/etc/apache2/ports.conf",
+    );
+  });
+
+  test("via apache without an authored port keeps the main-server launcher", async () => {
+    // Given / When: no port, which is the shape every existing app already has.
+    const plan = await composePhpPlan(php83ServiceType, { type: "php:8.3", via: "apache" });
+
+    // Then: byte-identical directives, and the image keeps its own listener.
+    expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).toEqual([
+      'DocumentRoot "/app"',
+      '<Directory "/app">',
+      "Options -Indexes +FollowSymLinks",
+      "AllowOverride None",
+      "Require all granted",
+      "</Directory>",
+      ...apacheErrorPageDirectives(),
+    ]);
+    expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
+  });
+
+  test("a custom image owns its own listener", async () => {
+    // Given / When: an image Lando did not build the launcher for.
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      image: "registry.example.com/php:8.3-custom",
+      port: 8080,
+    });
+
+    // Then: Lando edits no configuration it does not own.
+    expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
   test("via fpm uses the fpm image and listens on 9000", async () => {
@@ -317,7 +440,31 @@ describe("php serving modes (via:)", () => {
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain("listen = 9000");
     expect(plan.command?.[2]).toContain("exec php-fpm");
-    expect(plan.command?.[2]).not.toContain("apache2-foreground");
+    expect(plan.command).not.toContain("apache2-foreground");
+  });
+
+  test("starts a non-root FPM PHP service without writing into the image config tree", async () => {
+    // Given / When: an identity the image ships, with home persistence declined
+    // so the planned user is the only thing under test.
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      via: "fpm",
+      user: "www-data",
+      home: false,
+    });
+
+    // Then: the pool override lands where that user can write and php-fpm is
+    // pointed at it explicitly, rather than at the image's own pool directory.
+    expect(plan.user).toBe("www-data");
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    const script = String(plan.command?.[2] ?? "");
+    expect(script).toContain("exec php-fpm -y /tmp/lando-php-fpm.conf");
+    expect(script).toContain("include=/usr/local/etc/php-fpm.conf");
+    expect(script).toContain("listen = 9000");
+    expect(script).not.toContain("/usr/local/etc/php-fpm.d");
+    expect([...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1])).toEqual(["/tmp/lando-php-fpm.conf"]);
+    // FPM serves no HTML, so it installs none of the shared error pages.
+    expect(buildStepsFor(plan).map((step) => step.id)).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
   });
 
   test("via fpm listens on an authored port", async () => {

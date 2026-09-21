@@ -47,13 +47,15 @@ const assertUniversalFlags = (commands: ReadonlyArray<ManifestCommand>): void =>
     if (command.hidden === true) continue;
     const flags = command.flags ?? {};
     const format = flags.format;
-    const hasFormatJson = format?.type === "option" && (format.options ?? []).includes("json");
+    const universal = ["text", "json", "yaml"];
+    const hasFormatJson =
+      format?.type === "option" && universal.every((value) => (format.options ?? []).includes(value));
     const hasJsonShortcut = flags.json !== undefined;
     if (!hasFormatJson || !hasJsonShortcut) offenders.push(command.spec.id);
   }
   if (offenders.length > 0) {
     throw new Error(
-      `Commands missing the universal --format json / --json flags: ${offenders.sort().join(", ")}`,
+      `Commands missing the universal --format text/json/yaml / --json flags: ${offenders.sort().join(", ")}`,
     );
   }
 };

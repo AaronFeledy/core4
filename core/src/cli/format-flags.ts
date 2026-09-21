@@ -8,6 +8,37 @@ export const RESULT_FORMATS = ["text", "json", "table", "yaml", "ndjson"] as con
 export type ResultFormat = (typeof RESULT_FORMATS)[number];
 export const DEFAULT_RESULT_FORMAT: ResultFormat = "text";
 
+/**
+ * Formats every command honors: `text` is its human render, and `json` and
+ * `yaml` are the boundary's own serializations of the result envelope. They
+ * need no declaration and a command cannot narrow them away.
+ */
+export const UNIVERSAL_RESULT_FORMATS = ["text", "json", "yaml"] as const;
+
+/**
+ * Formats a command must declare before it may be asked for one. Both come
+ * from a command's own `render`, so a command that does not implement them has
+ * nothing to emit and must refuse rather than quietly fall back to text.
+ */
+export const OPT_IN_RESULT_FORMATS = ["table", "ndjson"] as const;
+export type OptInResultFormat = (typeof OPT_IN_RESULT_FORMATS)[number];
+
+/** The capability slice of a command spec that decides its advertised formats. */
+export interface ResultFormatCapability {
+  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
+}
+
+/** Every format `commandId` honors: the universal set plus whatever it declares. */
+export const commandResultFormats = (command?: ResultFormatCapability): ReadonlyArray<ResultFormat> => [
+  ...UNIVERSAL_RESULT_FORMATS,
+  ...(command?.resultFormats ?? []),
+];
+
+export const supportsResultFormat = (
+  command: ResultFormatCapability | undefined,
+  format: ResultFormat,
+): boolean => commandResultFormats(command).includes(format);
+
 export type JsonControl =
   | { readonly mode: "off" }
   | { readonly mode: "list" }
@@ -26,6 +57,14 @@ export const JSON_FIELD_LIST = /^[A-Za-z_][\w.-]*(,[A-Za-z_][\w.-]*)*$/;
 
 export const isResultFormat = (value: string): value is ResultFormat =>
   (RESULT_FORMATS as ReadonlyArray<string>).includes(value);
+
+/**
+ * Formats the command boundary serializes from the result envelope itself.
+ * Everything else reaches the command's own `render`. Commands that decide
+ * "am I producing machine output?" must ask this, not compare against `json`.
+ */
+export const isEnvelopeResultFormat = (value: ResultFormat | string | undefined): value is "json" | "yaml" =>
+  value === "json" || value === "yaml";
 
 const validate = (value: string): ResultFormat => {
   if (isResultFormat(value)) return value;
@@ -225,10 +264,69 @@ export const resolveResultFormat = (options: ResolveResultFormatOptions = {}): R
 export const universalFormatFlagDefs = {
   format: Flags.string({
     description: "Output format.",
-    options: [...RESULT_FORMATS],
+    options: [...UNIVERSAL_RESULT_FORMATS],
   }),
   json: Flags.boolean({
     char: "j",
     description: "Shortcut for --format=json.",
   }),
 } as const;
+
+/**
+ * The flag-definition shape every advertisement surface reads. Both the CLI's
+ * own `FlagDefinition` and the SDK's `ExecutableCommandFlagSpec` satisfy it.
+ */
+export interface AdvertisedFlagDefinition {
+  readonly name?: string;
+  readonly description?: string;
+  readonly type?: string;
+  readonly valueType?: "string" | "integer";
+  readonly char?: string;
+  readonly aliases?: ReadonlyArray<string>;
+  readonly multiple?: boolean;
+  readonly options?: ReadonlyArray<string>;
+  readonly default?: unknown;
+  readonly required?: boolean;
+  readonly helpValue?: string;
+}
+
+type FormatFlagCarrier = ResultFormatCapability & {
+  readonly flags?: Readonly<Record<string, AdvertisedFlagDefinition>> | undefined;
+};
+
+/**
+ * The flag definitions a command advertises. `format` always carries the
+ * command's own resolved option list, so a spec cannot declare a competing one
+ * and no surface can offer a value the command would drop. Spreading over the
+ * merged record keeps `format` in its original position, which is what keeps
+ * the generated manifest and command reference stable.
+ */
+export const formatFlagDefsForCommand = (
+  command: FormatFlagCarrier,
+): Readonly<Record<string, AdvertisedFlagDefinition>> => {
+  const declared = command.flags?.format;
+  const format: AdvertisedFlagDefinition = {
+    ...universalFormatFlagDefs.format,
+    ...(declared ?? {}),
+    options: [...commandResultFormats(command)],
+  };
+  const merged: Record<string, AdvertisedFlagDefinition> = {
+    ...universalFormatFlagDefs,
+    ...(command.flags ?? {}),
+  };
+  return { ...merged, format };
+};
+
+export const unsupportedResultFormatError = (input: {
+  readonly commandId: string;
+  readonly value: ResultFormat;
+  readonly supported: ReadonlyArray<ResultFormat>;
+}): RendererSelectionError => {
+  const allowed = input.supported.join(", ");
+  return new RendererSelectionError({
+    message: `${input.commandId} does not support result format "${input.value}". Allowed: ${allowed}.`,
+    value: input.value,
+    source: "flag",
+    remediation: `Use --format=<value> where <value> is one of: ${allowed}.`,
+  });
+};

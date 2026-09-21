@@ -61,7 +61,8 @@ export const makeAppHandle = (
   lifecycle: AppLifecycle,
 ): App => {
   const { plan, app: ref, root } = target;
-  const runInitEvents = runAppInitEvents(plan).pipe(Effect.provide(runtime));
+  const runInitEvents =
+    target.landofile === undefined ? Effect.void : runAppInitEvents(plan).pipe(Effect.provide(runtime));
   const implementation = {
     id: plan.id,
     ref,
@@ -191,7 +192,7 @@ export const makeAppHandle = (
     },
     config: {
       lint: (options?: { readonly cwd?: string }) =>
-        ops.appConfigLint({ ...options, cwd: options?.cwd ?? root }),
+        ops.appConfigLint({ ...options, cwd: options?.cwd ?? root }).pipe(Effect.provide(runtime)),
     },
     events: {
       subscribe: (name?: string) =>

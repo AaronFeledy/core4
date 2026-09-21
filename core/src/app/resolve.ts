@@ -19,6 +19,7 @@ import {
   userAppRef,
   withResolvedCwd,
 } from "@lando/engine/landofile/app-resolution";
+import { resolveAppliedStateTarget } from "@lando/engine/operations/applied-state-target";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 
@@ -35,7 +36,7 @@ const toAppResolveError = (cause: unknown): AppResolveError => {
   if (tag === "AppIdReservedError") {
     return new AppResolveError({
       message: "The resolved app uses the reserved `global` id and cannot be opened as a user app.",
-      reason: "mismatch",
+      reason: "not-found",
       detail: "reserved-id",
       cause,
     });
@@ -60,7 +61,7 @@ const planResolvedLandofile = (
       Effect.suspend(() => planner.plan(landofile, capabilities)),
     );
     return { plan, landofile };
-  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+  }).pipe(Effect.mapError(toAppResolveError));
 
 const planAt = (
   dir: string | undefined,
@@ -71,7 +72,7 @@ const planAt = (
     const landofileService = yield* LandofileService;
     const landofile = yield* loadUserLandofileAt(landofileService, root);
     return yield* planResolvedLandofile(landofile, root);
-  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+  }).pipe(Effect.mapError(toAppResolveError));
 
 const planFromShape = (
   shape: LandofileShape,
@@ -84,7 +85,7 @@ const planFromShape = (
     yield* assertUserAppIdNotReserved(landofile);
     yield* assertLandoVersionConstraint(landofile, { sourcePath });
     return yield* planResolvedLandofile(landofile, appRoot);
-  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+  }).pipe(Effect.mapError(toAppResolveError));
 
 const planFromLandofileFile = (
   filePath: string,
@@ -92,7 +93,7 @@ const planFromLandofileFile = (
   Effect.gen(function* () {
     const landofile = yield* loadUserLandofileFile(filePath);
     return yield* planResolvedLandofile(landofile, dirname(filePath));
-  }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));
+  }).pipe(Effect.mapError(toAppResolveError));
 
 const selectorMismatch = (detail: string): AppResolveError =>
   new AppResolveError({
@@ -195,6 +196,42 @@ const targetFromResolved = (resolved: ResolvedLandofilePlan): ResolvedAppTarget 
   app: userAppRef(resolved.plan),
 });
 
+const appliedFallbackRoot = (selector: NormalizedAppSelector): string | undefined => {
+  switch (selector.kind) {
+    case "cwd":
+      return selector.cwd;
+    case "root":
+      return selector.root;
+    case "id":
+      return selector.root ?? selector.cwd;
+    case "landofile-path":
+    case "landofile-shape":
+      return undefined;
+  }
+};
+
+const resolveTarget = (
+  selector: NormalizedAppSelector,
+): Effect.Effect<ResolvedAppTarget, AppResolveError, ResolvePlanServices> =>
+  resolvePlan(selector).pipe(
+    Effect.map(targetFromResolved),
+    Effect.catchAll((desiredError) => {
+      if (desiredError.reason !== "not-found") return Effect.fail(desiredError);
+      const root = appliedFallbackRoot(selector);
+      if (root === undefined) return Effect.fail(desiredError);
+      return withResolvedCwd(root, resolveAppliedStateTarget).pipe(
+        Effect.mapError(toAppResolveError),
+        Effect.flatMap((target) => {
+          if (target === undefined) return Effect.fail(desiredError);
+          if (selector.kind === "id" && target.plan.id !== selector.id) {
+            return Effect.fail(selectorMismatch("id+applied-state"));
+          }
+          return Effect.succeed(target);
+        }),
+      );
+    }),
+  );
+
 /**
  * Builds the branded `App` handle for an already-resolved target, capturing the
  * ambient runtime so handle methods need no further services.
@@ -223,6 +260,6 @@ export const resolveApp = (
 ): Effect.Effect<App, AppResolveError, AppHandleRuntimeServices | RuntimeCwd | Scope.Scope> =>
   Effect.gen(function* () {
     const normalized = yield* normalizeAppSelector(selector);
-    const resolved = yield* resolvePlan(normalized);
-    return yield* buildAppHandle(targetFromResolved(resolved));
+    const target = yield* resolveTarget(normalized);
+    return yield* buildAppHandle(target);
   });

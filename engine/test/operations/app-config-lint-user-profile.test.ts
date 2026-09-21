@@ -7,6 +7,7 @@ import { PathsService, StateStore } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect } from "effect";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
+import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 
 test("lints user includes against runtime roots rather than a conflicting process profile", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-profile-lint-"));
@@ -24,6 +25,7 @@ test("lints user includes against runtime roots rather than a conflicting proces
     process.env.LANDO_USER_CONF_ROOT = join(root, "host");
     const result = await Effect.runPromise(
       appConfigLint({ cwd: root }).pipe(
+        Effect.provide(PluginRegistryLive),
         Effect.provideService(PathsService, paths),
         Effect.provideService(
           StateStore,

@@ -33,6 +33,7 @@ export const globalStatusOptionsFromInput = (input: unknown): GlobalStatusOption
 export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
   resultSchema: GlobalStatusResultSchema,
   id: "meta:global:status",
+  resultFormats: ["table"],
   summary: "Show runtime status for the host-level global Lando app.",
   description: "Show runtime status for the host-level global Lando app.",
   namespace: "meta",
@@ -47,7 +48,6 @@ export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
     }),
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json"],
       default: "table",
     }),
   },

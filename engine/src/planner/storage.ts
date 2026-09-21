@@ -1,10 +1,12 @@
 import { LandofileValidationError, NotImplementedError } from "@lando/sdk/errors";
 import {
   type DataStoreMountPlan,
-  PortablePath,
+  type PortablePath,
   type ServiceConfig,
   type ServicePlan,
   type StorageScope,
+  containerDestinationRefusalMessage,
+  parseContainerDestination,
 } from "@lando/sdk/schema";
 
 import { kebab, shortHash } from "./naming.ts";
@@ -17,6 +19,22 @@ const cacheStorageKey = (target: string, key: string | undefined): string => key
 
 const cacheStoreName = (target: string, key: string | undefined): string =>
   `lando-cache-${cacheStorageKey(target, key)}`;
+
+export const plannedContainerDestination = (
+  target: string,
+  appRoot: string,
+  issue: string,
+): PortablePath | LandofileValidationError => {
+  const parsed = parseContainerDestination(target);
+  if (!parsed.ok) {
+    return new LandofileValidationError({
+      message: containerDestinationRefusalMessage(parsed.reason, target),
+      file: `${appRoot}/.lando.yml`,
+      issues: [issue],
+    });
+  }
+  return parsed.value;
+};
 
 export const authoredStorageScopes = (
   appRoot: string,
@@ -57,19 +75,22 @@ export const authoredStorageScopes = (
   return { byStore };
 };
 
-const storageMountTargetKey = (target: PortablePath): string => String(target);
-
-export const applyAuthoredStorage = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+export const applyAuthoredStorage = (
+  servicePlan: ServicePlan,
+  service: ServiceConfig,
+  appRoot: string,
+  serviceName: string,
+): ServicePlan | LandofileValidationError => {
   const authored = service.storage ?? [];
   if (authored.length === 0) return servicePlan;
-  const occupiedTargets = new Set(servicePlan.storage.map((mount) => storageMountTargetKey(mount.target)));
+  const occupiedTargets = new Set<string>(servicePlan.storage.map((mount) => String(mount.target)));
   const additions: DataStoreMountPlan[] = [];
   for (const entry of authored) {
     const target = typeof entry === "string" ? entry : entry.target;
-    const mountTarget = PortablePath.make(target);
-    const targetKey = storageMountTargetKey(mountTarget);
-    if (occupiedTargets.has(targetKey)) continue;
-    occupiedTargets.add(targetKey);
+    const mountTarget = plannedContainerDestination(target, appRoot, `services.${serviceName}.storage`);
+    if (mountTarget instanceof LandofileValidationError) return mountTarget;
+    if (occupiedTargets.has(String(mountTarget))) continue;
+    occupiedTargets.add(String(mountTarget));
     let store: string;
     if (typeof entry === "string") {
       store = kebab(target);
@@ -109,10 +130,13 @@ export const expandExcludesToShadows = (
   appName: string,
   serviceName: string,
   servicePlan: ServicePlan,
-): {
-  servicePlan: ServicePlan;
-  shadowStores: ReadonlyArray<{ name: string; scope: StorageScope }>;
-} => {
+  appRoot: string,
+):
+  | {
+      servicePlan: ServicePlan;
+      shadowStores: ReadonlyArray<{ name: string; scope: StorageScope }>;
+    }
+  | LandofileValidationError => {
   const appMount = servicePlan.appMount;
   if (appMount === undefined) return { servicePlan, shadowStores: [] };
   const excludes = appMount.excludes ?? [];
@@ -121,7 +145,7 @@ export const expandExcludesToShadows = (
   if (effectiveExcludes.length === 0) return { servicePlan, shadowStores: [] };
 
   const shadowStores: Array<{ name: string; scope: StorageScope }> = [];
-  const shadowStoreNames = new Set<string>();
+  const shadowTargets = new Set<string>();
   const shadowMounts: Array<{
     readonly store: string;
     readonly target: PortablePath;
@@ -130,12 +154,22 @@ export const expandExcludesToShadows = (
 
   for (const excludePath of effectiveExcludes) {
     const destination = joinPathSegments(appMount.target, excludePath);
-    const storeName = `${appName}-${serviceName}-${kebab(destination)}-${shortHash(destination)}`;
-    if (!shadowStoreNames.has(storeName)) {
-      shadowStoreNames.add(storeName);
-      shadowStores.push({ name: storeName, scope: "service" });
-    }
-    shadowMounts.push({ store: storeName, target: PortablePath.make(destination), readOnly: false });
+    const mountTarget = plannedContainerDestination(
+      destination,
+      appRoot,
+      `services.${serviceName}.appMount.excludes`,
+    );
+    if (mountTarget instanceof LandofileValidationError) return mountTarget;
+    const targetKey = String(mountTarget);
+    if (shadowTargets.has(targetKey)) continue;
+    shadowTargets.add(targetKey);
+    const storeName = `${appName}-${serviceName}-${kebab(targetKey)}-${shortHash(targetKey)}`;
+    shadowStores.push({ name: storeName, scope: "service" });
+    shadowMounts.push({
+      store: storeName,
+      target: mountTarget,
+      readOnly: false,
+    });
   }
 
   const nextPlan: ServicePlan = {

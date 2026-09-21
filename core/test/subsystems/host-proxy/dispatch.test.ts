@@ -57,9 +57,9 @@ const baseEnvelope = {
 };
 
 describe("openOptionsFromRunLandoArgv", () => {
-  test("parses equals-form app:open flags", () => {
+  test.each(["json", "yaml"])("parses equals-form app:open %s flags", (format) => {
     const options = openOptionsFromRunLandoArgv(
-      ["open", "--service=web", "--route=https://web.demo.lndo.site", "--format=json"],
+      ["open", "--service=web", "--route=https://web.demo.lndo.site", `--format=${format}`],
       { tty: false },
     );
 

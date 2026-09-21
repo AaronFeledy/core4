@@ -55,6 +55,7 @@ export const globalConfigOptionsFromInput = (input: unknown): GlobalConfigOption
 export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   resultSchema: GlobalConfigResultSchema,
   id: "meta:global:config",
+  resultFormats: ["table"],
   summary: "Read or write the host-level global Lando app Landofile stack.",
   description: "Read or write the host-level global Lando app Landofile stack.",
   namespace: "meta",
@@ -72,7 +73,6 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json"],
       default: "table",
     }),
     type: Flags.string({

@@ -18,11 +18,9 @@
   ],
   "serviceTags": {
     "AppPlanner": [
-      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | RouteInputError | CapabilityError | NotImplementedError | HomePathCapabilityError | PublicationUnsupportedError | CommandAliasConflictError | ConfigExpressionError | LandofileUnknownEventError>"
+      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, AppPlannerError>"
     ],
-    "BuildOrchestrator": [
-      "build: (plan: AppPlan) => Effect.Effect<AppPlan, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
-    ],
+    "BuildOrchestrator": ["build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>"],
     "CacheService": [
       "invalidate: (key: string) => Effect.Effect<void, CacheError>",
       "read: <A, I>(key: string, schema?: Schema.Schema<A, I>) => Effect.Effect<A | null, CacheError>",
@@ -55,9 +53,7 @@
       "writeAtomic: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>",
       "writeFile: (path: string, content: string) => Effect.Effect<void, FileSystemError>"
     ],
-    "LandofileService": [
-      "discover: Effect.Effect<LandofileShape, LandofileNotFoundError | LandofileParseError | LandofileValidationError | RouteInputError | LandofileSandboxError | LandofileTimeoutError | LandofileFormConflictError | LandofileIncludeError | LandofileLockMismatchError | LandofileImportRefMisuseError | LandofileLoadLimitError | LandofileLoadOutsideRootError | ToolingIncludeCycleError | NotImplementedError | ComposeKeyRejectedError | ManagedFileTransactionError>"
-    ],
+    "LandofileService": ["discover: Effect.Effect<LandofileShape, LandofileServiceError>"],
     "Logger": [
       "debug: (message: string, data?: Readonly<Record<string, unknown>>) => Effect.Effect<void, EventError>",
       "error: (message: string, data?: Readonly<Record<string, unknown>>) => Effect.Effect<void, EventError>",
@@ -77,11 +73,13 @@
     ],
     "RuntimeProvider": [
       "apply: (plan: AppPlan, options: ApplyOptions) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>",
+      "appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>",
       "buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>",
       "capabilities: ProviderCapabilities",
       "copyFromService: (target: ExecTarget, spec: ServiceCopyOutSpec) => Stream.Stream<Uint8Array, ProviderError, Scope.Scope>",
       "copyToService: (target: ExecTarget, spec: ServiceCopyInSpec) => Effect.Effect<void, ProviderError, Scope.Scope>",
-      "destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>",
+      "destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<DestroyOutcome, ProviderError>",
+      "removeObservedService: (observed: ServiceRuntimeInfo) => Effect.Effect<ObservedServiceRemoval, ProviderError>",
       "displayName: string",
       "exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>",
       "execStream: (target: ExecTarget, command: CommandSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>",
@@ -118,9 +116,11 @@
       "waitForExit: (target: ServiceSelector, options?: WaitForExitOptions) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>"
     ],
     "RuntimeProviderRegistry": [
-      "capabilities: Effect.Effect<ProviderCapabilities, ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError>",
+      "capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>",
       "list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>",
-      "select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError>"
+      "resolveAppliedPlan?: (root: AbsolutePath) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>",
+      "resolveTeardownEvidence?: (root: AbsolutePath) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>",
+      "select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>"
     ],
     "ShellRunner": [
       "exec: (command: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",

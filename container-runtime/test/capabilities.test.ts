@@ -4,6 +4,9 @@ import { Schema } from "effect";
 import {
   type ProviderCapabilityConstants,
   buildProviderCapabilities,
+  engineInfoArchitecture,
+  hostProxyCapabilities,
+  hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 
@@ -107,5 +110,29 @@ describe("container runtime capability helpers", () => {
     expect(capabilities.composePreservedPaths).toEqual({
       supported: ["healthcheck.start_interval"],
     });
+  });
+
+  test("maps engine architecture aliases to Linux container targets", () => {
+    expect(hostProxyContainerTargets("amd64")).toEqual([{ os: "linux", arch: "x64" }]);
+    expect(hostProxyContainerTargets("aarch64")).toEqual([{ os: "linux", arch: "arm64" }]);
+    expect(hostProxyContainerTargets("riscv64")).toEqual([]);
+  });
+
+  test("adds the provider gateway only on Windows hosts", () => {
+    const targets = hostProxyContainerTargets("x86_64");
+    expect(hostProxyCapabilities("linux", [], "host.containers.internal")).toBeUndefined();
+    expect(hostProxyCapabilities("darwin", targets, "host.containers.internal")).toEqual({
+      containerTargets: targets,
+    });
+    expect(hostProxyCapabilities("win32", [], "host.containers.internal")).toEqual({
+      containerTargets: [],
+      tcpHostGateway: "host.containers.internal",
+    });
+  });
+
+  test("prefers nested engine host architecture over the top-level fallback", () => {
+    expect(engineInfoArchitecture({ host: { arch: "arm64" }, Architecture: "amd64" })).toBe("arm64");
+    expect(engineInfoArchitecture({ Architecture: "amd64" })).toBe("amd64");
+    expect(engineInfoArchitecture({ host: {} })).toBeUndefined();
   });
 });

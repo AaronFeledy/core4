@@ -11,7 +11,13 @@
  */
 import { readFile } from "node:fs/promises";
 
-import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import {
+  type HostProxyContainerTarget,
+  buildProviderCapabilities,
+  engineInfoArchitecture,
+  hostProxyCapabilities,
+  hostProxyContainerTargets,
+} from "@lando/container-runtime/capabilities";
 import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
@@ -28,6 +34,7 @@ import {
   type BringUpOptions,
   bringUp,
   podmanVolumeCreationLabels,
+  scratchLabelsForPlan,
 } from "@lando/container-runtime/podman/bring-up";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
@@ -40,7 +47,14 @@ import {
 } from "@lando/container-runtime/podman/version-floor";
 import { redactDetails, redactString } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
-import { postExactServiceLifecycle, postServiceLifecycle } from "@lando/container-runtime/service-lifecycle";
+import {
+  DESTROYED,
+  DESTROY_NO_OP,
+  observedRemoval,
+  postExactServiceLifecycle,
+  postServiceLifecycle,
+  removeObservedContainer,
+} from "@lando/container-runtime/service-lifecycle";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import {
   type ProviderCapabilityError,
@@ -288,42 +302,6 @@ const bindMountPerformanceForPlatform = (
   return family === "linux" ? "native" : "slow";
 };
 
-type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
-type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
-
-const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
-  hostPlatformFamily(platform) === "win32" ? "host.containers.internal" : undefined;
-
-const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
-  if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
-    return [{ os: "linux", arch: "x64" }];
-  }
-  if (arch === "arm64" || arch === "aarch64") return [{ os: "linux", arch: "arm64" }];
-  return [];
-};
-
-const hostProxyCapabilities = (
-  platform: HostPlatform,
-  containerTargets: ReadonlyArray<HostProxyContainerTarget>,
-): HostProxyCapabilities | undefined => {
-  const tcpHostGateway = hostProxyTcpHostGateway(platform);
-  if (containerTargets.length === 0 && tcpHostGateway === undefined) return undefined;
-  return {
-    containerTargets,
-    ...(tcpHostGateway === undefined ? {} : { tcpHostGateway }),
-  };
-};
-
-const podmanInfoArchitecture = (info: unknown): string | undefined => {
-  if (typeof info !== "object" || info === null) return undefined;
-  const host = "host" in info ? info.host : undefined;
-  if (typeof host === "object" && host !== null && "arch" in host && typeof host.arch === "string") {
-    return host.arch;
-  }
-  if ("Architecture" in info && typeof info.Architecture === "string") return info.Architecture;
-  return undefined;
-};
-
 /**
  * Capability matrix for the user-installed Podman provider.
  *
@@ -353,7 +331,7 @@ export const podmanCapabilitiesForPlatform = (
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
-    hostProxy: hostProxyCapabilities(platform, containerTargets),
+    hostProxy: hostProxyCapabilities(platform, containerTargets, "host.containers.internal"),
   });
 
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
@@ -637,10 +615,10 @@ export const makeRuntimeProvider = (
     Effect.flatMap((info) =>
       enforceServerVersionFloor(info).pipe(
         Effect.map((serverVersion) => {
-          const containerArch = podmanInfoArchitecture(info);
+          const containerArch = engineInfoArchitecture(info);
           const capabilities = podmanCapabilitiesForPlatform(
             platform,
-            hostProxyContainerTarget(containerArch),
+            hostProxyContainerTargets(containerArch),
           );
           return {
             serverVersion,
@@ -712,7 +690,7 @@ export const makeRuntimeProvider = (
       : persistAppliedPlan(options.appliedPlanState, plan).pipe(Effect.asVoid)
     ).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))));
 
-  const forgetPlan = (appId: AppId): Effect.Effect<void> =>
+  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> =>
     (options.appliedPlanState === undefined
       ? Effect.void
       : removeAppliedPlan(options.appliedPlanState, appId)
@@ -761,6 +739,10 @@ export const makeRuntimeProvider = (
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
         ),
+        appliedPlans:
+          options.appliedPlanState === undefined
+            ? Effect.succeed([])
+            : listAppliedPlans(options.appliedPlanState),
         planSetup: () => Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
@@ -795,7 +777,7 @@ export const makeRuntimeProvider = (
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
             const plan = target.plan ?? (yield* resolvePlan(target.app));
-            if (plan === undefined) return;
+            if (plan === undefined) return DESTROY_NO_OP;
             yield* bringDown(plan, {
               api: podmanApi,
               ctx: PODMAN_CTX,
@@ -807,7 +789,12 @@ export const makeRuntimeProvider = (
             if (destroyOptions.removeState !== false) {
               yield* forgetPlan(target.app);
             }
+            return DESTROYED;
           }),
+        removeObservedService: (observed) =>
+          removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }).pipe(
+            Effect.map(observedRemoval),
+          ),
         logs: (target, logOptions) =>
           Stream.unwrap(
             (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
@@ -849,7 +836,14 @@ export const makeRuntimeProvider = (
                   plan,
                   { app: plan.id, service: service.name },
                   { api: podmanApi, ctx: PODMAN_CTX },
-                ).pipe(Effect.map((snapshot) => ({ ...snapshot, providerId: providerIdBranded }))),
+                ).pipe(
+                  Effect.map((snapshot) => ({
+                    ...snapshot,
+                    appRoot: plan.root,
+                    providerId: providerIdBranded,
+                    labels: scratchLabelsForPlan(plan),
+                  })),
+                ),
               ),
             );
 
@@ -931,6 +925,7 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
+        appliedPlans: (ctx) => listAppliedPlans(ctx.stateStore),
         make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;

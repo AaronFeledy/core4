@@ -1877,7 +1877,7 @@ describe("AppPlannerLive", () => {
       expect(appPlan.routes).toEqual([
         {
           hostname: "custom.example.test",
-          priority: 2,
+          priority: 65_543,
           scheme: "both",
           service: ServiceName.make("web"),
           endpoint: "web",

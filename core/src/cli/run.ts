@@ -57,6 +57,7 @@ import {
   DEFAULT_RESULT_FORMAT,
   JSON_CONTROL_OFF,
   extractFormatFlags,
+  isEnvelopeResultFormat,
   resolveJsonControl,
   resolveResultFormat,
 } from "./format-flags";
@@ -66,6 +67,7 @@ import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { applyDebugRendererFlip, readConfigCliGlobals } from "./renderer-mode-resolution";
 import { setActiveLogLevel } from "./renderer-mode-state";
+import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { runBuiltInCommand } from "./run-built-in-command";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
@@ -95,13 +97,16 @@ const jsonControlConflict = (): JsonJqConflictError | JsonProjectionError | unde
       remediation: "cannot use --jq with bare --json; pass --json key1,key2 or omit --json",
     });
   }
-  if ((activeJsonControl.mode === "keys" || activeJq !== undefined) && activeResultFormat !== "json") {
+  if (
+    (activeJsonControl.mode === "keys" || activeJq !== undefined) &&
+    !isEnvelopeResultFormat(activeResultFormat)
+  ) {
     return new JsonProjectionError({
-      message: "JSON projection requires --format=json.",
+      message: "JSON projection requires an envelope format.",
       keys: activeJsonControl.mode === "keys" ? [...activeJsonControl.keys] : [],
       available: [],
       reason: "format_conflict",
-      remediation: "Use --format=json or omit --format when projecting or using --jq.",
+      remediation: "Use --format=json or --format=yaml, or omit --format when projecting or using --jq.",
     });
   }
   return undefined;
@@ -166,7 +171,10 @@ const printRootHelpPage = async (): Promise<void> => {
 };
 
 const printHelpCatalogPage = async (): Promise<void> => {
-  printHelpCatalogJson(await readAppCommandCacheOrNull());
+  printHelpCatalogJson(
+    await readAppCommandCacheOrNull(),
+    isEnvelopeResultFormat(activeResultFormat) ? activeResultFormat : "json",
+  );
 };
 
 const dispatchHelpTarget = async (token: string): Promise<void> => {
@@ -289,8 +297,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         await renderPreCommandFailure({
           commandId: "cli:format-selection",
           error,
-          rendererMode: activeRendererMode,
-          resultFormat: activeRendererMode === "json" ? "json" : "text",
+          ...preCommandOutputMode({ argv, env: process.env }),
         });
         return;
       }
@@ -307,7 +314,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   if (argv[0] === "help") {
     const helpArgv = argv.slice(1);
     if (await rejectUnknownHelpFlags(helpArgv)) return;
-    if (activeResultFormat === "json") {
+    if (isEnvelopeResultFormat(activeResultFormat)) {
       setActiveCommandId("cli:help");
       await printHelpCatalogPage();
       return;
@@ -406,13 +413,17 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     !isBunOrX &&
     !scratchRunHasToolCommand
   ) {
-    const versionSchema = resolveBuiltInCommand("meta:version")?.spec.resultSchema;
-    if (emitJsonListModeIfRequested(versionSchema)) return;
+    const versionSpec = resolveBuiltInCommand("meta:version")?.spec;
+    if (await rejectUnsupportedResultFormat("meta:version", versionSpec)) return;
+    if (emitJsonListModeIfRequested(versionSpec?.resultSchema)) return;
     await runMetaVersion();
     return;
   }
 
   if (found !== undefined) {
+    // Before flag validation and before --json key listing: an unsupported
+    // format must not be laundered into a successful listing.
+    if (await rejectUnsupportedResultFormat(canonicalCommandId, found[1])) return;
     const flagError = validateCommandCliFlags({
       commandId: canonicalCommandId,
       argv: argv.slice(1),
@@ -431,7 +442,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (builtInCommand?.status.kind === "deferred") {
     const error = notImplementedErrorForCommand(builtInCommand.spec.id);
-    if (activeResultFormat === "json") {
+    if (isEnvelopeResultFormat(activeResultFormat)) {
       await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
       return;
     }

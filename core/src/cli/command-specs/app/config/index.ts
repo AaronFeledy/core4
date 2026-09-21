@@ -51,6 +51,7 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
 export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   resultSchema: AppConfigResultSchema,
   id: "app:config",
+  resultFormats: ["table"],
   summary: "Read or write the current app's Landofile.",
   namespace: "app",
   topLevelAlias: false,
@@ -67,7 +68,6 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json", "yaml"],
       default: "table",
     }),
     type: Flags.string({
@@ -80,6 +80,12 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
     "dry-run": Flags.boolean({ description: "Report the change without writing.", default: false }),
   },
   run: (input) => appConfig(appConfigOptionsFromInput(input)),
+  documentOutput: {
+    format: "yaml",
+    reason:
+      "view emits a canonical bare Landofile that round-trips back into `.lando.yml`, so it is a product document rather than the result envelope in another shape. The get and write verbs carry no Landofile and use the envelope.",
+    when: (input) => (appConfigOptionsFromInput(input).subcommand ?? "view") === "view",
+  },
   redactionTokens: appConfigRedactionTokens,
   render: (result, input) => {
     const format = appConfigOptionsFromInput(input).format ?? "table";

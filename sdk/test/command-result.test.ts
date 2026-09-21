@@ -468,3 +468,101 @@ describe("StreamFrame encoders", () => {
     expect(stderr).toEqual({ _tag: "stderr", chunk: "warn\n" });
   });
 });
+
+describe("encodeCommandResult yaml serialization", () => {
+  const secretRedactor = createRedactor("secrets", { values: ["super-secret"] });
+
+  const bothFormats = (options: Parameters<typeof encodeCommandResult>[0]) => ({
+    json: Effect.runSync(encodeCommandResult({ ...options, format: "json" })),
+    yaml: Effect.runSync(encodeCommandResult({ ...options, format: "yaml" })),
+    unspecified: Effect.runSync(encodeCommandResult(options)),
+  });
+
+  test("yaml parses to the same model as json for a success envelope", () => {
+    const { json, yaml, unspecified } = bothFormats({
+      command: "meta:version",
+      resultSchema: PersonResultSchema,
+      outcome: { _tag: "success", value: { name: "ada", age: 36 } },
+      redactor: plainRedactor,
+    });
+
+    expect(unspecified).toBe(json);
+    expect(yaml.endsWith("\n")).toBe(false);
+    // A YAML document, not the JSON line: JSON parses as YAML, so shape matters.
+    expect(yaml.startsWith("apiVersion: v4\n")).toBe(true);
+    expect(Bun.YAML.parse(yaml)).toEqual(JSON.parse(json));
+  });
+
+  test("yaml parses to the same model as json for a failure envelope", () => {
+    const { json, yaml } = bothFormats({
+      command: "meta:version",
+      resultSchema: EmptyResultSchema,
+      outcome: {
+        _tag: "failure",
+        error: new ExampleTaggedError({ message: "nope", remediation: "try again" }),
+      },
+      redactor: plainRedactor,
+    });
+
+    expect(yaml.startsWith("apiVersion: v4\n")).toBe(true);
+    expect(Bun.YAML.parse(yaml)).toEqual(JSON.parse(json));
+  });
+
+  test("yaml carries projected keys and warnings exactly as json does", () => {
+    const { json, yaml } = bothFormats({
+      command: "meta:version",
+      resultSchema: PersonResultSchema,
+      outcome: { _tag: "success", value: { name: "ada", age: 36 } },
+      redactor: plainRedactor,
+      projectResultKeys: ["name"],
+      warnings: [{ code: "example", message: "heads up" }],
+    });
+
+    const parsed = Bun.YAML.parse(yaml) as Record<string, unknown>;
+    expect(yaml.startsWith("apiVersion: v4\n")).toBe(true);
+    expect(parsed).toEqual(JSON.parse(json));
+    expect(parsed.result).toEqual({ name: "ada" });
+    expect(parsed.warnings).toEqual([{ code: "example", message: "heads up" }]);
+  });
+
+  test("yaml redacts the same values json redacts", () => {
+    const { json, yaml } = bothFormats({
+      command: "meta:version",
+      resultSchema: PersonResultSchema,
+      outcome: { _tag: "success", value: { name: "super-secret" } },
+      redactor: secretRedactor,
+    });
+
+    expect(yaml).not.toContain("super-secret");
+    expect(yaml).toContain('name: "[redacted]"');
+    expect(Bun.YAML.parse(yaml)).toEqual(JSON.parse(json));
+  });
+
+  test("yaml honors the fallback envelope when the result cannot be encoded", () => {
+    const { json, yaml } = bothFormats({
+      command: "meta:version",
+      resultSchema: PersonResultSchema,
+      outcome: { _tag: "success", value: { name: 42 } },
+      redactor: plainRedactor,
+    });
+
+    const parsed = Bun.YAML.parse(yaml) as Record<string, unknown>;
+    expect(yaml.startsWith("apiVersion: v4\n")).toBe(true);
+    expect(parsed).toEqual(JSON.parse(json));
+    expect(parsed.ok).toBe(false);
+  });
+
+  test("stream result frames stay json regardless of the requested format", () => {
+    const line = Effect.runSync(
+      encodeStreamResultFrame({
+        command: "app:exec",
+        resultSchema: PersonResultSchema,
+        outcome: { _tag: "success", value: { name: "ada" } },
+        redactor: plainRedactor,
+        format: "yaml",
+      }),
+    );
+
+    expect(decodeFrame(line)._tag).toBe("result");
+  });
+});

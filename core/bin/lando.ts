@@ -64,6 +64,8 @@ const hasAppContext = async (cwd: string): Promise<boolean> => {
 };
 
 const main = async (): Promise<void> => {
+  const { installBrokenPipeExitPolicy } = await import("@lando/renderer/io");
+  installBrokenPipeExitPolicy();
   if (
     argv[0] === "--lando-update-replacement" &&
     argv.length === 3 &&
@@ -149,6 +151,8 @@ const main = async (): Promise<void> => {
 };
 
 main().catch(async (error: unknown) => {
+  const { BROKEN_PIPE_EXIT_CODE, isBrokenPipeError } = await import("@lando/renderer/io");
+  if (isBrokenPipeError(error)) process.exit(BROKEN_PIPE_EXIT_CODE);
   await writeLine("stderr", String(error));
   process.exit(1);
 });

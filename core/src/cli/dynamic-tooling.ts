@@ -27,6 +27,8 @@ import {
 } from "./compiled-runtime";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { attachedHostTerminal } from "./exec-host-io";
+import { isEnvelopeResultFormat } from "./format-flags";
+import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { type ToolingRoute, resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
 
@@ -62,7 +64,9 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
   prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
   const hostTerminal =
-    activeResultFormat === "json" || activeRendererMode === "json" ? undefined : attachedHostTerminal();
+    isEnvelopeResultFormat(activeResultFormat) || activeRendererMode === "json"
+      ? undefined
+      : attachedHostTerminal();
   return runCompiledCommand(
     runTooling({
       name,
@@ -80,7 +84,7 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
     renderRunToolingResult,
     {
       ...dynamicToolingOptions,
-      ...(activeResultFormat === "json" ? {} : { streamingMode: "live" }),
+      ...(isEnvelopeResultFormat(activeResultFormat) ? {} : { streamingMode: "live" }),
     },
   );
 };
@@ -167,9 +171,12 @@ export const routeResolvedTooling = async (
       await runDynamicToolingFailure(route.name, argv, toolingRouteError(route));
       return true;
     case "bun-script":
+      // A tooling task renders its own streams and declares no opt-in format.
+      if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
       await runDynamicBunShellTooling(route.name, argv, route.appRoot);
       return true;
     case "tooling":
+      if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
       await runDynamicTooling([route.name, ...argv]);
       return true;
     default:

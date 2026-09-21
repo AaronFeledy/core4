@@ -4,6 +4,16 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/services` additively exports the type-only aliases `LandofileServiceError`, `UserLandofileError`, `ProviderSelectionError`, `AppPlannerError`, `BuildError`, `BuildAppError`, and `@lando/sdk/app` exports `AppPlanResolutionError`; `LandofileService.discover`, `RuntimeProviderRegistry.capabilities`/`select`, `AppPlanner.plan`, and `BuildOrchestrator.build`/`buildApp` are respelled with them with identical member sets (guarded by `sdk/test/types/plan-error-channels.test.ts`); `AppConfigApi.lint` remains fully explicit, while `StopAppError` and `LogsAppError` inherit planner/provider aliases but keep their narrower landofile-load subsets explicit.
+
+- `App.config.lint()` also resolves service-contributed tooling and authored event names. Its error channel includes `LandofileValidationError`, `CommandAliasConflictError`, and `NotImplementedError` for resolution failures; those failures are not schema violations or unknown-event diagnostics.
+
+- `RuntimeProviderContribution.appliedPlans(ctx)` is required for provider contributions. It reads persisted ownership claims without initializing or connecting to the runtime; providers with no persisted claims return an empty list. Applied-state recovery reads every contribution's claims before selecting an owner, so an unrelated offline runtime cannot block a valid saved plan. Inventory-read failures and conflicting claims still fail closed. When no plan matches, runtime resource inspection remains required before reporting an unchanged teardown.
+
+- `RuntimeProviderShape.appliedPlans` optionally exposes provider-owned applied state, and `RuntimeProviderRegistry.resolveAppliedPlan(root)` optionally resolves it by canonical app root for teardown recovery. `StopAppResult` and `DestroyAppResult` add optional explicit recovery outcomes, and their error unions add `AppResolveError` for fail-closed ownership mismatches.
+
+- `RuntimeProviderRegistry.resolveTeardownEvidence(root)` is an optional teardown-only resolver that reports whether an app root is covered by an applied plan, holds orphaned runtime resources, or holds nothing at all. It additively exports `AppliedTeardownEvidence` and `AppliedOrphanGroup` from `@lando/sdk/services`. `resolveAppliedPlan(root)` keeps its fail-closed refusal of orphaned resources for every other caller.
+
 - `GlobalConfigView` is the additive curated effective-config schema used by config view and get. It explicitly selects public settings from `GlobalConfig`, including both app-default maps, without exposing loader bookkeeping.
 
 - `@lando/sdk/errors` additively exports `AppLockTimeoutError` (`message`, `app`, `timeoutMs`, `remediation`, optional `cause`) when a mutating app operation waits for the per-app advisory lock and the finite wait expires. It registers no JSON Schema. The type-only `StartAppError` and `StopAppError` unions additively include the tag; restart, rebuild, and destroy inherit it. Override the wait with `LANDO_APP_LOCK_TIMEOUT_MS` (milliseconds).
@@ -14,6 +24,14 @@
   Conflicting route matches now fail with the existing `RouteInputError` and
   authored source keys. Equivalent ordered filter operations ignore filter merge
   names; `both` participates in both HTTP and HTTPS conflict checks.
+
+- Route priorities are intrinsic specificity bands, so plans ranked in isolation
+  compose correctly once a router merges every running app into one table.
+  Wildcard hostnames occupy 2 through 65,538 and exact hostnames 65,539 through
+  131,075, each widened by path-prefix length; the diagnostic fallback keeps 1.
+  Routes of equal specificity receive equal priority and no ownership is assigned
+  between apps. A router that contributes its own routers must pin them above
+  `ROUTE_PRIORITY_MAX`.
 
 - `EphemeralRunSpec.owner` additively accepts an app selector for named data-store mounts. Bundled providers resolve it to the applied plan and explicitly request creation of each declared store with a fresh submitted generation and canonical owner before container creation. Only a successful create whose response echoes that generation can establish freshness; an existing volume remains an idempotent 409 adoption and is never relabeled.
 
@@ -32,6 +50,7 @@
 - Bundled providers use their stable configured endpoint namespace for `coordinationKey`, including Podman endpoints without `/info.ID`; direct adapters without an endpoint may use the observed daemon ID. Neither namespace includes an app slug or owner root. Endpoint configuration must consistently identify the same provider connection; changing that configuration requires re-observation. Deleting and recreating a volume without its witness produces a new generation. Provider snapshots exclude witness records and temporary witness stages; physical restore preserves the target's record and never imports the source's record. Downstream StateStore locking, generation-guarded mutation, lifecycle coordination, and SQL policy remain separate work.
 
 - `@lando/sdk/schema` additively exports `SnapshotMetadata`; `VolumeInfo` additively gains optional physical instance identity and provenance, snapshot options and records additively gain optional recovery metadata, and `ServiceRuntimeInfo` additively gains optional image identity. `@lando/sdk/errors` additively exports `SnapshotOwnershipError`, `SqlRecoveryOperationError`, `SqlRecoveryUnavailableError`, `SqlSeedSourceError`, and `SqlSeedStateError`. `StateStore` additively gains `withLock(key, body)` for host-wide advisory locking of scoped operations.
+- `ServiceRuntimeInfo` additively gains optional `labels`. `ScratchAcquireInput` additively gains optional `excludes`, `keepOnFailure`, `runPostInit`, `noLocalOverrides`, `noHostnameSuffix`, and `hostnames`.
 
 - The unreleased `VolumeSnapshotRef` contract now requires the provider-observed immutable artifact `digest`, `sizeBytes`, and `format`. `VolumeRestoreSpec` carries the same source identity so bundled providers verify native images or copy archives before mutating a generation-checked target; persisted `SnapshotInfo.native` records retain those values.
 - `PhpServiceConfig.type` now validates `php:<version>` syntax instead of duplicating the bundled version literals. The planner remains the availability boundary and rejects versions absent from the selected ServiceType's shipped metadata before provider action.
@@ -66,6 +85,8 @@
 
 - The `ConfigTranslator` contract was replaced pre-release: tagged document-set and recipe-request inputs produce set outputs with wire authoring fragments. Detection consumes core-read snapshots, encoding is optional, and all methods require `never` in their Effect context. No compatibility adapter preserves the former one-way contract.
 - `@lando/sdk/errors` additively exports `RouterPortsExhausted` (`message`, `proxyId`, `bindAddress`, `httpTried`, `httpsTried`, `exhausted` of `http`|`https`|`both`, `remediation`) and `RouterPortPinMismatch` (`message`, `proxyId`, `runningHttp`, `runningHttps`, optional `requestedHttp`/`requestedHttps`, `remediation`). They register no JSON Schema. `RouterService.setup`'s error channel additively includes both tags. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include both tags. `GlobalConfig.router` and `LandofileShape.router` are additive optional fields decoding against `RouterConfig`. `ProxyConfig` additively accepts optional `router` and `routerPin`.
+- `@lando/sdk/errors` additively exports `RouterWatcherError` (`message`, `proxyId`, `failureClass` of `inotify-limit`|`disk`|`permission`|`other`, `watcherHost`, `detail`, `remediation`) for router file-provider watcher failures. It registers no JSON Schema. `RouterService.setup`'s error channel additively includes the tag. The type-only `StartAppError`, `RestartAppError`, and `RebuildAppError` unions additively include it.
+- `RouterServiceShape` additively requires `revalidateStartup: Effect<void, ProxyError | RouterWatcherError>`, re-observing router startup and refreshing the implementation's persisted startup observation without acquiring ports or starting services.
 - Replaces the unreleased PluginContribution.proxyServices key with the normative typed routerServices manifest entries, replaces the unreleased ProxyService tag (@lando/core/ProxyService) with RouterService (@lando/core/RouterService), replaces the unreleased ProxyServiceContribution public schema with RouterServiceContribution, and replaces GlobalConfig.defaultProxyService (and TemplateRenderContext.global.defaultProxyService) with defaultRouterService. The removed tag, contribution key, public schema, and config spelling have no alias or compatibility path.
 - `@lando/sdk/errors` additively exports `ConfigExpressionError` (`message`, `expression`, `path`, `filePath`, `remediation`) for plan-time Landofile config expression failures such as authored route hostnames. It registers no JSON Schema. `AppPlanner.plan`'s error channel additively gains the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match.
 
@@ -77,9 +98,12 @@
 
 - `@lando/sdk/errors` additively exports `PhpMyAdminHostsCredsError` and `AppFeatureError` additively includes it; `ServiceInfo` / `InfoAppService` additively gain optional `creds`.
 
+- `@lando/sdk/errors` additively exports `MailpitMsmtpBaseFamilyError` and `AppFeatureError` additively includes it; Mailpit fails closed at plan time when a selected PHP sender's image has no provable base image family for pinned msmtp acquisition.
+
 - `AppPlanner.plan`'s error channel additively gains `CommandAliasConflictError` for plan-time rejection of surviving service-type reserved tooling names; the frozen service-surface fixture is updated to match. The type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions additively include the same tag because those App-handle methods plan through `AppPlanner`.
 
 - `@lando/sdk/errors` additively exports `HomePathCapabilityError` (`message`, `service`, `serviceType`, optional `user`, `remediation`) when a service persists its home but the planner cannot know the destination. `AppPlanner.plan`'s error channel additively includes the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, and `LogsAppError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match. `ServiceConfig` additively accepts optional `home` (`false` or `{ path? }`). `ServiceType` additively accepts optional `identity` (`ServiceImageIdentity`).
+- `@lando/sdk/errors` additively exports `DataTreeOwnershipCapabilityError` (`message`, `service`, `serviceType`, `target`, `option`, optional `user`, `remediation`) when a service mounts a data tree its planned user cannot be made to own. `AppPlanner.plan`'s error channel additively includes the same tag; the type-only `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `ToolingError`, and `LogsAppError` unions include it because those App-handle methods plan through `AppPlanner`. The frozen service-surface fixture is updated to match. `ServiceFeatureContext.addStorage` additively accepts optional `DataStoreOwnershipIntent` (`seededOwners`) so a feature can declare that the planned user must own the mounted tree.
 
 - `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, `SqlCommandFailedError`, and `SqlDumpNotFoundError` (`message`, `path`, `appRoot`, `remediation`) for database helper target selection, confirmation, failed in-service dump/load/reset commands, and missing/unreadable import dump files.
 
@@ -224,9 +248,21 @@
 - `@lando/sdk/expressions` additively exports `expressionInterpolationsTouchOnlyScopes`, a second scope predicate that asks whether every `{{ ... }}` interpolation reads only the given context scopes through pure helpers while treating `${VAR}` and `${secret:...}` text as inert. It is for a caller that replays that shell and secret text verbatim instead of evaluating it; `expressionTouchesOnlyScopes` keeps its stricter meaning and still reports such a template as unanalyzable. Same contracts-only tier as the rest of `@lando/sdk/expressions`: pure, no Effect runtime, no Bun, no IO, and no schema or service-tag freeze.
 - `RebuildAppOptions` additively gains optional `services?: ReadonlyArray<ServiceName>` for scoped rebuilds. `InfoAppOptions.service` is replaced pre-ship by `services?: ReadonlyArray<ServiceName>` without an alias. `ApplyOptions` additively gains optional `recordedPlan?: AppPlan` so a provider can persist the full app plan while applying a selected subplan. These are type-only interface changes with no JSON Schema artifact or frozen service-tag signature change.
 
+- `RuntimeProviderShape.destroy` returns `DestroyOutcome` instead of `void`: a provider handed no plan that finds no applied record for the app answers `{ kind: "no-op", reason: "no-applied-plan" }`, so no caller can read silent success as teardown. `RuntimeProviderShape.removeObservedService(observed)` is a new required member that stops and removes the single container behind one `ServiceRuntimeInfo` this provider reported from `list`, without resolving an applied plan, answering `ObservedServiceRemoval`. `@lando/sdk/services` additively exports `DestroyOutcome` and `ObservedServiceRemoval`. This is a pre-ship provider-contract change with no compatibility shim; the frozen service-tag fixture is updated to match and neither type registers a JSON Schema.
+
+
+## Additive YAML exports
+
+`@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,
+`yamlMappingKeyText`, `emitYamlDocument`, and `YamlEmitError`. This dependency-free
+subpath shares fail-closed scalar and mapping-key quoting without Effect, Bun, or
+Node imports. The block-document emitter accepts JSON-compatible values, rejects
+unsupported values and cycles, and terminates each document with one newline.
+It registers no JSON Schema.
 
 ## Additive schema exports
 
+- `appIdentityKey`
 - `VolumeCreationFact`
 - `VolumeInitializationRecord`
 - `VolumeLocator`
@@ -274,6 +310,7 @@
 - `AuthoringExpressionForm`
 - `authoringExpressionSlot`
 - `classifyAuthoringSource`
+- `containerDestinationRefusalMessage`
 - `isPlainAuthoringString`
 - `deriveAuthoringAst`
 - `LandofileAuthoringShape`
@@ -468,6 +505,7 @@
 - `ManagedFilePlan`
 - `ManagedFileResult`
 - `JSON_SCHEMA_NAMES`
+- `parseContainerDestination`
 - `parseShortVolume`
 - `publicSchemaMetadataIndex`
 - `publicSchemaRegistry`
@@ -738,6 +776,12 @@
 - `ComposeUlimit`
 - `ComposeUlimitsField`
 
+- `ROUTE_PRIORITY_DIAGNOSTIC`
+- `ROUTE_PATH_WEIGHT_CAP`
+- `ROUTE_PRIORITY_WILDCARD_BASE`
+- `ROUTE_PRIORITY_EXACT_BASE`
+- `ROUTE_PRIORITY_MAX`
+
 ## Additive Beta service fields
 
 - `CaSetupOptions.privilege`
@@ -869,6 +913,7 @@
 - `HttpTrustError`
 - `HttpUploadError`
 - `HomePathCapabilityError`
+- `DataTreeOwnershipCapabilityError`
 - `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
 - `DeprecationContradictionError`
@@ -993,6 +1038,8 @@
 
 ## Additive Beta test helper exports
 
+- `yamlRoundTripCorpus`
+- `yamlRoundTripRecord`
 - `CollectImportBoundaryViolationsOptions`
 - `ImportBoundaryViolation`
 - `collectImportBoundaryViolations`

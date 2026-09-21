@@ -150,19 +150,25 @@ describe("lando app:config:lint (source dispatch)", () => {
     });
   });
 
-  test("--format=json reports violations with path, message, and suggested fix", async () => {
-    await withTempCwd(async (dir) => {
-      await writeFile(join(dir, ".lando.yml"), "name: bad-app\nbogusKey: nope\n");
-      const result = await runCli(["app:config:lint", "--format=json"], dir);
-      expect(result.exitCode).toBe(0);
-      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
-      expect(parsed.valid).toBe(false);
-      const violation = parsed.violations.find((entry) => entry.path.includes("bogusKey"));
-      expect(violation).toBeDefined();
-      expect(typeof violation?.message).toBe("string");
-      expect(violation?.suggestedFix).toBeDefined();
-    });
-  });
+  test.each(["json", "yaml"])(
+    "--format=%s reports violations with path, message, and suggested fix",
+    async (format) => {
+      await withTempCwd(async (dir) => {
+        await writeFile(join(dir, ".lando.yml"), "name: bad-app\nbogusKey: nope\n");
+        const result = await runCli(["app:config:lint", `--format=${format}`], dir);
+        expect(result.exitCode).toBe(0);
+        const envelope = Schema.decodeUnknownSync(
+          Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
+        )(format === "yaml" ? Bun.YAML.parse(result.stdout) : JSON.parse(result.stdout));
+        const parsed = envelope.result;
+        expect(parsed.valid).toBe(false);
+        const violation = parsed.violations.find((entry) => entry.path.includes("bogusKey"));
+        expect(violation).toBeDefined();
+        expect(typeof violation?.message).toBe("string");
+        expect(violation?.suggestedFix).toBeDefined();
+      });
+    },
+  );
 
   test("--format=json reports rejected Compose top-level keys with targeted remediation", async () => {
     await withTempCwd(async (dir) => {

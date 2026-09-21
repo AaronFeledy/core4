@@ -1,22 +1,9 @@
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { findLandofilePath } from "@lando/landofile/discovery";
 import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "@lando/landofile/version-constraint";
-import {
-  CapabilityError,
-  type CommandAliasConflictError,
-  type ConfigExpressionError,
-  type HomePathCapabilityError,
-  type LandofileUnknownEventError,
-  LandofileValidationError,
-  type NotImplementedError,
-  type PublicationUnsupportedError,
-  type RouteInputError,
-  ServiceTypeCollisionError,
-} from "@lando/sdk/errors";
+import { CapabilityError, LandofileValidationError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -25,11 +12,11 @@ import {
   type NetworkPlan,
   type NetworkingPlan,
   type ProviderCapabilities,
-  type ServiceConfig,
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
 import {
+  type AppPlannerError,
   CacheService,
   type ConfigService,
   type FileSystem,
@@ -47,13 +34,7 @@ import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { readProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { routerEnabledFrom } from "../config/router-config.ts";
 import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
-import {
-  CAPABILITY_DEFAULT_PROVIDER_ID,
-  readProviderEnvVar,
-  resolveProviderSelection,
-} from "../providers/precedence.ts";
 import { type ComposeAppFeature, composeAppFeatures } from "../services/app-feature.ts";
-import { isComposeBuild } from "../services/compose-build-artifact.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { mergeLogSources } from "../services/log-sources.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
@@ -75,17 +56,11 @@ import {
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
 import { attachEffectiveEvents, compileEffectiveEvents } from "./effective-events.ts";
-import {
-  attachEffectiveTooling,
-  compileEffectiveTooling,
-  validateServiceTypeReservedToolingNames,
-} from "./effective-tooling.ts";
+import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
-import { loadServiceEnvFiles, loadTopLevelEnvFiles } from "./env-files.ts";
-import { unknownEventError, unknownEventName, validEventNames } from "./event-names.ts";
+import { resolveKnownEventSet } from "./event-set.ts";
 import { resolveFileSyncEngineId } from "./file-sync.ts";
 import { DEFAULT_PROXY_DOMAIN, appNetworkName, normalizeAppSlug } from "./naming.ts";
-import { loadAuthorizedServiceProjectFiles } from "./node-authoring.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
@@ -94,14 +69,7 @@ import {
   appFeatureError,
   baseDefaultFeatureIds,
   contributionId,
-  loadServiceTypeWithVersion,
-  resolveHostFacts,
-  resolvePinnedArtifactTag,
   resolvedServiceCacheInput,
-  servicePlanError,
-  serviceTypeCollision,
-  serviceTypeFor,
-  unsupportedServiceType,
 } from "./service-types.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
 
@@ -114,48 +82,35 @@ export const planApp = (
   certificateAuthorityResolver: Context.Tag.Service<typeof CertificateAuthorityResolver> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
-): Effect.Effect<
-  AppPlan,
-  | LandofileValidationError
-  | RouteInputError
-  | CapabilityError
-  | HomePathCapabilityError
-  | NotImplementedError
-  | PublicationUnsupportedError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | LandofileUnknownEventError
-> => {
-  const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
-  const landofilePath = `${appRoot}/.lando.yml`;
-  const appName = landofile.name ?? "app";
-  const appSlug = normalizeAppSlug(appName, appRoot);
-  const appId = AppId.make(appSlug);
-  const host = resolveHostFacts();
-  const resolvedAt = new Date().toISOString();
-  const encodedMetadata = { resolvedAt, source: landofilePath, runtime: 4 as const };
-  const metadata: ServicePlan["metadata"] = {
-    resolvedAt: DateTime.unsafeMake(resolvedAt),
-    source: landofilePath,
-    runtime: 4 as const,
-  };
-
-  return Effect.gen(function* () {
-    const globalConfig =
-      configService === undefined
-        ? undefined
-        : yield* configService.load.pipe(
-            Effect.mapError(
-              (cause) =>
-                new LandofileValidationError({
-                  message: `Global configuration could not be loaded for service network injection: ${cause.message}`,
-                  file: landofilePath,
-                  issues: ["network"],
-                }),
-            ),
-          );
-    const appDefaults = AppDefaults.resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
-    const configProvider = globalConfig?.defaultProviderId;
+): Effect.Effect<AppPlan, AppPlannerError> =>
+  Effect.gen(function* () {
+    const {
+      services: seeds,
+      effectiveTooling,
+      appRoot,
+      appName,
+      landofilePath,
+      host,
+      encodedMetadata,
+      globalConfig,
+      appDefaults,
+      provider,
+      manifests,
+      topLevelEnvFiles,
+    } = yield* resolveKnownEventSet({
+      pluginRegistry,
+      configService,
+      fileSystem,
+      pathsService,
+      landofile,
+      capabilities: providerCapabilities,
+    });
+    const appSlug = normalizeAppSlug(appName, appRoot);
+    const appId = AppId.make(appSlug);
+    const metadata: ServicePlan["metadata"] = {
+      ...encodedMetadata,
+      resolvedAt: DateTime.unsafeMake(encodedMetadata.resolvedAt),
+    };
     const routerEnabled = routerEnabledFrom(globalConfig?.router, landofile.router);
     const networkPlan = yield* Effect.try({
       try: () => resolveNetworkTrustPlan({ network: globalConfig?.network }, process.env),
@@ -167,31 +122,11 @@ export const planApp = (
         }),
     });
     const globalCas = yield* loadGlobalSecurityCas(appRoot, networkPlan.caCertPaths);
-    const envProvider = readProviderEnvVar(process.env);
-    const provider = resolveProviderSelection({
-      ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),
-      ...(envProvider === undefined ? {} : { env: envProvider }),
-      ...(configProvider === undefined || configProvider === null ? {} : { config: configProvider }),
-      capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
-    }).providerId;
-    const manifests = yield* pluginRegistry.list.pipe(
-      Effect.mapError(
-        (error) =>
-          new LandofileValidationError({
-            message: `Failed to enumerate plugin contributions: ${error instanceof Error ? error.message : String(error)}.`,
-            file: landofilePath,
-            issues: [],
-          }),
-      ),
-    );
     const fileSyncEngineId =
       providerCapabilities.bindMountPerformance === "slow" ? resolveFileSyncEngineId(manifests) : undefined;
     const cacheRoot = resolveUserCacheRoot();
     const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
       Effect.catchAll(() => Effect.succeed(undefined)),
-    );
-    const registeredServiceTypeIds = manifests.flatMap((manifest) =>
-      (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     );
     const appFeatureRefs: Array<{ readonly id: string; readonly pluginId: string }> = [];
     const seenAppFeatureIds = new Set<string>();
@@ -218,11 +153,6 @@ export const planApp = (
       appFeatures.push({ id: ref.id, definition, pluginId: ref.pluginId });
     }
 
-    const topLevelEnvFiles = yield* loadTopLevelEnvFiles({
-      appRoot,
-      envFiles: landofile.env_file ?? [],
-      fileSystem,
-    });
     const composeConfigFileInputs = yield* loadComposeConfigFiles({
       appRoot,
       landofile,
@@ -230,78 +160,24 @@ export const planApp = (
       capabilities: providerCapabilities,
     });
     const resolvedServices: ResolvedService[] = [];
-    for (const [name, service] of Object.entries(landofile.services ?? {})) {
+    for (const seed of seeds) {
+      const {
+        name,
+        service: pinnedService,
+        authored,
+        serviceType,
+        resolution,
+        resolvedArtifactTag,
+        projectFiles,
+        envFileInputs,
+      } = seed;
+      const service = seed.authoredService;
       const routes = yield* normalizeAuthoredRoutes({ name, service, landofile });
-      const loadedEnvFiles = yield* loadServiceEnvFiles({ appRoot, serviceName: name, service, fileSystem });
       const configSourceInputs = yield* resolveServiceConfigSources({
         appRoot,
         serviceName: name,
         config: service.config,
       });
-      const hasEnvFiles = topLevelEnvFiles.inputs.length > 0 || loadedEnvFiles.inputs.length > 0;
-      const serviceWithEnvironment = AppDefaults.withUserAppDefaults({
-        service,
-        defaults: appDefaults,
-        topLevelEnvironment: topLevelEnvFiles.environment,
-        serviceEnvironment: loadedEnvFiles.environment,
-        hasEnvFiles,
-      });
-      if (
-        serviceWithEnvironment.image !== undefined &&
-        serviceWithEnvironment.build !== undefined &&
-        isComposeBuild(serviceWithEnvironment.build)
-      ) {
-        yield* Effect.fail(
-          new LandofileValidationError({
-            message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
-            file: landofilePath,
-            issues: [`services.${name}.build`],
-          }),
-        );
-      }
-      const authored = authoredStorageScopes(appRoot, name, serviceWithEnvironment);
-      if (authored.invalidCacheEntry !== undefined) yield* Effect.fail(authored.invalidCacheEntry);
-      if (authored.globalEntry !== undefined) {
-        yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
-      }
-      const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
-      const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
-        Effect.mapError((error) =>
-          error instanceof ServiceTypeCollisionError
-            ? serviceTypeCollision(appRoot, name, error)
-            : unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds),
-        ),
-      );
-      const resolvedArtifactTag = yield* resolvePinnedArtifactTag(appRoot, name, serviceType, version);
-      const pinnedService: ServiceConfig =
-        resolvedArtifactTag === undefined || serviceWithEnvironment.image !== undefined
-          ? serviceWithEnvironment
-          : { ...serviceWithEnvironment, image: resolvedArtifactTag };
-      const projectFiles = yield* loadAuthorizedServiceProjectFiles({
-        appRoot,
-        name,
-        service,
-        serviceType,
-        serviceTypeId,
-        version,
-        pinnedService,
-        registeredServiceTypeIds,
-        fileSystem,
-      });
-      const resolution = yield* serviceType
-        .resolve({
-          name,
-          service: pinnedService,
-          appRoot,
-          appName,
-          provider,
-          primary: name === "web",
-          metadata: encodedMetadata,
-          host,
-          capabilities: providerCapabilities,
-          projectFiles,
-        })
-        .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       const resolvedAuthored = authoredStorageScopes(appRoot, name, resolution.normalizedConfig);
       if (resolvedAuthored.invalidCacheEntry !== undefined)
         yield* Effect.fail(resolvedAuthored.invalidCacheEntry);
@@ -377,41 +253,13 @@ export const planApp = (
         baseDefaultIds,
         featureRefs,
         resolvedArtifactTag,
-        envFileInputs: loadedEnvFiles.inputs,
+        envFileInputs,
         projectFiles,
         configSourceInputs,
       });
     }
     const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
-    const toolingServices = resolvedServices.map((entry) => ({
-      name: entry.name,
-      serviceTypeId: entry.serviceType.id,
-      ...(entry.resolution.tooling === undefined ? {} : { tooling: entry.resolution.tooling }),
-    }));
-    const effectiveTooling = compileEffectiveTooling({
-      landofile,
-      services: toolingServices,
-    });
-    const reservedToolingConflict = validateServiceTypeReservedToolingNames({
-      landofile,
-      services: toolingServices,
-    });
-    if (reservedToolingConflict !== undefined) yield* Effect.fail(reservedToolingConflict);
     const effectiveEvents = compileEffectiveEvents({ landofile });
-    const validEvents = validEventNames(effectiveTooling);
-    const unknownEvent = unknownEventName(landofile.events, validEvents);
-    if (unknownEvent !== undefined) {
-      const canonicalPath = yield* Effect.tryPromise({
-        try: () => findLandofilePath(appRoot),
-        catch: (cause) =>
-          new LandofileValidationError({
-            message: cause instanceof Error ? cause.message : "Cannot locate the canonical Landofile.",
-            file: landofilePath,
-            issues: ["events"],
-          }),
-      });
-      return yield* Effect.fail(unknownEventError(unknownEvent, validEvents, canonicalPath ?? landofilePath));
-    }
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },
@@ -584,4 +432,3 @@ export const planApp = (
     }
     return plan;
   });
-};

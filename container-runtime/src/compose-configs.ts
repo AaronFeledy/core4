@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 
+import { requiresLongMountSyntax } from "./mount-syntax.ts";
+
 export type ComposeConfigMount = {
   readonly source: string;
   readonly target: string;
@@ -75,6 +77,6 @@ export const bindSourceForComposeConfig = (mount: ComposeConfigMount): string =>
 };
 
 export const composeConfigBindStrings = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> =>
-  composeConfigMounts(plan, service).map(
-    (mount) => `${bindSourceForComposeConfig(mount)}:${mount.target}:ro`,
+  composeConfigMounts(plan, service).flatMap((mount) =>
+    requiresLongMountSyntax(mount.target) ? [] : [`${bindSourceForComposeConfig(mount)}:${mount.target}:ro`],
   );

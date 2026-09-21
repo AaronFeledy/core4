@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Effect, Schema } from "effect";
 
-import { bringDown, bringUp, makePodmanApiClient, pullImage } from "@lando/provider-lando";
+import { buildKeyForService } from "@lando/engine/services/build-key";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
+import { bringDown, bringUp, makePodmanApiClient, makeProviderLayer, pullImage } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -16,9 +18,9 @@ import {
   type ServicePlan,
   landoNetworkingPlan,
 } from "@lando/sdk/schema";
-import type { ServiceType } from "@lando/sdk/services";
+import { RuntimeProvider, type ServiceType } from "@lando/sdk/services";
 
-import { landoErrorPage } from "../../src/services/http-errors.ts";
+import { landoErrorPageBytes } from "../../src/services/http-errors.ts";
 import { nginxServiceType } from "../../src/services/nginx.ts";
 import { php83ServiceType } from "../../src/services/php.ts";
 import { staticNginxServiceType } from "../../src/services/static.ts";
@@ -168,8 +170,25 @@ export const startErrorPageStack = async ({
   };
   const api = makePodmanApiClient(socketPath);
   const baseUrl = `http://127.0.0.1:${HOST_PORTS[server]}`;
+  const provider = await Effect.runPromise(
+    RuntimeProvider.pipe(
+      Effect.provide(
+        makeProviderLayer({
+          platform: "linux",
+          podmanApi: api,
+          sanitizeAppliedPlan: stripHostProxyRunLando,
+        }),
+      ),
+    ),
+  );
+
+  const built: Array<Parameters<typeof provider.removeArtifact>[0]> = [];
+  let activePlan: AppPlan = plan;
   const stop = async () => {
-    await Effect.runPromise(Effect.either(bringDown(plan, { api })));
+    await Effect.runPromise(Effect.either(bringDown(activePlan, { api })));
+    for (const artifact of built) {
+      await Effect.runPromise(Effect.either(provider.removeArtifact(artifact)));
+    }
     await rm(root, { recursive: true, force: true });
   };
 
@@ -177,7 +196,22 @@ export const startErrorPageStack = async ({
     for (const service of services) {
       if (service.artifact?.kind === "ref") await Effect.runPromise(pullImage(api, service.artifact.ref));
     }
-    const applied = await Effect.runPromise(bringUp(plan, { api }));
+    // The generated pages and Apache's retired default site are image content,
+    // so the stack has to run the derived images rather than the stock bases.
+    const derived: Array<ServicePlan> = [];
+    for (const service of services) {
+      const buildKey = await Effect.runPromise(buildKeyForService(provider, service));
+      const artifact = await Effect.runPromise(
+        Effect.scoped(provider.buildArtifact({ app: plan.id, service: service.name, plan, buildKey })),
+      );
+      built.push(artifact);
+      derived.push({ ...service, artifact: { kind: "ref", ref: artifact.ref } });
+    }
+    activePlan = {
+      ...plan,
+      services: Object.fromEntries(derived.map((service) => [service.name, service])),
+    };
+    const applied = await Effect.runPromise(bringUp(activePlan, { api }));
     expect(applied.changed).toBe(true);
     await waitForIndex(request, baseUrl, 120_000);
   } catch (error) {
@@ -214,10 +248,8 @@ export const runErrorPageCase = async (stack: ErrorPageStack, testCase: ErrorPag
     signal: AbortSignal.timeout(15_000),
   });
   const body = await response.text();
-  // The start command writes each page through a heredoc, so the served file is
-  // newline-terminated.
   const expectedBody =
-    "page" in testCase.body ? `${landoErrorPage(testCase.body.page)}\n` : testCase.body.exact;
+    "page" in testCase.body ? landoErrorPageBytes(testCase.body.page) : testCase.body.exact;
 
   expect(response.status).toBe(testCase.status);
   expect(body).toBe(testCase.method === "HEAD" ? "" : expectedBody);

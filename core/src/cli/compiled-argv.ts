@@ -1,5 +1,5 @@
 import { builtInCommandEntries, resolveBuiltInCommand } from "./built-in-command-registry";
-import { universalFormatFlagDefs } from "./format-flags";
+import { formatFlagDefsForCommand } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { type LandoCommandSpec, resolveTopLevelAliases } from "./spec/command-base";
 
@@ -62,10 +62,7 @@ export const landoSpecForId = (commandId: string): LandoCommandSpec | undefined 
 
 export const flagDefinitionsForCommand = (
   command: CompiledCommand,
-): Readonly<Record<string, OclifFlagDefinition>> => ({
-  ...universalFormatFlagDefs,
-  ...(command.flags ?? {}),
-});
+): Readonly<Record<string, OclifFlagDefinition>> => formatFlagDefsForCommand(command);
 
 export const argDefinitionsForCommand = (
   command: CompiledCommand,

@@ -14,6 +14,7 @@ import {
   DeprecationService,
   FileSystem,
   type PathsService,
+  type PluginRegistry,
   type RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -47,10 +48,9 @@ export {
   buildDoctorReportSummary,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
 } from "./doctor-report-render";
 
-const appConfigForReport = (): Effect.Effect<ConfigLintResult, never, never> =>
+export const appConfigForReport = () =>
   appConfigLint().pipe(
     Effect.catchTag("LandofileNotFoundError", (error) =>
       Effect.succeed({
@@ -158,6 +158,11 @@ export interface CollectDoctorReportInput<R> {
   readonly provider: Effect.Effect<DoctorResult, never, R>;
   readonly deprecations: Effect.Effect<DoctorDeprecationReport, never, R>;
   readonly certs?: Effect.Effect<CertsDoctorStatus, never, R>;
+  readonly appConfig?: Effect.Effect<
+    ConfigLintResult | undefined,
+    Effect.Effect.Error<ReturnType<typeof appConfigForReport>>,
+    R
+  >;
   /**
    * Injected subsystem doctor. Callers that already built a provider runtime
    * should provide that runtime first so selected RouterService/SshService win
@@ -235,7 +240,9 @@ export const collectDoctorReport = <R>(
         ? yield* section("deprecations", input.deprecations, { entries: [] })
         : undefined;
     const appConfig =
-      options.app === true ? yield* section("app-config", appConfigForReport(), undefined) : undefined;
+      options.app === true && input.appConfig !== undefined
+        ? yield* section("app-config", input.appConfig, undefined)
+        : undefined;
     return {
       version: CORE_VERSION,
       provider: { checks: provider.checks },
@@ -259,5 +266,14 @@ export const collectDoctorReport = <R>(
  */
 export const doctorReport = (
   options: DoctorOptions = {},
-): Effect.Effect<DoctorReport, never, ConfigService | PathsService | RuntimeProviderRegistry> =>
-  collectDoctorReport({ options, provider: doctor(options), deprecations: doctorDeprecations() });
+): Effect.Effect<
+  DoctorReport,
+  never,
+  ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
+> =>
+  collectDoctorReport<ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry>({
+    options,
+    provider: doctor(options),
+    deprecations: doctorDeprecations(),
+    appConfig: appConfigForReport(),
+  });

@@ -7,6 +7,7 @@ import { Cause, Effect, Exit, Schema } from "effect";
 
 import { AppIncludesVerifyResultSchema, renderIncludesVerifyResult } from "@lando/core/cli/operations";
 import type { IncludeVerifyReport } from "@lando/core/cli/operations";
+import { appIncludesVerifySpec } from "../../src/cli/command-specs/app/includes/verify.ts";
 import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
 import { TestStateStoreLive } from "../_support/landofile-layer.ts";
 
@@ -59,6 +60,19 @@ const restoreExitCode = <T>(run: () => T): T => {
 };
 
 describe("renderIncludesVerifyResult", () => {
+  test.each(["json", "yaml"])("a mismatched %s report keeps the machine success exit policy", (format) => {
+    // Given
+    const report: IncludeVerifyReport = {
+      lockfilePath: "/x/.lando.lock.yml",
+      entries: [{ source: "a", status: "missing", expected: null, actual: "v:hash" }],
+      mismatches: [],
+      ok: false,
+    };
+    // When
+    const code = appIncludesVerifySpec.successExitCode?.(report, { flags: { format } });
+    // Then
+    expect(code).toBeUndefined();
+  });
   test("a mismatch names the update command without changing process.exitCode", () => {
     const report: IncludeVerifyReport = {
       lockfilePath: "/x/.lando.lock.yml",

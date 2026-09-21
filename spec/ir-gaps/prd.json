@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 IR gaps for config frontends",
   "branchName": "feat/lando3-compat",
-  "description": "Native IR homes for retained tooling, events, routes, build users, runtime defaults, catalog options, scoped commands, and global defaults.",
+  "description": "Native IR homes for retained tooling, events, routes, build users, runtime defaults, catalog options, scoped commands, and global defaults. Priorities 57..62 close residual defects recorded during the QA and review of priorities 21..56. Priorities 63..74 close the residual defects and maintainer items recorded during the QA, review, and babysit of priorities 57..62.",
   "userStories": [
     {
       "id": "US-613",
@@ -327,6 +327,274 @@
       "dependsOn": ["US-615"],
       "priority": 56,
       "notes": "Follow-up to US-615 routing. Watcher runs inside the provider host (managed Podman machine on macOS/Windows), so the diagnostic must name that host."
+    },
+    {
+      "id": "US-643",
+      "title": "Keep teardown independent of the desired config",
+      "description": "As a user, `lando stop` and `lando destroy` remove what is actually present, even when the Landofile no longer validates or plans.",
+      "acceptanceCriteria": [
+        "Teardown resolves the app root from discovery and consults applied state plus runtime evidence for that root before it loads or plans the desired config; a never-started app whose Landofile fails validation or refuses at plan time returns `outcome: \"unchanged\"` with no provider action and exit 0, for both `stop` and `destroy`.",
+        "Runtime resources whose recorded owner is the app root under teardown are removed as orphans of that root rather than refused; a plain `destroy` followed by `destroy --volumes` removes the retained data volumes instead of failing `AppResolveError` with `detail: \"provider-resources\"`, and the orphan teardown reports what it removed.",
+        "Every non-teardown caller keeps the current fail-closed orphan refusal in the shared applied-state evidence resolver; the relaxation is scoped to teardown callers and is not implemented by widening that resolver's default, and `lando start` still refuses an unplannable app.",
+        "`unchanged` stays distinguishable from `destroyed` in every renderer and in `--format=json`; no public error shape is widened.",
+        "The existing assertion that teardown preserves the desired-config failure when no applied plan exists is deliberately replaced rather than deleted, with the new contract asserted in its place; failing regression tests first capture both the invalid never-started refusal and the blocked second `destroy --volumes`; focused tests with a positive count, the app-lifecycle and everyday-commands guides, real-runtime teardown evidence, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-629", "US-617A"],
+      "priority": 57,
+      "notes": "Residual from US-629 and US-635 QA. Seams: resolveDesiredTarget/resolveDestroyTarget and the requireAppliedEvidence branch in engine/src/operations/destroy.ts, the same pattern in stop.ts, and the orphan raise in engine/src/providers/applied-state-resolution.ts. engine/test/operations/applied-state-teardown.test.ts currently locks the old contract in."
+    },
+    {
+      "id": "US-644",
+      "title": "Run the Apache default start command as the planned service user",
+      "description": "As a service author, `type: apache` with a non-root `user:` starts and stays running without an authored `command:` override.",
+      "acceptanceCriteria": [
+        "An Apache service planned with `user: www-data` and no authored `command` or `entrypoint` applies as running and serves the configured `DocumentRoot`; the webroot configuration is not dropped, and the author is not required to supply a `command:` to work around it.",
+        "The fix removes the root requirement from the default start path rather than documenting it; evidence is the running service and a served response, not the absence of `ServiceExecError` or `ServiceStartError`, since those tags depend on which operation runs next.",
+        "A rebuild of that service succeeds rather than failing exec against a container that died on its own start command.",
+        "Every other bundled service type that emits a default command is checked for the same pattern of writing outside the planned user's reach, and each is either fixed in this story or recorded with its reproduction; the service-type command surface is not redesigned.",
+        "A failing regression test first captures the non-root Apache plan; focused tests with a positive count, the Apache service guide, real-runtime evidence of the running service, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-618E", "US-637"],
+      "priority": 58,
+      "notes": "Residual from US-637 verify. apacheStartCommand in plugins/service-lando/src/services/apache.ts writes lando-webroot.conf from PID 1, while the same feature applies setUser(service.user) which reaches the container create body as User. The catalog already declares a verified www-data identity, so the type advertises the user that fails."
+    },
+    {
+      "id": "US-645",
+      "title": "Make machine output survive a closed pipe and a YAML round trip",
+      "description": "As a script or agent author, I can pipe Lando's machine output into a short-lived consumer and parse the YAML it emits without either one corrupting.",
+      "acceptanceCriteria": [
+        "A downstream consumer that closes the pipe early ends output cleanly on every renderer write path: no unhandled stream error, no internal-error report, no stack trace, and the conventional terminated-pipeline exit status; stdout and stderr are each handled independently because they can be redirected separately.",
+        "One YAML scalar and key quoting policy serves both the Compose export serializer and the CLI config emitter; the hand-rolled unquoted emitter is deleted rather than kept beside the shared one, and the policy lives where both callers may import it under the package DAG.",
+        "Every `--format=yaml` surface satisfies a round-trip law: parsing emitted YAML yields a document structurally equal to the source model, proven over the redaction sentinel, boolean-like and numeric-like strings, `null`-like strings, values containing `: `, and values with leading indicator characters \u2014 not over the redaction sentinel alone.",
+        "Publishing the shared policy on a public SDK subpath is optional; if chosen it follows `sdk/AGENTS.md`, records the additive export, and refreshes the schema artifact set.",
+        "Failing regression tests first capture the piped crash and at least one corrupted round trip; focused tests with a positive count, the JSON scripting guide, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-626", "US-633"],
+      "priority": 59,
+      "notes": "Residual from US-626 and US-635 QA. renderer/src/io.ts builds writeStdout as a bare stdout.write with no EPIPE handling; formatYaml in core/src/cli/commands/config.ts emits every scalar unquoted. US-633 already established the quoting policy in container-runtime/src/podman/compose.ts, where scalar and mappingKey are private to that module."
+    },
+    {
+      "id": "US-646",
+      "title": "Round-trip positional tooling arguments between CLI and MCP",
+      "description": "As an agent or tooling author, a task's declared positional arguments keep their declared identity through serialization and parsing.",
+      "acceptanceCriteria": [
+        "Argv serialization and argv parsing round-trip for every declared argument shape, including a declaration whose non-trailing optional positional is omitted; an omitted optional positional never lets a later positional occupy its slot on either the MCP or the CLI path.",
+        "Where a declaration cannot express the caller's intent unambiguously, the surface fails with `ToolingInputError` naming the argument rather than binding a value to the wrong name; CLI and MCP emit the identical tag and message for the same input.",
+        "If the chosen resolution rejects non-trailing optional positionals at normalization, the Landofile tooling surface change carries a compatibility acceptance and a guide update; if it fills or reorders instead, the canonical argv remains stable across repeated round trips.",
+        "A failing regression test first captures the mis-bound positional through the MCP serializer and through the CLI parser; focused tests with a positive count, the flags-and-args and MCP guides, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-613", "US-623"],
+      "priority": 60,
+      "notes": "The toolingArgv positional-order item deferred from US-613 and again from US-614. Both halves live in landofile/src/tooling-input.ts: serializeToolingInput drops absent positionals with flatMap while parseToolingArgv assigns them by declaration index, so a hole collapses. The MCP tool projection reaches the serializer through core/src/cli/commands/meta/mcp.ts."
+    },
+    {
+      "id": "US-647",
+      "title": "Rank routes safely across concurrently running apps",
+      "description": "As a user running more than one app, a specific hostname is served by the app that declared it, not by another app's wildcard.",
+      "acceptanceCriteria": [
+        "For any two routes on concurrently applied apps that match the same request, an exact hostname is selected over a wildcard hostname and a longer path prefix over a shorter one, independently of how many routes each app declared.",
+        "The outcome is determined by Lando's emitted priorities rather than by the router's rule-length tie-break; priorities for competing specificity classes are distinct, so an equal-priority wildcard can no longer outrank an exact host.",
+        "Route rank derives from properties of the route itself \u2014 hostname specificity and path length \u2014 rather than from the route's index within its own plan, so plans ranked in isolation compose correctly in the merged router table; the diagnostic fallback keeps its reserved lowest priority and stays below every app route.",
+        "Cross-app hostname ownership is not introduced: two apps may still claim overlapping hostnames, and no hostname registry, cross-app conflict refusal, or per-app priority banding is added.",
+        "A failing regression test first writes two apps' dynamic configs into one watched directory and shows the wildcard winning; the route-shorthand guide is corrected from \"within an app\" to the actual policy; focused tests with a positive count, real-runtime evidence from two concurrently started apps with overlapping hostnames, typecheck, lint, and boundaries pass."
+      ],
+      "dependsOn": ["US-615", "US-624"],
+      "priority": 61,
+      "notes": "Security finding deferred from US-624 review, re-confirmed. prioritizeRoutes in engine/src/planner/route-identity.ts assigns routes.length + 1 - rank per AppPlan, while plugins/proxy-traefik writes one file per app into one watched directory that the router merges into a single priority space. Two failure modes: a multi-route app's wildcard outranking a single-route app's exact host, and the router's longer-rule tie-break preferring a generated HostRegexp over a Host at equal priority."
+    },
+    {
+      "id": "US-648",
+      "title": "Gate live provider tests on a socket that answers",
+      "description": "As a maintainer, live integration suites skip on a host with a stale provider socket instead of failing to connect.",
+      "acceptanceCriteria": [
+        "The live provider socket gate proves the endpoint answers rather than that the path exists, so a socket file left behind by a dead daemon resolves to absent and the suites skip.",
+        "Resolution stays synchronous and cheap enough for a module-level skip predicate, and no live suite is made slower on a host that has no socket at all.",
+        "The explicit socket environment override keeps its precedence; an override naming a dead socket also resolves to absent rather than being exempted from the liveness check.",
+        "A failing regression test first captures a socket path that exists but refuses connection; focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only test infrastructure: no public guide."
+      ],
+      "dependsOn": ["US-638"],
+      "priority": 62,
+      "notes": "Residual from US-638 QA. isSocketOnDisk in engine/src/testing/live-provider-socket.ts keys on statSync(path).isSocket(), which a stale socket inode satisfies, so every test.skipIf gate opens against a dead daemon."
+    },
+    {
+      "id": "US-649",
+      "title": "Emit YAML from the command result envelope",
+      "description": "As a script or agent, a command that accepts `--format=yaml` emits the same result envelope it emits as JSON, not its human text.",
+      "acceptanceCriteria": [
+        "Make `yaml` a boundary-owned machine format derived from the same encoded envelope `json` produces, serialized through `@lando/sdk/yaml`; parsing the YAML yields the same model as parsing the JSON for a command with no bespoke format handling.",
+        "Apply redaction, `--json` field projection, `--jq`, warning capture, and the broken-pipe exit policy to `yaml` identically to `json`, through the one existing seam rather than a parallel one.",
+        "Reconcile the hand-rolled YAML in `meta:config`, `meta:global:config`, `app:config`, and `app:config:translate` against the boundary: delete envelope duplicates, and record in the spec why any survivor differs.",
+        "Decide `meta:doctor`'s report projection explicitly \u2014 keep it with a recorded reason or fold it into the envelope \u2014 rather than leaving it an unexamined exception.",
+        "A failing test first captures `lando info --format=yaml` emitting a tab-separated document; the scripting guide covers the format; applicable standard gates pass."
+      ],
+      "dependsOn": ["US-645", "US-626"],
+      "priority": 63,
+      "notes": "Residual from US-645 Verify, split per spec-ir-residual-2.md S12. core/src/cli/renderer-boundary.ts branches only on format === \"json\"; app:info has no format handling and renders TSV at exit 0."
+    },
+    {
+      "id": "US-658",
+      "title": "Advertise a result format only where it is honored",
+      "description": "As a script or agent, every value a command offers in `--format` is a value that command actually produces.",
+      "acceptanceCriteria": [
+        "Remove `table` and `ndjson` from `universalFormatFlagDefs` and advertise them per command, only where implemented; `text`, `json`, and `yaml` stay universal.",
+        "Fail with the existing `RendererSelectionError`, naming the formats the command does support, when a command is asked for a format it does not implement, instead of emitting text at exit 0.",
+        "Reflect the per-command list in `lando help`, compiled-mode argv parsing, and the generated command-registry manifest, so an MCP client is never offered a format the command drops.",
+        "Land manifest regeneration in the same revision as the capability change, with `codegen:check` clean afterward.",
+        "A failing test first captures a command that implements neither format accepting both at exit 0; applicable standard gates pass."
+      ],
+      "dependsOn": ["US-649"],
+      "priority": 64,
+      "notes": "Second half of the US-645 Verify residual. Separated from US-649 because narrowing advertisement regenerates the command-registry manifest for every command, which is broad golden churn that must not ride along with a semantic change."
+    },
+    {
+      "id": "US-650",
+      "title": "Run the Apache PHP launcher as the planned service user",
+      "description": "As an author, a `php:*` service served through Apache starts under a non-root `user:` without an authored `command:` workaround.",
+      "acceptanceCriteria": [
+        "Pass configuration from `php-via.ts` `apacheStartCommand` as repeated `-c` arguments and write no site configuration, following the US-644 precedent, serving the same document root and override behavior as before.",
+        "Resolve the shared error-page writer in `http-errors.ts` once for every current and future caller rather than per launcher; whatever replaces the start-time write is the mechanism US-659 consumes.",
+        "Check and resolve anything else the daemon writes before PID 1 stabilizes, as Apache's `PidFile` was in US-644.",
+        "Capture a failing regression of the mode failing to start under a non-root `user:` present in its image, through the planner, before the fix.",
+        "Move this row out of `needs-fix` in `DEFAULT_COMMAND_AUDIT.md`; stop the PHP guide implying the launcher requires root; real-runtime evidence shows a served response under a non-root user; applicable standard gates pass."
+      ],
+      "dependsOn": ["US-644", "US-637"],
+      "priority": 65,
+      "notes": "First of three launcher stories split by resolution mechanism. php-via.ts apacheStartCommand writes /usr/share/lando/errors/* and /etc/apache2/sites-available/000-default.conf, and calls ctx.setUser(service.user)."
+    },
+    {
+      "id": "US-659",
+      "title": "Run the nginx-family and FPM launchers as the planned service user",
+      "description": "As an author, `nginx` with a backend, a `static` site, and a `php:*` FPM service all start under a non-root `user:`.",
+      "acceptanceCriteria": [
+        "Write the generated configuration for `nginx.ts` `phpFastcgiCommand`, `static.ts` `defaultStaticCommand`, and `php-via.ts` `fpmStartCommand` somewhere the planned user can write, and point each daemon at that path explicitly.",
+        "Place no writable file inside a root-owned tree and widen no permissions on a path the image owns.",
+        "Consume the shared error-page resolution US-650 established rather than reintroducing a per-launcher write.",
+        "Keep `static:caddy`'s write-free command byte-identical, and keep generated output byte-identical for a service with no authored `user:`.",
+        "Capture a failing regression per mode first; move all three rows out of `needs-fix`; correct the nginx, static, and PHP guides; real-runtime evidence shows a served response under a non-root user; applicable standard gates pass."
+      ],
+      "dependsOn": ["US-650"],
+      "priority": 66,
+      "notes": "Second launcher story. These three need a writable config path rather than command-line directives, which is why they do not share a pull request with US-650."
+    },
+    {
+      "id": "US-660",
+      "title": "Own the volume-backed data trees under the planned service user",
+      "description": "As an author, a Solr service with cores and a MinIO service either work under my non-root `user:` or tell me at plan time that they cannot.",
+      "acceptanceCriteria": [
+        "Make the ownership of the volume-backed data trees correct for the planned user in `solr` with `cores:` and in `minio`, so `precreate-core`, the config overlay copy, and the bucket `mkdir` all succeed.",
+        "Refuse at plan time, before any provider action, with a tagged error naming the service and the option when a data tree cannot be owned by its planned user, in the manner `HomePathCapabilityError` already refuses an unknowable home.",
+        "Join the new error to every plan-carrying union in one pass, inserted once per union, and record it in `sdk/API_COMPATIBILITY.md` and the frozen service-tag fixture.",
+        "Leave the US-631 core-name rules and the US-618A config-overlay identity contract unchanged, with the empty-overlay identity tests still holding.",
+        "Capture a failing regression per mode first; end with no `needs-fix` row in `DEFAULT_COMMAND_AUDIT.md` while keeping its reproduction section current; document the refusal in the Solr and MinIO guides; real-runtime evidence covers both; applicable standard gates pass."
+      ],
+      "dependsOn": ["US-650", "US-631"],
+      "priority": 67,
+      "notes": "Third launcher story. Adds a tagged error to the plan-carrying unions, repeatedly measured here as a sixteen-union repo-wide edit, so it cannot share a pull request with a launcher rewrite."
+    },
+    {
+      "id": "US-651",
+      "title": "Derive the Apache listen port from the planned service port",
+      "description": "As an author, setting `port:` on an Apache or PHP-via-Apache service moves the port the daemon actually listens on, not only its endpoint and healthcheck.",
+      "acceptanceCriteria": [
+        "Emit `Listen <port>` for `apache` from the planned `port:` through the repeated-`-c` mechanism, and derive `<VirtualHost *:<port>>` for `php:*` via `apache` from the same value.",
+        "Leave the service listening on the planned port and not additionally on the image's own `Listen 80`; prove which the change produced rather than adding a second socket.",
+        "Replace, not delete, the `apache.test.ts` assertion that no `Listen` directive is emitted: directives contain `Listen` at the planned port, and a service with no authored `port:` emits byte-identical output to today.",
+        "Record `minio`'s fixed `9001` console port as a known limit in its guide, and state in the Apache and PHP guides that a non-root service still cannot bind below 1024 and that `port:` is the author-side answer.",
+        "A failing test first captures `port: 8080` producing no matching listen directive; real-runtime evidence answers a request on the planned port; applicable standard gates pass."
+      ],
+      "dependsOn": ["US-618E", "US-650"],
+      "priority": 68,
+      "notes": "Residual from US-644 Review, narrowed by re-confirmation: fpm, nginx-with-backend, static nginx/caddy, solr, and minio already derive their listen value from port:. Only apache and php-via-apache ignore it."
+    },
+    {
+      "id": "US-652",
+      "title": "Remove orphaned containers by observed identity",
+      "description": "As a user tearing down an app whose applied state is gone, the containers the provider still holds are actually removed, and the result names only what was removed.",
+      "acceptanceCriteria": [
+        "Remove observed orphan containers through a provider-contract target that does not depend on the provider resolving its own applied plan, with all three bundled adapters implementing it in the same revision as the contract.",
+        "List a service in a teardown result only when that service was stopped and removed; the `selectionPlan` path must stop reporting `group.services` while iterating an empty `services` map.",
+        "Stop returning a silent success from `provider.destroy` when it resolved no plan and took no action; a planless destroy that finds no record yields an explicit no-op outcome.",
+        "Distinguish cache from data volumes for orphan removal under `--volumes`, matching what planful bring-down already does through `pruneVolumeClasses`.",
+        "Record the contract change in `sdk/API_COMPATIBILITY.md` and the frozen service-tag fixture; a failing test first captures an orphan group reporting a removed service while the container survives; real-runtime evidence shows the container present before and absent after; guides plus applicable standard gates pass."
+      ],
+      "dependsOn": ["US-643"],
+      "priority": 69,
+      "notes": "Deferred by US-643 as a provider-contract change. Left whole despite its size: splitting it would produce a revision where the contract exists and no provider implements it."
+    },
+    {
+      "id": "US-653",
+      "title": "Collapse the volume ownership selector to one path",
+      "description": "As a maintainer, a volume's ownership identity is written one way and read the same way, with no pre-ship fallback.",
+      "acceptanceCriteria": [
+        "Remove the `plan.identity?.ownerKey ?? plan.root` fallback from all four selector sites (`bring-up.ts`, `compose.ts`, and both in `bring-down.ts`); a plan without `identity.ownerKey` is migrated at read time or refused, never silently written in a second format.",
+        "State and enforce the relationship between `dev.lando.volume-selector` and `dev.lando.volume-owner` in one place: derive one from the other, or record why both exist and which is authoritative for which operation.",
+        "Carry a source comment naming the invariant so it need not be reconstructed from a progress log.",
+        "Keep volumes created by an earlier build working through a recorded migration path if the labels collapse.",
+        "A failing test first captures a selector written without `identity.ownerKey` going unmatched by the reading side; focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only: no public guide."
+      ],
+      "dependsOn": ["US-629", "US-643"],
+      "priority": 70,
+      "notes": "Called a pre-ship compatibility shim in US-629 Review. The dual path is live at four selector sites; no source comment marks it, and a separate dev.lando.volume-owner label is what provider-docker's planful volume delete actually checks."
+    },
+    {
+      "id": "US-654",
+      "title": "Revalidate the router observation on global lifecycle commands",
+      "description": "As a user following the doctor's advice, running the remediation it names clears the diagnostic it reported.",
+      "acceptanceCriteria": [
+        "Re-observe the router's watcher startup from `meta:global:restart` and `meta:global:rebuild`, updating or clearing `watcher-diagnostic.json` on the same terms as `RouterService.setup`.",
+        "Clear a previously written record when `lando global:restart` succeeds against a healthy watcher, so the command named as the first remediation can affect the condition it remediates.",
+        "Rewrite rather than clear the record when the watcher is still failing, leaving the US-642 failure classification unchanged.",
+        "Keep the doctor check reporting the record as an unrevalidated observation; this story makes the record fresher and does not make doctor probe live.",
+        "A failing test first captures `global:restart` leaving a stale record that doctor keeps reporting; guide plus applicable standard gates pass."
+      ],
+      "dependsOn": ["US-642"],
+      "priority": 71,
+      "notes": "Residual from US-642 Verify. globalRestart is globalStop then globalStart and globalRebuild is install/destroy/build/apply; neither reaches RouterService.setup, the only writer and clearer of the record besides RouterService.stop."
+    },
+    {
+      "id": "US-655",
+      "title": "Re-measure and record the unit-suite baseline",
+      "description": "As a maintainer, the current red unit tests are a measured list with named owners rather than an inherited count.",
+      "acceptanceCriteria": [
+        "Re-measure the baseline on a clean checkout with `bun run test:unit` before changing anything, treating the historical count of thirteen as a lead rather than a fact, and record the measured result.",
+        "Record every failure that reproduces as its own queued item with its own reproduction, never grouping unrelated failures under one cause.",
+        "Fix failures that are self-contained in this story with a failing test captured first, queueing anything larger rather than absorbing it.",
+        "Resolve, queue, or explicitly record as not reproducing each named candidate: `uninstall-runtime-service.test.ts`, `resolve.test.ts`, and `transcript-tail-reader.test.ts`.",
+        "Focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only: no public guide."
+      ],
+      "dependsOn": [],
+      "priority": 72,
+      "notes": "Carried from the first wave's maintainer checklist. Scoped to measurement plus self-contained fixes because 'measure, then fix each' is a plan that produces pull requests, not a pull request."
+    },
+    {
+      "id": "US-661",
+      "title": "Fix the resolve-test isolation cascade",
+      "description": "As a maintainer, one slow test in `core/test/app/resolve.test.ts` fails alone instead of taking every later test in the file with it.",
+      "acceptanceCriteria": [
+        "Stop a test that exceeds its time budget from removing the temp directory out from under the tests that follow it, so a single failure stays a single failure.",
+        "Fix the isolation defect in the harness rather than raising a timeout; justify any raised timeout in a comment on that specific test.",
+        "Keep `withTempApp`, `withTwoTempApps`, and the five tests that chdir mid-test proving what they prove today, including cwd capture and cross-root isolation.",
+        "Make the file's failure count stable across repeated runs on the same tree, which is the observable the current cascade destroys.",
+        "A failing test first captures the cascade; focused tests with a positive count, typecheck, lint, and boundaries pass. Maintainer-only: no public guide."
+      ],
+      "dependsOn": ["US-655"],
+      "priority": 73,
+      "notes": "Specifiable without measuring because it was confirmed from source: resolve.test.ts has no explicit timeouts and its withTempApp/withTwoTempApps helpers chdir into temp roots they remove in finally."
+    },
+    {
+      "id": "US-656",
+      "title": "Make pipeline gate outcomes legible",
+      "description": "As a maintainer, a pipeline step says what happened, so a failing gate is diagnosed once rather than every story.",
+      "acceptanceCriteria": [
+        "Emit enough progress output from the guide-scenarios job to attribute a stall to a step before changing any timeout value; raising the hardcoded `timeout-minutes: 30` in `scripts/build-ci-workflow.ts` without that evidence is out of scope.",
+        "Identify the windows-arm64 stall point from that output and land the resolution where the stall is; if the cause is the runner rather than the repository, record the finding with evidence and quarantine the job explicitly rather than leaving it to flake.",
+        "Record in contributing documentation that the looper Drift Audit step is workspace-local automation outside this repository, name its real owner, and distinguish it from the in-repo `check:codegen-drift` and `check:guide-drift` gates and from `bun audit`, citing the evidence: no `.looper/` directory, no drift-audit package script, no `scripts/*audit*` file.",
+        "Distinguish a skipped gate from a failed one in that record, since conflating them is what let a gate fail for roughly a dozen stories unnoticed, and edit no external automation.",
+        "Make the workflow change through the generator rather than the generated `ci.yml`, keeping `codegen:check` clean; docs gates pass. Maintainer-only: no public guide."
+      ],
+      "dependsOn": [],
+      "priority": 74,
+      "notes": "Merges the windows-arm64 guide-scenarios stall with the external drift-audit gate handoff; each is too small for its own pull request and both are the same defect, a pipeline step that does not say what happened."
     }
   ]
 }

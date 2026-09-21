@@ -33,6 +33,11 @@ import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
 import {
+  type AppliedStateProvider,
+  resolveAppliedPlanEvidence,
+  resolveTeardownEvidence,
+} from "./applied-state-resolution.ts";
+import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
   resolveProviderSelection,
@@ -120,7 +125,7 @@ export const makeRuntimeProviderRegistry = (
         }).providerId;
       });
 
-      const providerFor = (providerId: ProviderId) =>
+      const contributionFor = (providerId: ProviderId) =>
         Effect.gen(function* () {
           const manifests = yield* providerManifests;
           const providerIdText = String(providerId);
@@ -180,28 +185,76 @@ export const makeRuntimeProviderRegistry = (
             privateFileAccess,
             ...(publishRender === undefined ? {} : { publishRender }),
           });
-          const provider = contribution
-            .make(context)
-            .pipe(
-              Effect.provideService(PathsService, paths),
-              Effect.provideService(Downloader, downloader),
-              Effect.provideService(LogFileHelperAssets, logFileHelperAssets),
-              Effect.provideService(AppPlanSanitizer, appPlanSanitizer),
-              Effect.mapError(toProviderUnavailableFromCapability),
-            );
-          const providerWithEvents =
-            eventService._tag === "Some"
-              ? provider.pipe(Effect.provideService(EventService, eventService.value))
-              : provider;
-          return yield* providerWithEvents;
+          return { contribution, context };
         });
 
+      const makeProvider = (descriptor: Effect.Effect.Success<ReturnType<typeof contributionFor>>) => {
+        const { contribution, context } = descriptor;
+        const provider = contribution
+          .make(context)
+          .pipe(
+            Effect.provideService(PathsService, paths),
+            Effect.provideService(Downloader, downloader),
+            Effect.provideService(LogFileHelperAssets, logFileHelperAssets),
+            Effect.provideService(AppPlanSanitizer, appPlanSanitizer),
+            Effect.mapError(toProviderUnavailableFromCapability),
+          );
+        return eventService._tag === "Some"
+          ? provider.pipe(Effect.provideService(EventService, eventService.value))
+          : provider;
+      };
+
+      const providerFor = (providerId: ProviderId) =>
+        contributionFor(providerId).pipe(Effect.flatMap(makeProvider));
+
       const activeProvider = Effect.flatMap(configuredProviderId, providerFor);
+
+      const appliedStateProviders = Effect.gen(function* () {
+        const ids = yield* providerIds;
+        return yield* Effect.forEach(ids, (id) =>
+          Effect.gen(function* () {
+            const descriptor = yield* contributionFor(id);
+            const { contribution, context } = descriptor;
+            const runtime = yield* Effect.cached(makeProvider(descriptor));
+            return {
+              id,
+              appliedPlans: contribution
+                .appliedPlans(context)
+                .pipe(Effect.provideService(PathsService, paths)),
+              isAvailable: runtime.pipe(
+                Effect.flatMap((provider) =>
+                  provider.isAvailable.pipe(
+                    Effect.flatMap((available) =>
+                      available
+                        ? Effect.map(provider.getStatus, (status) => status.running)
+                        : Effect.succeed(false),
+                    ),
+                  ),
+                ),
+                Effect.catchAll(() => Effect.succeed(false)),
+              ),
+              list: (filter) => runtime.pipe(Effect.flatMap((provider) => provider.list(filter))),
+              listVolumes: (filter) =>
+                runtime.pipe(Effect.flatMap((provider) => provider.listVolumes(filter))),
+            } satisfies AppliedStateProvider;
+          }),
+        );
+      });
+
+      const resolveAppliedPlan = (root: AbsolutePath) =>
+        appliedStateProviders.pipe(
+          Effect.flatMap((providers) => resolveAppliedPlanEvidence(root, providers)),
+        );
+
+      const resolveTeardown = (root: AbsolutePath) =>
+        appliedStateProviders.pipe(Effect.flatMap((providers) => resolveTeardownEvidence(root, providers)));
 
       return {
         list: providerIds,
         capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
         select: (plan) => (plan === undefined ? activeProvider : providerFor(plan.provider)),
+        resolveAppliedPlan,
+        resolveTeardownEvidence: resolveTeardown,
       };
     }),
   );

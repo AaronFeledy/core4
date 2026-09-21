@@ -1,4 +1,4 @@
-import { Effect, Exit, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 
 import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
@@ -68,7 +68,11 @@ import {
 import { redactDetails, withApiReason } from "@lando/container-runtime/redact";
 import { makeResolvedProviderOps } from "@lando/container-runtime/runtime-provider";
 import {
+  DESTROYED,
+  DESTROY_NO_OP,
   type ServiceLifecycleOptions,
+  observedRemoval,
+  removeObservedContainer,
   postExactServiceLifecycle as runtimePostExactServiceLifecycle,
   postServiceLifecycle as runtimePostServiceLifecycle,
 } from "@lando/container-runtime/service-lifecycle";
@@ -660,7 +664,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       : removeAppliedPlan(options.appliedPlanState, appId);
   };
 
-  const hydratePlansFromDisk: Effect.Effect<void> =
+  const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
     options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
       ? Effect.void
       : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir).pipe(
@@ -779,6 +783,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       platform,
       capabilities: resolvedCapabilities,
       isAvailable: Effect.succeed(true),
+      appliedPlans:
+        options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
+          ? Effect.succeed([])
+          : listAppliedPlans(options.appliedPlanState, options.appliedPlanStateDir),
       ...resolvedOps,
       planSetup: () =>
         shouldManageRuntime && family === "linux"
@@ -940,31 +948,34 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       destroy: (target, destroyOptions) =>
         Effect.gen(function* () {
           const plan = target.plan ?? (yield* resolvePlan(target.app));
-          const teardown =
-            plan === undefined
-              ? Effect.void
-              : ensureEffect.pipe(
-                  Effect.zipRight(
-                    runtimeBringDown(plan, {
-                      ...(podmanApi === undefined ? {} : { api: podmanApi }),
-                      ctx: LANDO_CTX,
-                      volumes: destroyOptions.volumes,
-                      ...(destroyOptions.purgeCaches === undefined
-                        ? {}
-                        : { purgeCaches: destroyOptions.purgeCaches }),
-                    }).pipe(Effect.asVoid),
-                  ),
-                );
-          if (destroyOptions.removeState === false) {
-            yield* teardown;
-            return;
+          if (plan === undefined) return DESTROY_NO_OP;
+          yield* ensureEffect.pipe(
+            Effect.zipRight(
+              runtimeBringDown(plan, {
+                ...(podmanApi === undefined ? {} : { api: podmanApi }),
+                ctx: LANDO_CTX,
+                volumes: destroyOptions.volumes,
+                ...(destroyOptions.purgeCaches === undefined
+                  ? {}
+                  : { purgeCaches: destroyOptions.purgeCaches }),
+              }).pipe(Effect.asVoid),
+            ),
+          );
+          if (destroyOptions.removeState !== false) {
+            yield* forgetPlan(target.app);
           }
-          const teardownExit = yield* Effect.exit(teardown);
-          yield* forgetPlan(target.app);
-          if (Exit.isFailure(teardownExit)) {
-            return yield* Effect.failCause(teardownExit.cause);
-          }
+          return DESTROYED;
         }),
+      removeObservedService: (observed) =>
+        ensureEffect.pipe(
+          Effect.zipRight(
+            removeObservedContainer(observed, {
+              ...(podmanApi === undefined ? {} : { api: podmanApi }),
+              ctx: LANDO_CTX,
+            }),
+          ),
+          Effect.map(observedRemoval),
+        ),
       logs: (target, logOptions) =>
         Stream.unwrap(
           (target.plan === undefined ? resolvePlan(target.app) : Effect.succeed(target.plan)).pipe(
@@ -1008,6 +1019,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                   plan,
                   { app: plan.id, service: service.name },
                   { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
+                ).pipe(
+                  Effect.map((snapshot) => ({
+                    ...snapshot,
+                    appRoot: plan.root,
+                    labels: scratchLabelsForPlan(plan),
+                  })),
                 ),
               ),
             ),
@@ -1076,6 +1093,10 @@ export const plugin = definePlugin({
       ProviderId.make("lando"),
       {
         id: ProviderId.make("lando"),
+        appliedPlans: (ctx) =>
+          Effect.flatMap(PathsService, (paths) =>
+            listAppliedPlans(ctx.stateStore, paths.pluginStateDir(PLUGIN_NAME)),
+          ),
         make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;

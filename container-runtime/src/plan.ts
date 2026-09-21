@@ -7,7 +7,12 @@ import {
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 
-import { composeConfigBindStrings } from "./compose-configs.ts";
+import {
+  bindSourceForComposeConfig,
+  composeConfigBindStrings,
+  composeConfigMounts,
+} from "./compose-configs.ts";
+import { requiresLongMountSyntax } from "./mount-syntax.ts";
 
 export { composeConfigBindStrings };
 
@@ -91,6 +96,7 @@ export const commonContainerLabels = (
   return {
     ...userLabels,
     "dev.lando.app": plan.id,
+    "dev.lando.app-root": plan.root,
     "dev.lando.service": service.name,
     ...extra,
   };
@@ -109,7 +115,7 @@ interface ContainerBindMountObject {
   readonly Source: string;
   readonly Target: string;
   readonly ReadOnly: boolean;
-  readonly BindOptions: { readonly CreateMountpoint: false };
+  readonly BindOptions?: { readonly CreateMountpoint: false };
 }
 
 interface ContainerVolumeMountObject {
@@ -117,35 +123,62 @@ interface ContainerVolumeMountObject {
   readonly Source: string;
   readonly Target: string;
   readonly ReadOnly: boolean;
-  readonly VolumeOptions: { readonly Subpath: string };
+  readonly VolumeOptions?: { readonly Subpath: string };
 }
 
-type ContainerMountObject = ContainerBindMountObject | ContainerVolumeMountObject;
+type ContainerMountObject =
+  | ContainerBindMountObject
+  | ContainerVolumeMountObject
+  | {
+      readonly Type: "tmpfs";
+      readonly Target: string;
+      readonly ReadOnly: boolean;
+    };
 
 const containerMountObjects = (
+  plan: AppPlan,
   service: ServicePlan,
   options: ContainerHostConfigOptions = {},
 ): ReadonlyArray<ContainerMountObject> => [
-  ...service.mounts.flatMap((mount): ReadonlyArray<ContainerBindMountObject> => {
+  ...(service.appMount !== undefined && requiresLongMountSyntax(service.appMount.target)
+    ? [
+        {
+          Type: service.appMount.realization === "accelerated" ? ("volume" as const) : ("bind" as const),
+          Source:
+            service.appMount.realization === "accelerated"
+              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
+              : service.appMount.source,
+          Target: service.appMount.target,
+          ReadOnly: service.appMount.readOnly,
+        },
+      ]
+    : []),
+  ...service.mounts.flatMap((mount, index): ReadonlyArray<ContainerMountObject> => {
     if (sameAppMountTarget(service.appMount, mount)) return [];
-    if (mount.type !== "bind" || mount.realization !== "passthrough" || mount.createHostPath !== false) {
+    const strictBind =
+      mount.type === "bind" && mount.realization === "passthrough" && mount.createHostPath === false;
+    if (!strictBind && !requiresLongMountSyntax(mount.target)) {
       return [];
     }
+    if (mount.type === "tmpfs") return [{ Type: "tmpfs", Target: mount.target, ReadOnly: mount.readOnly }];
     if (mount.source === undefined)
       return (options.onMissingBindMountSource ?? missingBindMountSource)(mount);
     return [
       {
-        Type: "bind",
-        Source: mount.source,
+        Type: mount.type === "volume" || mount.realization === "accelerated" ? "volume" : "bind",
+        Source:
+          mount.type === "bind" && mount.realization === "accelerated"
+            ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
+            : mount.source,
         Target: mount.target,
         ReadOnly: mount.readOnly,
-        BindOptions: { CreateMountpoint: false },
+        ...(strictBind ? { BindOptions: { CreateMountpoint: false as const } } : {}),
       },
     ];
   }),
   ...service.storage.flatMap(
     (storeMount): ReadonlyArray<ContainerVolumeMountObject> =>
-      storeMount.subpath === undefined
+      storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
         ? []
         : [
             {
@@ -153,9 +186,15 @@ const containerMountObjects = (
               Source: storeMount.store,
               Target: storeMount.target,
               ReadOnly: storeMount.readOnly,
-              VolumeOptions: { Subpath: storeMount.subpath },
+              ...(storeMount.subpath === undefined ? {} : { VolumeOptions: { Subpath: storeMount.subpath } }),
             },
           ],
+  ),
+  ...composeConfigMounts(plan, service).flatMap(
+    (mount): ReadonlyArray<ContainerBindMountObject> =>
+      requiresLongMountSyntax(mount.target)
+        ? [{ Type: "bind", Source: bindSourceForComposeConfig(mount), Target: mount.target, ReadOnly: true }]
+        : [],
   ),
 ];
 
@@ -165,7 +204,7 @@ export const bindMountStrings = (
   options: ContainerHostConfigOptions = {},
 ): ReadonlyArray<string> => {
   const appMounts =
-    service.appMount === undefined
+    service.appMount === undefined || requiresLongMountSyntax(service.appMount.target)
       ? []
       : [
           `${
@@ -180,7 +219,11 @@ export const bindMountStrings = (
     if (mount.source === undefined) {
       (options.onMissingBindMountSource ?? missingBindMountSource)(mount);
     }
-    if (mount.realization === "passthrough" && mount.createHostPath === false) return [];
+    if (
+      requiresLongMountSyntax(mount.target) ||
+      (mount.realization === "passthrough" && mount.createHostPath === false)
+    )
+      return [];
     const source =
       mount.realization === "accelerated"
         ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
@@ -188,7 +231,7 @@ export const bindMountStrings = (
     return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
   });
   const storage = service.storage.flatMap((storeMount) =>
-    storeMount.subpath === undefined
+    storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
       ? [`${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`]
       : [],
   );
@@ -271,7 +314,7 @@ export const containerHostConfigFragment = (
     service.endpoints.flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : [])),
   );
   const binds = bindMountStrings(plan, service, options);
-  const mounts = containerMountObjects(service, options);
+  const mounts = containerMountObjects(plan, service, options);
   const extraHosts = service.hostAliases.map(({ hostname, ip }) => `${hostname}:${ip}`);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),

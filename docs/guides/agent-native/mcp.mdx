@@ -31,6 +31,21 @@ Send integer flags as JSON numbers without a fractional part. For example, the
 For tooling tasks, send positional arguments by name in `args`; Lando applies
 their declared `order`, just as the CLI does. Hyphen-leading values stay positional.
 
+Positions are resolved by `order` and never compacted. A trailing positional
+with no value may be left out. Omit one that has no `default` while a later
+positional has a value (sent by you or filled from its `default`) and the call
+fails with `ToolingInputError`; `field` names the omitted argument and the
+message reads `Positional argument <name> cannot be omitted because a later
+positional argument has a value.` With a task declaring `label` at `order: 0`
+and `channel` at `order: 1` with `default: stable`, this call fails on `label`:
+
+```json
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"app:tag","arguments":{"args":{"channel":"beta"}}}}
+```
+
+The tag, message, and `field` are byte-identical to what the CLI emits for the
+same declaration and input.
+
 <Guide>
   <Scenario id="stdio-conversation" render>
     <Step name="call-a-read-only-tool">

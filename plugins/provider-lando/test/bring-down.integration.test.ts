@@ -7,6 +7,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import { volumeSelectorValue } from "@lando/container-runtime/podman/volume-prune";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -17,6 +18,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
@@ -24,6 +26,9 @@ import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-inte
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("bringdownapp");
 const appRoot = AbsolutePath.make("/tmp/lando-bringdown-app");
+/** The selector the writer produces for this fixture root, derived the way production derives it. */
+const volumeSelector = (id: string, volumeClass: "cache" | "data"): string =>
+  volumeSelectorValue({ providerId, appId: id, ownerKey: appIdentityKey("owner", appRoot), volumeClass });
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
   source: "bring-down.integration.test",
@@ -119,7 +124,7 @@ const makeFakeApi = () => {
     plan.stores.map((store) => [
       store.name,
       {
-        "dev.lando.volume-selector": `lando:${plan.id}:${store.kind === "cache" ? "cache" : "data"}`,
+        "dev.lando.volume-selector": volumeSelector(plan.id, store.kind === "cache" ? "cache" : "data"),
       },
     ]),
   );
@@ -271,7 +276,9 @@ describe("provider-lando bringDown", () => {
           if (request.method === "GET" && request.path === "/volumes/foreign-data") {
             return {
               status: 200,
-              body: JSON.stringify({ Labels: { "dev.lando.volume-selector": "lando:otherapp:data" } }),
+              body: JSON.stringify({
+                Labels: { "dev.lando.volume-selector": volumeSelector("otherapp", "data") },
+              }),
             };
           }
           if (request.method === "DELETE" && request.path === "/volumes/foreign-data") {
@@ -301,7 +308,7 @@ describe("provider-lando bringDown", () => {
     const filters = JSON.parse(
       decodeURIComponent(new URL(`http://localhost${prune?.path ?? ""}`).searchParams.get("filters") ?? "{}"),
     ) as Record<string, readonly string[]>;
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:bringdownapp:cache"]);
+    expect(filters.label).toEqual([`dev.lando.volume-selector=${volumeSelector(plan.id, "cache")}`]);
     expect(filters["label!"]).toBeUndefined();
     expect(filters.all).toBeUndefined();
   });
@@ -319,7 +326,7 @@ describe("provider-lando bringDown", () => {
       string,
       readonly string[]
     >;
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:bringdownapp:data"]);
+    expect(filters.label).toEqual([`dev.lando.volume-selector=${volumeSelector(plan.id, "data")}`]);
     expect(filters.all).toBeUndefined();
     expect(pruneUrl.searchParams.get("all")).toBe("true");
   });
@@ -338,8 +345,8 @@ describe("provider-lando bringDown", () => {
       readonly string[]
     >;
     expect(filters.label).toEqual([
-      "dev.lando.volume-selector=lando:bringdownapp:cache",
-      "dev.lando.volume-selector=lando:bringdownapp:data",
+      `dev.lando.volume-selector=${volumeSelector(plan.id, "cache")}`,
+      `dev.lando.volume-selector=${volumeSelector(plan.id, "data")}`,
     ]);
     expect(filters.all).toBeUndefined();
     expect(pruneUrl.searchParams.get("all")).toBe("true");
@@ -443,7 +450,7 @@ describe("provider-lando bringDown", () => {
               Labels: {
                 "dev.lando.app": "bringdownapp",
                 "dev.lando.provider": "lando",
-                "dev.lando.volume-selector": "lando:bringdownapp:data",
+                "dev.lando.volume-selector": volumeSelector(plan.id, "data"),
               },
             },
           }),
@@ -457,7 +464,7 @@ describe("provider-lando bringDown", () => {
               Labels: {
                 "dev.lando.app": "other",
                 "dev.lando.provider": "lando",
-                "dev.lando.volume-selector": "lando:other:data",
+                "dev.lando.volume-selector": volumeSelector("other", "data"),
               },
             },
           }),

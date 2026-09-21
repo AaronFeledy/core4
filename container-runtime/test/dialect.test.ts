@@ -1,14 +1,29 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  dockerLifecycleDialect,
   dockerPullDialect,
   dockerWaitDialect,
+  libpodLifecycleDialect,
   libpodPullDialect,
   libpodWaitDialect,
   parseImageReference,
 } from "../src/dialect.ts";
 
 describe("container engine dialects", () => {
+  test("selects engine-specific lifecycle behavior", () => {
+    // Given / When / Then
+    expect(libpodLifecycleDialect).toEqual({
+      wait: libpodWaitDialect,
+      sharedNetworkAttachment: "create-body",
+      volumePrune: { enabled: true },
+    });
+    expect(dockerLifecycleDialect).toEqual({
+      wait: dockerWaitDialect,
+      sharedNetworkAttachment: "connect-after-create",
+    });
+  });
+
   test("parses tagged, untagged, registry-port, and digest image references", () => {
     // Given
     const references = ["nginx", "nginx:1.27", "registry:5000/team/app:v1", "team/app:v1@sha256:abc"];

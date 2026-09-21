@@ -68,6 +68,23 @@ const DEFAULT_MAX_DEPTH = 64;
 
 const ANCHOR_PREFIX_PATTERN = new RegExp(`^&${YAML_REFERENCE_NAME_PATTERN.source}\\s+`);
 
+const MAPPING_ENTRY_PATTERN = /^(<<|[A-Za-z0-9_.@/-]+(?::[A-Za-z0-9_.@/-]+)*):((?:\s+.*)?)$/;
+const MAPPING_ENTRY_FALLBACK_PATTERN = /^(<<|[A-Za-z0-9_.@/-]+):(.*)$/;
+
+const splitMappingEntry = (
+  text: string,
+  options: { readonly compactValue?: boolean } = {},
+): readonly [string, string] | undefined => {
+  const match =
+    text.match(MAPPING_ENTRY_PATTERN) ??
+    (options.compactValue === true ? text.match(MAPPING_ENTRY_FALLBACK_PATTERN) : null);
+  if (match === null) return undefined;
+  const key = match[1];
+  const rawValue = match[2];
+  if (key === undefined || rawValue === undefined) return undefined;
+  return [key, rawValue];
+};
+
 const assignKeyedValue = (
   references: YamlReferenceState,
   target: Record<string, unknown>,
@@ -102,13 +119,14 @@ const assertDepth = (filePath: string, line: number, depth: number, maxDepth: nu
 };
 
 const stripComment = (line: string): string => {
-  const colonIdx = line.indexOf(":");
-  if (colonIdx === -1) {
+  const indent = line.match(/^ */)?.[0] ?? "";
+  const entry = splitMappingEntry(line.slice(indent.length), { compactValue: true });
+  if (entry === undefined) {
     return line.replace(/\s+#.*$/, "");
   }
 
-  const beforeColon = line.slice(0, colonIdx + 1);
-  const afterColon = line.slice(colonIdx + 1);
+  const [key, afterColon] = entry;
+  const beforeColon = `${indent}${key}:`;
   const valueIdx = afterColon.search(/\S/);
   if (valueIdx === -1) {
     return line;
@@ -219,10 +237,15 @@ const parseInlineArray = (
 };
 
 const unescapeDoubleQuotedScalar = (value: string): string =>
-  value.replace(/\\([\\"nrt])/g, (_, escaped: string) => {
+  value.replace(/\\(u[0-9a-fA-F]{4}|[\\"/nrtbf])/g, (_, escaped: string) => {
+    if (escaped.startsWith("u") && escaped.length === 5) {
+      return String.fromCharCode(Number.parseInt(escaped.slice(1), 16));
+    }
     if (escaped === "n") return "\n";
     if (escaped === "r") return "\r";
     if (escaped === "t") return "\t";
+    if (escaped === "b") return "\b";
+    if (escaped === "f") return "\f";
     return escaped;
   });
 
@@ -378,26 +401,26 @@ export const detectLandofileTags: (options: {
       const sequenceColumn = line.indent + 3;
       occurrences.push(...detectTagsInValue(sequenceValue, { line: line.line, column: sequenceColumn }));
 
-      const mapMatch = sequenceValue.match(/^(?:<<|[A-Za-z0-9_.@/-]+):/);
-      if (mapMatch !== null) {
-        const colon = sequenceValue.indexOf(":");
+      const sequenceEntry = splitMappingEntry(sequenceValue);
+      if (sequenceEntry !== undefined) {
+        const [sequenceKey, sequenceRawValue] = sequenceEntry;
         occurrences.push(
-          ...detectTagsInValue(sequenceValue.slice(colon + 1), {
+          ...detectTagsInValue(sequenceRawValue, {
             line: line.line,
-            column: sequenceColumn + colon + 1,
+            column: sequenceColumn + sequenceKey.length + 1,
           }),
         );
       }
       continue;
     }
 
-    const mapMatch = line.text.match(/^(?:<<|[A-Za-z0-9_.@/-]+):/);
-    if (mapMatch === null) continue;
-    const colon = line.text.indexOf(":");
+    const entry = splitMappingEntry(line.text, { compactValue: true });
+    if (entry === undefined) continue;
+    const [key, rawValue] = entry;
     occurrences.push(
-      ...detectTagsInValue(line.text.slice(colon + 1), {
+      ...detectTagsInValue(rawValue, {
         line: line.line,
-        column: line.indent + colon + 2,
+        column: line.indent + key.length + 2,
       }),
     );
   }
@@ -433,12 +456,12 @@ const parseMap = (
     }
     if (line.text.startsWith("- ")) break;
 
-    const match = line.text.match(/^(<<|[A-Za-z0-9_.@/-]+):(.*)$/);
-    if (match === null) {
+    const entry = splitMappingEntry(line.text, { compactValue: true });
+    if (entry === undefined) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
 
-    const [, key, rawValue] = match as [string, string, string];
+    const [key, rawValue] = entry;
     const valueColumn = line.indent + key.length + 2;
     const reference = parseYamlReferenceSyntax(rawValue, { line: line.line, column: valueColumn });
     const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
@@ -547,9 +570,9 @@ const parseList = (
       );
     }
 
-    const mapMatch = value.match(/^(<<|[A-Za-z0-9_.@/-]+):((?:\s+.*)?)$/);
-    if (mapMatch !== null) {
-      const [, firstKey, firstRawValue] = mapMatch as [string, string, string];
+    const mapEntry = splitMappingEntry(value);
+    if (mapEntry !== undefined) {
+      const [firstKey, firstRawValue] = mapEntry;
       const [item, nextIndex] = parseListItemMap(
         lines,
         filePath,
@@ -649,11 +672,11 @@ const parseListItemMap = (
       );
     }
 
-    const match = line.text.match(/^(<<|[A-Za-z0-9_.@/-]+):(.*)$/);
-    if (match === null) {
+    const entry = splitMappingEntry(line.text, { compactValue: true });
+    if (entry === undefined) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
-    const [, key, rawValue] = match as [string, string, string];
+    const [key, rawValue] = entry;
     index += 1;
     consumeKey(key, rawValue, line.line, childIndent);
   }

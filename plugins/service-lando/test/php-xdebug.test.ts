@@ -203,6 +203,8 @@ describe("PHP xdebug option", () => {
       "lando.boot:scaffold",
       "service-lando.php:prerequisites",
       "service-lando.php:xdebug",
+      "service-lando.php:apache-default-site",
+      "service-lando.http-errors:pages",
     ]);
   });
 

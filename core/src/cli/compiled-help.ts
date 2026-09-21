@@ -1,6 +1,7 @@
 /** Cold-path help adapters avoid loading OCLIF. */
 import { Effect, Schema } from "effect";
 
+import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
 
 import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
@@ -133,13 +134,17 @@ export const buildHelpCatalog = (cache?: AppCommandIndexPayload | null): HelpCat
   };
 };
 
-export const printHelpCatalogJson = (cache?: AppCommandIndexPayload | null): void => {
+export const printHelpCatalogJson = (
+  cache?: AppCommandIndexPayload | null,
+  format: CommandResultEnvelopeFormat = "json",
+): void => {
   const line = Effect.runSync(
     encodeCommandResult({
       command: HELP_CATALOG_COMMAND,
       resultSchema: HelpCatalogResult,
       outcome: { _tag: "success", value: buildHelpCatalog(cache) },
       redactor: identityRedactor,
+      format,
     }),
   );
   emitResultLine(line);

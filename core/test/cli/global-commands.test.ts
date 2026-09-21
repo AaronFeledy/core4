@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
 import {
@@ -9,7 +9,9 @@ import {
   GlobalDestroyConfirmationError,
   NoProviderInstalledError,
   ProviderUnavailableError,
+  RouterWatcherError,
 } from "@lando/core/errors";
+import { makeLandoPaths } from "@lando/core/paths";
 import {
   AbsolutePath,
   type AppPlan,
@@ -34,6 +36,7 @@ import {
   GlobalAppService,
   type LandoEvent,
   PluginRegistry,
+  RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   SecretStore,
@@ -41,6 +44,7 @@ import {
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { PreAppStartEvent } from "@lando/sdk/events";
+import { makeTestRouterService } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -96,8 +100,15 @@ type HarnessLayer = Layer.Layer<
   | FileSystem
   | GlobalAppService
   | PluginRegistry
+  | RouterService
   | RuntimeProviderRegistry
 >;
+
+interface HarnessOptions {
+  readonly failInspect?: boolean;
+  readonly revalidateStartup?: Effect.Effect<void, RouterWatcherError>;
+  readonly timeline?: Array<string>;
+}
 
 interface Harness {
   readonly dataRoot: string;
@@ -176,7 +187,7 @@ const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => 
 const makeHarness = async (
   dataRoot: string,
   moduleRoot: string,
-  options: { readonly failInspect?: boolean } = {},
+  options: HarnessOptions = {},
 ): Promise<Harness> => {
   const modulePath = await writeGlobalServiceModule(moduleRoot);
   const manifest = Schema.decodeSync(PluginManifest)({
@@ -207,6 +218,7 @@ const makeHarness = async (
     destroy: (target, options) =>
       Effect.sync(() => {
         calls.destroy.push({ target, options });
+        return { kind: "destroyed" as const };
       }),
     inspect: (target) => {
       calls.inspect.push({ target });
@@ -267,6 +279,7 @@ const makeHarness = async (
       publish: (event) =>
         Effect.sync(() => {
           events.push(event);
+          options.timeline?.push(event._tag);
         }),
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<LandoEvent>(),
@@ -275,6 +288,10 @@ const makeHarness = async (
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
+    Layer.succeed(RouterService, {
+      ...makeTestRouterService(),
+      revalidateStartup: options.revalidateStartup ?? Effect.void,
+    }),
     Layer.succeed(BuildOrchestrator, buildOrchestrator),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -298,7 +315,7 @@ const makeHarness = async (
 
 const withHarness = async <T>(
   run: (harness: Harness) => Promise<T>,
-  options: { readonly failInspect?: boolean } = {},
+  options: HarnessOptions = {},
 ): Promise<T> =>
   withTempRoots(async (dataRoot) => {
     const moduleRoot = await mkdtemp(join(process.cwd(), ".lando-global-command-module-"));
@@ -321,6 +338,41 @@ const materializeDist = (
   );
 
 const distPath = (dataRoot: string): string => join(dataRoot, "global", ".lando.dist.yml");
+
+const watcherRecordPath = (): string =>
+  join(makeLandoPaths().globalAppRoot, "proxy-traefik", "watcher-diagnostic.json");
+
+const writeWatcherRecord = async (observedAt: string): Promise<void> => {
+  const path = watcherRecordPath();
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(
+    path,
+    JSON.stringify({
+      version: 1,
+      observedAt,
+      providerId: "lando",
+      watcherHost: "linux-host",
+      failureClass: "inotify-limit",
+      detail: "failed to create fsnotify watcher: too many open files",
+    }),
+  );
+};
+
+const failingWatcherObservation = (observedAt: string) =>
+  Effect.promise(() => writeWatcherRecord(observedAt)).pipe(
+    Effect.zipRight(
+      Effect.fail(
+        new RouterWatcherError({
+          message: "Router file-provider watcher failed.",
+          proxyId: "traefik",
+          failureClass: "inotify-limit",
+          watcherHost: "linux-host",
+          detail: "failed to create fsnotify watcher: too many open files",
+          remediation: "Increase the host inotify limits and restart the global app.",
+        }),
+      ),
+    ),
+  );
 
 const parseDist = async (path: string) => {
   const content = await readFile(path, "utf8");
@@ -694,7 +746,6 @@ describe("meta:global command effects", () => {
       expect(result.distLandofile).toBe(distPath(harness.dataRoot));
       expect(result.userLandofile).toBe(join(harness.dataRoot, "global", ".lando.yml"));
       if (result.landofile === undefined) throw new Error("expected landofile");
-      if (result.landofile === undefined) throw new Error("expected landofile");
       expect(result.landofile.services).toHaveProperty("proxy");
     });
   });
@@ -832,6 +883,88 @@ describe("meta:global command effects", () => {
         "post-global-start",
       ]);
     });
+  });
+
+  test("restart clears a stale router watcher record", async () => {
+    await withHarness(
+      async (harness) => {
+        // Given a persisted failure from an earlier startup.
+        await materializeDist(harness);
+        await writeWatcherRecord("2026-09-19T10:00:00.000Z");
+        const path = watcherRecordPath();
+        expect(await Bun.file(path).exists()).toBe(true);
+
+        // When the restarted router is healthy.
+        await Effect.runPromise(globalRestart().pipe(Effect.provide(harness.layer)));
+
+        // Then the healthy observation clears the stale record on disk.
+        expect(await Bun.file(path).exists()).toBe(false);
+      },
+      { revalidateStartup: Effect.promise(() => rm(watcherRecordPath())) },
+    );
+  });
+
+  test("restart fails when the watcher is still broken and keeps the record", async () => {
+    const observedAt = "2026-09-20T10:00:00.000Z";
+    await withHarness(
+      async (harness) => {
+        // Given a stale diagnostic and a watcher that still fails.
+        await materializeDist(harness);
+        await writeWatcherRecord("2026-09-19T10:00:00.000Z");
+
+        // When restart re-observes startup.
+        const exit = await Effect.runPromiseExit(globalRestart().pipe(Effect.provide(harness.layer)));
+
+        // Then the typed failure retains a fresh diagnostic, not the stale one.
+        expect(failureOf(exit)).toMatchObject({ _tag: "RouterWatcherError" });
+        expect(await Bun.file(watcherRecordPath()).exists()).toBe(true);
+        expect(JSON.parse(await readFile(watcherRecordPath(), "utf8"))).toMatchObject({ observedAt });
+      },
+      { revalidateStartup: failingWatcherObservation(observedAt) },
+    );
+  });
+
+  test("rebuild does not publish the post event when revalidation fails", async () => {
+    const observedAt = "2026-09-20T10:00:00.000Z";
+    await withHarness(
+      async (harness) => {
+        // Given a previously recorded watcher failure that persists after rebuild.
+        await writeWatcherRecord("2026-09-19T10:00:00.000Z");
+
+        // When rebuild revalidates startup.
+        const exit = await Effect.runPromiseExit(globalRebuild({}).pipe(Effect.provide(harness.layer)));
+
+        // Then no successful post event escapes the typed watcher failure.
+        expect(failureOf(exit)).toMatchObject({ _tag: "RouterWatcherError" });
+        expect(harness.events.map((event) => event._tag)).toContain("pre-global-rebuild");
+        expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
+        expect(JSON.parse(await readFile(watcherRecordPath(), "utf8"))).toMatchObject({ observedAt });
+      },
+      { revalidateStartup: failingWatcherObservation(observedAt) },
+    );
+  });
+
+  test("rebuild revalidates before publishing the post event", async () => {
+    // Given one ordered timeline for router observations and published events.
+    const timeline: Array<string> = [];
+    await withHarness(
+      async (harness) => {
+        // When rebuild completes with a healthy watcher.
+        const exit = await Effect.runPromiseExit(globalRebuild({}).pipe(Effect.provide(harness.layer)));
+
+        // Then observation precedes the successful post event.
+        expect(Exit.isSuccess(exit)).toBe(true);
+        expect(harness.events.map((event) => event._tag)).toContain("post-global-rebuild");
+        expect(timeline).toContain("router-revalidated");
+        expect(timeline.indexOf("router-revalidated")).toBeLessThan(timeline.indexOf("post-global-rebuild"));
+      },
+      {
+        timeline,
+        revalidateStartup: Effect.sync(() => {
+          timeline.push("router-revalidated");
+        }),
+      },
+    );
   });
 
   test("rebuild materializes, destroys, builds, applies the built plan with reconcile=true, and inspects services", async () => {

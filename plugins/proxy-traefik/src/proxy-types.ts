@@ -79,7 +79,14 @@ export interface TraefikRouterLists {
   readonly bindAddress?: string;
 }
 
+export type TraefikLogObservation = {
+  readonly providerId: string;
+  readonly text: string;
+};
+
 export interface TraefikProxyDependencies {
+  readonly readTraefikLogs?: () => Effect.Effect<TraefikLogObservation, unknown>;
+  readonly redactDiagnostic?: (text: string) => string;
   readonly certificateAuthority: CertificateAuthorityShape;
   readonly fileSystem: ProxyFileSystem;
   readonly paths: ProxyPaths;

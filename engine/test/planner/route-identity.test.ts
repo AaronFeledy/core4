@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import { RouteInputError } from "@lando/sdk/errors";
-import { RoutePlan } from "@lando/sdk/schema";
+import {
+  ROUTE_PATH_WEIGHT_CAP,
+  ROUTE_PRIORITY_DIAGNOSTIC,
+  ROUTE_PRIORITY_EXACT_BASE,
+  ROUTE_PRIORITY_MAX,
+  ROUTE_PRIORITY_WILDCARD_BASE,
+  RoutePlan,
+} from "@lando/sdk/schema";
 import { Effect, Either, Schema } from "effect";
 import { makeRouteAccumulator, prioritizeRoutes } from "../../src/planner/route-identity.ts";
 
@@ -106,33 +113,103 @@ test("dedupes omitted filters and empty filters, and hostname case", async () =>
   expect(refs).toEqual([{ index: 0 }]);
 });
 
-test("ranks exact over wildcard and longest paths without path-length or route-count caps", () => {
+test("keeps the minimum exact priority above the capped maximum wildcard priority", () => {
   // Given
   const routes = [
-    route({ hostname: "*.example.test", pathPrefix: `/${"x".repeat(10001)}` }),
-    ...Array.from({ length: 1001 }, (_, index) => route({ pathPrefix: `/${"x".repeat(index)}` })),
+    route({ hostname: "www.a.test" }),
+    route({ hostname: "*.a.test", pathPrefix: `/${"x".repeat(70_000)}` }),
+  ];
+  // When
+  const [exact, wildcard] = prioritizeRoutes(routes);
+  // Then
+  if (exact === undefined || wildcard === undefined) throw new Error("expected both ranked routes");
+  expect(exact.priority).toBeGreaterThan(wildcard.priority);
+  expect(exact.priority).toBe(ROUTE_PRIORITY_EXACT_BASE + "/".length);
+  expect(wildcard.priority).toBe(ROUTE_PRIORITY_WILDCARD_BASE + ROUTE_PATH_WEIGHT_CAP);
+});
+
+test.each(["www.a.test", "*.a.test"])("increases priority with path length within %s", (hostname) => {
+  // Given
+  const routes = ["/", "/a", "/ab"].map((pathPrefix) => route({ hostname, pathPrefix }));
+  // When
+  const [root, short, long] = prioritizeRoutes(routes);
+  // Then
+  if (root === undefined || short === undefined || long === undefined)
+    throw new Error("expected all three ranked paths");
+  expect(short.priority).toBeGreaterThan(root.priority);
+  expect(long.priority).toBeGreaterThan(short.priority);
+});
+
+test.each(["www.a.test", "*.a.test"])(
+  "keeps %s priority identical alone, with 1000 other routes, and after reversal",
+  (hostname) => {
+    // Given
+    const target = route({ hostname, pathPrefix: "/api" });
+    const routes = [
+      target,
+      ...Array.from({ length: 1000 }, (_, index) =>
+        route({ hostname: index % 2 === 0 ? `*.other-${index}.test` : `other-${index}.test` }),
+      ),
+    ];
+    // When
+    const alone = prioritizeRoutes([target])[0];
+    const inPlan = prioritizeRoutes(routes).find((item) => item.hostname === hostname);
+    const reversed = prioritizeRoutes([...routes].reverse()).find((item) => item.hostname === hostname);
+    // Then
+    expect(alone).toBeDefined();
+    expect(inPlan).toBeDefined();
+    expect(reversed).toBeDefined();
+    expect(inPlan?.priority).toBe(alone?.priority);
+    expect(reversed?.priority).toBe(alone?.priority);
+    expect(reversed?.priority).toBe(inPlan?.priority);
+  },
+);
+
+test.each([
+  [route({ hostname: "*.a.test" }), route({ hostname: "*.z.test" })],
+  [route({ hostname: "www.a.test", pathPrefix: "/x" }), route({ hostname: "www.b.test", pathPrefix: "/y" })],
+])("gives equal priority to equally specific routes: %o and %o", (first, second) => {
+  // Given
+  const routes = [first, second];
+  // When
+  const [left, right] = prioritizeRoutes(routes);
+  // Then
+  expect(left).toBeDefined();
+  expect(right).toBeDefined();
+  expect(left?.priority).toBe(right?.priority);
+});
+
+test("keeps every priority inside the published space and above diagnostics", () => {
+  // Given
+  const routes = [
+    route({ hostname: "*.a.test" }),
+    route({ hostname: "www.a.test" }),
+    route({ hostname: "*.z.test", pathPrefix: `/${"x".repeat(70_000)}` }),
+    route({ hostname: "www.z.test", pathPrefix: `/${"x".repeat(70_000)}` }),
   ];
   // When
   const ranked = prioritizeRoutes(routes);
   // Then
-  expect(new Set(ranked.map((item) => item.priority)).size).toBe(1002);
-  expect(ranked[0]?.priority).toBe(2);
-  expect(ranked.at(-1)?.priority).toBe(1003);
+  for (const item of ranked) {
+    expect(item.priority).toBeGreaterThanOrEqual(ROUTE_PRIORITY_WILDCARD_BASE);
+    expect(item.priority).toBeLessThanOrEqual(ROUTE_PRIORITY_MAX);
+    expect(item.priority).toBeGreaterThan(ROUTE_PRIORITY_DIAGNOSTIC);
+  }
 });
 
-test("uses lexical hostname ties independent of input order", () => {
+test("preserves route array length and input indexes when assigning priorities", () => {
   // Given
   const routes = [
     route({ hostname: "*.z.test" }),
-    route({ hostname: "z.*.test" }),
+    route({ hostname: "www.a.test", pathPrefix: "/a" }),
+    route({ hostname: "www.a.test", pathPrefix: "/ab" }),
     route({ hostname: "*.a.test" }),
   ];
   // When
   const ranked = prioritizeRoutes(routes);
-  const reversed = prioritizeRoutes([...routes].reverse());
   // Then
-  const byHost = (items: readonly RoutePlan[]) =>
-    Object.fromEntries(items.map((item) => [item.hostname, item.priority]));
-  expect(byHost(ranked)).toEqual(byHost(reversed));
-  expect(byHost(ranked)).toEqual({ "*.a.test": 4, "*.z.test": 3, "z.*.test": 2 });
+  expect(ranked).toHaveLength(routes.length);
+  expect(ranked.map(({ hostname, pathPrefix }) => [hostname, pathPrefix])).toEqual(
+    routes.map(({ hostname, pathPrefix }) => [hostname, pathPrefix]),
+  );
 });

@@ -6,6 +6,7 @@ import type {
   ProxySetupError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
+  RouterWatcherError,
 } from "@lando/sdk/errors";
 import type { AppPlan, ProxyApplyResult, RouterConfig, ServiceName } from "@lando/sdk/schema";
 import type { ProviderError, RouterServiceShape, RuntimeProviderShape } from "@lando/sdk/services";
@@ -21,7 +22,7 @@ export const applyAppRoutes = (
   landofileRouter?: RouterConfig,
 ): Effect.Effect<
   ProxyApplyResult,
-  ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | ProxyApplyError
+  ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError | ProxyApplyError
 > =>
   Effect.gen(function* () {
     if (!routerEnabled(plan)) {

@@ -758,6 +758,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
     select: () => Effect.succeed(runtimeProvider),
+    resolveAppliedPlan: () => Effect.succeed(undefined),
   };
 
   const globalPaths = {

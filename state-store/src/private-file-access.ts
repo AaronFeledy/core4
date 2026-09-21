@@ -4,6 +4,7 @@ import {
   type PrivateFileAccessSpawn,
   bunPrivateFileAccessSpawn,
   makePrivateFileAccessWorker,
+  privateFileAclExecutable,
 } from "./private-file-worker.ts";
 
 export type OwnerOnlyFileAccess = (path: string) => Promise<void>;
@@ -15,6 +16,7 @@ export interface PrivateFileAccess {
 
 export interface PrivateFileAccessLiveOptions {
   readonly platform?: NodeJS.Platform;
+  readonly arch?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly spawn?: PrivateFileAccessSpawn;
 }
@@ -36,6 +38,16 @@ export class PrivateFileAccessService extends Context.Tag("@lando/state-store/Pr
 
 type ClosablePrivateFileAccess = PrivateFileAccess & { readonly close: () => Promise<void> };
 
+const unavailableAccess = (): ClosablePrivateFileAccess => ({
+  enforce: async (path: string) => {
+    throw new PrivateFileAccessError(path);
+  },
+  verify: async (path: string) => {
+    throw new PrivateFileAccessError(path);
+  },
+  close: async () => undefined,
+});
+
 export const makePrivateFileAccessLive = (
   options: PrivateFileAccessLiveOptions = {},
 ): Layer.Layer<PrivateFileAccessService> =>
@@ -53,21 +65,19 @@ export const makePrivateFileAccessLive = (
         }
         const env = options.env ?? process.env;
         const systemRoot = env.SystemRoot ?? env.WINDIR;
-        if (systemRoot === undefined || !win32.isAbsolute(systemRoot)) {
-          return {
-            enforce: async (path: string) => {
-              throw new PrivateFileAccessError(path);
-            },
-            verify: async (path: string) => {
-              throw new PrivateFileAccessError(path);
-            },
-            close: async () => undefined,
-          };
-        }
+        if (systemRoot === undefined || !win32.isAbsolute(systemRoot)) return unavailableAccess();
+        const powershellPath = privateFileAclExecutable({
+          systemRoot,
+          env,
+          arch: options.arch ?? process.arch,
+          platform,
+        });
+        if (powershellPath === undefined) return unavailableAccess();
         const worker = makePrivateFileAccessWorker({
           systemRoot,
           env,
           spawn: options.spawn ?? bunPrivateFileAccessSpawn,
+          powershellPath,
         });
         return {
           enforce: async (path: string) => {

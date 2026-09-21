@@ -431,7 +431,10 @@ const makeStartLayer = (
           volumes: destroyOptions.volumes,
           removeState: destroyOptions.removeState ?? false,
         });
-      }).pipe(Effect.zipRight(options.destroyEffect ?? Effect.void)),
+      }).pipe(
+        Effect.zipRight(options.destroyEffect ?? Effect.void),
+        Effect.as({ kind: "destroyed" as const }),
+      ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -680,7 +683,6 @@ const makeAutoStartLayer = async (options: {
     stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.void,
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -1954,7 +1956,6 @@ describe("lando start", () => {
       stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: () => Effect.void,
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
       run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -2084,7 +2085,6 @@ describe("lando start", () => {
       stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: () => Effect.void,
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
       run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -2207,7 +2207,6 @@ describe("lando start", () => {
       stop: () => Effect.void,
       restart: () => Effect.void,
       waitForExit: () => Effect.succeed({ exitCode: 0 }),
-      destroy: () => Effect.void,
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
       run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -2335,6 +2334,7 @@ describe("lando start", () => {
       destroy: (_target, options) =>
         Effect.sync(() => {
           destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
+          return { kind: "destroyed" as const };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -2459,6 +2459,7 @@ describe("lando start", () => {
       destroy: (_target, options) =>
         Effect.sync(() => {
           destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
+          return { kind: "destroyed" as const };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -2607,7 +2608,7 @@ describe("lando start", () => {
       destroy: (_target, options) =>
         Effect.gen(function* () {
           callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
-          yield* Effect.fail(
+          return yield* Effect.fail(
             new ProviderUnavailableError({
               providerId: "lando",
               operation: "destroy",
@@ -2760,6 +2761,7 @@ describe("lando start", () => {
       destroy: (_target, options) =>
         Effect.sync(() => {
           callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
+          return { kind: "destroyed" as const };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),

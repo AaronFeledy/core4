@@ -153,6 +153,9 @@ export const makeStreamFrameSinkLive = (
             yield* renderer.output.stdout(`${line}\n`);
             return;
           }
+          // A YAML run emits one envelope document, so a raw chunk would
+          // corrupt it. Frame transport belongs to the framed JSON stream.
+          if (format === "yaml") return;
           const chunk = redactor.redactString(frame.chunk);
           if (frame.raw === true) {
             yield* frame._tag === "stderr" ? renderer.output.stderr(chunk) : renderer.output.stdout(chunk);

@@ -13,10 +13,10 @@ import { serializeToolingInput } from "@lando/landofile/tooling-input";
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, Layer, Predicate, Schema } from "effect";
+import { Effect, type Either, Layer, Predicate, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { McpToolInputError, type McpTransportError } from "@lando/sdk/errors";
+import { McpToolInputError, type McpTransportError, type ToolingInputError } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
 import { CommandRegistry, ConfigService, type RegisteredCommand } from "@lando/sdk/services";
 
@@ -83,11 +83,18 @@ const toolingMemberMetadata = (member: ToolingInput["flags"][number] | ToolingIn
   };
 };
 
-export const toolingArgvFromInput = (declaration: ToolingInput, input: unknown): ReadonlyArray<string> => {
-  if (!Predicate.isRecord(input)) return [];
-  const flags = Predicate.isRecord(input.flags) ? input.flags : {};
-  const args = Predicate.isRecord(input.args) ? input.args : {};
-  return serializeToolingInput(declaration, { flags, args });
+/** Tooling tools are registered as `app:<task>`; the shared parser names the bare task. */
+const toolingTaskName = (id: string): string => (id.startsWith("app:") ? id.slice(4) : id);
+
+export const toolingArgvFromInput = (
+  id: string,
+  declaration: ToolingInput,
+  input: unknown,
+): Either.Either<ReadonlyArray<string>, ToolingInputError> => {
+  const record = Predicate.isRecord(input) ? input : {};
+  const flags = Predicate.isRecord(record.flags) ? record.flags : {};
+  const args = Predicate.isRecord(record.args) ? record.args : {};
+  return serializeToolingInput({ ...declaration, name: toolingTaskName(id) }, { flags, args });
 };
 
 const ToolingMcpResultSchema = Schema.Struct({
@@ -149,14 +156,11 @@ const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoComm
         }),
     resultSchema: ToolingMcpResultSchema,
     run: (input) =>
-      runTooling({
-        name: command.id,
-        args:
-          command.input === undefined
-            ? toolingArgsFromInput(input)
-            : toolingArgvFromInput(command.input, input),
-        renderProgress: true,
-      }),
+      command.input === undefined
+        ? runTooling({ name: command.id, args: toolingArgsFromInput(input), renderProgress: true })
+        : Effect.flatMap(toolingArgvFromInput(command.id, command.input, input), (args) =>
+            runTooling({ name: command.id, args, renderProgress: true }),
+          ),
     redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
     render: (result) => renderRunToolingResult(result as RunToolingResult),
   };
