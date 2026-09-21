@@ -39,9 +39,17 @@ services:
       artifact:
         - run: docker-php-ext-install mysqli
           user: root
-        - run: curl -fsSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x /usr/local/bin/wp
+        - run: >-
+            set -eu;
+            wp_cli="$(mktemp)";
+            trap 'rm -f "$wp_cli"' EXIT;
+            curl -fsSL -o "$wp_cli" https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli-2.12.0.phar;
+            echo "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c  $wp_cli" | sha256sum -c -;
+            install -m 0755 "$wp_cli" /usr/local/bin/wp
           user: root
 ```
+
+This pins WP-CLI 2.12.0 and checks its published SHA-256 digest before `install` can write the binary. A mismatch fails the rebuild without installing the downloaded file.
 
 Refresh the plan and rebuild:
 
@@ -105,18 +113,21 @@ WP-CLI runs as root inside tooling, so pass `--allow-root` on every `lando wp` i
 
 ## Download and install WordPress
 
-Core download wants more than the default 128M PHP memory limit. Raise it for that command, then use normal `lando wp --allow-root` for the rest:
+Core download wants more than the default 128M PHP memory limit. Raise it for that command, then generate an admin password locally. The generated value is not written to shell history, but it is printed once so you can save it in your password manager.
 
 ```sh
 lando exec appserver -- php -d memory_limit=512M /usr/local/bin/wp --allow-root core download
 lando wp --allow-root config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database --skip-check
+WP_ADMIN_PASSWORD="$(openssl rand -base64 24)"
+printf 'Save this WordPress admin password: %s\n' "$WP_ADMIN_PASSWORD"
 lando wp --allow-root core install \
   --url='https://wp-demo.lndo.site' \
   --title='WP Demo' \
   --admin_user=admin \
-  --admin_password=admin \
+  --admin_password="$WP_ADMIN_PASSWORD" \
   --admin_email=admin@example.com \
   --skip-email
+unset WP_ADMIN_PASSWORD
 ```
 
 Match `--url` to the HTTPS endpoint `lando info` prints (add the port when info shows one). Then:
