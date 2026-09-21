@@ -16,6 +16,7 @@ import {
 } from "../src/services/nginx.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
+import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -49,25 +50,6 @@ const composeNginxPlan = (raw: unknown, serviceName = "web"): Promise<ServicePla
 
 const planCommandText = (command: ServicePlan["command"]): string =>
   Array.isArray(command) ? command.join(" ") : typeof command === "string" ? command : "";
-
-/**
- * Shared PHP-FPM nginx wire: PATH_INFO for `/script.php/extra`, first `.php`
- * wins, and a missing script file 404s before FastCGI (so `/uploads/x.phar/y.php`
- * cannot execute).
- */
-const expectPhpFpmPathInfoWire = (command: string): void => {
-  expect(command).toContain("location ~ [^/]\\.php(/|$) {");
-  expect(command).not.toContain("location ~ \\.php$ {");
-  expect(command).toContain("fastcgi_split_path_info ^(.+?\\.php)(/.*)$;");
-  expect(command).not.toContain("fastcgi_split_path_info ^(.+\\.php)(/.*)$;");
-  expect(command).toContain("if (!-f $document_root$fastcgi_script_name) { return 404; }");
-  const includeAt = command.indexOf("include /etc/nginx/fastcgi_params;");
-  const pathInfoAt = command.indexOf("fastcgi_param PATH_INFO $fastcgi_path_info;");
-  expect(includeAt).toBeGreaterThan(-1);
-  expect(pathInfoAt).toBeGreaterThan(includeAt);
-  expect(command).not.toContain("PATH_TRANSLATED");
-  expect(command).not.toMatch(/location\s+\^~\s+\/uploads/u);
-};
 
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
   let rejected = false;

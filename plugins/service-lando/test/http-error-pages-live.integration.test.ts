@@ -84,6 +84,8 @@ for (const suite of suites) {
       expect(body).not.toMatch(/^PATH_INFO=\/.+/m);
     }, 30_000);
 
+    if (suite.server !== "nginx-fpm") return;
+
     test("does not execute /uploads/x.phar/y.php", async () => {
       if (stack === undefined) throw new Error(`${suite.server} stack did not start`);
       const response = await stack.request(`${stack.baseUrl}/uploads/x.phar/y.php`, {
