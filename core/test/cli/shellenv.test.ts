@@ -172,16 +172,7 @@ describe("record-backed shellenv", () => {
     await rm(fixture.paths.installRecordFile);
     expect(shellenvBinDir(fixture.root)).toBe(fixture.paths.binDir);
   });
-  for (const failure of [
-    "json",
-    "version",
-    "schema",
-    "path",
-    "digest",
-    "symlink",
-    "directory",
-    "missing",
-  ] as const) {
+  for (const failure of ["json", "version", "schema", "digest", "symlink", "directory", "missing"] as const) {
     test(`fails closed with remediation when the record has ${failure} failure`, async () => {
       await using fixture = await installFixture();
       const { root, paths, record } = fixture;
@@ -195,19 +186,6 @@ describe("record-backed shellenv", () => {
           break;
         case "schema":
           await writeFile(file, JSON.stringify({ ...record, extra: true }));
-          break;
-        case "path":
-          await symlink(fixture.custom, join(root, "alias"));
-          await writeFile(
-            file,
-            JSON.stringify({
-              ...record,
-              data: {
-                ...record.data,
-                executable: { ...record.data.executable, path: join(root, "alias", "lando4") },
-              },
-            }),
-          );
           break;
         case "digest":
           await writeFile(record.data.executable.path, "drifted");
@@ -241,6 +219,29 @@ describe("record-backed shellenv", () => {
       }
     });
   }
+  test("treats a regular executable under a parent directory symlink as owned", async () => {
+    await using fixture = await installFixture();
+    const { root, custom, record, paths } = fixture;
+    const alias = join(root, "alias");
+    await symlink(custom, alias);
+    const recordedPath = join(alias, "lando4");
+    const candidate = {
+      ...record,
+      data: {
+        ...record.data,
+        executable: { ...record.data.executable, path: recordedPath },
+      },
+    };
+    await writeFile(paths.installRecordFile, JSON.stringify(candidate));
+    const expected = installRecordOwnsDestination(
+      candidate,
+      recordedPath,
+      { isFile: true, isSymbolicLink: false, isDirectory: false, size: record.data.executable.size },
+      record.data.executable.sha256,
+    );
+    expect(expected).toEqual({ owned: true });
+    expect(shellenvBinDir(root)).toBe(alias);
+  });
   test("agrees with the engine ownership predicate for owned and every rejection verdict", async () => {
     for (const reason of [
       "owned",

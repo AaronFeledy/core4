@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import type { Context, Effect } from "effect";
@@ -120,9 +120,6 @@ export const shellenvBinDir = (
         file,
         "Executable ownership failed: not-regular-file.",
       );
-    }
-    if (resolve(executable.path) !== realpathSync(target)) {
-      throw new ShellenvInstallRecordError("schema", file, "Executable ownership failed: path-mismatch.");
     }
     const digest = createHash("sha256").update(readFileSync(target)).digest("hex");
     if (digest !== executable.sha256) {

@@ -61,3 +61,10 @@ Verification: gate:pr green (typecheck, lint, codegen:check, boundaries, guide-d
   - `engine/test/package-seam.test.ts` requires the export key to mirror the source path exactly, so a nested module cannot take a flattened subpath.
   - Guide `expect={{ ... }}` props cannot contain a single quote; the parser rewrites every `'` to `"` before JSON parsing, and the failure surfaces as an unhelpful `JSON Parse error`.
 ---
+
+## 2026-09-21 - US-619B1 Review
+- Review of commit 7e7ae9e6e found one in-scope ownership drift: shellenv applied an extra realpathSync check that rejected a regular executable under a parent-directory symlink even when the engine four-condition predicate said owned. Removed that check and pinned parent-symlink agreement with installRecordOwnsDestination.
+- Review notes (deferred/rejected): missing-record fallback to binDir is intentional for source/guide runs, not a fail-closed gap; installer mv-before-record crash window is fail-closed by design (no adoption; remediation is remove the file); PATH-hijack of a world-writable custom install dir and elevated profile-symlink writes are pre-existing/out-of-scope of this story; path-and-setup.mdx and posix-installer.mdx still saying `lando` are not this story's owned guide (from-lando-3.mdx).
+- Verification: typecheck and lint passed; core/test/cli/shellenv.test.ts 21 pass; guide gates already green against origin/main.
+- **Learnings for future iterations:** Leaf-symlink refusal is lstat on the destination itself. realpath of a parent symlink is a fifth condition and will disagree with resolve()-based ownership on macOS /var and any LANDO_INSTALL_DIR that walks a linked ancestor.
+---
