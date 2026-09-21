@@ -182,7 +182,6 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
     stop: () => die("stop"),
     restart: () => die("restart"),
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.void,
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch flags test provider should not call execStream"),
     run: () => die("run"),

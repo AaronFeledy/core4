@@ -6,6 +6,7 @@ import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
@@ -95,7 +96,12 @@ const validateVersion = (
 
 const configFor = (ctx: ServiceFeatureContext): PhpFeatureConfig => ctx.config as PhpFeatureConfig;
 
-const applyApacheShape = (ctx: ServiceFeatureContext, webroot: string, allowOverride: boolean): void => {
+const applyApacheShape = (
+  ctx: ServiceFeatureContext,
+  webroot: string,
+  allowOverride: boolean,
+  listenPort: number | undefined,
+): void => {
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   if (
     !hasCustomPhpImage(ctx.normalizedConfig) &&
@@ -104,13 +110,14 @@ const applyApacheShape = (ctx: ServiceFeatureContext, webroot: string, allowOver
   ) {
     ctx.addBuildStep(apacheDefaultSiteRemovalBuildStep());
     ctx.addBuildStep(landoErrorPagesBuildStep());
-    ctx.setCommand(apacheStartCommand(webroot, allowOverride));
+    if (listenPort !== undefined) ctx.addBuildStep(apacheListenBuildStep(DEBIAN_APACHE_PORTS_CONF_PATH));
+    ctx.setCommand(apacheStartCommand(webroot, allowOverride, listenPort));
   }
 };
 
 const applyFpmShape = (ctx: ServiceFeatureContext): void => {
   if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
-    ctx.setCommand(fpmStartCommand(phpListenPort("fpm", ctx.normalizedConfig.port)));
+    ctx.setCommand(fpmStartCommand(phpListenPort("fpm", authoredListenPort(ctx.normalizedConfig.port))));
   }
 };
 
@@ -125,10 +132,11 @@ const applyServingMode = (
   via: PhpVia,
   webroot: string,
   allowOverride: boolean,
+  listenPort: number | undefined,
 ): void => {
   switch (via) {
     case "apache":
-      applyApacheShape(ctx, webroot, allowOverride);
+      applyApacheShape(ctx, webroot, allowOverride, listenPort);
       return;
     case "fpm":
       applyFpmShape(ctx);
@@ -142,7 +150,8 @@ const applyServingMode = (
 const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { allowOverride, version, via, webroot } = configFor(ctx);
-  const port = phpListenPort(via, service.port);
+  const listenPort = authoredListenPort(service.port);
+  const port = phpListenPort(via, listenPort);
   const customImage = hasCustomPhpImage(service);
   const artifact = customImage && service.image !== undefined ? service.image : phpImageFor(version, via);
 
@@ -177,7 +186,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     target: APP_MOUNT_TARGET,
     readOnly: false,
   });
-  applyServingMode(ctx, via, webroot, allowOverride);
+  applyServingMode(ctx, via, webroot, allowOverride, listenPort);
   if (via !== "cli") {
     addServicePortEndpoints(ctx, { port, protocol: phpEndpointProtocol(via) });
     ctx.setHealthcheck({

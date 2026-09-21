@@ -45,6 +45,7 @@ const runList = (
     readonly path?: string;
     readonly prune?: boolean;
     readonly pruneLimit?: number;
+    readonly includeScratch?: boolean;
   } = {},
 ) =>
   Effect.runPromise(
@@ -57,6 +58,7 @@ const runList = (
         : { discoverContainersEvidence: options.discoverContainersEvidence }),
       ...(options.path === undefined ? {} : { path: options.path }),
       ...(options.pruneLimit === undefined ? {} : { pruneLimit: options.pruneLimit }),
+      ...(options.includeScratch === true ? { includeScratch: true } : {}),
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
@@ -190,6 +192,40 @@ describe("appsFromContainerList", () => {
       appRoot: "/data/global",
       services: ["mailpit", "traefik"],
     });
+  });
+
+  test("marks persisted scratch plans so host list can hide them", () => {
+    const [entry] = decodeAppliedStateFile(
+      JSON.stringify({
+        version: 1,
+        data: {
+          id: "scratch-demo-123456",
+          name: "scratch-demo-123456",
+          root: "/tmp/scratch-demo-123456/root",
+          provider: "lando",
+          services: { app: { name: "app" } },
+          extensions: { "@lando/core/scratch": { id: "scratch-demo-123456" } },
+        },
+      }),
+      "lando",
+    );
+    expect(entry).toMatchObject({ appId: "scratch-demo-123456", scratch: true });
+  });
+
+  test("includes scratch-labeled apps only when requested", () => {
+    const containers = [
+      labeled("regular", "web"),
+      labeled("scratch-demo-123456", "app", {
+        "dev.lando.scratch": "TRUE",
+        "dev.lando.scratch-id": "scratch-demo-123456",
+      }),
+    ];
+
+    expect(appsFromContainerList(containers).map((app) => app.appId)).toEqual(["regular"]);
+    expect(appsFromContainerList(containers, { includeScratch: true }).map((app) => app.appId)).toEqual([
+      "regular",
+      "scratch-demo-123456",
+    ]);
   });
 
   test("skips stopped leftovers so the running claim stays honest", () => {
@@ -327,6 +363,35 @@ describe("apps:list host-wide discovery", () => {
         },
       ]);
       expect(renderAppsListResult(result)).toContain("drupal-cms");
+    });
+  });
+
+  test("omits persisted scratch apps unless includeScratch is set", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const appliedDir = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans");
+      await mkdir(appliedDir, { recursive: true });
+      await writeFile(
+        join(appliedDir, "scratch-demo-123456.json"),
+        JSON.stringify({
+          version: 1,
+          data: {
+            id: "scratch-demo-123456",
+            name: "scratch-demo-123456",
+            root: "/srv/scratch-demo",
+            provider: "lando",
+            services: { app: { name: "app" } },
+            extensions: { "@lando/core/scratch": { id: "scratch-demo-123456" } },
+          },
+        }),
+      );
+      const hidden = await runList(userDataRoot, { discoverContainers: async () => [] });
+      expect(hidden.apps.map((app) => app.appId)).toEqual([]);
+      const shown = await runList(userDataRoot, {
+        discoverContainers: async () => [],
+        includeScratch: true,
+      });
+      expect(shown.apps.map((app) => app.appId)).toEqual(["scratch-demo-123456"]);
     });
   });
 

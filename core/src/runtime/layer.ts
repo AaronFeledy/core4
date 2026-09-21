@@ -138,7 +138,7 @@ type ProviderRuntimeServices =
   | AppPlanSanitizer
   | LogFileHelperAssets
   | GlobalAppService;
-type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchestrator;
+type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchestrator | RouterService;
 type ScratchRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService

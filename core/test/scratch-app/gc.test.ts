@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { Effect, Layer, Stream } from "effect";
 
+import { ScratchAppError } from "@lando/core/errors";
 import { AbsolutePath, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
   type EventService,
@@ -123,7 +124,11 @@ const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise
 
 const die = (operation: string) => Effect.dieMessage(`scratch gc test provider should not call ${operation}`);
 
-const makeLayer = (labelIds: ReadonlyArray<string>, pruned: string[]) => {
+const makeLayer = (
+  labelIds: ReadonlyArray<string>,
+  pruned: string[],
+  pruneScratch?: (id: string) => Effect.Effect<void, ScratchAppError>,
+) => {
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
@@ -172,7 +177,7 @@ const makeLayer = (labelIds: ReadonlyArray<string>, pruned: string[]) => {
   });
   const scannerLive = Layer.succeed(ScratchResourceScanner, {
     listScratchIds: Effect.succeed(labelIds),
-    pruneScratch: (id: string) => Effect.sync(() => pruned.push(id)),
+    pruneScratch: pruneScratch ?? ((id: string) => Effect.sync(() => pruned.push(id))),
   });
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
@@ -272,6 +277,31 @@ describe("ScratchAppServiceLive gc", () => {
         ),
       );
       expect(second).toEqual({ inspected: 0, reaped: [], errors: [] });
+    });
+  });
+
+  test("keeps registry state when provider prune fails", async () => {
+    await withTempCache(async (cacheRoot) => {
+      const id = "scratch-prune-fail-000006";
+      await mkdir(join(cacheRoot, "scratch", id, "root"), { recursive: true });
+      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(cacheRoot, id)));
+      const pruned: string[] = [];
+      const layer = makeLayer([], pruned, () =>
+        Effect.fail(new ScratchAppError({ operation: "gc", message: "provider prune failed" })),
+      );
+      const result = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
+          Effect.provide(layer),
+          Effect.provide(testSupportLayer()),
+        ),
+      );
+      expect(result.reaped).toEqual([]);
+      expect(result.errors).toEqual([`${id}: provider prune failed`]);
+      await expect(
+        Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).get(id)),
+      ).resolves.toMatchObject({
+        id,
+      });
     });
   });
 

@@ -21,9 +21,20 @@ const makeRoots = () => {
   return { root, userDataRoot, userCacheRoot };
 };
 
+// Every host-reaching uninstall path has to land inside the temp root. The
+// socket-proxy helper step defaults to the real `/etc` unit and polkit paths,
+// so a host that still carries Lando-owned proxy units classifies the step as
+// owned, tries to `systemctl stop` them without privilege, and fails the run.
 const sandboxUninstallIo = (root: string) => ({
   cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
+  socketProxyUnitPaths: [
+    join(root, "lando-proxy-http.socket"),
+    join(root, "lando-proxy-http.service"),
+    join(root, "lando-proxy-https.socket"),
+    join(root, "lando-proxy-https.service"),
+  ],
+  socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
 });
 
 describe("runtime-service uninstall execution", () => {

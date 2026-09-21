@@ -103,8 +103,9 @@ const makeHarness = (failingPathSuffix?: string, watcherDependencies: WatcherDep
     },
     socketProxy,
   });
-  const makePersistedService = () =>
+  const makePersistedService = (watcherDependencies: WatcherDependencies = {}) =>
     makeTraefikRouterService({
+      ...watcherDependencies,
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,
@@ -451,6 +452,86 @@ describe("watcher diagnostics", () => {
     // Then: an unreadable stream must never clear evidence or fail a start.
     expect(harness.files.get(recordPath)).toBe(previousRecord);
     expect(reads).toBe(1);
+  });
+
+  test("clears prior evidence and restores routing when startup revalidation sees healthy logs", async () => {
+    // Given: acquisition is persisted, but a previous watcher failure disabled routing.
+    const harness = makeHarness(undefined, {
+      readTraefikLogs: () =>
+        Effect.succeed({ providerId: "lando", text: 'level=info msg="Configuration loaded from flags."' }),
+    });
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    harness.files.set(recordPath, previousRecord);
+    harness.files.delete(markerPath);
+    harness.files.delete(fallbackPath);
+    // When
+    await Effect.runPromise(harness.service.revalidateStartup);
+    // Then
+    expect(harness.files.has(recordPath)).toBe(false);
+    expect(harness.files.has(markerPath)).toBe(true);
+    expect(harness.files.get(markerPath)).toBe("http://127.0.0.1:8080\nhttps://127.0.0.1:8443");
+    expect(harness.files.has(fallbackPath)).toBe(true);
+    expect(harness.files.get(fallbackPath)).toContain("http://traefik-diagnostics.global.internal:8080");
+    expect(harness.files.get(fallbackPath)).toContain("entryPoints: [web]");
+    expect(harness.files.get(fallbackPath)).toContain("entryPoints: [websecure]");
+  });
+
+  test("refreshes prior evidence when startup revalidation sees the same watcher failure", async () => {
+    // Given
+    const harness = makeHarness(undefined, { readTraefikLogs: readFailure });
+    harness.files.set(recordPath, previousRecord);
+    const previous = readRecord(harness.files);
+    // When
+    const exit = await Effect.runPromiseExit(harness.service.revalidateStartup);
+    // Then
+    const failure = watcherFailure(exit);
+    expect(failure.failureClass).toBe("inotify-limit");
+    const record = readRecord(harness.files);
+    expect(record.failureClass).toBe("inotify-limit");
+    expect(Date.parse(record.observedAt)).toBeGreaterThan(Date.parse(previous.observedAt));
+  });
+
+  test("preserves evidence when startup revalidation has no log reader", async () => {
+    // Given
+    const harness = makeHarness();
+    harness.files.set(recordPath, previousRecord);
+    // When
+    await Effect.runPromise(harness.service.revalidateStartup);
+    // Then
+    expect(harness.files.get(recordPath)).toBe(previousRecord);
+  });
+
+  test("preserves evidence when startup revalidation cannot read logs", async () => {
+    // Given
+    const harness = makeHarness(undefined, {
+      readTraefikLogs: () => Effect.fail(new Error("logs unavailable")),
+    });
+    harness.files.set(recordPath, previousRecord);
+    // When
+    await Effect.runPromise(harness.service.revalidateStartup);
+    // Then
+    expect(harness.files.get(recordPath)).toBe(previousRecord);
+  });
+
+  test("restores persisted advertised ports when a fresh service revalidates startup", async () => {
+    // Given: only the shared filesystem carries the first service's acquisition decision.
+    const harness = makeHarness();
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    const advertised = harness.files.get(markerPath) ?? "";
+    expect(advertised).toMatch(/^http:\/\/127\.0\.0\.1:\d+\nhttps:\/\/127\.0\.0\.1:\d+$/u);
+    const advertisedPorts = advertised.split("\n").map((endpoint) => new URL(endpoint).port);
+    harness.files.delete(markerPath);
+    harness.files.delete(fallbackPath);
+    const freshService = harness.makePersistedService({
+      readTraefikLogs: () =>
+        Effect.succeed({ providerId: "lando", text: 'level=info msg="Configuration loaded from flags."' }),
+    });
+    // When
+    await Effect.runPromise(freshService.revalidateStartup);
+    // Then
+    const restored = harness.files.get(markerPath) ?? "";
+    expect(restored).toBe(advertised);
+    expect(restored.split("\n").map((endpoint) => new URL(endpoint).port)).toEqual(advertisedPorts);
   });
 
   test("redacts pattern-matched secrets from the failure and persisted detail", async () => {

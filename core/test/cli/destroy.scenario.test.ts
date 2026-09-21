@@ -238,7 +238,10 @@ const makeDestroyLayer = (
             }
           }
         }
-      }).pipe(Effect.zipRight(options.providerDestroyEffect ?? Effect.void)),
+      }).pipe(
+        Effect.zipRight(options.providerDestroyEffect ?? Effect.void),
+        Effect.as({ kind: "destroyed" as const }),
+      ),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -259,6 +262,7 @@ const makeDestroyLayer = (
     id: "recording",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
     setup: () => Effect.void,
+    revalidateStartup: Effect.void,
     applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
     removeRoutes: (app) =>
       Effect.sync(() => void routeRemovals.push(String(app))).pipe(

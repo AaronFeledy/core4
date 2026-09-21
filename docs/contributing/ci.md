@@ -59,6 +59,20 @@ bun run test:unit
 
 Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; per-PR workflow drift is covered by `bun run codegen:check` in `static-checks-platform`.
 
+## Tell a skipped gate from a failed one
+
+Some maintainers run this repository through a workspace-local looper harness whose loop includes a `Drift Audit` step. That step is not a repository gate. It belongs to the harness, is configured per workspace by a gitignored `.local/looper/looper.yaml` (the repository `.gitignore` ignores `.local/`), and is owned by the maintainer running the loop. Nothing in this repository defines, schedules, or can fix it. The evidence: there is no `.looper/` directory; `package.json` declares no drift-audit script (only `audit`, `audit:fix`, `check:codegen-drift`, and `check:guide-drift`); and there is no `scripts/*audit*` file, the one tracked path matching `audit` being the unrelated `plugins/service-lando/DEFAULT_COMMAND_AUDIT.md`. Do not edit that automation from this repository.
+
+Do not confuse it with the three repository scripts whose names look similar:
+
+| Script | What it checks |
+| --- | --- |
+| `check:codegen-drift` | Pure drift over the catalog-owned generated outputs; wrapped by `codegen:check`. |
+| `check:guide-drift` | Semantic gate that fires when a covered source path changed and no owned guide was touched. |
+| `bun audit` (the `audit` script) | Dependency vulnerability advisories. Nothing to do with drift. |
+
+The harness gate script exits 0 to run the step and exits 1 to skip it because its thresholds were not met. A line reading `[looper] gate skipped Drift Audit: gate: script exited with code 1` is therefore a by-design skip, not a failure. The gate does still fire: a `.drift-gate-US-660` state file holding `3 828 6 0` sits beside a real `US-660 Drift Audit` progress-log entry from 2026-09-20 02:02. The defect is that one exit code carries two meanings, so a false predicate and a failed evaluation look identical in the log. That is what let a skip read as a failure across roughly a dozen stories. When you read loop output, treat `gate skipped` as a skip and treat only a step reported as failed as a failure.
+
 ## Generated schema and bundled-codegen gates
 
 CI fails if the generated schema artifact set or bundled plugin/recipe tables drift. Update all generated outputs with `bun run codegen`:
@@ -192,7 +206,7 @@ LANDO_RUNTIME_BUNDLE_MANIFEST="$MANIFEST" dist/lando setup --yes --provider=land
 LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
 LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
 "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull node:22-alpine
-LANDO_MVP_BINARY_PATH="$PWD/dist/lando" bun test core/test/scenario
+bun test core/test/live
 bun test plugins/provider-lando/test --filter=integration
 bun test plugins/provider-docker/test --filter=integration
 bun test plugins/service-lando/test --filter=integration
@@ -205,22 +219,29 @@ podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
 export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
-LANDO_MVP_BINARY_PATH="$PWD/dist/lando" LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario
+LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/live
 ```
 
 Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer; `provider-integration-linux-x64` runs the live setup-driven Podman/Docker integration path above (contract suites run after `lando setup` so the live cases resolve the managed socket), while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (25 minutes for Linux jobs, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
 
 ## Guide e2e smoke subset
 
-The scenario-layer generated guide tests run on all five PR platforms through `guide-scenarios-<platform>` jobs. Each job regenerates guides with `bun run codegen:guide-scenarios`, validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
+The scenario-layer generated guide tests run on all six PR platforms (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`, `windows-arm64`) through `guide-scenarios-<platform>` jobs. Each job runs the full `bun run codegen` (there is no standalone guide-scenario codegen step; `core/test/build/ci-workflow.test.ts` asserts one is absent), validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
+
+CI sets `LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1` on both guide-scenario run steps. With it set, the wrapper tees the child's raw stdout and stderr as they arrive, between two banner lines, and still prints the source-mapped document after the child exits. The source-mapped document stays the authoritative output: the mapper is a whole-document transform that rewrites earlier lines from later stack frames, so it cannot be streamed line by line. That is why the live region is raw and unmapped, and why it repeats what the mapped document later shows. Without the variable, a local run keeps the single mapped document it prints today. Reproduce the CI shape locally:
+
+```bash
+LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
+```
+
+The live region exists so a hung job leaves evidence of where it stopped; see the [windows-arm64 stall record](./guide-scenarios-windows-arm64-stall.md).
 
 `bun run check:public-transcripts` is also a standalone clean-tree gate. When `dist/transcripts/public/guides` is empty after `bun run clean` or on a fresh clone, the command deterministically emits the public transcript corpus before checking its inventory. Existing or partially populated corpora are checked without regeneration, so missing-artifact diagnostics remain actionable. The generated corpus is gitignored and must not be committed.
 
-Only `guide-scenarios-linux-x64` runs the e2e `@smoke` second pass. It downloads the Linux x64 compiled binary, provisions the same Podman socket used by provider integration, sets `LANDO_GUIDE_E2E=1`, and runs only generated tests whose names contain `@smoke` and `[e2e]`:
+Only `guide-scenarios-linux-x64` runs the e2e `@smoke` second pass. It downloads the Linux x64 compiled binary, provisions the same Podman socket used by provider integration, sets `LANDO_GUIDE_E2E=1`, and runs only generated tests whose names contain `@smoke` and `[e2e]`. E2e guide scenarios without the `@smoke` tag are not part of the PR gate; the nightly job below runs every `[e2e]` scenario:
 
 ```bash
 LANDO_GUIDE_E2E=1 \
-LANDO_MVP_BINARY_PATH="$PWD/dist/lando" \
 LANDO_SCENARIO_E2E_BINARY="$PWD/dist/lando" \
 LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock \
 bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"
@@ -230,18 +251,18 @@ Failures still upload guide internal transcripts, plus `guide-e2e-provider-diagn
 
 ## Nightly provider-lando e2e
 
-The nightly workflow keeps host-mutating provider-lando e2e coverage out of the per-PR gate. The `provider-lando-e2e-linux-x64` job installs Podman on `ubuntu-24.04`, sets `net.ipv4.ip_unprivileged_port_start=0` for rootless low-port binds, provisions a private Podman socket, builds the Linux x64 compiled binary, then runs smoke and non-smoke scenario tests against that binary:
+The nightly workflow keeps host-mutating provider-lando e2e coverage out of the per-PR gate. The `provider-lando-e2e-linux-x64` job runs `bun run codegen`, installs Podman on `ubuntu-24.04`, sets `net.ipv4.ip_unprivileged_port_start=0` for rootless low-port binds, provisions a private Podman socket, builds the Linux x64 compiled binary, then runs every generated `[e2e]` guide scenario (smoke or not) against that binary, followed by the `core/test/live` integration suites:
 
 ```bash
 sudo sysctl net.ipv4.ip_unprivileged_port_start=0
 podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
 export LANDO_CONFIG__default_provider_id=lando
-LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun test core/test/scenario --test-name-pattern="@smoke"
-LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun test core/test/scenario --test-name-pattern="^(?!.*@smoke).*$"
+LANDO_GUIDE_E2E=1 LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1 LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
+bun test core/test/live
 ```
 
-Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
+Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log, the guide internal transcripts, and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
 
 ## Provider matrix
 

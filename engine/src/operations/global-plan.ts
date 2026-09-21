@@ -1,29 +1,15 @@
 import { Effect, ParseResult } from "effect";
 
-import {
-  type CapabilityError,
-  type CommandAliasConflictError,
-  type ConfigExpressionError,
-  type DataTreeOwnershipCapabilityError,
-  GlobalAppError,
-  type HomePathCapabilityError,
-  type LandofileParseError,
-  type LandofileUnknownEventError,
-  LandofileValidationError,
-  type NoProviderInstalledError,
-  type NotImplementedError,
-  type ProviderConfigError,
-  type ProviderUnavailableError,
-  type PublicationUnsupportedError,
-  type RouteInputError,
-} from "@lando/sdk/errors";
+import { GlobalAppError, type LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
 import { type AppPlan, type LandofileShape, LandofileShape as LandofileShapeSchema } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  type AppPlannerError,
   FileSystem,
   type FileSystemError,
   type GlobalAppPaths,
   GlobalAppService,
+  type ProviderSelectionError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -47,22 +33,11 @@ export interface LoadedGlobalPlanResult {
 export type LoadGlobalPlanResult = MissingGlobalPlanResult | LoadedGlobalPlanResult;
 
 export type LoadGlobalPlanError =
-  | CapabilityError
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
+  | AppPlannerError
+  | ProviderSelectionError
   | FileSystemError
   | GlobalAppError
-  | LandofileParseError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | PublicationUnsupportedError
-  | ProviderUnavailableError;
+  | LandofileParseError;
 
 export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 

@@ -52,12 +52,17 @@ entry appears after US-637. That is queued as US-656.
 - A generated default `command` runs as the service's planned `user:`: the feature that emits the command also calls `ctx.setUser`, so any launcher that writes a config file at start fails for a non-root user. Prefer directives the daemon accepts on its command line. Compose knobs are not an escape hatch — `findUnsupportedComposeKnob` fails closed when the active provider declares no `composeKnobs`, and `@lando/provider-docker` declares none.
 - `check:schema-compatibility` reads the WORKING side from the gitignored derived tree (`core/dist/schemas`), which goes stale the moment you merge main. A schema that main added but your local dist predates reports as `BREAKING surface-removed` for a surface your branch never touched. Run `bun run codegen:schema-snapshot` before believing a breaking row, and cross-check the PR's `schema-snapshot` job.
 - Prove a "did not happen" claim with `spyOn` plus `not.toHaveBeenCalled()`, never a wall-clock threshold; Bun's `spyOn` calls through, so behavior stays real while the count becomes deterministic. To fixture a socket that exists but refuses connection, listen on a temp path, hard-link the socket inode elsewhere, then close the server: Node unlinks the listening path, the link survives with nothing behind it.
+- Bun does not cancel the body of a test that exceeds its time budget: it records the failure, starts the next test, and the abandoned body keeps running, so its teardown lands mid-test. Any fixture that mutates process-global state (cwd and `LANDO_USER_CACHE_ROOT` above all) needs an ownership rule, or one slow test corrupts every test after it and the file's failure count stops being reproducible. `core/test/_support/temp-cwd.ts` owns both cases (`withCwd`, `withEnvVar`). Restoring an env var to unset is not the cwd-style anchor: it sends the abandoned body into the host cache.
+- An unstable failure count is the signature of shared-state leakage, not of flakiness in the code under test. Measure it by running the same file on the same tree three times: a count that moves is a harness defect, and the first failing test in the file is the trigger rather than the bug.
 - Manual CLI QA on the real binary catches what green suites do not; it found the only two defects in US-613 and the one in US-633 after hundreds of passing tests. `bun core/src/cli/index.ts` exits 0 silently — `core/bin/lando.ts` is the only faithful source entry, and the compiled `core/dist/lando` is a third behavior worth checking separately when a story touches argv or dispatch.
 - Compiled-CLI behavior diverges from source. US-629 passed every source-level spot check and then failed CI on compiled teardown, aliases, and flag parsing. A story that changes dispatch, argv, or bootstrap tiers proves itself on the compiled binary too.
 - Raising a command's bootstrap tier is two edits, not one: the `LandoCommandSpec` `bootstrap` field and the `cliRuntimeOptions({ bootstrap })` call in the compiled adapter. Only the second governs the real binary, and a mismatch typechecks.
 - Establish a failure baseline in a detached `git worktree` of `origin/main` before triaging a red suite. It needs its own `bun install` and `bun run codegen`; symlinking the branch's `node_modules` resolves `@lando/*` back to branch source and produces a useless comparison.
 - The spec-reference boundary rule reads a bare `spec/...` path argument as a citation of the specification tree, so `resolve(cliRoot, "spec/x.ts")` fails even though it means `core/src/cli/spec`. Spell such paths relatively (`"./spec/x.ts"`); a separate AST check also rejects a bare `"spec"` path segment argument.
 - Parallel codegen waves are only safe when every entry that imports a generated file declares `dependsOn` for its generator. `Bun.write` is not atomic, so a reader can observe a truncated file. It surfaces first on the slowest runner and looks like a flake.
+- `RuntimeProviderShape` is declared TWICE: in `sdk/src/services/provider.ts` and again in `sdk/src/services/index.ts`, where the local declaration shadows the `export *`. A contract change must edit both or consumers keep the old shape while the file that looks canonical is already correct.
+- A provider-contract signature change lands in ~45 files at once, because every scenario test builds its own provider literal instead of spreading `TestRuntimeProvider`. Change the contract, then sweep by directory; `bun run typecheck` is the only honest list of what is left.
+- Apache `Listen` is additive and `-c` directives are read after the configuration tree, so no generated directive can withdraw the image's own `Listen 80`. Moving the listener means deleting that line during the image build; emitting a directive alone opens a second socket. Prove which one you produced by reading the container's listening sockets, not by a successful request on the new port.
 
 ## Shipped: US-613 through US-644 (condensed)
 
@@ -591,4 +596,504 @@ non-root `user:` or say at plan time that they cannot.
 - Fixed: unused exports dropped, the defensive filter removed, the addStorage ownership intent recorded.
 - Split/excise decisions: none. Docker classic-builder VOLUME writes were never absorbed; Reviews already left that as a later story, so the PRD index is unchanged.
 - Verification: typecheck pass, lint pass, 19 data-tree tests pass, SDK backward-compat pass.
+---
+
+## 2026-09-20 03:30 - US-651
+
+Setting `port:` on an `apache` service, or on a `php:*` service served through
+`apache`, now moves the port the daemon actually listens on. It already moved
+the endpoint, the healthcheck, and the route target; the daemon kept answering
+on the image's `Listen 80`.
+
+- `apache` emits `Listen <port>` into the same repeated-`-c` stream its other
+  directives already travel in. `php:*` via `apache` emits the same directive
+  and wraps its document-root, directory, and error-page directives in a
+  `<VirtualHost *:<port>>`, which keeps the launcher shell-free and write-free
+  so it still runs under a non-root `user:`.
+- A directive alone would have opened a second socket, because `Listen` is
+  additive and command-line directives are read after the configuration tree.
+  One shared root build step deletes the image's own `Listen 80` instead, from
+  `httpd.conf` for the httpd family and `ports.conf` for the Debian family. It
+  is fail-closed on both sides of the edit: if a future base image stops
+  declaring exactly one active `Listen 80`, the build stops rather than shipping
+  a service that quietly answers on two ports.
+- Everything is gated on an authored `port:`. Without one, the launcher argv,
+  the build steps, and the image are exactly what they were, so no existing app
+  gains a derived build. An authored `command:`, `entrypoint:`, or custom
+  `image:` also skips both the directive and the image edit, because Lando does
+  not own that startup path.
+- The authored value is decoded through `PortNumber` before it reaches a
+  directive. `addServicePortEndpoints` skips that decode when `ports:` is also
+  set, so the launcher path had to do its own.
+- Verification: gate:pr passed, including all 13 boundary rules and a real
+  guide-drift pass against origin/main; guide-coverage, public-transcripts, and
+  lint:guides passed. RED first, twice: `port: 8080` produced no matching listen
+  directive, and the PHP launcher produced no virtual host. 1,033 service-lando
+  tests plus 1,685 recipe and engine service tests green. Real runtime in
+  lando4-dev, building derived images from the exact planned build steps and
+  running the exact planned argv: both families listened on 8080 and nothing
+  else, served from the planned document root, and refused a connection to 80;
+  the PHP one served mod_php and still rendered the Lando 404 from inside the
+  virtual host. The real binary accepted both Landofiles and rejected
+  `port: 70000` with a tagged `LandofileValidationError`.
+- **Learnings for future iterations:**
+  - Reading the container's listening sockets is the only honest proof here.
+    `/proc/net/tcp` plus `/proc/net/tcp6`, filtered on state `0A`, prints the
+    listening ports in hex with no tooling the image has to ship. A successful
+    request on the new port proves nothing about the old one.
+  - The bundled Apache images do not ship the same probes. `httpd:2.4-alpine`
+    has busybox `wget`; `php:*-apache-bookworm` has neither `wget` nor `curl`,
+    so its HTTP probe has to go through `php -r`.
+  - Debian's `ports.conf` also declares `Listen 443` twice, tab-indented inside
+    `<IfModule ssl_module>` and `<IfModule mod_gnutls.c>`. Neither module is
+    enabled on the stock PHP image, so deleting only the exact `Listen 80` line
+    is both sufficient and narrower than commenting every `Listen`.
+  - A spec finding can go stale between the wave that recorded it and the story
+    that closes it. This one described `php:*` via `apache` as having a
+    hardcoded `<VirtualHost *:80>`; US-650 had already replaced that with
+    main-server directives. Re-read the code the finding describes before
+    designing against the finding's description of it.
+---
+
+## 2026-09-20 03:28 - US-651 Review
+- Reviewed the Apache/PHP listen-port work against the source ACs. Blocker: a custom Apache image with `port:` still got `Listen` and the fail-closed `httpd.conf` edit. PHP already skipped custom images; the guide and audit claimed Apache did too. Apache now skips only the listen directive and image edit on a non-bundled `image:`, and still generates the historical start command.
+- Review notes (deferred/rejected): skipping the entire Apache launcher on custom images was rejected — that would change pre-existing DocumentRoot/PidFile generation; quoting `configPath` as `$1` in the build step was rejected as optional hardening on constant paths.
+- Verification: gate:pr passed; guide-drift passed against origin/main; apache guide 2/2; php guide 2/2; apache 14 and php 35 unit tests green. Bugbot's custom-image finding is the one that was fixed.
+---
+
+## 2026-09-20 05:30 - US-652
+
+Tearing down an app whose applied state is gone now actually removes the
+containers the provider still holds, and the result names only what went away.
+
+- Orphan teardown had been handing providers a selection plan with an empty
+  `services` map and then reporting every observed service as removed. Planful
+  bring-down iterates that map, so nothing was stopped while everything was
+  claimed. Containers now go through `RuntimeProvider.removeObservedService`,
+  a new required contract member that takes back one `ServiceRuntimeInfo` the
+  provider itself reported from `list` and removes that container by its
+  observed id, resolving no applied plan on the way. All three bundled
+  adapters implement it in the same revision, over one shared
+  `removeObservedContainer` helper; a stop that 404s short-circuits, because a
+  container that is already gone has nothing left to remove.
+- A service reaches the teardown result only when its removal answered
+  `removed`. An observation with no container id is the provider saying it
+  found nothing, so it is neither removed nor reported.
+- `provider.destroy` answers `DestroyOutcome` instead of `void`: a provider
+  handed no plan that finds no applied record returns
+  `{ kind: "no-op", reason: "no-applied-plan" }` rather than an empty success.
+- Orphan volume removal reads class and scope from the labels every provider
+  writes at creation, so `--volumes` takes data volumes, `--purge-caches`
+  takes cache volumes, both takes both, and a globally scoped volume is left
+  alone. That is the same table planful bring-down uses; both now call one
+  `teardownVolumeClasses`.
+- Verification: gate:pr passed, including all 13 boundary rules, `codegen:check`,
+  and a real guide-drift pass against origin/main. RED first: eight failing
+  cases in the applied-state teardown suite, including an orphan group
+  reporting two removed services while both containers survived; 25 green
+  after. 13 new container-runtime cases cover the removal helper and the class
+  table; 58 green across teardown plus the destroy and stop CLI scenarios. Real
+  binary `lando destroy --yes` and `lando stop` on a runtime-free host both
+  reported `unchanged` with empty service lists.
+- **Learnings for future iterations:**
+  - `RuntimeProviderShape` exists twice, in `sdk/src/services/provider.ts` and
+    again in `sdk/src/services/index.ts`. The second shadows the `export *`, so
+    it is the one consumers actually see. Editing only the first compiles and
+    changes nothing.
+  - Changing one provider-contract return type is a ~45-file edit, because
+    nearly every scenario test writes its own provider literal rather than
+    spreading `TestRuntimeProvider`. The sweep is mechanical and parallelizes by
+    directory; `bun run typecheck` is the only reliable worklist.
+  - `dev.lando.storage-kind` is written by the shared `volumeCreationLabels` for
+    cache stores only, which makes it the one class signal available to teardown
+    that has no plan left. `dev.lando.volume-selector` carries the same fact but
+    only on the podman-shaped creation path.
+  - Orphan networks are still not removed by either teardown path; that was true
+    before this story and remains out of scope.
+---
+## 2026-09-20 04:55 - US-652 Review
+- Reviewed orphan-container teardown against the source ACs. No product blockers were fixed; observed-identity removal, truthful service reporting, explicit planless destroy no-op, and shared cache/data volume class filtering already satisfy the Build-owned proofs.
+- Review notes (deferred/rejected): daemon-backed `list()` on provider-lando/provider-podman was rejected as a Review demotion — it is pre-existing, this story's diff does not touch `list`, and the ACs own `removeObservedService` given observations rather than rewriting discovery; live container present-before/absent-after evidence was rejected as a Review demotion — residual §7.1 assigns that proof to Verify; binding `removeObservedService` to ownership labels was rejected — the primitive is the trusted engine-to-provider seam, and teardown already filters observations by `appRoot`.
+- Verification: gate:pr passed; guide-drift passed against origin/main; Bugbot found no bugs; 83 focused tests across remove-observed-container, applied-state-teardown, provider contract, and unchanged destroy/stop render cases.
+- Guide-Coverage-Skip: orphan teardown implements the already-documented destroy/stop applied-state path; lifecycle guides already promise owned containers are removed.
+---
+## 2026-09-20 06:26 - Babysit
+- PR: #1028 https://github.com/AaronFeledy/core4/pull/1028
+- CI outcome: pass (after triage; unit-tests-linux-x64-shard 3 failed on both ubuntu images at first)
+- Review feedback: fixed — renderer visual-QA called the test provider's `destroy` with an undefined target, and orphan teardown skipped every global-scoped volume while planful bring-down purges global caches under `--purge-caches`, so global scope now protects data volumes only and the divergence is pinned by four flag-combination cases.
+- Drift check: clean
+- Merge: merged (squash)
+---
+## 2026-09-20 06:55 - US-653 Build
+- A volume's ownership identity is now written one way and read the same way.
+  `container-runtime/src/volume-ownership.ts` is the only producer of the two
+  ownership labels and the only builder of the selector filters that read them
+  back, and its header states the invariant so the next reader need not
+  reconstruct it: `dev.lando.volume-owner` carries the canonical app root and is
+  authoritative for ownership PROOF (docker's planful delete gate, create-race
+  detection, adoption, SQL recovery); `dev.lando.volume-selector` packs
+  provider, app, owner key, and class into one value and is authoritative for
+  SELECTION, because the daemon ORs the values listed under one label key.
+- The `plan.identity?.ownerKey ?? plan.root` fallback is gone from all four
+  selector sites. A plan carrying no identity is migrated at read time from its
+  root through `appIdentityKey("owner", root)` — the same derivation the planner
+  stamps onto `AppPlan.identity`, now shared from `@lando/sdk/schema` instead of
+  being spelled privately in the planner. Because the planner assigns
+  `root` from `identity.appRoot`, the migrated key is byte-identical to the
+  planned one, so no value that was ever written changes.
+- Neither label can now be written without the other: both come from one
+  accessor, so compose-emitted volumes gained the owner label (docker's delete
+  gate reads only that label, so a compose-created volume was previously
+  undeletable through it) and docker-created volumes gained the selector.
+- No legacy selector format is accepted and none is needed. The owner key
+  entered the selector in the same revision that made the planner stamp every
+  plan with an identity, so nothing shipped can carry a raw-root selector;
+  volumes older than that revision carry a three-part selector that never
+  matched either form. The labels are not collapsed into one, so the
+  conditional migration path the story allows for does not apply.
+- Verification: gate:pr passed — typecheck, lint, codegen:check clean, all 13
+  boundary rules, and guide-drift against origin/main. RED first: four failing
+  cases proving a selector written without `identity.ownerKey` went unmatched by
+  the reading side, that the owner label was absent for such a plan, and that
+  the selector carried a raw root; 7 green after. Focused spot checks: 627
+  container-runtime, 475 provider-lando, 259 provider-docker/podman, 205
+  sql/data-mover, 1797 engine. Real-surface evidence came from driving the
+  writers and the prune request builder directly: every create body and compose
+  volume carries both labels, the selector's owner key equals
+  `appIdentityKey("owner", <owner label>)`, and the planner-shaped and
+  identity-less plans produce byte-identical create bodies, compose documents,
+  and `/libpod/volumes/prune?filters=...` query strings. Real binary
+  `lando destroy --yes --volumes --purge-caches` and `lando stop` on a
+  runtime-free host reported `unchanged` in both human and JSON output.
+- **Learnings for future iterations:**
+  - `engine/test/subsystems/host-proxy/transport.test.ts` "closes the listener
+    when chmod fails after bind" is flaky on `main` itself — it races a
+    `setInterval(..., 0)` socket remover against bind/chmod and failed two of
+    three baseline runs on an unmodified checkout. Do not attribute it to a
+    branch; it belongs on US-655's measured baseline.
+  - `renderCompose(plan, ctx)` takes a required provider context, and
+    `yamlRoundTripRecord` from `@lando/sdk/test` is a corpus fixture that takes
+    no arguments, not a YAML parser. Compose tests parse with `Bun.YAML.parse`.
+  - Two ownership reads keep an appRoot-flavoured fallback and were left alone:
+    `plugins/sql/src/recovery-target.ts` (sql cannot depend on
+    container-runtime) and `engine/src/lifecycle/volume-coordination.ts`, where
+    routing one comparison through the shared accessor would pull the whole
+    data-plane module graph into engine for a single line.
+---
+## 2026-09-20 07:15 - US-653 Review
+- Reviewed the volume-ownership collapse against the source ACs. No product blockers were fixed; the four selector sites, hashed identity-less migration, documented proof-vs-selection split, and identity-less matching tests already satisfy the Build-owned proofs.
+- Review notes (deferred/rejected): always re-deriving selector ownerKey from appRoot (and rejecting mismatched identities) was rejected — AC2 allows documenting why both labels exist, and planner-stamped identity.ownerKey is the selection value; extracting a shared resolver to replace identity?.appRoot ?? plan.root in volume-coordination and SQL recovery was rejected — AC1 names only the four selector sites, those leftovers compare proof roots not selector keys, and sql cannot depend on container-runtime; compose-fixtures 3-part selector writer leaking live volumes was rejected — pre-existing since that suite landed, 3-part selectors never matched either reader form, and this branch did not touch that file.
+- Verification: gate:pr passed; guide gates passed against origin/main; Bugbot found no bugs; 39 focused tests across volume-ownership, compose-emit, app-identity, and volume-observation.
+- Guide-Coverage-Skip: volume ownership selector is maintainer-only internal metadata with no public guide.
+---
+## 2026-09-20 07:20 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-20 08:35 - US-654 Build
+- The command doctor names as the first remediation can now affect the
+  condition it remediates. `RouterService` gained a required
+  `revalidateStartup: Effect<void, ProxyError | RouterWatcherError>` — a
+  re-observation that acquires no ports, starts no services, and takes no
+  Scope — and `meta:global:restart` and `meta:global:rebuild` call it.
+  Restart calls it after the start phase returns; rebuild calls it after the
+  inspect loop and before `PostGlobalRebuildEvent`, so a rebuild that leaves
+  the router's observation broken never publishes a post event.
+- Traefik implements it over the same tail `setup` runs: the last four steps of
+  `setup` are now one `finalizeRouterStartup` helper, so a healthy
+  re-observation clears `watcher-diagnostic.json` AND rewrites
+  `.lando-routing-state` and `fallback.yml`. That pairing is the point:
+  `observeWatcherStartup` deletes the routing marker when it records a failure
+  and `persistedStatus` reports the router stopped without it, so clearing the
+  record alone would have left a recovered router permanently reported as
+  stopped. The advertised ports come from persisted acquisition state, not
+  closure state, so a fresh process revalidates correctly.
+- A still-failing watcher rewrites the record with a fresh `observedAt`,
+  unchanged classification, and fails the command — a remediation that exits
+  zero while the router is unusable would be a lie. Unreadable or absent logs
+  stay a no-op that preserves prior evidence rather than assuming health.
+- The unavailable-router fallback revalidates to `Effect.void`: no router ran,
+  so nothing re-observes, and a record an earlier router left behind stays
+  reported. Doctor still never probes live; only the wording changed, because
+  the record is no longer a `setup`-only observation.
+- Verification: typecheck, lint, all 13 boundary rules, `codegen:check`, and
+  guide-drift against origin/main all pass. RED first: four core cases
+  (restart leaves the record, restart does not fail on a broken watcher,
+  rebuild publishes its post event anyway, rebuild never revalidates) plus
+  five plugin cases and two real-doctor cases; 82 green across proxy,
+  doctor-watcher, global-commands, and the Traefik contract suite afterward,
+  and 72 green across the seven adjacent suites that build RouterService
+  literals. Real binary `lando global:restart` reached the provider and failed
+  with a tagged `ServiceStartError` on a host port already held by a leftover
+  rootlessport — a pre-existing host condition, and correct behavior: the
+  command fails before revalidation when the router never started.
+- **Learnings for future iterations:**
+  - `RouterServiceShape` is declared twice, like `RuntimeProviderShape`: once
+    in `sdk/src/services/platform.ts` and again inline inside the tag
+    declaration in `sdk/src/services/index.ts`, where it shadows the
+    `export *`. Grepping for the interface name finds only the first.
+  - `RouterService` is NOT in `sdk/test/fixtures/sdk-mvp-surface.json`, so a
+    member added to its shape does not touch the frozen service-tag fixture.
+    `sdk/API_COMPATIBILITY.md` still needs the additive row.
+  - Adding a required RouterService member cost only four test-literal edits,
+    not the ~15 the call-site count suggested: most sites spread
+    `TestRouterService`/`makeTestRouterService()` and were fixed for free.
+    `bun run typecheck` is the only honest worklist, and it is worth re-running
+    after each batch — an indentation-matched insertion landed in a neighboring
+    `RuntimeProviderShape` literal in the same file and only typecheck caught it.
+  - `ProxyError` is exported from `@lando/sdk/errors`, not `@lando/sdk/services`,
+    even though `ProviderError` is available from the latter.
+  - The global bootstrap graph already provides `RouterService` live through the
+    provider base layer; only the typed channels were missing
+    (`GlobalRuntimeServices` and the `globalRuntimeLayer()` cast).
+---
+
+## 2026-09-20 08:55 - US-654 Review
+- Reviewed restart/rebuild revalidation against the source ACs. No product blockers were fixed; both commands call `revalidateStartup` on the same `finalizeRouterStartup` tail as setup, a healthy observation clears the record and restores routing state, a still-failing watcher rewrites `observedAt` with unchanged classification, and doctor still only reads the persisted file.
+- Review notes (deferred/rejected): treating unreadable/absent Traefik logs as a restart failure was rejected — AC1 requires the same terms as setup, which preserves prior evidence rather than assuming health, and AC2 is the healthy-watcher clear path already covered; converting `docs/guides/global/doctor-walkthrough.mdx` into an executable `<Run>`/`<Verify>` guide was rejected — it was already prose-only, the wording update is the owned guide change, and lint/coverage/transcripts/drift against origin/main all passed (`dev:guides --once` has no scenario to generate); an extra restart-then-doctor command test was rejected — the plugin disk harness already revalidates then runs the real doctor reader on the same temp root; host-path pollution in `global-commands.test.ts` was rejected — `withTempRoots` sets `LANDO_USER_DATA_ROOT` before `makeLandoPaths()`, and QA confirmed no leftover at the real user data root.
+- Verification: guide gates passed against origin/main; Bugbot found no bugs; 103 focused tests across global-commands, proxy, doctor-watcher, watcher-diagnostic-state, router-service contract, and proxy registry.
+- **Learnings for future iterations:**
+  - `makeLandoPaths()` with no overrides is still isolated when the enclosing harness sets `LANDO_USER_DATA_ROOT` first; do not treat that call as host pollution without checking the env overlay.
+  - A prose-only MDX guide fails `bun run dev:guides <path> --once` with `no generated scenario output found`. That is not a missing executable-guide requirement when lint/coverage/drift already passed and the page never had `<Run>`/`<Verify>`.
+---
+## 2026-09-20 08:58 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-20 10:40 - US-655 Build
+- The unit-suite baseline is measured rather than inherited. `bun run test:unit`
+  on a clean checkout reports 14,569 pass / 14 skip / **205 fail** across 1,655
+  files in 1,534s. The carried figure of thirteen is retired; it was never
+  accurate for this tree.
+- 205 reported failures resolve to **18 real ones**. Ten non-generated files and
+  155 generated guide-scenario files reported failures; run alone, only four
+  files still fail. `docs/contributing/unit-suite-baseline.md` records the
+  measurement, one entry per reproducing failure with its own single-file
+  reproduction, and the rule that made the count legible: a file that fails in
+  the suite and passes alone is a victim, not a defect, and the cause belongs to
+  the leaking file rather than to the 160 files that report it.
+- The other 187 are one leaked `process.chdir`. Every generated guide scenario
+  failed with the same `GuideFixtureNotFoundError` whose candidate paths named
+  `/tmp/lando-at-race-left-*` — a root created only by the race test in
+  `engine/test/operations/app-resolution.test.ts`, which starts two
+  `loadUserLandofileAt` resolutions without awaiting them and whose `finally`
+  releases the parked fibers and then removes both temp roots without waiting.
+  A released fiber resumes during the `rm`, runs the `withResolvedCwd` release
+  that chdirs back into the left root, and the `rm` deletes it underneath. The
+  process then spends the rest of the run with its cwd on a removed path, so
+  later fixture lookups misresolve and later `withResolvedCwd` callers block on
+  the held `cwdResolutionLock` permit and time out at the 5,000 ms default.
+  Queued, not absorbed: it is one mechanism across three surfaces (the landofile
+  primitive, the engine harness, the cwd-relative fixture resolver), and
+  grouping it into a measurement story is what this story exists to prevent.
+- One named candidate was resolved here. `uninstall-runtime-service.test.ts`'s
+  two failures were not about runtime-service teardown at all: the file's local
+  `sandboxUninstallIo` redirected only the cgroups drop-in and shell profile into
+  its temp root, leaving the socket-proxy helper step pointed at the real
+  `/etc/systemd/system/lando-proxy-*` units and polkit rule. A host carrying
+  Lando-owned proxy units — this one does — classifies that step as owned,
+  attempts `systemctl stop` without privilege, and fails the whole uninstall
+  run. Completing the sandbox to match the helper `uninstall.test.ts` already
+  uses fixes both, with no assertion weakened.
+- Remaining candidates: `resolve.test.ts` reproduces with 9 timeouts and is
+  already queued as US-661; `transcript-tail-reader.test.ts` does **not**
+  reproduce — 10 pass alone, and it reported no failure in the whole-suite run
+  either. Newly queued with their own reproductions: `start.scenario.test.ts`
+  (6, split because one needs a live Podman socket and five do not),
+  `mvp-exit-criteria.scenario.test.ts` (1, environment-gated on a provider and
+  free host ports), and the `transport.test.ts` chmod-after-bind flake.
+- Verification: gate:pr passed twice (typecheck, lint, codegen:check, all 13
+  boundary rules, guide-drift against origin/main) and `docs:check` is clean.
+  RED first: 3 pass / 2 fail isolated on `uninstall-runtime-service.test.ts`
+  with both failures on `result.failed`; 5 pass / 0 fail after. Adjacent spot
+  checks: 63 green across `uninstall.test.ts`, `uninstall-socket-proxy.test.ts`,
+  and `uninstall.test.ts` in engine. Real-surface evidence for the attribution
+  came from driving `uninstall()` directly against a temp root and reading the
+  per-step outcomes, which named `socket-proxy-helper` as the failing step while
+  `runtime-service` reported `completed`.
+- **Learnings for future iterations:**
+  - `bun run test:unit` is not the CI unit suite. It applies no shard
+    exclusions, so it also runs `test/scenarios/generated/guides/**`, which CI
+    gives its own job family. A raw count from it over-reports badly.
+  - Attribute before counting. Bun runs every test file in one process, so a
+    single leaked `process.chdir` or unreleased semaphore permit is reported
+    once per victim. The cheap discriminator is running each failing file alone;
+    here that collapsed 205 reported failures to 18 real ones in a few minutes.
+  - A uniform `~5000ms` failure time across unrelated files is the signature of
+    a held lock, not of slow tests. Both `resolve.test.ts` and the engine
+    chdir-region tests fail at exactly the default timeout.
+  - A test that spreads a local `sandbox*Io` helper is only as isolated as that
+    helper is complete. `core/test/cli/uninstall.test.ts` has the canonical one;
+    the partial copy in `uninstall-runtime-service.test.ts` silently reached
+    host `/etc`. Compare against the canonical helper before trusting a sandbox.
+  - `uninstall()` fails the whole run if any step fails, so a test asserting
+    `result.failed === false` is implicitly asserting every unrelated step too.
+    Sandbox the host-reaching steps rather than narrowing the assertion.
+---
+## 2026-09-20 10:55 - US-655 Review
+- Review corrected the baseline record rather than splitting start.scenario into six queued defects. A first isolation pass reported 41/6; a later file run is 46/1, and the file minus the live-Podman case is 46/0. Only `scaffolds an app and starts it against the live Podman socket` still reproduces (skipIf opened, then start exited 1). The other five are leads, not independent queue items.
+- 187 is the residual `205 − 18` from the suite measurement, not a sum of in-suite victim counts. The transport chmod-after-bind flake is queued on its own, outside that residual.
+- Review notes (deferred/rejected): splitting the five non-reproducing start.scenario symptoms into six PRD stories or GitHub issues — they do not reproduce, and AC2 queues reproducing failures, not new story ids; omitting the live-socket reproduction command as host-unsafe — AC2 requires a reproduction, and the case is already skipIf-gated; rewriting the measured 205; an INDEX link for the contributing evidence page.
+- Verification: gate:pr passed; guide gates passed against origin/main; uninstall-runtime-service 5/5; start.scenario minus live-socket 46/0; Bugbot found no bugs.
+- Guide-Coverage-Skip: Maintainer-only unit-suite baseline evidence and a test sandbox completion; no public CLI or Landofile contract changed.
+- **Learnings for future iterations:** A file-level isolation count that does not survive a second run is a lead. Filter by test name before treating heterogeneous symptoms in one file as unrelated causes.
+---
+## 2026-09-20 10:57 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-20 11:02 - US-655 Verify
+- Compiled `core/dist/lando` 4.0.0-dev.1013+3.g600e5e596.dirty; `lando setup --yes --no-interactive` completed (managed runtime ready). Init lamp `us655verify`, start, info (appserver php:8.3 + mariadb running), HTTP 200 `us655-ok` via `php` on http://us655verify.lndo.site:8080, `exec appserver -- php -v` → PHP 8.3.33. Adjacent: `uninstall --help`, `uninstall --dry-run` (ok, socket-proxy-helper owned at real /etc units — the condition the test sandbox now isolates), `apps:list`, `--version`. Destroyed the scenario app; no code changes.
+- **Out-of-scope finding:** `.local/bin/lando4-dev --check` fails on leftover dpkg `uidmap` (no podman/docker on PATH). `lando setup`/`start` hopped 80/443 → 8080/8443 because leftover `lando-proxy-https` systemd socket (pid 90102) holds 443; doctor also warns orphan runtime pid 1544. Not caused by this diff.
+---
+
+## 2026-09-20 11:47 - Babysit
+- PR: #1031 https://github.com/AaronFeledy/core4/pull/1031
+- CI outcome: pass (after rerun; `provider-integration-windows-x64` first failed `bun run codegen`)
+- Review feedback: none — triage classified the Windows failure as a pre-existing codegen wave-0 race (`bootstrap-layers` imports `core-service-env.ts` while its generator rewrites it; no catalog dependency between them), not a US-655 regression and out of story scope; rerun of the job passed, no code changes.
+- Merge: merged (squash)
+---
+
+## 2026-09-20 - US-661
+
+One slow test in `core/test/app/resolve.test.ts` no longer takes the rest of
+the file with it. The cascade was never a timeout: `withTempApp` and
+`withTwoTempApps` captured the *ambient* cwd on entry and restored it
+unconditionally on exit. Because Bun leaves a timed-out body running, the next
+test captured the previous test's temp root as its own restore target, that
+root was then removed, and the restore died with
+`ENOENT ... chdir '<cwd>' -> '/tmp/lando-resolve-app-XXXX'`. Every later test
+inherited the wreckage. Back-to-back runs on an unchanged tree reported 7, then
+9, then 4, then 5 failures - never the same number twice.
+
+The fixtures now route the cwd through one helper with three rules: the call
+holding the cwd restores a fixed anchor no test removes; a call that has lost
+the cwd does not move it; and a call whose own body chdir'd back into a root
+its caller is about to delete repairs the cwd before that delete lands. The
+third rule is the one that is easy to miss - five tests in the file chdir
+mid-test and put the cwd back through `Effect.ensuring`, which fires long
+after the test was abandoned, and the cleanup that follows would otherwise
+delete the live test's working directory. The file is now 21 pass / 0 fail
+across three consecutive runs.
+
+Two things were raised rather than fixed, both deliberately. The four scratch
+tests really do need more than the 5s default - they fork an app and build a
+runtime against a cold per-test cache root, measured at 7-15s - so each carries
+its own 60s budget and a comment saying why. And the tests were invoking host
+`sudo`: acquiring a scratch app reaches the proxy subsystem, which elevates
+`systemctl start lando-proxy-http.socket lando-proxy-https.socket`. On a host
+with an askpass helper that is an interactive password prompt, so the file's
+duration depended on a human - 97s answered versus 34s refused - and the run
+mutated host state. A neutral `PrivilegeService` fake in the test's layers
+takes elevation attempts from four per run to one.
+
+- Verification: gate:pr passed (typecheck, lint, codegen:check, boundaries,
+  guide-drift). The new isolation test went red against the extracted
+  pre-existing semantics with the exact production ENOENT before it went green.
+  `core/test/app` (44 tests) and the adjacent app-handle and scratch suites
+  pass. No public guide: maintainer-only.
+- **Out of scope, for whoever picks it up:** one elevation per run survives the
+  fake, from `openLandoRuntime exposes a working scratch API` only. Host-layer
+  overrides passed as `plugins.layers` reach the plugin contribution graph,
+  while `PrivilegeServiceLive` is baked into the minimal tier, so a nested
+  runtime raised during scratch acquisition does not inherit the test's layers.
+  Closing it means changing runtime composition, not the test. Worth asking
+  separately why resolving and forking an app starts host proxy sockets at all.
+- **Learnings for future iterations:**
+  - Treat an unstable failure count as shared-state leakage. Three runs of the
+    same file on the same tree is the cheapest diagnostic there is.
+  - A test fixture that restores ambient state is a latent cascade wherever
+    bodies can outlive their test. Restore a fixed anchor instead, and make
+    teardown check that it still owns what it is about to release.
+  - A fake `sudo` first on PATH turns "does this test touch the host?" into a
+    one-line answer and never prompts anyone while you find out.
+---
+
+## 2026-09-20 - US-661 Review
+- Review found the cwd helper stopped the ENOENT chdir cascade but left the same ownership defect on `LANDO_USER_CACHE_ROOT`. A timed-out scratch acquire still deleted its cache root, restored the ambient env to unset, and later tests inherited `~/.cache/lando` plus a 5s lock hang — 12 pass / 9 fail / unhandled `plan.bin` FileNotFoundError. Cache env now uses the same owned-stack helper, every temp-app fixture takes a cache owner, and a later owner that exits while an earlier call remains hands the variable back rather than unsetting it.
+- Review notes (deferred/rejected): nested `PrivilegeServiceLive` elevation on `openLandoRuntime exposes a working scratch API` — already recorded out of scope as runtime composition; sibling `lifecycle.test.ts` / `remote-handle.test.ts` ambient cwd restore — outside this story's resolve.test.ts surface; leaking a `withCwd` frame on a failed initial `chdir` — mkdtemp roots exist, not a reproduced failure.
+- Verification: typecheck passed; biome clean on the touched tests. Isolation helper 9/0. `resolve.test.ts` 21/0 on three consecutive runs (63s, 46s, 33s). Adjacent `core/test/app` 47/1 — the one failure was that scratch timeout, with no 5s cascade after it.
+- Guide-Coverage-Skip: Maintainer-only test harness isolation; no public CLI or Landofile contract changed.
+- **Learnings for future iterations:** Unsetting a process env var is not a safe restore target. The host default (`~/.cache/lando`) is shared mutable state, and an abandoned body that falls through to it locks every later test that did not set its own root.
+---
+## 2026-09-20 13:12 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-20 13:20 - US-661 Verify
+- Compiled `core/dist/lando` 4.0.0-dev.1014+5.g90a76b7af; `lando setup --yes --no-interactive` completed in lando4-dev (managed runtime already present). Started php:8.3 `us661verify`: cwd resolve and nested-dir walk both return that app running; unrelated `/tmp` is `LandofileNotFoundError`; a sibling landofile at `/tmp/us661other` resolves as `us661other` stopped. Live: `exec appserver -- php -r` → `us661-ok` / PHP 8.3.33; logs show Apache/2.4.68. Scratch `--fork` from the app cwd acquired `scratch-us661verify-b289c2` (source fork, attached) while `lando info` still named the original app. Adjacent lint/apps:list/logs/scratch-list stayed green; destroy + temp dirs cleaned; isolation helper 9/0. No code changes.
+- **Out-of-scope finding:** `lando setup` warned ports 80/443 occupied (`systemd-socket-` pid 90102) and used 8080/8443. Same leftover as US-655/US-647; scenario used `router.enabled: false`.
+---
+
+## 2026-09-20 14:22 - Babysit
+- PR: #1032 https://github.com/AaronFeledy/core4/pull/1032
+- CI outcome: pass (after rerun; first pass failed `provider-integration-linux-x64-runner (ubuntu-24.04)`)
+- Review feedback: none — the only failure was the pre-existing mongodb live-integration flake (`Podman failed to create an exec session`), which fails identically on main at `0f3bb107d` and passes at its child `cb27d6123`; ubuntu-26.04 passed in the same run. Rejected as not-an-issue and reran only the failed jobs; no code changed.
+- Merge: merged (squash)
+---
+
+## 2026-09-20 16:05 - US-656
+- The guide-scenario CI step no longer hides what it was doing. The wrapper
+  buffered both child streams to completion and wrote nothing until the child
+  exited, so a child that never exits produced a permanently silent step. CI now
+  sets `LANDO_GUIDE_SCENARIO_LIVE_OUTPUT=1` (through the generator, on all seven
+  guide-scenario run steps) and the wrapper tees the child's raw output as it
+  arrives, between two banners, still printing the authoritative source-mapped
+  document after exit. A hung step now names the generated file it stopped in.
+- The stall was measured rather than assumed: 872 guide-scenario job records
+  across 114 runs, of which `guide-scenarios-windows-arm64` is the only cell that
+  ever hit the 30 minute cap (5 of 89; the other seven cells are 0 of 644). All
+  five died in the same step with zero bytes emitted for 26 minutes, against a
+  healthy maximum of 10.0 minutes. `docs/contributing/guide-scenarios-windows-arm64-stall.md`
+  records the distribution, the job ids, and the three-way decision the next
+  stall's live region will settle.
+- Quarantine was declined on purpose and the reason is recorded. That job is a
+  required status check, `continue-on-error` would also swallow the 4 genuine
+  failures in the same window, and the story's quarantine branch is conditional on
+  a runner cause that the silent log cannot establish. `timeout-minutes: 30` is
+  untouched: the cap is not the defect.
+- The external `Drift Audit` gate is now documented in the CI runbook as
+  workspace-local looper automation this repository does not contain and must not
+  edit. The important correction: it never failed. Its gate script uses exit 1 to
+  mean "thresholds not met, skip", so `gate skipped ... exited with code 1` is a
+  by-design skip, and the audit did fire for US-660. The real defect is one exit
+  code carrying two meanings, which is what let a skip read as a failure.
+- Verification: `gate:pr` green end to end (typecheck, lint, codegen drift clean,
+  all 13 boundary rules, guide-drift a real pass against `origin/main`). docs:check
+  0 errors, docs:test 90/90, codegen-ci 21/21 by path, and 49/49 across the wrapper,
+  reporter and ci-workflow suites, run three times for a stable count. Manual QA on
+  the real surface: against a deliberately hung scenario, off mode printed 0 bytes
+  in 10 seconds and live mode named the scenario file within 4 seconds and kept it
+  after the kill.
+- **Learnings for future iterations:**
+  - A hand-rolled `getReader()` loop over a `Bun.spawn` subprocess stream
+    intermittently drops trailing bytes; `new Response(stream).text()` does not.
+    Measured 11/12 versus 12/12 on a 256 KiB stderr payload, and reordering
+    `proc.exited` out of the `Promise.all` made it worse (10/12), so it is the
+    reader and not the exit race. To tee and buffer the same stream, use
+    `stream.tee()` and keep `Response.text()` on the buffered branch.
+  - `process.exit()` truncates a large pending `process.stdout.write`. The
+    pre-existing wrapper emitted 16,384 bytes of a ~525,000 byte document and
+    called it done, so any guide-scenario job with a big failure dump has been
+    losing the tail of its own report. End both streams before exiting.
+  - Both defects were invisible to every green suite and to `lsp_diagnostics`.
+    The heavy-stream test that exposed them only failed once three test files ran
+    together; a single-file run passed. When a subagent reports a pass, re-run the
+    suite the way CI will run it.
+  - `rewriteScenarioSourceMappedOutput` cannot be streamed. It rewrites earlier
+    lines from later stack frames and appends globally deduped annotations, so any
+    liveness work has to sit beside the buffered document, never replace it.
+---
+
+## 2026-09-20 15:56 - US-656 Review
+- Reviewed live guide-scenario output, the windows-arm64 stall record, and the Drift Audit runbook against the source ACs. No product blockers were fixed.
+- Review notes (deferred/rejected): demanding a hang fix or windows-arm64 quarantine was rejected — AC2's quarantine branch is conditional on a proven runner cause, residual §13 closes the item by recording that the child-versus-runner hang is undetermined until an instrumented stall, and Build cannot wait for the next CI cap-hit; a mapped-banner leading newline was rejected as a visual nit, not a stall-attribution defect.
+- Verification: gate:pr passed; guide-drift passed against origin/main; lint:guides, check:guide-coverage, codegen:guide-scenarios, and check:public-transcripts passed; 70 focused tests across the wrapper, reporter, codegen-ci, and ci-workflow suites; Bugbot found no bugs.
+- **Learnings for future iterations:** Live output is the stall-attribution instrument, not the hang resolution. Do not send Build back around a windows-arm64 hang that has not recurred with the live region on.
+---
+## 2026-09-20 15:57 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-20 17:26 - Babysit
+- PR: #1033 https://github.com/AaronFeledy/core4/pull/1033
+- CI outcome: pass (after one triage round; initial `unit-tests-linux-x64-shard (3)` failure)
+- Review feedback: fixed (heavy-output deadlock fixture dropped unflushed stderr — awaited `Bun.write` for both streams and tightened the assertion to exact per-mode copy counts)
+- Merge: merged (squash)
 ---

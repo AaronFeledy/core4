@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import type { VolumeOperationError } from "@lando/sdk/errors";
-import { type AppIdentity, type VolumeInfo, VolumeLocator, type VolumeRef } from "@lando/sdk/schema";
+import { type VolumeInfo, VolumeLocator, type VolumeRef } from "@lando/sdk/schema";
 
 import {
   type MountedVolumeTarget,
@@ -21,11 +21,6 @@ export {
   type VolumeAdoptionTarget,
   resolveNativeVolumeIdentity,
 } from "./native-volume-identity.ts";
-
-export const volumeCreationOwnerLabels = (
-  identity: AppIdentity | undefined,
-): Readonly<Record<string, string>> =>
-  identity === undefined ? {} : { "dev.lando.volume-owner": identity.appRoot };
 
 const Mount = Schema.Struct({
   Type: Schema.String,

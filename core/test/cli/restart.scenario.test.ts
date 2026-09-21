@@ -210,6 +210,7 @@ const makeRestartLayer = (
     destroy: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
+        return { kind: "destroyed" as const };
       }),
     inspect: (target) =>
       Effect.succeed({

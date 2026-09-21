@@ -90,8 +90,11 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
   const createStatus = options.createStatus ?? 201;
   const createStatuses = options.createStatuses;
   const createBody = options.createBody ?? "";
+  const existing = new Set<string>();
+  const running = new Set<string>();
   let createIndex = 0;
   const responseFor = (method: string, path: string): DockerHttpResponse => {
+    if (method === "GET" && path.startsWith("/networks/")) return { status: 404, body: "" };
     if (path === "/networks/create") return { status: 201, body: "" };
     if (method === "GET" && path.startsWith("/images/") && path.endsWith("/json")) {
       const ref = decodeURIComponent(path.slice("/images/".length, -"/json".length));
@@ -119,14 +122,24 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
       };
     }
     if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
-      return { status: 404, body: "" };
+      const name = path.slice("/containers/".length, -"/json".length);
+      return existing.has(name)
+        ? { status: 200, body: JSON.stringify({ State: { Running: running.has(name) } }) }
+        : { status: 404, body: "" };
     }
     if (path.startsWith("/containers/create?")) {
       const status = createStatuses?.[createIndex] ?? createStatus;
       createIndex += 1;
+      if (status === 201 || status === 409) {
+        const name = new URL(`http://localhost${path}`).searchParams.get("name");
+        if (name !== null) existing.add(name);
+      }
       return { status, body: createBody };
     }
-    if (path.endsWith("/start")) return { status: 204, body: "" };
+    if (path.endsWith("/start")) {
+      running.add(path.slice("/containers/".length, -"/start".length));
+      return { status: 204, body: "" };
+    }
     if (path.endsWith("/stop")) return { status: 204, body: "" };
     if (method === "DELETE") return { status: 204, body: "" };
     return { status: 500, body: '{"message":"unexpected request"}' };

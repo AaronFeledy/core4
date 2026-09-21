@@ -2,19 +2,7 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import type { PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
-import type {
-  CapabilityError,
-  CommandAliasConflictError,
-  ConfigExpressionError,
-  DataTreeOwnershipCapabilityError,
-  HomePathCapabilityError,
-  LandofileUnknownEventError,
-  NoProviderInstalledError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-  PublicationUnsupportedError,
-} from "@lando/sdk/errors";
+import type { AppPlanResolutionError, PullAppError, PushAppError, RemoteSyncError } from "@lando/sdk/app";
 import {
   LandofileNotFoundError,
   LandofileParseError,
@@ -51,11 +39,7 @@ import {
 
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { parseLandofile } from "@lando/landofile/parser";
-import {
-  type ResolvedAppTarget,
-  type UserLandofileError,
-  loadUserLandofileAt,
-} from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 
 export const RemoteEntrySchema = Schema.Struct({ name: Schema.String, config: RemoteConfig });
 export const RemoteListResultSchema = Schema.Array(RemoteEntrySchema);
@@ -122,19 +106,6 @@ export interface RemoteEnvListOptions extends RemoteTestOptions {}
 export interface RemoteSetupOptions extends RemoteTestOptions {
   readonly force?: boolean;
 }
-
-type AppPlanResolutionError =
-  | UserLandofileError
-  | LandofileUnknownEventError
-  | CapabilityError
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderUnavailableError
-  | PublicationUnsupportedError;
 
 export type RemoteSyncCommandError = RemoteSyncError | AppPlanResolutionError;
 

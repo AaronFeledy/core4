@@ -1,37 +1,12 @@
 /** Rebuilds the app plan and command index caches without contacting the provider. */
 import { Effect, Schema } from "effect";
 
+import type { AppPlanResolutionError } from "@lando/sdk/app";
 import type {
-  AppIdReservedError,
   CacheError,
-  CapabilityError,
-  CommandAliasConflictError,
   CommandAliasTargetError,
-  ComposeKeyRejectedError,
-  ConfigExpressionError,
-  DataTreeOwnershipCapabilityError,
-  HomePathCapabilityError,
   LandoCommandError,
-  LandofileFormConflictError,
-  LandofileIncludeError,
-  LandofileLoadExpressionError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileUnknownEventError,
-  LandofileValidationError,
-  LandofileVersionConstraintError,
-  ManagedFileTransactionError,
-  NoProviderInstalledError,
-  NotImplementedError,
   PluginManifestError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-  PublicationUnsupportedError,
-  RouteInputError,
-  ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import {
@@ -74,38 +49,13 @@ export const AppCacheRefreshResultSchema = Schema.Struct({
 });
 
 type AppCacheRefreshError =
-  | ManagedFileTransactionError
-  | AppIdReservedError
-  | ComposeKeyRejectedError
-  | LandofileNotFoundError
-  | LandofileFormConflictError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
+  | AppPlanResolutionError
+  | ProviderError
   | ToolingCompileError
-  | ToolingIncludeCycleError
-  | LandofileVersionConstraintError
-  | NotImplementedError
-  | LandofileLoadExpressionError
   | PluginManifestError
-  | CapabilityError
-  | PublicationUnsupportedError
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | DataTreeOwnershipCapabilityError
-  | ConfigExpressionError
   | CommandAliasTargetError
   | CacheError
-  | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
+  | LandoCommandError;
 
 type AppCacheRefreshServices = AppPlanner | LandofileService | PluginRegistry | RuntimeProviderRegistry;
 

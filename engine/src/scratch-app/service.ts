@@ -58,7 +58,7 @@ import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
-import { ScratchResourceScanner } from "./scanner.ts";
+import { ScratchResourceScanner, isCanonicalScratchId } from "./scanner.ts";
 
 export interface ScratchInitAppInput {
   readonly cwd: string;
@@ -239,6 +239,7 @@ export const isUnsafeScratchId = (id: string): boolean =>
   id.length === 0 || /[/\\\0]/u.test(id) || /^\.+$/u.test(id);
 
 const SCRATCH_EXTENSION_KEY = "@lando/core/scratch";
+const DEFAULT_SCRATCH_EXCLUDES = [".git/", "node_modules/", "vendor/", ".lando/cache/", ".DS_Store"] as const;
 
 const scratchExtension = (plan: AppPlan): Record<string, unknown> => {
   const existing = plan.extensions[SCRATCH_EXTENSION_KEY];
@@ -322,6 +323,29 @@ const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
   };
 };
 
+export const suffixScratchHostname = (hostname: string, scratchId: string): string => {
+  const labels = hostname.split(".");
+  if (labels.length < 3) return hostname;
+  const targetIndex = labels.length - 3;
+  const target = labels[targetIndex];
+  if (target === undefined || target.endsWith(`--${scratchId}`)) return hostname;
+  return labels.map((label, index) => (index === targetIndex ? `${label}--${scratchId}` : label)).join(".");
+};
+
+const applyScratchHostnames = (plan: AppPlan, input: ScratchAcquireInput): AppPlan => {
+  if (input.noHostnameSuffix === true) return plan;
+  const preserved = new Set(input.hostnames ?? []);
+  const scratchId = String(plan.id);
+  return {
+    ...plan,
+    routes: plan.routes.map((route) =>
+      preserved.has(route.hostname)
+        ? route
+        : { ...route, hostname: suffixScratchHostname(route.hostname, scratchId) },
+    ),
+  };
+};
+
 const applyScratchStartFlags = (
   plan: AppPlan,
   input: ScratchAcquireInput,
@@ -359,7 +383,7 @@ const applyScratchStartFlags = (
       }
       next = applyShareGlobalStorage(next);
     }
-    return next;
+    return applyScratchHostnames(next, input);
   });
 
 const scratchIsolationConflict = (flags: ReadonlyArray<string>): ScratchIsolationConflictError =>
@@ -513,8 +537,13 @@ const makeScratchAppService = (
       return `scratch-${sanitizeBase(base)}-${suffix}`;
     });
 
+  const unlessKeepOnFailure = (
+    input: ScratchAcquireInput,
+    effect: Effect.Effect<void, ScratchAppError>,
+  ): Effect.Effect<void, ScratchAppError> => (input.keepOnFailure === true ? Effect.void : effect);
+
   const paths = (id: string) =>
-    isUnsafeScratchId(id)
+    isUnsafeScratchId(id) || !isCanonicalScratchId(id)
       ? Effect.fail(
           scratchAppError("paths", `Refusing to resolve scratch paths for unsafe id "${id}".`, undefined),
         )
@@ -618,10 +647,9 @@ const makeScratchAppService = (
             Effect.flatMap((provider) => {
               const plan = input.plan;
               if (plan === undefined) return Effect.void;
-              return provider.destroy(
-                { app: plan.id, plan },
-                { volumes: input.keepVolumes !== true, removeState: true },
-              );
+              return provider
+                .destroy({ app: plan.id, plan }, { volumes: input.keepVolumes !== true, removeState: true })
+                .pipe(Effect.asVoid);
             }),
             Effect.mapError((cause) =>
               scratchAppError(
@@ -635,13 +663,64 @@ const makeScratchAppService = (
     const removeRoutes = input.plan === undefined ? Effect.void : removeScratchRoutes(input.plan.id);
 
     return removeRoutes.pipe(
-      Effect.zipRight(pruneProvider.pipe(Effect.catchAll(() => Effect.void))),
-      Effect.zipRight(cleanupScratchInstance(input.instanceRoot).pipe(Effect.catchAll(() => Effect.void))),
+      Effect.zipRight(pruneProvider),
+      Effect.zipRight(cleanupScratchInstance(input.instanceRoot)),
       Effect.zipRight(scratchRegistry.remove(input.id)),
     );
   };
 
-  const copyAppRoot = (source: string, destination: string) =>
+  const removeExcludedPaths = (destination: string, excludes: ReadonlyArray<string>) =>
+    Effect.tryPromise({
+      try: async () => {
+        const patterns = [...DEFAULT_SCRATCH_EXCLUDES, ...excludes].map((pattern) =>
+          pattern.replace(/^\.\//u, ""),
+        );
+        const visit = async (directory: string, relativeDirectory: string): Promise<void> => {
+          const entries = await readdir(directory, { withFileTypes: true });
+          for (const entry of entries) {
+            const relative =
+              relativeDirectory.length === 0 ? entry.name : `${relativeDirectory}/${entry.name}`;
+            const excluded = patterns.some((pattern) => {
+              const directoryOnly = pattern.endsWith("/");
+              const normalized = directoryOnly ? pattern.slice(0, -1) : pattern;
+              if (directoryOnly && normalized === ".git") return entry.name === ".git";
+              if (directoryOnly && !entry.isDirectory()) return false;
+              if (!normalized.includes("/") && !normalized.includes("*")) return entry.name === normalized;
+              return new Bun.Glob(normalized).match(relative);
+            });
+            const path = join(directory, entry.name);
+            if (excluded) {
+              await rm(path, { recursive: true, force: true });
+            } else if (entry.isDirectory()) {
+              await visit(path, relative);
+            }
+          }
+        };
+        await visit(destination, "");
+      },
+      catch: (cause) =>
+        scratchAppError(
+          "materialize",
+          `Unable to apply scratch copy exclusions under ${destination}.`,
+          cause,
+        ),
+    });
+
+  const removeLocalOverrides = (destination: string) =>
+    Effect.tryPromise({
+      try: () =>
+        Promise.all(
+          [".lando.local.yml", ".lando.user.yml"].map((file) => rm(join(destination, file), { force: true })),
+        ),
+      catch: (cause) =>
+        scratchAppError(
+          "materialize",
+          `Unable to remove local Landofile overrides under ${destination}.`,
+          cause,
+        ),
+    }).pipe(Effect.asVoid);
+
+  const copyAppRoot = (source: string, destination: string, input: ScratchAcquireInput) =>
     Effect.scoped(
       dataMover.transfer({
         from: { _tag: "hostPath", path: AbsolutePath.make(source) },
@@ -659,6 +738,8 @@ const makeScratchAppService = (
               cause,
             ),
       ),
+      Effect.zipRight(removeExcludedPaths(destination, input.excludes ?? [])),
+      Effect.zipRight(input.noLocalOverrides === true ? removeLocalOverrides(destination) : Effect.void),
     );
 
   const startScratchPlan = (
@@ -667,6 +748,7 @@ const makeScratchAppService = (
     instanceRoot: AbsolutePath,
     planCache: AbsolutePath,
     detached: boolean,
+    keepOnFailure: boolean,
     landofileRouter?: RouterConfig,
   ) =>
     Effect.gen(function* () {
@@ -709,7 +791,7 @@ const makeScratchAppService = (
         Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result)),
         // A failed start can leave a materialized dir and partial provider state; the scope
         // finalizer only covers a successful start, so reclaim on the failure path too.
-        Effect.tapError(() => destroyScratchResources),
+        Effect.tapError(() => (keepOnFailure ? Effect.void : destroyScratchResources)),
         Effect.mapError((cause) =>
           scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
         ),
@@ -770,17 +852,25 @@ const makeScratchAppService = (
       yield* scratchRegistry.upsert(registryEntry);
 
       yield* materializeDir(scratchPaths.instanceRoot).pipe(
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
       yield* materializeDir(scratchPaths.root).pipe(
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
 
       const forkLandofile = { ...landofile, name: scratchId };
       const planForkPlan =
         isolate === "full"
-          ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root)).pipe(
-              Effect.tapError(() => Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot))),
+          ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root), input).pipe(
+              Effect.tapError(() =>
+                input.keepOnFailure === true
+                  ? Effect.void
+                  : Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot)),
+              ),
               Effect.zipRight(
                 withProcessCwd(scratchPaths.root, () => planner.plan(forkLandofile, capabilities)),
               ),
@@ -792,10 +882,14 @@ const makeScratchAppService = (
             ? cause
             : scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
         ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
       const startPlan = yield* applyScratchStartFlags(forkPlan, input, capabilities, hostCwd).pipe(
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
       return yield* startScratchPlan(
         scratchId,
@@ -803,6 +897,7 @@ const makeScratchAppService = (
         scratchPaths.instanceRoot,
         scratchPaths.planCache,
         input.detached,
+        input.keepOnFailure === true,
         landofile.router,
       ).pipe(
         Effect.tap(() =>
@@ -814,11 +909,13 @@ const makeScratchAppService = (
           }),
         ),
         Effect.tapError(() =>
-          reapScratch({
-            id: scratchId,
-            instanceRoot: scratchPaths.instanceRoot,
-            plan: markScratchPlan(startPlan, scratchId),
-          }),
+          input.keepOnFailure === true
+            ? Effect.void
+            : reapScratch({
+                id: scratchId,
+                instanceRoot: scratchPaths.instanceRoot,
+                plan: markScratchPlan(startPlan, scratchId),
+              }),
         ),
       );
     });
@@ -843,10 +940,14 @@ const makeScratchAppService = (
       yield* scratchRegistry.upsert(registryEntry);
 
       yield* materializeDir(scratchPaths.instanceRoot).pipe(
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
       yield* materializeDir(scratchPaths.root).pipe(
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
 
       yield* Effect.tryPromise({
@@ -857,13 +958,17 @@ const makeScratchAppService = (
             full: false,
             recipe: ref,
             name: scratchId,
-            runPostInit: false,
+            runPostInit: input.runPostInit === true,
             ...(input.answers === undefined ? {} : { answers: input.answers }),
             ...(input.yes === undefined ? {} : { yes: input.yes }),
             ...(input.nonInteractive === undefined ? {} : { nonInteractive: input.nonInteractive }),
           }),
         catch: (cause) => mapInitError(input, cause),
-      }).pipe(Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })));
+      }).pipe(
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
+      );
 
       const landofilePath = join(scratchPaths.root, ".lando.yml");
       const landofile = yield* withProcessCwd(scratchPaths.root, () =>
@@ -876,7 +981,9 @@ const makeScratchAppService = (
             cause,
           ),
         ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
       const recipeLandofile = { ...landofile, name: scratchId };
 
@@ -884,7 +991,9 @@ const makeScratchAppService = (
         Effect.mapError((cause) =>
           scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
         ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
       const recipePlan = yield* withProcessCwd(scratchPaths.root, () =>
         planner.plan(recipeLandofile, capabilities),
@@ -892,10 +1001,14 @@ const makeScratchAppService = (
         Effect.mapError((cause) =>
           scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
         ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
       const startPlan = yield* applyScratchStartFlags(recipePlan, input, capabilities, hostCwd).pipe(
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          unlessKeepOnFailure(input, reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        ),
       );
       return yield* startScratchPlan(
         scratchId,
@@ -903,6 +1016,7 @@ const makeScratchAppService = (
         scratchPaths.instanceRoot,
         scratchPaths.planCache,
         input.detached,
+        input.keepOnFailure === true,
         landofile.router,
       ).pipe(
         Effect.tap(() =>
@@ -914,11 +1028,13 @@ const makeScratchAppService = (
           }),
         ),
         Effect.tapError(() =>
-          reapScratch({
-            id: scratchId,
-            instanceRoot: scratchPaths.instanceRoot,
-            plan: markScratchPlan(startPlan, scratchId),
-          }),
+          input.keepOnFailure === true
+            ? Effect.void
+            : reapScratch({
+                id: scratchId,
+                instanceRoot: scratchPaths.instanceRoot,
+                plan: markScratchPlan(startPlan, scratchId),
+              }),
         ),
       );
     });
@@ -1030,7 +1146,7 @@ const makeScratchAppService = (
       const reaped: string[] = [];
       const errors: string[] = [];
       for (const id of candidates) {
-        if (isUnsafeScratchId(id)) {
+        if (isUnsafeScratchId(id) || !isCanonicalScratchId(id)) {
           errors.push(`${id}: unsafe scratch id`);
           continue;
         }

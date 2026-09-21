@@ -18,7 +18,7 @@ services:
 ```
 
 MinIO listens on API port `9000` and console port `9001`. Lando starts the
-official `minio/minio` image with `server /data --address :9000 --console-address
+official `quay.io/minio/minio` image with `server /data --address :9000 --console-address
 :9001`, stores object data in the persistent `/data` volume, and uses username `lando` with password `landolando`.
 MinIO requires the root password to be at least eight characters.
 
@@ -84,8 +84,9 @@ For local development, the root credentials default to user `lando` and password
 Override `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` under `environment` when
 your app needs different credentials.
 
-A `port:` override changes the API listen address, the internal endpoint, and
-the `mc` alias used for readiness. The console stays on `9001`.
+A `port:` override changes the S3 API listen address, the internal endpoint, and
+the `mc` alias used for readiness. Known limit: the console port is fixed at
+`9001`. `port:` moves only the API, and no Landofile key moves the console.
 
 ## Console and client
 

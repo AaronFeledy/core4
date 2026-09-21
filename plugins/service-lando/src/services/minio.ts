@@ -7,7 +7,7 @@ import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-const DEFAULT_IMAGE = "minio/minio:latest";
+const DEFAULT_IMAGE = "quay.io/minio/minio:latest";
 const DEFAULT_API_PORT = 9000;
 const CONSOLE_PORT = 9001;
 const DATA_TARGET = PortablePath.make("/data");

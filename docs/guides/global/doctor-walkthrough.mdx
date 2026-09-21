@@ -34,7 +34,7 @@ If the dist file exists but cannot be read, the check fails and tells you to fix
 
 The router reads its route configuration from a directory Lando mounts into the Traefik container and watches with inotify. If that watch never starts, Traefik keeps running but loads no routes, so every app URL fails without saying why. Lando reads the router's own log once after starting it and records any watcher failure it finds. The `router-file-watcher` check reports that record even when doctor selected a different app provider, because Traefik always runs on the Lando-managed provider.
 
-It is a record, not a live probe. The check shows what the last router setup observed, and it stays reported until the next `lando global:restart` observes a clean start. If the check still fails after you fixed the host, restart the global router and run doctor again.
+It is a record, not a live probe. The check shows what the last router startup observed, and it stays reported until the next `lando global:restart` or `lando global:rebuild` observes a clean start and refreshes it. If the check still fails after you fixed the host, restart the global router and run doctor again.
 
 The watcher runs on the provider runtime host, which is not always the operating system you typed the command on:
 
