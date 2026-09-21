@@ -65,7 +65,7 @@ For day-to-day tooling and Postgres hosts, see [Run the Node API recipe](/guides
     </Step>
   </Scenario>
 
-  <Scenario id="non-default-options" render>
+  <Scenario id="non-default-options" render={false} reason="Coverage for non-default recipe options">
     <Step name="init">
       <Variable name="appName" value="node-api-hono" display="my-node-api-hono" />
       <Run command="lando init --recipe node-api --name={{appName}} --yes --answer=node=22 --answer=framework=hono --answer=database=none" />

@@ -42,7 +42,7 @@ For day-to-day tooling and Postgres hosts, see [Run the Node API recipe](/guides
 ## 1. scaffold
 
 ```bash
-lando init --recipe node-api --name=my-node-api-hono --yes
+lando init --recipe node-api --name=my-node-api --yes
 ```
 
 ## 2. start
@@ -55,18 +55,6 @@ lando start
 
 ```bash
 lando info
-```
-
-## 4. init
-
-```bash
-lando init --recipe node-api --name=my-node-api-hono --yes --answer=node=22 --answer=framework=hono --answer=database=none
-```
-
-## 5. inspect
-
-```bash
-lando app:config --format=json
 ```
 
 ## Cleanup
