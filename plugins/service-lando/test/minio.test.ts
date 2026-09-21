@@ -57,7 +57,7 @@ describe("minio ServiceType", () => {
     const plan = await planMinioService({ type: "minio" });
 
     expect(plan.type).toBe("minio");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "minio/minio:latest" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "quay.io/minio/minio:latest" });
     expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(plan.command).toEqual([
       "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",

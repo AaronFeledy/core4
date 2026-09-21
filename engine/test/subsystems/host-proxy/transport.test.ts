@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import * as fsPromises from "node:fs/promises";
 import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage } from "node:http";
 import { request as httpRequest } from "node:http";
@@ -803,11 +804,16 @@ describe("host-proxy runLando physical transport", () => {
 
   test("closes the listener when chmod fails after bind", async () => {
     const paths = { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot() };
-    const stateDir = hostProxyRunLandoStateDir(app, paths);
-    let deleting = true;
-    const remover = setInterval(() => {
-      if (deleting) void rm(join(stateDir, "host-proxy.sock"), { force: true });
-    }, 0);
+    const shimArtifactPath = await fakeExecutable();
+    const originalChmod = fsPromises.chmod.bind(fsPromises);
+    const chmodSpy = spyOn(fsPromises, "chmod").mockImplementation(async (path, mode) => {
+      if (String(path).endsWith("host-proxy.sock")) {
+        const error = new Error("chmod failed after bind");
+        Object.assign(error, { code: "ENOENT" });
+        throw error;
+      }
+      return originalChmod(path, mode);
+    });
 
     try {
       const failed = await runExit(
@@ -818,7 +824,7 @@ describe("host-proxy runLando physical transport", () => {
           callerService: "web",
           executor: () => Effect.succeed({ envelope, exitCode: 0 }),
           paths,
-          shimArtifactPath: await fakeExecutable(),
+          shimArtifactPath,
         }),
       );
 
@@ -826,8 +832,7 @@ describe("host-proxy runLando physical transport", () => {
       if (Exit.isFailure(failed) && failed.cause._tag === "Fail")
         expect(failed.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
     } finally {
-      deleting = false;
-      clearInterval(remover);
+      chmodSpy.mockRestore();
     }
   });
 
