@@ -1,0 +1,212 @@
+---
+id: hugo-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, hugo, static, node]
+---
+
+# Run the Hugo recipe
+
+```sh
+lando init --recipe hugo --name=hugo-demo --yes
+cd hugo-demo
+lando start
+```
+
+`--yes` skips prompts. Hugo declares no recipe options, so the only prompt is the app name. First start builds `builder` and `web`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
+
+Stock start runs `npx hugo server` on `builder`. Install Hugo into the app before you expect that server to stay up. The steps below are the day-to-day install path.
+
+## See what the recipe writes
+
+Init writes `.lando.yml` only. Put a Hugo site in after start.
+
+| Piece | What you get |
+| --- | --- |
+| `builder` | `node:lts`, port `1313`, command `npx hugo server --bind 0.0.0.0 --port 1313` |
+| `web` | `static:nginx` with the app mounted at `/app` and one route on both schemes |
+| Tooling | `lando hugo` (`npx hugo`) and `lando npm` on `builder` |
+
+`builder` is the day-to-day browse target while Hugo serves. `web` is the nginx sidecar on the app hostname. Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="hugo-workflow" display="hugo-demo" />
+      <Run command="lando init --recipe hugo --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"builder\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*1313" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "npx hugo server --bind 0.0.0.0 --port 1313" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hugo\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-unknown-answer" render={false} reason="Regression for undeclared recipe option answers">
+    <Step name="init-invalid">
+      <Variable name="appName" value="hugo-workflow-bad" display="hugo-bad" />
+      <Run command="lando init --recipe hugo --name={{appName}} --yes --answer=node=22" expectExit={1} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Install Hugo into the app
+
+The recipe runs Hugo through `npx` on Node. Install `hugo-extended` as a dev dependency so `lando hugo` resolves a real binary. Prefer `hugo-extended` over other Hugo npm packages.
+
+Before the first install (or right after init), park `builder` on `sleep infinity` so the service stays up while you add packages. Edit `.lando.yml`:
+
+```yaml
+services:
+  builder:
+    command: sleep infinity
+    port: 1313
+    type: node:lts
+```
+
+Then start (or restart) and install:
+
+```sh
+lando start
+lando npm init -y
+lando npm install hugo-extended --save-dev
+lando npm install-scripts approve hugo-extended
+lando npm rebuild hugo-extended
+```
+
+npm 11 keeps an `allowScripts` entry in `package.json` after the approve step. Confirm the toolchain:
+
+```sh
+lando hugo version
+lando npm --version
+```
+
+`lando hugo version` prints something like `hugo v0.166.0+extended`. The patch may float; check the printed version rather than hardcoding it.
+
+Restore the recipe server command when the install is done:
+
+```yaml
+services:
+  builder:
+    command: "npx hugo server --bind 0.0.0.0 --port 1313"
+    port: 1313
+    type: node:lts
+```
+
+```sh
+lando restart
+```
+
+## Scaffold the site, then add content
+
+`.lando.yml` already lives in the app root, so tell Hugo to write into this directory:
+
+```sh
+lando hugo new site . --force
+```
+
+Add a post (Hugo marks new content as draft by default):
+
+```sh
+lando hugo new content posts/hello.md
+```
+
+Open `content/posts/hello.md` and set `draft = false` (or `draft: false` in YAML front matter) so the page publishes. Drop a minimal layout so builds write HTML under `public/`:
+
+```sh
+mkdir -p layouts/_default
+```
+
+`layouts/_default/baseof.html`:
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ block "title" . }}{{ .Site.Title }}{{ end }}</title>
+</head>
+<body>
+{{ block "main" . }}{{ end }}
+</body>
+</html>
+```
+
+`layouts/_default/single.html`:
+
+```html
+{{ define "title" }}{{ .Title }} | {{ .Site.Title }}{{ end }}
+{{ define "main" }}
+<article>
+  <h1>{{ .Title }}</h1>
+  {{ .Content }}
+</article>
+{{ end }}
+```
+
+`layouts/_default/list.html`:
+
+```html
+{{ define "main" }}
+<h1>{{ .Title }}</h1>
+<ul>
+{{ range .Pages }}
+  <li><a href="{{ .RelPermalink }}">{{ .Title }}</a></li>
+{{ end }}
+</ul>
+{{ end }}
+```
+
+`layouts/index.html`:
+
+```html
+{{ define "main" }}
+<h1>{{ .Site.Title }}</h1>
+<ul>
+{{ range .Site.RegularPages }}
+  <li><a href="{{ .RelPermalink }}">{{ .Title }}</a></li>
+{{ end }}
+</ul>
+{{ end }}
+```
+
+Build once to confirm `public/` fills in:
+
+```sh
+lando hugo build
+```
+
+Day to day, leave the recipe command on `npx hugo server --bind 0.0.0.0 --port 1313` and open the **builder** URL `lando info` prints (for example `https://builder.hugo-demo.lndo.site` or the same host with a fallback port such as `:8443`). Live reload rides with that serve.
+
+Need a one-off rebuild while the development server keeps running? Use `lando hugo build`.
+
+## Destroy without surprises
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Hugo recipe](/recipes/hugo/)
+- [Serve a static site](../services/static.mdx)
+- [Add Node](../services/node.mdx)
