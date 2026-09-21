@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { Schema } from "effect";
 
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
@@ -163,6 +165,17 @@ export const FileSyncPlan = Schema.Struct({
   }),
 });
 export type FileSyncPlan = typeof FileSyncPlan.Type;
+
+/**
+ * The one derivation behind {@link AppIdentity}'s `ownerKey` and `repoGroupKey`.
+ *
+ * `canonicalPath` MUST already be canonical (realpath-resolved); the planner
+ * canonicalizes an app root before hashing it, and every other producer of an
+ * ownership key — including volume labels written by a provider — derives it
+ * from this function so one root always yields one key.
+ */
+export const appIdentityKey = (kind: "owner" | "repository", canonicalPath: string): string =>
+  createHash("sha256").update(`${kind}\0${canonicalPath}`).digest("hex");
 
 export const AppIdentity = Schema.Struct({
   appRoot: AbsolutePath.annotations({ description: "Canonical root that owns this app instance." }),

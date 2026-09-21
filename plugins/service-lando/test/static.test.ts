@@ -11,8 +11,10 @@ import {
   staticServiceFeature,
 } from "../src/services/static.ts";
 
+import { NGINX_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/nginx-config.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
+import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -47,6 +49,17 @@ const composeStaticPlan = (
     metadata,
     featureOverrides,
   });
+
+/** Every shell redirect target in a generated launcher script. */
+const redirectTargets = (script: string): ReadonlyArray<string> =>
+  [...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1] ?? "");
+
+const buildStepIds = (plan: ServicePlan): ReadonlyArray<string> => {
+  const features = plan.extensions["@lando/core/service-features"] as
+    | { readonly buildSteps?: ReadonlyArray<{ readonly id?: string }> }
+    | undefined;
+  return (features?.buildSteps ?? []).map((step) => step.id ?? "");
+};
 
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
   let rejected = false;
@@ -90,9 +103,13 @@ describe("static ServiceType", () => {
     expect(plan.command).toEqual([
       "sh",
       "-c",
+      expect.stringContaining(`cat > /tmp/lando-nginx.conf <<'LANDO_NGINX_CONF'`),
+    ]);
+    expect(plan.command).toEqual([
+      "sh",
+      "-c",
       expect.stringContaining(
         [
-          "cat > /etc/nginx/conf.d/default.conf <<'LANDO_STATIC_NGINX'",
           "server {",
           "  listen 80;",
           "  server_name _;",
@@ -104,7 +121,11 @@ describe("static ServiceType", () => {
       ),
     ]);
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
-    expect(plan.command).toEqual(["sh", "-c", expect.stringContaining("exec nginx -g 'daemon off;'")]);
+    expect(plan.command).toEqual([
+      "sh",
+      "-c",
+      expect.stringContaining("exec nginx -c /tmp/lando-nginx.conf -g 'daemon off;'"),
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx" });
@@ -128,12 +149,52 @@ describe("static ServiceType", () => {
     const plan = await composeStaticPlan({ type: "static" });
 
     const command = Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command ?? "");
-    expect(command).toContain("/usr/share/lando/errors/403.html");
-    expect(command).toContain("/usr/share/lando/errors/404.html");
+    expectSharedErrorPagesBuildStep(plan);
+    expect(command).toContain("alias /usr/share/lando/errors/;");
     expect(command).toContain("error_page 403 /_lando/errors/403.html;");
     expect(command).toContain("error_page 404 /_lando/errors/404.html;");
     expect(command).toContain("internal;");
     expect(command).not.toContain("/app/.lando");
+  });
+
+  test("starts a non-root static nginx service without writing into the image config tree", async () => {
+    // Given / When: an identity the nginx image ships, with home persistence
+    // declined so the planned user is the only thing under test.
+    const plan = await composeStaticPlan({ type: "static", user: "nginx", home: false });
+
+    // Then: the planned user reaches the container and the launcher writes only
+    // where that user can write, pointing nginx at that file explicitly.
+    expect(plan.user).toBe("nginx");
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    const script = String(plan.command?.[2] ?? "");
+    expect(script).toContain("exec nginx -c /tmp/lando-nginx.conf -g 'daemon off;'");
+    expect(script).toContain("pid /tmp/lando-nginx.pid;");
+    expect(script).toContain("client_body_temp_path /tmp/lando-nginx-client-body;");
+    expect(script).toContain("fastcgi_temp_path /tmp/lando-nginx-fastcgi;");
+    expect(script).not.toContain("/etc/nginx/conf.d/default.conf");
+    expect(script).not.toContain("user nginx;");
+    expect(redirectTargets(script)).toEqual(["/tmp/lando-nginx.conf"]);
+    expectSharedErrorPagesBuildStep(plan);
+  });
+
+  test("a root static nginx service keeps the image worker identity and its drop-ins", async () => {
+    const plan = await composeStaticPlan({ type: "static" });
+
+    const script = String(plan.command?.[2] ?? "");
+    expect(script).toContain("user nginx;");
+    expect(script).toContain("worker_processes auto;");
+    expect(script).toContain("events {");
+    expect(script).toContain("include /etc/nginx/mime.types;");
+    expect(script).toContain("include /etc/nginx/conf.d/*.conf;");
+    expect(script).toContain("sendfile on;");
+    expect(script).toContain("keepalive_timeout 65;");
+    expect(buildStepIds(plan)).toContain(NGINX_DEFAULT_SITE_BUILD_STEP_ID);
+  });
+
+  test("an authored static command keeps the image own default site", async () => {
+    const plan = await composeStaticPlan({ type: "static", command: ["custom-static-server"] });
+
+    expect(buildStepIds(plan)).not.toContain(NGINX_DEFAULT_SITE_BUILD_STEP_ID);
   });
 
   test("caddy-backed static server picks caddy image", async () => {

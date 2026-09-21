@@ -53,7 +53,8 @@
     "./template": "./src/template/index.ts",
     "./tool-provisioning": "./src/tool-provisioning/index.ts",
     "./verified-stream": "./src/verified-stream/index.ts",
-    "./test": "./src/test/index.ts"
+    "./test": "./src/test/index.ts",
+    "./yaml": "./src/yaml/index.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "lando-sdk", "effect"],

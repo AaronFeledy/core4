@@ -41,6 +41,18 @@ The order is fixed: `pre-build`, then the task's own steps in the order you wrot
 
 Only tasks that show up in `lando --help` get brackets. Tasks pulled in with `internal: true` from a tooling include stay callable but do not grow `pre-` or `post-` names.
 
+Service types bring tasks of their own, and those get brackets too. Add a `mysql:8.0` service and you can hook `pre-mysql` without writing the `mysql` task yourself:
+
+```yaml
+services:
+  database:
+    type: "mysql:8.0"
+events:
+  pre-mysql:
+    - cmd: echo "before the mysql task"
+      service: ":host"
+```
+
 ## What happens on failure
 
 Three rules, no exceptions:
@@ -104,6 +116,8 @@ Because `command:` re-enters, a `pre-build` step that runs `command: app:build` 
 
 Lando checks every key under `events:` against the full valid set: the twelve lifecycle names (`pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-restart`, `post-restart`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy`) plus `pre-<task>` and `post-<task>` for each non-internal tooling task. A key outside that set fails with `LandofileUnknownEventError`, and the error lists every name you could have used.
 
+`lando app:config:lint`, `lando doctor --app`, and `lando start` build that set the same way, from the same tasks: your Landofile, every config layer, every include, and every service type. Lint and doctor get there without touching a container runtime, so a name that lints clean is a name `lando start` will run. If Lando cannot resolve your services at all, lint and doctor say so with the resolution error instead of blaming your event key.
+
 ```sh
 lando app:config:lint
 ```
@@ -150,6 +164,16 @@ Typo'd `pre-buidl`? The error tells you `pre-build` exists. Read the list, fix t
       <Verify file="build-body-fails/markers.txt" expect={{ not: { regex: "after" } }} />
     </Step>
     <Step name="cleanup-body-failure">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="service-task-brackets" render={false} reason="Regression coverage: lint knows the brackets of a task contributed by a service type">
+    <Step name="lint-service-task">
+      <UseFixture name="service-task-events" />
+      <Run command="lando app:config:lint" />
+    </Step>
+    <Step name="cleanup-service-task">
       <Cleanup />
     </Step>
   </Scenario>

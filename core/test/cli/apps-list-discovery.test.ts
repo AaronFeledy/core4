@@ -6,20 +6,24 @@ import { join } from "node:path";
 
 import { Effect, Layer } from "effect";
 
-import { ConfigService } from "@lando/sdk/services";
+import { ConfigService, PathsService } from "@lando/sdk/services";
 
+import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
+import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { StateStoreLive } from "@lando/state-store/service";
 
 import {
   type AppsListEntry,
   appsFromContainerList,
   containerSocketCandidates,
   decodeAppliedStateFile,
+  discoverRunningAppsEvidenceFromSockets,
   discoverRunningAppsFromSockets,
   isNamedPipeSocketPath,
   mergeAppsListEntries,
 } from "../../src/cli/commands/list-discovery.ts";
-import { listServices, renderAppsListResult } from "../../src/cli/commands/list.ts";
+import { listServices, listServicesWithPrune, renderAppsListResult } from "../../src/cli/commands/list.ts";
 
 const fakeConfigService = (dataRoot: string) =>
   Layer.succeed(ConfigService, {
@@ -33,16 +37,47 @@ const runList = (
   options: {
     readonly userCacheRoot?: string;
     readonly discoverContainers?: (root: string) => Promise<ReadonlyArray<AppsListEntry>>;
+    readonly discoverContainersEvidence?: (root: string) => Promise<{
+      readonly apps: ReadonlyArray<AppsListEntry>;
+      readonly confirmedProviderIds: ReadonlyArray<string>;
+      readonly ownedAppIds?: ReadonlyArray<string>;
+    }>;
     readonly path?: string;
+    readonly prune?: boolean;
+    readonly pruneLimit?: number;
+    readonly includeScratch?: boolean;
   } = {},
 ) =>
   Effect.runPromise(
-    listServices({
+    (options.prune === true ? listServicesWithPrune : listServices)({
       userDataRoot,
       userCacheRoot: options.userCacheRoot ?? userDataRoot,
       ...(options.discoverContainers === undefined ? {} : { discoverContainers: options.discoverContainers }),
+      ...(options.discoverContainersEvidence === undefined
+        ? {}
+        : { discoverContainersEvidence: options.discoverContainersEvidence }),
       ...(options.path === undefined ? {} : { path: options.path }),
-    }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      ...(options.pruneLimit === undefined ? {} : { pruneLimit: options.pruneLimit }),
+      ...(options.includeScratch === true ? { includeScratch: true } : {}),
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          fakeConfigService(userDataRoot),
+          Layer.succeed(
+            PathsService,
+            makeLandoPaths({
+              userConfRoot: userDataRoot,
+              userCacheRoot: options.userCacheRoot ?? userDataRoot,
+              userDataRoot,
+              systemPluginRoot: userDataRoot,
+            }),
+          ),
+          PrivateFileAccessLive,
+          StateStoreLive,
+          FileSystemLive,
+        ),
+      ),
+    ),
   );
 
 const stateEnvelope = (id: string, name: string, root: string, services: string[], provider = "lando") => ({
@@ -159,6 +194,40 @@ describe("appsFromContainerList", () => {
     });
   });
 
+  test("marks persisted scratch plans so host list can hide them", () => {
+    const [entry] = decodeAppliedStateFile(
+      JSON.stringify({
+        version: 1,
+        data: {
+          id: "scratch-demo-123456",
+          name: "scratch-demo-123456",
+          root: "/tmp/scratch-demo-123456/root",
+          provider: "lando",
+          services: { app: { name: "app" } },
+          extensions: { "@lando/core/scratch": { id: "scratch-demo-123456" } },
+        },
+      }),
+      "lando",
+    );
+    expect(entry).toMatchObject({ appId: "scratch-demo-123456", scratch: true });
+  });
+
+  test("includes scratch-labeled apps only when requested", () => {
+    const containers = [
+      labeled("regular", "web"),
+      labeled("scratch-demo-123456", "app", {
+        "dev.lando.scratch": "TRUE",
+        "dev.lando.scratch-id": "scratch-demo-123456",
+      }),
+    ];
+
+    expect(appsFromContainerList(containers).map((app) => app.appId)).toEqual(["regular"]);
+    expect(appsFromContainerList(containers, { includeScratch: true }).map((app) => app.appId)).toEqual([
+      "regular",
+      "scratch-demo-123456",
+    ]);
+  });
+
   test("skips stopped leftovers so the running claim stays honest", () => {
     const apps = appsFromContainerList([
       labeled("live", "web"),
@@ -265,6 +334,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/srv/drupal-cms",
           services: ["appserver", "database"],
+          stale: true,
         },
       ]);
     });
@@ -289,9 +359,39 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/srv/drupal-cms",
           services: ["appserver", "database"],
+          stale: true,
         },
       ]);
       expect(renderAppsListResult(result)).toContain("drupal-cms");
+    });
+  });
+
+  test("omits persisted scratch apps unless includeScratch is set", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const appliedDir = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans");
+      await mkdir(appliedDir, { recursive: true });
+      await writeFile(
+        join(appliedDir, "scratch-demo-123456.json"),
+        JSON.stringify({
+          version: 1,
+          data: {
+            id: "scratch-demo-123456",
+            name: "scratch-demo-123456",
+            root: "/srv/scratch-demo",
+            provider: "lando",
+            services: { app: { name: "app" } },
+            extensions: { "@lando/core/scratch": { id: "scratch-demo-123456" } },
+          },
+        }),
+      );
+      const hidden = await runList(userDataRoot, { discoverContainers: async () => [] });
+      expect(hidden.apps.map((app) => app.appId)).toEqual([]);
+      const shown = await runList(userDataRoot, {
+        discoverContainers: async () => [],
+        includeScratch: true,
+      });
+      expect(shown.apps.map((app) => app.appId)).toEqual(["scratch-demo-123456"]);
     });
   });
 
@@ -312,6 +412,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "docker",
           appRoot: "/srv/blog",
           services: ["nginx"],
+          stale: true,
         },
       ]);
     });
@@ -339,8 +440,166 @@ describe("apps:list host-wide discovery", () => {
           providerId: "podman",
           appRoot: "/srv/blog",
           services: ["nginx"],
+          stale: true,
         },
       ]);
+    });
+  });
+
+  test("does not report a prune receipt unless the mutating prune path ran", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const result = await Effect.runPromise(
+        listServices({
+          userDataRoot,
+          userCacheRoot: userDataRoot,
+          prune: true,
+          discoverContainersEvidence: async () => ({
+            apps: [],
+            confirmedProviderIds: ["lando"],
+            ownedAppIds: [],
+          }),
+        }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      );
+      expect(result.pruned).toBeUndefined();
+      expect(renderAppsListResult(result)).not.toContain("Pruned");
+    });
+  });
+
+  test("prunes only stale records whose exact provider confirms no owned resources", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const landoPath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      const dockerPath = join(paths.pluginStateDir("@lando/provider-docker"), "applied-plans", "beta.json");
+      await mkdir(join(landoPath, ".."), { recursive: true });
+      await mkdir(join(dockerPath, ".."), { recursive: true });
+      await writeFile(
+        landoPath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+      await writeFile(
+        dockerPath,
+        JSON.stringify(stateEnvelope("beta", "beta", "/missing/beta", [], "docker")),
+      );
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({
+          apps: [],
+          confirmedProviderIds: ["lando"],
+          ownedAppIds: [],
+        }),
+      });
+
+      expect(result.pruned?.map((entry) => entry.appId)).toEqual(["alpha"]);
+      expect(result.apps.map((entry) => entry.appId)).toEqual(["beta"]);
+      expect(await Bun.file(landoPath).exists()).toBe(false);
+      expect(await Bun.file(dockerPath).exists()).toBe(true);
+      expect(renderAppsListResult(result)).toContain(
+        "Pruned 1 stale inventory entry:\n- alpha (lando) /missing/alpha",
+      );
+    });
+  });
+
+  test("does not prune stale state while the provider still owns an app resource", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      await mkdir(join(statePath, ".."), { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({
+          apps: [],
+          confirmedProviderIds: ["lando"],
+          ownedAppIds: ["alpha"],
+        }),
+      });
+
+      expect(result.pruned).toEqual([]);
+      expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
+      expect(await Bun.file(statePath).exists()).toBe(true);
+    });
+  });
+
+  test("revalidates provider evidence under the app lock before pruning concurrent start state", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      await mkdir(join(statePath, ".."), { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+      let evidenceReads = 0;
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => {
+          evidenceReads += 1;
+          return {
+            apps: [],
+            confirmedProviderIds: ["lando"],
+            ownedAppIds: evidenceReads === 1 ? [] : ["alpha"],
+          };
+        },
+      });
+
+      expect(evidenceReads).toBe(2);
+      expect(result.pruned).toEqual([]);
+      expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
+      expect(await Bun.file(statePath).exists()).toBe(true);
+    });
+  });
+
+  test("fails prune instead of reporting success when cwd inventory mutation fails", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      await mkdir(join(statePath, ".."), { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+      await writeFile(join(userDataRoot, "cwd-app-map.bin"), "corrupt");
+
+      const failed = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({
+          apps: [],
+          confirmedProviderIds: ["lando"],
+          ownedAppIds: [],
+        }),
+      }).then(
+        () => false,
+        () => true,
+      );
+      expect(failed).toBe(true);
+      expect(await Bun.file(statePath).exists()).toBe(true);
+    });
+  });
+
+  test("does not prune stale state without provider confirmation", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const paths = makeLandoPaths({ userDataRoot });
+      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
+      await mkdir(join(statePath, ".."), { recursive: true });
+      await writeFile(
+        statePath,
+        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
+      );
+
+      const result = await runList(userDataRoot, {
+        prune: true,
+        discoverContainersEvidence: async () => ({ apps: [], confirmedProviderIds: [] }),
+      });
+
+      expect(result.pruned).toEqual([]);
+      expect(result.apps.map((entry) => entry.appId)).toEqual(["alpha"]);
+      expect(await Bun.file(statePath).exists()).toBe(true);
     });
   });
 
@@ -390,6 +649,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/workspace/drupal-cms",
           services: ["appserver", "database"],
+          stale: true,
         },
       ]);
     });
@@ -400,13 +660,12 @@ describe("apps:list host-wide discovery", () => {
       const socketPath = join(userDataRoot, "podman.sock");
       let requestUrl: string | undefined;
       const server = createServer((request, response) => {
-        requestUrl = request.url;
-        if (request.url?.startsWith("/containers/json") !== true) {
-          response.writeHead(404);
-          response.end();
+        response.writeHead(200, { "content-type": "application/json" });
+        if (request.url?.startsWith("/volumes") === true) {
+          response.end(JSON.stringify({ Volumes: [] }));
           return;
         }
-        response.writeHead(200, { "content-type": "application/json" });
+        requestUrl = request.url;
         response.end(
           JSON.stringify([
             labeled("drupal-cms", "appserver", { "dev.lando.provider": "lando" }),
@@ -427,8 +686,35 @@ describe("apps:list host-wide discovery", () => {
         expect(result.apps.map((app) => app.appName)).toContain("drupal-cms");
         expect(result.apps.map((app) => app.appName)).toContain("global");
         expect(requestUrl).toBeDefined();
-        expect(requestUrl?.includes("all=true")).toBe(false);
-        expect(requestUrl?.includes("running")).toBe(true);
+        expect(requestUrl?.includes("all=true")).toBe(true);
+        expect(requestUrl?.includes("running")).toBe(false);
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    });
+  });
+
+  test("reports stopped containers and labeled volumes as owned resources", async () => {
+    await withTempRoot(async (userDataRoot) => {
+      const socketPath = join(userDataRoot, "resources.sock");
+      const server = createServer((request, response) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        if (request.url?.startsWith("/containers/json") === true) {
+          response.end(JSON.stringify([{ ...labeled("stopped", "web"), State: "exited" }]));
+          return;
+        }
+        response.end(
+          JSON.stringify({ Volumes: [{ Name: "alpha-data", Labels: { "dev.lando.app": "volume-only" } }] }),
+        );
+      });
+      await new Promise<void>((resolve, reject) => {
+        server.listen(socketPath, () => resolve());
+        server.on("error", reject);
+      });
+      try {
+        const evidence = await discoverRunningAppsEvidenceFromSockets(userDataRoot, [socketPath]);
+        expect(evidence.apps).toEqual([]);
+        expect(Reflect.get(evidence, "ownedAppIds")).toEqual(["stopped", "volume-only"]);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
@@ -441,10 +727,14 @@ describe("apps:list host-wide discovery", () => {
       const secondPath = join(userDataRoot, "host.sock");
       const hits: string[] = [];
       const listen = async (socketPath: string, appId: string) => {
-        const server = createServer((_request, response) => {
+        const server = createServer((request, response) => {
           hits.push(socketPath);
           response.writeHead(200, { "content-type": "application/json" });
-          response.end(JSON.stringify([labeled(appId, "web", { "dev.lando.provider": "lando" })]));
+          response.end(
+            request.url?.startsWith("/volumes") === true
+              ? JSON.stringify({ Volumes: [] })
+              : JSON.stringify([labeled(appId, "web", { "dev.lando.provider": "lando" })]),
+          );
         });
         await new Promise<void>((resolve, reject) => {
           server.listen(socketPath, () => resolve());
@@ -457,7 +747,7 @@ describe("apps:list host-wide discovery", () => {
       try {
         const discovered = await discoverRunningAppsFromSockets(userDataRoot, [firstPath, secondPath]);
         expect(discovered.map((app) => app.appId)).toEqual(["managed-app"]);
-        expect(hits).toEqual([firstPath]);
+        expect(hits).toEqual([firstPath, firstPath]);
       } finally {
         await new Promise<void>((resolve) => first.close(() => resolve()));
         await new Promise<void>((resolve) => second.close(() => resolve()));
@@ -471,10 +761,14 @@ describe("apps:list host-wide discovery", () => {
       const unixPath = join(userDataRoot, "host.sock");
       expect(isNamedPipeSocketPath(pipePath)).toBe(true);
       const hits: string[] = [];
-      const server = createServer((_request, response) => {
+      const server = createServer((request, response) => {
         hits.push(unixPath);
         response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify([labeled("managed-app", "web", { "dev.lando.provider": "lando" })]));
+        response.end(
+          request.url?.startsWith("/volumes") === true
+            ? JSON.stringify({ Volumes: [] })
+            : JSON.stringify([labeled("managed-app", "web", { "dev.lando.provider": "lando" })]),
+        );
       });
       await new Promise<void>((resolve, reject) => {
         server.listen(unixPath, () => resolve());
@@ -483,7 +777,7 @@ describe("apps:list host-wide discovery", () => {
       try {
         const discovered = await discoverRunningAppsFromSockets(userDataRoot, [pipePath, unixPath]);
         expect(discovered.map((app) => app.appId)).toEqual(["managed-app"]);
-        expect(hits).toEqual([unixPath]);
+        expect(hits).toEqual([unixPath, unixPath]);
       } finally {
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }

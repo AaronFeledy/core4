@@ -48,6 +48,12 @@ export interface ScratchAcquireInput {
    * scope (`--share-global-storage`). Explicit opt-in; never inferred.
    */
   readonly shareGlobalStorage?: boolean;
+  readonly excludes?: ReadonlyArray<string>;
+  readonly keepOnFailure?: boolean;
+  readonly runPostInit?: boolean;
+  readonly noLocalOverrides?: boolean;
+  readonly noHostnameSuffix?: boolean;
+  readonly hostnames?: ReadonlyArray<string>;
 }
 
 export interface ScratchHandle {

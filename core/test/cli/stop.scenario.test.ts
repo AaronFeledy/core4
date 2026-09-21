@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -42,6 +43,8 @@ import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 const providerId = ProviderId.make("lando");
+
+const ownerKey = (root: string): string => createHash("sha256").update(`owner\0${root}`).digest("hex");
 
 interface RunResult {
   readonly exitCode: number;
@@ -209,6 +212,7 @@ const makeStopLayer = (
       Effect.sync(() => {
         destroyCalls.push({ target, options });
         for (const service of Object.values(plannedApp.services)) stopped.add(service.name);
+        return { kind: "destroyed" as const };
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -290,18 +294,27 @@ describe("lando stop", () => {
   });
 
   test("uses the captured scratch AppRef when stopping a resolved scratch target", async () => {
-    const harness = makeStopLayer();
-    const scratchRef = { kind: "scratch" as const, id: plan.id, root: plan.root };
+    await withTempCwd(async (root) => {
+      const scratchPlan: AppPlan = {
+        ...plan,
+        root: AbsolutePath.make(root),
+        identity: { appRoot: AbsolutePath.make(root), ownerKey: ownerKey(root) },
+      };
+      const harness = makeStopLayer(scratchPlan);
+      const scratchRef = { kind: "scratch" as const, id: scratchPlan.id, root: scratchPlan.root };
 
-    await Effect.runPromise(
-      stopApp({}, { plan, root: plan.root, app: scratchRef }).pipe(Effect.provide(harness.layer)),
-    );
+      await Effect.runPromise(
+        stopApp({}, { plan: scratchPlan, root: scratchPlan.root, app: scratchRef }).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
 
-    expect(harness.publishedEvents.find((event) => event._tag === "pre-app-stop")).toMatchObject({
-      appRef: scratchRef,
-    });
-    expect(harness.publishedEvents.find((event) => event._tag === "post-app-stop")).toMatchObject({
-      appRef: scratchRef,
+      expect(harness.publishedEvents.find((event) => event._tag === "pre-app-stop")).toMatchObject({
+        appRef: scratchRef,
+      });
+      expect(harness.publishedEvents.find((event) => event._tag === "post-app-stop")).toMatchObject({
+        appRef: scratchRef,
+      });
     });
   });
 
@@ -353,14 +366,21 @@ describe("lando stop", () => {
     expect(harness.destroyCalls[0]?.target.plan).toEqual(planWithGlobalRequirement);
   });
 
-  test("fails outside an app directory with init remediation", async () => {
+  test("preserves the missing Landofile error outside an app directory", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["stop"], dir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
-      expect(result.stderr).toContain("lando init");
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("LandofileNotFoundError");
+      expect(result.stderr).toContain("Run `lando init --full --name=<name>` to scaffold an app.");
     });
+  });
+
+  test("renders an explicit unchanged outcome after complete provider evidence", () => {
+    expect(renderStopAppResult({ app: "test-stop", outcome: "unchanged", servicesStopped: [] })).toBe(
+      "unchanged: test-stop - no services",
+    );
   });
 
   test("skips file-sync cleanup when the engine is unavailable and still stops the app", async () => {
@@ -427,6 +447,7 @@ describe("lando stop", () => {
       destroy: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
+          return { kind: "destroyed" as const };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -658,6 +679,7 @@ describe("lando stop", () => {
       destroy: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
+          return { kind: "destroyed" as const };
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),

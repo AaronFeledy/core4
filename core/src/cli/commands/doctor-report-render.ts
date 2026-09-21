@@ -1,6 +1,3 @@
-import { Schema } from "effect";
-
-import { emitLandofileYaml } from "@lando/sdk/landofile";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import {
@@ -15,7 +12,6 @@ import type { RenderContext } from "../renderer-boundary";
 import { isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { renderConfigLintViolation } from "./config-lint-rendering";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
-import { DoctorReportSchema } from "./doctor-report-contract";
 import type { DoctorSelfReport } from "./doctor-self";
 export { renderDoctorReportAsNdjson } from "./doctor-report-ndjson";
 import { renderDoctorResult, renderSolution } from "./doctor";
@@ -238,6 +234,3 @@ export const renderDoctorReport = (report: DoctorReport, ctx?: RenderContext): s
   ].filter((part) => part.length > 0);
   return parts.join("\n");
 };
-
-export const renderDoctorReportAsYaml = (report: DoctorReport): string =>
-  emitLandofileYaml(Object.fromEntries(Object.entries(Schema.encodeSync(DoctorReportSchema)(report))));

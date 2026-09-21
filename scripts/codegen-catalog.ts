@@ -31,20 +31,30 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    // Imports every bundled plugin, and `@lando/file-sync-mutagen` statically
-    // imports `mutagen-versions.json`. Without this edge both run in the same
+    // Imports every bundled plugin, including their mutagen and PHP msmtp pins.
+    // Without these edges pin generators and importers run in the same
     // wave and the import can observe the file mid-truncation (`Bun.write` is
     // not atomic), which surfaces as `JSON Parse error: Unexpected EOF`.
-    dependsOn: ["mutagen-versions"],
+    dependsOn: ["mutagen-versions", "php-msmtp-pins"],
     id: "bundled-plugins",
     ownership: "derived",
     script: "build-bundled-plugins.ts",
     workspace: "repo",
   },
   {
+    // Imports `@lando/sdk/schema`, which re-exports generated/core-service-env.ts.
+    // Sharing a wave with that catalog writer lets the import observe a truncated
+    // file (`Bun.write` is not atomic).
+    dependsOn: ["core-service-env-catalog"],
     id: "mutagen-versions",
     ownership: "committed-pin",
     script: "build-mutagen-versions.ts",
+    workspace: "repo",
+  },
+  {
+    id: "php-msmtp-pins",
+    ownership: "committed-pin",
+    script: "build-php-msmtp-pins.ts",
     workspace: "repo",
   },
   {
@@ -66,6 +76,11 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Imports `@lando/sdk/schema`, which re-exports generated/core-service-env.ts.
+    // Sharing a wave with that catalog writer lets the import observe a truncated
+    // file (`Bun.write` is not atomic), which surfaces as a syntax error on the
+    // slowest runner.
+    dependsOn: ["core-service-env-catalog"],
     id: "bootstrap-layers",
     ownership: "derived",
     script: "build-bootstrap-layers.ts",
@@ -73,7 +88,7 @@ export const CODEGEN_CATALOG = [
   },
   {
     // Also imports every bundled plugin; see `bundled-plugins`.
-    dependsOn: ["mutagen-versions"],
+    dependsOn: ["mutagen-versions", "php-msmtp-pins"],
     id: "setup-plugin-flags",
     ownership: "derived",
     script: "build-setup-plugin-flags.ts",
@@ -136,6 +151,8 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    // Imports @lando/service-lando and its PHP msmtp pins; see `bundled-plugins`.
+    dependsOn: ["php-msmtp-pins"],
     id: "service-type-reference",
     ownership: "derived",
     script: "build-service-type-reference.ts",

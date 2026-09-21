@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { CommandAliasConflictError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -10,6 +11,7 @@ import {
   PortablePath,
   ProviderId,
 } from "@lando/sdk/schema";
+import { validEventNames } from "../../src/planner/event-names.ts";
 
 import { runAppEvent } from "../../src/operations/events.ts";
 import {
@@ -39,6 +41,22 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("compileEffectiveTooling", () => {
+  test("attachment preserves internal include provenance", () => {
+    // Given
+    const landofile = rememberInternalToolingTasks(
+      { tooling: { "ops:migrate": { cmd: "migrate" }, inspect: { cmd: "inspect" } } },
+      ["ops:migrate"],
+    );
+    const tooling = compileEffectiveTooling({ landofile, services: [] });
+    // When
+    const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), tooling);
+    const attached = toolingForPlan.effectiveToolingForPlan(plan);
+    // Then
+    expect(attached).toBe(tooling);
+    if (attached === undefined) throw new Error("missing attached tooling");
+    expect(validEventNames(attached)).toEqual(validEventNames(tooling));
+    expect(validEventNames(attached)).not.toContain("pre-ops:migrate");
+  });
   test("returns attached effective tasks when tooling is attached to a plan", () => {
     // Given
     const plan = eventPlan();

@@ -129,6 +129,62 @@ describe("machine-output conformance", () => {
     }
   });
 
+  test("every command emits a yaml envelope carrying the same model as its json envelope", async () => {
+    for (const id of canonicalIds) {
+      const spec = specFor(id);
+      const value = successValueFor(spec);
+      const emit = async (resultFormat: "json" | "yaml") => {
+        const io = createBufferedRendererIO();
+        await runWithRendererHandling(Effect.succeed(value), {
+          runtime: testRuntimeLayerFor(spec),
+          rendererMode: "json",
+          resultFormat,
+          command: spec.id,
+          resultSchema: spec.resultSchema,
+          io,
+          render: () => undefined,
+          formatError: (error) => `diagnostic: ${String(error)}`,
+        });
+        return io;
+      };
+
+      const jsonIo = await emit("json");
+      const yamlIo = await emit("yaml");
+      const jsonLine = jsonIo.stdoutLines()[0] ?? "{}";
+      expect(Bun.YAML.parse(yamlIo.stdout())).toEqual(JSON.parse(jsonLine));
+      expect(yamlIo.stderr()).toBe("");
+    }
+  });
+
+  test("every command emits a yaml failure envelope matching its json failure envelope", async () => {
+    for (const id of canonicalIds) {
+      const spec = specFor(id);
+      const emit = async (resultFormat: "json" | "yaml") => {
+        const io = createBufferedRendererIO();
+        let exitCode: number | undefined;
+        await runWithRendererHandling(Effect.fail(new Error(`${spec.id} failed`)), {
+          runtime: testRuntimeLayerFor(spec),
+          rendererMode: "json",
+          resultFormat,
+          command: spec.id,
+          resultSchema: spec.resultSchema,
+          io,
+          formatError: (error) => `diagnostic: ${String(error)}`,
+          setExitCode: (code) => {
+            exitCode = code;
+          },
+        });
+        return { io, exitCode };
+      };
+
+      const json = await emit("json");
+      const yaml = await emit("yaml");
+      expect(Bun.YAML.parse(yaml.io.stdout())).toEqual(JSON.parse(json.io.stdoutLines()[0] ?? "{}"));
+      expect(yaml.exitCode).toBe(json.exitCode);
+      expect(yaml.io.stderr()).toBe("");
+    }
+  });
+
   test("projectResultKeys narrows envelope.result through runWithRendererHandling", async () => {
     // Given version success output and a single projection key.
     const spec = specFor("meta:version");

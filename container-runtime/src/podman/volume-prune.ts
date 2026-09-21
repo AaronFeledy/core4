@@ -12,6 +12,7 @@ export type VolumeSelectorClass = "cache" | "data";
 
 export interface LandoVolumeFilterOptions {
   readonly providerId: string;
+  readonly ownerKey: string;
   readonly volumeClasses?: ReadonlyArray<VolumeSelectorClass>;
   /** Narrow to a single store scope (e.g. `"app"`) in addition to the app label. */
   readonly scope?: AppPlan["stores"][number]["scope"];
@@ -20,12 +21,13 @@ export interface LandoVolumeFilterOptions {
 export const volumeSelectorValue = (args: {
   readonly providerId: string;
   readonly appId: string;
+  readonly ownerKey: string;
   readonly volumeClass: VolumeSelectorClass;
   readonly scope?: AppPlan["stores"][number]["scope"];
 }): string =>
   args.scope === undefined
-    ? `${args.providerId}:${args.appId}:${args.volumeClass}`
-    : `${args.providerId}:${args.appId}:${args.volumeClass}:${args.scope}`;
+    ? `${args.providerId}:${args.appId}:${args.ownerKey}:${args.volumeClass}`
+    : `${args.providerId}:${args.appId}:${args.ownerKey}:${args.volumeClass}:${args.scope}`;
 
 export const volumeSelectorLabel = (value: string): string => `dev.lando.volume-selector=${value}`;
 
@@ -42,6 +44,7 @@ export const buildLandoVolumeFilters = (
         volumeSelectorValue({
           providerId,
           appId,
+          ownerKey: options.ownerKey,
           volumeClass,
           ...(options.scope === undefined ? {} : { scope: options.scope }),
         }),
@@ -58,7 +61,7 @@ const splitLabelCriterion = (criterion: string): { readonly key: string; readonl
 const matchesLabel = (labels: Readonly<Record<string, string>>, criterion: string): boolean => {
   const { key, value } = splitLabelCriterion(criterion);
   if (!(key in labels)) return false;
-  return value === undefined ? true : labels[key] === value;
+  return value === undefined || labels[key] === value;
 };
 
 /** Pure matcher for `label` / `label!` criteria; ignores non-label filter keys. */
@@ -86,7 +89,6 @@ export interface VolumePruneOptions {
   readonly dryRun?: boolean;
 }
 
-/** Build `POST /libpod/volumes/prune` with JSON-encoded `filters` and optional `dryrun`. */
 export const buildVolumePruneRequest = (options: VolumePruneOptions): EngineHttpRequest => {
   const query = `filters=${encodeURIComponent(JSON.stringify(options.filters))}`;
   const all = options.all === true ? "&all=true" : "";
@@ -191,7 +193,6 @@ const pruneFailure = (ctx: ProviderErrorContext, status: number, body: string): 
     remediation: ctx.remediation,
   });
 
-/** Call libpod volume prune; maps non-2xx to a redacted {@link ProviderUnavailableError}. */
 export const pruneVolumes = (
   api: EngineHttpApi,
   options: VolumePruneOptions,

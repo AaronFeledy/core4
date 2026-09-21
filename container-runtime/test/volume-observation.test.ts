@@ -2,14 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { AbsolutePath, AppId, PortablePath } from "@lando/sdk/schema";
-import { locateVolume, observeMountedVolume, volumeCreationOwnerLabels } from "../src/volume-observation.ts";
-
-test("binds creation ownership only to canonical app identity", () => {
-  expect(volumeCreationOwnerLabels(undefined)).toEqual({});
-  expect(
-    volumeCreationOwnerLabels({ appRoot: AbsolutePath.make("/canonical/root"), ownerKey: "owner" }),
-  ).toEqual({ "dev.lando.volume-owner": "/canonical/root" });
-});
+import { locateVolume, observeMountedVolume } from "../src/volume-observation.ts";
 
 test("keeps the configured endpoint and native name stable before and after creation", async () => {
   // Given a configured provider endpoint whose volume appears after the first lookup.

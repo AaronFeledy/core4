@@ -11,6 +11,7 @@ import type { LandoCommandSpec } from "../../../spec/command-base";
 export const metaRecipesListSpec: LandoCommandSpec<RecipesListResult> = {
   resultSchema: RecipesListResultSchema,
   id: "meta:recipes:list",
+  resultFormats: ["table"],
   mcpAllowed: true,
   summary: "List canonical recipes shipped with the binary.",
   namespace: "meta",
@@ -20,7 +21,6 @@ export const metaRecipesListSpec: LandoCommandSpec<RecipesListResult> = {
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json"],
       default: "table",
     }),
   },

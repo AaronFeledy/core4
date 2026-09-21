@@ -11,6 +11,7 @@ import type {
   ProxySetupError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
+  RouterWatcherError,
   ScannerError,
   SecretNotFoundError,
   SshError,
@@ -62,7 +63,17 @@ export interface RouterServiceShape {
   readonly capabilities: ProxyCapabilities;
   readonly setup: (
     config: ProxyConfig,
-  ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch, Scope.Scope>;
+  ) => Effect.Effect<
+    void,
+    ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
+    Scope.Scope
+  >;
+  /**
+   * Re-observe router startup against the running router and refresh whatever
+   * persisted startup observation the implementation keeps. Distinct from
+   * `setup`: it acquires no ports, starts no services, and takes no Scope.
+   */
+  readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
   readonly applyRoutes: (
     routes: ReadonlyArray<RoutePlan>,
     appId: AppId,

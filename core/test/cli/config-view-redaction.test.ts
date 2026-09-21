@@ -9,9 +9,17 @@ import { renderConfigResult } from "../../src/cli/commands/config.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const secret = "canary-config-opaque-value-626";
+const dottedSecret = "canary-dotted-label-value-633";
+const hyphenatedSecret = "canary-hyphenated-label-value-633";
 const loaded = Schema.decodeUnknownSync(GlobalConfig)({
   appEnv: { API_TOKEN: secret, TEAM: "platform" },
-  appLabels: { owner: "platform", API_KEY: secret },
+  appLabels: {
+    owner: "platform",
+    API_KEY: secret,
+    "com.example.password": dottedSecret,
+    "dev.example.db-password": hyphenatedSecret,
+    "com.example.team": "platform-team",
+  },
   network: { proxy: { https: "http://user:proxy-pass-626@proxy.invalid:3128" } },
 });
 const runtime = Layer.succeed(ConfigService, {
@@ -48,11 +56,14 @@ for (const rendererMode of ["lando", "plain", "verbose", "json"] as const) {
         const output = io.stdout();
         expect(output).toContain("[redacted]");
         expect(output).not.toContain(secret);
+        expect(output).not.toContain(dottedSecret);
+        expect(output).not.toContain(hyphenatedSecret);
         expect(output).not.toContain("proxy-pass-626");
         expect(output).not.toContain("completed");
         if (format === "json" && key !== undefined) {
           expect(JSON.parse(output).result.key).toBe(key);
           expect(JSON.parse(output).result.config.appEnv.TEAM).toBe("platform");
+          expect(JSON.parse(output).result.config.appLabels["com.example.team"]).toBe("platform-team");
         }
       });
     }

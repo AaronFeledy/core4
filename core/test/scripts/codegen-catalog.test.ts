@@ -75,13 +75,20 @@ const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
   ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
-  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo", ["mutagen-versions"]],
-  ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo"],
+  ["bundled-plugins", "derived", "build-bundled-plugins.ts", "repo", ["mutagen-versions", "php-msmtp-pins"]],
+  ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
+  ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
-  ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo"],
-  ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo", ["mutagen-versions"]],
+  ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo", ["core-service-env-catalog"]],
+  [
+    "setup-plugin-flags",
+    "derived",
+    "build-setup-plugin-flags.ts",
+    "repo",
+    ["mutagen-versions", "php-msmtp-pins"],
+  ],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
   [
     "host-proxy-allowlist",
@@ -116,7 +123,7 @@ const expectedCatalogRows = [
   ],
   ["command-reference", "derived", "build-command-reference.ts", "repo", ["command-registry-manifest"]],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
-  ["service-type-reference", "derived", "build-service-type-reference.ts", "repo"],
+  ["service-type-reference", "derived", "build-service-type-reference.ts", "repo", ["php-msmtp-pins"]],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
   ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
@@ -181,10 +188,10 @@ describe("codegen catalog", () => {
     expect(commands).toEqual(expectedCommands);
   });
 
-  test("generates the mutagen pin before every generator that imports bundled plugins", async () => {
-    // Given: `@lando/file-sync-mutagen` statically imports `mutagen-versions.json`,
+  test("generates pins before every generator that imports bundled plugins", async () => {
+    // Given: bundled plugins statically import the mutagen and PHP msmtp pins,
     // so any generator that imports the bundled plugin list transitively reads
-    // that pin. Derive those generators from source instead of hard-coding ids,
+    // those pins. Derive those generators from source instead of hard-coding ids,
     // so a newly added one is covered automatically.
     const pluginImporters = (
       await Promise.all(
@@ -198,17 +205,47 @@ describe("codegen catalog", () => {
     const waveIndexOf = (id: string): number =>
       waves.findIndex((wave) => wave.some((entry) => entry.id === id));
 
-    // When: the pin generator is placed in a wave.
-    const pinWave = waveIndexOf("mutagen-versions");
+    // When: each pin generator is placed in a wave.
+    const pinWaves = ["mutagen-versions", "php-msmtp-pins"].map((id) => ({ id, wave: waveIndexOf(id) }));
 
     // Then: the pin is fully written before any importer reads it. Sharing a wave
     // lets the import observe the file mid-truncation, because `Bun.write`
     // truncates in place (`JSON Parse error: Unexpected EOF` on Windows CI).
-    expect(pinWave).toBeGreaterThanOrEqual(0);
     expect(pluginImporters.length).toBeGreaterThan(0);
-    for (const entry of pluginImporters) {
-      expect(entry.dependsOn ?? []).toContain("mutagen-versions");
-      expect(waveIndexOf(entry.id)).toBeGreaterThan(pinWave);
+    for (const pin of pinWaves) {
+      expect(pin.wave).toBeGreaterThanOrEqual(0);
+      for (const entry of pluginImporters) {
+        expect(entry.dependsOn ?? []).toContain(pin.id);
+        expect(waveIndexOf(entry.id)).toBeGreaterThan(pin.wave);
+      }
+    }
+  });
+
+  test("generates the core-service-env catalog before every generator that imports it", async () => {
+    // Given: `@lando/sdk/schema` re-exports generated/core-service-env.ts, so any
+    // generator that imports that barrel can observe a truncated write if it
+    // shares a wave with the catalog writer.
+    const schemaImporters = (
+      await Promise.all(
+        catalog.map(async (entry) => {
+          if (entry.id === "core-service-env-catalog") return undefined;
+          const source = await Bun.file(resolve(repositoryRoot, "scripts", entry.script)).text();
+          return source.includes("@lando/sdk/schema") ? entry : undefined;
+        }),
+      )
+    ).filter((entry) => entry !== undefined);
+    const waves = groupCodegenWaves(catalog);
+    const catalogWave = waves.findIndex((wave) =>
+      wave.some((entry) => entry.id === "core-service-env-catalog"),
+    );
+
+    // Then: every importer runs in a later wave than the catalog writer.
+    expect(schemaImporters.length).toBeGreaterThan(0);
+    expect(catalogWave).toBeGreaterThanOrEqual(0);
+    for (const entry of schemaImporters) {
+      expect(waves.findIndex((wave) => wave.some((candidate) => candidate.id === entry.id))).toBeGreaterThan(
+        catalogWave,
+      );
     }
   });
 
@@ -236,7 +273,7 @@ describe("codegen catalog", () => {
 
   test("classifies ownership and references unique existing scripts", async () => {
     // Given
-    const expectedCommittedPins = ["mutagen-versions"];
+    const expectedCommittedPins = ["mutagen-versions", "php-msmtp-pins"];
     const expectedCommittedWorkflows = [
       "ci-workflow",
       "nightly-workflow",
@@ -260,11 +297,11 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(30);
+    expect(catalog).toHaveLength(31);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
-    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(1);
+    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(2);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(11);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(18);
     expect(
@@ -291,6 +328,7 @@ describe("codegen catalog", () => {
     };
 
     // Then: later consumers wait for their inputs, and independent derived work shares a wave.
+    expect(waveOf("php-msmtp-pins")).toBeLessThan(waveOf("service-type-reference"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("command-reference"));
     expect(waveOf("command-registry-manifest")).toBeLessThan(waveOf("schema-snapshot"));
     expect(waveOf("bundled-plugins")).toBeLessThan(waveOf("schema-snapshot"));
@@ -299,6 +337,8 @@ describe("codegen catalog", () => {
     expect(waveOf("setup-plugin-flags")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
+    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
+    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
       new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
     );

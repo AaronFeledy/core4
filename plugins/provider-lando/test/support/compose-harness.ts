@@ -8,6 +8,7 @@ import {
   applyAuthoredHealthcheck,
   mergeDefaultExcludes,
 } from "@lando/engine/services/planner";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   type PlanMetadata,
   ProviderId,
@@ -95,8 +96,12 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
     }),
   );
 
-  return applyAuthoredHealthcheck(
-    applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), args.service),
+  const withAppMount = applyAuthoredAppMount(
+    mergeDefaultExcludes(rawPlan),
     args.service,
+    args.appRoot,
+    serviceName,
   );
+  if (withAppMount instanceof LandofileValidationError) throw withAppMount;
+  return applyAuthoredHealthcheck(withAppMount, args.service);
 };

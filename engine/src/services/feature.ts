@@ -1,7 +1,12 @@
 import { Effect, Either, ParseResult, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import {
+  type ServiceConfig,
+  type ServicePlan,
+  containerDestinationRefusalMessage,
+  parseContainerDestination,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { type DraftServicePlan, deterministicMetadata, sortRecord } from "./draft.ts";
@@ -87,6 +92,7 @@ const makeDraft = (base: BaseSeed): DraftServicePlan => ({
   featureIds: base.defaultFeatures.map((feature) => feature.id),
   buildSteps: [],
   storage: [],
+  storageOwnership: [],
   endpoints: [],
   dependsOn: [],
   hostAliases: [],
@@ -127,8 +133,13 @@ const makeContext = (
     if (draft.extensions === undefined) draft.extensions = {};
     draft.extensions[key] = value;
   },
-  addStorage: (storage) => {
+  addStorage: (storage, ownership) => {
     draft.storage.push({ ...storage });
+    if (ownership !== undefined) {
+      const owned = draft.storageOwnership ?? [];
+      owned.push({ target: String(storage.target), seededOwners: [...ownership.seededOwners] });
+      draft.storageOwnership = owned;
+    }
   },
   addEndpoint: (endpoint) => {
     draft.endpoints.push({ ...endpoint });
@@ -162,19 +173,59 @@ const makeContext = (
   },
 });
 
-const finalizeDraft = (draft: DraftServicePlan): ServicePlan => {
+const destinationError = (target: string, reason: "not-absolute" | "root"): ServiceFeatureError =>
+  new ServiceFeatureError({
+    message: containerDestinationRefusalMessage(reason, target),
+    feature: "destination",
+  });
+
+const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFeatureError => {
   const featureIds = draft.featureIds ?? [];
+  const dataTrees = draft.storageOwnership ?? [];
   const coreExtension =
-    draft.buildSteps.length === 0 && featureIds.length === 0
+    draft.buildSteps.length === 0 && featureIds.length === 0 && dataTrees.length === 0
       ? {}
       : {
           "@lando/core/service-features": {
             ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
+            ...(dataTrees.length === 0 ? {} : { dataTrees: dataTrees.map((tree) => ({ ...tree })) }),
             ...(draft.buildSteps.length === 0
               ? {}
               : { buildSteps: draft.buildSteps.map((step) => ({ ...step })) }),
           },
         };
+
+  let appMount: ServicePlan["appMount"];
+  if (draft.appMount !== undefined) {
+    const parsed = parseContainerDestination(draft.appMount.target);
+    if (!parsed.ok) return destinationError(draft.appMount.target, parsed.reason);
+    appMount = {
+      ...draft.appMount,
+      target: parsed.value,
+      realization: "passthrough",
+    };
+  }
+
+  const mounts: Array<ServicePlan["mounts"][number]> = [];
+  for (const mount of draft.mounts) {
+    const parsed = parseContainerDestination(mount.target);
+    if (!parsed.ok) return destinationError(mount.target, parsed.reason);
+    mounts.push({
+      ...mount,
+      target: parsed.value,
+      realization: "passthrough",
+    });
+  }
+
+  const storage: Array<ServicePlan["storage"][number]> = [];
+  for (const entry of draft.storage) {
+    const parsed = parseContainerDestination(entry.target);
+    if (!parsed.ok) return destinationError(entry.target, parsed.reason);
+    storage.push({
+      ...entry,
+      target: parsed.value,
+    });
+  }
 
   return {
     name: draft.name,
@@ -187,14 +238,9 @@ const finalizeDraft = (draft: DraftServicePlan): ServicePlan => {
     environment: sortRecord(draft.environment),
     ...(draft.user === undefined ? {} : { user: draft.user }),
     ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
-    ...(draft.appMount === undefined
-      ? {}
-      : {
-          // Provider realization is finalized later; composition emits neutral passthrough intent.
-          appMount: { ...draft.appMount, realization: "passthrough" },
-        }),
-    mounts: draft.mounts.map((mount) => ({ ...mount, realization: "passthrough" })),
-    storage: draft.storage.map((storage) => ({ ...storage })),
+    ...(appMount === undefined ? {} : { appMount }),
+    mounts,
+    storage,
     endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
     routes: [],
     dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
@@ -222,5 +268,7 @@ export const composeService = (input: ComposeServiceInput): Effect.Effect<Servic
       { discard: true },
     );
 
-    return finalizeDraft(draft);
+    const finalized = finalizeDraft(draft);
+    if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
+    return finalized;
   });

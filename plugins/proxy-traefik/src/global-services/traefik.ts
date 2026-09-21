@@ -9,7 +9,7 @@
 import { readFile } from "node:fs/promises";
 
 import { makeLandoPaths } from "@lando/paths";
-import { ServiceConfig } from "@lando/sdk/schema";
+import { ROUTE_PRIORITY_MAX, ServiceConfig } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 
 import { TRAEFIK_DIAGNOSTICS_ID } from "../diagnostics.ts";
@@ -38,11 +38,18 @@ export const TRAEFIK_STATIC_FLAGS: ReadonlyArray<string> = [
   "--providers.file.watch=true",
 ];
 
+/**
+ * Lando owns the priority space above every app route, so an app that claims the
+ * dashboard hostname cannot capture the dashboard router.
+ */
+export const TRAEFIK_DASHBOARD_PRIORITY = ROUTE_PRIORITY_MAX + 1;
+
 export const TRAEFIK_DASHBOARD_DYNAMIC_CONFIG = [
   "http:",
   "  routers:",
   "    dashboard:",
   `      rule: "Host(\`${TRAEFIK_DASHBOARD_HOSTNAME}\`)"`,
+  `      priority: ${TRAEFIK_DASHBOARD_PRIORITY}`,
   "      service: api@internal",
   "      entryPoints:",
   "        - web",

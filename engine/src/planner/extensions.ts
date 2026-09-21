@@ -87,6 +87,19 @@ export const serviceFeatureBuildSteps = (extensions: ServicePlan["extensions"]):
   return Array.isArray(buildSteps) ? buildSteps.map((step) => ({ ...(step as ServiceBuildStepIntent) })) : [];
 };
 
+/** Data trees a service declared the planned user must own, across passes. */
+const serviceFeatureDataTrees = (
+  extensions: ServicePlan["extensions"],
+): Array<{ target: string; seededOwners: ReadonlyArray<string> }> => {
+  const trees = serviceFeatureExtension(extensions)?.dataTrees;
+  return Array.isArray(trees)
+    ? trees.map((tree) => {
+        const entry = tree as { target: string; seededOwners: ReadonlyArray<string> };
+        return { target: entry.target, seededOwners: [...entry.seededOwners] };
+      })
+    : [];
+};
+
 export const toAppFeatureDraft = (
   name: string,
   servicePlan: ServicePlan,
@@ -126,6 +139,7 @@ export const toAppFeatureDraft = (
   }),
   buildSteps: serviceFeatureBuildSteps(servicePlan.extensions),
   storage: servicePlan.storage.map((storage) => ({ ...storage })),
+  storageOwnership: serviceFeatureDataTrees(servicePlan.extensions),
   endpoints: servicePlan.endpoints.map((endpoint) => ({ ...endpoint })),
   dependsOn: servicePlan.dependsOn.map((dependency) => ({ ...dependency })),
   ...(servicePlan.healthcheck === undefined ? {} : { healthcheck: servicePlan.healthcheck }),
@@ -169,12 +183,14 @@ const servicePlanExtensionsFromDraft = (
   extensions: ServicePlan["extensions"],
 ): ServicePlan["extensions"] => {
   const featureIds = draft.featureIds ?? [];
-  if (draft.buildSteps.length === 0 && featureIds.length === 0) return extensions;
+  const dataTrees = draft.storageOwnership ?? [];
+  if (draft.buildSteps.length === 0 && featureIds.length === 0 && dataTrees.length === 0) return extensions;
   return {
     ...extensions,
     [SERVICE_FEATURES_EXTENSION_KEY]: {
       ...serviceFeatureExtension(extensions),
       ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
+      ...(dataTrees.length === 0 ? {} : { dataTrees: dataTrees.map((tree) => ({ ...tree })) }),
       buildSteps: draft.buildSteps.map(({ user: authoredUser, ...step }) => {
         const user = authoredUser ?? draft.user;
         return { ...step, ...(user === undefined ? {} : { user }) };

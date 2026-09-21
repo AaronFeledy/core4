@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "families": {
+    "debian-bookworm": {
+      "suite": "bookworm",
+      "snapshot": "20260101T000000Z",
+      "package": "msmtp",
+      "version": "1.8.23-1",
+      "artifacts": {
+        "amd64": {
+          "file": "msmtp_1.8.23-1_amd64.deb",
+          "sha256": "30acdf76d4f8290a5b6d9b3ac29cb2272579a3217b2156b5a10deed48389ad68",
+          "sizeBytes": 200720,
+          "url": "https://snapshot.debian.org/archive/debian/20260101T000000Z/pool/main/m/msmtp/msmtp_1.8.23-1_amd64.deb"
+        },
+        "arm64": {
+          "file": "msmtp_1.8.23-1_arm64.deb",
+          "sha256": "32b62144a201bbfa7378227fd023e78fc14f6524208185537d94d71251bd717c",
+          "sizeBytes": 196228,
+          "url": "https://snapshot.debian.org/archive/debian/20260101T000000Z/pool/main/m/msmtp/msmtp_1.8.23-1_arm64.deb"
+        }
+      }
+    },
+    "debian-bullseye": {
+      "suite": "bullseye",
+      "snapshot": "20260101T000000Z",
+      "package": "msmtp",
+      "version": "1.8.11-2.1",
+      "artifacts": {
+        "amd64": {
+          "file": "msmtp_1.8.11-2.1_amd64.deb",
+          "sha256": "e8b6b0f62be6b23d35e3286a265c84e69420c3ba473814d4787381b272a80204",
+          "sizeBytes": 175116,
+          "url": "https://snapshot.debian.org/archive/debian/20260101T000000Z/pool/main/m/msmtp/msmtp_1.8.11-2.1_amd64.deb"
+        },
+        "arm64": {
+          "file": "msmtp_1.8.11-2.1_arm64.deb",
+          "sha256": "d20d4012110e38d49f99fee3cda777245ac259da6021f5e0bedd61e6dfbc0085",
+          "sizeBytes": 170376,
+          "url": "https://snapshot.debian.org/archive/debian/20260101T000000Z/pool/main/m/msmtp/msmtp_1.8.11-2.1_arm64.deb"
+        }
+      }
+    }
+  }
+}

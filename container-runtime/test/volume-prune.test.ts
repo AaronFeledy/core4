@@ -41,47 +41,63 @@ const requestClient = (response: { status: number; body: string }): PodmanApiCli
 
 describe("buildLandoVolumeFilters", () => {
   test("uses a single ownership-complete data selector so Podman label OR cannot broaden prune", () => {
-    const filters = buildLandoVolumeFilters("myapp", { providerId: "lando", volumeClasses: ["data"] });
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:data"]);
+    const filters = buildLandoVolumeFilters("myapp", {
+      providerId: "lando",
+      ownerKey: "owner-key",
+      volumeClasses: ["data"],
+    });
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:owner-key:data"]);
   });
 
   test("can include scope inside the ownership-complete selector when needed", () => {
     const filters = buildLandoVolumeFilters("myapp", {
       providerId: "lando",
+      ownerKey: "owner-key",
       volumeClasses: ["data"],
       scope: "app",
     });
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:data:app"]);
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:owner-key:data:app"]);
     expect(filters["label!"]).toBeUndefined();
   });
 
   test("adds a positive cache label for cache-only prune filters", () => {
-    const filters = buildLandoVolumeFilters("myapp", { providerId: "lando", volumeClasses: ["cache"] });
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:cache"]);
+    const filters = buildLandoVolumeFilters("myapp", {
+      providerId: "lando",
+      ownerKey: "owner-key",
+      volumeClasses: ["cache"],
+    });
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:owner-key:cache"]);
     expect(filters["label!"]).toBeUndefined();
   });
 
   test("ORs only fully ownership-scoped selectors when pruning cache and data together", () => {
     const filters = buildLandoVolumeFilters("myapp", {
       providerId: "lando",
+      ownerKey: "owner-key",
       volumeClasses: ["cache", "data"],
     });
     expect(filters.label).toEqual([
-      "dev.lando.volume-selector=lando:myapp:cache",
-      "dev.lando.volume-selector=lando:myapp:data",
+      "dev.lando.volume-selector=lando:myapp:owner-key:cache",
+      "dev.lando.volume-selector=lando:myapp:owner-key:data",
     ]);
   });
 });
 
 describe("volumeMatchesFilters", () => {
-  const filters: VolumeFilterMap = { label: ["dev.lando.volume-selector=lando:myapp:data"] };
+  const filters: VolumeFilterMap = {
+    label: ["dev.lando.volume-selector=lando:myapp:owner-key:data"],
+  };
 
   test("matches a volume owned by the current app", () => {
-    expect(volumeMatchesFilters({ "dev.lando.volume-selector": "lando:myapp:data" }, filters)).toBe(true);
+    expect(volumeMatchesFilters({ "dev.lando.volume-selector": "lando:myapp:owner-key:data" }, filters)).toBe(
+      true,
+    );
   });
 
   test("rejects a volume owned by another app (AND label semantics)", () => {
-    expect(volumeMatchesFilters({ "dev.lando.volume-selector": "lando:otherapp:data" }, filters)).toBe(false);
+    expect(
+      volumeMatchesFilters({ "dev.lando.volume-selector": "lando:otherapp:owner-key:data" }, filters),
+    ).toBe(false);
   });
 
   test("rejects an unlabeled volume so global/unrelated volumes are never selected", () => {
@@ -92,13 +108,15 @@ describe("volumeMatchesFilters", () => {
     expect(
       volumeMatchesFilters(
         { "dev.lando.app": "myapp" },
-        buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+        buildLandoVolumeFilters("myapp", { providerId: "lando", ownerKey: "owner-key" }),
       ),
     ).toBe(false);
   });
 
   test("rejects a cache volume of the same app via label! negation", () => {
-    expect(volumeMatchesFilters({ "dev.lando.volume-selector": "lando:myapp:cache" }, filters)).toBe(false);
+    expect(
+      volumeMatchesFilters({ "dev.lando.volume-selector": "lando:myapp:owner-key:cache" }, filters),
+    ).toBe(false);
   });
 
   test("supports bare label key presence and exact key=value equality", () => {
@@ -112,7 +130,7 @@ describe("volumeMatchesFilters", () => {
 describe("buildVolumePruneRequest", () => {
   test("targets the libpod prune endpoint with anonymous-only default (no all key, no dryrun)", () => {
     const request = buildVolumePruneRequest({
-      filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+      filters: buildLandoVolumeFilters("myapp", { providerId: "lando", ownerKey: "owner-key" }),
       ctx,
     });
     expect(request.method).toBe("POST");
@@ -120,24 +138,24 @@ describe("buildVolumePruneRequest", () => {
     expect(request.path).not.toContain("dryrun=true");
     const filters = decodeFilters(request.path);
     expect(filters.all).toBeUndefined();
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:data"]);
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:owner-key:data"]);
   });
 
   test("opts into named-volume cleanup only when all=true is explicitly requested", () => {
     const request = buildVolumePruneRequest({
-      filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+      filters: buildLandoVolumeFilters("myapp", { providerId: "lando", ownerKey: "owner-key" }),
       ctx,
       all: true,
     });
     const filters = decodeFilters(request.path);
     expect(request.path).toContain("all=true");
     expect(filters.all).toBeUndefined();
-    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:data"]);
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:owner-key:data"]);
   });
 
   test("marks the request as a dry run so destructive deletion is previewable", () => {
     const request = buildVolumePruneRequest({
-      filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+      filters: buildLandoVolumeFilters("myapp", { providerId: "lando", ownerKey: "owner-key" }),
       ctx,
       all: true,
       dryRun: true,
@@ -178,7 +196,10 @@ describe("pruneVolumes", () => {
   test("prunes and returns a stamped report on success", async () => {
     const api = requestClient({ status: 200, body: '[{"Id":"v1","Size":10}]' });
     const exit = await Effect.runPromiseExit(
-      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }), ctx }),
+      pruneVolumes(api, {
+        filters: buildLandoVolumeFilters("myapp", { providerId: "lando", ownerKey: "owner-key" }),
+        ctx,
+      }),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
@@ -194,7 +215,7 @@ describe("pruneVolumes", () => {
     const api = requestClient({ status: 200, body: "[]" });
     const exit = await Effect.runPromiseExit(
       pruneVolumes(api, {
-        filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }),
+        filters: buildLandoVolumeFilters("myapp", { providerId: "lando", ownerKey: "owner-key" }),
         ctx,
         all: true,
         dryRun: true,
@@ -208,9 +229,10 @@ describe("pruneVolumes", () => {
   test("fails with a typed ProviderUnavailableError on a non-2xx response", async () => {
     const api = requestClient({ status: 500, body: '{"message":"internal server error"}' });
     const error = await Effect.runPromise(
-      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }), ctx }).pipe(
-        Effect.flip,
-      ),
+      pruneVolumes(api, {
+        filters: buildLandoVolumeFilters("myapp", { providerId: "lando", ownerKey: "owner-key" }),
+        ctx,
+      }).pipe(Effect.flip),
     );
     expect(error).toBeInstanceOf(ProviderUnavailableError);
     expect(error.operation).toBe("pruneVolumes");
@@ -225,7 +247,7 @@ describe("pruneVolumes", () => {
     // When
     const error = await Effect.runPromise(
       pruneVolumes(api, {
-        filters: buildLandoVolumeFilters("myapp", { providerId: "podman" }),
+        filters: buildLandoVolumeFilters("myapp", { providerId: "podman", ownerKey: "owner-key" }),
         ctx,
       }).pipe(Effect.flip),
     );
@@ -238,9 +260,10 @@ describe("pruneVolumes", () => {
   test("fails with a typed ProviderInternalError when the client cannot make requests", async () => {
     const api: PodmanApiClient = { info: Effect.succeed({}), ping: Effect.succeed(undefined) };
     const error = await Effect.runPromise(
-      pruneVolumes(api, { filters: buildLandoVolumeFilters("myapp", { providerId: "lando" }), ctx }).pipe(
-        Effect.flip,
-      ),
+      pruneVolumes(api, {
+        filters: buildLandoVolumeFilters("myapp", { providerId: "lando", ownerKey: "owner-key" }),
+        ctx,
+      }).pipe(Effect.flip),
     );
     expect(error).toBeInstanceOf(ProviderInternalError);
   });

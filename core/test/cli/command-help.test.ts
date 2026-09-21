@@ -129,11 +129,12 @@ describe("renderCommandHelp", () => {
     // When per-command help is rendered
     const help = renderCommandHelp(entry);
 
-    // Then the locked footer documents --json [fields] and --jq as universal
+    // Then the locked footer documents --json [fields] and --jq as universal,
+    // and names the result formats this command actually honors.
     expect(help).toContain("--json [fields]");
     expect(help).toContain("--jq");
     expect(help).toContain(
-      "Global flags (--format, --json [fields], --jq, --renderer, --verbose, --log-level, --debug) work on every command.",
+      "Global flags (--format (text, json, yaml), --json [fields], --jq, --renderer, --verbose, --log-level, --debug) work on every command.",
     );
   });
 

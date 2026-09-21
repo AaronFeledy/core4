@@ -1,33 +1,16 @@
 import { Effect, Schema } from "effect";
 
-import {
-  type CapabilityError,
-  type CommandAliasConflictError,
-  type ConfigExpressionError,
-  GlobalAppError,
-  type GlobalDistConflictError,
-  type HomePathCapabilityError,
-  type LandofileParseError,
-  type LandofileUnknownEventError,
-  type LandofileValidationError,
-  type NoProviderInstalledError,
-  type NotImplementedError,
-  type ProviderConfigError,
-  type ProviderUnavailableError,
-  type PublicationUnsupportedError,
-  type RouteInputError,
-} from "@lando/sdk/errors";
+import { GlobalAppError, type GlobalDistConflictError } from "@lando/sdk/errors";
 import type { GlobalDistResult } from "@lando/sdk/services";
 import {
   type AppPlanner,
   type FileSystem,
-  type FileSystemError,
   GlobalAppService,
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 
 export interface GlobalUninstallOptions {
   readonly plugin?: string;
@@ -56,24 +39,7 @@ export const GlobalUninstallResultSchema = Schema.Struct({
   servicesRemoved: Schema.Array(Schema.String),
 });
 
-type GlobalUninstallError =
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | ConfigExpressionError
-  | CapabilityError
-  | PublicationUnsupportedError
-  | FileSystemError
-  | GlobalAppError
-  | GlobalDistConflictError
-  | LandofileParseError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
+type GlobalUninstallError = LoadGlobalPlanError | GlobalDistConflictError | ProviderError;
 
 type GlobalUninstallServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 

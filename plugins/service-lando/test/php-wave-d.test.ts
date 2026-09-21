@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
 import { serviceTypes } from "../src/index.ts";
+import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
 import { phpImageFor } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
@@ -14,6 +15,7 @@ import {
   php86ServiceType,
   phpServiceFeature,
 } from "../src/services/php.ts";
+import { apacheLauncherDirectives } from "./support/apache-directives.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -30,6 +32,19 @@ const decodeService = (raw: unknown): ServiceConfig => {
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
   return service;
+};
+
+interface PlannedBuildStep {
+  readonly id?: string;
+  readonly user?: string;
+  readonly command: string | ReadonlyArray<string>;
+}
+
+const buildStepsFor = (plan: ServicePlan): ReadonlyArray<PlannedBuildStep> => {
+  const features = plan.extensions["@lando/core/service-features"] as
+    | { readonly buildSteps?: ReadonlyArray<PlannedBuildStep> }
+    | undefined;
+  return features?.buildSteps ?? [];
 };
 
 const compose = (serviceType: ServiceType, raw: unknown) =>
@@ -58,7 +73,7 @@ describe("PHP Wave D planning", () => {
     },
   );
 
-  test("renders the Apache site config for a validated webroot", async () => {
+  test("hands the Apache configuration to the launcher for a validated webroot", async () => {
     // Given
     const service = { type: "php:8.4", webroot: "/app/web", allowOverride: true };
 
@@ -66,24 +81,17 @@ describe("PHP Wave D planning", () => {
     const plan = await compose(php84ServiceType, service);
 
     // Then
-    expect(plan.command).toEqual([
-      "sh",
-      "-c",
-      expect.stringContaining(
-        [
-          "cat > /etc/apache2/sites-available/000-default.conf <<'LANDO_APACHE_SITE'",
-          "<VirtualHost *:80>",
-          "  DocumentRoot /app/web",
-          "  <Directory /app/web>",
-          "    Options -Indexes +FollowSymLinks",
-          "    AllowOverride All",
-          "    Require all granted",
-          "  </Directory>",
-          '  Alias "/_lando/errors/" "/usr/share/lando/errors/"',
-        ].join("\n"),
-      ),
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    expect(directives).toContain('DocumentRoot "/app/web"');
+    const open = directives.indexOf('<Directory "/app/web">');
+    const close = directives.indexOf("</Directory>");
+    expect(open).toBeGreaterThanOrEqual(0);
+    expect(close).toBeGreaterThan(open);
+    expect(directives.slice(open + 1, close)).toEqual([
+      "Options -Indexes +FollowSymLinks",
+      "AllowOverride All",
+      "Require all granted",
     ]);
-    expect(plan.command).toEqual(["sh", "-c", expect.stringContaining("exec apache2-foreground")]);
   });
 
   test("Lando-owned Apache serves branded 403 and 404 pages outside the app mount", async () => {
@@ -93,13 +101,17 @@ describe("PHP Wave D planning", () => {
       allowOverride: true,
     });
 
-    const command = Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command ?? "");
-    expect(command).toContain("/usr/share/lando/errors/403.html");
-    expect(command).toContain("/usr/share/lando/errors/404.html");
-    expect(command).toContain("ErrorDocument 403 /_lando/errors/403.html");
-    expect(command).toContain("ErrorDocument 404 /_lando/errors/404.html");
-    expect(command).toContain('Alias "/_lando/errors/" "/usr/share/lando/errors/"');
-    expect(command).not.toContain("/app/.lando");
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    expect(directives).toContain('Alias "/_lando/errors/" "/usr/share/lando/errors/"');
+    expect(directives).toContain("ErrorDocument 403 /_lando/errors/403.html");
+    expect(directives).toContain("ErrorDocument 404 /_lando/errors/404.html");
+    expect(directives.join("\n")).not.toContain("/app/.lando");
+
+    // The pages are image content now, so no launcher creates them at start.
+    const pageStep = buildStepsFor(plan).find((step) => step.id === LANDO_ERROR_PAGES_BUILD_STEP_ID);
+    expect(pageStep?.user).toBe("root");
+    expect(JSON.stringify(pageStep?.command)).toContain("/usr/share/lando/errors/403.html");
+    expect(JSON.stringify(pageStep?.command)).toContain("/usr/share/lando/errors/404.html");
   });
 
   test.each([

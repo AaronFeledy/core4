@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   type PlanMetadata,
   ProviderId,
@@ -99,8 +100,12 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
   );
 
   if (args.applyAuthoredWrappers === false) return rawPlan;
-  return applyAuthoredHealthcheck(
-    applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), args.service),
+  const withAppMount = applyAuthoredAppMount(
+    mergeDefaultExcludes(rawPlan),
     args.service,
+    args.appRoot,
+    serviceName,
   );
+  if (withAppMount instanceof LandofileValidationError) throw withAppMount;
+  return applyAuthoredHealthcheck(withAppMount, args.service);
 };

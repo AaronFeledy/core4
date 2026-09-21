@@ -46,7 +46,7 @@ lando doctor --format=json
 lando doctor --format=yaml
 ```
 
-Use those formats in scripts. Doctor redacts secrets, certificate bodies, and proxy URLs.
+Use those formats in scripts. Both wrap the report in the standard result envelope under `result`, so `ok` and the tagged `error` are always there to branch on. Doctor redacts secrets, certificate bodies, and proxy URLs.
 
 ## Verify
 

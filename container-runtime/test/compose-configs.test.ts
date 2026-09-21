@@ -42,6 +42,18 @@ const service = {
 } as unknown as ServicePlan;
 
 describe("compose config mounts", () => {
+  test("omits colon targets from config short bind strings", () => {
+    // Given
+    const withColon = {
+      ...service,
+      extensions: { compose: { configs: [{ source: "phpini", target: "/config:ro" }] } },
+    };
+    // When
+    const binds = composeConfigBindStrings(plan, withColon);
+    // Then
+    expect(binds).toEqual([]);
+  });
+
   test("Given short and long grants, when resolving mounts, then source target and mode are honored", () => {
     const mounts = composeConfigMounts(plan, service);
     expect(mounts).toEqual([

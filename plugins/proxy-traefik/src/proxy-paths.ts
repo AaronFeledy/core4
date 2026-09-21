@@ -19,6 +19,10 @@ export const diagnosticDir = (paths: ProxyPaths): string =>
 export const diagnosticConfigFile = (paths: ProxyPaths): string =>
   joinFor(paths)(diagnosticDir(paths), "nginx.conf");
 
+// Lives beside the watched directory, never inside it: the watched directory is exactly what is broken when this record is written.
+export const watcherDiagnosticFile = (paths: ProxyPaths): string =>
+  joinFor(paths)(paths.globalAppRoot, "proxy-traefik", "watcher-diagnostic.json");
+
 export const diagnosticHtmlFile = (paths: ProxyPaths): string =>
   joinFor(paths)(diagnosticDir(paths), "404.html");
 

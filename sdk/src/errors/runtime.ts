@@ -52,6 +52,19 @@ export class RouterPortPinMismatch extends Schema.TaggedError<RouterPortPinMisma
   },
 ) {}
 
+/**
+ * Router file-provider watcher failure. `detail` is already redacted and bounded by the producer.
+ * `watcherHost` names the runtime host that actually runs the file watcher (a provider virtual machine on macOS and Windows).
+ */
+export class RouterWatcherError extends Schema.TaggedError<RouterWatcherError>()("RouterWatcherError", {
+  message: Schema.String,
+  proxyId: Schema.String,
+  failureClass: Schema.Literal("inotify-limit", "disk", "permission", "other"),
+  watcherHost: Schema.String,
+  detail: Schema.String,
+  remediation: Schema.String,
+}) {}
+
 export class ProxyApplyError extends Schema.TaggedError<ProxyApplyError>()("ProxyApplyError", {
   message: Schema.String,
   proxyId: Schema.String,

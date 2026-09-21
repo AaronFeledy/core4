@@ -1,0 +1,110 @@
+---
+id: eleventy-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, eleventy, static, node]
+---
+
+# Run the Eleventy recipe
+
+```sh
+lando init --recipe eleventy --name=eleventy-demo --yes
+cd eleventy-demo
+lando start
+```
+
+`--yes` skips prompts. Eleventy declares no recipe options, so the only prompt is the app name. First start builds `builder` and `web`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
+
+## See what the recipe writes
+
+Init writes `.lando.yml` only. Put an Eleventy app in after start.
+
+| Piece | What you get |
+| --- | --- |
+| `builder` | `node:lts`, port `8080`, command `npx @11ty/eleventy --serve --port 8080` |
+| `web` | `static:nginx` with the app mounted at `/app` and one route on both schemes |
+| Tooling | `lando eleventy` (`npx @11ty/eleventy`) and `lando npm` on `builder` |
+
+`builder` is the day-to-day browse target while Eleventy serves. `web` is the nginx sidecar on the app hostname. Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="eleventy-workflow" display="eleventy-demo" />
+      <Run command="lando init --recipe eleventy --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"builder\":\\s*\\{[^}]*\"type\":\\s*\"node:lts\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8080" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "npx @11ty/eleventy --serve --port 8080" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"eleventy\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-unknown-answer" render={false} reason="Regression for undeclared recipe option answers">
+    <Step name="init-invalid">
+      <Variable name="appName" value="eleventy-workflow-bad" display="eleventy-bad" />
+      <Run command="lando init --recipe eleventy --name={{appName}} --yes --answer=node=22" expectExit={1} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Install Eleventy, then build
+
+Init does not drop templates. Install into `builder`, then add a single entry page (one input that maps to `_site/index.html`, not both `index.md` and `index.html`):
+
+```sh
+lando npm init -y
+lando npm install @11ty/eleventy
+```
+
+Confirm tooling:
+
+```sh
+lando npm --version
+lando eleventy --version
+lando eleventy --help
+```
+
+Write a tiny page, then build:
+
+```sh
+printf '%s\n' '# Hello from Eleventy on Lando' > index.md
+lando eleventy
+```
+
+That writes `_site/index.html`. The recipe already runs `npx @11ty/eleventy --serve --port 8080` on `builder`, so open the `builder` URL `lando info` prints (for example `https://builder.eleventy-demo.lndo.site` or the same host with a fallback port). Live reload rides with that serve.
+
+Skip the bare app hostname for now. `web` mounts `/app` with no `root`, so after a build the app URL can return HTTP 403 until the recipe sets `root: _site` ([#1012](https://github.com/AaronFeledy/core4/issues/1012)).
+
+Need a one-off rebuild while the development server keeps running? Use `lando eleventy`.
+
+## Destroy without surprises
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Eleventy recipe](/recipes/eleventy/)
+- [Serve a static site](../services/static.mdx)
+- [Add Node](../services/node.mdx)

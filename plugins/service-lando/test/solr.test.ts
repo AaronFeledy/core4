@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 
 import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
@@ -153,9 +153,63 @@ describe("solr ServiceType", () => {
       );
 
       expect(rejection).toBeInstanceOf(Error);
-      expect(String(rejection)).toMatch(/Invalid Solr core name/);
+      expect(String(rejection)).toMatch(/services\.search\.cores\[0]/);
     },
   );
+
+  test.each([["."], [".."], ["a/b"], ["a\\b"], ["../escape"], ["nested/core"]])(
+    "rejects core name %p that could escape the data directory",
+    async (core) => {
+      const rejection = await planSolrService({ type: "solr", cores: [core] }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect(String(rejection)).toMatch(/services\.search\.cores\[0]/);
+    },
+  );
+
+  test.each([["a.b"], ["a...b"]])(
+    "accepts dotted core name %p and keeps its existing quoting",
+    async (core) => {
+      const plan = await planSolrService({ type: "solr", cores: [core] });
+
+      expect(plan.command).toEqual([
+        "bash",
+        "-c",
+        'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+        "lando-solr-precreate",
+        "8983",
+        core,
+      ]);
+    },
+  );
+
+  test.each([
+    ["solr:9", solr9ServiceType],
+    ["solr", solrServiceType],
+  ])("%s refuses an unsafe core before any command is generated", async (id, serviceType) => {
+    const outcome = await Effect.runPromise(
+      Effect.either(
+        serviceType.resolve({
+          name: "search",
+          service: { type: "solr", cores: ["ok", ".."], command: ["solr-foreground"] },
+          appRoot: "/srv/apps/myapp",
+          metadata,
+        }),
+      ),
+    );
+
+    expect(Either.isLeft(outcome)).toBe(true);
+    if (Either.isLeft(outcome)) {
+      expect(outcome.left._tag).toBe("ServiceTypeError");
+      expect(outcome.left.serviceType).toBe(id);
+      expect(outcome.left.message).toBe(
+        'services.search.cores[1] ".." is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\\" are not allowed. Rename the core to a plain directory name.',
+      );
+    }
+  });
 
   test("explicit command override is respected even when cores are configured", async () => {
     const plan = await planSolrService({

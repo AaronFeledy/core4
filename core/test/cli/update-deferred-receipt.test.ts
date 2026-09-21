@@ -101,7 +101,7 @@ test("detached helper persists an abort which the next real invocation surfaces 
 });
 
 test.each(["json", "yaml", "ndjson"])(
-  "deferred failures have a structured %s result and nonzero exit",
+  "deferred failures survive a %s request until surfaced in a supported format",
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "lando-deferred-format-"));
     roots.push(root);
@@ -118,34 +118,57 @@ test.each(["json", "yaml", "ndjson"])(
         remediation: "Retry update",
       }),
     );
-    const child = Bun.spawn(
-      [process.execPath, resolve("core/bin/lando.ts"), "meta:version", `--format=${format}`],
-      {
-        env: {
-          ...process.env,
-          LANDO_USER_CACHE_ROOT: cache,
-          LANDO_USER_DATA_ROOT: join(root, "data"),
-          LANDO_USER_CONF_ROOT: join(root, "conf"),
+    const invoke = async (requestedFormat: string) => {
+      const child = Bun.spawn(
+        [process.execPath, resolve("core/bin/lando.ts"), "meta:version", `--format=${requestedFormat}`],
+        {
+          env: {
+            ...process.env,
+            LANDO_USER_CACHE_ROOT: cache,
+            LANDO_USER_DATA_ROOT: join(root, "data"),
+            LANDO_USER_CONF_ROOT: join(root, "conf"),
+          },
+          stdout: "pipe",
+          stderr: "pipe",
         },
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
-    const [stdout, stderr, exit] = await Promise.all([
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-      child.exited,
-    ]);
+      );
+      const [stdout, stderr, exit] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      return { stdout, stderr, exit };
+    };
+    const receiptPath = join(cache, "update-handoff", `${token}.json`);
+    if (format === "ndjson") {
+      const before = await Bun.file(receiptPath).text();
+      const rejected = await invoke("ndjson");
+      expect(rejected.exit).toBe(2);
+      expect(rejected.stderr).toBe("");
+      expect(JSON.parse(rejected.stdout)).toMatchObject({
+        ok: false,
+        command: "meta:version",
+        error: {
+          _tag: "RendererSelectionError",
+          message: 'meta:version does not support result format "ndjson". Allowed: text, json, yaml.',
+        },
+      });
+      expect(await Bun.file(receiptPath).text()).toBe(before);
+    }
+    const { stdout, stderr, exit } = await invoke(format === "ndjson" ? "json" : format);
     expect(exit).toBe(1);
     expect(stderr).toBe("");
-    const result = format === "yaml" ? Bun.YAML.parse(stdout) : JSON.parse(stdout).result;
+    const envelope = Schema.decodeUnknownSync(Schema.Struct({ result: Schema.Unknown }))(
+      format === "yaml" ? Bun.YAML.parse(stdout) : JSON.parse(stdout),
+    );
+    const result = envelope.result;
     expect(result).toMatchObject({
       updatedCore: false,
       hasFailures: true,
       updatedPlugins: ["completed"],
       coreFailure: { tag: "UpdatePermissionError" },
     });
-    expect(await Bun.file(join(cache, "update-handoff", `${token}.json`)).exists()).toBe(false);
+    expect(await Bun.file(receiptPath).exists()).toBe(false);
   },
 );
 

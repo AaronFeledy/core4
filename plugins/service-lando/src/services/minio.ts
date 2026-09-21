@@ -7,7 +7,7 @@ import { PortNumber, PortablePath } from "@lando/sdk/schema";
 import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-const DEFAULT_IMAGE = "minio/minio:latest";
+const DEFAULT_IMAGE = "quay.io/minio/minio:latest";
 const DEFAULT_API_PORT = 9000;
 const CONSOLE_PORT = 9001;
 const DATA_TARGET = PortablePath.make("/data");
@@ -47,11 +47,17 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
     "MC_HOST_local",
     `http://${encodeURIComponent(rootUser)}:${encodeURIComponent(rootPassword)}@127.0.0.1:${apiPort}`,
   );
-  ctx.addStorage({
-    store: `${appName}-minio-data`,
-    target: DATA_TARGET,
-    readOnly: false,
-  });
+  ctx.addStorage(
+    {
+      store: `${appName}-minio-data`,
+      target: DATA_TARGET,
+      readOnly: false,
+    },
+    // The image declares /data as a bare volume with nothing behind it, so the
+    // only owner it guarantees is the root identity it runs as. Every other
+    // planned user needs the tree prepared before the bucket mkdir can work.
+    { seededOwners: ["root", "0"] },
+  );
   ctx.addEndpoint({
     _tag: "internal",
     port: Schema.decodeUnknownSync(PortNumber)(apiPort),

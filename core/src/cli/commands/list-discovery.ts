@@ -12,6 +12,15 @@ export interface AppsListEntry {
   readonly providerId: string;
   readonly appRoot: string;
   readonly services: ReadonlyArray<string>;
+  readonly stale?: boolean;
+  readonly scratch?: boolean;
+}
+
+export interface AppsDiscoveryEvidence {
+  readonly apps: ReadonlyArray<AppsListEntry>;
+  readonly providerConfirmed: boolean;
+  readonly confirmedProviderIds: ReadonlyArray<string>;
+  readonly ownedAppIds: ReadonlyArray<string>;
 }
 
 const LEGACY_PROVIDER_DIRS = ["provider-lando", "provider-docker"] as const;
@@ -47,19 +56,16 @@ const providerIdFromPluginRoot = (pluginRoot: string): string =>
 
 const preferProviderId = (left: string, right: string): string => {
   if (left === "cache" && right !== "cache") return right;
-  if (right === "cache" && left !== "cache") return left;
   return left;
 };
 
 const preferName = (left: string, right: string, appId: string): string => {
   if (left === appId && right !== appId) return right;
-  if (right === appId && left !== appId) return left;
   return left;
 };
 
 const preferRoot = (left: string, right: string): string => {
   if (left === "" && right !== "") return right;
-  if (right === "" && left !== "") return left;
   // First nonempty root wins so a longer leftover legacy/cache path cannot replace plugin state.
   return left;
 };
@@ -78,6 +84,7 @@ export const mergeAppsListEntries = (entries: ReadonlyArray<AppsListEntry>): App
       providerId: preferProviderId(existing.providerId, entry.providerId),
       appRoot: preferRoot(existing.appRoot, entry.appRoot),
       services: uniqueSorted([...existing.services, ...entry.services]),
+      ...(existing.scratch === true || entry.scratch === true ? { scratch: true } : {}),
     });
   }
   const merged = [...byId.values()];
@@ -99,12 +106,19 @@ const planLikeToEntry = (value: unknown, fallbackProvider: string): AppsListEntr
     typeof value.provider === "string"
       ? value.provider.replace(/^provider-/u, "")
       : fallbackProvider.replace(/^provider-/u, "");
+  const extensions = value.extensions;
+  const scratch =
+    typeof extensions === "object" &&
+    extensions !== null &&
+    !Array.isArray(extensions) &&
+    "@lando/core/scratch" in extensions;
   return {
     appId: id,
     appName: typeof value.name === "string" ? value.name : id,
     providerId: provider,
     appRoot: root,
     services: servicesFromPlan(value.services),
+    ...(scratch ? { scratch: true } : {}),
   };
 };
 
@@ -223,9 +237,29 @@ const stringLabels = (value: unknown): Record<string, string> => {
   );
 };
 
+const labeledResourceEvidence = (
+  resources: unknown,
+  includeScratch = false,
+): { readonly appIds: ReadonlyArray<string>; readonly providerIds: ReadonlyArray<string> } => {
+  if (!Array.isArray(resources)) return { appIds: [], providerIds: [] };
+  const appIds: string[] = [];
+  const providerIds: string[] = [];
+  for (const resource of resources) {
+    if (!isRecord(resource)) continue;
+    const labels = stringLabels(resource.Labels);
+    const appId = labels[APP_LABEL];
+    if (appId === undefined || appId === "" || (!includeScratch && labels[SCRATCH_LABEL] === "TRUE"))
+      continue;
+    appIds.push(appId);
+    const providerId = labels[PROVIDER_LABEL];
+    if (providerId !== undefined && providerId !== "") providerIds.push(providerId);
+  }
+  return { appIds: uniqueSorted(appIds), providerIds: uniqueSorted(providerIds) };
+};
+
 export const appsFromContainerList = (
   body: unknown,
-  options: { readonly globalAppRoot?: string } = {},
+  options: { readonly globalAppRoot?: string; readonly includeScratch?: boolean } = {},
 ): AppsListEntry[] => {
   if (!Array.isArray(body)) return [];
   const grouped = new Map<string, { services: Set<string>; providerId: string }>();
@@ -235,7 +269,7 @@ export const appsFromContainerList = (
     const labels = stringLabels(container.Labels);
     const appId = labels[APP_LABEL];
     if (appId === undefined || appId === "") continue;
-    if (labels[SCRATCH_LABEL] === "TRUE") continue;
+    if (options.includeScratch !== true && labels[SCRATCH_LABEL] === "TRUE") continue;
     const existing = grouped.get(appId) ?? {
       services: new Set<string>(),
       providerId: labels[PROVIDER_LABEL] ?? "lando",
@@ -295,13 +329,12 @@ export const containerSocketCandidates = (
   return [...new Set(candidates)];
 };
 
-const listContainersOnSocket = (socketPath: string): Promise<unknown> =>
+const requestJsonOnSocket = (socketPath: string, path: string): Promise<unknown> =>
   new Promise((resolve, reject) => {
-    const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL], status: ["running"] }));
     const req = httpRequest(
       {
         socketPath: httpSocketPath(socketPath),
-        path: `/containers/json?filters=${filters}`,
+        path,
         method: "GET",
         headers: { Host: "localhost" },
       },
@@ -332,10 +365,30 @@ const listContainersOnSocket = (socketPath: string): Promise<unknown> =>
     req.end();
   });
 
-export const discoverRunningAppsFromSockets = async (
+const listContainersOnSocket = (socketPath: string): Promise<unknown> => {
+  const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL] }));
+  return requestJsonOnSocket(socketPath, `/containers/json?all=true&filters=${filters}`);
+};
+
+const listVolumesOnSocket = (socketPath: string): Promise<unknown> => {
+  const filters = encodeURIComponent(JSON.stringify({ label: [APP_LABEL] }));
+  return requestJsonOnSocket(socketPath, `/volumes?filters=${filters}`);
+};
+
+const providerIdOnSocket = async (socketPath: string, userDataRoot: string): Promise<string> => {
+  const paths = makeLandoPaths({ userDataRoot });
+  const managedSocket =
+    process.platform === "win32" ? WINDOWS_MANAGED_MACHINE_PIPE : paths.providerSocketPath;
+  if (httpSocketPath(socketPath) === httpSocketPath(managedSocket)) return "lando";
+  const version = JSON.stringify(await requestJsonOnSocket(socketPath, "/version")).toLowerCase();
+  return version.includes("podman") ? "podman" : "docker";
+};
+
+export const discoverRunningAppsEvidenceFromSockets = async (
   userDataRoot: string,
   sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
-): Promise<AppsListEntry[]> => {
+  options: { readonly includeScratch?: boolean } = {},
+): Promise<AppsDiscoveryEvidence> => {
   const paths = makeLandoPaths({ userDataRoot });
   for (const socket of sockets) {
     // Named pipes are not filesystem nodes; fs.access ENOENTs even when the pipe is live.
@@ -347,12 +400,40 @@ export const discoverRunningAppsFromSockets = async (
       }
     }
     try {
-      const body = await listContainersOnSocket(socket);
+      const [containers, volumesBody] = await Promise.all([
+        listContainersOnSocket(socket),
+        listVolumesOnSocket(socket),
+      ]);
+      const volumes = isRecord(volumesBody) ? volumesBody.Volumes : undefined;
+      const apps = appsFromContainerList(containers, {
+        globalAppRoot: paths.globalAppRoot,
+        ...(options.includeScratch === true ? { includeScratch: true } : {}),
+      });
+      const containerEvidence = labeledResourceEvidence(containers, options.includeScratch === true);
+      const volumeEvidence = labeledResourceEvidence(volumes, options.includeScratch === true);
+      const labeledProviderIds = uniqueSorted([
+        ...containerEvidence.providerIds,
+        ...volumeEvidence.providerIds,
+      ]);
+      const confirmedProviderIds =
+        labeledProviderIds.length > 0 ? labeledProviderIds : [await providerIdOnSocket(socket, userDataRoot)];
       // First successful list wins so a live managed socket is not mixed with host Docker/Podman.
-      return appsFromContainerList(body, { globalAppRoot: paths.globalAppRoot });
+      return {
+        apps,
+        providerConfirmed: true,
+        confirmedProviderIds,
+        ownedAppIds: uniqueSorted([...containerEvidence.appIds, ...volumeEvidence.appIds]),
+      };
     } catch {
       // Socket present but not a Docker/Podman compat API, or the daemon is mid-start.
     }
   }
-  return [];
+  return { apps: [], providerConfirmed: false, confirmedProviderIds: [], ownedAppIds: [] };
 };
+
+export const discoverRunningAppsFromSockets = async (
+  userDataRoot: string,
+  sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
+  options: { readonly includeScratch?: boolean } = {},
+): Promise<ReadonlyArray<AppsListEntry>> =>
+  (await discoverRunningAppsEvidenceFromSockets(userDataRoot, sockets, options)).apps;

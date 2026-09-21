@@ -14,20 +14,16 @@ import type {
   AppIdReservedError,
   AppLockTimeoutError,
   AppResolveError,
-  BuildPhaseFailedError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
-  CapabilityError,
+  CacheError,
   CommandAliasConflictError,
-  ComposeKeyRejectedError,
   ConfigError,
-  ConfigExpressionError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
-  HomePathCapabilityError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   LandoCommandError,
@@ -36,7 +32,6 @@ import type {
   LandofileEventStepFailedError,
   LandofileFormConflictError,
   LandofileIncludeError,
-  LandofileLoadExpressionError,
   LandofileLockMismatchError,
   LandofileNotFoundError as LandofileMissingError,
   LandofileParseError,
@@ -46,20 +41,17 @@ import type {
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
-  NoProviderInstalledError,
   NotImplementedError,
-  ProviderConfigError,
-  ProviderUnavailableError,
   ProxyApplyError,
   ProxyError,
   ProxySetupError,
-  PublicationUnsupportedError,
   RemoteError,
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
   RouteInputError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
+  RouterWatcherError,
   ScratchAppError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
@@ -125,7 +117,9 @@ import type {
   ToolingEngine,
   TunnelError,
 } from "../services/index.ts";
-import type { LogChunk, ProviderError } from "../services/provider.ts";
+import type { UserLandofileError } from "../services/landofile.ts";
+import type { AppPlannerError, BuildAppError, BuildError } from "../services/planner.ts";
+import type { LogChunk, ProviderError, ProviderSelectionError } from "../services/provider.ts";
 import type { ScratchAcquireInput, ScratchHandle } from "../services/scratch.ts";
 
 /**
@@ -200,12 +194,13 @@ export interface StartAppResult {
   }>;
 }
 
+export type AppPlanResolutionError = UserLandofileError | ProviderSelectionError | AppPlannerError;
+
 export type StartAppError =
-  | ManagedFileTransactionError
-  | AppIdReservedError
-  | BuildPhaseFailedError
-  | ComposeKeyRejectedError
-  | EventError
+  | UserLandofileError
+  | AppPlannerError
+  | ProviderSelectionError
+  | BuildAppError
   | LandofileEventLifecycleReentryError
   | LandofileEventInvocationDepthError
   | LandofileEventStepFailedError
@@ -213,38 +208,17 @@ export type StartAppError =
   | FileSyncDriftError
   | FileSyncStartError
   | FileSyncStopError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileUnknownEventError
-  | LandofileIncludeError
-  | LandofileLoadExpressionError
-  | LandofileLockMismatchError
-  | ToolingIncludeCycleError
-  | LandofileVersionConstraintError
-  | NotImplementedError
-  | CapabilityError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | HomePathCapabilityError
-  | PublicationUnsupportedError
   | GlobalAutoStartError
   | SecretNotFoundError
   | HostProxySocketStaleError
   | HostProxyTransportUnavailableError
   | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
   | ProxyApplyError
   | ProxyError
   | ProxySetupError
-  | ProviderUnavailableError
   | RouterPortPinMismatch
   | RouterPortsExhausted
+  | RouterWatcherError
   | AppLockTimeoutError
   | StateStoreError
   | VolumeOperationError;
@@ -254,13 +228,16 @@ export type StopAppOptions = {};
 
 export interface StopAppResult {
   readonly app: string;
+  readonly outcome?: "stopped" | "unchanged";
   readonly servicesStopped: ReadonlyArray<string>;
 }
 
 export type StopAppError =
+  | AppPlannerError
+  | BuildError
   | ManagedFileTransactionError
   | AppIdReservedError
-  | EventError
+  | AppResolveError
   | LandofileEventLifecycleReentryError
   | LandofileEventInvocationDepthError
   | LandofileEventStepFailedError
@@ -272,24 +249,11 @@ export type StopAppError =
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
-  | NotImplementedError
-  | CapabilityError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | HomePathCapabilityError
-  | PublicationUnsupportedError
   | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
   | AppLockTimeoutError
   | StateStoreError
   | VolumeOperationError;
@@ -304,7 +268,7 @@ export interface RestartAppResult {
   readonly servicesStarted: StartAppResult["servicesStarted"];
 }
 
-export type RestartAppError = StartAppError;
+export type RestartAppError = StartAppError | AppResolveError;
 
 export interface RebuildAppOptions {
   readonly services?: ReadonlyArray<ServiceName>;
@@ -317,7 +281,7 @@ export interface RebuildAppResult {
   readonly servicesStarted: StartAppResult["servicesStarted"];
 }
 
-export type RebuildAppError = StartAppError;
+export type RebuildAppError = StartAppError | AppResolveError;
 
 export interface DestroyAppOptions {
   readonly volumes?: boolean;
@@ -327,11 +291,12 @@ export interface DestroyAppOptions {
 
 export interface DestroyAppResult {
   readonly app: string;
+  readonly outcome?: "destroyed" | "unchanged";
   readonly servicesDestroyed: ReadonlyArray<string>;
   readonly volumesRemoved: boolean;
 }
 
-export type DestroyAppError = StopAppError | ProxyError | StateStoreError;
+export type DestroyAppError = StopAppError | ProxyError | StateStoreError | CacheError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
@@ -384,34 +349,13 @@ export interface InfoAppResult {
 }
 
 export type InfoAppError =
-  | ManagedFileTransactionError
-  | AppIdReservedError
-  | ComposeKeyRejectedError
-  | ConfigError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileUnknownEventError
-  | LandofileIncludeError
-  | LandofileLoadExpressionError
-  | LandofileLockMismatchError
-  | ToolingIncludeCycleError
-  | LandofileVersionConstraintError
-  | NotImplementedError
-  | CapabilityError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | HomePathCapabilityError
-  | PublicationUnsupportedError
-  | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
+  | UserLandofileError
+  | AppPlannerError
+  | ProviderSelectionError
   | ProviderError
-  | ProxyError
-  | ProviderUnavailableError;
+  | ConfigError
+  | LandoCommandError
+  | ProxyError;
 
 export interface ExecAppOptions {
   readonly service?: string;
@@ -433,32 +377,11 @@ export interface ExecAppResult {
 }
 
 export type ExecAppError =
-  | ManagedFileTransactionError
-  | AppIdReservedError
-  | ComposeKeyRejectedError
-  | CapabilityError
-  | HomePathCapabilityError
-  | PublicationUnsupportedError
-  | ConfigError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileUnknownEventError
-  | LandofileIncludeError
-  | LandofileLoadExpressionError
-  | LandofileLockMismatchError
-  | ToolingIncludeCycleError
-  | LandofileVersionConstraintError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
+  | UserLandofileError
+  | AppPlannerError
+  | ProviderSelectionError
   | ProviderError
-  | ProviderUnavailableError
-  | CommandAliasConflictError
-  | ConfigExpressionError
+  | ConfigError
   | ToolingExecError;
 
 /**
@@ -486,39 +409,18 @@ export interface ToolingResult {
 }
 
 export type ToolingError =
-  | ManagedFileTransactionError
-  | AppIdReservedError
+  | UserLandofileError
+  | AppPlannerError
+  | ProviderSelectionError
+  | ProviderError
   | LandofileEventLifecycleReentryError
   | LandofileEventInvocationDepthError
   | LandofileEventStepFailedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
-  | CapabilityError
-  | HomePathCapabilityError
-  | PublicationUnsupportedError
   | ConfigError
-  | ComposeKeyRejectedError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileUnknownEventError
-  | LandofileIncludeError
-  | LandofileLoadExpressionError
-  | LandofileLockMismatchError
-  | ToolingIncludeCycleError
-  | LandofileVersionConstraintError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
   | ShellExecError
   | ShellScriptOutsideRootError
-  | CommandAliasConflictError
-  | ConfigExpressionError
   | ToolingCompileError
   | ToolingDisabledError
   | ToolingInputError
@@ -534,30 +436,20 @@ export interface LogsAppOptions {
 }
 
 export type LogsAppError =
+  | AppPlannerError
+  | ProviderSelectionError
+  | ProviderError
   | ManagedFileTransactionError
   | AppIdReservedError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileUnknownEventError
   | LandofileIncludeError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
-  | NotImplementedError
-  | CapabilityError
-  | CommandAliasConflictError
-  | ConfigExpressionError
-  | HomePathCapabilityError
-  | PublicationUnsupportedError
   | LandoCommandError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
   | ToolingExecError;
 
 export interface RemoteSyncOptions {
@@ -680,7 +572,14 @@ export interface AppConfigLintOptions {
 export interface AppConfigApi {
   readonly lint: (
     options?: AppConfigLintOptions,
-  ) => Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileUnknownEventError>;
+  ) => Effect.Effect<
+    ConfigLintResult,
+    | LandofileNotFoundError
+    | LandofileUnknownEventError
+    | LandofileValidationError
+    | CommandAliasConflictError
+    | NotImplementedError
+  >;
 }
 
 /**

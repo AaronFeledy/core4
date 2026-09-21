@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { DateTime, Effect, Layer, Stream } from "effect";
 
@@ -11,8 +12,10 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  appIdentityKey,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
+import { yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
 
@@ -159,6 +162,9 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+/** The plan carries no identity, so ownership is derived from its root the way the writer derives it. */
+const ownerKey = appIdentityKey("owner", appRoot);
+
 const topLevelKeys = (content: string): string[] =>
   content
     .split("\n")
@@ -177,6 +183,85 @@ const serviceKeys = (content: string, service: string): string[] => {
 };
 
 describe("Podman Compose emission", () => {
+  test.each(["passthrough", "accelerated"] as const)(
+    "preserves colon targets in Compose long mounts when %s",
+    (realization) => {
+      // Given
+      const withColons: ServicePlan = {
+        ...web,
+        appMount: {
+          source: appRoot,
+          target: PortablePath.make("/app:ro"),
+          readOnly: true,
+          realization,
+          excludes: [],
+          includes: [],
+        },
+        mounts: [
+          {
+            type: "bind",
+            source: "/host/config",
+            target: PortablePath.make("/config:v1"),
+            readOnly: false,
+            realization,
+          },
+          {
+            type: "volume",
+            source: "named",
+            target: PortablePath.make("/named:v1"),
+            readOnly: true,
+            realization: "passthrough",
+          },
+          {
+            type: "tmpfs",
+            target: PortablePath.make("/tmp:v1"),
+            readOnly: false,
+            realization: "passthrough",
+          },
+        ],
+        storage: [{ store: "data", target: PortablePath.make("/data:v1"), readOnly: true }],
+        extensions: { compose: { configs: [{ source: "config", target: "/etc/config:v1" }] } },
+      };
+      // When
+      const parsed = Bun.YAML.parse(
+        renderCompose(
+          {
+            ...plan,
+            services: { [withColons.name]: withColons },
+            extensions: { compose: { configs: { config: { file: "config" } } } },
+          },
+          ctx,
+        ),
+      );
+      // Then
+      expect(parsed).toMatchObject({
+        services: {
+          web: {
+            volumes: [
+              {
+                type: realization === "accelerated" ? "volume" : "bind",
+                source: realization === "accelerated" ? "My-App-web-app-mount" : appRoot,
+                target: "/app:ro",
+                read_only: true,
+              },
+              {
+                type: realization === "accelerated" ? "volume" : "bind",
+                source: realization === "accelerated" ? "My-App-web-mount-0" : "/host/config",
+                target: "/config:v1",
+                read_only: false,
+              },
+              { type: "volume", source: "named", target: "/named:v1", read_only: true },
+              { type: "tmpfs", target: "/tmp:v1", read_only: false },
+              { type: "volume", source: "data", target: "/data:v1", read_only: true },
+              { type: "bind", source: "/srv/apps/myapp/config", target: "/etc/config:v1", read_only: true },
+            ],
+          },
+        },
+      });
+      expect(parsed).not.toHaveProperty("services.web.tmpfs");
+    },
+  );
+
   test("renders AppPlan services, networks, volumes, and ports as Compose v3 YAML", () => {
     const content = renderCompose(plan, ctx);
 
@@ -217,7 +302,7 @@ describe("Podman Compose emission", () => {
     );
 
     expect(content).toContain(
-      '    labels:\n      dev.lando.app: "myapp"\n      dev.lando.service: "web"\n      example.com/role: "web"\n',
+      '    labels:\n      dev.lando.app: "myapp"\n      dev.lando.app-root: "/srv/apps/myapp"\n      dev.lando.service: "web"\n      example.com/role: "web"\n',
     );
   });
 
@@ -397,8 +482,8 @@ describe("Podman Compose emission", () => {
       emitCompose(plan, { userDataRoot, ctx }).pipe(Effect.provide(fileSystem.layer)),
     );
 
-    expect(result.path).toBe("/tmp/lando-data/apps/myapp/compose.yml");
-    expect(composePath(plan, { userDataRoot, ctx })).toBe("/tmp/lando-data/apps/myapp/compose.yml");
+    expect(result.path).toBe(join(userDataRoot, "apps", "myapp", "compose.yml"));
+    expect(composePath(plan, { userDataRoot, ctx })).toBe(join(userDataRoot, "apps", "myapp", "compose.yml"));
     expect(result.content).toStartWith('version: "3.9"\n');
     expect(fileSystem.calls.some((call) => call.operation === "mkdir")).toBe(true);
     expect(fileSystem.calls.some((call) => call.operation === "writeAtomic")).toBe(true);
@@ -448,9 +533,10 @@ describe("Podman Compose emission", () => {
     );
   });
 
-  test("pathJoin preserves leading slash including root-only input", () => {
-    expect(composePath(plan, { userDataRoot: "/data", ctx })).toBe("/data/apps/myapp/compose.yml");
-    expect(composePath(plan, { userDataRoot: "/data/", ctx })).toBe("/data/apps/myapp/compose.yml");
+  test("composePath uses native separators and preserves absolute roots", () => {
+    for (const root of ["/data", "/data/", "/data/.", "/"]) {
+      expect(composePath(plan, { userDataRoot: root, ctx })).toBe(join(root, "apps", "myapp", "compose.yml"));
+    }
 
     const content = renderCompose(plan, ctx);
     const volumeLines = content.split("\n").filter((line) => /^ {6}- "\//.test(line));
@@ -494,5 +580,214 @@ describe("Podman Compose emission", () => {
     expect(content).toContain('  custom-app-net:\n    driver: "bridge"');
     expect(content).toContain("aliases:");
     expect(content).not.toContain("lando_bridge_network");
+  });
+});
+
+describe("Compose mapping-key quoting", () => {
+  // Keys YAML would otherwise reinterpret: a colon splits the entry, a leading
+  // indicator changes the node type, and bare `true`/`null`/`123` resolve to a
+  // non-string key. Every one of these can reach the export through service
+  // `environment` or preserved Compose `labels`.
+  const oddKeys = {
+    "com.example:role": "colon",
+    "-leading": "dash",
+    "@scope/pkg": "at",
+    "#hash": "hash",
+    "has space": "space",
+    "": "empty",
+    true: "bool-true",
+    False: "bool-false-cased",
+    null: "null-word",
+    "~": "tilde",
+    123: "int",
+    "0x1f": "hex",
+    "1e3": "exp",
+    ".inf": "infinity",
+    yes: "legacy-bool",
+    off: "legacy-bool-off",
+  } as const;
+
+  const oddKeyPlan = (): AppPlan => {
+    const labeled: ServicePlan = {
+      ...web,
+      environment: { ...oddKeys, NODE_ENV: "development" },
+      extensions: { compose: { labels: { ...oddKeys, "example.com/role": "web" } } },
+    };
+    return { ...plan, services: { [labeled.name]: labeled, [database.name]: database } };
+  };
+
+  test("quotes mapping keys YAML would reinterpret and leaves plain keys bare", () => {
+    const content = renderCompose(oddKeyPlan(), ctx);
+
+    // Lexical assertions: JS object-key coercion would hide `true`/`null`/`123`
+    // differences in a structural comparison, so pin the emitted bytes too.
+    expect(content).toContain('      "com.example:role": "colon"\n');
+    expect(content).toContain('      "-leading": "dash"\n');
+    expect(content).toContain('      "@scope/pkg": "at"\n');
+    expect(content).toContain('      "#hash": "hash"\n');
+    expect(content).toContain('      "has space": "space"\n');
+    expect(content).toContain('      "": "empty"\n');
+    expect(content).toContain('      "true": "bool-true"\n');
+    expect(content).toContain('      "False": "bool-false-cased"\n');
+    expect(content).toContain('      "null": "null-word"\n');
+    expect(content).toContain('      "~": "tilde"\n');
+    expect(content).toContain('      "123": "int"\n');
+    expect(content).toContain('      "0x1f": "hex"\n');
+    expect(content).toContain('      "1e3": "exp"\n');
+    expect(content).toContain('      ".inf": "infinity"\n');
+    expect(content).toContain('      "yes": "legacy-bool"\n');
+    expect(content).toContain('      "off": "legacy-bool-off"\n');
+
+    // Plain keys must stay bare so the export keeps reading like Compose.
+    expect(content).toContain('      NODE_ENV: "development"\n');
+    expect(content).toContain('      example.com/role: "web"\n');
+    expect(content).toContain('      dev.lando.app: "myapp"\n');
+    expect(content).toContain("  web:\n");
+    expect(content).toContain("  lando-myapp:\n");
+    expect(content).toContain("  myapp_database_data:\n");
+  });
+
+  test("round-trips every odd key shape through a YAML parse", () => {
+    const content = renderCompose(oddKeyPlan(), ctx);
+    const parsed = Bun.YAML.parse(content) as {
+      readonly services: Record<string, { readonly environment: Record<string, string> }>;
+    };
+
+    // Object.keys stringifies coerced keys, so compare the full map: a key that
+    // YAML re-resolved (`0x1f` -> 31, `1e3` -> 1000, `~` -> null) lands here as a
+    // different property name and fails this equality.
+    expect(parsed.services.web?.environment).toEqual({ ...oddKeys, NODE_ENV: "development" });
+  });
+
+  test("keeps string values that read as numbers, booleans, or null as strings", () => {
+    const scalarish: ServicePlan = {
+      ...web,
+      environment: { NUMERIC: "123", BOOLEAN: "true", NULLISH: "null", EMPTY: "", VERSION: "1.10" },
+    };
+    const content = renderCompose(
+      { ...plan, services: { [scalarish.name]: scalarish, [database.name]: database } },
+      ctx,
+    );
+    const parsed = Bun.YAML.parse(content) as {
+      readonly services: Record<string, { readonly environment: Record<string, unknown> }>;
+    };
+
+    expect(parsed.services.web?.environment).toEqual({
+      NUMERIC: "123",
+      BOOLEAN: "true",
+      NULLISH: "null",
+      EMPTY: "",
+      VERSION: "1.10",
+    });
+  });
+
+  test("emitted compose YAML round-trips danger-corpus values and ambiguous keys", () => {
+    const environment = yamlRoundTripRecord();
+    const labeled: ServicePlan = {
+      ...web,
+      name: ServiceName.make("yes"),
+      environment,
+      storage: [
+        {
+          store: "yes",
+          target: PortablePath.make("/data"),
+          readOnly: false,
+        },
+      ],
+      extensions: { compose: { labels: { true: "bool-key", "example.com/role": "web" } } },
+    };
+    const dangerPlan: AppPlan = {
+      ...plan,
+      services: { [labeled.name]: labeled, [database.name]: database },
+      stores: [...plan.stores, { name: "yes", scope: "service", kind: "data" }],
+    };
+    const content = renderCompose(dangerPlan, ctx);
+    const parsed = Bun.YAML.parse(content) as {
+      readonly services: Record<
+        string,
+        {
+          readonly environment: Record<string, string>;
+          readonly labels: Record<string, string>;
+        }
+      >;
+      readonly volumes: Record<string, unknown>;
+    };
+
+    expect(parsed.services.yes?.environment).toEqual(environment);
+    expect(parsed.services.yes?.labels).toMatchObject({ true: "bool-key" });
+    expect(Object.keys(parsed.services)).toContain("yes");
+    expect(parsed.volumes).toHaveProperty("yes");
+  });
+
+  test("round-trips the whole exported document structurally", () => {
+    const parsed = Bun.YAML.parse(renderCompose(plan, ctx)) as Record<string, unknown>;
+
+    // `depends_on.required` is computed in the plan but intentionally not
+    // exported; the serializer emits only `condition` as the long-form
+    // depends_on key, so the expected model carries `condition` alone.
+    expect(parsed).toEqual({
+      version: "3.9",
+      services: {
+        web: {
+          image: "node:22-alpine",
+          ports: ["127.0.0.1:3000:3000"],
+          expose: ["9229"],
+          environment: { NODE_ENV: "development" },
+          volumes: ["/srv/apps/myapp:/app", "/srv/shared/config:/config:ro"],
+          depends_on: { database: { condition: "service_started" } },
+          labels: {
+            "dev.lando.app": "myapp",
+            "dev.lando.app-root": "/srv/apps/myapp",
+            "dev.lando.service": "web",
+          },
+          networks: {
+            "lando-myapp": { aliases: ["web"] },
+            lando_bridge_network: { aliases: expect.any(Array) },
+          },
+        },
+        database: {
+          image: "postgres:16-alpine",
+          expose: ["5432"],
+          environment: { POSTGRES_PASSWORD: "lando" },
+          volumes: ["myapp_database_data:/var/lib/postgresql/data"],
+          labels: {
+            "dev.lando.app": "myapp",
+            "dev.lando.app-root": "/srv/apps/myapp",
+            "dev.lando.service": "database",
+          },
+          networks: {
+            "lando-myapp": { aliases: ["database"] },
+            lando_bridge_network: { aliases: expect.any(Array) },
+          },
+        },
+      },
+      networks: {
+        "lando-myapp": { driver: "bridge" },
+        lando_bridge_network: { external: true, name: "lando_bridge_network" },
+      },
+      volumes: {
+        myapp_database_data: {
+          labels: {
+            "dev.lando.app": "myapp",
+            "dev.lando.provider": "lando",
+            "dev.lando.scope": "service",
+            "dev.lando.store": "myapp_database_data",
+            "dev.lando.volume-owner": "/srv/apps/myapp",
+            "dev.lando.volume-selector": `lando:myapp:${ownerKey}:data`,
+          },
+        },
+        "lando-cache-npm": {
+          labels: {
+            "dev.lando.app": "myapp",
+            "dev.lando.provider": "lando",
+            "dev.lando.scope": "global",
+            "dev.lando.storage-kind": "cache",
+            "dev.lando.store": "lando-cache-npm",
+            "dev.lando.volume-owner": "/srv/apps/myapp",
+            "dev.lando.volume-selector": `lando:myapp:${ownerKey}:cache`,
+          },
+        },
+      },
+    });
   });
 });

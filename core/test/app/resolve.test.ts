@@ -7,11 +7,22 @@ import { Effect, Layer, Schema } from "effect";
 
 import { CacheService, makeLandoRuntime, openLandoRuntime, resolveApp } from "@lando/core";
 import { AbsolutePath, AppId, type LandofileShape, ProviderId, ServiceName } from "@lando/core/schema";
-import { RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
+import { PrivilegeService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+
+import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
+  // Acquiring a scratch app reaches the proxy subsystem, which asks
+  // PrivilegeService to run `systemctl start` on the host socket units. Left
+  // live that spawns `sudo`, so on a host with an askpass helper the file's
+  // runtime depends on a human typing a password and the run mutates host
+  // state. These tests prove scratch acquisition, captured cwd, and tooling
+  // targeting -- never elevation -- so the neutral fake reports success.
+  Layer.succeed(PrivilegeService, {
+    elevate: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+  }),
   Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
@@ -33,25 +44,18 @@ const appLayer = () =>
 const withTempApp = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-resolve-app-")));
   await Bun.write(join(dir, ".lando.yml"), landofileYaml());
-  const original = process.cwd();
-  process.chdir(dir);
   try {
-    return await run(dir);
+    return await withTempUserCache(() => withCwd(dir, () => run(dir)));
   } finally {
-    process.chdir(original);
     await rm(dir, { recursive: true, force: true });
   }
 };
 
 const withTempUserCache = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-runtime-cache-")));
-  const original = process.env.LANDO_USER_CACHE_ROOT;
-  process.env.LANDO_USER_CACHE_ROOT = dir;
   try {
-    return await run(dir);
+    return await withEnvVar("LANDO_USER_CACHE_ROOT", dir, () => run(dir));
   } finally {
-    if (original === undefined) process.env.LANDO_USER_CACHE_ROOT = undefined;
-    else process.env.LANDO_USER_CACHE_ROOT = original;
     await rm(dir, { recursive: true, force: true });
   }
 };
@@ -61,12 +65,9 @@ const withTwoTempApps = async <T>(run: (left: string, right: string) => Promise<
   const right = await realpath(await mkdtemp(join(tmpdir(), "lando-resolve-app-right-")));
   await Bun.write(join(left, ".lando.yml"), landofileYaml("embedded-app"));
   await Bun.write(join(right, ".lando.yml"), landofileYaml("other-app"));
-  const original = process.cwd();
-  process.chdir(left);
   try {
-    return await run(left, right);
+    return await withTempUserCache(() => withCwd(left, () => run(left, right), [left, right]));
   } finally {
-    process.chdir(original);
     await rm(left, { recursive: true, force: true });
     await rm(right, { recursive: true, force: true });
   }
@@ -221,6 +222,9 @@ describe("resolveApp", () => {
     });
   });
 
+  // Acquiring a scratch app forks the resolved app and builds a runtime
+  // against a cold per-test cache root. Measured at 7-15s here, so the 5s
+  // default is a budget this test cannot meet, not a hang.
   test("openLandoRuntime exposes a working scratch API", async () => {
     await withTempUserCache(async () => {
       await withTempApp(async () => {
@@ -250,7 +254,7 @@ describe("resolveApp", () => {
         expect(handle.app.kind).toBe("scratch");
       });
     });
-  });
+  }, 60_000);
 
   test("runtime.app() with no selector resolves from the captured construction cwd", async () => {
     await withTempUserCache(async () => {
@@ -295,6 +299,9 @@ describe("resolveApp", () => {
     });
   });
 
+  // Acquiring a scratch app forks the resolved app and builds a runtime
+  // against a cold per-test cache root. Measured at 7-15s here, so the 5s
+  // default is a budget this test cannot meet, not a hang.
   test("a runtime constructed with scratch resolves app() to the acquired scratch app", async () => {
     await withTempUserCache(async () => {
       await withTempApp(async () => {
@@ -313,8 +320,11 @@ describe("resolveApp", () => {
         expect(id).toStartWith("scratch-embedded-app-");
       });
     });
-  });
+  }, 60_000);
 
+  // Acquiring a scratch app forks the resolved app and builds a runtime
+  // against a cold per-test cache root. Measured at 7-15s here, so the 5s
+  // default is a budget this test cannot meet, not a hang.
   test("a runtime constructed with cwd and scratch acquires the scratch app from the captured cwd", async () => {
     await withTempUserCache(async () => {
       await withTwoTempApps(async (left, right) => {
@@ -334,46 +344,51 @@ describe("resolveApp", () => {
         expect(id).toStartWith("scratch-other-app-");
       });
     });
-  });
+  }, 60_000);
 
+  // Acquiring a scratch app forks the resolved app and builds a runtime
+  // against a cold per-test cache root. Measured at 7-15s here, so the 5s
+  // default is a budget this test cannot meet, not a hang.
   test("scratch default app tooling uses the captured target after host cwd changes", async () => {
     await withTempUserCache(async () => {
       const left = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-tooling-left-")));
       const right = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-tooling-right-")));
-      const original = process.cwd();
       await Bun.write(join(left, ".lando.yml"), landofileYaml("embedded-app", true));
       await Bun.write(join(right, ".lando.yml"), landofileYaml("other-app"));
-      process.chdir(left);
       try {
-        const result = await Effect.runPromise(
-          Effect.scoped(
-            openLandoRuntime({
-              scratch: { source: { kind: "fork" }, detached: true, isolate: "none" },
-              plugins: { policy: "bundled-only", layers: testProviderLayers },
-            }).pipe(
-              Effect.flatMap((runtime) =>
-                runtime
-                  .app()
-                  .pipe(
-                    Effect.flatMap((app) =>
-                      Effect.sync(() => process.chdir(right)).pipe(Effect.zipRight(app.tooling("build"))),
-                    ),
+        const result = await withCwd(
+          left,
+          () =>
+            Effect.runPromise(
+              Effect.scoped(
+                openLandoRuntime({
+                  scratch: { source: { kind: "fork" }, detached: true, isolate: "none" },
+                  plugins: { policy: "bundled-only", layers: testProviderLayers },
+                }).pipe(
+                  Effect.flatMap((runtime) =>
+                    runtime
+                      .app()
+                      .pipe(
+                        Effect.flatMap((app) =>
+                          Effect.sync(() => process.chdir(right)).pipe(Effect.zipRight(app.tooling("build"))),
+                        ),
+                      ),
                   ),
-              ),
+                ),
+              ).pipe(Effect.ensuring(Effect.sync(() => process.chdir(left)))),
             ),
-          ).pipe(Effect.ensuring(Effect.sync(() => process.chdir(left)))),
+          [left, right],
         );
 
         expect(result.tool).toBe("build");
         expect(result.service).toBe("web");
         expect(result.exitCode).toBe(0);
       } finally {
-        process.chdir(original);
         await rm(left, { recursive: true, force: true });
         await rm(right, { recursive: true, force: true });
       }
     });
-  });
+  }, 60_000);
 
   test("reusing one retained runtime shares bootstrap services across operations", async () => {
     await withTempUserCache(async () => {

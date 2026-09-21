@@ -8,6 +8,7 @@ import type {
 } from "../errors/index.ts";
 import type { RendererContribution } from "../renderer/index.ts";
 import type {
+  AppPlan,
   HostPlatform,
   PluginManifest,
   ProviderCapabilities,
@@ -45,6 +46,10 @@ export type RuntimeProviderFactoryRequirements =
 
 export interface RuntimeProviderContribution {
   readonly id: ProviderId;
+  /** Read durable ownership claims without connecting to or initializing the runtime. */
+  readonly appliedPlans: (
+    ctx: LandoPluginContext,
+  ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError, PathsService>;
   readonly make: (
     ctx: LandoPluginContext,
   ) => Effect.Effect<

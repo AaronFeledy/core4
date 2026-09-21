@@ -1,6 +1,7 @@
 import { Context, type Effect, type Scope, type Stream } from "effect";
 
 import type {
+  AppResolveError,
   ArtifactTransferError,
   NoProviderInstalledError,
   ProviderCapabilityError,
@@ -19,6 +20,7 @@ import type {
 } from "../errors/index.ts";
 import type { EndpointInfo } from "../schema/endpoint.ts";
 import type {
+  AbsolutePath,
   AppId,
   AppPlan,
   DataStoreMountPlan,
@@ -60,6 +62,11 @@ export type ProviderError =
   | VolumeOperationError
   | ServiceCopyError
   | ArtifactTransferError;
+
+export type ProviderSelectionError =
+  | NoProviderInstalledError
+  | ProviderConfigError
+  | ProviderUnavailableError;
 
 export interface ProviderSetupOptions {
   readonly force: boolean;
@@ -197,6 +204,8 @@ export interface LogChunk {
 
 export interface ServiceRuntimeInfo {
   readonly app: AppId;
+  /** Canonical app root proven by provider-owned runtime metadata. */
+  readonly appRoot?: AbsolutePath;
   readonly service: ServiceName;
   readonly providerId: ProviderId;
   readonly status: string;
@@ -204,6 +213,7 @@ export interface ServiceRuntimeInfo {
   readonly health?: "healthy" | "starting" | "unhealthy";
   readonly state?: string;
   readonly containerId?: string;
+  readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly endpoints?: ReadonlyArray<EndpointInfo>;
   readonly lastStartedAt?: Date;
@@ -216,22 +226,35 @@ export interface ServiceRuntimeIdentity {
 
 export interface ListFilter {
   readonly app?: AppId;
+  readonly includeScratch?: boolean;
 }
+
+/** Runtime resources owned by one app root that no applied plan accounts for. */
+export interface AppliedOrphanGroup {
+  readonly providerId: ProviderId;
+  readonly appId: AppId;
+  readonly services: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly volumes: ReadonlyArray<VolumeInfo>;
+}
+
+/** What a teardown caller may act on for one app root, before any desired config is loaded. */
+export type AppliedTeardownEvidence =
+  | { readonly kind: "applied"; readonly plan: AppPlan }
+  | { readonly kind: "orphans"; readonly groups: ReadonlyArray<AppliedOrphanGroup> }
+  | { readonly kind: "absent" };
 
 export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
   RuntimeProviderRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
-    readonly capabilities: Effect.Effect<
-      ProviderCapabilities,
-      ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
-    >;
-    readonly select: (
-      plan?: AppPlan,
-    ) => Effect.Effect<
-      RuntimeProviderShape,
-      ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
-    >;
+    readonly capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>;
+    readonly select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
+    readonly resolveAppliedPlan?: (
+      root: AbsolutePath,
+    ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly resolveTeardownEvidence?: (
+      root: AbsolutePath,
+    ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
   }
 >() {}
 
@@ -243,6 +266,7 @@ export interface RuntimeProviderShape {
   readonly capabilities: ProviderCapabilities;
 
   readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
+  readonly appliedPlans?: Effect.Effect<ReadonlyArray<AppPlan>, ProviderError>;
   readonly planSetup: (
     options: ProviderSetupInspectOptions,
   ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
@@ -276,7 +300,18 @@ export interface RuntimeProviderShape {
     target: ServiceSelector,
     options?: WaitForExitOptions,
   ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
-  readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
+  readonly destroy: (
+    target: AppSelector,
+    options: DestroyOptions,
+  ) => Effect.Effect<DestroyOutcome, ProviderError>;
+  /**
+   * Stops and removes the single container behind one observation this provider reported from
+   * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
+   * the identity they were observed under. An observation carrying no container id is `absent`.
+   */
+  readonly removeObservedService: (
+    observed: ServiceRuntimeInfo,
+  ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
   readonly execStream: (
@@ -329,6 +364,17 @@ export interface DestroyOptions {
   readonly purgeCaches?: boolean;
   readonly removeState?: boolean;
 }
+
+/**
+ * What a `destroy` call actually did. A provider handed no plan that finds no applied record for
+ * the app removed nothing, and says so, so no caller can read silent success as teardown.
+ */
+export type DestroyOutcome =
+  | { readonly kind: "destroyed" }
+  | { readonly kind: "no-op"; readonly reason: "no-applied-plan" };
+
+/** Whether `removeObservedService` removed the container behind an observation, or found none. */
+export type ObservedServiceRemoval = { readonly kind: "removed" } | { readonly kind: "absent" };
 
 export class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
   RuntimeProvider,

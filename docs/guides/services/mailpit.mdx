@@ -77,7 +77,7 @@ lando exec web -- php -r 'mail("you@example.test", "Mailpit check", "Hello from 
 lando info
 ```
 
-Open the inbox URL printed by `lando info` and check for the message. Lando installs `msmtp` and sets PHP's `sendmail_path` only on selected services. Here, `worker` keeps its existing mail configuration. Duplicate names are removed in first-occurrence order. Unknown names and non-PHP targets fail planning before any provider action. An app with no PHP services needs no opt-out.
+Open the inbox URL printed by `lando info` and check for the message. Only on selected services, Lando installs a pinned `msmtp` from a `snapshot.debian.org` snapshot matched to the PHP image's Debian family, then sets PHP's `sendmail_path`. Stock Lando PHP images are `bookworm`. A custom `image:` counts only when it is a canonical upstream `php:` tag ending in `-bookworm` or `-bullseye`; each family carries its own pin. If Lando can't prove a custom image's family, planning fails before any provider action instead of guessing. Use a canonical `php:` tag, or leave that service out with `mailFrom` (list the other services, or set `mailFrom: false`). Here, `worker` keeps its existing mail configuration. Duplicate names are removed in first-occurrence order. Unknown names and non-PHP targets fail planning before any provider action. An app with no PHP services needs no opt-out.
 
 ## Open the UI
   <Scenario id="selected-php" render>

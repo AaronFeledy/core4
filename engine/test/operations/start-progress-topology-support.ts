@@ -150,7 +150,11 @@ export const makeHarness = (
         state: "running",
         endpoints: plannedApp.services[target.service]?.endpoints ?? [],
       }),
-    destroy: (target, destroyOptions) => Effect.sync(() => options.onDestroy?.(target, destroyOptions)),
+    destroy: (target, destroyOptions) =>
+      Effect.sync(() => {
+        options.onDestroy?.(target, destroyOptions);
+        return { kind: "destroyed" as const };
+      }),
     listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
     locateVolume:
       options.locateVolume ??

@@ -1,19 +1,7 @@
 import { Effect, type ParseResult, Schema, type Scope } from "effect";
 
-import type { ShareAppError } from "@lando/sdk/app";
-import {
-  type CapabilityError,
-  type CommandAliasConflictError,
-  type ConfigExpressionError,
-  type HomePathCapabilityError,
-  type LandofileUnknownEventError,
-  type NoProviderInstalledError,
-  type ProviderConfigError,
-  type ProviderUnavailableError,
-  type PublicationUnsupportedError,
-  type StateStoreError,
-  TunnelProviderUnavailableError,
-} from "@lando/sdk/errors";
+import type { AppPlanResolutionError, ShareAppError } from "@lando/sdk/app";
+import { type StateStoreError, TunnelProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   TunnelSession,
@@ -33,11 +21,7 @@ import {
 } from "@lando/sdk/services";
 
 import { routerEnabled } from "../config/router-config.ts";
-import {
-  type ResolvedAppTarget,
-  type UserLandofileError,
-  loadUserLandofileAt,
-} from "../landofile/app-resolution.ts";
+import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 import { reconcileTunnelRegistry, recordTunnelSession, removeTunnelSession } from "../tunnel/registry.ts";
 
 export const ShareStopResultSchema = Schema.Struct({
@@ -70,18 +54,6 @@ export interface ShareStopOptions extends ShareListOptions {
 }
 
 type ShareServices = LandofileService | RuntimeProviderRegistry | AppPlanner;
-
-type AppPlanResolutionError =
-  | UserLandofileError
-  | LandofileUnknownEventError
-  | CapabilityError
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | ConfigExpressionError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderUnavailableError
-  | PublicationUnsupportedError;
 
 export type ShareCommandError =
   | AppPlanResolutionError

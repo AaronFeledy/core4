@@ -54,6 +54,30 @@ export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
       default: false,
       description: "Join the shared cross-app network and expose the global app's storage scope.",
     }),
+    exclude: Flags.string({
+      description: "Exclude a path pattern from a fully isolated fork (repeatable).",
+      multiple: true,
+    }),
+    "keep-on-failure": Flags.boolean({
+      default: false,
+      description: "Keep the scratch root and registry entry when startup fails.",
+    }),
+    "run-post-init": Flags.boolean({
+      default: false,
+      description: "Run recipe post-init hooks after materialization.",
+    }),
+    "no-local-overrides": Flags.boolean({
+      default: false,
+      description: "Remove local and user Landofile overrides from a fully isolated fork.",
+    }),
+    "no-hostname-suffix": Flags.boolean({
+      default: false,
+      description: "Keep every planned route hostname unchanged.",
+    }),
+    hostname: Flags.string({
+      description: "Keep this exact planned route hostname unchanged (repeatable).",
+      multiple: true,
+    }),
   },
   run: (input) => scratchStart(scratchStartOptionsFromInput(input)),
   render: (result) => renderScratchStartResult(result as ScratchStartResult),

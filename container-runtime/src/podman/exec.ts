@@ -46,7 +46,7 @@ const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const apiRequired = (ctx: ProviderErrorContext): ProviderUnavailableError =>
-  missingApi(ctx, "exec", `provider-${ctx.providerId} exec requires a Podman API client.`);
+  missingApi(ctx, "exec", `provider-${ctx.providerId} exec requires an engine API client.`);
 
 const missingService = (ctx: ProviderErrorContext, target: ExecTarget) =>
   new ServiceNotFoundError({
@@ -88,7 +88,7 @@ const parseJson = (
       new ProviderInternalError({
         providerId: ctx.providerId,
         operation,
-        message: "Podman API returned invalid JSON.",
+        message: `provider-${ctx.providerId} API returned invalid JSON.`,
         cause,
       }),
   });
@@ -118,7 +118,10 @@ const createExec = (
 
     if (response.status < 200 || response.status >= 300) {
       yield* Effect.fail(
-        execFailure(session, { message: "Podman failed to create an exec session.", details: response }),
+        execFailure(session, {
+          message: `provider-${session.ctx.providerId} failed to create an exec session.`,
+          details: response,
+        }),
       );
     }
 
@@ -127,7 +130,7 @@ const createExec = (
     if (typeof execId !== "string" || execId.length === 0) {
       yield* Effect.fail(
         execFailure(session, {
-          message: "Podman exec create response did not include an exec id.",
+          message: `provider-${session.ctx.providerId} exec create response did not include an exec id.`,
           details: response,
         }),
       );
@@ -145,7 +148,10 @@ const inspectExec = (session: ExecSession, execId: string): Effect.Effect<number
     });
     if (response.status < 200 || response.status >= 300) {
       yield* Effect.fail(
-        execFailure(session, { message: "Podman failed to inspect an exec session.", details: response }),
+        execFailure(session, {
+          message: `provider-${session.ctx.providerId} failed to inspect an exec session.`,
+          details: response,
+        }),
       );
     }
 
@@ -154,7 +160,7 @@ const inspectExec = (session: ExecSession, execId: string): Effect.Effect<number
     if (typeof exitCode !== "number") {
       yield* Effect.fail(
         execFailure(session, {
-          message: "Podman exec inspect response did not include an exit code.",
+          message: `provider-${session.ctx.providerId} exec inspect response did not include an exit code.`,
           details: response,
         }),
       );
@@ -177,7 +183,10 @@ const resizeExec = (
     });
     if (response.status < 200 || response.status >= 300) {
       yield* Effect.fail(
-        execFailure(session, { message: "Podman failed to resize an exec session.", details: response }),
+        execFailure(session, {
+          message: `provider-${session.ctx.providerId} failed to resize an exec session.`,
+          details: response,
+        }),
       );
     }
   });

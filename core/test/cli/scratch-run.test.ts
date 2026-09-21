@@ -201,7 +201,9 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     destroy: (target, destroyOptions) =>
       Effect.sync(() => {
         recorded.destroyCalls.push({ app: String(target.app), volumes: destroyOptions.volumes });
+        return { kind: "destroyed" as const };
       }),
+    removeObservedService: () => Effect.succeed({ kind: "absent" as const }),
     exec: (target, spec) => {
       const record = Effect.sync(() => {
         recorded.execCalls.push({

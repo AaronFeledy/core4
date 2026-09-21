@@ -1,3 +1,5 @@
+import { join as pathJoin } from "node:path";
+
 import { Effect } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
@@ -11,10 +13,13 @@ import {
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
+import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
 
+import { bindSourceForComposeConfig, composeConfigMounts } from "../compose-configs.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
+import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
-import { volumeSelectorValue } from "./volume-prune.ts";
+import { volumeOwnershipLabels } from "../volume-ownership.ts";
 
 export interface EmitComposeOptions {
   readonly userDataRoot: string;
@@ -36,7 +41,7 @@ interface ComposeBindVolume {
   readonly source: string;
   readonly target: string;
   readonly read_only: boolean;
-  readonly bind: { readonly create_host_path: false };
+  readonly bind?: { readonly create_host_path: false };
 }
 
 interface ComposeStorageVolume {
@@ -44,10 +49,18 @@ interface ComposeStorageVolume {
   readonly source: string;
   readonly target: string;
   readonly read_only: boolean;
-  readonly volume: { readonly subpath: string };
+  readonly volume?: { readonly subpath: string };
 }
 
-type ComposeVolumeEntry = string | ComposeBindVolume | ComposeStorageVolume;
+type ComposeVolumeEntry =
+  | string
+  | ComposeBindVolume
+  | ComposeStorageVolume
+  | {
+      readonly type: "tmpfs";
+      readonly target: string;
+      readonly read_only: boolean;
+    };
 
 interface ComposeService {
   readonly image: string;
@@ -81,14 +94,6 @@ const composeError = (ctx: ProviderErrorContext, message: string, details?: unkn
     remediation: ctx.remediation,
   });
 
-// Strips redundant slashes while correctly preserving a leading slash on
-// absolute paths (including the edge case where the first segment is "/").
-const pathJoin = (...parts: ReadonlyArray<string>) => {
-  const hasLeadingSlash = (parts[0] ?? "").startsWith("/");
-  const segments = parts.map((part) => part.replace(/^\/+|\/+$/gu, "")).filter((part) => part.length > 0);
-  return (hasLeadingSlash ? "/" : "") + segments.join("/");
-};
-
 const serviceImage = (ctx: ProviderErrorContext, service: ServicePlan) => {
   if (service.artifact?.kind === "ref") {
     return service.artifact.ref;
@@ -100,8 +105,10 @@ const serviceImage = (ctx: ProviderErrorContext, service: ServicePlan) => {
   });
 };
 
-const volumeSpec = (source: string, target: string, readOnly: boolean): string =>
-  `${source}:${target}${mountSuffix(readOnly)}`;
+const volumeSpec = (mount: ComposeBindVolume | ComposeStorageVolume): ComposeVolumeEntry =>
+  requiresLongMountSyntax(mount.target)
+    ? mount
+    : `${mount.source}:${mount.target}${mountSuffix(mount.read_only)}`;
 
 const serviceVolumes = (
   ctx: ProviderErrorContext,
@@ -112,18 +119,21 @@ const serviceVolumes = (
     service.appMount === undefined
       ? []
       : [
-          volumeSpec(
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source,
-            service.appMount.target,
-            service.appMount.readOnly,
-          ),
+          volumeSpec({
+            type: service.appMount.realization === "accelerated" ? "volume" : "bind",
+            source:
+              service.appMount.realization === "accelerated"
+                ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
+                : service.appMount.source,
+            target: service.appMount.target,
+            read_only: service.appMount.readOnly,
+          }),
         ];
   const mounts = service.mounts.flatMap((mount, index): ReadonlyArray<ComposeVolumeEntry> => {
     if (mount.type === "tmpfs") {
-      // tmpfs mounts are emitted under the service-level `tmpfs:` key, not `volumes:`.
-      return [];
+      return requiresLongMountSyntax(mount.target)
+        ? [{ type: "tmpfs", target: mount.target, read_only: mount.readOnly }]
+        : [];
     }
 
     if (mount.type === "bind" && sameAppMountTarget(service.appMount, mount)) return [];
@@ -148,33 +158,43 @@ const serviceVolumes = (
     }
 
     return [
-      volumeSpec(
-        mount.type === "bind" && mount.realization === "accelerated"
-          ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-          : mount.source,
-        mount.target,
-        mount.readOnly,
-      ),
+      volumeSpec({
+        type: mount.type === "volume" || mount.realization === "accelerated" ? "volume" : "bind",
+        source:
+          mount.type === "bind" && mount.realization === "accelerated"
+            ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
+            : mount.source,
+        target: mount.target,
+        read_only: mount.readOnly,
+      }),
     ];
   });
   const storage = service.storage.map(
     (storeMount): ComposeVolumeEntry =>
-      storeMount.subpath === undefined
+      storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
         ? `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`
         : {
             type: "volume",
             source: storeMount.store,
             target: storeMount.target,
             read_only: storeMount.readOnly,
-            volume: { subpath: storeMount.subpath },
+            ...(storeMount.subpath === undefined ? {} : { volume: { subpath: storeMount.subpath } }),
           },
   );
 
-  return [...appMount, ...mounts, ...storage, ...composeConfigBindStrings(plan, service)];
+  const configs = composeConfigMounts(plan, service).flatMap(
+    (mount): ReadonlyArray<ComposeBindVolume> =>
+      requiresLongMountSyntax(mount.target)
+        ? [{ type: "bind", source: bindSourceForComposeConfig(mount), target: mount.target, read_only: true }]
+        : [],
+  );
+  return [...appMount, ...mounts, ...storage, ...composeConfigBindStrings(plan, service), ...configs];
 };
 
 const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>
-  service.mounts.flatMap((mount) => (mount.type === "tmpfs" ? [mount.target] : []));
+  service.mounts.flatMap((mount) =>
+    mount.type === "tmpfs" && !requiresLongMountSyntax(mount.target) ? [mount.target] : [],
+  );
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
   service.endpoints.flatMap((endpoint) => {
@@ -259,11 +279,7 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
           "dev.lando.provider": plan.provider,
           "dev.lando.store": store.name,
           "dev.lando.scope": store.scope,
-          "dev.lando.volume-selector": volumeSelectorValue({
-            providerId: plan.provider,
-            appId: plan.id,
-            volumeClass: store.kind === "cache" ? "cache" : "data",
-          }),
+          ...volumeOwnershipLabels(plan, store),
           ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
         };
         return [
@@ -289,8 +305,6 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
   };
 };
 
-const scalar = (value: string) => JSON.stringify(value);
-
 const writeVolumeList = (
   ctx: ProviderErrorContext,
   lines: Array<string>,
@@ -298,22 +312,25 @@ const writeVolumeList = (
 ): void => {
   for (const entry of entries) {
     if (typeof entry === "string") {
-      lines.push(`      - ${scalar(entry)}`);
+      lines.push(`      - ${quoteYamlScalar(entry)}`);
       continue;
     }
 
     lines.push(
-      `      - type: ${scalar(entry.type)}`,
-      `        source: ${scalar(entry.source)}`,
-      `        target: ${scalar(entry.target)}`,
+      `      - type: ${quoteYamlScalar(entry.type)}`,
+      ...(entry.type === "tmpfs" ? [] : [`        source: ${quoteYamlScalar(entry.source)}`]),
+      `        target: ${quoteYamlScalar(entry.target)}`,
       `        read_only: ${entry.read_only ? "true" : "false"}`,
     );
     switch (entry.type) {
       case "bind":
-        lines.push("        bind:", "          create_host_path: false");
+        if (entry.bind !== undefined) lines.push("        bind:", "          create_host_path: false");
         break;
       case "volume":
-        lines.push("        volume:", `          subpath: ${scalar(entry.volume.subpath)}`);
+        if (entry.volume !== undefined)
+          lines.push("        volume:", `          subpath: ${quoteYamlScalar(entry.volume.subpath)}`);
+        break;
+      case "tmpfs":
         break;
       default: {
         const unreachable: never = entry;
@@ -325,22 +342,22 @@ const writeVolumeList = (
 
 const writeScalarMap = (lines: string[], indent: string, entries: Readonly<Record<string, string>>) => {
   for (const [key, value] of Object.entries(entries).sort(([left], [right]) => left.localeCompare(right))) {
-    lines.push(`${indent}${key}: ${scalar(value)}`);
+    lines.push(`${indent}${yamlMappingKeyText(key)}: ${quoteYamlScalar(value)}`);
   }
 };
 
 const writeScalarList = (lines: string[], indent: string, values: ReadonlyArray<string>) => {
   for (const value of values) {
-    lines.push(`${indent}- ${scalar(value)}`);
+    lines.push(`${indent}- ${quoteYamlScalar(value)}`);
   }
 };
 
 export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string => {
   const document = toComposeDocument(ctx, plan);
-  const lines: string[] = [`version: ${scalar(document.version)}`, "services:"];
+  const lines: string[] = [`version: ${quoteYamlScalar(document.version)}`, "services:"];
 
   for (const [serviceName, service] of Object.entries(document.services)) {
-    lines.push(`  ${serviceName}:`, `    image: ${scalar(service.image)}`);
+    lines.push(`  ${yamlMappingKeyText(serviceName)}:`, `    image: ${quoteYamlScalar(service.image)}`);
 
     if (service.ports !== undefined) {
       lines.push("    ports:");
@@ -372,14 +389,17 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
       for (const [depService, entry] of Object.entries(service.depends_on).sort(([left], [right]) =>
         left.localeCompare(right),
       )) {
-        lines.push(`      ${depService}:`, `        condition: ${scalar(entry.condition)}`);
+        lines.push(
+          `      ${yamlMappingKeyText(depService)}:`,
+          `        condition: ${quoteYamlScalar(entry.condition)}`,
+        );
       }
     }
 
     if (service.networks !== undefined) {
       lines.push("    networks:");
       for (const [networkName, network] of Object.entries(service.networks)) {
-        lines.push(`      ${networkName}:`);
+        lines.push(`      ${yamlMappingKeyText(networkName)}:`);
         if (network.aliases !== undefined && network.aliases.length > 0) {
           lines.push("        aliases:");
           writeScalarList(lines, "          ", network.aliases);
@@ -395,24 +415,24 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
 
   lines.push("networks:");
   for (const [networkName, network] of Object.entries(document.networks)) {
-    lines.push(`  ${networkName}:`);
+    lines.push(`  ${yamlMappingKeyText(networkName)}:`);
     if (network.driver !== undefined) {
-      lines.push(`    driver: ${scalar(network.driver)}`);
+      lines.push(`    driver: ${quoteYamlScalar(network.driver)}`);
     }
     if (network.external !== undefined) {
       lines.push(`    external: ${network.external ? "true" : "false"}`);
     }
     if (network.name !== undefined) {
-      lines.push(`    name: ${scalar(network.name)}`);
+      lines.push(`    name: ${quoteYamlScalar(network.name)}`);
     }
   }
 
   if (document.volumes !== undefined) {
     lines.push("volumes:");
     for (const [volumeName, volume] of Object.entries(document.volumes)) {
-      lines.push(`  ${volumeName}:`);
+      lines.push(`  ${yamlMappingKeyText(volumeName)}:`);
       if (volume.driver !== undefined) {
-        lines.push(`    driver: ${scalar(volume.driver)}`);
+        lines.push(`    driver: ${quoteYamlScalar(volume.driver)}`);
       }
       if (volume.labels !== undefined) {
         lines.push("    labels:");

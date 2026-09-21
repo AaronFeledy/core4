@@ -31,6 +31,8 @@ export interface DraftServicePlan {
   buildSteps: ServiceBuildStepIntent[];
   extensions?: Record<string, unknown>;
   storage: Array<ServicePlan["storage"][number]>;
+  /** Mounted trees the planned service user must own, by container target. */
+  storageOwnership?: Array<{ target: string; seededOwners: ReadonlyArray<string> }>;
   endpoints: Array<ServicePlan["endpoints"][number]>;
   dependsOn: Array<ServicePlan["dependsOn"][number]>;
   healthcheck?: ServicePlan["healthcheck"];

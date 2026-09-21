@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Stream } from "effect";
@@ -27,7 +27,11 @@ import {
   makeScratchRegistry,
 } from "@lando/engine/scratch-app/registry";
 import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
-import { ScratchInitAppPort, makeScratchAppServiceLive } from "@lando/engine/scratch-app/service";
+import {
+  ScratchInitAppPort,
+  makeScratchAppServiceLive,
+  suffixScratchHostname,
+} from "@lando/engine/scratch-app/service";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { FileSystemLive } from "@lando/engine/services/file-system";
@@ -201,6 +205,15 @@ const withTempProject = async <T>(
 const die = (operation: string) =>
   Effect.dieMessage(`scratch fork test provider should not call ${operation}`);
 
+const pathExists = async (path: string): Promise<boolean> => {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 interface DestroyCall {
   readonly app: string;
   readonly volumes: boolean;
@@ -251,6 +264,7 @@ const makeScratchForkLayer = (
           volumes: options.volumes,
           removeState: options.removeState,
         });
+        return { kind: "destroyed" as const };
       }),
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch fork test provider should not call execStream"),
@@ -312,6 +326,7 @@ const makeScratchForkLayer = (
             id: "recording",
             capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
             setup: () => Effect.void,
+            revalidateStartup: Effect.void,
             applyRoutes: (routes, app) =>
               Effect.sync(() => {
                 routeRecorder.applied.push(String(app));
@@ -425,6 +440,48 @@ describe("ScratchAppServiceLive fork acquire", () => {
 
       expect(routes.applied).toEqual([handleId]);
       expect(routes.removed).toEqual([handleId]);
+      expect(appliedPlans[0]?.routes[0]?.hostname).toBe(`forkme--${handleId}.lndo.site`);
+    });
+  });
+
+  test("keeps opted-out and explicitly preserved hostnames unchanged", async () => {
+    await withTempProject(routedForkLandofile, async () => {
+      const withoutSuffix: AppPlan[] = [];
+      const preserved: AppPlan[] = [];
+      await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(
+            service.acquire({
+              source: { kind: "fork" },
+              detached: true,
+              noHostnameSuffix: true,
+            }),
+          ),
+        ).pipe(Effect.provide(makeScratchForkLayer(withoutSuffix))),
+      );
+      await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(
+            service.acquire({
+              source: { kind: "fork" },
+              detached: true,
+              hostnames: ["forkme.lndo.site"],
+            }),
+          ),
+        ).pipe(Effect.provide(makeScratchForkLayer(preserved))),
+      );
+
+      expect(withoutSuffix[0]?.routes[0]?.hostname).toBe("forkme.lndo.site");
+      expect(preserved[0]?.routes[0]?.hostname).toBe("forkme.lndo.site");
+      expect(suffixScratchHostname("admin.app.lndo.site", "scratch-demo-123456")).toBe(
+        "admin.app--scratch-demo-123456.lndo.site",
+      );
+      expect(suffixScratchHostname("*.app.lndo.site", "scratch-demo-123456")).toBe(
+        "*.app--scratch-demo-123456.lndo.site",
+      );
+      expect(suffixScratchHostname("app--scratch-demo-123456.lndo.site", "scratch-demo-123456")).toBe(
+        "app--scratch-demo-123456.lndo.site",
+      );
     });
   });
 
@@ -458,10 +515,24 @@ describe("ScratchAppServiceLive fork acquire", () => {
   test("isolate=full copies the source app root and plans under the scratch root", async () => {
     await withTempProject(forkLandofile, async (dir) => {
       await writeFile(join(dir, "marker.txt"), "source-content");
+      await mkdir(join(dir, "node_modules", "package"), { recursive: true });
+      await mkdir(join(dir, "coverage"), { recursive: true });
+      await writeFile(join(dir, "node_modules", "package", "index.js"), "module");
+      await writeFile(join(dir, "coverage", "report.txt"), "coverage");
+      await writeFile(join(dir, ".lando.local.yml"), "name: forkme\n");
+      await writeFile(join(dir, ".lando.user.yml"), "name: forkme\n");
       const appliedPlans: AppPlan[] = [];
       const handle = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
-          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true, isolate: "full" })),
+          Effect.scoped(
+            service.acquire({
+              source: { kind: "fork" },
+              detached: true,
+              isolate: "full",
+              excludes: ["coverage/"],
+              noLocalOverrides: true,
+            }),
+          ),
         ).pipe(Effect.provide(makeScratchForkLayer(appliedPlans))),
       );
 
@@ -473,6 +544,14 @@ describe("ScratchAppServiceLive fork acquire", () => {
       expect(await readFile(join(String(appliedPlan.root), "marker.txt"), "utf8")).toBe("source-content");
       expect(await readFile(join(String(appliedPlan.root), ".lando.yml"), "utf8")).toContain("forkme");
       expect(await readFile(join(dir, "marker.txt"), "utf8")).toBe("source-content");
+      expect(await pathExists(join(String(appliedPlan.root), "node_modules"))).toBe(false);
+      expect(await pathExists(join(String(appliedPlan.root), "coverage"))).toBe(false);
+      expect(await pathExists(join(String(appliedPlan.root), ".lando.local.yml"))).toBe(false);
+      expect(await pathExists(join(String(appliedPlan.root), ".lando.user.yml"))).toBe(false);
+      expect(await pathExists(join(dir, "node_modules", "package", "index.js"))).toBe(true);
+      expect(await pathExists(join(dir, "coverage", "report.txt"))).toBe(true);
+      expect(await pathExists(join(dir, ".lando.local.yml"))).toBe(true);
+      expect(await pathExists(join(dir, ".lando.user.yml"))).toBe(true);
       expect(appliedPlan.name).toBe(handle.id);
     });
   });
