@@ -68,3 +68,10 @@ Verification: gate:pr green (typecheck, lint, codegen:check, boundaries, guide-d
 - Verification: typecheck and lint passed; core/test/cli/shellenv.test.ts 21 pass; guide gates already green against origin/main.
 - **Learnings for future iterations:** Leaf-symlink refusal is lstat on the destination itself. realpath of a parent symlink is a fifth condition and will disagree with resolve()-based ownership on macOS /var and any LANDO_INSTALL_DIR that walks a linked ancestor.
 ---
+## 2026-09-21 - US-619B1 Drift Audit
+- Trigger: 3 cycles, 2114 changed lines, 2 commits
+- Weakened proofs: shellenv agreement covered path-mismatch only through a destination override production never passed, because shellenv always verifies the recorded path.
+- Fixed: removed that override and restored the agreement test to the recorded-path production checks.
+- Split/excise decisions: none; deferred missing-record fallback and compiled-artifact rename remain justified and unlaundered.
+- Verification: typecheck pass, lint pass, core/test/cli/shellenv.test.ts 21 pass
+---
