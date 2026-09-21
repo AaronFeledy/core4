@@ -50,7 +50,7 @@ Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then o
     <Step name="shellenv">
       <Run command="lando4 shellenv" expectExit={0} />
       <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export LANDO_USER_DATA_ROOT=" } }} />
-      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export PATH=.+/bin.\":\\$\\{PATH\\}\"" } }} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export PATH=.+[\\\\/]bin.\":\\$\\{PATH\\}\"" } }} />
       <Verify command="lando4 shellenv" expect={{ stdout: { regex: "case \":\\$\\{PATH\\}:\" in" } }} />
     </Step>
     <Step name="shellenv-powershell">
