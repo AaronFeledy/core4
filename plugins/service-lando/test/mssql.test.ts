@@ -308,7 +308,7 @@ describe("mssql ServiceType", () => {
     expect(resolution.base).toBe("lando");
   });
 
-  test("arm64 without emulation fails closed in resolve", async () => {
+  test("arm64 without capabilities defers the emulation check", async () => {
     const result = await Effect.runPromise(
       mssqlServiceType
         .resolve({
@@ -322,10 +322,9 @@ describe("mssql ServiceType", () => {
         .pipe(Effect.either),
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag !== "Left") throw new Error("expected arm64 without emulation to fail");
-    expect(result.left).toBeInstanceOf(ServiceTypeError);
-    expect(result.left.message).toContain(ARCH_REMEDIATION);
+    expect(result._tag).toBe("Right");
+    if (result._tag !== "Right") throw new Error("expected provider-free resolution to succeed");
+    expect(result.right.tooling?.sqlcmd?.cmd).toEqual([SQLCMD, "-S", "localhost", "-U", "sa", "-C"]);
   });
 
   test("arm64 with architectureEmulation false fails closed in resolve", async () => {

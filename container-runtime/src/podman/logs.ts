@@ -19,7 +19,7 @@ const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const apiRequired = (ctx: ProviderErrorContext): ProviderUnavailableError =>
-  missingApi(ctx, "logs", `provider-${ctx.providerId} logs requires a Podman API client.`);
+  missingApi(ctx, "logs", `provider-${ctx.providerId} logs requires an engine API client.`);
 
 const missingService = (ctx: ProviderErrorContext, target: LogTarget) =>
   new ServiceNotFoundError({

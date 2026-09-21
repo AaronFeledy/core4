@@ -128,6 +128,44 @@ describe("RedactionServiceLive", () => {
     expect(redacted).toBe("provider leaked [redacted] [redacted] [redacted]");
   });
 
+  test("treats dot, hyphen, and underscore alike when matching secret keys", async () => {
+    const dotted = "dotted-label-secret-canary";
+    const hyphenated = "hyphenated-label-secret-canary";
+    const underscored = "underscored-env-secret-canary";
+    const visible = "plain-team-name-canary";
+    const redactor = await runWithStore(
+      Effect.flatMap(RedactionService, (service) =>
+        service.forProfile("secrets", {
+          sourceEnv: {
+            "com.example.password": dotted,
+            "dev.example.db-password": hyphenated,
+            DB_PASSWORD: underscored,
+            "com.example.team": visible,
+          },
+        }),
+      ),
+      {},
+    );
+
+    const redacted = redactor.redactString(
+      `leaked ${dotted} ${hyphenated} ${underscored} and kept ${visible}`,
+    );
+    expect(redacted).toBe("leaked [redacted] [redacted] [redacted] and kept plain-team-name-canary");
+  });
+
+  test("keeps the short-token policy in force for dotted secret keys", async () => {
+    const redactor = await runWithStore(
+      Effect.flatMap(RedactionService, (service) =>
+        service.forProfile("secrets", {
+          sourceEnv: { "com.example.password": "32", "com.example.token": "38;2;255;0;0" },
+        }),
+      ),
+      {},
+    );
+
+    expect(redactor.redactString("cursor 32 and 38;2;255;0;0")).toBe("cursor 32 and 38;2;255;0;0");
+  });
+
   test("masks host-proxy token source env values", async () => {
     const secret = "host-proxy-session-token";
     const redactor = await runWithStore(

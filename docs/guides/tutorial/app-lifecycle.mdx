@@ -1,7 +1,7 @@
 ---
 id: app-lifecycle
 provider: test
-timeout: 90000
+timeout: 300000
 tags: [beta, docs, tutorial, lifecycle]
 ---
 
@@ -120,6 +120,11 @@ missing or invalid. That means you can still tear down an app after deleting its
 directory or breaking its config. Lando verifies the stored app root, owner, and
 provider before it touches anything.
 
+Teardown looks at what is actually running before it reads your config. An app
+that was never started reports `unchanged` and exits 0, even when its Landofile
+does not validate. If a plain `destroy` kept your data volumes, a later
+`lando destroy -y --volumes` still removes them and tells you what it removed.
+
 To see or stop everything Lando is running on this host:
 
 ```sh
@@ -129,5 +134,28 @@ lando apps:list
 # Stop every running Lando app and the shared services at once
 lando apps:poweroff
 ```
+
+## Run the whole loop on the real provider
+
+The same loop, end to end, against the default `lando` provider. `start`
+reports the app ready, `info` shows both services `running`, `stop` names what
+it stopped, and nothing lands on stderr along the way:
+
+  <Scenario id="real-provider-loop" layer="e2e" tags={["@smoke"]} render>
+    <Step name="start">
+      <UseFixture name="app-lifecycle-demo" />
+      <Verify command="lando start" expect={{ stdout: { regex: "ready: app-lifecycle-demo" }, stderr: "" }} />
+    </Step>
+    <Step name="inspect">
+      <Verify command="lando info" expect={{ stdout: { regex: "(^|\\n)app\\trunning\\t[\\s\\S]*\\ndb\\trunning\\t" }, stderr: "" }} />
+    </Step>
+    <Step name="stop">
+      <Verify command="lando stop" expect={{ stdout: { regex: "stopped: app-lifecycle-demo" }, stderr: "" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
 
 </Guide>

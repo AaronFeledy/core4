@@ -13,6 +13,7 @@ export interface AppsListEntry {
   readonly appRoot: string;
   readonly services: ReadonlyArray<string>;
   readonly stale?: boolean;
+  readonly scratch?: boolean;
 }
 
 export interface AppsDiscoveryEvidence {
@@ -83,6 +84,7 @@ export const mergeAppsListEntries = (entries: ReadonlyArray<AppsListEntry>): App
       providerId: preferProviderId(existing.providerId, entry.providerId),
       appRoot: preferRoot(existing.appRoot, entry.appRoot),
       services: uniqueSorted([...existing.services, ...entry.services]),
+      ...(existing.scratch === true || entry.scratch === true ? { scratch: true } : {}),
     });
   }
   const merged = [...byId.values()];
@@ -104,12 +106,19 @@ const planLikeToEntry = (value: unknown, fallbackProvider: string): AppsListEntr
     typeof value.provider === "string"
       ? value.provider.replace(/^provider-/u, "")
       : fallbackProvider.replace(/^provider-/u, "");
+  const extensions = value.extensions;
+  const scratch =
+    typeof extensions === "object" &&
+    extensions !== null &&
+    !Array.isArray(extensions) &&
+    "@lando/core/scratch" in extensions;
   return {
     appId: id,
     appName: typeof value.name === "string" ? value.name : id,
     providerId: provider,
     appRoot: root,
     services: servicesFromPlan(value.services),
+    ...(scratch ? { scratch: true } : {}),
   };
 };
 
@@ -230,6 +239,7 @@ const stringLabels = (value: unknown): Record<string, string> => {
 
 const labeledResourceEvidence = (
   resources: unknown,
+  includeScratch = false,
 ): { readonly appIds: ReadonlyArray<string>; readonly providerIds: ReadonlyArray<string> } => {
   if (!Array.isArray(resources)) return { appIds: [], providerIds: [] };
   const appIds: string[] = [];
@@ -238,7 +248,8 @@ const labeledResourceEvidence = (
     if (!isRecord(resource)) continue;
     const labels = stringLabels(resource.Labels);
     const appId = labels[APP_LABEL];
-    if (appId === undefined || appId === "" || labels[SCRATCH_LABEL] === "TRUE") continue;
+    if (appId === undefined || appId === "" || (!includeScratch && labels[SCRATCH_LABEL] === "TRUE"))
+      continue;
     appIds.push(appId);
     const providerId = labels[PROVIDER_LABEL];
     if (providerId !== undefined && providerId !== "") providerIds.push(providerId);
@@ -248,7 +259,7 @@ const labeledResourceEvidence = (
 
 export const appsFromContainerList = (
   body: unknown,
-  options: { readonly globalAppRoot?: string } = {},
+  options: { readonly globalAppRoot?: string; readonly includeScratch?: boolean } = {},
 ): AppsListEntry[] => {
   if (!Array.isArray(body)) return [];
   const grouped = new Map<string, { services: Set<string>; providerId: string }>();
@@ -258,7 +269,7 @@ export const appsFromContainerList = (
     const labels = stringLabels(container.Labels);
     const appId = labels[APP_LABEL];
     if (appId === undefined || appId === "") continue;
-    if (labels[SCRATCH_LABEL] === "TRUE") continue;
+    if (options.includeScratch !== true && labels[SCRATCH_LABEL] === "TRUE") continue;
     const existing = grouped.get(appId) ?? {
       services: new Set<string>(),
       providerId: labels[PROVIDER_LABEL] ?? "lando",
@@ -376,6 +387,7 @@ const providerIdOnSocket = async (socketPath: string, userDataRoot: string): Pro
 export const discoverRunningAppsEvidenceFromSockets = async (
   userDataRoot: string,
   sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
+  options: { readonly includeScratch?: boolean } = {},
 ): Promise<AppsDiscoveryEvidence> => {
   const paths = makeLandoPaths({ userDataRoot });
   for (const socket of sockets) {
@@ -393,9 +405,12 @@ export const discoverRunningAppsEvidenceFromSockets = async (
         listVolumesOnSocket(socket),
       ]);
       const volumes = isRecord(volumesBody) ? volumesBody.Volumes : undefined;
-      const apps = appsFromContainerList(containers, { globalAppRoot: paths.globalAppRoot });
-      const containerEvidence = labeledResourceEvidence(containers);
-      const volumeEvidence = labeledResourceEvidence(volumes);
+      const apps = appsFromContainerList(containers, {
+        globalAppRoot: paths.globalAppRoot,
+        ...(options.includeScratch === true ? { includeScratch: true } : {}),
+      });
+      const containerEvidence = labeledResourceEvidence(containers, options.includeScratch === true);
+      const volumeEvidence = labeledResourceEvidence(volumes, options.includeScratch === true);
       const labeledProviderIds = uniqueSorted([
         ...containerEvidence.providerIds,
         ...volumeEvidence.providerIds,
@@ -419,5 +434,6 @@ export const discoverRunningAppsEvidenceFromSockets = async (
 export const discoverRunningAppsFromSockets = async (
   userDataRoot: string,
   sockets: ReadonlyArray<string> = containerSocketCandidates(userDataRoot),
+  options: { readonly includeScratch?: boolean } = {},
 ): Promise<ReadonlyArray<AppsListEntry>> =>
-  (await discoverRunningAppsEvidenceFromSockets(userDataRoot, sockets)).apps;
+  (await discoverRunningAppsEvidenceFromSockets(userDataRoot, sockets, options)).apps;

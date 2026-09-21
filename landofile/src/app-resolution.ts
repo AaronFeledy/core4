@@ -4,26 +4,13 @@ import { type Context, Effect, type FiberId, FiberRef } from "effect";
 
 import {
   AppIdReservedError,
-  type ComposeKeyRejectedError,
-  type LandofileFormConflictError,
-  type LandofileImportRefMisuseError,
-  type LandofileIncludeError,
-  type LandofileLoadLimitError,
-  type LandofileLoadOutsideRootError,
-  type LandofileLockMismatchError,
-  type LandofileNotFoundError,
   LandofileParseError,
-  type LandofileSandboxError,
-  type LandofileTimeoutError,
-  type LandofileValidationError,
   type LandofileVersionConstraintError,
-  type ManagedFileTransactionError,
-  type NotImplementedError,
-  type RouteInputError,
-  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
-import type { LandofileService } from "@lando/sdk/services";
+import type { LandofileService, UserLandofileError } from "@lando/sdk/services";
+
+export type { UserLandofileError };
 
 import { hasResolvableIncludes, resolveLandofileIncludes } from "./includes.ts";
 import { landofileLayerPaths } from "./layers.ts";
@@ -40,26 +27,6 @@ export interface ResolvedAppTarget {
 }
 
 export const userAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
-
-export type UserLandofileError =
-  | RouteInputError
-  | ManagedFileTransactionError
-  | LandofileNotFoundError
-  | LandofileParseError
-  | LandofileValidationError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileFormConflictError
-  | NotImplementedError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | LandofileImportRefMisuseError
-  | LandofileLoadLimitError
-  | LandofileLoadOutsideRootError
-  | ToolingIncludeCycleError
-  | LandofileVersionConstraintError
-  | AppIdReservedError
-  | ComposeKeyRejectedError;
 
 export const assertUserAppIdNotReserved = (
   landofile: LandofileShape,

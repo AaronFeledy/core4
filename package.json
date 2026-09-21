@@ -89,6 +89,7 @@
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
     "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",
     "codegen:mutagen-versions": "bun run scripts/build-mutagen-versions.ts",
+    "codegen:php-msmtp-pins": "bun run scripts/build-php-msmtp-pins.ts",
     "codegen:provider-images": "bun run scripts/build-provider-images.ts",
     "codegen:compose-vendor": "bun run scripts/build-compose-vendor.ts",
     "codegen:compose-fixtures": "bun run scripts/build-compose-fixtures.ts",

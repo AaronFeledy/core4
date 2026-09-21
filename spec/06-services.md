@@ -3,9 +3,7 @@
 > **Part 6 of 18** · [Index](./README.md)
 > **Read next:** [07 Landofile and Configuration](./07-landofile-and-config.md)
 
-This part defines what a v4 service is and how it is composed. A v4 service is a planned runtime component built from a **base** plus a sequence of composable **features**. Two bases ship with core: `l337` (raw artifact, the escape hatch) and `lando` (opinionated dev service with boot scaffolding, env layer, packages, app mounts, healthchecks, certs, SSH agent, and run hooks).
-
-Covered here: the model and `api: 4` policy, the common service schema with supported Compose service keys, the provider-neutral artifact build with the group-weighted instruction model, app mounts and mounts (including excludes/includes semantics), storage scopes and auto-naming, endpoints/hostnames/routes with provider-neutral route filters, healthchecks, certificates and additional CA injection via `security.ca:`, the standard `LANDO_*` environment variable contract, the `ServiceInfo` schema returned by `lando info`, the `ServiceType` + `ServiceFeature` contracts (with the built-in feature priority list from `@lando/service-lando`), and the canonical service-type catalog that ships in core (PHP, Node, Python, Ruby, Go runtimes; nginx/apache; MariaDB/MySQL/PostgreSQL; Redis/Memcached/Valkey; Solr/Elasticsearch/OpenSearch/Meilisearch; Mailpit/Mailhog; RabbitMQ; MinIO/LocalStack; static; raw Compose passthrough).
+This part defines the provider-neutral v4 service model, its composition contracts, canonical service types, build lifecycle, and log sources.
 
 ---
 
@@ -13,1269 +11,376 @@ Covered here: the model and `api: 4` policy, the common service schema with supp
 
 ### 6.1 Model
 
-A v4 service is a planned runtime component built from a **base** plus a sequence of composable **features**. Two bases ship with core. Plugins compose features onto a base to produce service types like `php`, `node`, `postgres`, etc.
+A service is a planned runtime component composed from one base and an ordered set of features.
 
-**Built-in service bases:**
-
-| Base | Purpose |
+| Base | Contract |
 |---|---|
-| `l337` | Low-level artifact-oriented service. Provides artifact-build plumbing and nothing else. No `/etc/lando/*` scaffolding, no opinionated env, no packages. The escape hatch. |
-| `lando` | Opinionated dev service. Adds boot scaffolding, an env layer, packages, container-time build steps, app mounts, healthcheck integration, certs, SSH agent, and run hooks. Default when `type:` is omitted. |
+| `l337` | Artifact and build plumbing only. It is the low-level escape hatch and provides no `/etc/lando/*` scaffolding, opinionated environment, packages, or app mount. |
+| `lando` | Opinionated development service with boot scaffolding, environment, packages, build steps, app mounts, healthchecks, certificates, SSH agent, and hooks. It is the default when `type:` is omitted. |
 
-**Composition is normative, not advisory (§6.11.0).** A `ServiceType` does **not** emit a finished `ServicePlan`. It resolves `type: <name>` into a `ServiceTypeResolution` (`{ base, normalizedConfig, features }`); core's planner then *composes* the named base with the priority-ordered feature list to produce the plan. The base is the lower half of that composition (which default feature stack a service seeds — and therefore whether the `lando.env` env layer ends up present), and the features are the upper half. An implementation that hand-builds a `ServicePlan` per service type instead of going through `base + features` is **non-conforming**, even if its output happens to look right — it silently loses the `l337`/`lando` distinction (§6.9), `AppFeature` injection (§6.11.4), `extends:` inheritance (§6.11.1), and the per-feature conformance surface. The exact pipeline is specified in §6.11.0 and is gated by the §13.1 `runServiceCompositionContract` suite.
+Composition is normative. A `ServiceType` resolves to `ServiceTypeResolution`; the core planner composes its `base`, `normalizedConfig`, and priority-ordered `features` into a `ServicePlan`. A type that builds a plan directly is non-conforming and bypasses inheritance, `AppFeature` injection, and feature conformance (§6.11).
 
-`api: 4` is the only service API in this spec. Core defaults `api` to `4` when omitted, *after* the Landofile has confirmed it targets v4. There is no `api: 3` compatibility path.
+`api: 4` is the only service API. Core defaults it after confirming that the Landofile targets v4; no `api: 3` path exists.
 
-**Provider selection.** A service inherits the app's provider. Per-service provider selection is non-portable; plugins may consume it via `services.<name>.providers.<id>` extensions. `ServicePlan.provider` is the resolved app provider, copied onto each planned service for adapter convenience.
+A service inherits the app provider. Per-service provider configuration is non-portable and belongs under `services.<name>.providers.<id>`. `ServicePlan.provider` records the resolved app provider.
 
 ### 6.2 Common service schema
 
-The published `ServiceConfigInput` authoring boundary accepts the documented Compose service-key subset (§7.4) at the same level as Lando's additional keys and decodes into the canonical `ServiceConfig` long form. Lando-specific keys are conveniences or higher-level intent; they do not make supported Compose keys invalid. Unsupported Compose service keys fail validation unless they are moved under a provider extension that explicitly owns them.
+`ServiceConfigInput` accepts the supported Compose service-key subset (§7.4) alongside Lando keys and decodes to canonical `ServiceConfig`. Unsupported or rejected Compose keys fail validation unless an explicit provider extension owns them.
 
-Core normalizes Compose service keys with portable equivalents before creating a `ServicePlan`. Both the Compose spelling and the Lando alias are accepted, and where Compose defines a short and a long syntax for a key, **both forms are accepted** and canonicalized to the long form before normalization:
+- `image:` and Compose `build:` normalize to `artifact:`. Compose-build fields and Lando build-script fields (`artifact:`, `app:`) are shape-discriminated; mixing them fails with a tagged error and remediation.
+- `command:`, `entrypoint:`, `user:`, `working_dir:`/`workingDirectory`, `environment:`, and `env_file:`/`envFile` normalize to execution and environment fields. Environment input never inherits unset host values. A null label value becomes an empty string.
+- `volumes:` short and long forms normalize to `mounts`, `storage`, or `tmpfs` according to source and type.
+- `ports:` and `expose:` normalize to `endpoints`; host bindings require provider capability.
+- `depends_on:` list and condition-map forms normalize to `dependsOn`. `service_started`, `service_healthy`, and `service_completed_successfully` retain their lifecycle meaning (§6.13).
+- Compose `healthcheck:` normalizes to the §6.7 model.
+- `restart`, `cap_add`, `cap_drop`, `privileged`, `devices`, `ulimits`, `sysctls`, `tmpfs`, `shm_size`, `dns`, `dns_search`, `dns_opt`, `extra_hosts`, `init`, `stop_signal`, `stop_grace_period`, `security_opt`, `group_add`, `read_only`, `platform`, `pull_policy`, `logging`, `gpus`, and `deploy.resources` are preserved in `ServicePlan.extensions.compose` and capability-checked (§5.5.1).
+- Supported `networks:`, `configs:`, `secrets:`, `labels:`, and `profiles:` forms are preserved and capability-checked. Service-level `x-*` fields remain inert (§5.4).
+- Rejected keys, including `extends`, `container_name`, `network_mode`, `links`, and Swarm orchestration fields, fail with a tagged error and remediation; they are never silently dropped.
 
-- `image:` / Compose `build:` map into the service artifact model when the selected provider can build or pull artifacts. `build:` is **shape-discriminated**: a block containing Compose build keys (`context`, `dockerfile`, `dockerfile_inline`, `args`, `target`, ...) is a Compose build and normalizes into the artifact model; a block containing Lando build-script keys (`artifact:`, `app:`) is the §6.13 build-script block; a block mixing the two families fails with a tagged error and remediation. This shape discrimination replaces any separate `composeBuild:` spelling.
-- `command:`, `entrypoint:`, `user:`, `working_dir:`, `environment:` (map form and `KEY=value` list form), and `env_file:` (string and list forms) map directly to execution and environment fields. A bare environment-list entry or null environment-map value fails with remediation because Landofiles do not inherit host environment values; a null label-map value canonicalizes to an empty string.
-- `volumes:` entries (short-string and long-object forms) map to `mounts` or `storage` depending on whether the source is a host path, named volume, or anonymous volume; a long-form `type: tmpfs` entry routes to the preserved `tmpfs` runtime knob.
-- `ports:` (short-string and long-object forms) and `expose:` map to `endpoints`; `ports:` with host bindings require the provider's host-port capability.
-- `depends_on:` (list form and condition-map form) maps to `dependsOn` and is used for lifecycle ordering. `condition: service_started | service_healthy | service_completed_successfully` is preserved into the plan and honored by build/start orchestration (§6.13): `service_healthy` gates on the dependency's healthcheck, `service_completed_successfully` on its successful exit.
-- `healthcheck:` in the Compose shape (`test` as string or `CMD`/`CMD-SHELL`/`NONE` array, `interval`/`timeout`/`start_period` duration strings, `retries`, `disable`) normalizes into the §6.7 healthcheck model.
-- **Per-container runtime knobs** with no Lando abstraction are accepted and preserved per §5.5.1: `restart`, `cap_add`, `cap_drop`, `privileged`, `devices`, `ulimits`, `sysctls`, `tmpfs`, `shm_size`, `dns`, `dns_search`, `dns_opt`, `extra_hosts`, `init`, `stop_signal`, `stop_grace_period`, `security_opt`, `group_add`, `read_only`, `platform`, `pull_policy`, `logging`, `gpus`, and `deploy.resources`. They carry no provider-neutral planner semantics; they ride `ServicePlan.extensions.compose` and are capability-checked.
-- Supported `networks:`, `configs:`, `secrets:`, `labels:` (map and list forms), and `profiles:` forms are accepted. Fields in the supported subset without provider-neutral semantics are preserved in `ServicePlan.extensions.compose` and capability-checked per §5.5.1 against `composeServiceFields.supported`. Service-level `x-*` extension fields are preserved inert per §5.4 and are not capability-gated.
-- Service keys with a `rejected` disposition in the §7.4 matrix (`extends`, `container_name`, `network_mode`, `links`, Swarm-oriented `deploy` orchestration keys) fail validation with a tagged error and remediation; they are never silently dropped or passed through.
+Lando keys include `api`, `type`, `primary`, `artifact`, `appMount`, `mounts`, `storage`, `home`, `endpoints`, `routes`, `healthcheck`, `logs`, `certs`, `hostnames`, `security`, `build`, `packages`, and `providers`. Where a Compose spelling and a more specific Lando spelling conflict, the Lando value wins and `lando app config` SHOULD report the resolution.
 
-Lando aliases such as `workingDirectory`, `envFile`, `appMount`, `mounts`, `storage`, `endpoints`, `routes`, `certs`, `security`, and `packages` remain available as extensions. When both a Compose key and its Lando simplification are present, the more specific Lando key wins during normalization and `lando app config` SHOULD report the resolved value.
+`BuildScriptStep` is a command string or `{ run, user? }`; `BuildScript` is one step or an ordered list.
 
-Effect Schema definition (illustrative; final schema lives in `@lando/sdk`):
+The published boundary retains the named component contracts `ArtifactInput`, `CommandInput`, `UserInput`, `PortablePath`, `AppMountInput`, `MountInput`, `StorageInput`, `EndpointInput`, `RouteInput`, `HealthcheckInput`, `LogSourceInput`, `CertsInput`, `CaInput`, and `ProviderId`.
 
-```ts
-export const BuildScriptStep = Schema.Union(
-  Schema.String,
-  Schema.Struct({ run: Schema.String, user: Schema.optional(UserInput) }),
-);
-export const BuildScript = Schema.Union(BuildScriptStep, Schema.Array(BuildScriptStep));
+### 6.3 Artifact build
 
-export const ServiceConfigInput = Schema.extend(ComposeServiceConfig, Schema.Struct({
-  api: Schema.optional(Schema.Literal(4)),
-  type: Schema.optional(Schema.String),         // defaults to "lando"
-  primary: Schema.optional(Schema.Boolean),
+`artifact:` accepts an existing artifact reference, an external `sourcefile:` plus context, or inline provider-neutral build intent. Inline intent includes `source`, `tag`, `context`, `args`, `secrets`, `ssh`, `platform`, `groups`, and `steps`.
 
-  artifact: Schema.optional(ArtifactInput),
-  command: Schema.optional(CommandInput),
-  entrypoint: Schema.optional(CommandInput),
-  user: Schema.optional(UserInput),
-  workingDirectory: Schema.optional(PortablePath),
-  environment: Schema.optional(EnvironmentInput),
-  envFile: Schema.optional(Schema.Array(Schema.String)),
+Build instructions use named, weighted, user-scoped groups. Final order follows group weight and step weight. Service types, features, fragments (§7.7), and Landofile input contribute steps; recipes contribute only through the Landofile they scaffold. Group overrides may select a group, relative offset, before/after placement, and user; their concrete grammar is schema-owned.
 
-  appMount: Schema.optional(AppMountInput),
-  mounts: Schema.optional(Schema.Array(MountInput)),
-  storage: Schema.optional(Schema.Array(StorageInput)),
-  home: Schema.optional(Schema.Union(
-    Schema.Literal(false),
-    Schema.Struct({ path: Schema.optional(AbsoluteContainerPath) }),
-  )),
+`build.artifact:` and `build.app:` preserve every step's resolved user through `BuildPlan`, provider execution, and ordered `buildKey` hashing. Omitted users resolve to the planned service user; an explicit step user overrides its group's user. Interleaved users are valid. Artifact generation switches users only when required and restores the final service user; app steps pass the resolved user to `execStream`.
 
-  endpoints: Schema.optional(Schema.Array(EndpointInput)),
-  routes: Schema.optional(Schema.Array(RouteInput)),
-
-  healthcheck: Schema.optional(HealthcheckInput),
-  logs: Schema.optional(Schema.Array(LogSourceInput)),  // declared in-container log files (§6.14)
-  certs: Schema.optional(CertsInput),
-  hostnames: Schema.optional(Schema.Array(Schema.String)),
-  security: Schema.optional(Schema.Struct({
-    ca: Schema.optional(Schema.Array(CaInput)),
-    inheritNetworkCa: Schema.optional(Schema.Boolean),       // override network.ca.injectIntoServices
-    inheritNetworkProxy: Schema.optional(Schema.Boolean),    // override network.proxy.injectIntoServices
-  })),
-
-  build: Schema.optional(Schema.Struct({
-    artifact: Schema.optional(BuildScript),
-    app: Schema.optional(BuildScript),
-  })),
-
-  packages: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
-
-  providers: Schema.optional(Schema.Record({ key: ProviderId, value: Schema.Unknown })),
-}));
-```
-
-**Top-level Landofile excerpt** (informative):
-
-```yaml
-services:
-  app:
-    api: 4
-    type: lando
-    primary: true
-
-    artifact: nginxinc/nginx-unprivileged:1.27
-    command: "{{ load('scripts/start.sh') | text }}"
-    user: nginx
-    environment:
-      APP_ENV: development
-    env_file:
-      - .env
-
-    app-mount: /app
-    mounts:
-      - source: ./config
-        target: /etc/myapp
-        type: copy
-    storage:
-      - /var/lib/data
-      - destination: /shared
-        scope: app
-        type: volume
-
-    endpoints:
-      - 8080/http
-      - 8443/https
-      - port: 5432
-        protocol: tcp
-        bind: 127.0.0.1
-
-    routes:
-      - app.lndo.site
-      - hostname: admin.lndo.site
-        endpoint: 8080/http
-        pathPrefix: /admin
-        scheme: https
-
-    healthcheck:
-      command: curl -fsS http://localhost:8080/health
-      retry: 25
-      delay: 1000
-
-    logs:
-      - path: /var/log/myapp/error.log
-        stream: stderr
-        label: myapp error log
-
-    certs: true
-    hostnames:
-      - extra.app.lndo.site
-
-    security:
-      ca:
-        - ./certs/CorpCA.crt
-        - "{{ load('other-ca.pem') }}"
-
-    build:
-      artifact:
-        - run: apt-get update -y && apt-get install -y curl
-          user: root
-      app:
-        - npm ci
-
-    packages:
-      git: true
-      ssh-agent: true
-      sudo: true
-
-    providers:
-      docker:
-        labels:
-          example.com/team: platform
-```
-
-### 6.3 Artifact build (provider-neutral)
-
-`build.artifact:` and `build.app:` accept a single step or an ordered array of `string | { run, user? }` steps. Planning MUST resolve omitted users per service to the service's planned user; artifact groups retain their declared `user:` as the default for steps in that group, with an explicit step user taking precedence. Every resolved user MUST be carried through `BuildPlan`, provider execution, and ordered `buildKey` hashing (§6.13.3, §6.13.5). Interleaved root/non-root steps are valid. Container artifact generation MUST switch `USER` only when a step's resolved user differs from the active user and MUST restore the final service `USER` after the steps. App-build steps MUST pass explicit resolved users to `execStream`.
-
-`artifact:` describes how to obtain or produce the runnable asset for a service. Container providers translate it to image build/pull. VM providers translate it to template selection or disk creation. Remote providers may translate it to a deployment manifest reference.
-
-**Supported forms:**
-
-```yaml
-# Existing artifact reference (image tag, template name, etc.)
-artifact: nginxinc/nginx-unprivileged:1.27
-
-# Build from a sourcefile (e.g. Containerfile or VM template)
-artifact:
-  sourcefile: ./Containerfile
-  context: ./
-
-# Inline build instructions, group-weighted
-artifact:
-  source: scratch
-  tag: my-app:dev
-  context:
-    - ./assets:/app/assets
-    - source: ./scripts
-      destination: /usr/local/bin
-      owner: 1000:1000
-      permissions: "0755"
-  args:
-    NODE_VERSION: "20"
-  secrets:
-    - { id: npmrc, source: ~/.npmrc }
-  ssh:
-    agent: true
-    keys: ["~/.ssh/id_ed25519"]
-  platform: linux/amd64
-  groups:
-    - { name: system, weight: 200, user: root }
-    - { name: tooling, weight: 400, user: root }
-    - { name: user, weight: 2000 }
-  steps:
-    - { run: "apt-get update -y", group: system }
-    - { run: "apt-get install -y curl jq", group: system, weight: 1 }
-    - { run: "npm i -g pm2", group: user, user: node }
-```
-
-**Group-weighted instruction model.** Adopted from SPEC2's L337 builder. A v4 artifact is assembled from groups (named, weighted, user-scoped) and steps (instructions assigned to a group). Final ordering is by group weight + step weight. Service types, features, fragments (§7.7), and the user's Landofile contribute steps into named groups; users override or extend. (Recipes do not contribute steps at runtime — they are init-time scaffolds that produce a Landofile, which then contributes through the normal mechanisms.)
-
-Group override syntax `<group>[-<offset>][-{before|after}][-<user>]`:
-
-- `system-4` → group `system`, offset `+4`.
-- `system-3-after` → group `system`, offset `+3`.
-- `system-10-before` → group `system`, offset `-10`.
-- `system-nginx-after-4` → group `system`, user `nginx`, offset `+4`.
-
-**Provider neutrality rules:**
-
-- `sourcefile:` is the canonical Lando key for any external build definition file. Compose `build.context`, `build.dockerfile`, and related build fields are accepted as input and normalized when possible; provider-specific aliases beyond the Compose spec live in provider extension schemas.
-- Build-time secrets and SSH require the provider's `buildSecrets` / `buildSsh` capabilities; planning enforces this.
-- Artifact tags are not assumed to be globally meaningful or pushable.
-- Compose `image:` is accepted as input and normalized into `artifact:`. `artifact:` remains Lando's provider-neutral spelling in the resolved config and plan.
+`sourcefile:` is the provider-neutral external build-definition key. Compose build fields normalize when possible; other provider aliases belong in provider schemas. Build secrets and SSH require `buildSecrets` and `buildSsh`. Artifact tags are not assumed globally meaningful or pushable.
 
 ### 6.4 App mounts and mounts
 
-**App mount** is a convenience for binding the project root into a service. `appMount:` accepts:
+`appMount:` accepts `false`/`disabled`, a destination string, or a full `MountInput`. When active, planning sets `workingDirectory`, exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT`, and records the result in `ServiceInfo`.
 
-- `false` / `disabled` — no mount; `workingDirectory` falls back to a service-specific default.
-- A string — bind to that destination.
-- An object — full `MountInput` with `source`, `destination`, `type`, `excludes`, `includes`, etc.
-
-When active, the planner sets `workingDirectory`, exports `LANDO_APP_ROOT` and `LANDO_PROJECT_MOUNT`, and records `appMount` on the resulting `ServiceInfo`.
-
-**Mounts** are a list of additional mount entries. Each entry is normalized to a `MountPlan`.
-
-```yaml
-mounts:
-  # Bind, string shorthand
-  - "./config:/etc/myapp:ro"
-
-  # Object form
-  - source: ./scripts
-    destination: /etc/lando/service/helpers
-    type: copy
-
-  # Inline content (literal — bytes are written as-is)
-  - destination: /etc/myapp/generated.yml
-    type: inline
-    content: "{{ load('config.yml') | text }}"
-
-  # Template content (rendered through a TemplateEngine before writing)
-  - source: ./config/vhost.conf.hbs
-    destination: /etc/apache2/sites-available/000-default.conf
-    type: template
-    engine: handlebars                    # optional; inferred from file extension
-    vars:
-      docroot: /app/web
-      port: 8080
-    mode: "0644"                          # optional; POSIX file permissions
-
-  # Bind with excludes (creates volume shadows for excluded subpaths)
-  - source: ./
-    destination: /app
-    type: bind
-    excludes:
-      - node_modules
-      - depth1/depth2
-      - "!depth1/depth2/test4"   # re-include
-```
-
-**Mount types:**
-
-| Type | Meaning | Provider capability |
+| Mount type | Contract | Capability |
 |---|---|---|
-| `bind` | Live-mount host path | `bindMounts` |
-| `copy` | Copy host path into the artifact at build time | `copyMounts` |
-| `inline` | Write literal content to the destination | (always supported) |
-| `template` | Render a template file through a `TemplateEngine` (§7.3.2) and write the result to the destination | (always supported — materializes to `inline` after render) |
-| `disabled` | Explicitly disables an inherited mount | (no-op) |
+| `bind` | Live host path | `bindMounts` |
+| `copy` | Host path copied during artifact build | `copyMounts` |
+| `inline` | Literal content written at the destination | Always |
+| `template` | `TemplateEngine` output materialized as `inline` | Always |
+| `disabled` | Explicitly disables an inherited mount | No-op |
 
-**Template mount semantics:**
+Template mounts use app-root-relative `source`, optional `engine`, `vars`, and `mode`. Sources obey include containment (§7.7.6). Engine selection is explicit, then extension-based, then `lando`; values resolve through the standard expression context. Providers receive only rendered `inline` mounts. Rendered output uses the `<userCacheRoot>/templates/<engineId>/...` `template-render` cache (§12.1).
 
-- `source:` is a host-side path to the template file, resolved relative to the app root. The same security rules as local `includes:` (§7.7.6) apply: the path must stay under the app root unless `--allow-include-outside-root` is set.
-- `engine:` is the `TemplateEngine` id (§4.2, §7.3.2). When omitted, the engine is selected by file extension; when no extension matches, the `lando` engine is used.
-- `vars:` is an object that becomes the `vars.<key>` scope of the template's render context (§7.3.1, §7.3.2). Values inside `vars:` themselves go through the standard expression resolver, so `vars: { x: "${env.X}" }` and `vars: { x: "{{ env.X }}" }` both work.
-- `mode:` (octal string) sets POSIX file permissions on the rendered output. Ignored on Windows hosts.
-- The template's effective bootstrap level is the maximum across every scope its content references (§7.3.1). A template that references `service.endpoints[0].port` is rendered by the planner at level `app`; a template that references only `env.*` and `vars.*` could be rendered earlier but is still deferred to the mount materializer in practice.
-- After rendering, the resulting `MountPlan` is `type: inline` with the rendered text as `content:`. Providers see only `inline` mounts; no provider-side support for `template` is required.
-- Render output is cached at `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` (§12.1 `template-render` cache). Re-renders are skipped when neither the template content nor the resolved `vars:` change.
+For bind excludes, planning creates storage shadows; `!` entries re-include paths. Copy includes become binds. Ordering preserves nested-path semantics.
 
-**Excludes/includes semantics** (preserved from SPEC2 with provider-neutral phrasing):
+Every bind `MountPlan` has `realization: passthrough | accelerated` selected from `bindMountPerformance` (§5.4):
 
-- A bind with `excludes:` becomes the primary bind plus one `volume`-type storage shadow per excluded path. Volumes shadow the bind, effectively excluding the excluded paths from live host sync.
-- Entries starting with `!` are includes. Each include re-binds that path back over the volume shadow.
-- A copy with `includes:` becomes the primary copy plus one bind per included path.
-- Excludes are applied in ascending depth order so deeper excludes are created after shallower ones.
+- `native` uses provider binds and no `FileSyncEngine` or `pre-file-sync-*` events.
+- `slow` uses a provider-managed `lando-sync-<app-id>-<service>-<mountKeyHash>` volume and a `FileSyncSessionSpec`; the bundled engine is `@lando/file-sync-mutagen` (§4.2).
+- `none` fails with `CapabilityError`.
 
-**Mount realization (`passthrough` vs `accelerated`).** A `MountPlan` of `type: bind` carries a planner-set `realization` field — `"passthrough"` or `"accelerated"` — derived deterministically from the active provider's `bindMountPerformance` capability (§5.4):
+The realization is invisible in canonical config and MUST NOT expose engine or session ids. Accelerated engines with `exclusionPatterns` receive excludes; otherwise planning retains storage shadows. Excludes are never silently dropped.
 
-- Provider declares `bindMountPerformance: "native"` (Linux native runtime; OrbStack on macOS; the WSL-resident detection path) → `realization: "passthrough"`. The provider's native bind primitive realizes the mount directly. The `FileSyncEngine` is not consulted; no daemon is spawned; no `pre-file-sync-*` events fire. Volume shadows for `excludes:` are still created the same way as today.
-- Provider declares `bindMountPerformance: "slow"` (Docker Desktop on macOS / Windows; Podman Desktop machines; default-config Lima/Colima; Rancher Desktop) → `realization: "accelerated"`. The planner replaces the bind shape with a pair: (1) a provider-managed `volume`-type storage entry named `lando-sync-<app-id>-<service>-<mountKeyHash>` mounted at the original `destination:`, and (2) a `FileSyncEngine` session whose source is the host path and whose target is that volume. The bundled `@lando/file-sync-mutagen` engine (§4.2) realizes this pair via a Mutagen sync session; alternate engines see the same `FileSyncSessionSpec` shape (§3.5).
-- Provider declares `bindMountPerformance: "none"` → planner refuses with `CapabilityError` per §5.4.
-
-The user's Landofile is unchanged across all three cases — the realization shape is invisible. `lando config --format yaml` MAY surface the resolved realization in a `--debug` view; it MUST NOT include the engine id or session id in the canonical config output, because doing so would leak machine state into a value the user is expected to commit.
-
-**Excludes under `realization: "accelerated"`.** When the active `FileSyncEngine` declares `capabilities.exclusionPatterns: true` (§4.2), the planner forwards `excludes:` to the engine's session-spec rather than emitting per-exclude volume shadows. Mutagen's `.mutagen.yml`-style ignore patterns are richer than the volume-shadow trick (full glob support, no per-exclude volume cost); the planner translates `excludes: ["node_modules", "vendor", "!vendor/something"]` into the engine's native exclude grammar. When the engine declares `exclusionPatterns: false` (e.g., the `passthrough` engine itself, or a hypothetical engine that cannot honor patterns), the planner falls back to the volume-shadow expansion so the user's `excludes:` still take effect — engines never silently drop excludes.
-
-**Mount key.** Every `MountPlan` carries a stable `mountKey` (SHA-256 over the canonicalized `(source, destination, type, normalized-excludes)` tuple) used as the correlation key between the mount, the realized volume name, the `FileSyncSessionSpec`, the `file-sync-sessions` cache entry (§12.1), and lifecycle events (§3.5). The mount key is invariant across replans of the same Landofile content; an `excludes:` change rolls the mount key, which causes the engine to terminate the old session and create a fresh one without the user thinking about session state.
+`mountKey` is stable for canonical source, destination, type, and excludes and correlates the mount, sync volume, `FileSyncSessionSpec`, `file-sync-sessions` cache, and lifecycle events. Changing excludes changes the key.
 
 ### 6.5 Storage
 
-Storage is a list of persistent data declarations, scoped by lifetime.
+Storage declarations use `destination`, optional `source`, `scope`, `type`, `owner`, `permissions`, `kind`, and `key`.
 
-**Planned-user home.** The service key is `home: false | { path?: AbsoluteContainerPath }`, enabled by default when omitted. Known catalog user/home metadata MUST create exactly one idempotent service-scoped store at the planned user's home; an explicit `path` selects the destination. Custom/compose images lacking known `USER`/`HOME` MUST fail with tagged `HomePathCapabilityError` before provider action unless `home: false` or an explicit `path` is supplied. The error MUST identify the service and remediate with those choices. Equivalent authored storage entries MUST be deduplicated with ownership preserved, not shadowed by a second generated store. Changing home contents MUST NOT enter build keys (§6.13.5). Persistence follows the service storage lifetime and artifact ownership rules (§12.4). Core MUST NOT restore legacy `/lando`, `/helpers`, or user-config-dir mounts.
-
-```yaml
-storage:
-  # Short form: destination only → service-scoped volume
-  - /var/lib/postgresql/data
-
-  # Full form
-  - destination: /cache
-    scope: app
-    type: volume
-    owner: app
-    permissions: "0755"
-
-  - destination: /shared
-    scope: global
-    type: volume
-
-  # Remount existing named volume by source
-  - source: my-existing-vol
-    destination: /external
-    type: volume
-```
-
-**Scopes:**
+`home: false | { path? }` controls planned-user home persistence and is enabled by default. Known catalog user/home metadata creates one idempotent service-scoped store. Unknown custom images fail with `HomePathCapabilityError` before provider action unless home storage is disabled or an explicit path is supplied. Equivalent authored storage is deduplicated. Home contents MUST NOT affect build keys. Legacy `/lando`, `/helpers`, and user-config-directory mounts MUST NOT return.
 
 | Scope | Lifetime |
 |---|---|
-| `service` | Owned by one service in one app. Default. |
-| `app` | Shared by services in one app. |
-| `global` | Shared across apps when provider supports it. Survives `lando destroy`. |
+| `service` | One service in one app; default |
+| `app` | Shared within one app |
+| `global` | Shared across apps when supported; survives `lando destroy` |
 
-The v3/SPEC2 `scope: project` alias is **not** accepted in v4 core. Use `scope: app`. A config translator plugin (§7.4.1) MAY rewrite `project` → `app` when migrating older Landofiles.
+`scope: project` is not accepted. A `ConfigTranslator` MAY rewrite it to `app` (§7.4.1).
 
-**Kind (`data` vs `cache`).** A storage entry carries an optional `kind:` (`data` default, or `cache`). A `kind: cache` store is a **named, cross-app-shareable, dependency-cache volume** — the declarative equivalent of mounting a persistent package-manager cache (`~/.composer`, `node_modules` caches, `.m2`, pip/npm caches) into a service so repeated installs and rebuilds reuse it:
+`kind: data` is the default. `kind: cache` defines a named cross-app dependency cache, auto-named `lando-cache-<key>` with `key` defaulted from the destination, labeled `dev.lando.storage-kind: "cache"`, and removed only by `lando destroy --purge-caches` or `meta:cache:*`. Cache kind is global by nature; combining it with `scope: service` is a planning error. It is distinct from data movement (§10.11).
 
-```yaml
-storage:
-  - destination: /root/.composer
-    kind: cache
-    key: composer            # cache identity; auto-names `lando-cache-<key>`
-```
+Without `source`, names are `lando-<kebab(destination)>` for `global`, `<project>-<kebab(destination)>` for `app`, and `<project>-<service>-<kebab(destination)>` for `service`.
 
-Cache-kind rules: a `kind: cache` store auto-names `lando-cache-<key>` (the `key:` defaults to `kebab(destination)`), is shared across apps by design, carries the `dev.lando.storage-kind: "cache"` label, and is **never removed by `lando destroy`** — only by an explicit `lando destroy --purge-caches` or the `meta:cache:*` surface. `kind: cache` is independent of `scope:` (a cache volume is global-by-nature); declaring both `scope: service` and `kind: cache` is a planning error. This is the storage-plane primitive; it is distinct from the §10.11 data-*movement* primitive (one persists a working cache, the other moves bytes in and out of volumes).
+Providers with volume labels MUST use `dev.lando.storage-volume: "TRUE"`, `dev.lando.storage-scope`, `dev.lando.storage-project`, and `dev.lando.storage-service`. The `dev.lando.*` namespace is reserved. Destroy removes matching project/service volumes but not global volumes.
 
-**Auto-naming** (when `source` not provided):
+Global-app storage substitutes `global` for project identity and adds `dev.lando.storage-global-app: "TRUE"`; service and app names are `global-<service>-<destination>` and `global-<destination>`. Only global scope survives `meta:global:destroy --purge` (§20.9).
 
-- `scope: global` → `lando-<kebab(destination)>`.
-- `scope: app` → `<project>-<kebab(destination)>`.
-- `scope: service` → `<project>-<service>-<kebab(destination)>`.
+Scratch storage substitutes `<scratch-id>`, producing `<scratch-id>-<service>-<destination>` and `<scratch-id>-<destination>`, labels volumes with `dev.lando.scratch: "TRUE"` and `dev.lando.scratch-id`, and rewrites global scope to app scope unless `--share-global-storage` is present. Scratch destroy removes effective service/app storage unless `--keep-volumes` is used (§21).
 
-**Provider labels.** Providers that implement labeled volume metadata MUST tag created volumes:
+### 6.6 Endpoints, hostnames, and routes
 
-The `dev.lando.*` label namespace is reserved for core-generated labels. Authored service labels and global `appLabels` (§7.5) MUST reject that namespace before provider action.
+`EndpointInput` and `EndpointPlan` are discriminated unions. `InternalEndpoint` carries a network protocol and port or a Unix `socketPath`. `PublishedEndpoint` permits `http`, `https`, `tcp`, or `udp` and requires `publication`; `{}` requests defaults. Default bind is `127.0.0.1`; omitted `hostPort` requests provider assignment. Runtime assignments live in endpoint materialization and never rewrite desired state. Unix sockets cannot be published.
 
-```text
-dev.lando.storage-volume: "TRUE"
-dev.lando.storage-scope: <scope>
-dev.lando.storage-project: <project>      # not on global
-dev.lando.storage-service: <service>      # not on global
-```
+`hostnames:` adds provider-network aliases. The planner adds `<service>.<app>.internal` when `sharedCrossAppNetwork` is supported.
 
-`destroy` removes volumes labeled with the matching project (and, for `service` scope, the matching service) excluding `global` scope.
+Routes live under top-level `proxy:` or preferred service `routes:`. Every `RoutePlan` has a resolved `backend` with service, protocol, and port; proxies MUST NOT guess. Shorthand normalizes to `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters`; invalid forms fail with source-aware remediation. Filters merge by `name`, then unnamed type identity, and retain authored order. Prefix stripping MUST NOT be implicit (§10.2).
 
-**Storage inside the global app.** Services contributed to the **global Lando app** (§20) follow the same scope rules with the auto-naming substitution `<project>` → `global`: `scope: service` → `global-<service>-<destination>`, `scope: app` → `global-<destination>`. `scope: global` storage is identical to today and is the only scope that survives `meta:global:destroy --purge` (§20.9); services in user apps using `scope: global` share the same volumes as global-app services declaring it (this is the canonical mechanism for cross-app shared persistent state). Volumes created by global services additionally carry the `dev.lando.storage-global-app: "TRUE"` label so `apps:poweroff --keep-global` can identify them (§20.9).
+Built-in route filters are `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix`, `auth.basic`, and `rateLimit`. Plugins contribute `routeFilters:`.
 
-**Storage inside scratch apps.** Services that run inside a **scratch Lando app** (§21) follow the same scope rules with two transformations applied at plan time. (1) Auto-naming substitutes `<project>` → `<scratch-id>`: `scope: service` → `<scratch-id>-<service>-<destination>`, `scope: app` → `<scratch-id>-<destination>`. (2) Every `scope: global` declaration is **rewritten to `scope: app`** unless the user passed `--share-global-storage` to the scratch start (§21.8); this shadowing prevents a scratch from accidentally reading or mutating cross-app `scope: global` volumes used by user apps. With `--share-global-storage` the original `scope: global` semantics apply (auto-name `lando-<destination>`, survives `apps:scratch:destroy`). Volumes created by scratch services additionally carry the `dev.lando.scratch: "TRUE"` and `dev.lando.scratch-id: <scratch-id>` labels so `apps:scratch:gc` (§21.11) can identify orphans without consulting the registry. Volumes whose effective scope (after the rewrite) is `service` or `app` are removed at scratch destroy by default; `--keep-volumes` retains them for inspection (§21.10.1).
+Default route hostnames are `<service>.<app>.<domain>`, with `lndo.site` as the configurable domain. LAN publication is opt-in and warns. Internal endpoints never bind the host.
 
-### 6.6 Endpoints, hostnames, routes
-
-**Endpoints** describe service listeners. Endpoints are provider-neutral.
-
-```yaml
-endpoints:
-  - _tag: internal
-    port: 8080
-    protocol: http
-  - _tag: published
-    port: 8443
-    protocol: https
-    publication: {}
-  - _tag: published
-    port: 5432
-    protocol: tcp
-    publication:
-      bindAddress: 127.0.0.1
-      hostPort: 15432
-  - _tag: internal
-    socketPath: /var/run/foo.sock
-    protocol: unix
-```
-
-`EndpointInput` and `EndpointPlan` are discriminated unions. An `InternalEndpoint` is reachable only through service networking and carries either a network `protocol` plus `port`, or `protocol: unix` plus `socketPath`. A `PublishedEndpoint` is limited to `http`, `https`, `tcp`, or `udp`, requires a nested `publication` object, and is the only endpoint variant that may become host-visible. `publication: {}` explicitly requests publication with policy defaults; omitted `bindAddress` means `127.0.0.1`, and omitted `hostPort` asks the provider to assign one. Unix-socket endpoints cannot carry publication.
-
-`publication.hostPort` is desired-state input only when authored. A provider-assigned host port is recorded under the published endpoint's runtime `materialization` result returned by inspection/`ServiceInfo`; it is never copied back into publication intent.
-
-**Hostnames** are extra DNS aliases for the service on the provider's network.
-
-```yaml
-hostnames:
-  - extra.app.lndo.site
-  - admin.app.internal
-```
-
-The planner always adds the canonical alias `<service>.<app>.internal` when the provider supports `sharedCrossAppNetwork`.
-
-**Routes** are host-facing HTTP/TLS mappings. They live at the Landofile top level under `proxy:` (kept for compat) or under each service's `routes:` (preferred).
-
-Every planned `RoutePlan` includes a resolved `backend: { service, protocol: "http" | "https", port }`. Core resolves an authored endpoint name or port against the target service during planning. A proxy consumes this backend directly and MUST NOT guess a service port. Route authority ports are proxy-layer materialization and are not part of `RoutePlan`.
-
-Host, port, path, wildcard, and combined shorthand MUST normalize to explicit provider-neutral route objects with `hostname`, `scheme`, `endpoint`, `pathPrefix`, and `filters` before backend resolution. Invalid shorthand MUST fail with a tagged source-aware error naming the source file/key and remediation. Filters MUST merge by `name`, then type identity when unnamed, across layers and MUST render in authored order. Prefix stripping MUST NOT be implicit: a path route without `stripPrefix` forwards the full path (§10.2).
-
-```yaml
-proxy:
-  app:
-    - app.lndo.site                # http on default
-    - app.lndo.site:8080
-    - app.lndo.site/api            # path-based
-    - "*.app.lndo.site"            # wildcard hostname
-    - hostname: admin.lndo.site
-      endpoint: 8080/http
-      pathPrefix: /admin
-      scheme: https
-      filters:
-        - type: requestHeader
-          name: X-Lando
-          value: v4
-```
-
-**Provider-neutral filters.** Route filters replace SPEC2's Traefik middlewares. Built-in filter types:
-
-| Filter | Purpose |
-|---|---|
-| `requestHeader` | Add/remove/replace request headers |
-| `responseHeader` | Add/remove/replace response headers |
-| `redirect` | Permanent or temporary redirect |
-| `rewritePath` | Path rewrite |
-| `stripPrefix` | Strip path prefix |
-| `addPrefix` | Add path prefix |
-| `auth.basic` | Basic auth (credentials sourced via `SecretStore`) |
-| `rateLimit` | Per-route rate limit |
-
-Plugins contribute additional filter types via `provides.routeFilters`. Proxy plugins translate the filter schema into their native middleware.
-
-**Default hostnames.** Generated as `<service>.<app>.<domain>`, where `<domain>` defaults to `lndo.site` and is overridable via global config or Landofile.
-
-**Default bind address.** Published endpoints bind to `127.0.0.1` when `publication.bindAddress` is omitted. LAN exposure is opt-in via a validated IP address and emits a security warning. Internal endpoints never create a host binding.
-
-**Routes inside scratch apps.** When the resolved app is a **scratch Lando app** (§21), the planner automatically applies a built-in `ScratchHostnameSuffix` route filter that rewrites every route hostname `<host>.<domain>` to `<host>--<scratch-id>.<domain>` (§21.9.2). This avoids hostname collisions when a fork-mode scratch runs alongside the source app whose Landofile defined the original routes. The transformation is idempotent and is suppressed per-host with `--hostname <host>` (§21.10.1) or globally for the scratch with `--no-hostname-suffix`. The filter is published in `@lando/sdk` as `RouteFilter.ScratchHostnameSuffix` for plugins that need to compose around it; user-authored Landofiles do not declare the filter directly.
+Scratch plans apply `RouteFilter.ScratchHostnameSuffix` unless suppressed by `--hostname` or `--no-hostname-suffix` (§21.9.2).
 
 ### 6.7 Healthchecks
 
-```yaml
-healthcheck: false
-healthcheck: curl -fsS http://localhost:8080/health
-healthcheck:
-  command: "{{ load('healthcheck.sh') | text }}"
-  user: app
-  retry: 25
-  delay: 1000
-  timeout: 5000
-```
-
-Rules:
-
-- `false` disables healthchecks.
-- String, string-array, and object forms are all supported. Any form may be computed from disk via `load()` (§7.3).
-- The `HealthcheckRunner` service decides how to execute. Default runner uses `RuntimeProvider.exec`.
-- `lando start` distinguishes `running` from `ready`. Subscribers may listen to `post-start` priority `ready` to react to readiness.
+`HealthcheckInput` accepts `false`, command forms, or an object. `false` disables checks; `load()` MAY provide any form (§7.3). `HealthcheckRunner` executes `HealthcheckPlan`; the default uses `RuntimeProvider.exec`. `lando start` distinguishes running from ready, and readiness subscribers use `post-start` priority `ready`.
 
 ### 6.8 Certificates and security
 
-```yaml
-certs: true
-certs: false
-certs: ./custom.crt
-certs:
-  cert: ./custom.crt
-  key: ./custom.key
-```
+`certs:` accepts enabled, disabled, a certificate path, or custom certificate/key paths. `CertificateAuthority` generates leaf certificates covering the service name, `<service>.<app>.internal`, configured hostnames, route hostnames, `localhost`, and `127.0.0.1`. Paths are exposed as `LANDO_SERVICE_CERT` and `LANDO_SERVICE_KEY`.
 
-When `certs: true`, the active `CertificateAuthority` plugin generates a leaf cert with SANs covering:
+`security.ca:` and aliases `cas`, `certificate-authority`, and `certificate-authorities` add project CAs. The `lando.security` feature mounts and installs them; core defines intent, not distribution mechanics.
 
-- The service name (`<service>`)
-- The internal alias (`<service>.<app>.internal`)
-- All configured `hostnames:`
-- All proxied hostnames from `routes:` / `proxy:`
-- `localhost` and `127.0.0.1`
+Global `network.ca` and `network.proxy` each expose `injectIntoServices`. CA injection defaults on; proxy injection defaults off. Per-service `security.inheritNetworkCa` and `security.inheritNetworkProxy` override those defaults. Only services composing `lando.security` participate; `l337` and raw Compose do not auto-inject.
 
-Cert/key paths are exposed as `LANDO_SERVICE_CERT` and `LANDO_SERVICE_KEY` environment variables.
+The effective CA set is global `network.ca.certs`/`LANDO_NETWORK_CA_CERTS` followed by project CAs, deduplicated by content. Open-ended host Dockerfile drop-ins are a non-goal. Installation precedes `build.app:` and tooling. Injected CA identity participates in artifact `buildKey` calculation. Providers MUST honor resolved proxy/CA settings for every Lando-initiated pull and build regardless of service injection.
 
-**Additional CAs** via `security.ca:` (and aliases `cas`, `certificate-authority`, `certificate-authorities`):
-
-```yaml
-security:
-  ca:
-    - ./CorpCA.crt
-    - "{{ load('other-ca.pem') }}"
-    - "{{ import('inline-ca.crt') }}"
-  # Optional per-service overrides of the global inject defaults (§7.5 / §10.3.1):
-  inheritNetworkCa: true               # default: network.ca.injectIntoServices
-  inheritNetworkProxy: false           # default: network.proxy.injectIntoServices
-```
-
-Each `security.ca:` entry is mounted into the service at a CA-distro-appropriate path and registered with the system trust store via the boot scaffolding (`type: lando` only). Plugins handle distro-specific install logic; core defines only the intent.
-
-**Host-global CA / proxy inheritance into services (normative).** Corporate TLS interception and outbound proxies are host-local concerns. They MUST NOT require per-project Dockerfile snippets or Landofile edits. Resolution:
-
-1. **CA PEMs and proxy settings are separate knobs.** Global `network.ca` and `network.proxy` (§7.5) each carry `injectIntoServices` (boolean). Defaults: `network.ca.injectIntoServices: true`, `network.proxy.injectIntoServices: false`. CA material is not a secret; proxy URLs may embed credentials and MUST stay opt-in.
-2. **Effective inject flags** for a service are: per-service `security.inheritNetworkCa` / `security.inheritNetworkProxy` when set, else the matching global `injectIntoServices` default. Only `base: "lando"` / `type: lando` services (and types that compose the `lando.security` feature) participate; `l337` and raw Compose-passthrough services do not auto-inject.
-3. **Resolved CA set** for an injecting service is the ordered union of (a) PEMs loaded from global `network.ca.certs` / `LANDO_NETWORK_CA_CERTS` when CA inject is on, then (b) Landofile `security.ca:` entries. Duplicates by content digest are collapsed. Landofile entries remain the team-shared path for *project* CAs; global certs are the machine-local path for *network* CAs (Zscaler / GlobalProtect / similar) and MUST NOT need to live in the app repo.
-4. **Install mechanism** is the same intent path as `security.ca:`: the `lando.security` feature materializes mounts + trust-store registration through boot scaffolding. Core does not splice host-global Dockerfile fragments into the image; open-ended host Dockerfile directories (a per-user `~/.<tool>/*-build/` drop-in convention) are a non-goal.
-5. **Phase.** Trust-store install runs in boot scaffolding before any `build.app:` / tooling / exec that needs outbound HTTPS inside the container. Lando-initiated artifact pulls and image builds already honor `network.ca` / `network.proxy` on the host side via providers and `HttpClient` (§10.3.1); they do not require in-image CA install. When only global CA inject material changes, the affected services' artifact `buildKey` inputs (§6.13.5) MUST include a stable digest of the resolved injected CA set so rebuilds are not skipped stale.
-6. **Runtime-specific trust.** After system trust-store install, `type: lando` services MUST also export a concatenated PEM bundle path for runtimes that ignore the OS store. At minimum set `SSL_CERT_FILE` / `SSL_CERT_DIR` (OpenSSL family) and `NODE_EXTRA_CA_CERTS` (Node) to that bundle when any injected CA is present; language service types MAY add further equivalents. The bundle path is also published as `LANDO_CA_BUNDLE` / `LANDO_CA_DIR` (§6.9).
-7. **Proxy inject.** When proxy inject is on for a service, the resolved `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` (from global config then standard env, §10.3.1) are written into the service env layer. Proxy credentials are secrets: redacted from logs, telemetry, caches, and rendered config; never written into build transcripts in cleartext.
-8. **Providers** MUST use the resolved proxy/CA settings for every Lando-initiated artifact pull and build regardless of service inject flags.
+When CAs are injected, services expose `SSL_CERT_FILE`, `SSL_CERT_DIR`, `NODE_EXTRA_CA_CERTS`, `LANDO_CA_BUNDLE`, and `LANDO_CA_DIR`; service types MAY add equivalents. Proxy injection writes `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`; credentials MUST be redacted from logs, telemetry, caches, rendered config, and build transcripts.
 
 ### 6.9 Service environment variables
 
-The standard env var set is published by core; providers and `lando` services inject. The generated catalog of core-owned `LANDO` and `LANDO_*` keys MUST be the reservation consulted by `appEnv` validation (§7.5), not an ad hoc wildcard. Plugins use `LANDO_PLUGIN_<NAME>_*`.
+Core publishes the reserved `LANDO`/`LANDO_*` catalog used by `appEnv` validation (§7.5). Plugins use `LANDO_PLUGIN_<NAME>_*`. Credentials use typed families, never aggregate JSON. `LANDO_HOST_IP` is omitted unless provider capability and gateway data permit it.
 
-Credentials MUST be exposed only through typed per-service keys such as the `LANDO_DB_*` family below or other service-typed variables, never an aggregate JSON blob. `lando info` and the `ServiceInfo` schema (§6.10, §8.2) are the inspection surface. `LANDO_PROJECT_MOUNT` is the app-mount variable; no aggregate or mount alias variable is provided. `LANDO_HOST_IP` MUST be omitted unless declared provider capability and known gateway data permit host reachability (§5.5).
+Always when applicable: `LANDO`, `LANDO_DEBUG`, `LANDO_HOST_OS`, `LANDO_HOST_USER`, `LANDO_HOST_UID`, `LANDO_HOST_GID`, `LANDO_HOST_HOME`, `LANDO_APP_NAME`, `LANDO_APP_KIND`, `LANDO_APP_ROOT`, `LANDO_PROJECT`, `LANDO_PROJECT_MOUNT`, `LANDO_SERVICE_API`, `LANDO_SERVICE_NAME`, `LANDO_SERVICE_TYPE`, and `LANDO_DOMAIN`.
 
-**Always-injected (when applicable):**
+Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`, `LANDO_CA_CERT`, `LANDO_CA_DIR`, `LANDO_CA_BUNDLE`, `LANDO_USER`, `LANDO_UID`, `LANDO_GID`, `SSH_AUTH_SOCK`, `LANDO_HOST_PROXY_SOCKET`, `LANDO_HOST_PROXY_TOKEN`, `LANDO_HOST_PROXY_DEPTH`, `LANDO_DB_USER`, `LANDO_DB_PASSWORD`, `LANDO_DB_NAME`, `LANDO_DB_ROOT_PASSWORD`, `LANDO_GLOBAL_<SERVICE>_HOST`, `LANDO_GLOBAL_<SERVICE>_PORT`, `LANDO_GLOBAL_<SERVICE>_<EP>_PORT`, `LANDO_GLOBAL_<SERVICE>_URL`, `LANDO_SCRATCH_ID`, `LANDO_SCRATCH_SOURCE_KIND`, and `LANDO_SCRATCH_ISOLATE`.
 
-```text
-LANDO=ON
-LANDO_DEBUG=<empty|1>
-LANDO_HOST_OS=<platform>
-LANDO_HOST_USER=<host user>
-LANDO_HOST_UID=<host uid>
-LANDO_HOST_GID=<host gid>
-LANDO_HOST_HOME=<host home>
-LANDO_APP_NAME=<app name>
-LANDO_APP_KIND=<user|global|scratch>
-LANDO_APP_ROOT=<app root visible inside service>
-LANDO_PROJECT=<app slug>
-LANDO_PROJECT_MOUNT=<app mount target>
-LANDO_SERVICE_API=4
-LANDO_SERVICE_NAME=<service id>
-LANDO_SERVICE_TYPE=<resolved type>
-LANDO_DOMAIN=<configured domain>
-```
+`LANDO_GLOBAL_*` is projected only for global services required by activated `AppFeature`s (§20.6.3). Plugins MAY add typed projections through `AppFeature.apply()`.
 
-**Conditional:**
-
-```text
-LANDO_HOST_IP               # only when declared provider capability and known gateway data permit host reachability (§5.5)
-LANDO_SERVICE_CERT          # when certs enabled
-LANDO_SERVICE_KEY           # when certs enabled
-LANDO_CA_CERT               # when CA available
-LANDO_CA_DIR                # when CA installed in trust store
-LANDO_CA_BUNDLE             # when CA installed in trust store
-LANDO_USER, LANDO_UID, LANDO_GID  # type: lando services
-SSH_AUTH_SOCK               # when ssh-agent feature enabled
-LANDO_HOST_PROXY_SOCKET     # when host-proxy feature enabled (in-container path to the bound socket; §10.10)
-LANDO_HOST_PROXY_TOKEN      # when host-proxy feature enabled (per-`app:start` random token; required as Bearer auth)
-LANDO_HOST_PROXY_DEPTH      # set by HostProxyService for `runLando` re-entries; recursion guard, never set by users
-LANDO_DB_USER               # when service-type opts in to the §6.12.4 creds schema
-LANDO_DB_PASSWORD           # when service-type opts in to the §6.12.4 creds schema (redacted in logs)
-LANDO_DB_NAME               # when service-type opts in to the §6.12.4 creds schema
-LANDO_DB_ROOT_PASSWORD      # when service-type opts in and rootPassword is defined (redacted in logs)
-LANDO_GLOBAL_<SERVICE>_HOST     # always when AppFeature activates requires.globalServices: [<service>]
-LANDO_GLOBAL_<SERVICE>_PORT     # primary endpoint port; conditional on the global service exposing one
-LANDO_GLOBAL_<SERVICE>_<EP>_PORT  # named endpoint port (e.g., LANDO_GLOBAL_MAILPIT_SMTP_PORT)
-LANDO_GLOBAL_<SERVICE>_URL      # primary route URL; conditional on the global service having a route
-LANDO_SCRATCH_ID                # when LANDO_APP_KIND=scratch; the scratch id (§21.2)
-LANDO_SCRATCH_SOURCE_KIND       # when LANDO_APP_KIND=scratch; "fork" or "from-recipe" (§21.4)
-LANDO_SCRATCH_ISOLATE           # when LANDO_APP_KIND=scratch; "full" | "baked" | "cwd" (§21.7)
-```
-
-> The `LANDO_GLOBAL_*` family is a **projection** — only the values the user app's activated `AppFeature`s actually depend on (via `requires.globalServices`, §6.11.4 + §20.6.3) appear in a given service. A user app with no features activating against a global service does not see `LANDO_GLOBAL_*` for it. Plugins MAY add extra fields (e.g., a Mailpit API token) by writing them through their `AppFeature.apply()` body using the standard `addEnv` mutator, reading from `globalServices.<name>.*` per the §7.3.1 cross-service expression scope.
-
-**Inheritable via env layer.** `type: lando` services source `/etc/lando/environment` on every exec, which:
-
-- Detects distro metadata and exports `LANDO_LINUX_DISTRO`, `LANDO_LINUX_DISTRO_LIKE`, `LANDO_LINUX_NAME`, `LANDO_LINUX_PACKAGE_MANAGER`.
-- Sources `/etc/lando/env.d/*.sh` so plugin features can contribute env on every login.
-
-Raw `l337` services do not include the env layer; they receive only the compose-level env vars.
+`lando` services source `/etc/lando/environment` and `/etc/lando/env.d/*.sh`, exposing `LANDO_LINUX_DISTRO`, `LANDO_LINUX_DISTRO_LIKE`, `LANDO_LINUX_NAME`, and `LANDO_LINUX_PACKAGE_MANAGER`. Raw `l337` services receive only authored Compose-level environment.
 
 #### 6.9.1 Host agent-context forwarding (`agentEnv`)
 
-The **Agent-native** tenet (§1.2) requires context continuity: when an AI coding agent's work crosses the host→container boundary, the identity markers the agent's tooling depends on travel with it instead of being silently dropped. Lando therefore forwards a small, name-allowlisted set of host environment variables into **per-invocation exec surfaces**: `app:exec`, `app:ssh`, `app:shell --service`, and tooling tasks run through the `providerExec` engine (§8.6). Forwarding is per-exec: the values ride the exec request's env, are never baked into the service's planned environment, and are never written to the app plan cache.
+`agentEnv` forwards exact-name host markers per invocation to `app:exec`, `app:ssh`, `app:shell --service`, and `providerExec` tooling without entering service plans or caches.
 
-Default forwarded names (the **agent-context allowlist**):
+The default allowlist is `CLAUDECODE`, `CLAUDE_CODE`, `CURSOR_AGENT`, `OPENCODE`, `COPILOT_CLI`, `GEMINI_CLI`, `AGENT`, and `CI`. Patterns fail with `AgentEnvPatternError`. Only present values are forwarded. Precedence is exec request, then task/service declaration, then agent context. Values pass through `RedactionService` for `pre-provider-exec` and other events and transcripts. This is not general host-environment passthrough.
 
-```text
-CLAUDECODE, CLAUDE_CODE, CURSOR_AGENT, OPENCODE, COPILOT_CLI,
-GEMINI_CLI, AGENT, CI
-```
-
-Rules:
-
-- **Names, never patterns.** The allowlist is exact-name matching. Wildcards (`CLAUDE_*`) are rejected at config validation with `AgentEnvPatternError` — pattern forwarding is how host secrets leak into containers by accident.
-- **Presence-gated.** A name is forwarded only when set in the host environment at invocation time. Unset names inject nothing (no empty-string vars).
-- **Loser to explicit env.** A forwarded value never overrides env declared by the service (`services.<name>.environment`), the tooling task (`env:`, §8.5.3), or the exec request itself. Precedence: exec request > task/service declaration > agent-context forwarding.
-- **Redaction-aware.** Forwarded values pass through `RedactionService` (§3.7) on their way into lifecycle events (`pre-provider-exec` payloads) and transcripts, same as every other exec env var. The default allowlist deliberately contains only boolean/identity markers, not credentials; users who add credential-shaped names to the allowlist get redaction in Lando-owned output but are choosing to expose the value to the container.
-- **Not a general passthrough.** `agentEnv` is not a mechanism for forwarding arbitrary host env into services; that remains `services.<name>.environment` with `{{ env.NAME }}` expressions (§7.3.1). The allowlist exists so the *default* experience keeps agent context intact without any Landofile authoring.
-- **Host-proxy symmetry.** The in-container `lando` shim's env filter (§10.10.3) already forwards `LANDO_*`, `LC_*`, `LANG`, `TERM`; the agent-context allowlist is appended to that filter so a `runLando` re-entry initiated by an agent inside a container preserves the same markers on the way back out.
-
-Configuration (global config, §7.5):
-
-```yaml
-agentEnv:
-  enabled: true              # master switch; default true
-  allow: []                  # additional exact names forwarded beyond the built-in list
-  deny: []                   # built-in or allowed names to suppress
-```
-
-A Landofile MAY set `agentEnv: false` at the top level to opt one app out entirely (§7.4). `LANDO_AGENT_ENV=0` in the host environment disables forwarding for a single invocation. The resolved allowlist (built-ins + `allow` − `deny`) is reported by `lando info --deep` so users can audit exactly what crosses the boundary.
+Global `agentEnv.enabled`, `agentEnv.allow`, and `agentEnv.deny` control the resolved list. Top-level `agentEnv: false` disables it per app; host `LANDO_AGENT_ENV=0` disables one invocation. `lando info --deep` reports the resolved names. Host-proxy re-entry preserves the same allowlist.
 
 ### 6.10 Service info
 
-`lando info` consumes provider-neutral `ServiceInfo`. The schema is invariant across providers.
+Provider-neutral `ServiceInfo` contains `app`, `service`, `api`, `type`, `provider`, `primary`, `status`, `artifact`, `user`, `workingDirectory`, `appMount`, `endpoints`, `urls`, `hostnames`, `certs`, `health`, `externalConnections`, `internalConnections`, optional `creds`, and optional opaque `providerInfo`. Status is `unknown`, `stopped`, `starting`, `running`, `healthy`, `unhealthy`, or `error`; cert state is `none`, `generated`, or `custom`.
 
-```ts
-export const ServiceInfo = Schema.Struct({
-  app: Schema.String,
-  service: Schema.String,
-  api: Schema.Literal(4),
-  type: Schema.String,
-  provider: Schema.String,
-  primary: Schema.Boolean,
-  status: Schema.Literal(
-    "unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error",
-  ),
-  artifact: Schema.optional(Schema.String),
-  user: Schema.optional(Schema.String),
-  workingDirectory: Schema.optional(Schema.String),
-  appMount: Schema.optional(AppMountInfo),
-  endpoints: Schema.Array(EndpointInfo),
-  urls: Schema.Array(Schema.String),
-  hostnames: Schema.Array(Schema.String),
-  certs: Schema.Literal("none", "generated", "custom"),
-  health: Schema.Union(Schema.Literal("unknown"), Schema.Boolean),
-  externalConnections: Schema.Array(ConnectionInfo),
-  internalConnections: Schema.Array(ConnectionInfo),
-  creds: Schema.optional(ServiceCreds),                  // §6.12.4; present iff the service-type opts in
-  providerInfo: Schema.optional(Schema.Unknown),
-});
-```
-
-`providerInfo` is the only provider-specific field; consumers should treat it as opaque unless they know the provider. `creds` is present only on service-types that opt in to the creds schema (§6.12.4); plain-text credential fields are redacted in `lando info` unless `--show-secrets` is passed.
+`creds` exists only for opted-in types and is redacted unless `--show-secrets` is passed. `providerInfo` is the sole provider-specific field.
 
 ### 6.11 Service type and feature contracts
 
-#### 6.11.0 Planning algorithm (normative)
+#### 6.11.0 Planning and conformance
 
-Core composes every service through exactly this pipeline. The pipeline lives in **core** (the `AppPlanner`), not inside individual service types, because only core can guarantee deterministic ordering, inheritance-depth checks, conflict handling, the app-feature pass, and a single shared finalization stage. It runs in two phases: a **per-service phase** (stages 1–3, run for each service) followed by a single **app-wide phase** (stages 4–6, run once for the whole app).
+Core performs one deterministic pipeline:
 
-**Per-service phase — for each service in the resolved Landofile, in app order:**
+1. Resolve each `ServiceType` to `ServiceTypeResolution`, including parent and artifact version resolution. `resolve()` MAY be asynchronous but MUST NOT build a plan.
+2. Seed `ServiceFeatureContext` from explicit base and authored environment. `lando` seeds its default feature stack; `l337` seeds only artifact/build plumbing.
+3. Apply `ServiceFeature`s in ascending priority.
+4. After every service draft is complete, apply activated `AppFeature`s in ascending app-feature priority.
+5. Emit provider-neutral `ServicePlan`s.
+6. Finalize once in core with capability validation, bind realization, file-sync generation, storage shadows, routes, networking, excludes, and `AppPlan` decoding.
 
-1. **Resolve the service type.** Run `ServiceType.resolve(input)` to obtain a `ServiceTypeResolution` (`{ base, normalizedConfig, features, tooling?, metadata? }`). `extends:` parents resolve first (§6.11.1); `artifacts:` version pins resolve here (§6.11.2). `resolve()` is an `Effect` and MAY be asynchronous; it normalizes config and *chooses* base/features/tooling, but MUST NOT itself build the plan.
-2. **Seed the base context.** Construct a mutable `ServiceFeatureContext` (the plan *draft*) from the named base. Seeding establishes the base's **default feature list** and carries the user-authored `environment:` from `normalizedConfig`; it does **not** itself inject the `LANDO_*` / `/etc/lando` env layer (that is materialized only when the `lando.env` feature runs in stage 3, per §6.9 / §6.11.0.1):
-   - `base: "lando"` seeds the default lando feature stack (the built-in feature priority list below, which **includes** `lando.env` at priority 700). The env layer is not present on the draft yet — it appears when `lando.env` runs in stage 3.
-   - `base: "l337"` seeds **only** the artifact/build-plumbing fields and carries the user/Compose-authored `environment:`. It seeds no `lando.*` feature, no `/etc/lando/*` env layer, no app mount, and no packages (§6.9); because it lists no `lando.env`, no `LANDO_*` env layer is ever materialized for it.
-3. **Apply service features in priority order.** Merge the base's default feature list with the resolution's `features` and run each `ServiceFeature.apply(ctx)` in ascending `priority`. Features mutate only the draft; they are idempotent and replay-safe (§6.11, "Feature rules").
+Features MUST emit provider-neutral intent. The app-plan cache input MUST include base, ordered `FeatureRef`s, and `AppFeature` contributions.
 
-**App-wide phase — once, after the per-service phase has completed for every service:**
+Every type MUST name `l337` or `lando`, return `ServiceTypeResolution`, and satisfy `runServiceCompositionContract`. `lando` receives `lando.env`; `l337` receives no injected environment or scaffolding. Only `lando.env` may invoke `buildLandoEnv`.
 
-4. **Apply app features.** Run the activated `AppFeature`s (§6.11.4) as a single distinct phase against an app-level context spanning every service draft, in ascending `priority` among themselves, with cycle detection. The app-feature phase always runs after the *entire* service-feature phase — an `AppFeature`'s `priority` orders it only relative to other app-features and is never interleaved between service features.
-5. **Emit the provider-neutral drafts → `ServicePlan`s.** Convert every finished draft to a `ServicePlan`.
-6. **Finalize once, in core.** Run the existing planner finalization exactly once over all emitted plans: provider-capability validation, bind realization (`passthrough`/`accelerated`), file-sync session generation, storage shadow expansion, route/networking aggregation, default-exclude merge, and the final `AppPlan` decode (§6.4, §6.5, §6.6).
+Contributed `logSources` MUST have unique ids, absolute paths, and compatible strategies; `console` is reserved. `redirect` requires an owned build, while a BYO/`l337` service may use only `follow`. Feature ordering and inheritance are replay-stable.
 
-Features emit **provider-neutral plan intent only**. Provider realization (capability checks, bind/volume/file-sync decisions, host-port publishing) is owned by stage 6 and MUST NOT be performed inside a feature. The composition input that feeds the app-plan cache key (§12.1) MUST include the resolved `base`, the ordered `FeatureRef` list, and any `AppFeature` contributions — not just the service-type id — or a feature change yields a stale plan.
-
-#### 6.11.0.1 Service-type conformance requirements (normative)
-
-Every `ServiceType` (canonical or plugin-contributed) MUST satisfy all of the following, enforced by the §13.1 `runServiceCompositionContract` suite:
-
-- It declares a `base` of `"l337"` or `"lando"`. There is no default-by-omission base on the contract; the *Landofile* default `type: lando` is resolved upstream, but the resolved `ServiceType` always names its base explicitly.
-- It returns a `ServiceTypeResolution` from `resolve()`. It MUST NOT hand-build a `ServicePlan`.
-- A `base: "lando"` service receives the `lando.env` feature (and therefore the `/etc/lando/environment` env layer and the standard `LANDO_*` identity env of §6.9).
-- A `base: "l337"` service receives **no** injected `LANDO_*` env layer and no `/etc/lando` scaffolding; its environment contains only Compose-level / user-authored keys plus any env a feature it explicitly lists contributes.
-- The env-layer helper (`buildLandoEnv` / the `lando.env` feature body) is reachable only through the `lando.env` feature. A service type MUST NOT import or call the env-layer helper directly; the §13.4 boundary gate forbids it.
-- Any `logSources` it contributes (§6.14) are valid `LogSource`s: unique `id` per service (with `console` reserved for the implicit container stdout/stderr source), an absolute in-container `path`, and a `strategy` the service's `base` can honor (a `redirect` source requires a Lando-built image — `base: "lando"` or a build phase that owns the daemon config; a `base: "l337"`/BYO service may declare only `follow` sources). Emitting `logSources` is provider-neutral plan intent; the service type MUST NOT itself follow files or spawn a collector.
-- Feature priority order and `extends:` depth (≤ 4, no cycles) are stable across replays.
-
-**Service types** are resolvers that turn `type: <name>` into normalized config + a list of features to apply.
-
-```ts
-export class ServiceType extends Context.Service<ServiceType, {
-  readonly name: string;
-  readonly versions?: ReadonlyArray<string>;
-  readonly base: "l337" | "lando";
-  readonly extends?: string;                                // optional parent service-type id (§6.11.1)
-  readonly artifacts?: ReadonlyRecord<string, string>;      // declarative version → image tag (§6.11.2)
-  readonly schema: Schema.Schema<unknown>;
-  readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
-}>()("@lando/core/ServiceType") {}
-
-export interface ServiceTypeResolution {
-  readonly base: "l337" | "lando";
-  readonly normalizedConfig: ServiceConfig;
-  readonly features: ReadonlyArray<FeatureRef>;
-  readonly tooling?: ReadonlyRecord<string, ToolingTask>;  // §6.11.3, see §8.5 for the ToolingTask shape
-  readonly logSources?: ReadonlyArray<LogSource>;          // §6.14 declared in-container log files
-  readonly metadata?: Record<string, unknown>;
-}
-```
+`ServiceType` declares `name`, optional `versions`, explicit `base`, optional `extends`, optional `artifacts`, `schema`, and Effectful `resolve` with `ServiceTypeError`. `ServiceTypeResolution` carries `base`, `normalizedConfig`, `features`, optional `tooling`, optional `logSources`, and optional `metadata`.
 
 #### 6.11.1 Service-type inheritance (`extends:`)
 
-A `ServiceType` MAY declare `extends: <parent-id>` to inherit the parent's resolved normalized config, feature list, tooling, and `artifacts` table. Resolution proceeds parent-first, then the child's `resolve()` runs against the parent's resolution as input and may overlay or replace fields per the §7.2 merge rules. Inheritance is single (no diamond) and depth-limited to 4. Cycles are rejected at plugin load with `ServiceTypeCollisionError`. Use cases: `pantheon-php extends php`, `drupal-mariadb extends mariadb`, `pantheon-mariadb-arm extends mariadb`.
+A type MAY extend one parent, inheriting normalized config, features, tooling, and artifacts before child overlay under §7.2. Inheritance has no diamonds, is bounded, and rejects cycles with `ServiceTypeCollisionError`.
 
 #### 6.11.2 Declarative version pinning (`artifacts:`)
 
-The `artifacts:` field is a `{ "<version>": "<image-tag>" }` map consulted at plan-compile time to resolve a user's `type: mariadb:10.11` into a concrete image tag. The map is data — adding a new pin is a YAML edit, not a code change. Resolution rules:
-
-- Exact match wins. Wildcard / range matching is **not** supported in v4.0; authors who need range resolution write a custom `resolve()`.
-- `ServiceType` version metadata MUST be the single shipped matrix consumed by planner validation, generated docs, and tests. A version unknown to or absent from that matrix MUST fail before provider action with a tagged error naming the service type, requested version, and supported versions as remediation. A declared version without an available artifact MUST NOT fall back to a guessed upstream tag. This includes unavailable PHP 5.6 through 8.0 images; core MUST NOT manufacture images for retired versions.
-- The resolved tag is recorded in the app-plan cache key (§12.1) so a pin change invalidates plans.
-- Plugin-contributed `artifacts:` may be merged from a sibling YAML file via `artifacts: ./artifacts.yml` to keep manifests readable.
+`artifacts:` maps exact versions to artifact tags and MAY reference a sibling file. Ranges are not supported in v4.0. The `ServiceType` version metadata is the single matrix for planning, docs, and tests. Unknown, absent, or unavailable versions fail before provider action with supported-version remediation and MUST NOT fall back to guessed tags. Resolved tags enter the app-plan cache key.
 
 #### 6.11.3 Service-type-shipped tooling
 
-The optional `tooling:` field on `ServiceTypeResolution` lets a service-type contribute tooling tasks that are merged into the app's tooling map at plan time. There are exactly two ranks (highest wins): resolved Landofile `tooling:` > service-type `tooling:`. The Landofile rank is the post-merge result of §7.2 layering plus `includes:` / `toolingIncludes:` fragments (§7.7, §8.5.8). Recipe-authored tooling has no rank of its own: a recipe scaffold writes `tooling:` into the generated Landofile at init and is inert thereafter (§8.8), so recipe-origin tasks are ordinary Landofile tasks.
+`ServiceTypeResolution.tooling` merges below resolved Landofile `tooling:`. Conflicts replace whole tasks by name. Between service contributions, the lexicographically first service name wins. A surviving contribution defaults its target to its contributor; `toolingDefaults` fills only unset fields.
 
-Conflicts resolve by whole-task replacement keyed on task name, never per-field merge: a Landofile task of the same name replaces the service-contributed task entirely, including its `service:` target. When two service-types contribute the same task name, the lexicographically first contributing service name wins under ordinal (code-unit) comparison, so the result does not depend on service declaration order. A surviving contributed task carries its contributor as its default `service:` target unless the contributed task sets one explicitly; `toolingDefaults` (§8.5.3) then fill only the fields a surviving task left unset, which in practice means they apply to Landofile-authored tasks — including one that replaced a contribution and thereby dropped its target. This is how the §6.12 catalog ships `lando mariadb`, `lando psql`, `lando redis-cli`, `lando mongo`, etc. without the user writing a `tooling:` block.
-
-Reserved top-level tooling names `run`, `scratch`, and `scratch:*` (the same reservation as `reservedTopLevelAliasOwner` / §8.1.2 / §21) that a service type contributes and that still survive the Landofile overlay are rejected at plan time with `CommandAliasConflictError` naming the contributing service type and task. Invocation-time guards remain a second boundary for Landofile-authored and script-backed reserved names. `topLevelAlias:` on tooling tasks is currently rejected for every Landofile task by `BETA_TOOLING_TASK_KEYS`, so the service-type MUST NOT in §10 is vacuous until that beta gate lifts (4.1 tooling schema graduation).
+Reserved names `run`, `scratch`, and `scratch:*` fail with `CommandAliasConflictError`. Service types MUST NOT use `topLevelAlias` while `BETA_TOOLING_TASK_KEYS` rejects it.
 
 #### 6.11.4 App-scoped features (`AppFeature`)
 
-Some plugins need to mutate **other** services in the plan when a triggering service is present (Mailpit injecting SMTP env into PHP services, an Xdebug sidecar adding `XDEBUG_*` env to siblings, an observability agent wiring tracing env into selected runtimes). `ServiceFeature` mutates a single `ServicePlanContext` and cannot express this. `AppFeature` is the matching app-scoped contract.
+`AppFeatureDefinition` declares `id`, optional `schema`, `priority`, optional `AppFeatureActivation` as `activatedBy`, optional `AppFeatureSelectors` as `selectors`, optional `requires.providerCapabilities`, optional `requires.globalServices`, and Effectful `apply`. Activation can match service type or feature; selectors can match `types`, `framework`, `hasFeature`, `names`, or `fromConfig`.
 
-```ts
-export interface AppFeatureDefinition {
-  readonly id: string;
-  readonly schema?: Schema.Schema<unknown>;
-  readonly priority: number;
-  readonly activatedBy?: AppFeatureActivation;             // when this feature runs
-  readonly selectors?: AppFeatureSelectors;                // which services it mutates
-  readonly requires?: {                                     // §20.6.3 — auto-start integration with the global app
-    readonly providerCapabilities?: ReadonlyArray<keyof ProviderCapabilities>;
-    readonly globalServices?: ReadonlyArray<string>;       // global-app service ids this feature depends on
-  };
-  readonly apply: (ctx: AppFeatureContext) => Effect.Effect<void, AppFeatureError>;
-}
+Activation and selection inspect completed service drafts, never raw config or finalized plans. `AppFeatureContext` provides replay-safe plan mutators across selected services. App features run only after all service features and order only against each other. Cycles fail with `AppFeatureCycleError`; `AppFeatureError` tags are `SelectorMatchedNothing`, `MutationConflict`, and `CycleDetected`.
 
-export interface AppFeatureActivation {
-  readonly services?: { readonly type?: string; readonly hasFeature?: string };
-}
+Plugins register `serviceFeatures:`, `appFeatures:`, and `serviceTypes:`; all three MUST exist in `PluginManifest` and be consumed by loading and planning.
 
-export interface AppFeatureSelectors {
-  readonly types?: ReadonlyArray<string>;                  // service-type ids
-  readonly framework?: ReadonlyArray<string>;              // language-runtime framework: ids
-  readonly hasFeature?: ReadonlyArray<string>;             // service feature ids present
-  readonly names?: ReadonlyArray<string>;                  // explicit service names
-  readonly fromConfig?: string;                            // expression yielding a string[] of service names
-}
-```
+Activated `requires.globalServices` are ensured during `pre-start` before user-app build. Missing services fail with `GlobalServiceMissingError` and installation remediation (§20.6.3).
 
-App-feature rules:
+`ServiceFeatureDefinition` declares `id`, optional `schema`, `priority`, optional required `ProviderCapabilities`, and Effectful `apply` with `ServiceFeatureError`. A `ServiceFeature` mutates only its `ServicePlanContext`/`ServiceFeatureContext`; features run low priority first, MUST be idempotent, declare conflicts or return typed planning errors, and emit provider-neutral changes.
 
-- Activation runs at app-plan time after the **entire per-service phase** (stages 1–3 of §6.11.0 — service-type resolution *and* service-feature application) has completed for every service. Evaluating activation only after stage 3 is what makes `activatedBy: { hasFeature }` meaningful, since a service's feature set is not final until its service features have run. A feature whose `activatedBy` does not match is a no-op (no `apply()` invocation, no plan-cache entry).
-- `AppFeatureContext` exposes the same mutators as `ServiceFeatureContext` (`addEnv`, `addMount`, `addBuildStep`, `addHealthcheck`, `setEntrypoint`, …) but applies them to **each service yielded by the selector**. Mutators are idempotent and replay-safe.
-- Selectors are evaluated against the **resolved service drafts** — the post-resolution, post-service-feature draft set produced by stages 1–3 of §6.11.0 — not raw user config and not the finalized `AppPlan` (which does not exist until stage 6). `fromConfig: "{{ services.smtp.config.mailFrom }}"` reads through the §7.3.1 expression engine.
-- App-features run as a single distinct phase **after the entire service-feature phase** (stage 3 of §6.11.0) has completed for every service; an `AppFeature`'s `priority` orders it only relative to other app-features and is never interleaved between service features. Priority numbers reuse the `ServiceFeature` band scale (§6.11) for readability.
-- Cyclic mutations (feature A mutates B; feature B mutates A) are detected and rejected with `AppFeatureCycleError`.
-- `AppFeatureError` is a tagged union (`SelectorMatchedNothing`, `MutationConflict`, `CycleDetected`); planners surface failures with the contributing plugin id and remediation.
+| Built-in feature | Priority |
+|---|---:|
+| `lando.boot` | 100 |
+| `lando.system` | 200 |
+| `lando.user-id` | 300 |
+| `lando.tooling` | 400 |
+| `lando.storage` | 500 |
+| `lando.config` | 600 |
+| `lando.env` | 700 |
+| `lando.app-mount` | 800 |
+| `lando.healthcheck` | 900 |
+| `lando.certs` | 1000 |
+| `lando.security` | 1100 |
+| `lando.ssh-agent` | 1200 |
+| `lando.host-proxy` | 1250 |
+| `lando.bun-self` | 1260 |
+| `lando.git` | 1300 |
+| `lando.sudo` | 1400 |
+| `lando.proxy` | 1500 |
+| `lando.user-image` | 1900 |
+| `lando.user` | 2000 |
 
-**Manifest contribution slots (normative).** A plugin registers service-scoped features through the `serviceFeatures:` manifest contribution surface and app-scoped features through the `appFeatures:` surface (§4.2, §9.5). Both slots MUST exist in the published `PluginManifest` schema and MUST be consumed by the plugin loader / `AppPlanner`; a spec-defined contribution type with no manifest slot is a silent-omission trap and is non-conforming. Service types are registered through `serviceTypes:` as today.
-
-**`requires.globalServices`** declares that this feature depends on one or more services running in the global Lando app (§20). When the feature activates against a user app's plan, the `AppPlanner` aggregates `requires.globalServices` across every activated feature and the lifecycle orchestrator calls `GlobalAppService.ensureRunning(needed)` inside the user app's `pre-start` phase, after early subscribers and before the user-app build block (§20.6.3). A `requires.globalServices` entry referring to a global service id that is not in the resolved global plan (disabled by the user, capability-blocked, or contributed by a plugin that is not installed) raises `GlobalServiceMissingError` and aborts the user app's start with remediation pointing at `meta:global:install <plugin>`.
-
-The mailpit plugin is the canonical example: an `@lando/service-mailpit` plugin contributes (a) a `mailpit` `ServiceType` (§4.2), (b) a `globalServices:` entry that materializes a `mailpit` service into the **global Lando app**'s `dist` Landofile layer (§20.4, §20.11.1), and (c) an `AppFeature` selecting `types: [php]` (or `framework: [drupal, wordpress, laravel, …]`) with `requires.globalServices: ["mailpit"]` and `apply()` adding `MAIL_HOST=mailpit.global.internal` and `MAIL_PORT={{ globalServices.mailpit.endpoints.smtp.port }}` env. The user installs the plugin and gets Mailpit globally; their PHP services automatically get SMTP env injected without any Landofile change.
-
-**Features** are deterministic, idempotent functions that mutate an in-memory `ServicePlanContext`. Features are the v4 replacement for the SPEC2 "packages" pattern.
-
-```ts
-export interface ServiceFeatureDefinition {
-  readonly id: string;
-  readonly schema?: Schema.Schema<unknown>;
-  readonly priority: number;
-  readonly requires?: ReadonlyArray<keyof ProviderCapabilities>;
-  readonly apply: (ctx: ServiceFeatureContext) => Effect.Effect<void, ServiceFeatureError>;
-}
-```
-
-Feature rules:
-
-- Features run in deterministic priority order. Lower priority runs first.
-- Features mutate only the in-memory plan context.
-- Features must be idempotent across replanning and rebuilds.
-- Feature conflicts are declared in the manifest (`conflicts:`) or surfaced as typed planning errors.
-- Provider-specific feature behavior is gated on `requires:` capabilities.
-- Features emit provider-neutral plan changes. Provider-extension config under `providers.<id>` is permitted only when the feature explicitly opts in.
-
-**Built-in features** (provided by `@lando/service-lando`):
-
-| Feature id | Purpose | Priority |
-|---|---|---|
-| `lando.boot` | `/etc/lando/*` scaffolding for `type: lando` services | 100 |
-| `lando.system` | System-level group | 200 |
-| `lando.user-id` | Container user/UID/GID mapping | 300 |
-| `lando.tooling` | Tooling install group | 400 |
-| `lando.storage` | Storage owner/permission steps | 500 |
-| `lando.config` | Config file injection group | 600 |
-| `lando.env` | `/etc/lando/environment` + `env.d/` | 700 |
-| `lando.app-mount` | App-mount wiring | 800 |
-| `lando.healthcheck` | Healthcheck wiring | 900 |
-| `lando.certs` | Service leaf cert wiring | 1000 |
-| `lando.security` | Additional CAs into trust store | 1100 |
-| `lando.ssh-agent` | SSH agent forwarding (sidecar by default — see §10.4) | 1200 |
-| `lando.host-proxy` | Container→host RPC: bind-mount the per-app `HostProxyService` socket, install the in-container shim binary symlinked as `xdg-open`/`open`/`lando`, inject `LANDO_HOST_PROXY_*` env (§10.10) | 1250 |
-| `lando.bun-self` | Container-side Bun primitive: install a Bun runtime inside the service so `bun` / `bunx` / `bun install` / `bun create` / `bun build` work directly without round-tripping through the host (§8.2.4 / §10.10.2 forbid `meta:bun` and mutating `runBun` verbs from the host-proxy path). The feature provisions Bun under `/usr/local/lib/lando/bun` with a stable PATH symlink, sets `BUN_INSTALL_GLOBAL_DIR` to a service-scoped directory so `bun add -g` does not write to the host user's home, and adds `LANDO_BUN_VERSION` / `LANDO_BUN_PATH` env. The feature MUST refuse to coexist with the `lando.host-proxy` shim symlinking `bun` (the §10.10.3 `lando.host-proxy.bun: true` opt-in) and rejects with `BunSelfFeatureConflictError` at plan time. Default Bun version tracks the §14.2 floor and is overridable via the feature's config schema. | 1260 |
-| `lando.git` | Install git, set safe.directory | 1300 |
-| `lando.sudo` | Install sudo, add user to sudo group | 1400 |
-| `lando.proxy` | Proxy-package config wiring (when RouterService active) | 1500 |
-| `lando.user-image` | User-contributed pre-user image steps | 1900 |
-| `lando.user` | User-run image steps (matches the `user` artifact-build group from §6.3) | 2000 |
-
-The mapping from feature id to feature module is published by `@lando/service-lando` and may be replaced.
-
-The feature ids `lando.system`, `lando.tooling`, and `lando.user` mirror the well-known artifact-build group names in §6.3 (`system`, `tooling`, `user`); the priority numbers determine the order in which features wire their steps into those groups. `lando.user-id` is a separate, lower-priority feature that runs before any artifact build group is assembled because it establishes the container user identity that later steps run as.
+`lando.host-proxy` provides container-to-host RPC and `LANDO_HOST_PROXY_*`. `lando.bun-self` installs container-side Bun under `/usr/local/lib/lando/bun`, sets `BUN_INSTALL_GLOBAL_DIR`, `LANDO_BUN_VERSION`, and `LANDO_BUN_PATH`, and rejects incompatible host-proxy Bun shims with `BunSelfFeatureConflictError`.
 
 ### 6.12 Canonical service-type catalog
 
-Core's distribution ships a comprehensive set of `ServiceType` implementations covering the common stack-starter surface. The intent is that the v4 recipe set (§8.8.10) and ordinary user Landofiles can express their services in one or two lines without reaching for plugins. Niche service types (a particular SaaS emulator, an unusual queue) remain plugin-contributable.
-
-The canonical types are bundled into the binary (§13.5) by `@lando/service-lando` and a small set of focused `@lando/service-*` packages whose membership is fixed at v4.0 and grows only by spec amendment.
-
 #### 6.12.1 Catalog
 
-The version column is a projection of the shipped `ServiceType` version metadata (§6.11.2), not a second independently maintained matrix. Planner validation, generated docs, and tests MUST consume that same metadata; unknown or absent versions MUST fail before provider action with tagged remediation naming the supported versions.
+The catalog is bundled from `@lando/service-lando` and focused `@lando/service-*` packages. Versions below are the one shipped `ServiceType` matrix; aliases resolve during planning.
 
-| `type:` | Versions | Default base | What you get out of the box |
+| Type id | Base | Shipped versions | Notable options |
 |---|---|---|---|
-| `php:<version>` | 8.1, 8.2, 8.3, 8.4, 8.5 | `lando` | PHP with selectable serving mode (`via: apache` default, `fpm`, `cli` — §6.12.5), Composer with version selection (§6.12.5), common extensions (gd, intl, opcache, pdo_*, mbstring, zip), opt-in Xdebug (§6.12.5), database-client auto-detection (`db_client:` — §6.12.5), explicit absolute-container `webroot:` selection, and opt-in Apache `allowOverride:` policy |
-| `node:<version>` | 18, 20, 22, 24, lts | `lando` | Node + npm + yarn + pnpm + bun installers; `command:` for the dev server; `script:` for npm scripts; node_modules cache mount |
-| `python:<version>` | 3.10, 3.11, 3.12, 3.13 | `lando` | Python + pip + `uv` + venv; `framework: <id>` (`django`, `fastapi`, `flask`, `none`); requirements/pyproject install |
-| `ruby:<version>` | 3.1, 3.2, 3.3 | `lando` | Ruby + Bundler + rbenv; `framework: <id>` (`rails`, `sinatra`, `none`); bundle install hooks |
-| `go:<version>` | 1.21, 1.22, 1.23 | `lando` | Go toolchain + module cache; `framework: <id>` (`echo`, `fiber`, `none`); `go build` + `go run` hooks |
-| `nginx[:<version>]` | 1.24, 1.26, latest | `lando` | nginx with sensible PHP/static upstream presets; framework presets shared with `php:*`; TLS via `lando.certs` |
-| `apache[:<version>]` | 2.4 | `lando` | Apache + mod_php / mod_rewrite presets; framework presets shared with `php:*` |
-| `mariadb[:<version>]` | 10.6, 10.11, 11.4 | `lando` | MariaDB + `creds:` (user/password/database/rootPassword), healthcheck, persistent volume, mysql tooling |
-| `mysql[:<version>]` | 8.0, 8.4 | `lando` | MySQL + `creds:`, healthcheck, persistent volume, mysql tooling |
-| `postgres[:<version>]` | 14, 15, 16, 17 | `lando` | PostgreSQL + `creds:`, healthcheck, persistent volume, psql tooling |
-| `mongodb[:<version>]` | 6, 7, 8 | `lando` | MongoDB + `creds:`, healthcheck, persistent volume, mongo tooling |
-| `redis[:<version>]` | 6, 7 | `lando` | Redis + persistent flag, redis-cli tooling |
-| `memcached[:<version>]` | 1.6 | `lando` | Memcached |
-| `valkey[:<version>]` | 7, 8 | `lando` | Valkey (Redis-compatible) + persistent flag |
-| `solr[:<version>]` | 8, 9 | `lando` | Solr + `cores:` config, `config.dir` source, persistent volume |
-| `elasticsearch[:<version>]` | 7, 8 | `lando` | Elasticsearch + index init, persistent volume |
-| `opensearch[:<version>]` | 2 | `lando` | OpenSearch + index init, persistent volume |
-| `meilisearch[:<version>]` | 1 | `lando` | Meilisearch + master key, persistent volume |
-| `mailpit` | latest | `lando` | Mailpit SMTP capture + web UI proxy route |
-| `mailhog` | latest | `lando` | MailHog SMTP capture + web UI proxy route. **Deprecated** since v4.2.0; scheduled for removal in v5.0.0; replacement `mailpit`. The catalog keeps the entry registered (and the §9.4 plugin manifest example mirrors the deprecation) so legacy projects continue to validate while the deprecation runtime emits the §18.4 `deprecation-used` event on use. New projects should select `mailpit`. |
-| `rabbitmq[:<version>]` | 3, 4 | `lando` | RabbitMQ + management UI route, persistent volume |
-| `minio` | latest | `lando` | MinIO S3-compatible object store + console route, bucket init |
-| `localstack` | latest | `lando` | LocalStack AWS emulator |
-| `tomcat[:<version>]` | 9, 10, 11 | `lando` | Apache Tomcat servlet container; `webroot:`-style webapp deployment mount, TLS via `lando.certs` |
-| `varnish[:<version>]` | 6, 7 | `lando` | Varnish HTTP cache fronting a named backend service; VCL override mount, backend healthcheck |
-| `dotnet[:<version>]` | 8.0, 9.0 | `lando` | .NET SDK + ASP.NET runtime; `command:` for the dev server; NuGet cache mount |
-| `mssql[:<version>]` | 2019, 2022 | `lando` | SQL Server + `creds:` (§6.12.4 uniform contract; `SA_PASSWORD` mapped from `rootPassword`), healthcheck, persistent volume, `sqlcmd` tooling. amd64-only upstream images; on arm64 hosts the type requires provider emulation capability and fails closed with remediation when absent |
-| `phpmyadmin[:<version>]` | 5, latest | `lando` | phpMyAdmin web UI auto-wired to the app's MySQL-family services via the §6.12.4 creds contract and cross-service expression scope; proxy route |
-| `static[:<server>]` | nginx, caddy | `lando` | Plain web server for static content; `webroot:`, optional build hook |
-| `compose` | n/a | `l337` | Raw Compose-spec passthrough; the escape hatch for anything not in the catalog. Validates the `image:` / `build:` block and routes everything else through provider-specific extensions. |
+| `php` | `lando` | 8.1, 8.2, 8.3, 8.4, 8.5 | `via`, `composer`, `xdebug`, `db_client`, `webroot`, `allowOverride` |
+| `node` | `lando` | 18, 20, 22, 24, `lts` | `command`, `script`, `globals`, `port` |
+| `python` | `lando` | 3.10, 3.11, 3.12, 3.13 | `framework` |
+| `ruby` | `lando` | 3.1, 3.2, 3.3 | `framework` |
+| `go` | `lando` | 1.21, 1.22, 1.23 | `framework` |
+| `nginx` | `lando` | 1.24, 1.26, `latest` | `webroot`, framework presets |
+| `apache` | `lando` | 2.4 | `webroot`, `allowOverride`, framework presets |
+| `mariadb` | `lando` | 10.6, 10.11, 11.4 | `creds`, `config.server` |
+| `mysql` | `lando` | 8.0, 8.4 | `creds`, `config.server` |
+| `postgres` | `lando` | 14, 15, 16, 17 | `creds`, `config.server` |
+| `mongodb` | `lando` | 6, 7, 8 | `creds`, `config.server` |
+| `redis` | `lando` | 6, 7 | `password`, `persist` |
+| `memcached` | `lando` | 1.6 | none |
+| `valkey` | `lando` | 7, 8 | `persist` |
+| `solr` | `lando` | 8, 9 | `cores`, `config.dir` |
+| `elasticsearch` | `lando` | 7, 8 | index initialization |
+| `opensearch` | `lando` | 2 | index initialization |
+| `meilisearch` | `lando` | 1 | `masterKey` |
+| `mailpit` | `lando` | `latest` | `mailFrom` |
+| `mailhog` | `lando` | `latest` | deprecated since v4.2.0; remove in v5.0.0; replacement `mailpit`; emits `deprecation-used` |
+| `rabbitmq` | `lando` | 3, 4 | management route |
+| `minio` | `lando` | `latest` | bucket initialization |
+| `localstack` | `lando` | `latest` | none |
+| `tomcat` | `lando` | 9, 10, 11 | `webroot` |
+| `varnish` | `lando` | 6, 7 | backend, VCL |
+| `dotnet` | `lando` | 8.0, 9.0 | `command` |
+| `mssql` | `lando` | 2019, 2022 | `creds`; provider emulation required on arm64 |
+| `phpmyadmin` | `lando` | 5, `latest` | MySQL-family service selection |
+| `static` | `lando` | `nginx`, `caddy` | `webroot`, build hook |
+| `compose` | `l337` | n/a | raw supported Compose passthrough |
 
-Each type's configuration schema is published from `@lando/sdk` under `@lando/sdk/schema/services/<type>` (§13.2) and surfaces in editor completion and the docs site. Version aliases (`lts`, `latest`) resolve at plan compile time and are recorded in the app-plan cache (§12).
+Schemas publish at `@lando/sdk/schema/services/<type>` (§13.2). Unknown versions fail before provider action.
 
-**Per-type options (normative).** Dotted names below identify fields on the named service type, not additional top-level Landofile keys.
+File-backed options MUST be app-contained, symlink-safe, correct-kind sources, mounted read-only where applicable, and included deterministically in plan/build keys. `solr.config.dir`, database `config.server`, `node.globals`, `node.port`, Redis `password`/`persist`, Mailpit `mailFrom`, Apache `webroot`, commands, users, versions, and packages retain their authored effect and MUST NOT be replaced by hardcoded defaults. `mailFrom` defaults to all PHP services, `false` to none, and validated arrays to named PHP services.
 
-| Type / option | Required plan and execution behavior |
-|---|---|
-| `solr.config.dir` | An app-relative directory MUST be mounted read-only as the config source and copied into each declared core's `/var/solr/data/<core>/conf` at startup. |
-| PostgreSQL `config.server` | An app-relative regular file MUST be mounted at `/etc/lando/postgresql.conf` and selected with `-c config_file=/etc/lando/postgresql.conf`. |
-| MySQL/MariaDB `config.server` | An app-relative regular file MUST be mounted at `/etc/mysql/conf.d/99-lando.cnf`. |
-| MongoDB `config.server` | An app-relative regular file MUST be mounted at `/etc/lando/mongod.conf` and selected with `--config /etc/lando/mongod.conf`. |
-| `node.globals` | Global package installs MUST be normalized into deterministic ordered build steps with validated package versions and stable package ordering. |
-| `node.port` | The authored port MUST drive endpoints, healthchecks, and generated commands; a fixed default MUST NOT override it. |
-| Redis `password` | The resolved password MUST be applied consistently to startup, healthcheck, `creds`, tooling, and redaction. |
-| Redis `persist` | The resolved boolean MUST select durable versus ephemeral data intent; ephemeral intent MUST NOT silently create a durable data store. |
-| Mailpit `mailFrom` | `mailFrom?: false \| ServiceName[]`: omitted MUST target every resolved PHP service; `false` MUST target none. Arrays MUST deduplicate in authored order and reject unknown or non-PHP names with a tagged error before provider action. Sendmail wiring MUST be applied only to targets. |
-| Apache `webroot` | Generated configuration and routes MUST use the authored `webroot`, not a hardcoded app root. |
-
-File-backed catalog config sources MUST be app-relative regular files or directories of the declared kind. Planning MUST validate containment and symlink safety before provider action and fail unsafe sources with a tagged source-aware error and remediation. Source identity MUST enter plan/build keys (§6.13.5); config file sources MUST be mounted read-only. Commands, resolved users, versions, packages, and config sources MUST be hashed deterministically with secrets redacted.
-
-**Per-service-type implementation checklist (normative).** Every catalog entry above — and every plugin-contributed service type — MUST land with all of the following, in the same change. A reviewer who cannot tick every box rejects the service type. This checklist exists because the base/feature machinery is easy to skip while an individual service type still "works" in isolation:
-
-- [ ] Declares its `base` (`l337` or `lando`) per the catalog's "Default base" column; does not hand-build a `ServicePlan`.
-- [ ] Returns a `ServiceTypeResolution` from `resolve()` and wires its feature list (default base stack for `lando`; artifact/build plumbing only for `l337`).
-- [ ] Passes `runServiceCompositionContract` (§13.1), including the base-specific env assertions (`lando` → `lando.env`/`LANDO_*` present; `l337` → no injected env layer).
-- [ ] If it contributes `AppFeature`s, passes `runAppFeatureContract` (selector match, idempotency, cycle rejection).
-- [ ] Does not import the env-layer helper directly (the §13.4 boundary gate forbids it outside the `lando.env` feature).
-- [ ] Ships its `tooling:` (§6.11.3), `creds:` (§6.12.4 where applicable), and any supported `framework:` presets (§6.12.2) through the resolution, not through bespoke plan mutation.
+Every canonical or plugin type MUST declare its base, resolve through features, pass `runServiceCompositionContract`, use `runAppFeatureContract` when applicable, avoid direct env-helper access, and expose tooling, credentials, and presets through resolution.
 
 #### 6.12.2 Framework presets
 
-`framework:` is a normalized field on the language-runtime types that opt into opinionated defaults: webserver config, URL rewriting, env defaults, common build steps, and tooling additions.
+Language types may expose `framework:` presets as ordinary overridable config. Published ids are `drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `django`, `fastapi`, `flask`, `rails`, `sinatra`, `echo`, `fiber`, and `none`.
 
-The canonical `php:<version>` types do not implement framework-name presets. PHP applications select an absolute container `webroot:` explicitly (default `/app`) and opt into `.htaccess` processing with `allowOverride: true` (default `false`). The PHP resolver rejects non-absolute paths and shell/config-unsafe characters at plan time; recipes such as Drupal own their framework-specific choice of `/app/web` and `allowOverride: true`.
-
-| Field value | Effects |
-|---|---|
-| `drupal` | Drupal-aware nginx/apache rewrites, `web/` webroot, drush install hook, settings-file env mapping |
-| `wordpress` | WP-aware rewrites, default `wp-content/` mount, wp-cli install hook |
-| `laravel` | `public/` webroot, .env mapping, queue worker scaffolding, artisan tooling |
-| `symfony` | `public/` webroot, .env mapping, console tooling |
-| `magento` | Magento-aware rewrites, `pub/` webroot, n98-magerun install |
-| `django` | uvicorn/gunicorn defaults, manage.py tooling, settings env mapping |
-| `fastapi` | uvicorn defaults |
-| `flask` | gunicorn defaults |
-| `rails` | `public/` webroot, asset pipeline, rails tooling |
-| `sinatra` | Rack defaults |
-| `echo`, `fiber` | Go-framework-specific port/env defaults |
-| `none` | No framework preset; user provides full config |
-
-Framework presets are pure config — they emit the same fields a user would write by hand. A user can always override any preset value; nothing is hidden.
+Canonical PHP does not interpret framework ids. It uses absolute `webroot` and `allowOverride` (default false); recipes own framework choices. Invalid paths fail during planning.
 
 #### 6.12.3 Catalog membership rules
 
-- The catalog is fixed at v4.0. Adding a new canonical type or removing one requires a spec amendment.
-- Versions inside a catalog entry (e.g., adding PHP 8.5) follow upstream releases and may be added in v4.x without a spec amendment, but MUST enter the single shipped `ServiceType` matrix (§6.11.2) with available artifacts and matching generated docs/tests. Unknown or absent versions, including unavailable PHP 5.6 through 8.0, MUST fail before provider action with tagged remediation naming supported versions; no retired images are manufactured.
-- Plugins MAY contribute service types with the same shape; a name collision with a canonical type is rejected at plugin load with `ServiceTypeCollisionError`.
-- Plugins MAY contribute features that compose with canonical types (e.g., a `php-newrelic` feature that adds the New Relic extension). The feature priority list (§6.11) is the integration point.
-- Library consumers do **not** receive the canonical catalog by default — they must opt into bundled discovery (§16.4) or contribute their own service-type Layers, the same as for any other contribution surface.
+Catalog membership is frozen at v4.0; additions or removals require a spec amendment. Version additions MAY ship in v4.x only through the single metadata matrix with available artifacts and matching docs/tests. Canonical collisions fail with `ServiceTypeCollisionError`. Plugins MAY add types and composable features. Library consumers receive the catalog only through bundled discovery (§16.4).
 
-#### 6.12.4 The `creds:` schema (database service-types)
+#### 6.12.4 The `creds:` schema
 
-Database service-types (`mariadb`, `mysql`, `postgres`, `mongodb`) and any plugin-contributed type that declares `creds:` participate in a uniform credentials contract.
+`ServiceCreds` contains `user`, `password`, `database`, and optional `rootPassword`. `mariadb`, `mysql`, `postgres`, `mongodb`, and opted-in plugin types share this contract.
 
-```ts
-export const ServiceCreds = Schema.Struct({
-  user:         Schema.String,
-  password:     Schema.String,
-  database:     Schema.String,
-  rootPassword: Schema.optional(Schema.String),
-});
-```
+Types provide deterministic defaults resolved at planning; authored `creds:` fields win. Values appear in `service.creds.*`, `services.<name>.creds.*`, `LANDO_DB_*`, and `ServiceInfo.creds`. Password fields are redacted by default; a type MAY mark additional fields secret.
 
-Resolution rules:
+#### 6.12.5 PHP service depth
 
-- A service-type opts in by setting `creds: { defaults: { ... } }` in its manifest (§9.5) or its resolver output. The defaults are expressions resolved at plan time at level `plugins`.
-- The default-defaults shipped by the canonical types are deterministic per (app.slug, service.name) so replans produce the same values without persisting state:
-  - `user:         "{{ service.name }}"`
-  - `password:     "{{ service.name }}"`
-  - `database:     "{{ service.name }}"`
-  - `rootPassword: "{{ hash(app.slug + ':' + service.name + ':root', 'sha256', 'hex') | slice(0, 24) }}"`
-- A user MAY override any field by setting `creds:` on the service in their Landofile. User values win.
-- Resolved creds are exposed in three places:
-  1. The §7.3.1 expression scopes `service.creds.*` (self) and `services.<name>.creds.*` (cross-service).
-  2. The `LANDO_DB_*` environment family inside the container (`LANDO_DB_USER`, `LANDO_DB_PASSWORD`, `LANDO_DB_NAME`, `LANDO_DB_ROOT_PASSWORD`) — added to the §6.9 contract.
-  3. `ServiceInfo.creds` for `lando info` consumption (redacted by default).
-- Creds are **not secrets** in the §7.3.1 sense — they are dev-environment defaults, not user secrets. A service-type MAY declare a creds field as `secret: true` to opt that field into `${secret:…}` redaction; `password` and `rootPassword` are secret by default.
+`via` is `apache` by default, `fpm`, or `cli`. Modes select compatible artifacts and reject incompatible keys at planning. FPM exposes its service endpoint for a sibling web server; CLI has no implicit HTTP server.
 
-This schema is the spec's commitment that the §6.12.1 catalog promise of "MariaDB + creds:" is uniform across types, addressable from anywhere via the cross-service expression scope, and never reinvented per-plugin.
+`composer` accepts a version, `false`, or `{ version, packages }`; all forms remain supported. Versions and packages are validated, checksum-pinned, deterministically ordered, and included in `buildKey`.
 
-#### 6.12.5 PHP service depth (serving modes, Composer, Xdebug, `db_client`)
+`xdebug` accepts `false`, `true`, or modes. Enabled Xdebug configures host-gateway debugging and contributes `lando xdebug on|off|status`; environment variables alone MUST NOT be documented as enabling it.
 
-The `php` service type carries more configuration surface than the other language types because it is the highest-traffic v3 migration path. Four option families are normative:
-
-**Serving mode (`via:`).**
-
-```yaml
-services:
-  appserver:
-    type: php:8.4
-    via: apache        # default; also: fpm | cli
-```
-
-- `via: apache` (default) — Apache with mod_php, the v3-familiar single-container shape. `webroot:` and `allowOverride:` apply.
-- `via: fpm` — PHP-FPM only, listening on port 9000, intended to be fronted by an `nginx` service in the same app. The `nginx` type's shared PHP framework presets (§6.12.1) target FPM upstreams by service name. `webroot:` applies (FPM chroot/docroot); `allowOverride:` is rejected with remediation.
-- `via: cli` — no long-running web server; the container idles for tooling, `command:`, and worker/queue use. `webroot:` optional; HTTP-only keys (`allowOverride:`, HTTP `routes:` defaults) are rejected with remediation.
-
-The serving mode selects the base image variant (`-apache-bookworm`, `-fpm-bookworm`, `-cli-bookworm`); every mode passes the same service-composition contract, and mode-invalid keys fail closed at plan time, never at provider time.
-
-**Composer (`composer:`).**
-
-```yaml
-    composer: "2"          # major channel (default; tracks the pinned bundled release)
-    composer: "2.7.7"      # exact version
-    composer: false        # skip Composer install entirely
-    composer:              # additive version-and-packages form
-      version: "2"
-      packages:
-        drush/drush: "13.0.0"
-```
-
-The bundled default remains a checksum-pinned Composer 2 release; `composer:` selects a different pinned version (fetched with checksum verification through the standard build-step downloader path) or disables the install. Version selection participates in `buildKey` so changing it rebuilds the artifact layer.
-
-The accepted contract is `composer: "<version>" | false | { version, packages }`. The object form is additive and MUST preserve the string and false forms. Package versions MUST be validated before provider action; packages MUST normalize in stable order into global install steps. Commands, resolved users, Composer/package versions, and package identities MUST participate in ordered `buildKey` hashing with secrets redacted (§6.13.5).
-
-**Xdebug (`xdebug:`).**
-
-```yaml
-    xdebug: false          # default — extension not installed
-    xdebug: true           # install + enable with mode "debug"
-    xdebug: "debug,develop" # install + enable with an explicit XDEBUG_MODE string
-```
-
-`xdebug: true | <modes>` installs the Xdebug extension as a build step (PECL or distro package, checksum-pinned per PHP version) and enables it with `XDEBUG_MODE` set from the option, `client_host` pointed at the host gateway, and port 9003. The service contributes `lando xdebug on|off|status` tooling that toggles the extension without a rebuild (config toggle + FPM/Apache reload). When `xdebug: false`, setting `XDEBUG_*` env vars alone MUST NOT be documented as enabling debugging; guides show the real option.
-
-**Database client auto-detection (`db_client:`).**
-
-```yaml
-    db_client: auto        # default — detect MySQL-family/postgres/mongodb services and install the matching client CLI
-    db_client: false       # install no database client
-    db_client: "mariadb:11.4"  # force a specific client family/version
-```
-
-At plan time, `auto` inspects the app's database services (§6.12.4 opt-ins) and installs the matching client package(s) in the PHP container so `mysql`, `psql`, or `mongosh` invoked via tooling against `services.<db>.creds.*` works out of the box. Explicit values force or disable the client. Detection is deterministic from the resolved plan (no provider probing) and participates in `buildKey`.
-
-All four families are plan-time options on the `php` `ServiceTypeResolution` — no bespoke plan mutation — and each invalid combination is a tagged plan-time error with remediation.
+`db_client` accepts `auto`, `false`, or an explicit family/version. Auto detection uses resolved database services without provider probing and participates in `buildKey`.
 
 ### 6.13 Build orchestration
 
-`BuildOrchestrator` (§3.4) is the v4 replacement for v3's serial start sequence, where a long-running `composer install` against the PHP service blocked an equally long-running `npm ci` against the Node service from even starting until the first one finished. In v4 the two run concurrently by default, share one task-tree render surface, and stream their progress through the same lifecycle event bus the rest of core uses.
+`BuildOrchestrator` executes one provider-neutral `BuildPlan`, streams lifecycle events, and preserves independent service concurrency.
 
-This subsection specifies the build phase shape, the DAG construction rules, the concurrency caps, the failure policy, the up-to-date check, the per-step transcript artifact, and cancellation. The renderer-side surface that consumes the resulting events is spec'd in §8.9.2 (concurrent task tree contract).
+#### 6.13.1 Phases
 
-#### 6.13.1 The two phases
+| Phase | Source and dispatch | Dependency | Default policy |
+|---|---|---|---|
+| `artifact` | Artifact intent to `buildArtifact` or `pullArtifact` | Independent across services | fail-fast |
+| `app` | Runtime scripts to `execStream` | Own artifact, running service, and authored `depends_on` | continue-all |
 
-The build phase of `app:start` (and the equivalent positions of `app:rebuild` and `app:cache:refresh --rebuild`) decomposes into two ordered sub-phases. Both phases publish `pre-build-phase` / `post-build-phase` events and feed `build-step-*` events through `EventService`. The §11.4 standard sequence renders this as a nested block under `pre-start` / `post-start`.
+The build scope publishes `pre-build`, `post-build`, `pre-build-phase`, `post-build-phase`, `build-step-start`, `build-step-progress`, `build-step-skip`, `build-step-complete`, and `build-step-fail` through `EventService`. Global, app, and service `build:` configuration resolves concurrency and failure policy; limits are bounded but tuning constants are implementation-owned.
 
-| Phase | Source | Provider call | Per-service serial dep | Default failure policy | Default concurrency cap |
-|---|---|---|---|---|---|
-| `artifact` | `build.artifact:` plus the §6.3 group-weighted artifact instructions a service-type and its features contributed | `RuntimeProvider.buildArtifact` (or `pullArtifact` when the artifact is a tag the provider can pull) | none — artifact builds for distinct services are independent | **fail-fast** (§6.13.4) | `build.concurrency.artifact`, default `2` (Docker-class daemons saturate around 2–3 concurrent image builds; over-parallelizing wastes CPU and IO) |
-| `app` | `build.app:` plus any `ServiceFeature.apply()` contributions that registered a runtime build step | `RuntimeProvider.execStream` against the started service container | for service S, S's `app` step waits on S's `artifact` step (the `lando.boot` scaffolding lives inside the built artifact) and on `start(S)` reaching `running` (so the container is up before we exec into it); cross-service waits flow through Compose `depends_on:` | **continue-all** (§6.13.4) | `build.concurrency.app`, default `min(4, cpu_count)` (leaves headroom for the user's editor / browser; CI runners with high core counts get a higher cap up to the floor) |
+#### 6.13.2 `BuildPlan`
 
-Concurrency caps and failure policies are global config keys (§7.5) with per-app override under the Landofile `build:` key and per-service override under `services.<name>.build:` (`build: { failFast: true }`, `build: { concurrency: 1 }`).
+`BuildPlan` contains an `AppRef`, typed `BuildStep`s, and per-phase caps. `BuildStep` contains `stepId`, phase, service, `buildKey`, `BuildCommand`, dependencies, failure policy, redaction tokens, and optional estimate.
 
-#### 6.13.2 The `BuildPlan` DAG
+Artifact intent creates one artifact step per service. App scripts create ordered steps. Each app step depends on its service artifact and running state plus authored cross-service conditions. Artifact builds never inherit service `depends_on`. Independent siblings may run concurrently. Cycles fail with `BuildPlanCycleError`.
 
-`BuildOrchestrator` derives a `BuildPlan` from the resolved `AppPlan` at level `app`. The plan is a directed acyclic graph of typed nodes; siblings without an edge between them are eligible to run concurrently subject to the phase cap.
+Ready predecessors are `complete` or `skip`. Interrupts propagate to in-flight provider work and publish `build-step-fail`; `service-running` is the synthetic running-state predecessor.
 
-```ts
-export const BuildStep = Schema.Struct({
-  stepId:    Schema.String,                                 // "<service>:<phase>:<short-name>"
-  phase:     Schema.Literal("artifact", "app"),
-  service:   ServiceName,
-  buildKey:  Schema.String,                                 // SHA-256 over the resolved inputs (§6.13.5)
-  command:   BuildCommand,                                  // shape per phase (artifact spec | exec script)
-  dependsOn: Schema.Array(Schema.String),                   // predecessor stepIds in this BuildPlan
-  failFast:  Schema.Boolean,                                // resolved per-step from phase + per-service overrides
-  redact:    Schema.Array(Schema.String),                   // additional redaction tokens propagated to events
-  estimateMs: Schema.optional(Schema.Number),               // optional hint from the build-results cache (§12.1) for renderer ETA
-});
+#### 6.13.3 Provider dispatch
 
-export const BuildPlan = Schema.Struct({
-  app:        AppRef,
-  steps:      Schema.Array(BuildStep),
-  caps:       Schema.Struct({                               // resolved phase caps
-    artifact: Schema.Number,
-    app:      Schema.Number,
-  }),
-});
-```
-
-DAG construction rules:
-
-- For each service S in the plan, if S has artifact-build inputs (a non-empty group-weighted instruction list, a `sourcefile:`, or a Compose `build:` block), emit one `artifact` step `<S>:artifact`. If S resolves to a pullable artifact tag with no build inputs, emit a degenerate `artifact` step that calls `pullArtifact` and is almost always cached on the second run.
-- For each service S in the plan, if `build.app:` is non-empty (or any service-feature contributed app-build steps), emit one `app` step `<S>:app:<short-name>` per discrete script. Multiple `build.app:` entries for one service emit one step each, in declaration order, with sequential `dependsOn` edges between siblings.
-- Per-service edge: every `<S>:app:*` step depends on `<S>:artifact` and on `start(S)` reaching `running` (the orchestrator publishes a synthetic `service-running` predecessor for each service so steps that only need the container up can declare it explicitly).
-- Cross-service edges from Compose `depends_on:`: if service S declares `depends_on: [db]`, every `<S>:app:*` step gets an additional `dependsOn` entry on the synthetic `<db>:running` node. The orchestrator does NOT add `dependsOn` between `<S>:artifact` and `<db>:artifact` — image builds are independent of each other regardless of `depends_on:`.
-- Cycles are rejected at plan time with `BuildPlanCycleError` containing the offending edge list. (Service `depends_on:` cycles are already rejected by the `AppPlanner`; this is belt-and-braces.)
-
-Execution:
-
-- The orchestrator walks the DAG and pushes every step whose predecessors have all resolved (`complete` or `skip`) into the appropriate phase's run pool.
-- Each phase's run pool is bounded by `Effect.forEach({ concurrency: caps[phase] })` from §2.4. The same primitive that governs intra-bootstrap parallelism governs build siblings — there is no second concurrency mechanism to reason about.
-- `Effect.interrupt` (from `SIGINT`, command-level cancellation, or fail-fast within the artifact phase) propagates through the `forEach` pool; every in-flight `execStream` (§5.3) is killed at scope close; the orchestrator publishes `build-step-fail { reason: "interrupted" }` for each.
-
-#### 6.13.3 What runs where
-
-Every runnable step MUST retain its plan-resolved user through `BuildPlan` to provider execution. An artifact `BuildCommand` MUST retain the ordered command/user pairs rather than flattening away per-step users. Artifact generation MUST emit `USER` changes only when needed and restore the final service `USER` (§6.3). Each app-build `execStream` request MUST pass the step's explicit resolved `user`, including interleaved root/non-root execution; providers MUST NOT re-resolve omitted users at execution time.
-
-The orchestrator dispatches each step kind to the right provider primitive:
-
-| Step kind | Provider call | Notes |
-|---|---|---|
-| `artifact` (full build) | `RuntimeProvider.buildArtifact(spec)` consuming the §6.3 group-weighted instruction list | Returns an `ArtifactRef`; the orchestrator stamps the resulting tag onto the `ServicePlan` so `start(S)` references it. |
-| `artifact` (pull only) | `RuntimeProvider.pullArtifact(spec)` | Used when the service resolves to a published image tag with no inline build inputs. |
-| `app` (build script) | `RuntimeProvider.execStream({ service: S }, { script, user, cwd, env })` | The orchestrator owns the `Stream<ExecChunk>` consumer and translates chunks into `build-step-progress` events plus transcript writes. |
-
-The `app`-phase step is always dispatched through `execStream` even when the script is short — uniformity makes the renderer's tail panel work the same way for every step, and `exec` is itself a `Stream.runFold` over `execStream` per §5.3.
+Full artifacts use `RuntimeProvider.buildArtifact`; pull-only artifacts use `RuntimeProvider.pullArtifact`; app scripts use `RuntimeProvider.execStream`. Every command retains its planned user, working directory, and environment. Providers MUST NOT re-resolve users at execution time.
 
 #### 6.13.4 Failure policy
 
-The two phases have different default policies because their failure modes differ:
+Artifact failure is fail-fast by default: it interrupts siblings, skips queued work as `phase-aborted`, and fails start. App failure continues independent siblings and raises one `BuildPhaseFailedError` containing `BuildStepFailure`s after `post-build-phase`. App and service overrides MAY change fail-fast behavior; per-step overrides are not exposed.
 
-- **`artifact` phase: fail-fast.** A failed image build for service S blocks every `<S>:app:*` step downstream, and a half-built image set tends to leave the user in a broken state. First failure interrupts in-flight siblings via `Effect.interrupt`, marks queued siblings as `build-step-skip { reason: "phase-aborted" }`, and raises the failure to `pre-start`'s caller. Override per-app via `build.failFast: false` in the Landofile when the user explicitly wants every artifact build to run to completion (e.g., to reproduce multiple failures in one cycle).
-- **`app` phase: continue-all.** A failed `composer install` does NOT interrupt a healthy `npm ci`. Every sibling runs to completion; the orchestrator aggregates failures and raises a single `BuildPhaseFailedError { failures: ReadonlyArray<BuildStepFailure> }` after `post-build-phase`. Rationale: when a developer `lando start`s a fresh clone after a long branch update, "all four broken services" is one round-trip to fix; "one broken service, run again, next broken service, run again" is four round-trips.
+#### 6.13.5 `buildKey` and results
 
-Per-service overrides: `services.<name>.build.failFast: true` opts a single service into fail-fast even in the `app` phase. Per-step overrides are not exposed; the failure granularity is the service.
+Every step uses a content-derived `buildKey`. A matching successful `build-results` cache entry emits `build-step-skip` with `up-to-date`; failures never suppress retries.
 
-#### 6.13.5 The `buildKey` up-to-date check
+Both phases MUST hash ordered commands and resolved users, tools, versions, packages, config-source identities, and applicable provider/artifact/mount inputs deterministically with secrets redacted. Reordering or user changes MUST change the key; home contents, clocks, undeclared environment, bind contents, and resolved secret values MUST NOT. Forced rebuild commands bypass the result.
 
-Every `BuildStep` carries a `buildKey` — a SHA-256 hash over the canonicalized inputs that determine whether re-running the step would produce a different result. The orchestrator consults the `build-results` cache (§12.1) before dispatching: if `buildKey` matches a successful prior run, the step is short-circuited and emits `build-step-skip { reason: "up-to-date", cached: true }`.
+`BuildResult` records `buildKey`, service, phase, outcome, exit code, duration, optional artifact reference, transcript path, and completion time. Results are bounded and rotated.
 
-`buildKey` inputs:
+#### 6.13.6 Transcripts
 
-Both phases MUST hash ordered commands and their resolved users, resolved runtime/tool versions, normalized package lists, and config source identities with secrets redacted (§3.7). Reordering steps or changing a resolved user MUST change the key. Changing persisted home contents MUST NOT change it. Catalog config source identity is an explicit input even when the source is realized as a read-only bind mount.
-
-| Phase | Hashed inputs |
-|---|---|
-| `artifact` | The resolved group-weighted instruction list (after §6.3 group/weight resolution), the resolved `args:` and `secrets:` *names* (not values), the resolved `platform:`, the realized `context:` directory tree's content hash, the parent artifact reference (e.g., `nginxinc/nginx-unprivileged:1.27`), the provider id, and the active `lando` and `@lando/service-*` versions that contributed steps. |
-| `app` | The resolved script source (post-template-render), the resolved `cwd:`, `user:`, `env:` keys (values redacted before hashing — secret value changes do NOT bust the cache, by design; secret *name* changes do), the realized `mounts:` `mountKey` set, the `ArtifactRef` from the same service's `artifact` step (so a rebuilt image always re-runs the app step), and the active `lando` version. |
-
-Inputs that are deliberately NOT in `buildKey`:
-
-- The resolved value of any `${secret:…}` reference (changing a secret value MUST NOT silently re-run a build step the user did not change; `lando rebuild --service <service>` or `lando app cache refresh --rebuild` forces a rerun, per §8.2).
-- The host system clock or timezone.
-- The values inside `mounts:` of `type: bind` (they are content-addressed by `mountKey` already; the file contents inside the bind mount are tracked by the build script itself, not the orchestrator).
-- Any environment variable that wasn't declared on the build script's `env:` map.
-
-`build-results` cache entries:
-
-```ts
-export const BuildResult = Schema.Struct({
-  buildKey:       Schema.String,
-  service:        ServiceName,
-  phase:          Schema.Literal("artifact", "app"),
-  outcome:        Schema.Literal("complete", "fail"),       // "skip" entries are not persisted
-  exitCode:       Schema.Number,
-  durationMs:     Schema.Number,
-  artifactRef:    Schema.optional(Schema.String),           // present for artifact phase
-  transcriptPath: AbsolutePath,
-  completedAt:    Schema.DateTimeUtc,
-});
-```
-
-Only `outcome: "complete"` entries short-circuit a future run. A cached failure entry is informational (lets `lando logs --build` find the transcript) and does NOT prevent the orchestrator from retrying. Cache rotation is per-service per-`buildKey`; the most recent N (default 10) `complete` entries and the most recent N (default 5) `fail` entries are kept.
-
-#### 6.13.6 Per-step transcripts
-
-For every dispatched step, the orchestrator writes the full unredacted output to a per-step transcript file at `<userDataRoot>/builds/<app-id>/<phase>/<service>/<buildKey>.log` (full path schema in §12.4). The file is opened on `build-step-start`, every chunk from `execStream` is appended atomically, and the file is closed on `build-step-complete` / `build-step-fail`.
-
-- `transcriptPath` is published on `BuildStepEvent` and `BuildStepResultEvent` so subscribers and the renderer can `tail -f` it.
-- The renderer's "expand task" surface (§8.9.2) reads from this file directly — the live tail and the post-completion replay use the same source.
-- `lando logs <service> --build [--build-key …]` resolves the latest transcript for a service or a specific `buildKey`.
-- Transcripts are never sent to telemetry. `${secret:…}`-resolved values are redacted at the `Logger`/event boundary but written *unredacted* to the transcript file (they are local-only diagnostic artifacts; the file lives under the user data root and is removed by `lando destroy`).
+Each dispatched step writes `<userDataRoot>/builds/<app-id>/<phase>/<service>/<buildKey>.log`. `transcriptPath` appears on `BuildStepEvent` and `BuildStepResultEvent`; renderers and `lando logs <service> --build` use the same artifact. Transcripts stay local, are never telemetry, retain raw output while CLI/events apply redaction, and are removed by `lando destroy`.
 
 #### 6.13.7 Cancellation
 
-Cancellation propagates through Effect's standard interrupt model. `SIGINT` from the CLI shell (§3.6) calls `Effect.interrupt` on the running build phase; `Effect.forEach` propagates to every in-flight sibling; each step's `Scope` invokes the provider's `kill()` on its `execStream` child; the orchestrator publishes `build-step-fail { reason: "interrupted" }` for every in-flight or queued step; the per-step transcript is closed cleanly with a final marker line. The user-perceived gap between Ctrl+C and the renderer's "Cancelled" line MUST stay inside the §2.1 cancellation budget.
-
-When fail-fast triggers a phase abort (§6.13.4), the same machinery runs but the published `reason:` is `"phase-aborted"` and the cause field carries the originating step's `BuildStepFailure`.
+`Effect.interrupt` closes every step scope, terminates provider children, closes transcripts, and publishes interrupted failures within the §2.1 cancellation contract. Fail-fast uses the same path with reason `phase-aborted` and the originating failure.
 
 #### 6.13.8 Errors
 
-```ts
-export class BuildPlanCycleError extends Schema.TaggedError<BuildPlanCycleError>()(
-  "BuildPlanCycleError",
-  { app: AppRef, edges: Schema.Array(Schema.String) },
-) {}
-
-export class BuildStepFailedError extends Schema.TaggedError<BuildStepFailedError>()(
-  "BuildStepFailedError",
-  { step: BuildStep, exitCode: Schema.Number, transcriptPath: AbsolutePath, summary: Schema.String },
-) {}
-
-export class BuildPhaseFailedError extends Schema.TaggedError<BuildPhaseFailedError>()(
-  "BuildPhaseFailedError",
-  { app: AppRef, phase: Schema.Literal("artifact", "app"), failures: Schema.Array(BuildStepFailedError) },
-) {}
-
-export class BuildOrchestratorUnavailableError extends Schema.TaggedError<BuildOrchestratorUnavailableError>()(
-  "BuildOrchestratorUnavailableError",
-  { reason: Schema.String },
-) {}
-```
-
-`BuildOrchestratorUnavailableError` exists because the service is `Layer.suspend`-wrapped (§3.4): an embedding host that constructs the runtime at level `app` but never references `BuildOrchestrator` MUST still see a typed failure if a downstream subsystem tries to publish a `Build` event without going through the orchestrator. (The orchestrator is the only publisher of the `Build` event scope; manifest validation rejects plugin subscribers that try to publish into the scope.)
-
----
+Build failures are tagged `BuildPlanCycleError`, `BuildStepFailedError`, `BuildPhaseFailedError`, and `BuildOrchestratorUnavailableError`. They carry the relevant app, phase, step/failures, transcript, and remediation context. Only `BuildOrchestrator` publishes the `Build` event scope.
 
 ### 6.14 Service log sources
 
-`RuntimeProvider.logs` (§5.3) streams a service's **container stdout/stderr** — the PID-1 output the engine's native log API captures. That is the correct default and covers the common infrastructure case: the official `httpd`, `nginx`, and `php-fpm` images already redirect their access/error logs to `/proc/self/fd/{1,2}` or symlink them to `/dev/stdout` / `/dev/stderr`, and default `mysql` / `mariadb` write their error log to stderr in the foreground. But many services — and most application frameworks (Symfony `var/log/dev.log`, Laravel `storage/logs/*.log`), enabled DB slow/general logs, and legacy daemons — write to **files inside the container** that never reach stdout, so `lando logs <service>` shows nothing useful for them.
+`RuntimeProvider.logs` always exposes the implicit container stdout/stderr source. `LogSource` adds provider-neutral in-container file intent without selecting collection architecture.
 
-A **log source** is a declarative statement that a service also produces logs at an in-container file path, plus how Lando should surface them. Log sources let a service type wire up any service once, and let a user attach an ad-hoc file to a bespoke service, without either party choosing a collection *architecture* — the mechanism is owned by core and the provider.
+#### 6.14.1 `LogSource`
 
-#### 6.14.1 The `LogSource` schema
+`LogSource` contains branded `LogSourceId`, optional label, absolute path, `stdout`/`stderr` classification, `redirect`/`follow` strategy, `required`, and timestamp capability. `console` is reserved for the implicit source. Each source names one file; globs are outside v4.0.
 
-```ts
-export const LogSourceId = Schema.String.pipe(Schema.brand("LogSourceId"));  // "console" is reserved
+Landofile `LogSourceInput` requires `path` and optionally accepts `id`, `label`, `stream`, and `timestamps`; it always resolves to `follow`. Service types may declare `redirect`.
 
-export const LogSource = Schema.Struct({
-  id: LogSourceId,                                    // unique within the service
-  label: Schema.optional(Schema.String),             // human label, e.g. "apache error log"
-  path: AbsolutePath,                                 // single in-container file (no globs in v4.0)
-  stream: Schema.Literal("stdout", "stderr"),         // render/exit classification of this source
-  strategy: Schema.Literal("redirect", "follow"),     // how the source is reified (§6.14.3)
-  required: Schema.optionalWith(Schema.Boolean, { default: () => false }),
-  timestamps: Schema.optionalWith(Schema.Boolean, { default: () => false }),  // lines carry parseable leading timestamps → enables `--since`
-});
-export type LogSource = typeof LogSource.Type;
-```
+#### 6.14.2 `LogChunk.source`
 
-- **Implicit console source.** Every service has an implicit source with `id: "console"` backed by the native engine log stream. It is never declared; declaring `console` is rejected at validation. `console` is `timestamps: true` (the engine stamps each line).
-- **One path per source.** A source names exactly one file. Globs and multi-path sources are out of scope for v4.0 because per-line source attribution and per-file lifecycle must stay unambiguous (declare multiple sources for multiple files).
-- **`stream` is classification, not provenance.** A file source is neither the container's stdout nor its stderr; `stream` only tells the renderer/exit path how to treat the source's lines. Provenance rides `LogChunk.source` (§6.14.2), not `stream`.
-- **`LogSourceInput`** is the Landofile-facing shape: `path` (required), plus optional `label`, `stream` (default `stderr`), and `id` (defaulted from the path basename). User-declared sources always resolve to `strategy: "follow"` (Lando does not own a user's arbitrary image build) and `timestamps: false` unless the user opts in — user config *tunes* which files are surfaced; it does not choose the collection strategy (§1.2 "flags tune, interfaces choose"). Service types own the richer declaration including `redirect`.
+`LogChunk` contains service, optional source, stream, line, and optional timestamp. Missing source means `console`; renderers label interleaved sources.
 
-#### 6.14.2 `LogChunk.source` (additive)
+#### 6.14.3 Reification
 
-`LogChunk` gains an optional `source`:
+`redirect` routes owned daemon logs to stdout/stderr during build and requires an owned image path, not `serviceLogSources`. `follow` is implemented by `RuntimeProvider.logs`, never a core shell-out, and requires `serviceLogSources`.
 
-```ts
-export interface LogChunk {
-  readonly service: ServiceName;
-  readonly source?: LogSourceId;        // absent ⇒ "console"; additive, back-compatible
-  readonly stream: "stdout" | "stderr";
-  readonly line: string;
-  readonly timestamp?: Date;
-}
-```
+Without that capability, required follow sources fail with `CapabilityError`; optional sources are explicitly reported unavailable and skipped. Sources are never silently dropped.
 
-The field is **optional** so every existing provider, fixture, and consumer that constructs the four-field shape stays valid (the additive-export discipline in `sdk/AGENTS.md` applies: `sdk/API_COMPATIBILITY.md` note + `codegen:schema-snapshot` refresh). An absent `source` means the container stdout/stderr source; renderers label chunks by `source` so interleaved sources remain distinguishable.
+#### 6.14.4 Follow semantics
 
-#### 6.14.3 Reification: two capability-gated strategies
-
-Declared sources are provider-neutral intent. Core reifies each one by its `strategy`, chosen so the 90% case (Lando-built web/DB service types) pays **zero runtime cost** and BYO images still work:
-
-- **`redirect` (preferred, for Lando-built images).** At build/scaffold time (§6.13), core points the daemon's log path at `/dev/stdout` or `/dev/stderr` — the canonical Docker idiom (`ln -sf /dev/stdout …`, or a daemon-config directive where a symlink is unsafe). The lines then flow through the **existing console source** with no runtime follower, correct history/retention from the engine ring buffer, and composition with `--since` / `--tail`. `redirect` requires Lando to own the image build (a `base: "lando"` service or a service with a build phase); it does **not** require the `serviceLogSources` capability. A source that a daemon refuses to write through a redirected fd (MySQL's error/slow logs famously reopen and `fsync`) MUST be declared `strategy: "follow"` instead.
-- **`follow` (fallback, for BYO images and non-redirectable logs).** The source is realized at `lando logs` time by the **provider** inside `RuntimeProvider.logs` (§5.3) — not by a core `execStream(tail -F …)` shell-out, which would assume a `tail` dialect (GNU vs BusyBox `-F`), make remote/VM providers second-class, and leak children. The provider follows the file with the defined semantics in §6.14.4 and tags each `LogChunk` with the source `id`. `follow` requires the active provider to declare `serviceLogSources: true` (§5.4).
-
-**Capability degradation.** When the active provider reports `serviceLogSources: false`:
-- a `required: true` follow source fails planning up front with a tagged `CapabilityError` whose remediation names the redirect alternative and the providers that support following (§5.5 validate-before-plan);
-- a non-required follow source is reported as unavailable in `lando logs` / `lando info` output and skipped — console and any `redirect` sources still stream. A source is **never silently dropped**; unavailability is always surfaced.
-
-#### 6.14.4 Follow semantics (normative)
-
-A provider that declares `serviceLogSources: true` MUST implement file following with these semantics, asserted by the §5.3 `logs` contract suite (§13.1):
-
-- **Finite vs follow.** With `follow: false`, a file source is a snapshot: it emits up to `tail` lines from the file's current tail and then reaches EOF so the merged stream terminates. It MUST NOT wait for a not-yet-created file. With `follow: true`, it backfills up to `tail` lines then follows appended writes.
-- **Missing file.** A missing path in follow mode produces a structured per-source *pending* diagnostic and a bounded readiness wait, never an infinite silent wait; in finite mode it produces an *unavailable* diagnostic (or fails when `required`).
-- **Rotation.** Following survives `logrotate` rename+create and copytruncate via device/inode/offset tracking: the old inode is drained to EOF where possible, the name is reopened, and a rotation marker is emitted. Duplication/loss around the rotate window is bounded and documented; the provider's own follower diagnostics (e.g. "file truncated") are **not** emitted as service `LogChunk`s.
-- **Line framing.** Bytes are decoded with an incremental UTF-8 decoder that never splits a multi-byte codepoint across chunks, handles CRLF, and flushes a final partial line at EOF. Redaction (§6.14.5) runs on complete framed lines, never on raw byte chunks.
-- **Bounds.** A per-source `maxLineBytes` truncates over-long lines with a `truncated` marker and bounded buffering; invalid UTF-8 uses replacement or is classified as binary. An unbounded line (a MySQL blob, a binary file) can never exhaust CLI/renderer memory.
-- **`since`.** Honored only for `timestamps: true` sources (and `console`). For a `timestamps: false` source, `--since` is reported as unsupported for that source (a per-source diagnostic), never silently ignored.
-- **`tail`.** Applied **per source**; the merged output of N sources is not a single global "last N". Global-total semantics are not offered in v4.0 (they would require orderable timestamps on every source).
-- **Ordering.** Per-source order is preserved; the merged stream is arrival-order. Because file sources may lack timestamps, `lando logs` makes **no** global-chronological guarantee — renderers label lines by `source` and MUST NOT claim a merged total ordering.
-- **Lifecycle.** Every follower is acquired in the `logs` stream's scope; `Effect.interrupt` (Ctrl+C) reaps every follower within the §3.6 cancellation budget, and a dropped/partially-consumed `logs` stream terminates its followers at scope close — identical to the reaping contract already on `RuntimeProvider.logs` (§5.3).
+Providers declaring `serviceLogSources` MUST support finite snapshots and scoped follow mode, bounded pending diagnostics for missing files, rotation and truncation, complete UTF-8 line framing, bounded lines, per-source `tail`, timestamp-gated `since`, preserved per-source order, arrival-order merging, and interruption cleanup. No global chronological guarantee or global-total tail exists in v4.0.
 
 #### 6.14.5 Redaction
 
-Providers emit **raw** `LogChunk`s, exactly as build transcripts are written unredacted to disk (§6.13.6). Redaction is applied **once, at the boundary** — the renderer, lifecycle events, and `--format json` machine output route every `LogChunk.line` through the canonical `RedactionService` (§3.7); the raw `logs` Stream returned to library callers is pre-redaction, unchanged from today's `RuntimeProvider.logs` contract. There is no mid-pipeline scrubber and no double-redaction: a declared file on disk stays raw (a local diagnostic artifact under the app's control), and no unredacted secret crosses the CLI/event/telemetry boundary.
+Providers return raw `LogChunk`s. Renderer, lifecycle, telemetry, and machine-output boundaries apply `RedactionService` exactly once. Library log streams and app-owned files remain raw.
 
 #### 6.14.6 Catalog defaults
 
-Because the common official images already route logs to stdout/stderr, the bundled §6.12 service types declare sources sparingly and prefer `redirect` where Lando owns the image:
-- `apache` / `nginx` / `php-fpm`: declare access/error sources as `strategy: "redirect"` (matching upstream's own `/dev/stdout` idiom) so they surface with zero runtime cost even on a stripped base image.
-- `mysql` / `mariadb`: the error log defaults to stderr (already `console`); the **slow-query** and **general** logs, when the user enables them, are declared `strategy: "follow"` because the server reopens them.
-- Application frameworks are surfaced by the recipe/service type that knows the path (e.g. a Symfony/Laravel service type declaring `storage/logs` or `var/log`), always as `follow`.
+Catalog types prefer `redirect` for owned Apache, nginx, and PHP-FPM logs; MySQL/MariaDB optional slow/general logs use `follow`; framework file logs are declared by the recipe or type that knows their paths.
 
 ---

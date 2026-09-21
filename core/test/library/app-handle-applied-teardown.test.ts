@@ -58,6 +58,7 @@ const makeHarness = (root: string) => {
       Effect.sync(() => {
         destroyCalls.push(options);
         if (options.removeState !== false) appliedPlan = undefined;
+        return { kind: "destroyed" as const };
       }),
   };
   const layers = [

@@ -726,7 +726,7 @@ describe("provider-lando bringUp", () => {
     ) as ServiceStartError | undefined;
     expect(startError).toBeDefined();
     if (startError === undefined) return;
-    expect(startError.message).toContain("Podman container start failed with HTTP 500.");
+    expect(startError.message).toContain("provider-lando container start failed with HTTP 500.");
     expect(startError.message).toContain("rootlessport cannot expose privileged port 80");
     expect(startError.message).toContain("net.ipv4.ip_unprivileged_port_start=80");
     expect(startError.message).not.toContain("hunter2");
@@ -749,7 +749,7 @@ describe("provider-lando bringUp", () => {
     ) as ServiceStartError | undefined;
     expect(startError).toBeDefined();
     if (startError === undefined) return;
-    expect(startError.message).toBe("Podman container start failed with HTTP 500.");
+    expect(startError.message).toBe("provider-lando container start failed with HTTP 500.");
   });
 
   test("redacts credential-like env values in error details", async () => {

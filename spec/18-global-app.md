@@ -3,14 +3,7 @@
 > **Part 18 of 18** · [Index](./README.md)
 > **Read next:** *(end of spec)*
 
-This part defines the **global Lando app**: a reserved, host-level Lando app that runs services shared across every user app on the host. The global app is the canonical home for cross-cutting host services — the Mailpit SMTP server and UI, the Traefik proxy, and any plugin-contributed service that has more affinity with "the host" than with a single project. Plugins contribute services to the global app through a new `globalServices:` manifest surface; user apps automatically discover and depend on them through existing `AppFeature` activations (§6.11.4).
-
-§20 (The Global App) is filed as a single part because every facet of the concept is novel to v4: a reserved app id, a Lando-owned Landofile location, a new manifest contribution surface, a new core service, a new bootstrap level, a new lifecycle event scope, a new CLI namespace, and a refactor of how `RouterService` realizes its routes. Reading the part top-to-bottom is the fastest way to understand how Lando's "ambient services" model differs from a v3 setup where Traefik is implicit.
-
-The motivating user-facing examples:
-
-- A user runs `lando plugin add @lando/service-mailpit`. From that moment, every PHP/Node/Python service in every user app on the host can `mail to mailpit.global.internal:1025` and read captured mail at `https://mailpit.lndo.site`. No per-app Landofile change. No `services: { mailpit: { type: mailpit } }` boilerplate.
-- The Lando proxy (Traefik in the default bundle) is itself a service in the global app. Plugins that need HTTP ingress contribute routes through `RouterService` exactly as they do today; the realization is now visible in `lando meta global info` and reuses the same lifecycle, build, healthcheck, and cert machinery user apps use.
+The **global app** is the reserved host-level Lando app for services shared across user apps. Plugins contribute those services through `globalServices:`, and `AppFeature` activations declare user-app dependencies on them (§6.11.4).
 
 ---
 
@@ -18,630 +11,221 @@ The motivating user-facing examples:
 
 ### 20.1 What the global app is
 
-The **global app** is a Lando app with the reserved id `global`. It satisfies the same `AppPlan` schema (§5.5), uses the same `RuntimeProvider` (§5.3), runs through the same `BuildOrchestrator` (§3.4, §6.13), publishes the same lifecycle events with a parallel `Global` event scope (§3.5, §20.6), and surfaces in the same `lando info`/`lando logs` shapes user apps do — under the `meta:global:*` CLI namespace.
+The global app uses the standard `AppPlan`, `RuntimeProvider`, build orchestration, routing, certificates, and app lifecycle contracts (§3.4, §3.5, §5.3, §5.5, §6.13). Its distinguishing rules are:
 
-What makes it global, not just another app:
+- Its reserved id, name, and slug are `global`; `AppRef.kind` is `global`.
+- Its root is `<userDataRoot>/global/`, owned by Lando.
+- Plugins contribute services through `globalServices:`; user overrides remain layered through the Landofile.
+- Required services auto-start through `AppFeature.requires.globalServices`.
+- Providers with `sharedCrossAppNetwork` expose services at `<service>.global.internal` and through the `LANDO_GLOBAL_*` environment family (§5.4, §6.9, §10.1).
+- `apps:poweroff` stops it unless `--keep-global` is set. Destroying one user app MUST NOT affect it.
+- `scope: global` storage survives user-app and global-app destruction under §6.5 and §20.9.
 
-- **Reserved identity.** The id `global` is reserved by core (§20.2). Users cannot name a project `global`.
-- **Lando-owned Landofile.** The global Landofile lives at `<userDataRoot>/global/.lando.yml` (§20.3). The canonical layer is plugin-contributed and Lando-managed; the `local` and `user` layers remain available for user override.
-- **Plugin contribution surface.** A new `globalServices:` manifest entry (§4.2 row, §20.4) lets a plugin contribute a service definition that materializes into the global Landofile's plugin-contributed `dist` layer at level `plugins`.
-- **Cross-app discovery.** The provider's `sharedCrossAppNetwork` capability (§5.4, §10.1) makes `<service>.global.internal` resolve from inside every user-app service. `LANDO_GLOBAL_*` env variables (§6.9) surface the resolved hosts and ports in every user-app service that needs them.
-- **Auto-start via `AppFeature.requires.globalServices`.** A user app's `AppFeature` activation (§6.11.4) declares which global services it depends on; the planner ensures those services are running before `app:start` proceeds (§20.6.3).
-- **Lifetime decoupled from any one user app.** `apps:poweroff` stops the global app by default (`--keep-global` opts out, §20.7); `app:destroy` of any single user app does **not** touch the global app.
-- **Survives `app:destroy`.** Storage at `scope: global` (§6.5) inside global services persists across user-app destroy operations exactly as today; the global app simply makes this scope first-class instead of implicit.
-
-What the global app is **not**:
-
-- Not a daemon. The global app runs services through the active `RuntimeProvider`; Lando itself remains transactional. The deferred persistent agent (§14.2) is a separate concept that may, post-v4.0, hold a warm runtime *for the CLI* — orthogonal to the global app's *services*.
-- Not a multiplexer for user-app services. Plugins MAY contribute *new* services to the global app; they MUST NOT promote a user-defined service into it.
-- Not a replacement for `RouterService` or `CertificateAuthority`. Those abstractions still exist in §4.2; their default Live Layers (§20.10) now realize their work *through* a service in the global app.
+The global app is not a daemon, a place to promote user-defined services, or a replacement for `RouterService` or `CertificateAuthority`. The persistent agent remains deferred (§14.2). Plugins MAY contribute new global services but MUST NOT promote a user service into the global app.
 
 ### 20.2 Identity
 
-| Field | Value | Notes |
-|---|---|---|
-| `name` | `global` | Reserved literal in the Landofile schema (§7.4); user apps named `global` fail at slug derivation with `AppIdReservedError`. |
-| `slug` | `global` | Identical to `name`; no normalization step. |
-| `<app-id>` | `global` | Used in cache paths, env vars, provider labels. |
-| App root | `<userDataRoot>/global/` | Lando-owned data, not user config (§20.3). |
-| Provider | The active default provider | Resolved from global config `defaultProvider:` (§7.5). The global app does not support per-app provider override in v4.0; mixing providers across the host is deferred. |
+| Field | Contract |
+|---|---|
+| `AppRef.kind` | `global` |
+| `name`, `slug`, id | Reserved literal `global` |
+| Root | `<userDataRoot>/global/` |
+| Provider | Active default provider from global config; per-app and cross-provider overrides are deferred (§5.9). |
 
-The `LANDO_*` env contract (§6.9) reserves the namespace `LANDO_GLOBAL_*` for cross-app discovery; service-types and `AppFeature` implementations populate it. Inside the global app's *own* services, `LANDO_APP_NAME` and `LANDO_PROJECT` are literally `global`.
-
-A user-authored Landofile that resolves to `name: global` is rejected at parse time:
-
-```ts
-export class AppIdReservedError extends Schema.TaggedError<AppIdReservedError>()(
-  "AppIdReservedError",
-  { reserved: Schema.String, suggested: Schema.optional(Schema.String) },
-) {}
-```
-
-The error includes `reserved: "global"` and a remediation telling the user to choose a different `name:`. A user app whose directory basename normalizes to `global` is instructed to set an explicit `name:` per the §7.4 collision policy.
+User-authored Landofiles resolving to `global`, including normalized directory names, fail with `AppIdReservedError` and remediation to choose an explicit different name. Inside global services, `LANDO_APP_NAME` and `LANDO_PROJECT` are `global`; `LANDO_GLOBAL_*` is reserved for cross-app discovery.
 
 ### 20.3 The global Landofile
 
-The global app's Landofile lives at `<userDataRoot>/global/.lando.yml`. The directory acts as the global app's root and follows the §7.2 six-file merge order:
+The global Landofile is `<userDataRoot>/global/.lando.yml` and follows the six-layer merge order in §7.2. `<userDataRoot>/global/.lando.dist.yml` is the generated plugin layer; users MUST NOT edit it. `GlobalAppService.regenerateDist` is its single writer and overwrites edits. The canonical `.lando.yml` is user-editable, while `.lando.local.yml` and `.lando.user.yml` retain their standard override roles.
 
-```text
-1. <userDataRoot>/global/.lando.base.yml         [advanced]
-2. <userDataRoot>/global/.lando.dist.yml          first-class — generated from plugin contributions
-3. <userDataRoot>/global/.lando.upstream.yml     [advanced]
-4. <userDataRoot>/global/.lando.yml               first-class — user-editable
-5. <userDataRoot>/global/.lando.local.yml         first-class — per-host overrides
-6. <userDataRoot>/global/.lando.user.yml         [advanced]
-```
-
-Layer responsibilities differ from a user app:
-
-- **`.lando.dist.yml` is generated.** `GlobalAppService` (§20.5) regenerates this layer at level `plugins` from the registered `globalServices:` contributions plus the `enabled:` map in `<userConfRoot>/global.config.yml` (§20.3.1). Users MUST NOT edit it; an edit is overwritten on the next `meta:global:rebuild` and `meta:global:install/uninstall`. The file carries a `# DO NOT EDIT — regenerated by Lando` header.
-- **`.lando.yml` is user-editable.** Users layer customization here — bumping a service version, adding `routes:`, overriding `appMount:`, contributing extra services that aren't from a plugin. Edited via `meta:global:config edit` (§20.7).
-- **`.lando.local.yml` and `.lando.user.yml`** behave the same as user-app layers (per-host, per-user advanced overrides).
-
-The directory is created on demand by `meta:setup` (which calls `GlobalAppService.ensureRoot`); a fresh install with no plugins contributing global services yields a directory containing only the `.lando.dist.yml` file with `name: global` and an empty `services: {}`. The `.lando.yml` canonical file is created lazily on first `meta:global:config set` / `edit` and is empty (`{}`) if no user overrides are present.
+The root is created on demand. With no contributions, the generated layer names the app `global` and has no services; the canonical file is created only when a user override is written.
 
 #### 20.3.1 The plugin enablement map
 
-`<userConfRoot>/global.config.yml` is a small YAML file that lets the user enable or disable individual `globalServices:` contributions without editing the generated `dist` layer:
+`<userConfRoot>/global.config.yml` stores only the enabled state of each contribution.
 
-```yaml
-# <userConfRoot>/global.config.yml
-mailpit:        { enabled: true }
-traefik:        { enabled: true }
-experimental-x: { enabled: false }
-```
-
-Behaviors:
-
-- A `globalServices:` contribution declares `enabledByDefault: true|false` (§20.4). The default is `true`. A user override in `global.config.yml` wins.
-- `meta:global:install <plugin>` toggles `enabled: true` for every contribution that plugin owns; `meta:global:uninstall <plugin>` toggles `enabled: false`. The commands edit `global.config.yml`, never the generated layer.
-- A disabled service is omitted from the generated `.lando.dist.yml` entirely. Disabled is *not* "stopped but plan-resident": the service is removed from the plan, its volumes (at `scope: global`) survive per the §6.5 contract, and re-enabling later picks up the existing volumes.
-- Per-service config overlays (`mailpit: { config: { storage: persistent } }`) live in `.lando.yml`, not `global.config.yml`. The map's responsibility is *only* on/off.
+- `enabledByDefault` defaults to `true`; an explicit user value wins.
+- `meta:global:install` enables all contributions owned by the selected plugin, and `meta:global:uninstall` disables them.
+- Disabled services are omitted from the generated plan. Their `scope: global` volumes survive and are reused if re-enabled.
+- Service configuration belongs in `<userDataRoot>/global/.lando.yml`, not the enablement map.
 
 #### 20.3.2 Discovery rules
 
-The global app's directory is **not** discoverable through the §7.1 cwd walk or the `cwd-app-map` cache (§12.1). A user `cd`-ing into `<userDataRoot>/global/` does NOT make `lando start` start the global app as if it were the current user app. The discovery rule is:
-
-- `app:*` commands resolve the current user app via the standard discovery path; `<userDataRoot>/global/` is excluded by an exact-path filter in `LandofileService` and the `cwd-app-map` writer.
-- `meta:global:*` commands resolve the global app explicitly through `GlobalAppService` (§20.5); they do not consult the discovery walk.
-- `apps:list` lists user apps; `apps:list --include-global` includes the global app at the end of the listing.
-- `meta:events:follow` (§8.2) carries a synthetic `app: { id: "global", root: <abs> }` ref on every payload sourced from the global app's lifecycle.
-
-This keeps the user mental model clean: `lando start` always means "this project," `lando meta global start` (or `lando global start`) always means "the cross-cutting services."
+`<userDataRoot>/global/` MUST be excluded from cwd discovery and `cwd-app-map` (§7.1, §12.1). `app:*` commands resolve only user apps; `meta:global:*` resolves the global app explicitly through `GlobalAppService`. `apps:list` excludes it unless `--include-global` or `--all` is set. Global lifecycle payloads carry `AppRef { kind: "global", id: "global", root }`.
 
 ### 20.4 The `globalServices:` plugin contribution surface
 
-`globalServices:` is the manifest field that lets a plugin contribute a service to the global app's generated `dist` layer.
+`globalServices:` is the manifest surface for materializing plugin-owned services into the generated global Landofile.
 
-```yaml
-# Plugin manifest excerpt
-provides:
-  globalServices:
-    - id: mailpit                                # service id inside the global Landofile
-      module: ./src/global-services/mailpit.ts  # Effect that returns a ServiceConfig
-      enabledByDefault: true
-      requires:
-        providerCapabilities: [sharedCrossAppNetwork]
-      conflicts: []
-      summary: SMTP capture server with web UI
-      commands:                                  # canonical ids of plugin-contributed commands that operate on this service
-        - meta:mail:open                         # surfaced in `meta:global:list` so users discover them
-        - meta:mail:clear
-```
+| Field | Contract |
+|---|---|
+| `id` | Required service id, globally unique across loaded plugins. Collision raises `GlobalServiceCollisionError`. |
+| `module` | Required contained plugin module that returns a `ServiceConfig` through `GlobalServiceContext`. It MUST NOT consume the active provider. |
+| `enabledByDefault` | Optional, default `true`; seeds enablement only on first install. |
+| `requires.providerCapabilities` | Optional required capabilities. Unsatisfied requirements block materialization with `GlobalServiceCapabilityError`. Cross-app DNS services require `sharedCrossAppNetwork`. |
+| `conflicts` | Optional incompatible global service ids; enabled conflicts raise `GlobalServiceConflictError`. |
+| `summary` | Optional catalog description. |
+| `commands` | Optional canonical command ids for discovery. Each id MUST also exist in that plugin's `provides.commands`; ids remain in their declared namespace and MUST NOT move under `meta:global:*`. |
+| `deprecated` | Optional `DeprecationNotice` recorded under §18. |
 
-Field semantics:
-
-| Field | Required | Meaning |
-|---|---|---|
-| `id` | yes | The service id inside the global Landofile (`services.<id>`). MUST be unique across every loaded plugin's `globalServices:` contributions; conflicts fail at plugin load with `GlobalServiceCollisionError`. |
-| `module` | yes | Path (per the §9.7 module-path containment rules) to a TypeScript module that default-exports an Effect returning a `ServiceConfig` (§6.2). The Effect MAY consume `LandoPluginContext` (§9.8) and the resolved plugin config; it MUST NOT consume the active `RuntimeProvider`. |
-| `enabledByDefault` | optional, default `true` | Initial value in `global.config.yml` (§20.3.1) when the plugin is first installed. Subsequent edits are user-owned. |
-| `requires.providerCapabilities` | optional | A list of `ProviderCapabilities` keys (§5.4) the contributed service depends on. The planner refuses to materialize the service into the `dist` layer when the active provider does not satisfy the list; the user gets `GlobalServiceCapabilityError` with remediation pointing at provider selection or `--keep-global` operation. `sharedCrossAppNetwork` is required for any service whose value is its DNS-discoverability across user apps; in practice almost every globalService declares it. |
-| `conflicts` | optional | A list of other `globalServices.id` values that cannot coexist in the same global app. The classic case: two SMTP capture services. Conflicts surface at the `dist` regenerate step with `GlobalServiceConflictError` and remediation suggesting `meta:global:uninstall <name>`. |
-| `summary` | optional | One-line description for `meta:global:list`/`info`. |
-| `commands` | optional | List of canonical command ids (`<namespace>:<segments…>`) the plugin contributes that operate on this global service. The ids MUST also appear in the plugin's `provides.commands` block (§9.4) — `commands:` here is a discoverability pointer, not a separate registration. `meta:global:list` (§20.7) renders these alongside the service entry so users learn the plugin's per-service tooling without reading the plugin README. The canonical ids stay under their original namespace (typically `meta:<plugin-cspace>:*` or the plugin's own cspace topic); they do NOT move under `meta:global:*`, which is reserved for core (§20.14). |
-| `deprecated` | optional | A `DeprecationNotice` (§18.2) attached to this contribution. Recorded by `DeprecationService` (§18.3) at install. |
-
-**The contributed module shape:**
-
-```ts
-// Plugin-side
-import { Effect } from "effect";
-import type { ServiceConfig, GlobalServiceContext } from "@lando/sdk";
-
-export default Effect.gen(function* () {
-  const ctx = yield* GlobalServiceContext;          // typed access to LandoPluginContext + plugin config
-  return {
-    api: 4,
-    type: "mailpit",                                 // resolves through the standard ServiceType registry
-    routes: [{ hostname: `mailpit.${ctx.domain}` }], // ctx.domain == resolved global `domain:`
-    storage: [{ scope: "global", destination: "/data" }],
-    healthcheck: "wget -qO- http://localhost:8025/api/v1/info | grep -q Version",
-  } satisfies ServiceConfig;
-});
-```
-
-Required behaviors:
-
-- The module's Effect runs at level `plugins` during `dist` regeneration. It MUST be pure relative to the global app's persistent state — no provider contact, no socket binds, no `Bun.spawn`. The same purity rules apply that govern Landofile expression evaluation (§7.3.1).
-- The returned `ServiceConfig` is validated against the canonical service schema (§6.2) before insertion into the `dist` layer; validation failure surfaces as `GlobalServiceConfigError` with the offending plugin id, contribution id, and the schema diagnostic.
-- `module:` paths follow the §9.7 plugin module-path containment rules.
-- Plugins MUST NOT register a `globalServices:` entry whose `id` shadows a user-app service id with the same `<service>.<app>.internal` pattern (because both would compete for `mailpit.global.internal` if a user app named `global` existed; §20.2 disallows that anyway, but the validator keeps a defense-in-depth check).
-- A plugin contributing a `globalServices:` entry MUST also publish a `ServiceType` for the service's `type:` value (the `mailpit` example above relies on a `mailpit` type also contributed by the same or another plugin). The validator rejects a contribution whose `type:` is unknown at plugin load.
-- A plugin MAY pair a `globalServices:` contribution with one or more `appFeatures:` (§6.11.4) that select user-app services and inject env pointing at the global service. This is the canonical pattern (§20.11) and is what makes the user's PHP app automatically discover Mailpit without Landofile changes.
+Contribution evaluation follows the purity and module-containment rules of §7.3.1 and §9.7. It MUST NOT contact providers, bind sockets, or spawn processes. Returned services are schema-validated. Each contribution MUST reference a registered `ServiceType`; unknown types fail plugin registration. Contributions MUST NOT create an identity that could shadow global-app addressing. A plugin MAY pair a contribution with `appFeatures:` that inject user-app environment through `AppFeature.apply()`.
 
 ### 20.5 `GlobalAppService` core service
 
-```ts
-export class GlobalAppService extends Context.Service<GlobalAppService, {
-  readonly id: "global";
+`GlobalAppService` owns the `global` identity and root, generated-layer reconciliation, planning, lifecycle operations, service-scoped `ensureRunning`, contribution enablement, and runtime information. It reuses the retained provider connection and the standard Landofile, planner, build, routing, and certificate services.
 
-  // Path management
-  readonly root:       Effect.Effect<AbsolutePath, GlobalAppError>;
-  readonly ensureRoot: Effect.Effect<void, GlobalAppError, Scope.Scope>;
+Required behavior:
 
-  // Plan + lifecycle
-  readonly regenerateDist: Effect.Effect<GlobalAppDistResult, GlobalAppError>;
-  readonly plan:           Effect.Effect<AppPlan, GlobalAppError>;
-  readonly start:    (opts?: GlobalStartOptions)    => Effect.Effect<GlobalAppStatus, GlobalAppError, Scope.Scope>;
-  readonly stop:     (opts?: GlobalStopOptions)     => Effect.Effect<void, GlobalAppError>;
-  readonly rebuild:  (opts?: GlobalRebuildOptions)  => Effect.Effect<GlobalAppStatus, GlobalAppError, Scope.Scope>;
-  readonly destroy:  (opts?: GlobalDestroyOptions)  => Effect.Effect<void, GlobalAppError>;
-  readonly info:     (opts?: GlobalInfoOptions)     => Effect.Effect<ReadonlyArray<ServiceInfo>, GlobalAppError>;
-
-  // Auto-start orchestration (called by AppPlanner; §20.6.3)
-  readonly ensureRunning: (services: ReadonlyArray<string>) => Effect.Effect<void, GlobalAppError, Scope.Scope>;
-
-  // Plugin enablement (drives §20.3.1 map writes)
-  readonly install:   (pluginName: string)               => Effect.Effect<void, GlobalAppError>;
-  readonly uninstall: (pluginName: string)               => Effect.Effect<void, GlobalAppError>;
-  readonly setServiceEnabled: (id: string, on: boolean)  => Effect.Effect<void, GlobalAppError>;
-}>()("@lando/core/GlobalAppService") {}
-```
-
-Required behaviors:
-
-- **Bootstrap level:** the service is a member of the AOT-composed `global` bootstrap layer (§20.6, §3.4 membership table). Library-mode hosts MAY construct it directly via `makeLandoRuntime({ bootstrapLevel: "global" })` (§16.3).
-- **`Layer.suspend`-wrapped.** Constructing the runtime at level `app` (or higher) does NOT instantiate `GlobalAppService` until something actually requests it. A `lando info` against an already-running user app whose `AppFeature` activations happen to require no global services pays zero `GlobalAppService` cost.
-- **One retained provider connection.** Like every other `RuntimeProvider` consumer, `GlobalAppService` reuses the active provider's connection (the same one user apps use); it does not open a second connection.
-- **Idempotent `start`/`ensureRunning`.** Calling `start` against an already-running global app reconciles the plan against the running state and reports any drift; `ensureRunning` is the same idempotent semantics scoped to the requested service ids only.
-- **`regenerateDist` is the single writer of `.lando.dist.yml`.** Manifest validation, contribution-module evaluation, conflict detection, capability checks, schema validation of every emitted service, and atomic write all happen here. Other code paths read the file but never write it.
-- **Errors are tagged.** `GlobalServiceCollisionError`, `GlobalServiceCapabilityError`, `GlobalServiceConflictError`, `GlobalServiceConfigError`, `GlobalServiceUnknownTypeError`, `AppIdReservedError`, plus the umbrella `GlobalAppError` for state transitions.
-
-`GlobalAppService` reuses every existing core service: `LandofileService` for parse/merge, `AppPlanner` for plan derivation, `BuildOrchestrator` for build, `RouterService` and `CertificateAuthority` for routing/certs (with the §20.10 caveat that `RouterService`'s default Live Layer is *itself* realized by a global service). Treating the global app as "just an app" with one extra orchestrator on top is the design's north star.
+- The service belongs to the `global` bootstrap level and is lazy when included by higher levels.
+- `start` and `ensureRunning` are idempotent and reconcile drift. `ensureRunning` limits work to requested service ids.
+- `regenerateDist` is the single writer for `.lando.dist.yml` and performs contribution validation, conflicts, capability checks, service-schema validation, and atomic replacement.
+- Failures are tagged as listed in §20.13.
 
 ### 20.6 Lifecycle
 
 #### 20.6.1 The `global` bootstrap level
 
-A new `global` bootstrap level slots between `provider` and `app` in the §3.2 ladder:
+`global` sits between `provider` and `app` in the §3.2 ladder. It eagerly adds `GlobalAppService` and lazily adds the global app's planner, `BuildOrchestrator`, `HealthcheckRunner`, `UrlScanner`, and `HostProxyService` when the plan requires them. The `app` level includes lazy access to `GlobalAppService` for auto-start.
 
-| Level | Adds | Used by |
-|---|---|---|
-| `provider` | (unchanged) | `meta:setup`, `apps:poweroff`, `apps:list --all` |
-| **`global`** | `GlobalAppService` (eager); `AppPlanner` constructed in single-app form bound to the global Landofile; `BuildOrchestrator` (lazy via `Layer.suspend`) | `meta:global:start`, `meta:global:stop`, `meta:global:info`, `meta:global:logs`, `meta:global:rebuild`, `meta:global:destroy`, `meta:global:install`, `meta:global:uninstall` |
-| `app` | (unchanged) `AppPlanner`, `LandofileService` for the user app | `app:start`, `app:stop`, etc. |
+`bootstrap: global` is a valid `LandoCommandSpec` value. Plugins MAY use it for commands in their own namespaces; `meta:global:*` remains reserved for core.
 
-Service-membership-per-bootstrap-level addendum to §3.4:
-
-| Level | Eager additions | Lazy additions |
-|---|---|---|
-| `global` | `GlobalAppService` | `BuildOrchestrator`, `HealthcheckRunner`, `UrlScanner`, `HostProxyService` (only if the global app's plan declares the `lando.host-proxy` feature on a global service — uncommon) |
-
-`app` bootstrap *includes* `global` because user-app start needs `GlobalAppService.ensureRunning` available. The standard `lando start` path therefore initializes `GlobalAppService` even when no `AppFeature` activations require a global service; the cost is bounded by `Layer.suspend` — `regenerateDist` and `plan` are not called unless `ensureRunning` actually needs to start something.
-
-**`bootstrap: global` on a `LandoCommandSpec`** is a new value in the §8.3 enum. Plugins MAY use it for commands under their own namespace or cspace topic that operate on the global app through `GlobalAppService`; `meta:global:*` canonical ids remain reserved for core (§20.7, §20.14).
+Library hosts MAY request this level through `makeLandoRuntime({ bootstrapLevel: "global" })` (§16.3).
 
 #### 20.6.2 Lifecycle event scope
 
-A new **`Global`** scope joins the §3.5 event taxonomy:
+The `Global` scope extends §3.5 with every event below:
 
-| Scope | Standard events |
+| Operation | Events |
 |---|---|
-| Global | `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-global-rebuild`, `post-global-rebuild`, `pre-global-destroy`, `post-global-destroy`, `pre-global-dist-regenerate`, `post-global-dist-regenerate` |
+| Start | `pre-global-start`, `post-global-start` |
+| Stop | `pre-global-stop`, `post-global-stop` |
+| Rebuild | `pre-global-rebuild`, `post-global-rebuild` |
+| Destroy | `pre-global-destroy`, `post-global-destroy` |
+| Generated layer | `pre-global-dist-regenerate`, `post-global-dist-regenerate` |
 
-Events follow the same shape as the App scope and use canonical command ids on the CLI side (`cli-meta:global:start-init`, `-run`, `-error`). Payload schemas mirror the App scope's:
+Start payloads carry the global `AppRef`, plan, trigger, requested service ids, cache status, and timestamp. `pre-global-start` and `post-global-start` MUST fire for every successful `ensureRunning`, including warm no-op checks. Warm checks set `cached: true` and MUST NOT regenerate, contact the provider, or emit a global build block. Explicit `meta:global:start` is never marked cached. On failure, `post-global-start` does not fire.
 
-```ts
-export const PreGlobalStartEvent = Schema.TaggedStruct("pre-global-start", {
-  app: AppRef,                                         // id is literally "global"
-  plan: AppPlan,
-  triggeredBy: Schema.Union(
-    Schema.Literal("meta:global:start"),
-    Schema.Literal("apps:poweroff"),
-    Schema.Literal("ensure-running"),                  // auto-start from a user-app dependency
-    Schema.Literal("meta:setup"),
-  ),
-  ensuringServices: Schema.Array(Schema.String),       // services this invocation is checking; empty when not ensure-running
-  cached: Schema.Boolean,                              // true iff every service in ensuringServices was already running+healthy and no work was performed
-  timestamp: Schema.DateTimeUtc,
-});
-export type PreGlobalStartEvent = Schema.Schema.Type<typeof PreGlobalStartEvent>;
-```
-
-**Always-emit semantics.** `pre-global-start` and `post-global-start` MUST fire for every `GlobalAppService.ensureRunning` invocation, including the warm-cache case where every needed service is already running and healthy. The warm case fires with `cached: true` and the `ensuringServices` array still populated so subscribers see *what was checked*; the body of the orchestration is a fast no-op (no `regenerateDist`, no provider contact, no `pre-build` event scope). Suppressing the events on the warm path was rejected because (a) the §11.1 zero-subscriber short-circuit makes publishing essentially free when nothing is listening, (b) telemetry, audit, and executable-guide scenario transcripts need a predictable "every user-app start emits exactly this sequence" contract, and (c) consistency with the App scope, where `pre-start` always fires whether services are warm or cold. Subscribers that want to act only on cold-path starts gate their work on `event.cached === false`. Manual invocations from `meta:global:start` (no `triggeredBy: "ensure-running"`) always fire with `cached: false` because the user explicitly asked for the orchestration to run.
-
-`pre-/post-global-dist-regenerate` carry the contribution diff:
-
-```ts
-export const PreGlobalDistRegenerateEvent = Schema.TaggedStruct("pre-global-dist-regenerate", {
-  triggeredBy: Schema.Union(
-    Schema.Literal("plugin-install"),
-    Schema.Literal("plugin-remove"),
-    Schema.Literal("plugin-update"),
-    Schema.Literal("meta:global:install"),
-    Schema.Literal("meta:global:uninstall"),
-    Schema.Literal("config-edit"),
-    Schema.Literal("setup"),
-  ),
-  contributions: Schema.Array(Schema.Struct({
-    plugin: Schema.String,
-    id:     Schema.String,
-    enabled: Schema.Boolean,
-    capabilitiesSatisfied: Schema.Boolean,
-  })),
-  timestamp: Schema.DateTimeUtc,
-});
-```
-
-The `Build` event scope (§3.5, §6.13) fires inside the global app's start path exactly as it does for user apps, so global service builds get the same task-tree UI (§8.9.2), the same per-step transcripts (§12.4 — written under `<userDataRoot>/builds/global/...`), and the same `buildKey` up-to-date check (§6.13.5).
+Generated-layer events carry the trigger, contribution identities, enablement, capability verdicts, and timestamp. Standard Build-scope events and transcript contracts apply when global services build (§6.13, §12.4).
 
 #### 20.6.3 Auto-start integration with user apps
 
-When a user runs `app:start` for a user app, the planner walks the resolved plan's active `AppFeature` activations. Each feature's manifest MAY declare:
+`AppFeature.requires.globalServices` is the only v4.0 dependency declaration for global services. During user-app `pre-start`, after early subscribers and before user-app build, the planner aggregates required ids and calls `GlobalAppService.ensureRunning`.
 
-```ts
-// In the app-feature manifest entry (§6.11.4)
-export interface AppFeatureDefinition {
-  // ...existing fields
-  readonly requires?: {
-    readonly providerCapabilities?: ReadonlyArray<keyof ProviderCapabilities>;
-    readonly globalServices?: ReadonlyArray<string>;     // ids of global-app services this feature needs
-  };
-}
-```
+- A healthy set emits the start pair with `cached: true` and proceeds without provider work.
+- A cold or unhealthy set starts the required services with `cached: false` before user-app build.
+- A required id absent from the resolved global plan emits `pre-global-start`, fails with `GlobalServiceMissingError`, aborts user-app start, and MUST NOT emit `post-global-start`.
 
-The planner aggregates `requires.globalServices` across every activated `AppFeature` for the current user app and yields a `ReadonlySet<string>` of needed global service ids. During the user app's `pre-start` phase, after early `pre-start` subscribers and before the user-app build block, the lifecycle orchestrator calls `GlobalAppService.ensureRunning(needed)`:
-
-- `ensureRunning` ALWAYS publishes `pre-global-start` and `post-global-start` (§20.6.2) regardless of warm/cold state, so subscribers get a predictable per-start signal; the events carry `ensuringServices: needed` and `triggeredBy: "ensure-running"`.
-- If the global app is already running and every needed service is `running`+`healthy`, the events fire with `cached: true` and the user-app `pre-start` proceeds immediately. No `regenerateDist`, no provider contact, no `pre-build` block fires inside `pre-global-start`.
-- If the global app is not running (or any needed service is not yet healthy), `ensureRunning` triggers a `start({ services: needed })` and the events fire with `cached: false`. The user-facing renderer surfaces a "Starting global services for <app>" task tree alongside the user app's start; a `pre-build` block fires inside `pre-global-start` only when the global app's `BuildOrchestrator` finds a build step that's not up-to-date.
-- If a needed service is not in the resolved global plan (the user disabled it, or the plugin contributing it is not installed), `ensureRunning` publishes `pre-global-start` then fails with `GlobalServiceMissingError`; the user-app `pre-start` aborts with remediation pointing at `meta:global:install <plugin>`. `post-global-start` does NOT fire on this failure path; instead `cli-app:start-error` carries the underlying `GlobalServiceMissingError`.
-
-The dependency is **transitive** through `AppFeature.requires.globalServices` only. There is no Landofile syntax for a user to directly declare "my app needs `global:mailpit`" — the contract goes through `AppFeature` activations. This keeps the user mental model one-way: the user installs a plugin, the plugin's feature activates and injects env, the user's app gets the service for free. (§14.2 lists the explicit-`dependsOn` escape hatch as deferred.)
+Direct Landofile `dependsOn` syntax remains deferred (§14.2).
 
 #### 20.6.4 Standard event sequence
 
-Cold `lando start` against a user app whose plan requires `global:mailpit` and `global:traefik` (cold = neither service running yet):
-
-```text
-… (bootstrap-minimal..bootstrap-app per §11.4)
-post-bootstrap
-ready
-cli-app:start-init
-pre-init
-post-init
-pre-start
-  pre-global-start { triggeredBy: "ensure-running", ensuringServices: ["mailpit", "traefik"], cached: false }
-    pre-build (global)         (only fires when at least one service has a non-cached build step)
-      …                                                                 (per §6.13)
-    post-build (global)
-    post-global-start { cached: false }
-  pre-build (user-app)
-    …
-  post-build (user-app)
-post-start
-…
-cli-app:start-run
-before-exit
-```
-
-Warm `lando start` against the same user app, with both global services already running and healthy:
-
-```text
-… (bootstrap-minimal..bootstrap-app per §11.4)
-post-bootstrap
-ready
-cli-app:start-init
-pre-init
-post-init
-pre-start
-  pre-global-start { triggeredBy: "ensure-running", ensuringServices: ["mailpit", "traefik"], cached: true }
-  post-global-start { cached: true }                                    (no pre-build/post-build inside)
-  pre-build (user-app)
-    …
-  post-build (user-app)
-post-start
-…
-cli-app:start-run
-before-exit
-```
-
-The `pre-global-start` … `post-global-start` block ALWAYS fires inside `pre-start` (§20.6.2 always-emit semantics). The `cached:` field on the payload distinguishes warm and cold; when `cached: true`, no `pre-build` block fires inside the pair and the body is a fast no-op. Subscribers that need to react before the global app starts cold (e.g., a custom observability sidecar) register at `pre-start` priority `early` and gate their work on `event.cached === false`; subscribers that react after the global app is ready and before the user-app build register at `pre-start` priority `default`.
-
-`apps:poweroff` (default behavior — stop everything):
-
-```text
-cli-apps:poweroff-init
-  pre-stop (foo)
-    …
-  post-stop (foo)
-  pre-stop (bar)
-    …
-  post-stop (bar)
-  pre-global-stop { triggeredBy: "apps:poweroff" }
-    …
-  post-global-stop
-cli-apps:poweroff-run
-```
-
-`apps:poweroff --keep-global` skips the `pre-global-stop` block and reports "kept global app running" in the renderer's final summary.
+The global start event pair is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
 
 ### 20.7 CLI surface (`meta:global:*`)
 
-The global app gets its own CLI subtree under the `meta:` namespace. Default top-level aliases use the `global:` prefix so they don't shadow the user-app aliases (`start`, `stop`, etc.) that operate on the current project.
-
-| Canonical id | Default top-level alias | Bootstrap | Summary |
+| Canonical id | Alias | Bootstrap | Contract |
 |---|---|---|---|
-| `meta:global:config` | `global:config` | `minimal` | Read/write the global Landofile (`<userDataRoot>/global/.lando.yml`) and the plugin enablement map. Mirrors `app:config` (§8.2.1). |
-| `meta:global:destroy` | `global:destroy` | `global` | Stop and tear down the global app's services and resources. Storage at `scope: global` survives unless `--purge` is passed. Requires confirmation unless `--yes`. |
-| `meta:global:info` | `global:info` | `global` | Print global service runtime information. Supports `--service`, `--format`. |
-| `meta:global:install` | `global:install` | `global` | Enable every `globalServices:` contribution from a named plugin (writes `global.config.yml`, regenerates `dist`, no service start). Pair with `meta:global:start` to bring up the new services. |
-| `meta:global:list` | `global:list` | `minimal` | List every contributed global service with its `enabled:`/`blocked` catalog state, source plugin, and the canonical ids of plugin-contributed commands that operate on it (declared via the `commands:` field on the `globalServices:` contribution; §20.4). This is a discovery surface: it runs at `minimal` bootstrap and reports catalog availability (`enabled`/`disabled`/`blocked`), never a live container status — live per-service runtime status is `meta:global:status`. It gives users a discoverability surface for per-service tooling without reading each plugin's README. |
-| `meta:global:logs` | `global:logs` | `global` | Stream global service logs. Supports `--service`, `--follow`, `--tail`, `--since`. Mirrors `app:logs` (§8.2). |
-| `meta:global:rebuild` | `global:rebuild` | `global` | Stop, rebuild artifacts, and restart global services. Same up-to-date-check semantics as `app:rebuild` (§6.13.5). |
-| `meta:global:restart` | `global:restart` | `global` | `meta:global:stop` + `meta:global:start`. |
-| `meta:global:start` | `global:start` | `global` | Start the global app. Without `--service`, starts every enabled service; with `--service <id>` (repeatable), starts a subset. |
-| `meta:global:stop` | `global:stop` | `global` | Stop the global app's services. Without `--service`, stops every running service. |
-| `meta:global:uninstall` | `global:uninstall` | `global` | Disable every `globalServices:` contribution from a named plugin (writes `global.config.yml`, regenerates `dist`, stops affected services). |
+| `meta:global:config` | `global:config` | `minimal` | Read or write the canonical global Landofile and enablement map. The generated layer is read-only. |
+| `meta:global:destroy` | `global:destroy` | `global` | Destroy services and resources; requires confirmation unless `--yes`. `--purge` follows §20.9. |
+| `meta:global:info` | `global:info` | `global` | Report service information; supports `--service` and `--format`. |
+| `meta:global:install` | `global:install` | `global` | Enable a plugin's contributions and regenerate without starting. |
+| `meta:global:list` | `global:list` | `minimal` | Report catalog state, source plugin, and declared command ids. JSON is the canonical machine shape. |
+| `meta:global:logs` | `global:logs` | `global` | Stream logs with standard service, follow, tail, and since filters. |
+| `meta:global:rebuild` | `global:rebuild` | `global` | Stop, rebuild, and restart with §6.13 up-to-date semantics. |
+| `meta:global:restart` | `global:restart` | `global` | Stop then start. |
+| `meta:global:start` | `global:start` | `global` | Start all enabled services or repeated `--service` selections. |
+| `meta:global:status` | `global:status` | `global` | Report live runtime status. |
+| `meta:global:stop` | `global:stop` | `global` | Stop all running services or selected services. |
+| `meta:global:uninstall` | `global:uninstall` | `global` | Disable a plugin's contributions, regenerate, and stop affected services. |
 
-Example `meta:global:list` output:
-
-```text
-SERVICE   STATE     PLUGIN                      COMMANDS
-mailpit   enabled   @lando/service-mailpit      mail:open, mail:clear
-traefik   enabled   @lando/proxy-traefik        traefik:reload, traefik:logs
-```
-
-The STATE column is the contribution's catalog availability (`enabled`/`disabled`/`blocked`), not a live container status; run `meta:global:status` for live per-service runtime state. The COMMANDS column lists the canonical id for each entry declared in the contribution's `commands:` field; `meta:global:list --format json` returns the canonical ids unchanged so embedding hosts and CI scripts get an unambiguous shape.
-
-Behavioral requirements:
-
-- `meta:global:start` (and the auto-start path) refuses to run when `<userDataRoot>/global/.lando.dist.yml` is missing and there are no contributions to materialize; the user is told to run `meta:setup` or install at least one plugin that contributes a global service.
-- `meta:global:list --format json` is the canonical machine-readable shape of "what's available in the global app on this host"; embedding hosts and CI scripts MUST use it instead of parsing the rendered table.
-- `meta:global:install <plugin>` and `meta:global:uninstall <plugin>` accept either the plugin's package name (`@lando/service-mailpit`) or any of its `globalServices.id` values (`mailpit`, `traefik`). Disambiguation: if multiple plugins contribute the same id (caught at load with `GlobalServiceCollisionError`), the install/uninstall command refuses with remediation listing both plugins.
-- `meta:global:config` follows the `app:config` semantics in §8.2.1 with one substitution: writes target `<userDataRoot>/global/.lando.yml` (the user-editable canonical layer). The `.lando.dist.yml` layer is read-only from this command — `meta:global:config edit --target dist` is rejected with `GlobalDistReadOnlyError` and remediation pointing at the contributing plugin's manifest.
-
-The `apps:poweroff` flag list (§8.2) is amended:
-
-```text
-lando apps poweroff [--keep-global] [--yes]
-```
-
-`--keep-global` suppresses the trailing `pre-global-stop`…`post-global-stop` block. The CLI help spells the default explicitly: "Stops every Lando-managed service across user apps and the global app. Use `--keep-global` to leave the global app's services running."
+`meta:global:start` and auto-start refuse an absent generated layer when no contribution can materialize it. Install and uninstall accept a plugin package name or contribution id; ambiguity is rejected. `meta:global:config` MUST reject generated-layer writes with `GlobalDistReadOnlyError`. `apps:poweroff` stops the global app by default; `--keep-global` leaves it running.
 
 #### 20.7.1 Top-level alias reservation
 
-The §8.1.2 alias-collision policy reserves the `global:` prefix for the `meta:global:*` defaults listed above. Plugin-contributed top-level aliases that begin with `global:` collide with the built-ins and are rejected with `CommandAliasConflictError`. User overrides via `commandAliases.custom:` MAY remap a `global:*` alias to a user-defined tooling task (escape hatch for users who want `lando global:start` to do something else in their app context); the underlying `meta:global:start` canonical id is always callable directly.
+The `global:` prefix is reserved under §8.1.2. Plugin aliases using it fail with `CommandAliasConflictError`. User `commandAliases.custom:` MAY remap an alias; canonical `meta:global:*` ids remain callable.
 
 ### 20.8 Networking and discovery
 
 #### 20.8.1 DNS
 
-`<service>.global.internal` resolves to the global service's container IP from inside any user-app service when the active provider declares `sharedCrossAppNetwork: true` (§5.4, §10.1). This is the single canonical address shape; `<service>.global` and bare `<service>` are NOT supported (the latter would conflict with the user app's own service names).
-
-Providers that declare `sharedCrossAppNetwork: false`:
-
-- The planner refuses to plan any `globalServices:` contribution whose `requires.providerCapabilities` includes `sharedCrossAppNetwork`. The contribution is dropped from the `dist` layer with a `GlobalServiceCapabilityError` recorded by `DoctorService` (§3.4) and a one-line warning at `meta:global:start`.
-- `meta:global:list` shows the contribution as `disabled: capability-mismatch` with a remediation note.
-- A user can still run `meta:global:install` on the affected plugin, but the corresponding services stay in the "want enabled, can't satisfy" state; `meta:global:list --json` exposes this through a `state: "blocked"` field for tooling.
+`<service>.global.internal` is the only global-service DNS form. Bare names and `<service>.global` are unsupported. A provider without `sharedCrossAppNetwork` blocks dependent contributions: planning records `GlobalServiceCapabilityError`, doctor reports the mismatch, and `meta:global:list` exposes a blocked state. Enabling a blocked contribution records intent but MUST NOT materialize it.
 
 #### 20.8.2 Environment variables
 
-The §6.9 `LANDO_*` contract gains a new family populated for every user-app service whose plan resolves a dependency on a global service:
-
-```text
-LANDO_GLOBAL_<SERVICE>_HOST          # always; resolves to <service>.global.internal
-LANDO_GLOBAL_<SERVICE>_PORT          # primary endpoint port; conditional
-LANDO_GLOBAL_<SERVICE>_<EP>_PORT     # named endpoint port (e.g., LANDO_GLOBAL_MAILPIT_SMTP_PORT)
-LANDO_GLOBAL_<SERVICE>_URL           # primary route URL; conditional
-LANDO_GLOBAL_<SERVICE>_<KEY>         # plugin-defined extras (e.g., LANDO_GLOBAL_MAILPIT_API_TOKEN)
-```
-
-Population rules:
-
-- The relevant `AppFeature` (§6.11.4) is what *declares* a dependency via `requires.globalServices: ["mailpit"]`. The planner walks every activated `AppFeature` for the user app, collects the set of needed global service ids, and resolves the corresponding `LANDO_GLOBAL_*` triplet from the global app's resolved `ServicePlan`.
-- Plugins that want to expose extra fields (a Mailpit API token, a MinIO access key) declare them through their `AppFeature.apply()` body using the standard `addEnv` mutator: the AppFeature reads `services.<id>.creds` or `services.<id>.config.<key>` (cross-app via the §7.3.1 expression scope, lifted to the global app) and writes the env into the user-app service.
-- `LANDO_GLOBAL_*` is intentionally a *projection* — only the values the user app's features actually depend on appear. A user app whose features don't activate Mailpit doesn't get `LANDO_GLOBAL_MAILPIT_*` populated.
+For each global service required by an active `AppFeature`, the planner projects `LANDO_GLOBAL_<SERVICE>_HOST` and applicable primary port, named endpoint port, URL, and plugin-defined values. Unrequired services MUST NOT leak variables into a user app. Plugins add extras through the standard `AppFeature.apply()` environment mutator (§6.11.4).
 
 #### 20.8.3 Cross-service expression scope addendum
 
-The §7.3.1 cross-service expression scope is extended:
-
-| Scope | Min bootstrap level | Source |
-|---|---|---|
-| `globalServices.<name>.{type,primary,creds,hostnames,routes,endpoints}` | `app` (the user-app planner reads it) | Read-only view of a global service's resolved plan. The named service must exist in the global app's plan and be in the user app's `AppFeature.requires.globalServices` list; any other reference fails with `ConfigExpressionScopeNotPermittedError` to avoid implicit cross-app coupling. |
-
-This means an `AppFeature.apply()` body can write:
-
-```ts
-ctx.addEnv("MAIL_HOST", "{{ globalServices.mailpit.hostnames[0] }}");
-ctx.addEnv("MAIL_PORT", "{{ globalServices.mailpit.endpoints.smtp.port }}");
-```
-
-…and the planner resolves it at level `app` against the live global plan.
+At `app` bootstrap, `globalServices.<name>.{type,primary,creds,hostnames,routes,endpoints}` is a read-only expression scope. The service MUST exist in the global plan and in the consuming app's `AppFeature.requires.globalServices`; other access fails with `ConfigExpressionScopeNotPermittedError` (§7.3.1).
 
 ### 20.9 Storage
 
-The §6.5 storage scopes are unchanged. The clarifications:
-
-| Scope inside a global service | Behavior |
+| Written scope | Global-app behavior |
 |---|---|
-| `service` | Owned by the one global service. Auto-name `global-<service>-<destination>`. Removed by `meta:global:destroy --purge`. |
-| `app` | Shared across global services. Auto-name `global-<destination>`. Removed by `meta:global:destroy --purge`. |
-| `global` | Shared with user apps' services that also declare `scope: global`. Auto-name `lando-<destination>` (matches §6.5). Survives `meta:global:destroy` even with `--purge`; only `meta:uninstall` (§17.7) removes it. |
+| `service` | Owned by one global service; removed by destroy and by purge. |
+| `app` | Shared across global services; preserved by normal destroy and removed by `--purge`. |
+| `global` | Shared under §6.5; survives `meta:global:destroy --purge` and is removed only by `meta:uninstall` (§17.7). |
 
-`meta:global:destroy` without `--purge` removes container instances and `service`-scoped volumes but preserves `app`-scoped and `global`-scoped volumes (so reinstalling the same plugin recovers state). With `--purge`, `service`- and `app`-scoped volumes go too.
-
-Provider labels (§6.5) on volumes created by global services:
-
-```text
-dev.lando.storage-volume:  "TRUE"
-dev.lando.storage-scope:   <scope>
-dev.lando.storage-project: "global"               # set for service/app scope; absent for scope: global
-dev.lando.storage-service: <service>              # set for service scope only
-dev.lando.storage-global-app: "TRUE"              # additional marker so apps:poweroff --keep-global can identify them
-```
+Global-app resources carry the standard ownership labels plus a global-app marker so `apps:poweroff --keep-global` can exclude them.
 
 ### 20.10 Proxy and CA realization through the global app
 
-This subsection specifies the §1.3 "full unification" promise: the default `RouterService` Live Layer in v4 realizes its work through a service in the global app, not through an out-of-band container managed by the proxy plugin.
-
 #### 20.10.1 Default `RouterService` Live Layer
 
-```ts
-// Bundled with @lando/proxy-traefik (§1.4)
-export const RouterServiceTraefikGlobalAppLive = Layer.effect(
-  RouterService,
-  Effect.gen(function* () {
-    const global = yield* GlobalAppService;
-    // implementation reaches the running `traefik` global service via the active RuntimeProvider's exec/file-write
-    // primitives and applies dynamic Traefik config files mounted into the service's appMount tree.
-    return makeRouterServiceImpl({ global, /* ... */ });
-  }),
-);
-```
+The default `RouterService` Live Layer is refactored to realize routes through the `traefik` service in the global app. `@lando/proxy-traefik` contributes both `globalServices: traefik` and `routerServices: traefik`; an unpaired contribution fails with `ProxyContributionPairError`. `RouterService.setup` ensures the service is running, and route application uses the service's standard managed mounts. The §10.2 interface is unchanged.
 
-Required behaviors:
-
-- The plugin package name stays `@lando/proxy-traefik`. It contributes BOTH a `globalServices:` entry (id `traefik`, enabledByDefault `true`) AND a `routerServices:` entry (id `traefik`) whose Live Layer talks to the `traefik` global service. The two contributions ship together; installing one without the other is rejected at plugin load with `ProxyContributionPairError`.
-- `RouterService.applyRoutes(routes, app)` writes the dynamic Traefik config under a Lando-managed directory mounted into the `traefik` global service via the standard `mounts:` machinery. The plugin author owns the on-disk format; core only owns the `RoutePlan` schema.
-- `RouterService.setup` calls `GlobalAppService.ensureRunning(["traefik"])` so the *first* `lando start` automatically brings the proxy up. The recurrent path (proxy already running) is the same warm no-op as any other `ensureRunning` call.
-- The §10.2 router interface is unchanged; only the realization moved. Plugin authors who ship an alternative `RouterService` (for an environment without a global app, e.g., a remote proxy) MAY contribute a Live Layer that does NOT touch `GlobalAppService`. Selection follows the standard §4.3 precedence: explicit Landofile `proxy:` (compat alias for service routes), global config `defaultRouterService:`, plugin `defaultFor:` matchers, sole installed implementation.
+Alternative `RouterService` implementations MAY avoid `GlobalAppService`. Selection keeps §4.3 precedence: explicit Landofile selection, global default, plugin `defaultFor`, then sole implementation.
 
 #### 20.10.2 `CertificateAuthority` realization
 
-The default `@lando/ca-mkcert` plugin remains a `CertificateAuthority` implementation; v4.0 does NOT migrate it into a global-app service. The CA is a host-level credential store, not a runtime service, and bundling it into the global app would gain little (no proxy round-trip needed; mkcert is invoked at setup time and its trust-store install runs through `PrivilegeService`).
-
-A future plugin MAY contribute a global-app-resident CA service (e.g., for environments without `mkcert` host elevation); the architecture preserves the option through the standard §4.2 `CertificateAuthority` swap mechanism.
+`@lando/ca-mkcert` remains a host-level `CertificateAuthority` in v4.0 and is not migrated into the global app. Future plugins MAY provide a global-app-resident CA through the existing §4.2 swap contract.
 
 #### 20.10.3 Migration policy
 
-`LegacyProxyContainerDetected` MUST remain the single owner of legacy proxy container detection. The preferred-port holder table (§10.2.3) and the `lando3-leftovers` check (§10.9) MUST cross-reference this owner rather than duplicate detection. No plugin MAY add a separate proxy-port check.
+`LegacyProxyContainerDetected` MUST remain the single owner of legacy proxy detection; the preferred-port holder table and `lando3-leftovers` MUST cross-reference it. Plugins MUST NOT add separate proxy-port checks.
 
-- The read-only `lando doctor` diagnostic (§20.13) MUST identify the container and provide remediation; it is informational and MUST NOT block commands by itself.
-- `meta:setup` and first `meta:global:start` MUST consult this same owner before starting a global proxy service. A conflicting legacy container MUST raise `LegacyProxyContainerConflictError` (§20.13), preventing competing proxies.
-- Detection MUST be provider-aware and use the selected provider's bounded metadata inspection through the diagnostic context (§10.9). Proxy plugins supply the recognized legacy name/label metadata; core owns the diagnostic and conflict boundary. Replacement proxy plugins MUST honor the same ownership contract.
-- Diagnosis MUST NOT mutate or remove containers. Remediation MUST tell the user to back up or confirm data before removing resources with Lando 3. The diagnostic clears when the matching container is absent.
+- `lando doctor` MUST report the read-only diagnostic and MUST NOT mutate, remove, or independently block resources.
+- `meta:setup` and the first global proxy start MUST consult the same owner and fail with `LegacyProxyContainerConflictError` while a conflict remains.
+- Detection MUST be provider-aware and bounded under §10.9. Remediation MUST require backup or explicit user confirmation before Lando 3 resources are removed.
 
 ### 20.11 Plugins that contribute to the global app
 
 #### 20.11.1 `@lando/service-mailpit` (canonical reference)
 
-The bundled Mailpit plugin (added to the §1.4 reference bundle) is the canonical example of a global-app contribution paired with an `AppFeature`:
-
-```yaml
-# plugins/service-mailpit/plugin.yaml — excerpt
-name: "@lando/service-mailpit"
-version: "1.0.0"
-api: 4
-
-provides:
-  serviceTypes:
-    - name: mailpit
-      module: ./src/service-types/mailpit.ts
-      versions: ["latest", "v1"]
-      base: lando
-
-  globalServices:
-    - id: mailpit
-      module: ./src/global-services/mailpit.ts
-      enabledByDefault: true
-      requires:
-        providerCapabilities: [sharedCrossAppNetwork]
-      conflicts: [mailhog]
-
-  appFeatures:
-    - id: mailpit-smtp-injection
-      module: ./src/app-features/mailpit-injection.ts
-      priority: 800
-      activatedBy:
-        services:
-          type: php                 # also matches: node, python, ruby, ...
-      selectors:
-        framework: [drupal, wordpress, laravel, symfony, magento, django, fastapi, rails]
-      requires:
-        globalServices: [mailpit]
-
-# tooling contribution: `lando mail:open` opens mailpit's web UI in the host browser
-  commands:
-    - id: meta:mail:open
-      namespace: meta
-      module: ./src/commands/mail-open.ts
-      topLevelAlias: "mail:open"
-```
-
-User experience after `lando plugin add @lando/service-mailpit`:
-
-1. The plugin install triggers `GlobalAppService.regenerateDist`; `<userDataRoot>/global/.lando.dist.yml` gains a `mailpit` service.
-2. The next `lando start` for any user app whose plan activates the `mailpit-smtp-injection` `AppFeature` (a Drupal site, a WordPress site, a Laravel project, etc.) triggers `GlobalAppService.ensureRunning(["mailpit"])`; Mailpit comes up alongside the user's services.
-3. Inside the user's PHP service, `MAIL_HOST=mailpit.global.internal` and `MAIL_PORT=1025` are set; the framework picks them up.
-4. The user opens `https://mailpit.lndo.site` (the global service's default route) and sees captured mail.
-5. `lando mail:open` (the `meta:mail:open` top-level alias) opens the same URL through `HostProxyService` (§10.10) so it works from inside an interactive container shell too.
-
-The user wrote zero Landofile content. The plugin author wrote one `globalServices:` entry, one `AppFeature`, one `ServiceType`, and one tooling command.
+The bundled `@lando/service-mailpit` plugin is the reference pairing of a `ServiceType`, enabled `globalServices: mailpit` contribution, `AppFeature.requires.globalServices`, and plugin-owned tooling commands. Its feature projects Mailpit connection values into selected user services without requiring user Landofile changes.
 
 #### 20.11.2 Migration of `@lando/proxy-traefik`
 
-The proxy-traefik plugin gains a `globalServices:` entry alongside its existing `routerServices:` entry per §20.10.1. Users see no change in behavior; `lando meta global info` now shows the `traefik` service alongside any other plugin-contributed global services, and `lando meta global logs traefik --follow` is the canonical way to debug routing issues (replacing the v3-era `docker logs <container-name>`).
-
-### 20.12 Discovery and resolution rules
-
-A summary of the resolution rules this part establishes; the canonical source for each rule is the section listed.
-
-| Rule | Source |
-|---|---|
-| `name: global` is reserved at Landofile parse time. | §20.2 |
-| `<userDataRoot>/global/` is excluded from cwd-based app discovery. | §20.3.2 |
-| Plugin `globalServices:` ids are globally unique across loaded plugins. | §20.4 |
-| `globalServices.<id>.requires.providerCapabilities` is enforced at `dist` regenerate. | §20.4 |
-| `AppFeature.requires.globalServices` drives auto-start inside `pre-start`, before the user-app build block. | §20.6.3 |
-| `apps:poweroff` stops the global app by default; `--keep-global` opts out. | §20.7 |
-| `meta:global:*` aliases reserve the `global:` top-level prefix. | §20.7.1 |
-| `<service>.global.internal` requires `sharedCrossAppNetwork`; otherwise the contribution is dropped from the plan with a doctor warning. | §20.8.1 |
-| `LANDO_GLOBAL_<SERVICE>_*` env vars are projected from the user app's `AppFeature.requires.globalServices` set. | §20.8.2 |
-| `globalServices.<name>.*` cross-service expression scope is restricted to the user app's required globals. | §20.8.3 |
-| `scope: global` storage survives `meta:global:destroy --purge`. | §20.9 |
-| Default `RouterService` Live Layer realizes routes through the `traefik` global service. | §20.10.1 |
+`@lando/proxy-traefik` pairs its existing router contribution with the `traefik` global service. Runtime inspection and logs use the `meta:global:*` surface.
 
 ### 20.13 Errors
 
-Tagged errors specific to the global app live in `@lando/core/errors`:
+All errors are tagged and include remediation where applicable:
 
-- `AppIdReservedError` — a Landofile resolves to `name: global` (or to a slug normalizing to `global`). Payload: `{ reserved, suggested? }`.
-- `GlobalServiceCollisionError` — two plugins contribute the same `globalServices.id`. Payload: `{ id, plugins: ReadonlyArray<string> }`.
-- `GlobalServiceCapabilityError` — a contribution requires a provider capability the active provider does not satisfy. Payload: `{ id, plugin, missing: ReadonlyArray<keyof ProviderCapabilities> }`.
-- `GlobalServiceConflictError` — two enabled contributions declare each other in `conflicts:`. Payload: `{ idA, idB }`.
-- `GlobalServiceConfigError` — a contribution's emitted `ServiceConfig` fails schema validation. Payload: `{ id, plugin, schemaError }`.
-- `GlobalServiceUnknownTypeError` — a contribution's `type:` is not a known `ServiceType` at plugin load. Payload: `{ id, plugin, type, suggestions }`.
-- `GlobalServiceMissingError` — a user app's `AppFeature.requires.globalServices` references a global service id that is not in the resolved plan (disabled, unknown, or capability-blocked). Payload: `{ neededBy: AppFeatureId, app: AppRef, missing: ReadonlyArray<string> }`.
-- `GlobalDistReadOnlyError` — a write target that resolves into the generated `dist` layer was attempted via `meta:global:config`. Payload: `{ path }`.
-- `GlobalServiceCommandReferenceError` — a `globalServices:` entry's `commands:` field references a canonical command id that does not appear in the same plugin's `provides.commands` block. Payload: `{ plugin, serviceId, missingCommandId }`. Caught at plugin load; the plugin fails to register until the manifest is consistent.
-- `ProxyContributionPairError` — `@lando/proxy-traefik` (or any plugin replacing it) contributes a `routerServices:` entry without a paired `globalServices:` entry of the expected id, or vice versa. Payload: `{ plugin, missingSide }`.
-- `LegacyProxyContainerDetected`: Read-only `lando doctor` diagnostic reporting an out-of-band legacy proxy container. Payload: `{ containerId, name, remediation }`. Informational; does not block commands. The single detection owner (§20.10.3) MUST be shared by the §10.2.3 holder table and cross-referenced by `lando3-leftovers` (§10.9), never duplicated.
-- `LegacyProxyContainerConflictError`: Hard error raised at `meta:setup` and first `meta:global:start` from the same detection owner (§20.10.3). It MUST refuse to start the global proxy while the conflicting legacy container is present. Payload: `{ containerId, name, conflictingService, remediation }`. Remediation MUST preserve the read-only diagnostic and resource-safety requirements of §10.9.
-- `GlobalAppError` — umbrella for state-transition failures (start failed, stop failed, plan derivation failed). Payload: `{ phase, cause }`.
+- `AppIdReservedError`
+- `GlobalServiceCollisionError`
+- `GlobalServiceCapabilityError`
+- `GlobalServiceConflictError`
+- `GlobalServiceConfigError`
+- `GlobalServiceUnknownTypeError`
+- `GlobalServiceMissingError`
+- `GlobalDistReadOnlyError`
+- `GlobalServiceCommandReferenceError`
+- `ProxyContributionPairError`
+- `LegacyProxyContainerDetected`, informational and non-blocking
+- `LegacyProxyContainerConflictError`, blocking global proxy start while the conflict exists
+- `GlobalAppError`, the umbrella for global state-transition failures
+
+This surface also uses the shared `CommandAliasConflictError` and `ConfigExpressionScopeNotPermittedError` tags defined by their owning contracts (§7.3.1, §8.1.2).
 
 ### 20.14 Non-goals for v4.0
 
-The global app concept opens design space we are deliberately NOT shipping in v4.0:
-
-- **Multi-host shared global app.** Each host has one global app; the spec does not provide a distributed/shared registry of global services across machines.
-- **User-controlled Landofile path.** The global app's root is `<userDataRoot>/global/` per §20.3; users cannot relocate it via global config in v4.0. (The `<userDataRoot>` itself is overridable per §7.5; relocating that relocates the global app's root with it.)
-- **Per-app provider override for the global app.** The global app uses the active default provider. A user with multiple apps targeting different providers gets a single-provider global app; cross-provider global services are deferred to the same release that lifts the multi-provider non-goal in §5.9.
-- **Explicit Landofile `dependsOn: ["global:<service>"]`.** User apps depend on global services through `AppFeature.requires.globalServices` only. A direct Landofile shape is open-decisioned in §14.2 and may land later.
-- **Promoting a user-app service to global.** Plugins may contribute to the global app; users cannot ad-hoc move `services.foo` from their user app into the global app. The plugin contribution surface is the only path.
-- **Plugin contribution of new `meta:global:*` commands.** The `meta:global:*` namespace is reserved for core in v4.0. Plugins may contribute commands under their own cspace topic that operate on the global app via `GlobalAppService` (e.g., `traefik:reload`); they MUST NOT register canonical ids under `meta:global:*`.
-- **Sandboxing.** Like every plugin in v4.0, `globalServices:` contributions run with host permissions; there is no sandbox.
+- Multi-host shared global apps are not supported.
+- The global root is not independently relocatable; changing `<userDataRoot>` relocates it (§7.5).
+- Per-app or cross-provider global-app selection is deferred with §5.9.
+- Explicit Landofile `dependsOn: ["global:<service>"]` is deferred; only `AppFeature.requires.globalServices` applies.
+- Users cannot promote user-app services into the global app.
+- Plugins MUST NOT register canonical ids under `meta:global:*`; they MAY operate on the global app through commands in their own namespaces.
+- `globalServices:` contributions are not sandboxed in v4.0.
 
 ---

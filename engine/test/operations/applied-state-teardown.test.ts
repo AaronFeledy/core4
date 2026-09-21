@@ -2,13 +2,22 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { DateTime, Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, type LandofileShape, ProviderId } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type LandofileShape,
+  ProviderId,
+  ServiceName,
+  type VolumeInfo,
+} from "@lando/sdk/schema";
+import type { AppliedOrphanGroup } from "@lando/sdk/services";
 import {
   AppPlanner,
   EventService,
@@ -20,8 +29,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
-import { withResolvedCwd } from "../../src/landofile/app-resolution.ts";
-import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
+import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
 import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -70,6 +78,7 @@ const invalidDesiredConfig = new LandofileValidationError({
 
 const withTempRoot = async <A>(use: (root: string) => Promise<A>): Promise<A> => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-applied-teardown-")));
+  await Bun.write(join(root, ".lando.yml"), "name: applied-teardown\n");
   try {
     return await use(root);
   } finally {
@@ -80,17 +89,38 @@ const withTempRoot = async <A>(use: (root: string) => Promise<A>): Promise<A> =>
 const makeLayer = (input: {
   readonly appliedPlan?: AppPlan;
   readonly desiredPlan?: AppPlan;
+  readonly orphans?: ReadonlyArray<AppliedOrphanGroup>;
   readonly providerId?: string;
   readonly destroy?: () => Effect.Effect<void, ProviderUnavailableError>;
+  /** Observed services whose container survives removal; every other one is reported removed. */
+  readonly survivingServices?: ReadonlyArray<string>;
 }) => {
   const destroyCalls: AppPlan[] = [];
+  const destroyTargets: Array<{
+    readonly app: string;
+    readonly hasPlan: boolean;
+    readonly planRoot: string | undefined;
+    readonly volumes: boolean;
+  }> = [];
+  const removedVolumes: Array<{ readonly store: string; readonly generation: string }> = [];
+  const removalAttempts: Array<{ readonly service: string; readonly containerId: string | undefined }> = [];
+  const desiredLoads: string[] = [];
   let appliedPlan = input.appliedPlan;
   const provider = {
     ...TestRuntimeProvider,
     id: input.providerId ?? "lando",
-    destroy: (target: { readonly plan?: AppPlan }, options: { readonly removeState?: boolean }) =>
+    destroy: (
+      target: { readonly app: string; readonly plan?: AppPlan },
+      options: { readonly removeState?: boolean; readonly volumes?: boolean },
+    ) =>
       Effect.sync(() => {
         if (target.plan !== undefined) destroyCalls.push(target.plan);
+        destroyTargets.push({
+          app: String(target.app),
+          hasPlan: target.plan !== undefined,
+          planRoot: target.plan === undefined ? undefined : String(target.plan.root),
+          volumes: options.volumes === true,
+        });
       }).pipe(
         Effect.zipRight(input.destroy?.() ?? Effect.void),
         Effect.tap(() =>
@@ -100,23 +130,50 @@ const makeLayer = (input: {
                 appliedPlan = undefined;
               }),
         ),
+        Effect.as({ kind: "destroyed" } as const),
       ),
+    removeVolume: (ref: { readonly store: string }, expectedGeneration: string) =>
+      Effect.sync(() => {
+        removedVolumes.push({ store: ref.store, generation: expectedGeneration });
+      }),
+    removeObservedService: (observed: {
+      readonly service: string;
+      readonly containerId?: string;
+    }) =>
+      Effect.sync(() => {
+        removalAttempts.push({ service: String(observed.service), containerId: observed.containerId });
+        const survives =
+          observed.containerId === undefined ||
+          (input.survivingServices ?? []).includes(String(observed.service));
+        return survives ? ({ kind: "absent" } as const) : ({ kind: "removed" } as const);
+      }),
   };
   const registry = {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (_cwd: AbsolutePath) => Effect.succeed(appliedPlan),
+    resolveTeardownEvidence: (_root: AbsolutePath) => {
+      if (appliedPlan !== undefined) {
+        return Effect.succeed({ kind: "applied", plan: appliedPlan } as const);
+      }
+      if (input.orphans !== undefined && input.orphans.length > 0) {
+        return Effect.succeed({ kind: "orphans", groups: input.orphans } as const);
+      }
+      return Effect.succeed({ kind: "absent" } as const);
+    },
   };
   const layer = Layer.mergeAll(
     PrivateFileAccessLive,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
     Layer.succeed(LandofileService, {
-      discover:
-        input.desiredPlan === undefined
+      discover: Effect.suspend(() => {
+        desiredLoads.push("discover");
+        return input.desiredPlan === undefined
           ? Effect.fail(invalidDesiredConfig)
-          : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape),
+          : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape);
+      }),
     }),
     Layer.succeed(AppPlanner, {
       plan: () =>
@@ -134,8 +191,57 @@ const makeLayer = (input: {
       query: () => Effect.succeed([]),
     }),
   );
-  return { layer, destroyCalls, appliedPlan: () => appliedPlan };
+  return {
+    layer,
+    destroyCalls,
+    destroyTargets,
+    removedVolumes,
+    removalAttempts,
+    desiredLoads,
+    appliedPlan: () => appliedPlan,
+  };
 };
+
+const orphanVolume = (root: string, store: string, scope = "app"): VolumeInfo => ({
+  ref: { app: AppId.make("applied-teardown"), store },
+  labels: {
+    "dev.lando.app": "applied-teardown",
+    "dev.lando.store": store,
+    "dev.lando.scope": scope,
+    ...(store === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+  },
+  identity: {
+    coordinationKey: `lando:applied-teardown:${store}`,
+    nativeName: `applied-teardown_${store}`,
+    generation: `generation-${store}`,
+    ownerRoot: AbsolutePath.make(root),
+    origin: "created",
+  },
+});
+
+const orphanGroup = (input: {
+  readonly root: string;
+  readonly services?: ReadonlyArray<string>;
+  readonly volumes?: ReadonlyArray<string>;
+  readonly globalVolumes?: ReadonlyArray<string>;
+  /** Observed services the provider could not address, so they carry no container id. */
+  readonly withoutContainerId?: ReadonlyArray<string>;
+}): AppliedOrphanGroup => ({
+  providerId,
+  appId: AppId.make("applied-teardown"),
+  services: (input.services ?? []).map((name) => ({
+    app: AppId.make("applied-teardown"),
+    appRoot: AbsolutePath.make(input.root),
+    service: ServiceName.make(name),
+    providerId,
+    status: "running",
+    ...((input.withoutContainerId ?? []).includes(name) ? {} : { containerId: `container-${name}` }),
+  })),
+  volumes: [
+    ...(input.volumes ?? []).map((store) => orphanVolume(input.root, store)),
+    ...(input.globalVolumes ?? []).map((store) => orphanVolume(input.root, store, "global")),
+  ],
+});
 
 describe("applied-state teardown", () => {
   test("tears down from the last applied plan when desired config is invalid", async () => {
@@ -217,22 +323,231 @@ describe("applied-state teardown", () => {
   });
 
   test.each(["stop", "destroy"] as const)(
-    "%s preserves the original desired-config failure when no applied plan exists",
+    "%s reports unchanged for a never-started app whose desired config never validates",
     async (operation) => {
       await withTempRoot(async (root) => {
         const harness = makeLayer({});
-        const error = await Effect.runPromise(
-          withResolvedCwd(
-            root,
-            operation === "stop" ? stopApp().pipe(Effect.asVoid) : destroyApp().pipe(Effect.asVoid),
-          ).pipe(Effect.flip, Effect.provide(harness.layer)),
-        );
+        const result =
+          operation === "stop"
+            ? await Effect.runPromise(withResolvedCwd(root, stopApp()).pipe(Effect.provide(harness.layer)))
+            : await Effect.runPromise(
+                withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+              );
 
-        expect(error).toBe(invalidDesiredConfig);
+        expect(result.outcome).toBe("unchanged");
+        expect(result.app).toBe(basename(root));
         expect(harness.destroyCalls).toEqual([]);
+        expect(harness.destroyTargets).toEqual([]);
       });
     },
   );
+
+  test.each(["stop", "destroy"] as const)(
+    "%s consults applied state before it loads the desired config",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        const appliedPlan = planAt(root);
+        const harness = makeLayer({ appliedPlan, desiredPlan: planAt(root) });
+
+        if (operation === "stop") {
+          await Effect.runPromise(withResolvedCwd(root, stopApp()).pipe(Effect.provide(harness.layer)));
+        } else {
+          await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
+        }
+
+        expect(harness.desiredLoads).toEqual([]);
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+      });
+    },
+  );
+
+  test("destroy removes owned volumes left behind without an applied plan", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({ orphans: [orphanGroup({ root, volumes: ["database", "cache"] })] });
+
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ volumes: true })).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(result).toEqual({
+        app: "applied-teardown",
+        outcome: "destroyed",
+        servicesDestroyed: [],
+        volumesRemoved: true,
+      });
+      expect(harness.removedVolumes).toEqual([{ store: "database", generation: "generation-database" }]);
+    });
+  });
+
+  test("destroy leaves retained volumes alone when volume removal was not requested", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({ orphans: [orphanGroup({ root, volumes: ["database"] })] });
+
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(result.outcome).toBe("unchanged");
+      expect(harness.removedVolumes).toEqual([]);
+      expect(harness.destroyTargets).toEqual([]);
+    });
+  });
+
+  test("stop never removes owned volumes left behind without an applied plan", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({ orphans: [orphanGroup({ root, volumes: ["database"] })] });
+
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, stopApp()).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(result.outcome).toBe("unchanged");
+      expect(harness.removedVolumes).toEqual([]);
+      expect(harness.destroyTargets).toEqual([]);
+    });
+  });
+
+  test.each(["stop", "destroy"] as const)(
+    "%s tears down orphaned services of the app root and reports them",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        const harness = makeLayer({ orphans: [orphanGroup({ root, services: ["appserver", "database"] })] });
+
+        if (operation === "stop") {
+          const result = await Effect.runPromise(
+            withResolvedCwd(root, stopApp()).pipe(Effect.provide(harness.layer)),
+          );
+          expect(result.app).toBe("applied-teardown");
+          expect(result.outcome).toBe("stopped");
+          expect(result.servicesStopped).toEqual(["appserver", "database"]);
+        } else {
+          const result = await Effect.runPromise(
+            withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+          );
+          expect(result.app).toBe("applied-teardown");
+          expect(result.outcome).toBe("destroyed");
+          expect(result.servicesDestroyed).toEqual(["appserver", "database"]);
+        }
+        expect(harness.removalAttempts).toEqual([
+          { service: "appserver", containerId: "container-appserver" },
+          { service: "database", containerId: "container-database" },
+        ]);
+        expect(harness.destroyTargets).toEqual([]);
+        expect(harness.desiredLoads).toEqual([]);
+      });
+    },
+  );
+
+  test.each(["stop", "destroy"] as const)(
+    "%s reports only the orphaned services whose container was removed",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        const harness = makeLayer({
+          orphans: [orphanGroup({ root, services: ["appserver", "database"] })],
+          survivingServices: ["database"],
+        });
+
+        const result =
+          operation === "stop"
+            ? await Effect.runPromise(withResolvedCwd(root, stopApp()).pipe(Effect.provide(harness.layer)))
+            : await Effect.runPromise(
+                withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+              );
+
+        expect(
+          operation === "stop"
+            ? (result as { readonly servicesStopped: ReadonlyArray<string> }).servicesStopped
+            : (result as { readonly servicesDestroyed: ReadonlyArray<string> }).servicesDestroyed,
+        ).toEqual(["appserver"]);
+        expect(harness.removalAttempts).toEqual([
+          { service: "appserver", containerId: "container-appserver" },
+          { service: "database", containerId: "container-database" },
+        ]);
+        expect(harness.destroyTargets).toEqual([]);
+      });
+    },
+  );
+
+  test("an orphaned service with no observed container is neither removed nor reported", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({
+        orphans: [orphanGroup({ root, services: ["appserver"], withoutContainerId: ["appserver"] })],
+      });
+
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(result.outcome).toBe("unchanged");
+      expect(result.servicesDestroyed).toEqual([]);
+      expect(harness.removalAttempts).toEqual([{ service: "appserver", containerId: undefined }]);
+    });
+  });
+
+  test("destroy removes only cache orphan volumes when just caches are purged", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({ orphans: [orphanGroup({ root, volumes: ["database", "cache"] })] });
+
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ purgeCaches: true })).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(result.volumesRemoved).toBe(true);
+      expect(harness.removedVolumes).toEqual([{ store: "cache", generation: "generation-cache" }]);
+    });
+  });
+
+  test("destroy removes both orphan volume classes when volumes and caches are requested", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({ orphans: [orphanGroup({ root, volumes: ["database", "cache"] })] });
+
+      await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ volumes: true, purgeCaches: true })).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+
+      expect(harness.removedVolumes).toEqual([
+        { store: "database", generation: "generation-database" },
+        { store: "cache", generation: "generation-cache" },
+      ]);
+    });
+  });
+
+  test.each([
+    { volumes: false, purgeCaches: false, removed: [] },
+    { volumes: true, purgeCaches: false, removed: [] },
+    { volumes: false, purgeCaches: true, removed: [{ store: "cache", generation: "generation-cache" }] },
+    { volumes: true, purgeCaches: true, removed: [{ store: "cache", generation: "generation-cache" }] },
+  ])("destroy selects global orphan volumes with %j", async ({ volumes, purgeCaches, removed }) => {
+    await withTempRoot(async (root) => {
+      // Given globally scoped cache and data volumes with no surviving applied plan.
+      const harness = makeLayer({ orphans: [orphanGroup({ root, globalVolumes: ["cache", "shared"] })] });
+
+      // When the requested volume classes are torn down.
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ volumes, purgeCaches })).pipe(Effect.provide(harness.layer)),
+      );
+
+      // Then only an explicitly purged cache is removed; global data always survives.
+      expect(harness.removedVolumes).toEqual([...removed]);
+      expect(result.volumesRemoved).toBe(purgeCaches);
+    });
+  });
+
+  test("destroy leaves a globally scoped orphan volume alone", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({
+        orphans: [orphanGroup({ root, volumes: ["database"], globalVolumes: ["shared"] })],
+      });
+
+      await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ volumes: true })).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(harness.removedVolumes).toEqual([{ store: "database", generation: "generation-database" }]);
+    });
+  });
 
   test.each(["stop", "destroy"] as const)(
     "%s returns unchanged for a valid never-started app without provider mutation",

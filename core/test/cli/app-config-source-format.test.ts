@@ -3,6 +3,7 @@ import { Schema } from "effect";
 
 import { type AppConfigResult, renderAppConfigResult } from "@lando/core/cli/operations";
 import { LandofileShape } from "@lando/sdk/schema";
+import { yamlRoundTripRecord } from "@lando/sdk/test";
 
 import { appConfigOptionsFromInput } from "../../src/cli/command-specs/app/config/index.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
@@ -86,5 +87,26 @@ describe("app config yaml", () => {
 
       expect(options).toEqual({ subcommand: "view", format: "yaml" });
     });
+  });
+
+  test("app config yaml output round-trips danger-corpus values through Bun.YAML.parse", () => {
+    // Given: a landofile whose environment map carries the danger corpus plus 8080:80
+    const environment = { ...yamlRoundTripRecord(), port: "8080:80" };
+    const source = {
+      name: "test-app-config",
+      recipe: "node",
+      services: { web: { api: 4, type: "node", environment } },
+    };
+    const landofile = Schema.decodeUnknownSync(LandofileShape)(source);
+
+    // When
+    const rendered = renderWithFormat({ app: "test-app-config", source: "resolved", landofile }, "yaml");
+
+    // Then
+    expect(Bun.YAML.parse(rendered)).toEqual(Schema.encodeSync(LandofileShape)(landofile));
+    expect(rendered).toContain("port: 8080:80");
+    expect(rendered).not.toContain('"8080:80"');
+    expect(rendered).toContain('"True"');
+    expect(rendered).toContain('"~"');
   });
 });

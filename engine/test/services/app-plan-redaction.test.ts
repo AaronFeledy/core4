@@ -55,6 +55,36 @@ describe("app-plan redaction tokens", () => {
     expect(tokens).toContain(canary);
   });
 
+  test("includes dotted secret label values while keeping non-secret labels visible", () => {
+    // Given
+    const dotted = "dotted-effective-label-canary";
+    const hyphenated = "hyphenated-effective-label-canary";
+    const visible = "dotted-visible-label-canary";
+
+    // When
+    const tokens = collectAppPlanRedactionTokens({
+      services: {
+        app: {
+          environment: {},
+          extensions: {
+            compose: {
+              labels: {
+                "com.example.password": dotted,
+                "dev.example.db-password": hyphenated,
+                "com.example.team": visible,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Then
+    expect(tokens).toContain(dotted);
+    expect(tokens).toContain(hyphenated);
+    expect(tokens).not.toContain(visible);
+  });
+
   test("includes authored landofile environment values", () => {
     // Given
     const canary = "config-canary";
@@ -71,5 +101,31 @@ describe("app-plan redaction tokens", () => {
 
     // Then
     expect(tokens).toContain(canary);
+  });
+
+  test("includes dotted secret landofile label values while keeping non-secret labels visible", () => {
+    // Given
+    const dotted = "dotted-landofile-label-canary";
+    const hyphenated = "hyphenated-landofile-label-canary";
+    const visible = "dotted-visible-landofile-label-canary";
+
+    // When
+    const tokens = collectLandofileRedactionTokens({
+      services: {
+        app: {
+          environment: {},
+          labels: {
+            "com.example.password": dotted,
+            "dev.example.db-password": hyphenated,
+            "com.example.team": visible,
+          },
+        },
+      },
+    });
+
+    // Then
+    expect(tokens).toContain(dotted);
+    expect(tokens).toContain(hyphenated);
+    expect(tokens).not.toContain(visible);
   });
 });

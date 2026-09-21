@@ -3,7 +3,7 @@ import { Effect, Layer, Schema } from "effect";
 import type { RendererIO } from "@lando/renderer/io";
 import { type RendererMode, formatBugReport } from "../bug-report";
 import { validateCommandCliFlags } from "../flag-value-validation";
-import type { ResultFormat } from "../format-flags";
+import { type ResultFormat, isEnvelopeResultFormat } from "../format-flags";
 import { runWithRendererHandling } from "../renderer-boundary";
 
 const EmptyPreCommandResultSchema = Schema.Struct({});
@@ -78,6 +78,18 @@ export const preCommandOutputMode = (input: {
     0,
     input.argv.indexOf("--") === -1 ? undefined : input.argv.indexOf("--"),
   );
+  // An explicit --format wins, last spelling first, so a pre-command failure is
+  // serialized in the format the user asked for rather than always as JSON.
+  let explicitFormat: ResultFormat | undefined;
+  for (const [index, arg] of beforeTerminator.entries()) {
+    const value = arg.startsWith("--format=")
+      ? arg.slice("--format=".length)
+      : arg === "--format"
+        ? beforeTerminator[index + 1]
+        : undefined;
+    if (value !== undefined && isEnvelopeResultFormat(value)) explicitFormat = value;
+  }
+  if (explicitFormat !== undefined) return { rendererMode: "json", resultFormat: explicitFormat };
   const machineRequested = beforeTerminator.some((arg, index) => {
     if (
       arg === "--json" ||
@@ -85,12 +97,11 @@ export const preCommandOutputMode = (input: {
       arg === "-j" ||
       arg === "--jq" ||
       arg.startsWith("--jq=") ||
-      arg === "--format=json" ||
       arg === "--renderer=json"
     ) {
       return true;
     }
-    if (arg !== "--format" && arg !== "--renderer") return false;
+    if (arg !== "--renderer") return false;
     return beforeTerminator[index + 1] === "json";
   });
   if (machineRequested || input.env.LANDO_RENDERER === "json") {

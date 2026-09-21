@@ -167,8 +167,8 @@ describe("ci workflow codegen", () => {
       const firstWorkflow = await readFile(nightlyWorkflowPath, "utf8");
       expect(firstWorkflow.startsWith(`${generatedNightlyHeader}\n`)).toBe(true);
       expect(firstWorkflow).toContain("provider-lando-e2e-linux-x64:");
-      expect(firstWorkflow).toContain("Run smoke e2e scenarios");
-      expect(firstWorkflow).toContain("Run non-smoke e2e scenarios");
+      expect(firstWorkflow).toContain("Run e2e guide scenarios");
+      expect(firstWorkflow).toContain("Run live integration suites");
       expect(firstWorkflow).toContain("distribution-rehearsal-linux-x64:");
       expect(firstWorkflow).toContain("Verify SHA256SUMS match the binaries");
       expect(firstWorkflow).toContain("published-manifest-setup-linux-x64:");
@@ -555,10 +555,19 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(
         "run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**",
       );
+      expect(workflow.match(/^ {10}LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"$/gm) ?? []).toHaveLength(7);
+      expect(workflow).toContain(
+        [
+          "      - name: Run generated guide scenarios",
+          "        env:",
+          '          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"',
+          "        run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**",
+        ].join("\n"),
+      );
       expect(workflow).toContain("name: lando-linux-x64");
       expect(workflow).toContain('LANDO_GUIDE_E2E: "1"');
       expect(workflow).toContain(
-        'run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"',
+        'run: LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"',
       );
       expect(workflow).toContain(
         "name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip",

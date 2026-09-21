@@ -57,12 +57,7 @@ import {
 import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify";
 import { renderDestroyAppResult } from "../commands/destroy";
 import { resilientDoctorReport } from "../commands/doctor-bootstrap";
-import {
-  type DoctorReport,
-  renderDoctorReport,
-  renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
-} from "../commands/doctor-report";
+import { type DoctorReport, renderDoctorReport, renderDoctorReportAsNdjson } from "../commands/doctor-report";
 import { renderInfoAppResult } from "../commands/info-render";
 import { renderLogsAppResult } from "../commands/logs";
 import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open";
@@ -375,7 +370,7 @@ export const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => 
   const format = activeTextJsonFormat();
   return runCompiledCommand(
     appConfigLint(),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
     (value) => renderConfigLintResult(value, format),
   );
 };
@@ -571,6 +566,5 @@ export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
 
 export const renderCompiledDoctorReport = (value: DoctorReport, ctx: RenderContext): string | undefined => {
   if (ctx.format === "ndjson") return renderDoctorReportAsNdjson(value);
-  if (ctx.format === "yaml") return renderDoctorReportAsYaml(value);
   return renderDoctorReport(value, ctx);
 };

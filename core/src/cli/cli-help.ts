@@ -1,12 +1,17 @@
 import type { CompiledCommand, OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
-import { universalFormatFlagDefs } from "./format-flags";
+import { type OptInResultFormat, commandResultFormats, formatFlagDefsForCommand } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
 import { resolveTopLevelAliases } from "./spec/command-base";
 
 const UNIVERSAL_FLAGS = new Set(["format", "json", "jq"]);
-const GLOBAL_FLAGS_FOOTER =
-  "Global flags (--format, --json [fields], --jq, --renderer, --verbose, --log-level, --debug) work on every command.";
+
+// The footer is the only place a reader learns which `--format` values exist,
+// so it names the resolved list for this command rather than the vocabulary.
+const globalFlagsFooter = (command: { readonly resultFormats?: ReadonlyArray<OptInResultFormat> }): string =>
+  `Global flags (--format (${commandResultFormats(command).join(
+    ", ",
+  )}), --json [fields], --jq, --renderer, --verbose, --log-level, --debug) work on every command.`;
 
 export type CommandHelpStatus =
   | { readonly kind: "implemented" }
@@ -23,6 +28,7 @@ export type CommandHelpSpec = {
   readonly examples?: ReadonlyArray<string>;
   readonly usage?: string;
   readonly strict?: boolean;
+  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
 };
 
 export type CommandHelpEntry = {
@@ -114,8 +120,9 @@ export const renderCommandUsage = (
 
 export const renderCommandHelpFlags = (command: {
   readonly flags?: CompiledCommand["flags"];
+  readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
 }): ReadonlyArray<string> => {
-  const entries = Object.entries({ ...universalFormatFlagDefs, ...(command.flags ?? {}) })
+  const entries = Object.entries(formatFlagDefsForCommand(command))
     .filter(([name]) => !UNIVERSAL_FLAGS.has(name))
     .sort(([left], [right]) => left.localeCompare(right));
   if (entries.length === 0) return [];
@@ -178,7 +185,7 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
     ...flagLines,
     ...exampleLines(entry.spec.examples, style),
     "",
-    GLOBAL_FLAGS_FOOTER,
+    globalFlagsFooter(entry.spec),
   ].join("\n");
 };
 

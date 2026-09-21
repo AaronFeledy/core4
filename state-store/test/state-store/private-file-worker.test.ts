@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, win32 } from "node:path";
 import { Effect, Either } from "effect";
 import { acquireAdvisoryLockAt } from "../../src/lock.ts";
-import { makePrivateFileAccessWorker } from "../../src/private-file-worker.ts";
+import { makePrivateFileAccessWorker, privateFileAclExecutable } from "../../src/private-file-worker.ts";
 import { makeRecordingWorkerSpawn } from "../private-file-worker.ts";
 
 const makeWorker = (spawn: ReturnType<typeof makeRecordingWorkerSpawn>) =>
@@ -24,6 +24,39 @@ const settlesAsRejected = async (operation: Promise<void>): Promise<boolean> =>
   );
 
 describe("private-file ACL worker lifecycle", () => {
+  test("selects native pwsh on Windows ARM", () => {
+    expect(
+      privateFileAclExecutable({
+        systemRoot: "D:\\Windows",
+        env: { ProgramFiles: "D:\\Program Files" },
+        arch: "arm64",
+        platform: "win32",
+      }),
+    ).toBe(win32.join("D:\\Program Files", "PowerShell", "7", "pwsh.exe"));
+  });
+
+  test("selects Windows PowerShell on Windows x64", () => {
+    expect(
+      privateFileAclExecutable({
+        systemRoot: "D:\\Windows",
+        env: {},
+        arch: "x64",
+        platform: "win32",
+      }),
+    ).toBe(win32.join("D:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"));
+  });
+
+  test("refuses Windows ARM when Program Files is missing", () => {
+    expect(
+      privateFileAclExecutable({
+        systemRoot: "D:\\Windows",
+        env: { SystemRoot: "D:\\Windows" },
+        arch: "arm64",
+        platform: "win32",
+      }),
+    ).toBeUndefined();
+  });
+
   test.each(["write", "flush"] as const)("bounds a stalled stdin %s", async (method) => {
     const spawn = makeRecordingWorkerSpawn();
     const worker = makePrivateFileAccessWorker({

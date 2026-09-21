@@ -49,6 +49,12 @@ export const runRouterServiceContractSuite = (
     yield* Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })).pipe(
       Effect.mapError((cause) => failure("setup is idempotent", cause)),
     );
+    yield* proxy.revalidateStartup.pipe(
+      Effect.mapError((cause) => failure("revalidateStartup resolves", cause)),
+    );
+    yield* proxy.revalidateStartup.pipe(
+      Effect.mapError((cause) => failure("revalidateStartup is idempotent", cause)),
+    );
     yield* requireContract(proxy.capabilities.wildcardHostnames, "declares wildcard hostname support");
     yield* requireContract(proxy.capabilities.tls, "declares TLS intent support");
     yield* requireContract(proxy.capabilities.pathPrefixes, "declares path-prefix support");
@@ -117,6 +123,7 @@ export const makeTestRouterService = (): RouterServiceShape & {
       Effect.sync(() => {
         running = true;
       }),
+    revalidateStartup: Effect.void,
     applyRoutes: (routes, app) =>
       Effect.sync((): ProxyApplyResult => {
         routesByApp.set(String(app), routes);

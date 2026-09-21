@@ -780,7 +780,6 @@
     "core/test/plugins/setup-flags.test.ts": 1,
     "core/test/providers/lando-runtime-registry-wiring.test.ts": 1,
     "core/test/providers/log-file-helper-payloads.test.ts": 1,
-    "core/test/scenario/mvp-exit-criteria.scenario.test.ts": 1,
     "core/test/scripts/build-provider-images.test.ts": 1,
     "core/test/scripts/package-dag-policy.test.ts": 1,
     "core/test/scripts/runtime-bundle-sources.test.ts": 1,

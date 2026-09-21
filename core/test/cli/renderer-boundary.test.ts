@@ -10,12 +10,15 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { resolveCliDeprecationWarnings, runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 
+// Reset to 0, not undefined: under Bun assigning undefined once an exit code is
+// set is a no-op, so an `undefined` reset cannot clear a code another file left
+// behind and the success assertions below would observe it.
 beforeEach(() => {
-  process.exitCode = undefined;
+  process.exitCode = 0;
 });
 
 afterEach(() => {
-  process.exitCode = undefined;
+  process.exitCode = 0;
 });
 
 describe("makeRendererServiceLiveForMode", () => {

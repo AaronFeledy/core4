@@ -1,5 +1,8 @@
 import { Effect } from "effect";
 
+import type { ProxyError, RouterWatcherError } from "@lando/sdk/errors";
+import { RouterService } from "@lando/sdk/services";
+
 import {
   type GlobalStartError,
   type GlobalStartResult,
@@ -16,8 +19,8 @@ export interface GlobalRestartOptions {
 export type GlobalRestartResult = GlobalStartResult;
 export const GlobalRestartResultSchema = GlobalStartResultSchema;
 
-export type GlobalRestartError = GlobalStartError | GlobalStopError;
-export type GlobalRestartServices = GlobalStartServices | GlobalStopServices;
+export type GlobalRestartError = GlobalStartError | GlobalStopError | ProxyError | RouterWatcherError;
+export type GlobalRestartServices = GlobalStartServices | GlobalStopServices | RouterService;
 
 export const renderGlobalRestartResult = (result: GlobalRestartResult): string => {
   const services = result.servicesStarted
@@ -34,5 +37,11 @@ export const globalRestart = (
 ): Effect.Effect<GlobalRestartResult, GlobalRestartError, GlobalRestartServices> =>
   Effect.gen(function* () {
     yield* globalStop();
-    return yield* globalStart(options.signal === undefined ? {} : { signal: options.signal });
+    const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal });
+    // The router is the reason this command is prescribed as a recovery step,
+    // so re-observe its startup here: without it a restart cannot affect the
+    // persisted observation doctor keeps reporting.
+    const router = yield* RouterService;
+    yield* router.revalidateStartup;
+    return result;
   });

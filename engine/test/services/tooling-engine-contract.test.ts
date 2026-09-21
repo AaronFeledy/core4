@@ -131,7 +131,6 @@ const makeRecordingProvider = (
     stop: () => Effect.void,
     restart: () => Effect.void,
     waitForExit: () => Effect.succeed({ exitCode: 0 }),
-    destroy: () => Effect.void,
     exec: (_target, command) => {
       const index = calls.length;
       calls.push(command.command);

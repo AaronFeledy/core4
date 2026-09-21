@@ -1,7 +1,44 @@
 import { Schema } from "effect";
 
 import { ProviderCapabilities } from "@lando/sdk/schema";
-import type { ProviderCapabilities as ProviderCapabilitiesShape } from "@lando/sdk/schema";
+import {
+  type HostPlatform,
+  type ProviderCapabilities as ProviderCapabilitiesShape,
+  hostPlatformFamily,
+} from "@lando/sdk/schema";
+
+export type HostProxyCapabilities = NonNullable<ProviderCapabilitiesShape["hostProxy"]>;
+export type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
+
+export const hostProxyContainerTargets = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
+  if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
+    return [{ os: "linux", arch: "x64" }];
+  }
+  if (arch === "arm64" || arch === "aarch64") return [{ os: "linux", arch: "arm64" }];
+  return [];
+};
+
+export const hostProxyCapabilities = (
+  platform: HostPlatform,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget>,
+  windowsGateway: string,
+): HostProxyCapabilities | undefined => {
+  const tcpHostGateway = hostPlatformFamily(platform) === "win32" ? windowsGateway : undefined;
+  if (containerTargets.length === 0 && tcpHostGateway === undefined) return undefined;
+  return {
+    containerTargets,
+    ...(tcpHostGateway === undefined ? {} : { tcpHostGateway }),
+  };
+};
+
+export const engineInfoArchitecture = (info: unknown): string | undefined => {
+  if (typeof info !== "object" || info === null) return undefined;
+  const host = "host" in info ? info.host : undefined;
+  if (typeof host === "object" && host !== null && "arch" in host && typeof host.arch === "string") {
+    return host.arch;
+  }
+  return "Architecture" in info && typeof info.Architecture === "string" ? info.Architecture : undefined;
+};
 
 export interface ProviderCapabilityConstants {
   readonly bindMounts: ProviderCapabilitiesShape["bindMounts"];

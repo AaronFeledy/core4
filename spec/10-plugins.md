@@ -3,11 +3,7 @@
 > **Part 10 of 18** · [Index](./README.md)
 > **Read next:** [11 Subsystems](./11-subsystems.md)
 
-This part is the contract for plugin authors. A v4 plugin is a Bun-loadable package with a manifest declaring its public surface entirely through a `provides:` block. Side-effecting top-level code is forbidden and rejected at load.
-
-Covered here: plugin identity (manifest locations, distribution forms via `PluginSource` adapters), runtime rules (ESM only, no sandbox in v4.0.0, manifest-declared surface), discovery order across bundled/system/user/app-local sources, trusted app-scoped plugin resolution at app build time, the full manifest schema (config, provides, subscribers, requires, conflicts) including command-namespace and top-level-alias rules per §8.1, the contribution surfaces table mapping each surface to its loader, the install/update flow for `meta:plugin:add` / `meta:plugin:remove` / `meta:update` (top-level aliases `lando plugin add`, `lando plugin remove`, `lando update`), plugin loading rules including lazy-load behavior under the compiled binary, and the constrained `LandoPluginContext` that plugins receive instead of internal core objects.
-
-For *what* is pluggable, see [04 Pluggability](./04-pluggability.md). This part is *how* to author.
+A v4 plugin is a Bun-loadable package whose manifest declares its public contribution surface. The pluggable abstractions themselves are cataloged in §4.
 
 ---
 
@@ -15,531 +11,164 @@ For *what* is pluggable, see [04 Pluggability](./04-pluggability.md). This part 
 
 ### 9.1 Plugin identity
 
-A v4 plugin is a Bun-loadable package with:
+A plugin has a `package.json` with `name` and `version`, a manifest with `api: 4`, and optionally the `lando-plugin` package keyword for registry discovery. The manifest lives in `package.json#lando`, `plugin.yaml`, `plugin.yml`, `plugin.json`, `plugin.ts`, or `plugin.js`.
 
-- A `package.json` containing at least `name` and `version`.
-- A manifest in one of: `package.json#lando`, `plugin.yaml`, `plugin.yml`, `plugin.json`, or `plugin.ts`/`plugin.js`.
-- `api: 4` in the manifest.
-
-The `lando-plugin` keyword in `package.json#keywords` marks registry packages as discoverable when the manifest is not in `package.json#lando`.
-
-**Distribution forms** (via `PluginSource` adapters):
-
-- Registry package (`bun add` / `npm install` semantics).
-- Local directory (`file:`).
-- Git URL or shorthand (`git+https://...`, `gh:user/repo`).
-- Remote tarball (`https://...`).
-- Bundled (statically imported into the compiled CLI binary).
+`PluginSource` adapters support registry packages, local `file:` directories, Git URLs or shorthands, remote tarballs, and plugins bundled into the compiled binary.
 
 ### 9.2 Plugin runtime rules
 
-- ESM is the preferred plugin authoring format. Plugin entry modules SHOULD be ESM.
-- TypeScript entries are allowed when Bun can load them directly. Build outputs are also accepted.
-- CommonJS is supported through the plugin loader's interop layer; CommonJS authoring is not encouraged.
-- Plugins receive a constrained `LandoPluginContext`, not internal core objects.
-- Plugins MAY return Effect Layers, plain values, or factory functions; the loader normalizes to Layers.
-- Plugin code runs with host permissions. There is no sandbox in v4.0.0.
-- Plugins MUST declare their public surface entirely through the manifest's `provides:` block. Manifest validation, compatibility checks, and module path containment run before any plugin module is imported.
-- Core does not promise to detect arbitrary top-level side effects in JavaScript. Plugin authors SHOULD keep module top levels cheap and side-effect-light because imports are lazy but still execute as trusted host code.
+- Plugin entries SHOULD use ESM; Bun-loadable TypeScript and build outputs are accepted, and CommonJS is supported only through loader interop.
+- Plugins run with host permissions; v4.0.0 provides no sandbox.
+- Plugins receive `LandoPluginContext`, never internal core objects.
+- Contributions MAY return Effect Layers, plain values, or factories; the loader normalizes them to Layers.
+- Public contributions MUST be declared under `provides:`. Manifest validation, compatibility checks, and module containment occur before import.
+- Module top levels SHOULD remain cheap and side-effect-light. Lazy import limits execution timing but cannot detect arbitrary JavaScript side effects.
 
 ### 9.3 Discovery order
 
-```text
-1. Bundled plugins (statically imported into the binary)
-2. System plugins (`<systemPluginRoot>/plugins/*`)
-3. User plugins (`<userDataRoot>/plugins/*`)
-4. App-local `pluginDirs:` (Landofile)
-5. Explicit Landofile `plugins:` (with source spec)
-6. Experimental plugins (when `experimental: true`)
-```
+CLI discovery precedence, from earliest to latest, is bundled plugins, system plugins under the system plugin root, user plugins under the user data root, app-local `pluginDirs:`, explicit app-scoped `plugins:`, then experimental plugins when enabled. Later sources override earlier sources unless dependency constraints reject the result; `disablePlugins:` removes plugins before resolution.
 
-Later sources override earlier sources unless dependency constraints forbid it. `disablePlugins:` removes a plugin before resolution.
+App-local plugins are trusted host code and do not receive a separate execution prompt. `pluginDirs:` are local-only. Explicit `plugins:` resolve during app materialization, install into an app-scoped store, and lock in `.lando.lock.yml` (§7.7.4). Routine startup MUST use the locked local copy and MUST NOT contact the source unless the lock changes, the cache is missing or corrupt, or the user explicitly updates it.
 
-App-local plugins are trusted by design. A Landofile that declares `pluginDirs:` or `plugins:` is opting into those plugins with the same host permissions as user-installed plugins; core does not prompt separately for app-local plugin execution in v4.0.0.
-
-`pluginDirs:` are local directories and never require network access. `plugins:` entries are app-scoped plugin dependencies. They are resolved during app materialization/build (typically the first `lando start` or any later `lando rebuild` after plugin declarations change), installed into an app-scoped plugin store under `<userDataRoot>`, and locked in `.lando.lock.yml` (§7.7.4). Once resolved, normal app startup uses the locked local copy and MUST NOT contact the plugin source unless the lockfile changes, the cached package is missing/corrupt, or the user explicitly requests an update.
-
-**CLI vs library mode.** The order above is the default for the **CLI** imperative shell. Embedding hosts (§16) opt into each source independently; by default, library-mode runtimes have **no** plugins beyond what the host explicitly contributes. This is enforced in `makeLandoRuntime`'s `plugins.discovery` policy (§16.4). The discovery pipeline itself is identical in both modes — only the per-source enable flags differ. A host that wants CLI-equivalent discovery passes `discovery: { bundled: true, system: true, user: true, app: true }` and the resolver behaves exactly as it does for the CLI.
+Library runtimes discover nothing by default and independently opt into bundled, system, user, and app sources (§16.4). Enabling all four produces CLI-equivalent discovery.
 
 ### 9.4 Manifest schema
 
-```yaml
-name: "@lando/example"
-version: "1.0.0"
-api: 4
-description: Example plugin
-enabled: true
-updateable: true
-cspace: example                          # used in plugin command namespacing
+The manifest is an Effect Schema validated before module import.
 
-# Optional: deprecate the whole plugin (§18). When set, every contribution
-# this plugin provides records a `deprecation-used` event with `kind: "plugin"`.
-deprecated:
-  since: "4.2.0"
-  removeIn: "5.0.0"
-  replacement: "@lando/example-next"
-  note: "Replaced by @lando/example-next which targets the new provider extension API."
+| Key | Meaning |
+|---|---|
+| `name` | Package identity and collision key. |
+| `version` | Plugin version. |
+| `api` | Plugin API version; v4 uses `4`. |
+| `description` | Human-readable summary. |
+| `enabled` | Default enablement. |
+| `updateable` | Whether update management may update the plugin. |
+| `channels` | Release channels in which updates may appear. |
+| `cspace` | Plugin-owned command namespace. |
+| `deprecated` | Plugin-wide `DeprecationNotice` (§18). |
+| `config.schema` | Module exporting the plugin config schema. |
+| `config.defaults` | Plugin configuration defaults. |
+| `provides` | Manifest-declared public contributions. |
+| `provides.providers` | Runtime providers and optional platform defaults. |
+| `provides.serviceTypes` | Service-type resolvers or declarative service types. |
+| `provides.serviceFeatures` | Single-service plan features. |
+| `provides.appFeatures` | App-wide plan features. |
+| `provides.globalServices` | Global-app service definitions (§20.4). |
+| `provides.commands` | Canonical command contributions. |
+| `provides.initSources` | `apps:init` sources. |
+| `provides.routerServices` | Router implementations. |
+| `provides.tunnelServices` | Public-sharing implementations (§10.2.2). |
+| `provides.remoteSources` | Remote data transports (§10.12). |
+| `provides.datasets` | Syncable data units (§10.12). |
+| `provides.certificateAuthorities` | Certificate-authority implementations. |
+| `provides.loggers` | Logger implementations. |
+| `provides.renderers` | Renderer implementations. |
+| `provides.rendererPanels` | Named default-renderer panel slots (§8.9.5). |
+| `provides.toolingEngines` | Tooling program executors. |
+| `provides.httpClients` | Lando-owned HTTP egress implementations (§10.3.2). |
+| `provides.downloaders` | Verified artifact downloaders (§10.3.3). |
+| `provides.interactionServices` | Prompt and answer transports (§8.10). |
+| `provides.routeFilters` | Provider-neutral route transforms. |
+| `provides.healthcheckRunners` | Healthcheck executors. |
+| `provides.urlScanners` | URL readiness scanners. |
+| `provides.pluginSources` | Plugin distribution adapters. |
+| `provides.secretStores` | Secret resolution stores. |
+| `provides.configTranslators` | Explicit authoring-fragment translators (§7.4.1). |
+| `provides.templateEngines` | Whole-file template engines (§7.3.2). |
+| `provides.doctorChecks` | Isolated diagnostic checks. |
+| `provides.messages` | Lifecycle message factories. |
+| `subscribers` | Bounded lifecycle-event subscribers (§11.3.1). |
+| `requires` | Core version, service, and capability requirements. |
+| `conflicts` | Incompatible plugins. |
 
-# Plugin-level config schema
-config:
-  schema: ./src/config.schema.ts         # exports an Effect Schema
-  defaults:
-    foo: bar
+Contribution entries use schema-defined identity plus a contained `module` path where code is required. They MAY carry `deprecated`; loading registers notices and use emits `deprecation-used` under §18. Entry-specific fields include provider `defaultFor`; service-type `base`, `extends`, `schema`, `creds`, `artifacts`, `tooling`, and `features`; global-service `enabledByDefault`, `requires`, `conflicts`, `summary`, and `commands`; command `id`, `namespace`, `aliases`, and `topLevelAlias`; panel `id`, `slot`, and `watch`; translator `inputKinds`, `detects`, and `optionsSchema`; template `extensions` and `capabilities`; doctor-check `summary` and `tags`; and subscriber `id`, `selectors`, `priority`, `abortOnError`, and `configKey`.
 
-# Public contributions
-provides:
-  providers:
-    - id: lando
-      module: ./src/provider.ts
-      defaultFor:
-        platform: [darwin, linux, win32, wsl]
-  serviceTypes:
-    - name: php
-      module: ./src/services/php.ts
-      versions: ["8.2", "8.3"]
-    - name: mailhog
-      module: ./src/services/mailhog.ts
-      deprecated:                        # per-contribution deprecation; see §18.5
-        since: "4.2.0"
-        removeIn: "5.0.0"
-        replacement: mailpit
-        note: "MailHog is unmaintained; use the mailpit service type instead."
-  features:
-    - id: php-extensions
-      module: ./src/features/extensions.ts
-  globalServices:
-    - id: mailpit
-      module: ./src/global-services/mailpit.ts
-      enabledByDefault: true
-      requires:
-        providerCapabilities: [sharedCrossAppNetwork]
-      conflicts: [mailhog]
-      summary: SMTP capture server with web UI for the global Lando app (§20.4)
-      commands:                                # discoverability pointer to per-service commands; canonical ids must also appear in `provides.commands`
-        - meta:mail:open
-        - meta:mail:clear
-  commands:
-    - id: app:composer                    # canonical namespaced id; namespace must equal the prefix
-      namespace: app                      # required; one of "app", "apps", "meta", or this plugin's cspace
-      module: ./src/commands/composer.ts
-      topLevelAlias: false                # optional; default false. See §8.1.2.
-  initSources:
-    - id: github
-      module: ./src/init/github.ts
-  routerServices:
-    - id: traefik
-      module: ./src/proxy.ts
-  tunnelServices:
-    - id: cloudflare
-      module: ./src/tunnel/cloudflare.ts
-      capabilities:
-        connectorBinary: true                 # provisions `cloudflared` through the §10.3.4 helper
-        ephemeralUrls: true                    # account-free quick tunnels
-        stableUrls: true                       # named tunnels when authenticated
-        basicAuth: false                       # provider has no built-in auth gate
-        detached: true                         # supports `app:share --detach`
-  certificateAuthorities:
-    - id: mkcert
-      module: ./src/ca.ts
-  loggers:
-    - id: pretty
-      module: ./src/logger.ts
-  renderers:
-    - id: lando
-      module: ./src/renderer.ts
-  rendererPanels:
-    - id: build-status
-      slot: status-bar
-      watch: [post-start, post-stop]
-      module: ./src/panels/build-status.ts
-  toolingEngines:
-    - id: providerExec
-      module: ./src/tooling/provider-exec.ts
-  httpClients:
-    - id: corporate-egress-gateway
-      module: ./src/http/gateway.ts
-  downloaders:
-    - id: corporate-mirror
-      module: ./src/downloader/corporate-mirror.ts
-      capabilities:
-        schemes: [https, file]
-        atomicFileWrites: true
-        checksumAlgorithms: [sha256]
-        offlineCache: true
-        progressEvents: true
-  interactionServices:
-    - id: headless-ci
-      module: ./src/interaction/headless.ts
-      capabilities:
-        interactive: false                  # fail-fast non-interactive; never opens stdin
-        promptTypes: [text, select, multiselect, confirm, number, secret, path, editor]
-        secretRedaction: true
-  routeFilters:
-    - id: requestHeader
-      module: ./src/filters/request-header.ts
-  healthcheckRunners:
-    - id: providerExec
-      module: ./src/health/provider-exec.ts
-  urlScanners:
-    - id: fetch
-      module: ./src/scan/fetch.ts
-  pluginSources:
-    - id: registry
-      module: ./src/sources/registry.ts
-  secretStores:
-    - id: env
-      module: ./src/secrets/env.ts
-  configTranslators:
-    - id: terraform
-      module: ./src/translators/terraform.ts
-      inputKinds: [terraform, cloud]
-      detects: ["*.tf", "terraform/*.tf"]
-      optionsSchema: ./src/translators/terraform-options.schema.ts
-  templateEngines:
-    - id: handlebars
-      module: ./src/engines/handlebars.ts
-      extensions: [".hbs", ".handlebars"]
-      capabilities:
-        wholeFile: true                     # supports multi-line render with control flow
-        stringInterpolation: false          # cannot replace the `lando` engine for Landofile values
-        partials: true                      # `{{> name}}` partials supported when site supplies them
-        unsafe: false                       # honors the §7.3.1 purity guarantees
-  doctorChecks:
-    - id: terraform
-      module: ./src/doctor/terraform.ts
-      summary: Diagnose Terraform translator configuration
-      tags: [config, terraform]
-  messages:
-    - id: example
-      module: ./src/messages/example.ts
-
-# Event subscribers
-subscribers:
-  - id: audit-post-start                 # unique within this plugin
-    selectors:
-      - event: post-start                # exact event name
-    module: ./src/subscribers/post-start.ts
-    priority: 500                        # 100..999; default 500 when omitted
-    abortOnError: false                  # default; see §11.6
-  - id: notify-on-command-terminal
-    selectors:
-      - family: cli-command-terminal     # precomputed run/error phases for every canonical command (§11.3.1)
-    module: ./src/subscribers/notify.ts
-    configKey: notify                    # optional; projects only the decoded NotifyConfig as the factory's second argument (§9.5)
-
-# Compatibility
-requires:
-  "@lando/core": "^4.0.0"
-conflicts: {}
-```
-
-The manifest is itself an Effect Schema. Validation runs before any plugin module is imported.
-
-**Deprecation.** The manifest root and every entry under `provides.<surface>[]` MAY carry a `deprecated:` field of type `DeprecationNotice` (§18.2). A root-level notice deprecates the whole plugin; a per-entry notice deprecates a single contribution. Subscribers under `subscribers:` MAY also carry `deprecated:` per the same shape. The plugin loader registers each notice with `DeprecationService` (§18.3) at install / refresh time, and runtime use records a `deprecation-used` event (§18.4) with the appropriate `kind` (`plugin`, `manifest-contribution`, `command`, `service-type`, etc.) per the surface deprecation matrix in §18.5.
+Command ids MUST be canonical and namespaced. `namespace` MUST equal the id prefix and be `app`, `apps`, `meta`, or the plugin’s `cspace`. Plugins MUST NOT contribute under `plugin:` or reserved `meta:plugin:*`/`meta:global:*` namespaces. Namespaced aliases use `aliases`; bare aliases require `topLevelAlias` and follow §8.1.2 collision rules.
 
 ### 9.5 Contribution surfaces
 
-| Surface | Purpose | Loaded by |
+| Surface | Loaded by | Architectural rule |
 |---|---|---|
-| `providers` | `RuntimeProvider` implementations | Provider registry |
-| `serviceTypes` | `ServiceType` resolvers (with optional `extends:`, `artifacts:`, `tooling:`, `creds:`; §6.11.1–6.11.3, §6.12.4) | App planner |
-| `features` | `ServiceFeature` functions (mutate a single service plan; §6.11) | Service planner |
-| `appFeatures` | `AppFeature` functions (mutate selected services across the app plan; §6.11.4) | App planner |
-| `globalServices` | Service definitions contributed to the **global Lando app** (§20.4) | `GlobalAppService` |
-| `commands` | Lando commands (declare `namespace` and optional `topLevelAlias`; §8.1.1, §8.1.2) | Command registry |
-| `initSources` | `apps:init` sources | Init command |
-| `routerServices` | `RouterService` implementations | Router subsystem |
-| `tunnelServices` | `TunnelService` implementations for public app/service sharing (`lando share`, embedding-host share flows; §10.2.2) | Tunnel subsystem |
-| `remoteSources` | `RemoteSource` implementations for remote data sync (`lando pull`/`push`; §10.12) — hosting platforms (Pantheon/Acquia/Platform.sh/Lagoon) and generic transports (rsync/ssh/s3/url/local) | Remote-sync subsystem |
-| `datasets` | `Dataset` implementations (the syncable units `database`/`files`/`config`/`blob`; §10.12) — typically contributed by a service-type (`database`) or app-feature (`files`) | Remote-sync subsystem |
-| `certificateAuthorities` | `CertificateAuthority` impls | Certs subsystem |
-| `loggers` | `Logger` impls | Logging service |
-| `renderers` | `Renderer` impls | Renderer service |
-| `rendererPanels` | `RendererPanel` contributions for named default-renderer slots (`status-bar`, `task-tree:footer`, `doctor:summary`; §8.9.5 — contract frozen at 4.0, rendered from 4.1) | Renderer service |
-| `toolingEngines` | `ToolingEngine` impls for compiled Lando task graphs | Tooling service |
-| `httpClients` | `HttpClient` impls — the outbound-egress chokepoint for all Lando-owned network access (§10.3.2) | HttpClient service |
-| `downloaders` | `Downloader` impls for verified Lando-owned artifact downloads, layered over `HttpClient` (§10.3.3) | Downloader service |
-| `interactionServices` | `InteractionService` impls for prompt/answer resolution (headless/CI, recording/test, GUI/host transports; §8.10) | Interaction service |
-| `routeFilters` | Provider-neutral route transforms | Proxy subsystem |
-| `healthcheckRunners` | `HealthcheckRunner` impls | Healthcheck subsystem |
-| `urlScanners` | `UrlScanner` impls | Scanner subsystem |
-| `pluginSources` | `PluginSource` impls | Plugin install |
-| `secretStores` | `SecretStore` impls | Config expression resolution + tooling |
-| `configTranslators` | Decode one ordered document set or recipe request into authoring fragments; MAY encode authoring values (§7.4.1) | Explicit `app:config:translate`, `app:config:explain`, `app:config:migrate`, `apps:init`, or matching embedding-host request only |
-| `templateEngines` | `TemplateEngine` impls for whole-file or string template rendering (§7.3.2) | Template renderer + mount materializer + recipe scaffold |
-| `doctorChecks` | Diagnostic checks with automatic or manual remediations | `doctor` command / `DoctorService` |
-| `messages` | Message factories | Lifecycle service |
-| `subscribers` | Event handlers | Lifecycle service |
+| `providers` | Provider registry | Implements `RuntimeProvider` (§5). |
+| `serviceTypes` | App planner | Resolves or declaratively defines service types (§6.11). |
+| `serviceFeatures` | Service planner | Mutates one service through published context. |
+| `appFeatures` | App planner | Mutates selected services through published context. |
+| `globalServices` | `GlobalAppService` | Contributes global-app services (§20.4). |
+| `commands` | Command registry | Obeys namespace and alias rules (§8.1). |
+| `initSources` | Init command | Supplies app initialization sources. |
+| `routerServices`, `tunnelServices` | Networking subsystems | Implements routing or sharing contracts. |
+| `remoteSources`, `datasets` | Remote-sync subsystem | Contract-only for Beta 1; implementation is deferred to 4.1 (§10.12). |
+| `certificateAuthorities` | Certs subsystem | Implements certificate authority contracts. |
+| `loggers`, `renderers`, `rendererPanels` | Output services | Implements logging, rendering, or frozen panel contracts. |
+| `toolingEngines` | Tooling service | Executes compiled tooling graphs. |
+| `httpClients`, `downloaders` | Egress services | Preserves the HTTP/download chokepoints. |
+| `interactionServices` | Interaction service | Implements prompt transport and redaction guarantees. |
+| `routeFilters`, `healthcheckRunners`, `urlScanners` | Runtime subsystems | Implements the corresponding published contract. |
+| `pluginSources` | Plugin install | Resolves a distribution source. |
+| `secretStores` | Config and tooling | Resolves secret references. |
+| `configTranslators` | Explicit conversion APIs | Produces authoring fragments, never runtime plans. |
+| `templateEngines` | Template rendering | Renders whole files under §7.3 purity rules. |
+| `doctorChecks` | `DoctorService` | Produces isolated diagnostics and remediation. |
+| `messages`, `subscribers` | Lifecycle service | Produces messages or handles bounded events. |
 
-There are no legacy autoload directories. All contributions go through the manifest.
+There are no legacy autoload directories; every contribution enters through the manifest.
 
-**Config translator contribution rules:**
+Contribution invariants:
 
-- Each `configTranslators:` entry MUST declare a unique `id`, `module`, and `inputKinds:` metadata.
-- `detects:` glob patterns are advisory metadata for help, docs, and explicit conversion matching only. The translator module's `detect()` result is authoritative and MUST NOT be invoked by normal discovery.
-- `optionsSchema:` is optional. When present, CLI and library callers validate translator-specific options against it before invoking `translate()`.
-- Translators MUST decode one core-ordered document set or one `recipe-request` into `LandofileAuthoringFragment` outputs with diagnostics (§7.4.1). They MAY implement `encode?` over authoring values. They MUST NOT emit `AppPlan`, read files, mutate files, contact providers, or install plugins.
-- Translators run only on explicit request, never during bootstrap, discovery, normal loading, `start`, or tooling hot paths. They MUST NOT have a cold-start entry. Native routing requests the translator-capable tier only for explicit conversion; help/version/loading/tooling MUST NOT construct their factories.
-- Public methods MUST require `never`; factories close over injected SDK ports such as `RecipeDecomposer`. `PluginContribution` and `LandoPluginModule` MUST carry `configTranslators`; the module set validates ids, and generated bundled factories remain lazy. Duplicate ids from any source MUST fail with a tagged collision naming both producer identities, with no precedence winner (§7.4.1).
-- Decode emits fragment data; core selects and invokes the encoder and owns all mutation. Canonical YAML encoding MUST use `emitLandofileYaml` / `parseLandofile` (§7.8.1), preserving authoring expressions and `${secret:...}` references without resolving them. The §7.4.1 round-trip law and diagnostic/target policies apply to every encoder.
-
-**Template engine contribution rules:**
-
-- Each `templateEngines:` entry MUST declare a unique `id`, `module`, `extensions:` (the file-extension list the engine claims by default), and `capabilities:` (see §7.3.2 — `wholeFile`, `stringInterpolation`, `partials`, `unsafe`).
-- `id: lando` is reserved for the built-in default engine. Plugins MUST NOT contribute an entry with `id: lando`.
-- An engine MUST NOT declare `stringInterpolation: true` unless its syntax is fully compatible with the §7.3.1 expression grammar — Landofile string-value interpolation is the contract for the `lando` engine and only the `lando` engine. Plugin-contributed engines render whole files only.
-- An engine that cannot honor the §7.3.1 purity rules MUST declare `capabilities.unsafe: true`. Unsafe engines are disabled by default and require explicit opt-in via global config (`templateEngines.<id>.allowUnsafe: true`). The plugin loader emits `TemplateEngineUnsafeRejectedError` when an unsafe engine is selected without opt-in.
-- Engines MUST register through the published `@lando/sdk/services` `TemplateEngine` tag and accept the canonical `TemplateRenderContext` shape (§7.3.2) without engine-specific shape mutations.
-- Engines SHOULD register the §7.3.1 portable function set under the engine's idiomatic registration API so users see the same helper names regardless of engine.
-
-**Renderer panel contribution rules:**
-
-- Each `rendererPanels:` entry MUST declare an `id` (`RendererPanelId`), `slot`, `watch` (`RendererPanelWatch` manifest metadata), and `module`, validated as a whole against `RendererPanelManifestEntry`. Duplicate ids, unknown slots, malformed shapes, and paths that escape the plugin package root all fail with the existing `PluginManifestError`; validation never imports the module.
-- After every plugin command is registered, `watch` membership is checked against the closed built-in `LandoEvent` taxonomy plus generated `cli-<canonical-id>-{init,run,error}` names for the complete canonical command registry. Plugins cannot contribute arbitrary event names. An unknown watched name is `PluginManifestError`, still without importing panel code.
-- A panel whose slot is never visible is never imported. On first visibility, the host starts a persistent isolated worker with the validated module URL; **only the worker imports the panel module**. Its decoded panel id must return in the bounded 1000ms ready handshake and match the manifest id before registration or rendering. Import/export/load/id failures and id mismatches are `PluginLoadError`; the host terminates and permanently drops that worker. The host never imports panel code to inspect it first. The 8ms post-ready render deadline and bounded binary request/response protocol are normative in §8.9.5.
-
-**Subscriber contribution rules:**
-
-- Each `subscribers:` entry decodes as a whole against the schema-derived `SubscriberManifestEntry`:
-
-  ```ts
-  export const SubscriberManifestEntry = Schema.Struct({
-    id:           Schema.String,
-    selectors:    Schema.Array(SubscriberSelector).pipe(Schema.minItems(1)),   // §11.3.1
-    module:       Schema.String,
-    priority:     Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(100), Schema.lessThanOrEqualTo(999)), { default: () => 500 }),
-    abortOnError: Schema.optionalWith(Schema.Boolean, { default: () => false }),
-    configKey:    Schema.optional(PublishedGlobalConfigKey),   // §9.5 below; omitted -> factory's config argument is undefined
-  });
-  export type SubscriberManifestEntry = Schema.Schema.Type<typeof SubscriberManifestEntry>;
-  ```
-
-  `id` MUST be unique within the contributing plugin; `selectors:` MUST be one or more `SubscriberSelector` values (§11.3.1 — exact `{ event }` or the `{ family: "cli-command-terminal" }` literal; no regex/wildcard forms); `module`'s default export MUST be a `SubscriberFactory` (§11.3.1). Invalid manifest values fail with `PluginManifestError`, not subscriber-local error classes.
-- `priority:` is an integer in `100..999`; omitted defaults to `500`. Values outside the range fail with `PluginManifestError`. This is exactly the §11.3 `default` band — plugin subscribers cannot claim the `critical` (`0`–`9`), `early` (`10`–`99`), `late` (`1000`–`9999`), or `final` (`10000+`) bands, which stay reserved for core's own built-in subscribers. A plugin may choose a later position inside the default band; bundled `@lando/notify-lando` explicitly uses `900` (§8.9.7).
-- `abortOnError:` is a boolean; omitted defaults to `false` (§11.6).
-- **`configKey:` and config projection.** The set of global-config keys a subscriber may request is a closed, published literal union — not an arbitrary string, and never a path into the full global config:
-
-  ```ts
-  export const PublishedGlobalConfigKey = Schema.Literal("notify");   // the only Beta 1 published key (§7.5, §8.9.7)
-  export type PublishedGlobalConfigKey = Schema.Schema.Type<typeof PublishedGlobalConfigKey>;
-  ```
-
-  When an entry declares `configKey: notify`, the loader looks up `"notify"` in an internal, closed projection registry mapping each `PublishedGlobalConfigKey` to (a) the already-decoded `GlobalConfig`'s corresponding field and (b) that field's own schema (`NotifyConfig` for `"notify"`), and passes only that already-decoded, schema-typed slice as the factory's second argument. The subscriber never receives the full `GlobalConfig` object, never re-decodes anything, and cannot reach any key outside its declared `configKey`. When `configKey` is omitted, the factory's second argument is `undefined` — never an empty object, never the full config with unused fields.
-- The resolved `module` realpath MUST remain under the plugin package root; paths that escape through `..`, symlinks, absolute paths, or external `file://` URLs are rejected with `PluginModulePathError`, the same rule the loader applies to every other `module:` contribution (§9.6).
-- Subscriber modules are loaded lazily and cached, per the §11.3.1 two-phase timing: manifest read validates only syntax (entry shape, `module` realpath containment); selector *semantics* (event-name/family-expansion membership) are validated once, after plugin registration completes; the module is not imported and the `SubscriberFactory` is not invoked until the **first** event matching one of the entry's (by-then-expanded) selectors is about to be delivered. That first-match import+invocation result (the returned handler) is cached for the remainder of the process and reused for every subsequent matching event — the factory runs exactly once per subscriber entry, not once per event and not eagerly for every subscriber at level `plugins`.
-- `SubscriberManifestEntry`, `SubscriberSelector`, and `PublishedGlobalConfigKey` are additive `@lando/sdk` exports subject to the standard `sdk/AGENTS.md` compatibility/snapshot discipline (§13.2).
-
-**Service-type contribution rules:**
-
-- Each `serviceTypes:` entry MUST declare `name`, `base` (`l337` | `lando`), and either `module:` (a `ServiceType` resolver) or a fully declarative shape (`schema:`, `creds:`, `artifacts:`, `tooling:`, `features:`) for plugins that need no resolver code.
-- `extends: <parent-id>` is optional; the parent MUST be either a canonical service-type or another plugin-contributed type loaded earlier in the discovery order. Inheritance is single, depth-limited to 4, and cycles are rejected at load with `ServiceTypeCollisionError` (§6.11.1).
-- `artifacts:` MAY be a literal `{ "<version>": "<image-tag>" }` map or a path to a sibling YAML file (`artifacts: ./artifacts.yml`). Resolution is exact-match at plan-compile time (§6.11.2).
-- `tooling:` contributes tasks merged into the app's tooling map at plan time. Conflict precedence: resolved Landofile `tooling:` > service-type `tooling:` (§6.11.3); recipe-authored tooling is ordinary Landofile tooling, not a separate rank. Reserved names from service-type tooling that survive the Landofile overlay fail at plan time with `CommandAliasConflictError`. Service-type tooling MUST NOT use `topLevelAlias:`; only canonical commands and Landofile aliases own the top-level namespace. Enforcement of that MUST NOT waits on `BETA_TOOLING_TASK_KEYS` lifting `topLevelAlias` (see §14.2).
-- `creds:` opts the service-type into the §6.12.4 credentials contract. A service-type without `creds:` does not surface `LANDO_DB_*` env or `service.creds.*` expressions.
-
-**App-feature contribution rules:**
-
-- Each `appFeatures:` entry MUST declare a unique `id`, `module`, `priority`, and at minimum one of `activatedBy:` or `selectors:` (§6.11.4). An entry with neither is a no-op and rejected at load.
-- `selectors:` evaluate against the resolved app plan; `selectors.fromConfig:` strings are §7.3.1 expressions resolved at level `app`.
-- App-features MUST emit only the plan mutations the standard `AppFeatureContext` mutators expose. Direct provider-extension writes (`providers.<id>.*`) are forbidden unless the feature explicitly opts in via `providerExtensions: [<id>]`, mirroring the §6.11 service-feature rule.
-- App-features MUST be idempotent across replanning. The planner deduplicates identical mutations; non-deterministic `apply()` outputs surface as `AppFeatureNonDeterministicError` in tests.
-
-**Global service contribution rules:**
-
-- Each `globalServices:` entry MUST declare a unique `id`, `module`, and `enabledByDefault` (boolean, default `true`). Conflicts across plugins fail at plugin load with `GlobalServiceCollisionError` (§20.13).
-- The module's default export MUST be an Effect returning a `ServiceConfig` (§6.2). The Effect MAY consume `LandoPluginContext` (§9.8) and the resolved plugin config; it MUST NOT consume the active `RuntimeProvider`, perform network IO, or spawn subprocesses. Manifest validation rejects modules whose contribution module is plain JS that throws on import.
-- `requires.providerCapabilities:` is enforced at `dist` regeneration; contributions whose capability list the active provider does not satisfy are dropped from the generated layer with `GlobalServiceCapabilityError` recorded by `DoctorService` (§20.4, §20.13).
-- `conflicts:` declares ids of other `globalServices:` contributions that cannot coexist in the same global app. Two enabled, conflicting contributions surface `GlobalServiceConflictError` at `dist` regeneration with remediation suggesting `meta:global:uninstall <name>` (§20.13).
-- A plugin contributing a `globalServices:` entry MUST also publish a `ServiceType` for the entry's resolved `type:` value (the `mailpit` example relies on a `mailpit` type contributed by the same or another plugin); unknown types fail at plugin load with `GlobalServiceUnknownTypeError`.
-- A plugin SHOULD pair its `globalServices:` contributions with one or more `appFeatures:` (§6.11.4) declaring `requires.globalServices: [<id>]` so user apps automatically get discovery env without Landofile changes (§20.11.1).
-- Plugins MUST NOT contribute commands under the reserved `meta:global:*` canonical id namespace (§20.7); they MAY contribute commands under their own cspace topic that operate on the global app via `GlobalAppService`.
-- The optional `commands:` field on each entry is a list of canonical command ids (matching the plugin's `provides.commands` entries) that operate on this global service. `meta:global:list` (§20.7) renders these alongside the service so users discover per-service tooling without reading the plugin README. Each id MUST already exist in the same plugin's `provides.commands` block; an unknown id surfaces `GlobalServiceCommandReferenceError` at plugin load.
-
-**Command contribution rules:**
-
-- Each entry under `commands:` MUST declare `id` (canonical namespaced id) and `namespace`. The `namespace` value MUST equal the prefix segment of `id`.
-- Acceptable `namespace` values are `app`, `apps`, `meta`, or the plugin's own `cspace:`. Plugins MUST NOT contribute commands to a topic that does not match one of these names.
-- Plugins MUST NOT contribute commands directly under `plugin:`; the `meta:plugin:*` topic is reserved for core plugin-management commands.
-- `topLevelAlias` is optional and follows §8.1.2. Top-level aliases that conflict with built-in or other plugin aliases are rejected with remediation.
-- A command's `aliases:` field defines additional **namespaced** aliases (e.g., `app:composer-install` could alias `app:composer install`); top-level aliases use `topLevelAlias:`.
-
-**Doctor check contribution rules:**
-
-- Each `doctorChecks:` entry MUST declare a unique `id` and `module`; `summary:` and `tags:` are metadata for filtering and help.
-- A doctor check module exports a `DoctorCheck` whose `run()` method returns a `DoctorCheckResult` with zero or more issues.
-- Checks receive `DoctorCheckContext` (§10.9): optional app identity, optional selected provider identity, a bounded resource name/label inspector, and a bounded path-only executable locator. The locator MUST perform filesystem/PATH resolution only and return the normalized running executable basename plus resolved candidate path. It MUST NOT execute a candidate, read executable contents, or read user/Lando state. A doctor check MUST NOT import `@lando/container-runtime`.
-- Issues MUST include either an `automatic` solution command, a `manual` solution with user instructions, or enough detail to explain why no remediation is available.
-- Automatic solution commands run only when the user explicitly passes `--fix`; default doctor runs are read-only.
-- Checks MUST redact secrets and MUST NOT require provider-native commands for normal diagnosis unless the provider itself is the subject of the check.
-- Each contribution runs under its own per-check deadline with defect capture and plugin/check attribution (§10.9.1); a hanging or throwing check MUST become an attributed failed check and MUST NOT take the doctor run down.
-
-**Interaction service contribution rules:**
-
-- Each `interactionServices:` entry MUST declare a unique `id`, `module`, and `capabilities` (`interactive`, the supported `promptTypes` subset, and `secretRedaction`). An implementation that declares a `promptTypes` subset MUST fail unsupported prompt types with `InteractionUnavailableError` rather than silently degrading.
-- The module MUST satisfy the published `InteractionService` tag (§8.10.2) and accept the canonical `PromptSpec`/`PromptBatchOptions` shapes without engine-specific mutation.
-- Implementations MUST honor the §8.10.3 answer-source precedence and interactivity-mode resolution, MUST NOT echo or log `secret` answers, and MUST fail fast (never block on stdin) in non-interactive mode.
-- Implementations MUST pass the §13.1 interaction contract suite; they MUST NOT weaken the `secret`-redaction, answer-precedence, or non-interactive-fail-fast guarantees.
-- Selection follows §4.3; the `id: stdio` default implementation is reserved by core.
-
-**Tunnel service contribution rules:**
-
-- Each `tunnelServices:` entry MUST declare a unique `id`, `module`, and `capabilities` (`connectorBinary`, `ephemeralUrls`, `stableUrls`, `basicAuth`, `detached`). Declared capabilities MUST match observed behavior; the §13.1 TunnelService contract suite checks this.
-- The module MUST satisfy the published `TunnelService` tag (§10.2.2) and accept only app-local `TunnelTarget`s (a resolved `RoutePlan` id/hostname or a service endpoint). It MUST NOT accept arbitrary public→host-port forwarding except behind an explicit advanced option, and the canonical `lando share` UX never exposes that path.
-- Provider control-plane egress (login/device flow, session create/delete, status) MUST go through `HttpClient` (§10.3.2); implementations MUST NOT call `fetch` or open their own sockets for Lando-owned egress. Connector binaries MUST be provisioned through the tool-provisioning helper over `Downloader` (§10.3.4), never plugin-local downloads.
-- Connector processes MUST run through `ProcessRunner` with `Scope`-bound finalization; foreground sessions close on `Effect.interrupt`, detached sessions persist in the `tunnel-registry` `StateStore` bucket (§12.1) until explicit stop, app destroy, or GC. Readiness MUST use the §10.5.1 probe primitive; implementations MUST NOT hand-roll retry loops.
-- Implementations MUST compose the canonical `RedactionService` for public URLs, auth URLs, tokens, device codes, and local paths, and MUST NOT move local/volume bytes (`DataMover` is reserved for features that also transfer data). Selection follows §4.3; there is no core default implementation in v4.0.
+- Config translators MUST declare unique identity and input kinds, run only on explicit request, decode ordered document sets or recipe requests into authoring fragments, and MUST NOT emit plans, perform IO, mutate files, contact providers, or install plugins. Duplicate ids fail without a precedence winner. Optional encoders MUST preserve expressions and secret references under §7.4.1 and §7.8.1.
+- Template engines MUST declare identity, extensions, and capabilities. `lando` is reserved. Plugin engines MUST NOT claim Landofile string interpolation; unsafe engines require explicit opt-in and otherwise fail with `TemplateEngineUnsafeRejectedError`. Engines MUST implement the published tag and SHOULD provide the portable helper set.
+- Renderer panels MUST declare valid id, slot, watch set, and contained module. Watch names are limited to the closed event taxonomy. Invisible panels remain unloaded; visible panels run isolated, bounded, and are dropped on load or identity failure as `PluginLoadError` (§8.9.5).
+- Subscribers MUST use exact event selectors or the published command-terminal family, remain in the plugin priority band, default to non-aborting failure behavior, and MAY request only published config projections. Factories load on first matching event, run once, and cache their handler. Invalid shape is `PluginManifestError`; escaping modules fail with `PluginModulePathError`.
+- Service types MUST declare `name`, `base`, and either a resolver module or the published declarative shape. Inheritance is single, bounded, acyclic, and references an earlier type. Landofile tooling overrides type tooling; reserved surviving names fail with `CommandAliasConflictError`. Type tooling MUST NOT claim top-level aliases. Credentials are exposed only when declared.
+- App features MUST declare identity, module, priority, and activation or selectors; no-op entries are rejected. They MUST use published mutators, MUST declare provider-extension access, and MUST be idempotent across replanning.
+- Global services MUST declare identity, module, default enablement, required capabilities, and conflicts. They MUST be pure service-config Effects, MUST NOT consume the active provider or perform network/process IO, and MUST reference a published service type. Listed commands MUST also exist in the same plugin’s `provides.commands`. Capability, collision, conflict, unknown-type, and command-reference failures remain tagged under §20. Plugins SHOULD pair global services with activating app features.
+- Doctor checks MUST use bounded `DoctorCheckContext`, MUST NOT import container-runtime internals, MUST provide remediation or sufficient explanation, MUST redact secrets, and MUST fail in isolation rather than taking down the doctor run. Automatic fixes run only with explicit `--fix` (§10.9).
+- Interaction services MUST truthfully declare prompt capabilities, preserve answer precedence and secret redaction, fail unsupported prompts with `InteractionUnavailableError`, never block on stdin in non-interactive mode, and pass the §13.1 interaction contract suite. `stdio` is reserved by core.
+- Tunnel services MUST truthfully declare capabilities, accept app-local targets, keep arbitrary host-port forwarding behind an advanced option, route egress through `HttpClient`, provision connectors through `Downloader`, bind foreground processes to `Scope`, persist detached sessions in `StateStore`, use §10.5.1 probing, redact URLs, tokens, codes, and paths, and pass the §13.1 tunnel contract suite. v4.0 has no core default tunnel service.
 
 ### 9.6 Plugin install and update
 
-`lando meta plugin add <spec>` (top-level alias `lando plugin add`) and `lando meta plugin remove <name>` (top-level alias `lando plugin remove`) are core commands implemented by:
+`meta:plugin:add` (`lando plugin add`) resolves through `PluginSource`, validates the manifest, checks dependencies and API compatibility, installs through the embedded Bun execution contract (§3.4), and invalidates plugin and command caches. `meta:plugin:remove` (`lando plugin remove`) removes the selected user plugin and refreshes the same caches. A standalone Bun installation MUST NOT be required; library mode MAY use system Bun only when no embedded Bun exists.
 
-1. Resolving the spec through the active `PluginSource` adapter chain.
-2. Validating the manifest against the Effect Schema.
-3. Resolving dependency and API compatibility (rejects on conflict).
-4. Installing the package via `BunSelfRunner` (§3.4): the running binary self-spawns with `BUN_BE_BUN=1` and the resolved Bun verb (`add` for registry/git/tarball specs in the user-global plugin store; `install` for app-scoped `plugins:` resolution against an app's plugin store). The plugin install dir is the spawn `cwd`. Spawning a system `bun` from `$PATH` is forbidden; the compiled binary is itself Bun (§2.1). The library form falls back to a system `bun` when no embedded Bun is available, per the §3.4 contract.
-5. Refreshing the Lando plugin cache and the plugin command cache (`invalidatePluginCommandCache`, §12.1).
+Install scripts are disabled by default. They MAY run only for explicitly trusted package identities or authoring roots; Git installs require per-install trust. Grants remain until removed by `meta:plugin:trust:revoke`, and `meta:plugin:trust:list` exposes current grants. Registry, Git, and local trust domains MUST NOT imply one another. Install lifecycle events MUST be observable, cancellable, and redacted.
 
-The user therefore needs no separate Bun installation to install plugins. A user with only the Lando binary on PATH can run `lando plugin add @lando/provider-docker` and the binary self-spawns its embedded Bun to perform the install. This contract is checked by an end-to-end test on a clean container with no prior Bun in the §13.6 CI matrix.
+`meta:update` (`lando update`) checks plugin channels `stable`, `next`, and `dev` through `UpdateService`, honors manifest channel constraints, and updates plugins through the same install path. Binary self-update remains the separate §17.6 protocol.
 
-**Plugin postinstall scripts.** Bun's `lifecycleScripts` policy applies. By default, `BunSelfRunner.add` and `.install` MUST disable arbitrary `postinstall` script execution (`--ignore-scripts`-equivalent behavior) for any plugin not on the trusted-postinstall allowlist (`<userConfRoot>/plugin-trust.yml`, populated explicitly by the user via `lando plugin trust <name>`). Trusted postinstall scripts run inside the same `BunSelfRunner` recursion-guarded child (§3.4) and surface as `pre-bun-self-exec` / `post-bun-self-exec` events (§11.2) with `verb: "install"` and the plugin id in `callerSubsystem`. Trust grants are non-expiring until `lando plugin trust revoke <name>` removes the plugin-name entry; `lando plugin trust list` prints current trusted plugin names and authoring roots. npm/registry plugin trust is keyed to the requested package identity, git plugin sources require explicit `--trust` per install session, and local/link authoring trust applies only to resolved absolute authoring roots. This is the principal user-facing motivation for routing every plugin install through `BunSelfRunner`: untrusted-by-default, lifecycle-observable, redacted, cancellable, and consistent across `meta:plugin:add` and app-scoped `plugins:` resolution.
+Plugin login/logout stores registry credentials in the plugin-auth store. Tokens MUST travel only through child environment, MUST NOT appear in argv, and MUST be redacted from lifecycle events and non-debug logs.
 
-`lando meta update` (top-level alias `lando update`) consults each installed plugin's release channel via the `UpdateService`. Channels: `stable`, `next`, `dev`. A plugin's manifest may specify `channels:` to constrain which channels it appears in. Plugin update writes use `BunSelfRunner.add` against the resolved version specifier; the `meta:update` command itself updates the Lando binary via the §17.6 self-update protocol, which is unrelated to `BunSelfRunner`.
-
-`lando meta plugin login` (top-level alias `lando plugin login`) and `lando meta plugin logout` (top-level alias `lando plugin logout`) write to `<userDataRoot>/plugin-auth.json` and are consumed by the registry plugin source for private packages. The `BunSelfRunnerBunLive` reads `plugin-auth.json` to populate `BUN_AUTH_TOKEN` / scoped `_authToken` env vars on the spawned child for `add` / `install` verbs only; tokens never appear in argv, are redacted from `pre-bun-self-exec` / `post-bun-self-exec` events (§11.2), and never reach the `Logger` above debug level.
-
-App-declared `plugins:` do not install into the user-global plugin set. They are scoped to the app that declared them, because they are part of that app's reproducible build. App-scoped install runs through the same `BunSelfRunner` with the app's `<userDataRoot>/apps/<app-id>/plugins/` as `cwd` and writes a `bun.lock` whose entries are mirrored into `.lando.lock.yml` (§7.7.4). Global `meta:plugin:add` remains the user-level install path for plugins the user wants available across apps.
+App-declared plugins install only into their app-scoped store, use the same trust and validation path, and mirror their lock into `.lando.lock.yml`; they MUST NOT enter the user-global plugin set.
 
 ### 9.7 Plugin loading rules
 
-- Manifest validation happens before any plugin module is loaded.
-- Bundled plugin modules are statically imported through the generated `core/src/plugins/generated/bundled.ts` file and are part of the compiled binary.
-- User, system, app-local, and app-scoped plugin modules are loaded from disk outside the binary with dynamic `import()` of an absolute `file://` URL.
-- External plugin loading is staged: resolve/install the source, validate the manifest, resolve the contribution module path, verify API compatibility, verify the resolved realpath stays inside the plugin package root (or declared local plugin root), then import.
-- Manifest `module:` paths MUST be relative paths or package-export entries that resolve inside the plugin package root after realpath resolution. Paths that escape via `../`, symlinks, absolute paths, or `file://` URLs outside the root are rejected with `PluginModulePathError`.
-- Runtime imports use absolute `file://` URLs only. CWD-relative dynamic imports are forbidden.
-- App-scoped plugins from Landofile `plugins:` load only from the locked local copy recorded in `.lando.lock.yml`; routine app startup MUST NOT re-resolve the remote source.
-- The validated `plugin-command` cache (§12.1) is the **sole metadata owner** for every plugin command, bundled and external. The implemented contribution graph follows the §9.3 order through bundled → system → user → app-local `pluginDirs:` → explicit Landofile `plugins:`, and a later source replaces an earlier plugin with the same manifest name before cache compilation. The specified experimental source has no runtime implementation yet; when implemented, its command metadata MUST join this same cache path at the final §9.3 precedence. Duplicate command ids are deterministically deduplicated by retaining their first occurrence in the resulting manifest order, and the compiled command index is sorted by canonical id. Bundled metadata is not duplicated into the build-embedded command-registry manifest: that artifact remains the built-in-only projection of `builtInCommandEntries`.
-- Plugin-command cache writes and freshness reads use the same resolved manifest set and compare the Lando version, ordered plugin-name list, manifest fingerprint, plugin-list fingerprint, and per-plugin command ids. Plugin install, remove, update, or reorder; explicit plugin-cache invalidation; `--clear`; or a regenerated bundled ship list invalidates that metadata view. Removing a command-contributing bundled plugin from `core/build.config.ts`, regenerating `core/src/plugins/generated/bundled.ts`, and rewriting the cache therefore removes its command metadata without a hand edit under `core/src/`.
-- `PluginManifest.contributes.commands` entries remain `ContributionRef` ids only, and `LandoPluginModule` may expose a `commands` map of lazy loaders keyed by that same canonical id, each resolving to the plugin's executable command implementation on first request. That loader map has exactly one consumer: a §8.5.2.1 `command:` step targeting a plugin-contributed id resolves and invokes the matching loader directly, without going through the native top-level CLI dispatcher. The `plugin-command` cache (§12.1) stays the metadata source of truth and proves freshness, but it indexes `ContributionRef` ids, not implementations, so it MUST NOT be treated as an executable registry. Native top-level dispatch of plugin-contributed commands — resolving a plugin command id directly from user or embedding-host argv rather than through a `command:` step — is deferred until a public command implementation contract exists; the native dispatcher therefore resolves executable built-ins from `builtInCommandEntries` today.
-- Each implemented contribution module is loaded lazily on first request (for example, `provider` is loaded when a provider is selected).
-- Config translator modules are loaded only when `app config translate`, `app config translate --detect`, or an embedding host explicitly requests translation.
-- A plugin module returning an Effect Layer is composed into `LandoRuntimeLive` at load time.
-- A plugin module returning a plain object is wrapped via `Layer.succeed`.
-- A plugin module that throws on load is reported as a `PluginLoadError` and the plugin is marked unhealthy; other plugins continue.
+- Manifest validation, source resolution, compatibility, module resolution, and realpath containment precede import.
+- Bundled modules are statically included; external modules use absolute file URLs. Cwd-relative imports and paths escaping the plugin root are forbidden.
+- App-scoped plugins load only from their lockfile-selected local copy.
+- The validated plugin-command cache is the sole command-metadata owner. It follows discovery precedence, invalidates on plugin-set or manifest change, and MUST NOT be treated as an executable registry.
+- Duplicate command ids retain the first occurrence in resolved manifest order. Executable plugin command loaders remain lazy and keyed by canonical id.
+- Native top-level dispatch of plugin-contributed commands is deferred until a public command implementation contract exists; command steps MAY invoke their lazy implementation.
+- Each contribution module loads on first use. Config translators load only for explicit translation requests.
+- Layer results compose into the runtime; plain objects are wrapped as Layers.
+- A throwing module becomes `PluginLoadError`, marks that plugin unhealthy, and MUST NOT prevent unrelated plugins from loading.
+- Experimental-source runtime loading is not implemented; when added, it MUST join the same cache at final discovery precedence.
 
 ### 9.8 The `LandoPluginContext`
 
-Plugins receive a typed context with constrained access to core services:
+| Member | Access granted |
+|---|---|
+| `id`, `version`, `config` | Plugin identity and decoded configuration. |
+| `cwd`, `userConfRoot`, `userCacheRoot`, `userDataRoot`, `platform` | Validated host context and roots. |
+| `logger` | Host logger. |
+| `stateStore` | Durable store pre-rooted to `plugins/<id>` (§12.7). |
+| `managedFiles` | Managed-file view pre-namespaced to `owner:<id>` (§10.13). |
+| `events.publishRender` | Publish-only access to the closed `RenderEvent` union (§8.9). |
 
-```ts
-export interface LandoPluginContext {
-  readonly id: string;                        // plugin name
-  readonly version: string;
-  readonly config: PluginConfig;              // resolved per-plugin config
-  readonly cwd: AbsolutePath;
-  readonly userConfRoot: AbsolutePath;
-  readonly userCacheRoot: AbsolutePath;
-  readonly userDataRoot: AbsolutePath;
-  readonly platform: HostPlatform;
-  readonly logger: Logger.Logger<unknown, unknown>;
-  readonly stateStore: PluginStateStore;      // §12.7 StateStore, pre-namespaced to plugins/<id>/
-  readonly managedFiles: PluginManagedFiles;  // §10.13 ManagedFileService, pre-namespaced to owner:<id>
-  readonly events: {
-    // Constrained publish-only seam onto the render-event vocabulary (§8.9, §8.9.4, §8.9.7). Redacts
-    // through the canonical RedactionService (§3.7), schema-decodes the argument against the published
-    // RenderEvent union, and publishes it through the internal EventService (§11.1). A schema-decode
-    // failure surfaces as the same `EventError` every other EventService operation can fail with
-    // (§11.1) — there is no separate render-event-only error type and no new reason literal; this is
-    // ordinary EventError schema-decode failure, not a distinct error shape.
-    // `LandoPluginContext` does NOT expose the unrestricted `EventService` tag (no arbitrary `publish`,
-    // `subscribe`, `waitFor`, or `query`) — this is the only event-bus access a plugin's subscriber
-    // factory or contribution module gets, and it can only ever emit the closed `RenderEvent`
-    // vocabulary, never an arbitrary `LandoEvent`.
-    readonly publishRender: (event: RenderEvent) => Effect.Effect<void, EventError>;
-  };
-}
-```
-
-The `managedFiles` accessor is a `ManagedFileService` (§10.13) view **pre-namespaced** to the plugin's `owner` id: every managed file the plugin writes is recorded with `owner:<id>`, `status` is filtered to that owner, and the plugin can neither remove, adopt, nor release a file owned by another plugin or by core (such a cross-owner operation fails with `ManagedFileError reason:"conflict"`).
-
-The `stateStore` factory is a `StateStore` (§12.7) view whose host **pre-roots** every `open` call under `plugins/<id>/` beneath `userData` (callers pass only single-segment `namespace` and `key`, not a multi-segment namespace path): every bucket a plugin opens is rooted inside its own subtree, so a plugin cannot read or clobber core state or another plugin's state. This is the supported way for a plugin to persist durable state with atomic-write, schema-validation, versioning, corruption-quarantine, and advisory-lock guarantees — e.g. a `SecretStore` caching resolved tokens, an `UpdateService` recording channel metadata, or a `ConfigTranslator` writing a sidecar lockfile. Plugins MUST NOT hand-roll atomic writes or lockfiles outside this surface.
-
-Plugins do not receive the full `LandoRuntimeLive` Layer. They receive precisely the services declared in their contribution requirements; this is enforced by the manifest's `requires.services:` field (TBD, §14).
+`stateStore` MUST prevent access to core or other-plugin state, and plugins MUST NOT hand-roll atomic writes or lockfiles outside it. `managedFiles` MUST prevent cross-owner remove, adopt, or release operations. `events.publishRender` schema-validates and redacts events and does not expose arbitrary publish, subscribe, wait, or query access. Plugins never receive `LandoRuntimeLive`; they receive only declared services.
 
 ### 9.10 Plugin authoring toolkit
 
-The compiled `lando` binary is itself Bun (§2.1). That makes it possible to ship a complete plugin-authoring workflow inside the binary without requiring contributors to install a separate Bun, Node, npm, yarn, or any TypeScript toolchain. The toolkit is a small set of `meta:plugin:*` authoring commands (registered alongside the install/update commands in §8.2) that route every spawn through `BunSelfRunner` (§3.4).
+Core provides `meta:plugin:new`, `meta:plugin:test`, `meta:plugin:build`, `meta:plugin:link`, `meta:plugin:unlink`, and `meta:plugin:publish`. These are not contribution surfaces and have no default top-level aliases. Templates cover service types, providers, tooling engines, template engines, route filters, config translators, recipes, and bare plugins, and MUST emit a buildable, testable, linkable v4 package.
 
-The authoring toolkit is **not** a plugin contribution surface. It is core code that ships in core. Plugins MUST NOT contribute commands under `meta:plugin:*`.
-
-#### 9.10.1 Authoring command catalog
-
-| Canonical id | Bootstrap | Verb | Purpose |
-|---|---|---|---|
-| `meta:plugin:new <name> [<destination>]` | `minimal` | `BunSelfRunner.create` | Scaffold a new plugin source tree from a bundled template. |
-| `meta:plugin:test [<paths>...]` | `minimal` | `BunSelfRunner.run(["test", ...paths])` | Run `bun test` in the current plugin source tree. |
-| `meta:plugin:build` | `minimal` | `BunSelfRunner.buildLib` | Run `bun build` per the plugin's declared entry points and emit a publishable artifact tree. |
-| `meta:plugin:link [<path>]` | `plugins` | `BunSelfRunner` | Symlink a local plugin source tree into the user-global plugin store and refresh plugin caches. |
-| `meta:plugin:unlink <name>` | `plugins` | `BunSelfRunner` | Reverse of `link`; the previously installed registry copy is restored when the lockfile records one. |
-| `meta:plugin:publish` | `minimal` | `BunSelfRunner.publishPkg` | Publish the built artifact to a registry. Reads tokens from `<userDataRoot>/plugin-auth.json`; redacts them in lifecycle events. |
-
-None of these commands carries a default top-level alias; they are namespaced under `meta:plugin:` for discoverability and to keep the bare top-level surface uncluttered. The colon form (`lando meta:plugin:new <name>`) is canonical under native dispatch (§8.4.1). Space-form access such as `lando plugin new <name>` is accepted only where the native parser's bounded normalization explicitly lists it; this section makes no general flexible-taxonomy guarantee.
-
-#### 9.10.2 `meta:plugin:new` templates
-
-`meta:plugin:new` invokes `BunSelfRunner.create(template, dest)` with a Lando-curated template id. The bundled template set is generated at build time by a new `scripts/build-bundled-plugin-templates.ts` codegen step (added to §17.2) and embedded via `Bun.embeddedFiles` (§17.3):
-
-| Template id | Scaffolds |
-|---|---|
-| `service-type` | A service-type plugin (manifest, `serviceTypes:` entry, schema, scenario fixture) |
-| `provider` | A `RuntimeProvider` plugin (manifest, capability matrix, `apply`/`exec`/`logs` skeletons, contract-suite hookup) |
-| `tooling-engine` | A `ToolingEngine` plugin |
-| `template-engine` | A `TemplateEngine` plugin (capabilities matrix and contract-suite hookup) |
-| `route-filter` | A `RouteFilter` plugin |
-| `config-translator` | A `ConfigTranslator` plugin (detection patterns, options schema, fragment emitter) |
-| `recipe` | A directory tree containing `recipe.yml`, `templates/`, `assets/`; published as an npm package consumable by `--recipe=npm:…` |
-| `bare` | An empty plugin manifest plus a `provides:` skeleton; the user fills in the rest |
-
-Every template emits, at minimum: a `package.json` with the correct `keywords` and `lando` block, a `plugin.yaml` (or `package.json#lando`) with `api: 4`, an `Effect Schema`-typed config schema, a `bun test`-ready test fixture, a `tsconfig.json` aligned with §2.2 strict settings, and a `README.md`. The generated tree is buildable, testable, and linkable with no further setup.
-
-`lando plugin new` prompts interactively for `name`, `template`, `cspace`, and `description` unless `--no-interactive` is passed; `--answer key=value` (repeatable) and `--answers <file>` follow the §8.8.1 init-prompt conventions so an embedding host can scaffold non-interactively.
-
-#### 9.10.3 `meta:plugin:test` and `meta:plugin:build`
-
-Both commands resolve the *current plugin source tree* by walking up from `cwd` looking for a `package.json` whose `keywords` include `lando-plugin` (or whose `package.json#lando` block validates as a manifest). The first match is the plugin root; failure surfaces as `PluginAuthoringRootNotFoundError` with remediation pointing at the directory layout the templates produce.
-
-`meta:plugin:test` runs `BunSelfRunner.run(["test", ...args])` with the plugin root as `cwd`. The argv after `--` is forwarded to Bun unchanged, so `lando plugin test -- --watch` works exactly as a user would expect from `bun test --watch`.
-
-`meta:plugin:build` runs `BunSelfRunner.buildLib({ entrypoints, outdir, target: "bun" })` per the plugin's `package.json#exports` map, with TS declarations emitted via `BunSelfRunner.run(["build", "--declaration", ...])` or an equivalent type-emit pass. Output lands at `<plugin-root>/dist/`. The command refuses to run if a previous build's output is mixed with source files (no `dist/` polluting `src/`).
-
-Both commands publish `cli-meta:plugin:test-*` and `cli-meta:plugin:build-*` lifecycle events alongside the per-spawn `pre-bun-self-exec` / `post-bun-self-exec` pair.
-
-#### 9.10.4 `meta:plugin:link` and `meta:plugin:unlink`
-
-`meta:plugin:link [<path>]` resolves a plugin source tree (defaulting to `cwd` per §9.10.3), validates the manifest, then registers the local path in the user-global plugin store at `<userDataRoot>/plugins/<name>` as a symlink. The plugin command cache is invalidated (`invalidatePluginCommandCache`, §12.1). Subsequent `lando` invocations import the linked plugin's modules from the live source tree, so plugin authors get a real edit-build-test loop without re-running `meta:plugin:add`.
-
-`meta:plugin:unlink <name>` reverses the operation. If the user's plugin lockfile (`<userDataRoot>/plugins/.lando.lock.yml`) records a registry-installed copy that the link replaced, the registry copy is restored via `BunSelfRunner.add`. Otherwise the plugin is simply removed.
-
-Linked plugins are flagged in the plugin cache with `source: "linked"` and `linkedPath: <abs>`; `lando doctor` reports linked plugins separately so a user investigating an issue knows which plugins are running from local development trees rather than published versions.
-
-`meta:plugin:link` rejects symlinks whose realpath escapes any of the user's permitted authoring roots (`<userDataRoot>/plugins/.authoring-roots/*`, populated by the user via `lando plugin trust-authoring-root <abs>`). This prevents a malicious package from pretending to be a plugin during `lando init` flows that recurse through unrelated directories. The default authoring-roots list is empty; users opt in explicitly. Authoring-root trust is scoped to local/link flows and MUST NOT make npm/registry cache extraction paths trusted.
-
-#### 9.10.5 `meta:plugin:publish`
-
-`meta:plugin:publish` runs `BunSelfRunner.publishPkg({ tag, dryRun, registry })` with the plugin's built artifact directory as `cwd`. Pre-publish, the command:
-
-1. Re-runs `meta:plugin:build` if the artifact directory is missing or older than any source file.
-2. Re-runs `meta:plugin:test` unless `--no-test` is passed.
-3. Validates the manifest one more time and asserts that every `module:` path in `provides:` resolves under the artifact directory (no source-only paths leak into the published package).
-4. Reads the active registry token from `<userDataRoot>/plugin-auth.json` (§9.6) for the registry the plugin's `package.json#publishConfig` declares.
-
-The token is passed to the embedded Bun via env (`BUN_AUTH_TOKEN` or scoped `_authToken`); it never appears in argv and is redacted in `pre-bun-self-exec` / `post-bun-self-exec` events (§11.2). `--dry-run` runs the entire flow including `bun publish --dry-run`, prints the package contents, and exits 0 without actually publishing.
-
-#### 9.10.6 Authoring policies
-
-- Authoring commands MUST NOT modify any global Lando state outside `<userDataRoot>/plugins/`. They MUST NOT mutate global config, MUST NOT install user-facing recipes, and MUST NOT run app lifecycle commands.
-- The `.bun.sh` and `.bun.ts` script execution paths from §3.4 / §8.5.9 are reused for any authoring task that needs in-binary scripting (e.g., a template's post-scaffold hook). Templates MUST NOT bundle a freeform shell script outside that contract.
-- Authoring commands route every Bun child through `BunSelfRunner`; arbitrary `Bun.spawn(["bun", …])` calls are forbidden in the authoring command implementations under `src/cli/commands/meta/plugin/*`. The §13.4 lint gate enforces this.
-- The plugin templates MUST keep their top-of-tree imports cheap (§2.4); a freshly-scaffolded plugin MUST cold-start within the level-`plugins` budget on the reference runner (§2.1, §13.1).
+Authoring commands MUST route Bun work through the embedded Bun contract, MUST keep changes within the plugin store or selected source tree, MUST NOT mutate global config or app lifecycle, and MUST keep generated plugin top-level imports within cold-start policy. Link trust applies only to explicitly permitted authoring roots and MUST NOT trust registry extraction paths. Publishing MUST rebuild stale artifacts, test unless explicitly skipped, revalidate manifest and contained module paths, keep tokens out of argv, and support a non-publishing dry run.
 
 ---

@@ -73,13 +73,8 @@ import type {
 
 import type {
   AppResolveError,
-  BuildPhaseFailedError,
   CacheError,
-  CapabilityError,
-  CommandAliasConflictError,
-  ComposeKeyRejectedError,
   ConfigError,
-  ConfigExpressionError,
   ConfigTranslatorConflictError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
@@ -87,23 +82,10 @@ import type {
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
-  HomePathCapabilityError,
   HttpClientUnavailableError,
   HttpRequestError,
   HttpTrustError,
   HttpUploadError,
-  LandofileFormConflictError,
-  LandofileImportRefMisuseError,
-  LandofileIncludeError,
-  LandofileLoadLimitError,
-  LandofileLoadOutsideRootError,
-  LandofileLockMismatchError,
-  LandofileNotFoundError,
-  LandofileParseError,
-  LandofileSandboxError,
-  LandofileTimeoutError,
-  LandofileUnknownEventError,
-  LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileError,
   ManagedFileTransactionError,
@@ -114,20 +96,18 @@ import type {
   PluginManifestError,
   ProcessExecError,
   ProcessTimeoutError,
-  ProviderConfigError,
   ProviderUnavailableError,
   ProxyApplyError,
   ProxyError,
   ProxySetupError,
-  PublicationUnsupportedError,
   RecipeExtendsError,
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
   RecipeManifestValidationError,
   RecipeSourceError,
-  RouteInputError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
+  RouterWatcherError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -137,7 +117,6 @@ import type {
   ShellExecError,
   ToolingCompileError,
   ToolingExecError,
-  ToolingIncludeCycleError,
 } from "../errors/index.ts";
 
 import type { AppFeatureDefinition } from "./app-features.ts";
@@ -157,12 +136,14 @@ import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
+import type { LandofileServiceError } from "./landofile.ts";
 import type {
   ManagedFileApplyOptions,
   ManagedFileSelector,
   ManagedFileTransactionPendingReport,
 } from "./managed-file.ts";
 import type { LandoPaths } from "./paths.ts";
+import type { AppPlannerError, BuildAppError, BuildError } from "./planner.ts";
 import type {
   CertificateAuthorityShape,
   HealthcheckRunnerShape,
@@ -182,6 +163,7 @@ import type {
 } from "./process.ts";
 import type {
   AppSelector,
+  AppliedTeardownEvidence,
   ApplyOptions,
   ApplyResult,
   ArtifactBuildSpec,
@@ -189,6 +171,7 @@ import type {
   ArtifactRef,
   CommandSpec,
   DestroyOptions,
+  DestroyOutcome,
   EphemeralRunSpec,
   ExecChunk,
   ExecResult,
@@ -197,7 +180,9 @@ import type {
   LogChunk,
   LogOptions,
   LogTarget,
+  ObservedServiceRemoval,
   ProviderError,
+  ProviderSelectionError,
   ProviderSetupInspectOptions,
   ProviderSetupOptions,
   ProviderStatus,
@@ -300,7 +285,18 @@ export interface RuntimeProviderShape {
     target: ServiceSelector,
     options?: WaitForExitOptions,
   ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
-  readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
+  readonly destroy: (
+    target: AppSelector,
+    options: DestroyOptions,
+  ) => Effect.Effect<DestroyOutcome, ProviderError>;
+  /**
+   * Stops and removes the single container behind one observation this provider reported from
+   * `list`. It never resolves an applied plan, so resources no plan accounts for are addressed by
+   * the identity they were observed under. An observation carrying no container id is `absent`.
+   */
+  readonly removeObservedService: (
+    observed: ServiceRuntimeInfo,
+  ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
   readonly execStream: (
@@ -359,25 +355,7 @@ export declare class ConfigService extends Context.Tag("@lando/core/ConfigServic
 export declare class LandofileService extends Context.Tag("@lando/core/LandofileService")<
   LandofileService,
   {
-    readonly discover: Effect.Effect<
-      LandofileShape,
-      | LandofileNotFoundError
-      | LandofileParseError
-      | LandofileValidationError
-      | RouteInputError
-      | LandofileSandboxError
-      | LandofileTimeoutError
-      | LandofileFormConflictError
-      | LandofileIncludeError
-      | LandofileLockMismatchError
-      | LandofileImportRefMisuseError
-      | LandofileLoadLimitError
-      | LandofileLoadOutsideRootError
-      | ToolingIncludeCycleError
-      | NotImplementedError
-      | ComposeKeyRejectedError
-      | ManagedFileTransactionError
-    >;
+    readonly discover: Effect.Effect<LandofileShape, LandofileServiceError>;
   }
 >() {}
 
@@ -577,19 +555,14 @@ export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/Ru
   RuntimeProviderRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
-    readonly capabilities: Effect.Effect<
-      ProviderCapabilities,
-      ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
-    >;
-    readonly select: (
-      plan?: AppPlan,
-    ) => Effect.Effect<
-      RuntimeProviderShape,
-      ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
-    >;
+    readonly capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>;
+    readonly select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
     readonly resolveAppliedPlan?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppPlan | undefined, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly resolveTeardownEvidence?: (
+      root: AbsolutePath,
+    ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
   }
 >() {}
 
@@ -604,18 +577,7 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     readonly plan: (
       landofile: LandofileShape,
       providerCapabilities: ProviderCapabilities,
-    ) => Effect.Effect<
-      AppPlan,
-      | LandofileValidationError
-      | RouteInputError
-      | CapabilityError
-      | NotImplementedError
-      | HomePathCapabilityError
-      | PublicationUnsupportedError
-      | CommandAliasConflictError
-      | ConfigExpressionError
-      | LandofileUnknownEventError
-    >;
+    ) => Effect.Effect<AppPlan, AppPlannerError>;
   }
 >() {}
 
@@ -627,24 +589,8 @@ export interface BuildAppOptions {
 export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
   BuildOrchestrator,
   {
-    readonly build: (
-      plan: AppPlan,
-    ) => Effect.Effect<
-      AppPlan,
-      EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError
-    >;
-    readonly buildApp: (
-      plan: AppPlan,
-      options?: BuildAppOptions,
-    ) => Effect.Effect<
-      void,
-      | BuildPhaseFailedError
-      | EventError
-      | NoProviderInstalledError
-      | ProviderConfigError
-      | ProviderError
-      | ProviderUnavailableError
-    >;
+    readonly build: (plan: AppPlan) => Effect.Effect<AppPlan, BuildError>;
+    readonly buildApp: (plan: AppPlan, options?: BuildAppOptions) => Effect.Effect<void, BuildAppError>;
   }
 >() {}
 
@@ -825,7 +771,12 @@ export declare class RouterService extends Context.Tag("@lando/core/RouterServic
     readonly capabilities: ProxyCapabilities;
     readonly setup: (
       config: ProxyConfig,
-    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch, Scope.Scope>;
+    ) => Effect.Effect<
+      void,
+      ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
+      Scope.Scope
+    >;
+    readonly revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>;
     readonly applyRoutes: (
       routes: ReadonlyArray<RoutePlan>,
       appId: AppId,

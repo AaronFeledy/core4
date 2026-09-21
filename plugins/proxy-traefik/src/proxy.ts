@@ -1,7 +1,17 @@
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Option, Stream } from "effect";
 
-import { CaError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
-import type { AppId, ProxyApplyResult, ProxyConfig, RoutePlan } from "@lando/sdk/schema";
+import { CaError, ProxyApplyError, ProxyError, RouterWatcherError } from "@lando/sdk/errors";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  type ProxyApplyResult,
+  type ProxyConfig,
+  type RoutePlan,
+  ServiceName,
+} from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import {
   CertificateAuthority,
   EventService,
@@ -13,6 +23,7 @@ import {
   ProcessRunner,
   RouterService,
   type RouterServiceShape,
+  RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
@@ -30,6 +41,7 @@ import {
   joinFor,
   routeFile,
   routingStateFile,
+  watcherDiagnosticFile,
 } from "./proxy-paths.ts";
 import {
   advertisedPorts,
@@ -38,7 +50,12 @@ import {
   publishFallbackWarn,
 } from "./proxy-setup.ts";
 import type { TraefikProxyDependencies, TraefikRouterLists, TraefikRouterPin } from "./proxy-types.ts";
-import { DEFAULT_AUTHORITY_PORTS, authoritiesFor, renderTraefikDynamicConfig } from "./routing.ts";
+import {
+  type AuthorityPorts,
+  DEFAULT_AUTHORITY_PORTS,
+  authoritiesFor,
+  renderTraefikDynamicConfig,
+} from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { stopSockets } from "./socket-proxy-install.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
@@ -50,11 +67,103 @@ import {
   removeAllCertificates,
   removeAppCertificates,
 } from "./tls.ts";
+import { clearWatcherDiagnostic, writeWatcherDiagnostic } from "./watcher-diagnostic-state.ts";
+import {
+  boundWatcherDetail,
+  classifyWatcherFailure,
+  watcherHostLabel,
+  watcherRemediations,
+} from "./watcher-diagnostics.ts";
 
 export { renderTraefikDynamicConfig } from "./routing.ts";
 
 const TRAEFIK_PROXY_ID = "traefik";
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
+const secretsRedactor = createRedactor("secrets");
+
+/**
+ * Selecting a provider reads only `plan.provider`. The host-level global app that
+ * runs Traefik is always applied with the Lando-managed provider, regardless of a
+ * user `defaultProviderId`, so the log observation pins the same provider. If that
+ * provider is not installed the selection fails and the observation is skipped.
+ */
+const GLOBAL_LOG_SELECT_PLAN: AppPlan = {
+  id: AppId.make("global"),
+  name: "global",
+  slug: "global",
+  root: AbsolutePath.make("/"),
+  provider: ProviderId.make("lando"),
+  services: {},
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata: {
+    resolvedAt: DateTime.unsafeMake("1970-01-01T00:00:00.000Z"),
+    source: "global-app",
+    runtime: 4,
+  },
+  extensions: {},
+};
+
+const observeWatcherStartup = (dependencies: TraefikProxyDependencies) =>
+  Effect.gen(function* () {
+    if (dependencies.readTraefikLogs === undefined) return;
+    const observation = Option.getOrUndefined(yield* Effect.option(dependencies.readTraefikLogs()));
+    if (observation === undefined) return;
+    const hit = classifyWatcherFailure(observation.text);
+    if (hit === undefined) {
+      yield* clearWatcherDiagnostic(dependencies.fileSystem, dependencies.paths);
+      return;
+    }
+    const redact = dependencies.redactDiagnostic ?? secretsRedactor.redactString;
+    const detail = boundWatcherDetail(redact(hit.detail));
+    const watcherHost = watcherHostLabel({
+      providerId: observation.providerId,
+      platform: dependencies.paths.platform,
+    });
+    const error = new RouterWatcherError({
+      message: `The Traefik router encountered a ${hit.failureClass} file watcher failure on ${watcherHost}.`,
+      proxyId: TRAEFIK_PROXY_ID,
+      failureClass: hit.failureClass,
+      watcherHost,
+      detail,
+      // Descriptions already end in a period, so a space keeps the ordered
+      // remediation readable as prose with the non-privileged action first.
+      remediation: watcherRemediations(hit.failureClass, watcherHost)
+        .map(({ description }) => description)
+        .join(" "),
+    });
+    yield* writeWatcherDiagnostic(dependencies.fileSystem, dependencies.paths, {
+      version: 1,
+      observedAt: new Date().toISOString(),
+      providerId: observation.providerId,
+      watcherHost,
+      failureClass: hit.failureClass,
+      detail,
+    }).pipe(Effect.catchAll(() => Effect.void));
+    yield* dependencies.fileSystem
+      .remove(routingStateFile(dependencies.paths))
+      .pipe(Effect.catchAll(() => Effect.void));
+    return yield* Effect.fail(error);
+  });
+
+// observeWatcherStartup removes .lando-routing-state on failure; persistedStatus
+// reports stopped without it. Every successful observation must rewrite the
+// fallback config and routing marker together.
+const finalizeRouterStartup = (dependencies: TraefikProxyDependencies, advertised: AuthorityPorts) =>
+  Effect.gen(function* () {
+    yield* assertAdvertisedForward(dependencies, advertised);
+    yield* observeWatcherStartup(dependencies);
+    yield* dependencies.fileSystem.writeAtomic(
+      fallbackConfigFile(dependencies.paths),
+      renderTraefikFallbackConfig(),
+    );
+    yield* dependencies.fileSystem.writeAtomic(
+      routingStateFile(dependencies.paths),
+      [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
+    );
+  });
 
 const applyError = (app: AppId, cause: unknown): ProxyApplyError =>
   new ProxyApplyError({
@@ -75,6 +184,9 @@ const proxyError = (operation: string, cause: unknown): ProxyError =>
     remediation: "Check the global Traefik service and its route-config directory, then retry.",
     cause,
   });
+
+const mapStartupRevalidationError = (cause: unknown): ProxyError | RouterWatcherError =>
+  cause instanceof RouterWatcherError ? cause : proxyError("startup revalidation", cause);
 
 const resolveLiveSocketProxy = Effect.gen(function* () {
   const privilege = yield* Effect.serviceOption(PrivilegeService);
@@ -146,16 +258,15 @@ export const makeTraefikRouterService = (
         }
         yield* prepareTraefikDiagnostics(dependencies);
         yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
-        yield* assertAdvertisedForward(dependencies, advertised);
-        yield* dependencies.fileSystem.writeAtomic(
-          fallbackConfigFile(dependencies.paths),
-          renderTraefikFallbackConfig(),
-        );
-        yield* dependencies.fileSystem.writeAtomic(
-          routingStateFile(dependencies.paths),
-          [`http://127.0.0.1:${advertised.http}`, `https://127.0.0.1:${advertised.https}`].join("\n"),
-        );
+        yield* finalizeRouterStartup(dependencies, advertised);
       }).pipe(Effect.mapError(mapSetupError)),
+    revalidateStartup: Effect.gen(function* () {
+      const state = yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+      const advertised =
+        state === undefined ? authorityPorts : { http: state.httpPort, https: state.httpsPort };
+      authorityPorts = advertised;
+      yield* finalizeRouterStartup(dependencies, advertised);
+    }).pipe(Effect.mapError(mapStartupRevalidationError)),
     applyRoutes: (nextRoutes, app) =>
       Effect.gen(function* () {
         const appKey = String(app);
@@ -213,6 +324,7 @@ export const makeTraefikRouterService = (
       }
       yield* dependencies.fileSystem.remove(routingStateFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(acquisitionStateFile(dependencies.paths));
+      yield* dependencies.fileSystem.remove(watcherDiagnosticFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
       yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
@@ -232,6 +344,7 @@ export const proxy = Layer.effect(
     const globalApp = yield* GlobalAppService;
     const certificateAuthority = yield* CertificateAuthority;
     const events = yield* Effect.serviceOption(EventService);
+    const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
     const socketProxy = yield* resolveLiveSocketProxy;
     return makeTraefikRouterService({
       certificateAuthority,
@@ -243,6 +356,28 @@ export const proxy = Layer.effect(
       globalApp,
       ...(socketProxy === undefined ? {} : { socketProxy }),
       ...(events._tag === "Some" ? { events: events.value } : {}),
+      ...Option.match(registry, {
+        onNone: () => ({}),
+        onSome: (registry) => ({
+          readTraefikLogs: () =>
+            Effect.gen(function* () {
+              const provider = yield* registry.select(GLOBAL_LOG_SELECT_PLAN);
+              if (provider.capabilities.serviceLogs !== true) {
+                return yield* Effect.fail(proxyError("log observation", "Service logs are unavailable."));
+              }
+              const chunks = yield* provider
+                .logs(
+                  { app: AppId.make("global"), service: ServiceName.make("traefik") },
+                  { follow: false, tail: 200 },
+                )
+                .pipe(Stream.runCollect);
+              return {
+                providerId: provider.id,
+                text: Array.from(chunks, (chunk) => chunk.line).join("\n"),
+              };
+            }),
+        }),
+      }),
     });
   }),
 );

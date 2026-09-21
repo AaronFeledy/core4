@@ -6,37 +6,13 @@
  */
 import { Chunk, DateTime, Effect, Stream } from "effect";
 
+import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
-  type AppIdReservedError,
-  type CapabilityError,
-  type CommandAliasConflictError,
-  type ComposeKeyRejectedError,
   type ConfigError,
-  type ConfigExpressionError,
   type DeprecatedSurfaceError,
-  type HomePathCapabilityError,
-  type LandofileFormConflictError,
-  type LandofileIncludeError,
-  type LandofileLoadExpressionError,
-  type LandofileLockMismatchError,
-  type LandofileNotFoundError,
-  type LandofileParseError,
-  type LandofileSandboxError,
-  type LandofileTimeoutError,
-  type LandofileUnknownEventError,
-  type LandofileValidationError,
-  type LandofileVersionConstraintError,
-  type ManagedFileTransactionError,
-  type NoProviderInstalledError,
-  type NotImplementedError,
-  type ProviderConfigError,
-  type ProviderUnavailableError,
-  type PublicationUnsupportedError,
-  type RouteInputError,
   type ShellExecError,
   ShellRequiresTtyError,
   ToolingExecError,
-  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
@@ -127,34 +103,10 @@ export interface ShellAppResult {
 }
 
 export type ShellAppError =
-  | ManagedFileTransactionError
-  | AppIdReservedError
-  | CapabilityError
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | ConfigExpressionError
-  | ComposeKeyRejectedError
-  | PublicationUnsupportedError
+  | AppPlanResolutionError
+  | ProviderError
   | ConfigError
   | DeprecatedSurfaceError
-  | LandofileNotFoundError
-  | LandofileFormConflictError
-  | LandofileParseError
-  | LandofileSandboxError
-  | LandofileTimeoutError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | LandofileIncludeError
-  | LandofileLockMismatchError
-  | LandofileLoadExpressionError
-  | ToolingIncludeCycleError
-  | LandofileVersionConstraintError
-  | NoProviderInstalledError
-  | NotImplementedError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
   | ShellExecError
   | ShellRequiresTtyError
   | ToolingExecError;

@@ -6,25 +6,10 @@ import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
 import type {
-  CapabilityError,
-  CommandAliasConflictError,
-  ConfigExpressionError,
-  EventError,
-  GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
-  HomePathCapabilityError,
-  LandofileParseError,
-  LandofileUnknownEventError,
-  LandofileValidationError,
-  NoProviderInstalledError,
-  NotImplementedError,
   PluginManifestError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-  PublicationUnsupportedError,
-  RouteInputError,
   SecretNotFoundError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
@@ -32,18 +17,17 @@ import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  type BuildError,
   BuildOrchestrator,
   EventService,
   type FileSystem,
-  type FileSystemError,
   type GlobalAppService,
   type PluginRegistry,
-  type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
-import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -77,27 +61,12 @@ export const GlobalStartResultSchema = Schema.Struct({
 });
 
 export type GlobalStartError =
-  | CommandAliasConflictError
-  | HomePathCapabilityError
-  | ConfigExpressionError
-  | CapabilityError
-  | PublicationUnsupportedError
-  | EventError
-  | FileSystemError
-  | GlobalAppError
+  | LoadGlobalPlanError
+  | BuildError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
-  | LandofileParseError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | RouteInputError
-  | NoProviderInstalledError
-  | NotImplementedError
   | PluginManifestError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError
   | SecretNotFoundError
   | ToolingExecError;
 

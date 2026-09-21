@@ -23,7 +23,42 @@ interface ContainerInspect {
     readonly StartedAt?: string;
     readonly ExitCode?: number;
   };
+  readonly NetworkSettings?: {
+    readonly Ports?: Record<string, Array<{ readonly HostIp?: string; readonly HostPort?: string }> | null>;
+  };
 }
+
+export const publishedEndpointsFromInspect = (
+  inspect: unknown,
+): NonNullable<ServiceRuntimeInfo["endpoints"]> => {
+  if (typeof inspect !== "object" || inspect === null) return [];
+  const ports = (inspect as ContainerInspect).NetworkSettings?.Ports;
+  if (typeof ports !== "object" || ports === null) return [];
+
+  const endpoints: Array<NonNullable<ServiceRuntimeInfo["endpoints"]>[number]> = [];
+  for (const [containerPort, bindings] of Object.entries(ports)) {
+    if (!Array.isArray(bindings)) continue;
+    const [portNum, protocol] = containerPort.split("/");
+    const port = Number.parseInt(portNum ?? "0", 10);
+    if (port <= 0) continue;
+    for (const binding of bindings) {
+      if (typeof binding !== "object" || binding === null) continue;
+      const hostPort = Number.parseInt(typeof binding.HostPort === "string" ? binding.HostPort : "0", 10);
+      if (hostPort <= 0) continue;
+      endpoints.push({
+        _tag: "published" as const,
+        port,
+        protocol: protocol === "udp" ? ("udp" as const) : ("http" as const),
+        name: containerPort,
+        publication: {
+          bindAddress: typeof binding.HostIp === "string" ? binding.HostIp : "0.0.0.0",
+          hostPort,
+        },
+      });
+    }
+  }
+  return endpoints;
+};
 
 export interface InspectOptions {
   readonly api?: EngineHttpApi;
@@ -34,7 +69,7 @@ const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const apiRequired = (ctx: ProviderErrorContext, operation: string): ProviderUnavailableError =>
-  missingApi(ctx, operation, `provider-${ctx.providerId} ${operation} requires a Podman API client.`);
+  missingApi(ctx, operation, `provider-${ctx.providerId} ${operation} requires an engine API client.`);
 
 const missingService = (ctx: ProviderErrorContext, target: ServiceSelector, operation: string) =>
   new ServiceNotFoundError({
@@ -61,7 +96,7 @@ const parseJson = (
       new ProviderInternalError({
         providerId: ctx.providerId,
         operation: "inspect",
-        message: "Podman API returned invalid JSON.",
+        message: `provider-${ctx.providerId} API returned invalid JSON.`,
         cause,
       }),
   });
@@ -122,6 +157,7 @@ export const inspect = (
     if (response.status === 404) {
       return {
         app: plan.id,
+        appRoot: plan.root,
         service: service.name,
         providerId: plan.provider,
         status: "stopped",
@@ -134,7 +170,7 @@ export const inspect = (
         new ProviderUnavailableError({
           providerId: ctx.providerId,
           operation: "inspect",
-          message: withApiReason(`Podman inspect failed with HTTP ${response.status}.`, {
+          message: withApiReason(`provider-${ctx.providerId} inspect failed with HTTP ${response.status}.`, {
             body: response.body,
           }),
           details: { service: service.name, body: response.body },
@@ -147,8 +183,10 @@ export const inspect = (
     const status = statusFromInspect(decoded);
     const health = healthFromInspect(decoded);
     const startedAt = lastStartedAt(decoded);
+    const materialized = publishedEndpointsFromInspect(decoded);
     return {
       app: plan.id,
+      appRoot: plan.root,
       service: service.name,
       providerId: plan.provider,
       status,
@@ -158,7 +196,7 @@ export const inspect = (
       ...(typeof decoded.Image === "string" && decoded.Image.length > 0
         ? { imageIdentity: decoded.Image }
         : {}),
-      endpoints: service.endpoints,
+      endpoints: materialized.length > 0 ? materialized : service.endpoints,
       ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
     };
   });

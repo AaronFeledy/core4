@@ -564,6 +564,55 @@ describe("provider data plane", () => {
     });
   });
 
+  test("preserves colon targets in ephemeral API Mounts", async () => {
+    // Given
+    let createBody: unknown;
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        if (request.path.startsWith("/containers/create?name=")) createBody = request.body;
+        return Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        );
+      },
+      stream: () => Stream.empty,
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+    const ownedPlan: AppPlan = {
+      ...plan,
+      identity: { appRoot: AbsolutePath.make("/canonical/app"), ownerKey: "canonical-app" },
+      stores: [{ name: "data", scope: "app", kind: "data" }],
+    };
+    // When
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.run({
+          owner: { app: appId, plan: ownedPlan },
+          image: "alpine:3.20",
+          command: ["true"],
+          mounts: [
+            { store: "data", target: PortablePath.make("/data:ro"), readOnly: true },
+            { store: "data", target: PortablePath.make("/ordinary"), readOnly: false },
+          ],
+          remove: true,
+        }),
+      ),
+    );
+    // Then
+    expect(createBody).toMatchObject({
+      HostConfig: {
+        Binds: ["data:/ordinary"],
+        Mounts: [{ Type: "volume", Source: "data", Target: "/data:ro", ReadOnly: true }],
+      },
+    });
+  });
+
   test("adopts an existing ephemeral volume without treating submitted labels as observed", async () => {
     // Given: the daemon reports that the declared volume already exists.
     const requests: Array<{ readonly path: string; readonly body?: unknown }> = [];

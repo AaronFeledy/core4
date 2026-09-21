@@ -131,7 +131,6 @@ const stubProvider: RuntimeProviderShape = {
   stop: () => Effect.void,
   restart: () => Effect.void,
   waitForExit: () => Effect.succeed({ exitCode: 0 }),
-  destroy: () => Effect.void,
   exec: () => Effect.die("host engine must not call provider exec"),
   execStream: () => Effect.die("stub") as never,
   run: () => Effect.die("stub"),

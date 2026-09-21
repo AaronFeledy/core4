@@ -1,14 +1,14 @@
 import { Context, type Layer } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import type { PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import type { PathsService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { LandoRuntimeOptions } from "./runtime-options.ts";
 
 export type RuntimeLayer =
   | Layer.Layer<never>
   | Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
 export type ProviderRuntimeLayer = Layer.Layer<
-  PathsService | RuntimeProviderRegistry,
+  PathsService | RuntimeProviderRegistry | PluginRegistry,
   ConfigError | LandoRuntimeBootstrapError
 >;
 

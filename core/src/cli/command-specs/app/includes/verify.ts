@@ -8,16 +8,18 @@ import {
   appIncludesVerify,
   renderIncludesVerifyResult,
 } from "../../../commands/app-includes-verify";
+import { isEnvelopeResultFormat } from "../../../format-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 
-const usesJsonFormat = (input: unknown): boolean =>
+const usesEnvelopeFormat = (input: unknown): boolean =>
   typeof input === "object" &&
   input !== null &&
   "flags" in input &&
   typeof input.flags === "object" &&
   input.flags !== null &&
   "format" in input.flags &&
-  input.flags.format === "json";
+  typeof input.flags.format === "string" &&
+  isEnvelopeResultFormat(input.flags.format);
 
 export const appIncludesVerifySpec: LandoCommandSpec<
   IncludeVerifyReport,
@@ -32,11 +34,10 @@ export const appIncludesVerifySpec: LandoCommandSpec<
   flags: {
     format: Flags.string({
       description: "Output format.",
-      options: ["text", "json"],
       default: "text",
     }),
   },
   run: () => appIncludesVerify(),
-  successExitCode: (result, input) => (result.ok || usesJsonFormat(input) ? undefined : 1),
+  successExitCode: (result, input) => (result.ok || usesEnvelopeFormat(input) ? undefined : 1),
   render: (result) => renderIncludesVerifyResult(result as IncludeVerifyReport, "text"),
 };

@@ -55,6 +55,25 @@ Do not combine `--mount-cwd` with `--isolate=full`. That pair fails with `Scratc
 
 On a fork, `--mount-cwd` defaults isolation to `cwd` unless you set `--isolate`.
 
+## Control a full fork copy
+
+```sh
+lando scratch:start --fork --detach --isolate=full --exclude=coverage/ --no-local-overrides
+```
+
+Full isolation always skips `.git/`, `node_modules/`, `vendor/`, `.lando/cache/`, and `.DS_Store`. Repeat `--exclude` for project-specific paths. `--no-local-overrides` also drops `.lando.local.yml` and `.lando.user.yml` from the scratch copy. The source app stays untouched.
+
+## Control scratch hostnames
+
+Scratch routes get `--<scratch-id>` before the final two DNS labels. Keep every planned hostname with `--no-hostname-suffix`, or keep selected hostnames by repeating `--hostname`.
+
+```sh
+lando scratch:start --fork --detach --no-hostname-suffix
+lando scratch:start --fork --detach --hostname=api.example.test
+```
+
+Recipe scratches skip post-init hooks by default. Add `--run-post-init` when the recipe needs them. Add `--keep-on-failure` to retain the scratch root and registry entry after a failed start so you can inspect logs or destroy it yourself.
+
 ## Next
 
 - [Start a scratch app from a recipe](./scratch-from-recipe.mdx)

@@ -18,7 +18,7 @@ services:
 ```
 
 MinIO listens on API port `9000` and console port `9001`. Lando starts the
-official `minio/minio` image with `server /data --address :9000 --console-address
+official `quay.io/minio/minio` image with `server /data --address :9000 --console-address
 :9001`, stores object data in the persistent `/data` volume, and uses username `lando` with password `landolando`.
 MinIO requires the root password to be at least eight characters.
 
@@ -44,12 +44,49 @@ Lando creates the bucket as a directory under `/data` before the server starts.
 `database: uploads` becomes the `uploads` bucket. If you omit it, Lando uses
 the app name.
 
+### Run MinIO as another user
+
+That bucket `mkdir` lands in `/data`, which is a named volume, and it runs as the
+`user:` you set. The image itself runs as root and declares only `root`; its
+`/data` is a bare `VOLUME` with nothing behind it, so who owns the tree is
+whatever the runtime happens to create. With no `user:` or `user: root` nothing
+changes and no preparation is needed.
+
+For any non-root user, Lando prepares the tree in the image before the volume
+exists: one root build step creates `/data` and chowns it to your user. A
+container runtime seeds a fresh named volume from the image directory at that
+path, ownership included, so your user owns `/data` from the first start and the
+bucket `mkdir` succeeds.
+
+```yaml
+services:
+  object-store:
+    type: minio
+    database: uploads
+    user: "10001"
+```
+
+Two things to know:
+
+- It only applies to a **new** volume. A volume created by an earlier start
+  keeps the ownership it already has. Remove the volume (`lando destroy` with
+  volume purge) to get a fresh one that is seeded again.
+- Lando has to know your user exists in the image. A numeric uid always works,
+  because a uid can always be given ownership, even when you supply your own
+  `image:` or `build:`. Any user name other than `root` is refused. A named
+  `user:` on a service that supplies its own `image:` or `build:` is refused
+  too, because that image is no longer the one the type described. The refusal
+  is a `DataTreeOwnershipCapabilityError` that names the service, the data
+  tree (`/data`), and the Landofile option to change. Fix it with a numeric
+  uid, or use `root`.
+
 For local development, the root credentials default to user `lando` and password `landolando`.
 Override `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` under `environment` when
 your app needs different credentials.
 
-A `port:` override changes the API listen address, the internal endpoint, and
-the `mc` alias used for readiness. The console stays on `9001`.
+A `port:` override changes the S3 API listen address, the internal endpoint, and
+the `mc` alias used for readiness. Known limit: the console port is fixed at
+`9001`. `port:` moves only the API, and no Landofile key moves the console.
 
 ## Console and client
 

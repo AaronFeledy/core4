@@ -123,6 +123,48 @@ const expectProviderUnavailable = (exit: Exit.Exit<unknown, unknown>): ProviderU
 };
 
 describe("podman inspect health", () => {
+  test("materializes published endpoints from inspect and includes the app root", async () => {
+    // Given
+    const fake = apiFromResponses([
+      {
+        status: 200,
+        body: JSON.stringify({
+          State: { Running: true, Status: "running" },
+          NetworkSettings: {
+            Ports: { "31080/tcp": [{ HostIp: "0.0.0.0", HostPort: "32768" }] },
+          },
+        }),
+      },
+    ]);
+
+    // When
+    const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+
+    // Then
+    expect(info.appRoot).toBe(appRoot);
+    expect(info.endpoints).toEqual([
+      {
+        _tag: "published",
+        port: 31080,
+        protocol: "http",
+        name: "31080/tcp",
+        publication: { bindAddress: "0.0.0.0", hostPort: 32768 },
+      },
+    ]);
+  });
+
+  test("includes the app root when the inspected container is absent", async () => {
+    // Given
+    const fake = apiFromResponses([{ status: 404, body: "{}" }]);
+
+    // When
+    const info = await Effect.runPromise(inspect(plan, target, { api: fake.api, ctx }));
+
+    // Then
+    expect(info.appRoot).toBe(appRoot);
+    expect(info.endpoints).toEqual(service.endpoints);
+  });
+
   test.each(["healthy", "starting", "unhealthy"])(
     "maps Podman State.Health.Status=%s onto ServiceRuntimeInfo.health",
     async (health) => {

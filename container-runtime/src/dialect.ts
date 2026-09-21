@@ -14,6 +14,23 @@ export interface PullDialect {
   };
 }
 
+export interface LifecycleDialect {
+  readonly wait: WaitDialect;
+  /**
+   * How service containers join the shared Lando network.
+   *
+   * `create-body` lists every network in the container create request. `connect-after-create`
+   * lists only the app network there and attaches the shared network after creation for Docker
+   * Engine API versions that honor only the first endpoint configuration.
+   */
+  readonly sharedNetworkAttachment: "create-body" | "connect-after-create";
+  /**
+   * Optional teardown-time prune of app-scoped volumes. Absence means the provider has no trusted
+   * ownership-complete prune endpoint, so teardown removes only the plan's own volumes.
+   */
+  readonly volumePrune?: { readonly enabled: true };
+}
+
 export const parseImageReference = (
   reference: string,
 ): { readonly fromImage: string; readonly tag: string } => {
@@ -59,6 +76,17 @@ export const libpodWaitDialect: WaitDialect = {
     ...(signal === undefined ? {} : { signal }),
   }),
   decodeExitCode: (json) => (typeof json === "number" ? json : undefined),
+};
+
+export const libpodLifecycleDialect: LifecycleDialect = {
+  wait: libpodWaitDialect,
+  sharedNetworkAttachment: "create-body",
+  volumePrune: { enabled: true },
+};
+
+export const dockerLifecycleDialect: LifecycleDialect = {
+  wait: dockerWaitDialect,
+  sharedNetworkAttachment: "connect-after-create",
 };
 
 export const dockerPullDialect: PullDialect = {

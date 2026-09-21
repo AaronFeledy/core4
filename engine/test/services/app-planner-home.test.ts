@@ -7,7 +7,7 @@ import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
-import { HomePathCapabilityError } from "@lando/sdk/errors";
+import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -83,6 +83,30 @@ describe("AppPlanner home persistence and host reachability", () => {
     });
   });
 
+  test("Given authored storage spelled with a trailing slash at the catalog home, When planned, Then the authored store is kept and no home store is stacked", async () => {
+    await withAppRoot(async (appRoot) => {
+      const appPlan = await plan(
+        appRoot,
+        landofile({
+          web: {
+            type: "node:22",
+            user: "node",
+            storage: [{ store: "keep-home", target: "/home/node/" }],
+          },
+        }),
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      const homeTarget = PortablePath.make("/home/node");
+      expect(web?.storage).toContainEqual({
+        store: "keep-home",
+        target: homeTarget,
+        readOnly: false,
+      });
+      expect(web?.storage.filter((mount) => mount.target === homeTarget)).toHaveLength(1);
+      expect(appPlan.stores.some((entry) => entry.name === `lando-${appPlan.slug}-web-home`)).toBe(false);
+    });
+  });
+
   test("Given a versioned catalog type, When planned, Then the pinned artifact tag does not look like a custom image", async () => {
     await withAppRoot(async (appRoot) => {
       const appPlan = await plan(appRoot, landofile({ db: { type: "mariadb:11.4" } }));
@@ -131,11 +155,78 @@ describe("AppPlanner home persistence and host reachability", () => {
     });
   });
 
-  test("Given apache running as www-data, When planned, Then it refuses rather than inventing a home", async () => {
+  test("Given apache running as www-data, When planned, Then one home store targets /home/www-data", async () => {
     await withAppRoot(async (appRoot) => {
-      const failure = await planFailure(appRoot, landofile({ web: { type: "apache", user: "www-data" } }));
+      const appPlan = await plan(appRoot, landofile({ web: { type: "apache", user: "www-data" } }));
+      const web = appPlan.services[ServiceName.make("web")];
+      const store = `lando-${appPlan.slug}-web-home`;
+      expect(web?.storage.filter((mount) => mount.store === store)).toEqual([
+        { store, target: PortablePath.make("/home/www-data"), readOnly: false },
+      ]);
+      expect(appPlan.stores.filter((entry) => entry.name === store)).toEqual([
+        { name: store, scope: "service", kind: "data" },
+      ]);
+    });
+  });
+
+  test("Given apache running as an undeclared user, When planned, Then HomePathCapabilityError is raised", async () => {
+    await withAppRoot(async (appRoot) => {
+      const failure = await planFailure(
+        appRoot,
+        landofile({ web: { type: "apache", user: "lando-nonexistent" } }),
+      );
+      expect(failure).toBeInstanceOf(HomePathCapabilityError);
+      expect(failure).toMatchObject({
+        _tag: "HomePathCapabilityError",
+        service: "web",
+        user: "lando-nonexistent",
+      });
+    });
+  });
+
+  test("Given apache with a custom image running as www-data, When planned, Then HomePathCapabilityError is raised", async () => {
+    await withAppRoot(async (appRoot) => {
+      const failure = await planFailure(
+        appRoot,
+        landofile({ web: { type: "apache", image: "example/custom-httpd:1", user: "www-data" } }),
+      );
       expect(failure).toBeInstanceOf(HomePathCapabilityError);
       expect(failure).toMatchObject({ _tag: "HomePathCapabilityError", service: "web", user: "www-data" });
+    });
+  });
+
+  test("Given an explicit home.path that is the filesystem root, When planned, Then LandofileValidationError is raised before provider action", async () => {
+    await withAppRoot(async (appRoot) => {
+      const failure = await planFailure(
+        appRoot,
+        landofile({
+          web: { type: "compose", image: "traefik/whoami:v1.10", home: { path: "/" } },
+        }),
+      );
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      expect(failure).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: ["services.web.home.path"],
+      });
+      expect(String((failure as LandofileValidationError).message)).toContain(
+        "cannot mount over the filesystem root",
+      );
+    });
+  });
+
+  test("Given an explicit home.path that resolves to root, When planned, Then LandofileValidationError is raised", async () => {
+    await withAppRoot(async (appRoot) => {
+      const failure = await planFailure(
+        appRoot,
+        landofile({
+          web: { type: "compose", image: "traefik/whoami:v1.10", home: { path: "/data/.." } },
+        }),
+      );
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      expect(failure).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: ["services.web.home.path"],
+      });
     });
   });
 

@@ -1,0 +1,11 @@
+name: task-events-service
+services:
+  web:
+    type: "node:22"
+    primary: true
+  database:
+    type: "mysql:8.0"
+events:
+  pre-mysql:
+    - cmd: echo "before the mysql task"
+      service: ":host"

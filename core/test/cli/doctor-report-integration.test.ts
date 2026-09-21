@@ -11,20 +11,22 @@ import {
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId, type ProxyConfig } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority, makeTestRouterService, makeTestSshService } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import {
   DoctorReportSchema,
   collectDoctorReport,
   doctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "../../src/cli/commands/doctor-subsystems.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
@@ -45,6 +47,7 @@ const registryService: Context.Tag.Service<typeof RuntimeProviderRegistry> = {
 
 const runtimeLayer = (config: GlobalConfig) =>
   Layer.mergeAll(
+    PluginRegistryLive,
     Layer.succeed(ConfigService, configService(Effect.succeed(config), config)),
     Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
     Layer.succeed(RuntimeProviderRegistry, registryService),
@@ -141,11 +144,25 @@ describe("combined doctor certificate and network-trust wiring", () => {
       context: { failure: "missing-custom-ca" },
       solutions: [{ kind: "manual", command: "lando setup" }],
     });
-    for (const output of [
-      renderDoctorReport(report),
-      renderDoctorReportAsYaml(report),
-      renderDoctorReportAsNdjson(report),
-    ]) {
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(Effect.succeed(report), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      resultFormat: "yaml",
+      command: "meta:doctor",
+      resultSchema: DoctorReportSchema,
+      io,
+      render: () => undefined,
+      formatError: String,
+    });
+    expect(
+      (
+        Bun.YAML.parse(io.stdout()) as {
+          readonly result: { readonly subsystems: { readonly checks: ReadonlyArray<unknown> } };
+        }
+      ).result.subsystems.checks.at(-1),
+    ).toEqual(networkTrust);
+    for (const output of [renderDoctorReport(report), io.stdout(), renderDoctorReportAsNdjson(report)]) {
       expect(output).toContain(redactedPath);
       expect(output).not.toContain(secret);
       expect(output).not.toContain(path);

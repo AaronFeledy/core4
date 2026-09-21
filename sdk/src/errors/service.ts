@@ -80,10 +80,21 @@ export class PhpMyAdminHostsCredsError extends Schema.TaggedError<PhpMyAdminHost
   { message: Schema.String, feature: Schema.String, remediation: Schema.String },
 ) {}
 
+/**
+ * Mailpit cannot pin msmtp for a selected PHP sender because the service's
+ * image has no provable base image family. Raised before any provider action
+ * rather than guessing a package source.
+ */
+export class MailpitMsmtpBaseFamilyError extends Schema.TaggedError<MailpitMsmtpBaseFamilyError>()(
+  "MailpitMsmtpBaseFamilyError",
+  { message: Schema.String, feature: Schema.String, remediation: Schema.String },
+) {}
+
 export type AppFeatureError =
   | AppFeatureSelectorMatchedNothingError
   | AppFeatureMutationConflictError
   | AppFeatureCycleError
+  | MailpitMsmtpBaseFamilyError
   | PhpMyAdminHostsCredsError;
 
 /**
@@ -97,6 +108,26 @@ export class HomePathCapabilityError extends Schema.TaggedError<HomePathCapabili
     message: Schema.String,
     service: Schema.String,
     serviceType: Schema.String,
+    user: Schema.optional(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
+/**
+ * Raised before any provider action when a service mounts a data tree its
+ * planned user has to write to and the planner cannot make that user own it.
+ * Carries the mounted target and the Landofile option that has to change.
+ */
+export class DataTreeOwnershipCapabilityError extends Schema.TaggedError<DataTreeOwnershipCapabilityError>()(
+  "DataTreeOwnershipCapabilityError",
+  {
+    message: Schema.String,
+    service: Schema.String,
+    serviceType: Schema.String,
+    /** Container path of the data tree that cannot be owned. */
+    target: Schema.String,
+    /** Fully qualified Landofile key the author has to change. */
+    option: Schema.String,
     user: Schema.optional(Schema.String),
     remediation: Schema.String,
   },

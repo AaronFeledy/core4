@@ -240,6 +240,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Laravel recipe day-to-day workflow | `docs/guides/recipes/laravel-workflow.mdx` | Shipped |
 | — | — | SvelteKit recipe day-to-day workflow | `docs/guides/recipes/sveltekit-workflow.mdx` | Shipped |
 | — | — | Next.js recipe day-to-day workflow | `docs/guides/recipes/nextjs-workflow.mdx` | Shipped |
+| — | — | Eleventy recipe day-to-day workflow | `docs/guides/recipes/eleventy-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
@@ -255,6 +256,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-07 | US-580 | CLI verbosity, renderer modes, and debug output | `docs/guides/cli/verbosity-and-debug.mdx` | Shipped |
 | IR-GAPS-01 | US-618D1 | service-scoped rebuild and info | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
 | IR-GAPS-01 | US-618D3 | bounded global environment and label defaults for user apps | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
+| IR-GAPS-01 | US-642 | router file-watcher diagnostics | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
 | — | — | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
 | — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |

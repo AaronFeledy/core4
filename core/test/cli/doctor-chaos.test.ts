@@ -16,6 +16,7 @@ import {
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionServiceLive } from "@lando/redaction/service";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -556,7 +557,10 @@ describe("doctor chaos: whole report", () => {
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.fork(
-          doctorReport({ signal: controller.signal }).pipe(Effect.provide(layers)),
+          doctorReport({ signal: controller.signal }).pipe(
+            Effect.provide(layers),
+            Effect.provide(PluginRegistryLive),
+          ),
         );
         yield* Deferred.await(started);
         yield* Effect.sync(() => controller.abort());
@@ -575,7 +579,10 @@ describe("doctor chaos: whole report", () => {
 
     // When
     const report = await Effect.runPromise(
-      doctorReport({ env: SHORT_BUDGET_ENV }).pipe(Effect.provide(layers)),
+      doctorReport({ env: SHORT_BUDGET_ENV }).pipe(
+        Effect.provide(layers),
+        Effect.provide(PluginRegistryLive),
+      ),
     );
 
     // Then the report is still structured, schema-valid, and carries self checks

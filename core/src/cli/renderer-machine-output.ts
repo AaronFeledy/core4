@@ -9,6 +9,7 @@
  */
 import { Effect, Option } from "effect";
 
+import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import {
   encodeCommandResult,
   encodeStreamEventFrame,
@@ -41,12 +42,23 @@ export interface MachineResultEmitterDeps<A> {
   readonly redactionTokens?: (value: A) => ReadonlyArray<string>;
   readonly projectResultKeys?: readonly string[];
   readonly jqExpression?: string;
+  /** Envelope serialization for this run. Frames are always JSON. */
+  readonly resultFormat?: CommandResultEnvelopeFormat;
 }
 
 export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) => {
   const { command, resultSchema, commandWarnings } = deps;
   const projection =
     deps.projectResultKeys === undefined ? {} : { projectResultKeys: deps.projectResultKeys };
+  // jq consumes the redacted JSON document and owns its own output text, so a
+  // run that will actually evaluate jq encodes JSON whatever format was asked.
+  // The jq-failure replacement envelope is not passed to jq, so it keeps the
+  // requested format.
+  const willRunJq = (outcome: CommandResultOutcome): boolean =>
+    deps.jqExpression !== undefined &&
+    !(outcome._tag === "failure" && outcome.error instanceof JqExpressionError);
+  const envelopeFormat = (outcome: CommandResultOutcome): CommandResultEnvelopeFormat =>
+    willRunJq(outcome) ? "json" : (deps.resultFormat ?? "json");
   const writeEncodedLine = (line: string, outcome: CommandResultOutcome) =>
     Effect.gen(function* () {
       const expr = deps.jqExpression;
@@ -86,6 +98,7 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
         outcome,
         redactor,
         warnings,
+        format: envelopeFormat(outcome),
         ...projection,
       });
       yield* writeEncodedLine(line, outcome);
@@ -100,11 +113,13 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
         outcome,
         redactor,
         warnings,
+        format: envelopeFormat(outcome),
         ...projection,
       };
-      // --jq runs on the redacted envelope, not the StreamFrame wrapper.
+      // --jq runs on the redacted envelope, not the StreamFrame wrapper. A YAML
+      // run emits that envelope directly too, because frame transport is JSON.
       const line =
-        deps.jqExpression === undefined
+        deps.jqExpression === undefined && args.format === "json"
           ? yield* encodeStreamResultFrame(args)
           : yield* encodeCommandResult(args);
       yield* writeEncodedLine(line, outcome);
