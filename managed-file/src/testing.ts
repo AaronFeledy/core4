@@ -17,14 +17,16 @@ import {
   type LedgerEntry,
   type ManagedFileBackend,
   type ManagedFileEvents,
+  ManagedFileServiceFactory,
   makeManagedFileService,
+  makeManagedFileServiceFactory,
 } from "./service.ts";
 
 export interface TestManagedFileStore {
   /** The `ManagedFileService` implementation backed by memory. */
   readonly service: Context.Tag.Service<typeof ManagedFileService>;
-  /** A `Layer` providing the in-memory service for runtime composition. */
-  readonly layer: Layer.Layer<ManagedFileService>;
+  readonly factory: Context.Tag.Service<typeof ManagedFileServiceFactory>;
+  readonly layer: Layer.Layer<ManagedFileService | ManagedFileServiceFactory>;
   /** The resolved base (app root) the store operates against. */
   readonly base: string;
   /** Read a tracked file by path relative to `base`, or `null` when absent. */
@@ -32,7 +34,7 @@ export interface TestManagedFileStore {
   /** Seed a pre-existing user file (no ownership marker). */
   readonly seed: (relPath: string, content: string) => void;
   /** Snapshot of the current ledger entries. */
-  readonly ledger: () => ReadonlyArray<LedgerEntry>;
+  readonly ledger: (base?: string) => ReadonlyArray<LedgerEntry>;
   /** Redacted `ManagedFile` lifecycle events published since construction. */
   readonly events: () => ReadonlyArray<LandoEvent>;
 }
@@ -44,7 +46,7 @@ export const makeTestManagedFileStore = (
   Effect.gen(function* () {
     const base = options.base ?? "/lando-memfs/app";
     const files = new Map<string, string>();
-    let entries: ReadonlyArray<LedgerEntry> = [];
+    const ledgers = new Map<string, ReadonlyArray<LedgerEntry>>();
     const published: Array<LandoEvent> = [];
     const eventSink: ManagedFileEvents = {
       redactText: options.redactText ?? ((text) => text),
@@ -77,21 +79,28 @@ export const makeTestManagedFileStore = (
       readMaybe: (abs) => Effect.succeed(files.get(abs) ?? null),
       writeAtomic: (abs, content) => Effect.sync(() => void files.set(abs, content)),
       removeFile: (abs) => Effect.sync(() => void files.delete(abs)),
-      peekLedger: () => Effect.succeed(entries),
-      mutateLedger: (_operation, f) =>
-        f(entries).pipe(
+      peekLedger: (_operation, ledgerBase) => Effect.succeed(ledgers.get(ledgerBase ?? base) ?? []),
+      mutateLedger: (_operation, f, ledgerBase) => {
+        const key = ledgerBase ?? base;
+        return f(ledgers.get(key) ?? []).pipe(
           Effect.map(([result, next]) => {
-            entries = next;
+            ledgers.set(key, next);
             return result;
           }),
-        ),
+        );
+      },
     };
 
     const service = yield* makeManagedFileService(backend, eventSink);
+    const factory = yield* makeManagedFileServiceFactory(backend, eventSink);
 
     return {
       service,
-      layer: Layer.succeed(ManagedFileService, service),
+      factory,
+      layer: Layer.merge(
+        Layer.succeed(ManagedFileService, service),
+        Layer.succeed(ManagedFileServiceFactory, factory),
+      ),
       base,
       read: (relPath) => {
         const abs = contain(base, relPath);
@@ -101,7 +110,7 @@ export const makeTestManagedFileStore = (
         const abs = contain(base, relPath);
         if (abs !== null) files.set(abs, content);
       },
-      ledger: () => entries,
+      ledger: (ledgerBase) => ledgers.get(ledgerBase ?? base) ?? [],
       events: () => published,
     } satisfies TestManagedFileStore;
   });

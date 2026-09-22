@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,7 +18,7 @@ import { Effect, Exit, type Scope } from "effect";
 import { AbsolutePath, type ManagedFile, PortablePath } from "@lando/sdk/schema";
 
 import { makeLandoPaths } from "@lando/paths";
-import { makeDiskBackend, makeManagedFileService } from "../src/service.ts";
+import { makeDiskBackend, makeManagedFileService, makeManagedFileServiceFactory } from "../src/service.ts";
 import { makeTestManagedFileStore } from "../src/testing.ts";
 import { ownerOnlyFileAccess } from "./transaction-fixture.ts";
 
@@ -333,6 +343,35 @@ describe("ManagedFileService (in-memory)", () => {
     expect(store.ledger()).toHaveLength(0);
   });
 
+  test("remove preserves a file whose ownership marker was removed", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const mf = file({ id: "a:adopt-before-remove", path: "adopt-before-remove.txt" });
+    await runScoped(store.service.apply([mf]));
+    store.seed("adopt-before-remove.txt", "user-owned replacement\n");
+
+    const result = await run(store.service.remove({ id: mf.id }));
+
+    expect(result.entries[0]?.action).toBe("adopt-detected");
+    expect(store.read("adopt-before-remove.txt")).toBe("user-owned replacement\n");
+    expect(store.ledger()).toHaveLength(0);
+  });
+
+  test("remove preserves an edited file even when its ownership marker remains", async () => {
+    const store = await run(makeTestManagedFileStore());
+    const mf = file({ id: "a:edited-before-remove", path: "edited-before-remove.txt" });
+    await runScoped(store.service.apply([mf]));
+    const edited = `${store.read("edited-before-remove.txt")}user edit\n`;
+    store.seed("edited-before-remove.txt", edited);
+
+    const result = await run(store.service.remove({ id: mf.id }));
+
+    expect(result.entries[0]?.action).toBe("conflict");
+    expect(store.read("edited-before-remove.txt")).toBe(edited);
+    expect(store.ledger()).toHaveLength(1);
+    expect((await run(store.service.status))[0]?.state).toBe("conflict");
+    expect((await runScoped(store.service.apply([mf]))).entries[0]?.action).toBe("conflict");
+  });
+
   test("path-only remove targets the default base when duplicate relative paths exist", async () => {
     const store = await run(makeTestManagedFileStore());
     const customBase = "/lando-memfs/custom-remove";
@@ -534,6 +573,13 @@ describe("ManagedFileService (disk backend)", () => {
       privateFileAccess: ownerOnlyFileAccess,
     }).pipe(Effect.flatMap(makeManagedFileService));
 
+  const makeServiceForBase = (base: string, dataRoot: string) =>
+    makeDiskBackend({
+      defaultBase: () => base,
+      ledgerRoot: () => dataRoot,
+      privateFileAccess: ownerOnlyFileAccess,
+    }).pipe(Effect.flatMap(makeManagedFileService));
+
   test("read-only ledger access does not create the ledger root", async () => {
     await withTemp(async (dirs) => {
       const service = await run(makeService(dirs));
@@ -607,6 +653,50 @@ describe("ManagedFileService (disk backend)", () => {
     });
   });
 
+  test("an app-scoped service plans, updates, and removes a legacy default-base entry", async () => {
+    await withTemp(async (dirs) => {
+      const appRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-mf-legacy-app-")));
+      try {
+        const legacy = await run(makeServiceForBase(appRoot, dirs.dataRoot));
+        const original = file({
+          id: "d:legacy-scope",
+          path: "legacy-scope.txt",
+          content: { kind: "text", value: "legacy body\n" },
+        });
+        await runScoped(legacy.apply([original]));
+
+        const currentCwd = process.cwd();
+        const backend = await run(
+          makeDiskBackend({
+            defaultBase: () => dirs.base,
+            ledgerRoot: () => dirs.dataRoot,
+            privateFileAccess: ownerOnlyFileAccess,
+          }),
+        );
+        const factory = await run(makeManagedFileServiceFactory(backend));
+        const service = await run(factory.forBase(appRoot));
+        const desired = file({
+          id: "d:legacy-scope",
+          path: "legacy-scope.txt",
+          base: appRoot,
+          content: { kind: "text", value: "current body\n" },
+        });
+
+        const planned = await run(service.plan([desired]));
+        const applied = await runScoped(service.apply([desired]));
+        const removed = await run(service.remove({ id: desired.id, base: appRoot }));
+
+        expect(planned.entries[0]?.action).toBe("update");
+        expect(applied.entries[0]?.action).toBe("update");
+        expect(removed.entries[0]?.action).toBe("update");
+        expect(process.cwd()).toBe(currentCwd);
+        await expect(readFile(join(appRoot, "legacy-scope.txt"), "utf8")).rejects.toBeDefined();
+      } finally {
+        await rm(appRoot, { recursive: true, force: true });
+      }
+    });
+  });
+
   test("a corrupt ledger is quarantined and apply still succeeds", async () => {
     await withTemp(async (dirs) => {
       const service = await run(makeService(dirs));
@@ -663,6 +753,27 @@ describe("ManagedFileService (disk backend)", () => {
       } finally {
         await rm(outside, { recursive: true, force: true });
       }
+    });
+  });
+
+  test("remove rejects an in-root parent symlink redirected after apply", async () => {
+    await withTemp(async (dirs) => {
+      const service = await run(makeService(dirs));
+      await mkdir(join(dirs.base, "managed"));
+      await runScoped(service.apply([file({ id: "d:redirect", path: "managed/owned.txt" })]));
+      await rename(join(dirs.base, "managed"), join(dirs.base, "original"));
+      await mkdir(join(dirs.base, "redirect"));
+      const sentinel = join(dirs.base, "redirect", "owned.txt");
+      await writeFile(sentinel, "user-owned sentinel\n");
+      await symlink(join(dirs.base, "redirect"), join(dirs.base, "managed"), "dir");
+
+      const exit = await Effect.runPromiseExit(service.remove({ id: "d:redirect" }));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+        expect(exit.cause.error.reason).toBe("path");
+      }
+      expect(await readFile(sentinel, "utf8")).toBe("user-owned sentinel\n");
     });
   });
 
