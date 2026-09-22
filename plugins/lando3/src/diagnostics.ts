@@ -47,7 +47,7 @@ export const unsupportedRecipe = (args: {
   readonly occurrence: LegacyOccurrence;
 }): ConfigTranslateDiagnostic => {
   const messages = {
-    hoster: `recipe ${args.legacyId} is a hosting-provider recipe with no Lando 4 counterpart.`,
+    hoster: `recipe ${args.legacyId} is a hosting-platform recipe with no Lando 4 counterpart.`,
     unknown: `recipe ${args.legacyId} is not a bundled Lando 4 recipe.`,
     "non-string": "recipe must be a plain string id.",
     "no-v4-version": `recipe ${args.legacyId} targets a major version Lando 4 does not ship.`,

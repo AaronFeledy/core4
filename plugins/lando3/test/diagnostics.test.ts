@@ -76,14 +76,14 @@ describe("recipe diagnostics", () => {
     expect(result.remediation).toBe("Choose a supported value for webroot, or run the app with Lando 3.");
   });
 
-  test("reports an unsupported hosting-provider recipe", () => {
+  test("reports an unsupported hosting-platform recipe", () => {
     const result = unsupportedRecipe({ legacyId: "pantheon", reason: "hoster", occurrence });
     expect(result).toEqual({
       kind: "unsupported",
       sourceId: ConfigTranslateSourceId.make(".lando.yml"),
       keyPath: ["recipe"],
       span: { start: { line: 4, column: 3 }, end: { line: 4, column: 12 } },
-      message: "recipe pantheon is a hosting-provider recipe with no Lando 4 counterpart.",
+      message: "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart.",
       remediation:
         "Run the app with Lando 3 or replace the recipe with explicit v4 services before conversion.",
     });
@@ -93,7 +93,7 @@ describe("recipe diagnostics", () => {
     const reasons = ["hoster", "unknown", "non-string", "no-v4-version"] as const;
     const results = reasons.map((reason) => unsupportedRecipe({ legacyId: "legacy", reason, occurrence }));
     expect(results.map((result) => result.message)).toEqual([
-      "recipe legacy is a hosting-provider recipe with no Lando 4 counterpart.",
+      "recipe legacy is a hosting-platform recipe with no Lando 4 counterpart.",
       "recipe legacy is not a bundled Lando 4 recipe.",
       "recipe must be a plain string id.",
       "recipe legacy targets a major version Lando 4 does not ship.",
