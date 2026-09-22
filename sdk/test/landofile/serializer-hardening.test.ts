@@ -15,8 +15,8 @@ const roundTrip = (value: Record<string, unknown>): Promise<unknown> =>
 describe("Landofile serializer hardening — key canonicalization", () => {
   const keyLine = (value: Record<string, unknown>): string => emitLandofileYaml(value).trim();
 
-  test("quotes a key with a space", () => {
-    expect(keyLine({ "web service": 1 })).toBe('"web service": 1');
+  test.each(["web service", "web\tservice", "web\nservice"])("rejects whitespace in key %j", (key) => {
+    expect(() => emitLandofileYaml({ [key]: 1 })).toThrow(LandofileEmitError);
   });
 
   test("quotes a key with a colon", () => {
@@ -44,14 +44,14 @@ describe("Landofile serializer hardening — key canonicalization", () => {
     expect(emitLandofileYaml({ "php-7.4_x.y": 1, DB_HOST: "x" })).toContain("php-7.4_x.y: 1");
   });
 
-  test("canonicalizes nested map keys too", async () => {
+  test("rejects whitespace in nested map keys too", () => {
     const value = { services: { "bad key": { type: "php" } } };
-    expect(await roundTrip(value)).toEqual(value);
+    expect(() => emitLandofileYaml(value)).toThrow(LandofileEmitError);
   });
 
-  test("canonicalizes list-item map keys too", async () => {
+  test("rejects whitespace in list-item map keys too", () => {
     const value = { includes: [{ "bad key": "x" }] };
-    expect(await roundTrip(value)).toEqual(value);
+    expect(() => emitLandofileYaml(value)).toThrow(LandofileEmitError);
   });
 
   test('a plain << stays a merge key while a quoted "<<" stays a literal key', async () => {

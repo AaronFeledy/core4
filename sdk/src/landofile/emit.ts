@@ -1,6 +1,6 @@
 import { Either } from "effect";
 
-import { yamlMappingKeyText, yamlScalarText } from "../yaml/index.ts";
+import { quoteYamlScalar, yamlMappingKeyText, yamlScalarText } from "../yaml/index.ts";
 import { LandofileEmitError } from "./errors.ts";
 
 const INDENT = "  ";
@@ -88,6 +88,13 @@ const entriesOf = (
     });
   }
   const entries = Object.entries(object);
+  for (const [key] of entries) {
+    if (/\s/u.test(key)) {
+      throw new LandofileEmitError({
+        message: `Cannot emit map key ${quoteYamlScalar(key)} at ${path === "" ? "<root>" : path} in a Landofile; keys must not contain whitespace.`,
+      });
+    }
+  }
   if (state.sortKeys) {
     entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
   }
@@ -221,8 +228,8 @@ const emitArrayItems = (
  * the shared `@lando/sdk/yaml` scalar policy so the emitted text re-parses to
  * the exact same value.
  *
- * Throws {@link LandofileEmitError} on a non-emittable input: a non-finite
- * number, an unsupported value type
+ * Throws {@link LandofileEmitError} on a non-emittable input: a map key containing
+ * whitespace, a non-finite number, an unsupported value type
  * (`undefined`, `bigint`, symbol, function, `Date`, `RegExp`, `Map`, a class
  * instance, or any other non-plain object), a symbol key, a cyclic structure, or
  * a nested array list item.
