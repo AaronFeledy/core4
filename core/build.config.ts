@@ -110,6 +110,7 @@ export const buildConfig: BuildConfig = {
     },
     { name: "@lando/sql", path: "plugins/sql" },
     { name: "@lando/lando4", path: "plugins/lando4" },
+    { name: "@lando/lando3", path: "plugins/lando3" },
   ],
   bundledRecipes: [
     { id: "node-postgres" },

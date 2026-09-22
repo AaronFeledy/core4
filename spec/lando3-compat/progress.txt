@@ -234,3 +234,61 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - **Out-of-scope finding:** `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. The app still served PHP on port 8080. Same warning as US-619B1 and US-619B3.
 - **Learnings for future iterations:** Redirecting setup stdout while leaving stdin a TTY hangs on that socket-proxy confirm: the prompt is drawn on stdout, and `--yes` / `--no-interactive` never reach `consentToInstall`. Run setup on the TTY, or answer the default Yes.
 ---
+
+## 2026-09-22 03:25 - Babysit
+- PR: #1044 https://github.com/AaronFeledy/core4/pull/1044
+- CI outcome: pass (after fix; initially `unit-tests-linux-x64-shard (1, ubuntu-24.04)` and `(1, ubuntu-26.04)` failed)
+- Review feedback: fixed (the Landofile package-seam test's exact expected-export list was stale; added `LEGACY_TAGGED`, `isLegacyTagged`, and `parseLegacyLandofile` — both strict equality assertions kept intact; no Bugbot findings)
+- Merge: merged (squash)
+---
+
+## 2026-09-22 - US-620B
+
+Modeled the Lando 3 document set and bundled the conservative frontend.
+
+`@lando/lando3` is a new bundled plugin that depends on `@lando/sdk` alone and contributes one decode-only config translator through a lazy literal dynamic import, so ordinary bootstrap, help, version, and tooling never construct it. It ships no doctor check. `makeLando3Plugin(ports)` is the injection seam: the bundled `plugin` is that same factory with package defaults, and a host that owns recipe decomposition can build the module with real ports without the package ever importing core. The redactor half of that seam is live today, because a legacy parse failure quotes source text from a file that carries credentials.
+
+The shape model decodes the pinned kitchen-sink corpus with zero unknown keys across API-3 catalog services, API-3 `type: lando`/`compose` with nested Compose services, API-4 `lando`/`l337`, recipe and config, tooling, events, proxy, top-level Compose, and the anchor-holding `x-*` keys, while `!load` and `!import` survive as tagged data that nothing resolves. Unknown keys are reported at their maximal path rather than per leaf. The foreign merge reimplements Lando 3's mapping deep-merge and array concatenate-then-`uniq`, including the detail that matters most: `uniq` is SameValueZero, so two structurally equal object items authored in different layers both survive, while two items written as the same anchor in one document collapse to one. Every merged node carries the sources and spans that produced it, so a diagnostic can name the layer and point at real text.
+
+Detection reads only the supplied byte snapshots and their filenames. Every Lando-3-only signal fires; `type: php:8.3`, `api: 4`, and a missing `runtime: 4` deliberately do not, so an ambiguous document that is also valid v4 returns no match and needs explicit selection, which already bypasses detection in core. Core's translate-source classifier no longer calls `.lando.recipe.yml` canonical: source order now places it between dist and upstream, and its target folds into dist.
+
+Translation lowers `name` to the Lando 3 slug on each writable target layer that claims it, reports every section whose native target is still being built as `unsupported` rather than `dropped`, and reports explicitly supplied custom Landofile basenames as `needs-review` without ever reading user state.
+
+Verification: gate:pr green; 202 spot-check tests across the plugin model, merge, and detection suites, the decode-only contract suite, duplicate-id collision, and the core ship-list, registry, entry-point, coverage, and document-set suites, plus 48 adjacent cold-start, registry, and lando4 tests. Driving the real CLI over a two-layer Lando 3 app detected `exact` with the recipe layer ordered ahead of the canonical one, reported every deferred section `unsupported` at its exact span, and wrote nothing; a name-only app emitted `name: kitchen-sink-app`.
+
+- **Learnings for future iterations:**
+  - `dropped` and `unsupported` are not interchangeable. `dropped` asserts a source key has no target at all and is a final answer; a section whose lowering has not been built yet is `unsupported`, which blocks the write instead of quietly shipping a partial file that looks complete.
+  - Lando 3 array dedupe is lodash `uniq`, not deep equality. Anything that compares stable JSON will merge two distinct objects that Lando 3 kept apart.
+  - Legacy alias identity does not survive projection: the parser rebuilds a distinct object per alias expansion, so identity has to be recovered from the anchor name on the source tree, not from the projected value.
+  - A bundled plugin's `plugin` export is imported as a finished value by the generated composition table, so it cannot receive host ports. Exporting the factory alongside it keeps the eventual injection a composition-root change rather than a package rewrite.
+  - Freezing the shared type module before fanning work out paid off again: four agents built merge, model, detection, and the core wiring in parallel against one `contract.ts` and integrated without touching each other's files.
+---
+
+## 2026-09-22 - US-620B Review
+- Translation now parses and merges only the seven app-root `.yml` layers, so compose files, JSON, nested apps, and `.yaml` neither change the result nor abort conversion. Parse failures no longer quote source text. Custom basename diagnostics name the configured files without opening them. Array dedupe matches Lando 3: a single document keeps repeated items, and `uniq` runs only when a later array is merged. App names use the slugify 1.6.6 strict map, including the corpus name `ландоьслуггы | Lando-Sluggy`.
+- Review notes (deferred/rejected): Bugbot's `.lando.recipe.yaml` detection is not a Lando 3 signal; §5.2 names `.lando.recipe.yml` only, and accepting `.yaml` would widen the set. A root-only `package.json` exports map is not required: `@lando/lando4` has none, and the package already exports its plugin from the root. Detection still inspects every supplied snapshot; only translation membership is filtered.
+- Verification: gate:pr passed; translator, merge, model, contract, and document-set spot checks passed.
+- **Learnings for future iterations:**
+  - Core discovery walks every in-root YAML/JSON/TOML on purpose. The lando3 frontend has to select the seven app-root `.yml` files before it parses.
+  - Lando 3 `uniq` runs only inside a merge onto an existing array. Collapsing aliases while reading one document drops steps Lando 3 would have kept.
+  - `slugify(..., {lower: true, strict: true})` is not NFKD. `|` becomes `or`, and `ß` becomes `ss`.
+- Guide-Coverage-Skip: US-620B does not change a published command or guide; the conversion guide is owned by US-621D.
+---
+
+## 2026-09-22 05:06 - US-620B Drift Audit
+- Trigger: 2 cycles, 4520 changed lines, 3 commits
+- Contract drift: core treated `.lando.recipe.yaml` as the recipe layer, and the document-set test expected that fold. Only `.lando.recipe.yml` is a Lando 3 layer.
+- Ceremony: unused path and translator re-exports.
+- Package boundary: the DAG allowlist was the shared plugin runtime set, which permits container-runtime and other packages this frontend must not depend on.
+- Deferred work: unfinished sections stay `unsupported`, which blocks a partial write; `dropped` would not. No doctor check and no recipe lowering were absorbed.
+- Fixed: `.yaml` is no longer a recipe layer, the dead re-exports are gone, and the package may depend only on the SDK and paths.
+- Split/excise decisions: none.
+- Verification: typecheck pass, lint pass, spot checks 131 pass, package-dag pass
+---
+
+## 2026-09-22 - US-620B Verify
+- Compiled `core/dist/lando` setup completed on the managed runtime. A two-layer Lando 3 set detected `lando3` at `exact` with `.lando.recipe.yml` ahead of `.lando.yml`; preview reported `recipe`, `config`, `proxy`, `services`, and `tooling` as `unsupported` at source spans; `--write` refused with `ConfigTranslateError` and left every source byte-identical. Name-only input stayed on `lando4` until `--from lando3`, which emitted `name: kitchen-sink-app`. `api: 4` / `type: php:8.3` did not auto-select `lando3`. A custom `landoFile` was `needs-review` and the named file was not read. `.lando.recipe.yaml` and `docker-compose.yml` did not enter the lowered result. `events` was `unsupported` at its span. Doctor output contained no lando3 check. A lamp app started, `exec` printed PHP 8.3.33, and `http://us620b.lndo.site:8000` returned that version. Config lint passed, and the v4 app detected as `lando4` `exact` only.
+- **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. The app still served on port 8000. Same class as US-619B1, US-619B3, and US-620A; the holder is the sandbox socket proxy, not this diff.
+- **Out-of-scope finding:** A fresh lamp webroot with no index returns HTTP 403 from Apache (`ErrorDocument 403`, directory index forbidden) until `index.php` exists. Not caused by the translator. After adding one, curl returned `php:8.3.33`.
+- **Learnings for future iterations:** `lando logs --format=json` is a live stream of chunk frames followed by a result frame, not one JSON document. `lando start` does not accept `--yes`.
+---

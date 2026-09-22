@@ -99,6 +99,7 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
     invocationFiles: [
       "core/test/contract/lando4-config-translator-contract.test.ts",
       "core/test/contract/recipe-config-translator-contract.test.ts",
+      "core/test/contract/lando3-config-translator-contract.test.ts",
     ],
   },
   {

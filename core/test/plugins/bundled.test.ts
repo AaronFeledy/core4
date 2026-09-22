@@ -7,6 +7,7 @@ import { Context, Effect, Layer } from "effect";
 
 import * as caMkcert from "@lando/ca-mkcert";
 import * as fileSyncMutagen from "@lando/file-sync-mutagen";
+import * as lando3 from "@lando/lando3";
 import * as lando4 from "@lando/lando4";
 import * as notifyLando from "@lando/notify-lando";
 import * as providerDocker from "@lando/provider-docker";
@@ -41,6 +42,7 @@ const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   templateMustache.plugin,
   sqlPlugin.plugin,
   lando4.plugin,
+  lando3.plugin,
 ];
 
 const generatedDir = resolve(import.meta.dirname, "../../src/plugins/generated");
@@ -50,7 +52,7 @@ const rendererIndexPath = resolve(import.meta.dirname, "../../../plugins/rendere
 
 describe("bundled plugin descriptor tables", () => {
   test("exports every bundled plugin descriptor in ship-list order", () => {
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(14);
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(15);
     expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );

@@ -1,0 +1,19 @@
+# @lando/lando3 — Lando 3 Landofile document-set frontend.
+
+name: "@lando/lando3"
+version: "0.0.0"
+api: 4
+description: "Source-preserving Lando 3 Landofile document-set frontend for Lando v4."
+enabled: true
+updateable: true
+
+provides:
+  configTranslators:
+    - id: lando3
+      module: ./src/translator.ts
+      inputKinds: [lando3]
+      detects: ["**/.lando.yml", "**/.lando.*.yml"]
+      summary: "Decode-only Lando 3 Landofile set frontend."
+
+requires:
+  "@lando/core": "^4.0.0"
