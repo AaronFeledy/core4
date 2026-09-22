@@ -56,7 +56,17 @@ describe("bundled plugin descriptor tables", () => {
     expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );
-    expect(BUNDLED_PLUGIN_MODULES).toEqual(EXPECTED_BUNDLED_PLUGIN_MODULES);
+    for (const [index, expected] of EXPECTED_BUNDLED_PLUGIN_MODULES.entries()) {
+      const actual = BUNDLED_PLUGIN_MODULES[index];
+      if (expected === lando3.plugin) {
+        // Host composition creates a fresh loader; package descriptor identity stays intact.
+        expect(actual?.name).toBe(lando3.PLUGIN_NAME);
+        expect(actual?.manifest).toBe(lando3.manifest);
+        expect(actual?.configTranslators?.get("lando3")).toBeFunction();
+      } else {
+        expect(actual).toBe(expected);
+      }
+    }
     expect(BUNDLED_RENDERER_MODULES).toEqual([rendererLando.plugin]);
 
     const mkcertEntry = BUNDLED_PLUGIN_MODULES.find((plugin) => plugin.name === "@lando/ca-mkcert");
