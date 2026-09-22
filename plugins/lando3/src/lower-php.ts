@@ -115,7 +115,8 @@ export const lowerPhpOptions = (
   } else if (isPlainObject(xdebug)) {
     patch.xdebug = typeof xdebug.mode === "string" && xdebug.mode.length > 0 ? xdebug.mode : true;
     for (const key of Object.keys(xdebug)) {
-      if (key !== "mode") diagnostics.push(deferredServiceKey({ ctx, relative: ["xdebug", key] }));
+      if (key !== "mode")
+        diagnostics.push(deferredServiceKey({ ctx, relative: ["xdebug", key], key: "xdebug" }));
     }
   }
 

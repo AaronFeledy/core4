@@ -19,7 +19,12 @@ import {
   isPlainObject,
   mergePatches,
 } from "./lowering-contract.ts";
-import { missingImage, rewrittenServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
+import {
+  missingImage,
+  rewrittenMeUser,
+  rewrittenServiceKey,
+  unsupportedServiceKey,
+} from "./service-diagnostics.ts";
 import { mergeLandofiles } from "./v4-merge.ts";
 
 export interface LoweredServicePrefix {
@@ -47,20 +52,14 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
   if (service.api === 4) return mergePatches(lowerApi4Service(service, ctx), hooks, overrides);
   if (raw) {
     // Raw config contains literal file contents, not catalog config slots.
-    const { config: _config, ...commonFields } = service;
+    const { config: _config, meUser: _meUser, ...commonFields } = service;
     const common = lowerCatalogCommon(commonFields, ctx);
     const diagnostics: ConfigTranslateDiagnostic[] = [];
     const patch: Record<string, unknown> = { type: "compose" };
+    // meUser outranks a nested Compose user, so it is applied after them.
     if (typeof service.meUser === "string") {
       patch.user = service.meUser;
-      diagnostics.push(
-        rewrittenServiceKey({
-          ctx,
-          relative: ["meUser"],
-          message: "Rewrote meUser as the Compose service user.",
-          remediation: "Review user in the generated service.",
-        }),
-      );
+      diagnostics.push(rewrittenMeUser({ ctx }));
     }
     const health = lowerApi4Service({ healthcheck: service.healthcheck }, ctx);
     const { type: _type, ...healthPatch } = health.patch;

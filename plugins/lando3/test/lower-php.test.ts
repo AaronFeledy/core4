@@ -39,11 +39,16 @@ describe("lowerPhpOptions", () => {
     expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
       { kind: "rewritten", keyPath: [...ctx.keyPath, "via"] },
       { kind: "rewritten", keyPath: [...ctx.keyPath, "composer_version"] },
-      { kind: "unsupported", keyPath: [...ctx.keyPath, "xdebug", "start_with_request"] },
-      { kind: "unsupported", keyPath: [...ctx.keyPath, "xdebug", "client_port"] },
-      { kind: "unsupported", keyPath: [...ctx.keyPath, "xdebug", "config"] },
+      { kind: "dropped", keyPath: [...ctx.keyPath, "xdebug", "start_with_request"] },
+      { kind: "dropped", keyPath: [...ctx.keyPath, "xdebug", "client_port"] },
+      { kind: "dropped", keyPath: [...ctx.keyPath, "xdebug", "config"] },
     ]);
-    expect(result.diagnostics.filter(({ kind }) => kind === "unsupported")).toHaveLength(3);
+    expect(result.diagnostics.filter(({ kind }) => kind === "unsupported")).toHaveLength(0);
+    expect(
+      result.diagnostics
+        .filter(({ kind }) => kind === "dropped")
+        .every(({ remediation }) => remediation?.includes("US-621C8")),
+    ).toBe(true);
     for (const diagnostic of result.diagnostics) {
       expect(diagnostic.remediation?.trim().length).toBeGreaterThan(0);
     }
@@ -151,7 +156,7 @@ describe("lowerPhpOptions", () => {
     },
   );
 
-  test("defers arbitrary Xdebug keys when they have no target", () => {
+  test("drops arbitrary Xdebug keys naming their pending story", () => {
     // Given
     const service = { xdebug: { custom: 1 } };
     // When
@@ -160,9 +165,10 @@ describe("lowerPhpOptions", () => {
     expect(result.patch).toEqual({ xdebug: true });
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({
-      kind: "unsupported",
+      kind: "dropped",
       keyPath: [...ctx.keyPath, "xdebug", "custom"],
     });
+    expect(result.diagnostics[0]?.remediation).toContain("US-621C8");
   });
 
   test.each([{}, { type: "php", build: ["ignored"] }])(

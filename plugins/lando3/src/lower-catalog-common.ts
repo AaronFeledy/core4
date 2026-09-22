@@ -11,7 +11,9 @@ import {
 } from "./lowering-contract.ts";
 import {
   deferredServiceKey,
+  droppedMoreHttpPorts,
   droppedServiceKey,
+  rewrittenMeUser,
   rewrittenServiceKey,
   unsupportedServiceKey,
   unsupportedVersion,
@@ -181,6 +183,10 @@ export const lowerCatalogCommon = (
   for (const key of ["command", "creds", "user"] as const) {
     if (service[key] !== undefined) patch[key] = service[key];
   }
+  if (typeof service.meUser === "string") {
+    patch.user = service.meUser;
+    diagnostics.push(rewrittenMeUser({ ctx }));
+  }
   if (service.webroot !== undefined) {
     const webroot = containerWebroot(service.webroot);
     patch.webroot = webroot ?? service.webroot;
@@ -251,8 +257,10 @@ export const lowerCatalogCommon = (
   for (const key of ["path", "scriptsDir"] as const) {
     if (Object.hasOwn(service, key)) drop([key], `${key} has no shared Lando 4 service setting.`);
   }
-  for (const key of ["scanner", "moreHttpPorts", "home", "mem", "plugins"] as const) {
-    if (Object.hasOwn(service, key)) diagnostics.push(deferredServiceKey({ ctx, relative: [key] }));
+  if (Object.hasOwn(service, "moreHttpPorts"))
+    diagnostics.push(droppedMoreHttpPorts({ ctx, relative: ["moreHttpPorts"] }));
+  for (const key of ["scanner", "home", "mem", "plugins"] as const) {
+    if (Object.hasOwn(service, key)) diagnostics.push(deferredServiceKey({ ctx, relative: [key], key }));
   }
   return {
     patch,

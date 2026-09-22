@@ -200,10 +200,17 @@ describe("API-4 service lowering", () => {
     ]);
     expect(result.diagnostics).toHaveLength(3);
   });
-  test("defers scanner even when false", () => {
+  test("drops scanner naming its pending story even when false", () => {
     const result = lowerApi4Service({ scanner: false }, ctx);
-    expect(paths(result, "unsupported")).toEqual([path("scanner")]);
-    expect(result.diagnostics[0]?.message.endsWith("has no Lando 4 target yet.")).toBe(true);
+    expect(paths(result, "dropped")).toEqual([path("scanner")]);
+    expect(result.blocked).toBeUndefined();
+    expect(result.diagnostics[0]?.remediation).toContain("US-617B");
+  });
+  test("drops home and moreHttpPorts without blocking", () => {
+    const result = lowerApi4Service({ home: true, moreHttpPorts: ["8888"] }, ctx);
+    expect(paths(result, "dropped")).toEqual([path("moreHttpPorts"), path("home")]);
+    expect(result.blocked).toBeUndefined();
+    expect(result.diagnostics[1]?.remediation).toContain("US-617A");
   });
   test("preserves ordinary fields and ignores fields owned by other lowerers", () => {
     const result = lowerApi4Service(

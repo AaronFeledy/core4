@@ -396,18 +396,50 @@ describe("lowerCatalogCommon", () => {
     ]);
   });
 
-  test.each(["scanner", "moreHttpPorts", "home", "mem", "plugins"])(
-    "defers %s when present even with a false value",
-    (key) => {
-      // Given an explicitly authored deferred key.
-      const service = { type: "node", [key]: false };
-      // When lowered.
-      const result = lowerCatalogCommon(service, ctx);
-      // Then one unsupported diagnostic identifies the exact key.
-      expect(result.patch).toEqual({ type: "node" });
-      expect(result.diagnostics).toHaveLength(1);
-      expect(result.diagnostics[0]).toMatchObject({ kind: "unsupported", keyPath: [...ctx.keyPath, key] });
-      expect(result.diagnostics[0]?.message.endsWith("has no Lando 4 target yet.")).toBe(true);
-    },
-  );
+  test.each([
+    ["scanner", "US-617B"],
+    ["home", "US-617A"],
+    ["mem", "US-621C8"],
+    ["plugins", "US-621C8"],
+  ])("drops %s naming its pending story without blocking the service", (key, story) => {
+    // Given an explicitly authored key whose Lando 4 target has not landed.
+    const service = { type: "node", [key]: false };
+    // When lowered.
+    const result = lowerCatalogCommon(service, ctx);
+    // Then the key is dropped, not unsupported, and the remediation names the story.
+    expect(result.patch).toEqual({ type: "node" });
+    expect(result.blocked).toBeUndefined();
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ kind: "dropped", keyPath: [...ctx.keyPath, key] });
+    expect(result.diagnostics[0]?.remediation).toContain(story);
+  });
+
+  test("drops moreHttpPorts with manual endpoint remediation", () => {
+    // Given / When
+    const result = lowerCatalogCommon({ type: "node", moreHttpPorts: ["8888"] }, ctx);
+    // Then
+    expect(result.patch).toEqual({ type: "node" });
+    expect(result.blocked).toBeUndefined();
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({
+      kind: "dropped",
+      keyPath: [...ctx.keyPath, "moreHttpPorts"],
+    });
+    expect(result.diagnostics[0]?.remediation).toContain("endpoint");
+    expect(result.diagnostics[0]?.remediation).not.toMatch(/US-\d/u);
+  });
+
+  test("rewrites meUser as the service user", () => {
+    // Given / When
+    const result = lowerCatalogCommon({ type: "node", meUser: "node" }, ctx);
+    // Then
+    expect(result.patch).toEqual({ type: "node", user: "node" });
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        kind: "rewritten",
+        keyPath: [...ctx.keyPath, "meUser"],
+        message: "Rewrote meUser as the service user.",
+      }),
+    ]);
+  });
 });

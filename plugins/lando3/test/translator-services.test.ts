@@ -363,3 +363,20 @@ test("rewrites app-relative webroots as container paths across a service and its
     { kind: "rewritten", keyPath: ["services", "legacy", "webroot"] },
   ]);
 });
+
+test("keeps the preview when a catalog service authors deferred keys and meUser", async () => {
+  // Given / When
+  const result = await translate(
+    'plugins: {"@lando/mailpit": "^1"}\nservices:\n  appserver:\n    type: "php:8.3"\n    meUser: www-data\n    scanner: false\n    moreHttpPorts: ["8888"]\n',
+  );
+  // Then
+  expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+    { services: { appserver: { type: "php:8.3", user: "www-data" } } },
+  ]);
+  expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
+    { kind: "dropped", keyPath: ["plugins"] },
+    { kind: "rewritten", keyPath: ["services", "appserver", "meUser"] },
+    { kind: "dropped", keyPath: ["services", "appserver", "scanner"] },
+    { kind: "dropped", keyPath: ["services", "appserver", "moreHttpPorts"] },
+  ]);
+});

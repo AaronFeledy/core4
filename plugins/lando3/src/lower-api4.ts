@@ -10,6 +10,7 @@ import {
 } from "./lowering-contract.ts";
 import {
   deferredServiceKey,
+  droppedMoreHttpPorts,
   droppedServiceKey,
   rewrittenServiceKey,
   unsafeBuildSource,
@@ -240,8 +241,11 @@ export const lowerApi4Service = (
     rewrite(["ports"]);
   }
   if (ports.length > 0) patch.ports = ports;
-  for (const key of ["scanner", "moreHttpPorts", "home"]) {
-    if (service[key] !== undefined) diagnostics.push(deferredServiceKey({ ctx, relative: [key] }));
+  if (service.moreHttpPorts !== undefined) {
+    diagnostics.push(droppedMoreHttpPorts({ ctx, relative: ["moreHttpPorts"] }));
+  }
+  for (const key of ["scanner", "home"] as const) {
+    if (service[key] !== undefined) diagnostics.push(deferredServiceKey({ ctx, relative: [key], key }));
   }
   return { patch, diagnostics, ...(blocked ? { blocked: true as const } : {}) };
 };

@@ -96,6 +96,23 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
           remediation: "Apply these patterns to each app-mounted service and review negated includes.",
         });
         break;
+      case "plugins":
+      case "pluginDirs":
+        report([key], {
+          kind: "dropped",
+          message: `Per-app Lando 3 ${key === "plugins" ? "plugin pins" : "plugin directories"} have no Lando 4 target.`,
+          remediation:
+            "Install the Lando 4 equivalent of each plugin by hand; Lando 4 does not load plugins from the Landofile.",
+        });
+        break;
+      case "keys":
+        report([key], {
+          kind: "dropped",
+          message: "Lando 3 SSH key selection has no Lando 4 target.",
+          remediation:
+            "Add the keys to your host SSH agent; Lando 4 forwards the SSH agent instead of loading key files.",
+        });
+        break;
       case "env_file":
         fragment[key] = value;
         break;

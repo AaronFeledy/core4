@@ -76,6 +76,9 @@ const LOWERED_KEYS = new Set<string>([
   "env_file",
   "volumes",
   "networks",
+  "plugins",
+  "pluginDirs",
+  "keys",
 ]);
 
 export const defaultLando3Ports = (): Lando3TranslatorPorts => ({

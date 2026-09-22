@@ -40,7 +40,7 @@ const context = (located: LegacyOccurrence | undefined): ServiceLoweringContext 
   topLevel: { excludes: [], includes: [] },
 });
 const ctx = context(occurrence);
-const diagnostic = deferredServiceKey({ ctx, relative: ["scanner"] });
+const diagnostic = deferredServiceKey({ ctx, relative: ["scanner"], key: "scanner" });
 
 describe("lowering patches", () => {
   test("deep merges objects and replaces arrays when later contributions overlap", () => {
@@ -186,7 +186,7 @@ const factories: ReadonlyArray<
           }),
       ] as const,
   ),
-  ["deferred", "unsupported", (ctx) => deferredServiceKey({ ctx, relative: ["scanner"] })],
+  ["deferred", "dropped", (ctx) => deferredServiceKey({ ctx, relative: ["scanner"], key: "scanner" })],
   [
     "version",
     "unsupported",
@@ -246,10 +246,14 @@ describe("service diagnostics", () => {
     }
   }
 
-  test("names the full deferred path when it has no target", () => {
+  test("names the full deferred path and its pending story", () => {
     // Given / When
-    const result = deferredServiceKey({ ctx, relative: ["build", 0] });
+    const result = deferredServiceKey({ ctx, relative: ["xdebug", "client_port"], key: "xdebug" });
     // Then
-    expect(result.message).toBe("services.web.build[0] has no Lando 4 target yet.");
+    expect(result.kind).toBe("dropped");
+    expect(result.message).toBe(
+      "services.web.xdebug.client_port was dropped: Lando 4 has no typed xdebug settings until US-621C8 lands.",
+    );
+    expect(result.remediation).toContain("US-621C8");
   });
 });

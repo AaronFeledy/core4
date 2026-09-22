@@ -195,4 +195,18 @@ describe("top-level lowering", () => {
       ["compose", 1],
     ]);
   });
+
+  test.each([
+    ["plugins", { "@lando/mailpit": "^1" }, "plugin"],
+    ["pluginDirs", ["./plugins"], "plugin"],
+    ["keys", ["id_ed25519"], "SSH agent"],
+  ])("drops top-level %s with manual remediation", (key, value, remediation) => {
+    // Given / When
+    const result = lowerTopLevel({ [key]: value }, ctx);
+    // Then
+    expect(result.fragment).toEqual({});
+    expect(result.diagnostics).toHaveLength(1);
+    expect(result.diagnostics[0]).toMatchObject({ kind: "dropped", keyPath: [key] });
+    expect(result.diagnostics[0]?.remediation).toContain(remediation);
+  });
 });

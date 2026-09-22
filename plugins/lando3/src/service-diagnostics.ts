@@ -55,11 +55,47 @@ export const needsReviewServiceKey = (args: ServiceDiagnosticInput): ConfigTrans
 export const generatedService = (args: ServiceDiagnosticInput): ConfigTranslateDiagnostic =>
   serviceDiagnostic("generated", args);
 
-export const deferredServiceKey = (args: ServiceLocation): ConfigTranslateDiagnostic =>
-  unsupportedServiceKey({
+/**
+ * Keys whose Lando 4 target is owned by work that has not landed yet. They are
+ * dropped rather than rejected, so they never block conversion, and the
+ * remediation names the pending work so the user knows when to convert again.
+ */
+const DEFERRED_KEYS = {
+  scanner: { target: "service scanner", story: "US-617B" },
+  home: { target: "default home storage", story: "US-617A" },
+  mem: { target: "catalog memory setting", story: "US-621C8" },
+  plugins: { target: "catalog plugin installation", story: "US-621C8" },
+  xdebug: { target: "typed xdebug settings", story: "US-621C8" },
+} as const;
+
+export type DeferredServiceKey = keyof typeof DEFERRED_KEYS;
+
+export const deferredServiceKey = (
+  args: ServiceLocation & { readonly key: DeferredServiceKey },
+): ConfigTranslateDiagnostic => {
+  const { target, story } = DEFERRED_KEYS[args.key];
+  return droppedServiceKey({
+    ctx: args.ctx,
+    relative: args.relative,
+    message: `${formatPath([...args.ctx.keyPath, ...args.relative])} was dropped: Lando 4 has no ${target} until ${story} lands.`,
+    remediation: `Configure the equivalent by hand in the generated Landofile, or convert again after ${story} lands.`,
+  });
+};
+
+export const droppedMoreHttpPorts = (args: ServiceLocation): ConfigTranslateDiagnostic =>
+  droppedServiceKey({
     ...args,
-    message: `${formatPath([...args.ctx.keyPath, ...args.relative])} has no Lando 4 target yet.`,
-    remediation: "Configure the equivalent Lando 4 setting by hand in the generated Landofile.",
+    message: "moreHttpPorts has no Lando 4 target.",
+    remediation:
+      "Declare each extra HTTP port as an endpoint on the service, and route it by hand if needed.",
+  });
+
+export const rewrittenMeUser = (args: Pick<ServiceLocation, "ctx">): ConfigTranslateDiagnostic =>
+  rewrittenServiceKey({
+    ctx: args.ctx,
+    relative: ["meUser"],
+    message: "Rewrote meUser as the service user.",
+    remediation: "Review user in the generated service.",
   });
 
 export const unsupportedVersion = (

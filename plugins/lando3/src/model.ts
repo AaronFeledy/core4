@@ -52,6 +52,7 @@ const api3 = {
   sslExpose: optional(Schema.Boolean),
   app_mount: optional(Toggle),
   moreHttpPorts: optional(Schema.Array(Port)),
+  meUser: optional(Text),
 };
 
 export const Lando3Api3CatalogService = open({
@@ -100,7 +101,6 @@ export const Lando3Api3RawService = open({
   ...api3,
   type: Schema.Literal("lando", "compose"),
   services: optional(Bag),
-  meUser: optional(Text),
   user: optional(Text),
   scriptsDir: optional(Text),
   sport: optional(Port),
