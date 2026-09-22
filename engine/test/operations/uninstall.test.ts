@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -33,6 +35,146 @@ import {
 
 const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
   uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
+
+describe("record-backed uninstall", () => {
+  for (const scenario of [
+    "owned",
+    "no-record",
+    "foreign-basename",
+    "digest-mismatch",
+    "missing",
+    "invalid",
+    "changed-before-remove",
+  ] as const) {
+    for (const purge of [false, true]) {
+      for (const dryRun of [false, true]) {
+        test(`${scenario} preserves foreign files when dryRun=${dryRun}, purge=${purge}`, async () => {
+          // Given: a real install record and a hostile neighboring Lando 3 installation.
+          const roots = makeUninstallRoots("lando-uninstall-record-");
+          const bin =
+            scenario === "no-record" ? join(roots.userDataRoot, "bin") : join(roots.root, "external");
+          mkdirSync(bin, { recursive: true });
+          const legacy = join(bin, "lando");
+          const state = join(roots.root, ".lando");
+          mkdirSync(state, { mode: 0o700 });
+          writeFileSync(join(state, "state"), "legacy state", { mode: 0o600 });
+          writeFileSync(legacy, "legacy executable", { mode: 0o755 });
+          const binary = scenario === "foreign-basename" ? legacy : join(bin, "lando4");
+          if (binary !== legacy) writeFileSync(binary, "v4 executable", { mode: 0o755 });
+          const bytes = readFileSync(binary);
+          const record = join(roots.userDataRoot, "install", "record.json");
+          mkdirSync(join(roots.userDataRoot, "install"), { recursive: true });
+          if (scenario !== "no-record")
+            writeFileSync(
+              record,
+              JSON.stringify({
+                version: 1,
+                data: {
+                  executable: {
+                    path: binary,
+                    sha256: createHash("sha256").update(bytes).digest("hex"),
+                    size: bytes.length,
+                    channel: "stable",
+                    platform: "linux-x64",
+                    releaseVersion: "4.2.0",
+                  },
+                  shellProfiles: [],
+                },
+              }),
+            );
+          if (scenario === "digest-mismatch") writeFileSync(binary, "v4 drifted!!!");
+          if (scenario === "missing") rmSync(binary);
+          if (scenario === "invalid") writeFileSync(record, "not json");
+          const before = existsSync(binary) ? readFileSync(binary) : undefined;
+          const removals: string[] = [];
+          if (scenario === "changed-before-remove")
+            mkdirSync(join(roots.userDataRoot, "runtime"), { recursive: true });
+          try {
+            // When: uninstall uses the recorded destination rather than the running executable.
+            const result = await Effect.runPromise(
+              uninstall(
+                sandboxUninstallOptions(roots, {
+                  yes: true,
+                  dryRun,
+                  purge,
+                  execPath: legacy,
+                  listDiscoveredApps: async () => [],
+                  teardownRuntimeService: async () => {
+                    writeFileSync(binary, "v4 drifted!!!");
+                    return { terminated: true };
+                  },
+                  remove: async (path) => {
+                    removals.push(path);
+                    rmSync(path, { recursive: true, force: true });
+                  },
+                }),
+              ),
+            );
+            // Then: only proven ownership permits deletion; refusals retain repair evidence.
+            const step = result.steps.find((entry) => entry.id === "installed-binary");
+            const status =
+              scenario === "owned" || (scenario === "changed-before-remove" && dryRun)
+                ? "owned"
+                : scenario === "invalid"
+                  ? "manual"
+                  : scenario === "no-record" || scenario === "missing"
+                    ? "skipped"
+                    : "user-owned";
+            expect(step?.status).toBe(status);
+            expect(result.failed).toBe(false);
+            if (scenario === "foreign-basename" || scenario === "digest-mismatch")
+              expect(step?.detail).toContain(scenario);
+            expect(result.steps.at(-1)?.id).toBe("install-record");
+            if (dryRun) {
+              expect(removals).toEqual([]);
+              if (before !== undefined) expect(readFileSync(binary)).toEqual(before);
+            } else if (scenario === "owned" || scenario === "missing") {
+              expect(existsSync(binary)).toBe(false);
+              expect(existsSync(record)).toBe(false);
+              if (scenario === "owned") expect(removals).toEqual([binary, record]);
+              removals.length = 0;
+              const repeated = await Effect.runPromise(
+                uninstall(
+                  sandboxUninstallOptions(roots, {
+                    yes: true,
+                    purge,
+                    listDiscoveredApps: async () => [],
+                    remove: async (path) => {
+                      removals.push(path);
+                      rmSync(path, { recursive: true, force: true });
+                    },
+                  }),
+                ),
+              );
+              expect(repeated.failed).toBe(false);
+              expect(repeated.steps.find((entry) => entry.id === "installed-binary")).toMatchObject({
+                status: "skipped",
+                outcome: "skipped",
+              });
+              expect(repeated.steps.find((entry) => entry.id === "install-record")).toMatchObject({
+                status: "skipped",
+                outcome: "skipped",
+              });
+              expect(removals).toEqual([]);
+            } else {
+              expect(removals).not.toContain(binary);
+              expect(existsSync(record)).toBe(scenario !== "no-record");
+              if (scenario !== "changed-before-remove" && before !== undefined)
+                expect(readFileSync(binary)).toEqual(before);
+            }
+            expect(readFileSync(legacy, "utf8")).toBe("legacy executable");
+            expect(statSync(legacy).mode & 0o777).toBe(0o755);
+            expect(statSync(state).mode & 0o777).toBe(0o700);
+            expect(readFileSync(join(state, "state"), "utf8")).toBe("legacy state");
+            expect(statSync(join(state, "state")).mode & 0o777).toBe(0o600);
+          } finally {
+            rmSync(roots.root, { recursive: true, force: true });
+          }
+        });
+      }
+    }
+  }
+});
 
 const restoreEnv = (key: string, value: string | undefined): void => {
   if (value === undefined) Reflect.deleteProperty(process.env, key);

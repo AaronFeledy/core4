@@ -9,7 +9,7 @@
  */
 import assert from "node:assert/strict";
 import { createHash, createPublicKey, verify } from "node:crypto";
-import { chmod, copyFile, mkdtemp, rm } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -62,13 +62,35 @@ const cases = [
 for (const scenario of cases) {
   // Given: only this newly owned target may be replaced; state is per scenario.
   const root = await mkdtemp(join(tmpdir(), "lando-signed-component-"));
-  const installed = join(root, "lando");
+  const installed = join(root, "lando4");
   process.env.LANDO_USER_CACHE_ROOT = join(root, "cache");
   process.env.LANDO_USER_DATA_ROOT = join(root, "data");
   process.env.LANDO_USER_CONF_ROOT = join(root, "config");
   try {
     await copyFile(join(fixtures, "lando-old"), installed);
     await chmod(installed, 0o755);
+    // Only the recorded, digest-matched lando4 may be replaced, so seed the record
+    // the installer would have written for this binary.
+    const installedBytes = await Bun.file(installed).bytes();
+    await mkdir(join(root, "data", "install"), { recursive: true });
+    await writeFile(
+      join(root, "data", "install", "record.json"),
+      JSON.stringify({
+        version: 1,
+        data: {
+          executable: {
+            path: installed,
+            sha256: sha256(installedBytes),
+            size: installedBytes.byteLength,
+            channel: "dev",
+            platform: "linux-x64",
+            releaseVersion: oldVersion,
+          },
+          shellProfiles: [],
+        },
+      }),
+      { mode: 0o600 },
+    );
     const transport = new Map<string, Uint8Array>([
       [manifestUrl, manifest],
       [`${manifestUrl}.sig`, scenario.name === "manifest-signature" ? corrupted(manifestSig) : manifestSig],
@@ -131,7 +153,6 @@ for (const scenario of cases) {
           verifyManifestSignature: (input) => verifyBytes(input.manifestBytes, input.signatureBytes),
           verifyChecksumSignature: (input) => verifyBytes(input.checksumsBytes, input.signatureBytes),
           selfUpdate: {
-            executablePath: installed,
             argv: [installed, "/$bunfs/root/lando.js", "update", "--only", "core"],
             env: { PATH: process.env.PATH },
             execve: (input) =>

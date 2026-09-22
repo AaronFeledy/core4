@@ -111,7 +111,7 @@ const hashFile = (path: string): Either.Either<string, "unreadable"> => {
 const inspect = (options: ResolveOwnedExecutableOptions): Either.Either<OwnedExecutable, InstallOwnershipError> => {
   const { recordFile, platform } = options;
   const record = readRecord(recordFile);
-  if (Either.isLeft(record)) return record;
+  if (Either.isLeft(record)) return Either.left(record.left);
   const destination = record.right.data.executable.path;
   if (options.destination !== undefined && resolve(options.destination) !== resolve(destination)) {
     return Either.left(
