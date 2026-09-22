@@ -884,6 +884,7 @@ It registers no JSON Schema.
 
 ## Additive Alpha errors
 
+- `Lando3UnsupportedRecipeError`
 - `RouteInputError`
 
 - `PluginDescriptorMismatchError`

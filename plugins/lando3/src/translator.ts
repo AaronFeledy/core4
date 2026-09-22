@@ -42,9 +42,12 @@ import {
   lando3TargetLayer,
 } from "./contract.ts";
 import { detectLando3, isAppRootLando3Layer, sourceLayerForDocument } from "./detect.ts";
+import { dedupeDiagnostics, orderDiagnostics } from "./diagnostics.ts";
+import { foldToTargetLayers, legacyPrefixViews } from "./effective-views.ts";
 import { mergeLegacySources, mergedToPlain, occurrencesAt, toMergedValue } from "./legacy-merge.ts";
 import { decodeLando3Landofile } from "./model.ts";
 import { slugifyAppName } from "./naming.ts";
+import { lowerRecipeViews, recipeLayerOutputs } from "./recipe-lowering.ts";
 import { formatPath } from "./source.ts";
 
 const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml"]);
@@ -56,8 +59,7 @@ const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "tex
  */
 const CUSTOM_BASENAME_KEYS = ["landoFile", "preLandoFiles", "postLandoFiles"] as const;
 
-/** Only `name` is lowered. Every other top-level key still needs its own target. */
-const LOWERED_KEYS = new Set<string>(["name"]);
+const LOWERED_KEYS = new Set<string>(["name", "recipe", "config"]);
 
 export const defaultLando3Ports = (): Lando3TranslatorPorts => ({
   decomposers: new Map(),
@@ -111,24 +113,6 @@ const parseSource =
         value: toMergedValue({ document: parsed, sourceId: document.sourceId, layer }),
       };
     });
-
-/** Input order decides diagnostic order, so index the sources core supplied. */
-const documentRank = (documents: ReadonlyArray<ConfigTranslateDocument>): ReadonlyMap<string, number> =>
-  new Map(documents.map((document, index) => [String(document.sourceId), index]));
-
-const diagnosticOrder =
-  (ranks: ReadonlyMap<string, number>) =>
-  (left: ConfigTranslateDiagnostic, right: ConfigTranslateDiagnostic): number => {
-    const byDocument = (ranks.get(String(left.sourceId)) ?? 0) - (ranks.get(String(right.sourceId)) ?? 0);
-    if (byDocument !== 0) return byDocument;
-    const byLine = (left.span?.start.line ?? 0) - (right.span?.start.line ?? 0);
-    if (byLine !== 0) return byLine;
-    const byColumn = (left.span?.start.column ?? 0) - (right.span?.start.column ?? 0);
-    if (byColumn !== 0) return byColumn;
-    const leftPath = left.keyPath.join(".");
-    const rightPath = right.keyPath.join(".");
-    return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : 0;
-  };
 
 const lastOccurrence = (occurrences: ReadonlyArray<LegacyOccurrence>): LegacyOccurrence | undefined =>
   occurrences.at(-1);
@@ -274,20 +258,39 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         const layers = input.documents.filter(isAppRootLando3Layer);
         const sources = yield* Effect.forEach(layers, parseSource(ports));
         const merged = mergeLegacySources(sources);
+        const folded = foldToTargetLayers(legacyPrefixViews(sources));
+        const lowered = yield* lowerRecipeViews(ports, folded);
         const decoded = decodeLando3Landofile(mergedToPlain(merged));
 
         const writable = new Set<LandofileLayer>(input.writableLayerIds);
-        const outputs = buildOutputs(sources, writable);
+        const planned = recipeLayerOutputs(folded, lowered, buildOutputs(sources, writable));
+        const missing = planned.required.filter((layer) => !writable.has(layer));
+        if (input.mode === "single-layer" && missing.length > 0) {
+          return yield* Effect.fail(
+            translateError(
+              "The conversion needs edits outside the writable layers.",
+              `This layer's conversion also needs edits to ${missing.join(", ")}; run the full conversion instead of --file.`,
+            ),
+          );
+        }
+        const outputs = planned.outputs;
 
         const fallback = layers[0]?.sourceId;
         if (fallback === undefined) {
           return { outputs: [], diagnostics: [], deletions: [] };
         }
 
-        const diagnostics = [
-          ...deferredDiagnostics(merged, fallback),
-          ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
-        ].toSorted(diagnosticOrder(documentRank(input.documents)));
+        const ranks = new Map(
+          sources.map((source) => [source.sourceId, lando3SourceLayerOrder(source.layer)]),
+        );
+        const diagnostics = orderDiagnostics(
+          dedupeDiagnostics([
+            ...deferredDiagnostics(merged, fallback),
+            ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
+            ...planned.diagnostics,
+          ]),
+          (sourceId) => ranks.get(sourceId) ?? 0,
+        );
 
         return { outputs, diagnostics, deletions: [] };
       }),
