@@ -117,5 +117,4 @@ export interface Lando3TranslatorPorts {
   readonly redactor: Redactor;
 }
 
-/** The translator id this package contributes. */
 export const LANDO3_TRANSLATOR_ID = "lando3";

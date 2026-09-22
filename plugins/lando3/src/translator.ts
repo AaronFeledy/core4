@@ -56,7 +56,7 @@ const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "tex
  */
 const CUSTOM_BASENAME_KEYS = ["landoFile", "preLandoFiles", "postLandoFiles"] as const;
 
-/** The one key this story lowers. Everything else still needs its own target. */
+/** Only `name` is lowered. Every other top-level key still needs its own target. */
 const LOWERED_KEYS = new Set<string>(["name"]);
 
 export const defaultLando3Ports = (): Lando3TranslatorPorts => ({
@@ -144,7 +144,6 @@ const spanOf = (occurrence: LegacyOccurrence | undefined): ConfigTranslateDiagno
 const topLevelKeys = (merged: MergedLegacyValue | undefined): ReadonlyArray<string> =>
   merged?.kind === "mapping" ? [...merged.entries.keys()] : [];
 
-/** The layer that owns a converted value is the layer its source maps onto. */
 const targetFor = (source: Lando3Source): LandofileLayer => lando3TargetLayer(source.layer);
 
 const nameAssignments = (
