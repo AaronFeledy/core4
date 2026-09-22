@@ -205,3 +205,9 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - **Learnings for future iterations:**
   - A YAML merge key is the plain untagged scalar `<<` only. Comparing key text alone treats `"<<"` as a merge and drops the key.
 ---
+
+## 2026-09-22 - US-620A Review
+- Root `|2` kept no leading space because explicit indentation was clamped at 0 instead of the document root's -1. A blank line before more-indented folded text dropped a newline. Both now match js-yaml. Flow marker checks read a fixed window instead of the rest of a long line, so a 40KB flow sequence stays under a second.
+- Review notes (deferred/rejected): v4 still accepting a flow sequence and a bare tag is pre-existing and outside this diff. Collection spans that run from the first child to the last child are the pinned contract. The corpus pin's null commit stays because the kitchen-sink is an authored inventory whose bytes match the spec reference. `007` stays a string under the pinned YAML 1.2 core rule. Bugbot found no bugs.
+- Verification: typecheck, lint, and codegen passed; boundaries passed on retry after a transient missing guide file that was not part of this diff; legacy spot checks passed.
+---
