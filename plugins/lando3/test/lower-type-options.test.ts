@@ -21,19 +21,36 @@ const diagnostic = (kind: string, key: string) =>
 
 describe("lowerTypeOptions", () => {
   for (const catalogId of ["mysql", "mariadb"]) {
-    it(`requests mounted authentication configuration when ${catalogId} sets authentication`, () => {
+    it(`writes authentication into 99-lando.cnf when ${catalogId} sets authentication`, () => {
       // Given
       const service = { authentication: "mysql_native_password" };
       // When
       const result = lowerTypeOptions(catalogId, service, ctx);
       // Then
-      expect(result).toEqual({ patch: {}, diagnostics: [diagnostic("needs-review", "authentication")] });
-      const advice = result.diagnostics.map((item) => `${item.message} ${item.remediation}`).join(" ");
-      expect(advice).toContain("default_authentication_plugin=mysql_native_password");
-      expect(advice).toContain("/etc/mysql/conf.d/99-lando.cnf");
-      expect(advice).toContain("config.server");
+      const directive = "default_authentication_plugin=mysql_native_password";
+      expect(result.diagnostics).toEqual([diagnostic("rewritten", "authentication")]);
+      expect(result.patch).toEqual({
+        build: {
+          artifact: [
+            {
+              user: "root",
+              run: `mkdir -p /etc/mysql/conf.d && printf '%s\\n' '[mysqld]' '${directive}' > /etc/mysql/conf.d/99-lando.cnf`,
+            },
+          ],
+        },
+      });
     });
   }
+
+  it("rejects an authentication value that is not an identifier", () => {
+    // Given
+    const service = { authentication: "mysql;touch" };
+    // When
+    const result = lowerTypeOptions("mysql", service, ctx);
+    // Then
+    expect(result.patch).toEqual({});
+    expect(result.diagnostics).toEqual([diagnostic("unsupported", "authentication")]);
+  });
 
   const cases = [
     {

@@ -23,8 +23,6 @@ export interface LoweringPatch {
   readonly blocked?: true;
 }
 
-export type FieldLowerer = (value: unknown, ctx: ServiceLoweringContext) => LoweringPatch;
-
 export const emptyPatch: LoweringPatch = { patch: {}, diagnostics: [] };
 
 export const isPlainObject = (value: unknown): value is Record<string, unknown> => {
@@ -39,12 +37,17 @@ export const asStringArray = (value: unknown): ReadonlyArray<string> | undefined
   return undefined;
 };
 
+const CONCATENATED_WIRE_KEYS: ReadonlySet<string> = new Set(["mounts", "artifact", "app"]);
+
 const mergeWire = (left: V4Wire, right: V4Wire): V4Wire =>
   Object.fromEntries(
     [...new Set([...Object.keys(left), ...Object.keys(right)])].map((key) => {
       const previous = Object.hasOwn(left, key) ? left[key] : undefined;
       if (!Object.hasOwn(right, key)) return [key, previous];
       const next = right[key];
+      if (CONCATENATED_WIRE_KEYS.has(key) && Array.isArray(previous) && Array.isArray(next)) {
+        return [key, [...previous, ...next]];
+      }
       return [key, isPlainObject(previous) && isPlainObject(next) ? mergeWire(previous, next) : next];
     }),
   );

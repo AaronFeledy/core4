@@ -57,9 +57,102 @@ describe("lowerCatalogCommon", () => {
     },
     {
       name: "PHP config slots",
-      service: { type: "php:8.3", config: { php: "config/php.ini", vhosts: "config/default.conf" } },
-      patch: { type: "php:8.3" },
-      kinds: ["dropped", "dropped"],
+      service: {
+        type: "php:8.3",
+        config: {
+          php: "config/php.ini",
+          vhosts: "config/default.conf",
+          pool: "config/pool.conf",
+          server: "config/apache.conf",
+        },
+      },
+      patch: {
+        type: "php:8.3",
+        mounts: [
+          {
+            type: "bind",
+            source: "config/php.ini",
+            target: "/usr/local/etc/php/conf.d/zzz-lando-my-custom.ini",
+            readOnly: true,
+          },
+          {
+            type: "bind",
+            source: "config/default.conf",
+            target: "/etc/apache2/sites-enabled/000-default.conf",
+            readOnly: true,
+          },
+          {
+            type: "bind",
+            source: "config/pool.conf",
+            target: "/usr/local/etc/php-fpm.d/zz-lando.conf",
+            readOnly: true,
+          },
+          { type: "bind", source: "config/apache.conf", target: "/etc/apache2/apache2.conf", readOnly: true },
+        ],
+      },
+      kinds: ["rewritten", "rewritten", "rewritten", "rewritten"],
+    },
+    {
+      name: "nginx server and vhosts stay separate mounts",
+      service: {
+        type: "nginx",
+        config: {
+          server: "config/nginx.conf",
+          vhosts: "config/default.conf",
+          params: "config/fastcgi_params",
+        },
+      },
+      patch: {
+        type: "nginx",
+        mounts: [
+          { type: "bind", source: "config/nginx.conf", target: "/etc/nginx/nginx.conf", readOnly: true },
+          {
+            type: "bind",
+            source: "config/default.conf",
+            target: "/etc/nginx/conf.d/default.conf",
+            readOnly: true,
+          },
+        ],
+      },
+      kinds: ["rewritten", "rewritten", "dropped"],
+    },
+    {
+      name: "Apache server and vhosts stay separate mounts",
+      service: { type: "apache", config: { server: "config/httpd.conf", vhosts: "config/default.conf" } },
+      patch: {
+        type: "apache",
+        mounts: [
+          {
+            type: "bind",
+            source: "config/httpd.conf",
+            target: "/usr/local/apache2/conf/httpd.conf",
+            readOnly: true,
+          },
+          {
+            type: "bind",
+            source: "config/default.conf",
+            target: "/usr/local/apache2/conf/extra/httpd-vhosts.conf",
+            readOnly: true,
+          },
+        ],
+      },
+      kinds: ["rewritten", "rewritten"],
+    },
+    {
+      name: "phpMyAdmin config mount",
+      service: { type: "phpmyadmin:5", config: { config: "config/phpmyadmin.php" } },
+      patch: {
+        type: "phpmyadmin:5",
+        mounts: [
+          {
+            type: "bind",
+            source: "config/phpmyadmin.php",
+            target: "/etc/phpmyadmin/config.user.inc.php",
+            readOnly: true,
+          },
+        ],
+      },
+      kinds: ["rewritten"],
     },
     {
       name: "Solr config directory",
@@ -188,6 +281,40 @@ describe("lowerCatalogCommon", () => {
       expect(diagnostic.remediation?.trim().length).toBeGreaterThan(0);
       expect(diagnostic.keyPath.slice(0, 2)).toEqual([...ctx.keyPath]);
     }
+  });
+
+  test("mounts nginx-fronted PHP server files on the companion when via is nginx", () => {
+    // Given PHP served by nginx with server and vhost files.
+    const service = {
+      type: "php:8.3",
+      via: "nginx",
+      config: { php: "config/php.ini", server: "config/nginx.conf", vhosts: "config/default.conf" },
+    };
+    // When common catalog fields are lowered.
+    const result = lowerCatalogCommon(service, ctx);
+    // Then PHP files stay on PHP and the web server files move to the companion.
+    expect(result.patch.mounts).toEqual([
+      {
+        type: "bind",
+        source: "config/php.ini",
+        target: "/usr/local/etc/php/conf.d/zzz-lando-my-custom.ini",
+        readOnly: true,
+      },
+    ]);
+    expect(result.companions).toEqual({
+      "app-nginx": {
+        type: "nginx",
+        mounts: [
+          { type: "bind", source: "config/nginx.conf", target: "/etc/nginx/nginx.conf", readOnly: true },
+          {
+            type: "bind",
+            source: "config/default.conf",
+            target: "/etc/nginx/conf.d/default.conf",
+            readOnly: true,
+          },
+        ],
+      },
+    });
   });
 
   test("renames mongo when the legacy alias is used", () => {

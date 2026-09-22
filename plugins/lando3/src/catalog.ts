@@ -4,6 +4,8 @@ export interface CatalogEntry {
   /** Legacy config key to authoring slot; drop means no matching slot exists. */
   readonly configKeys?: Readonly<Record<string, "server" | "dir" | "drop">>;
   readonly configDestination?: string;
+  /** Legacy config key mounted read-only at this container path, one mount per key. */
+  readonly configMounts?: Readonly<Record<string, string>>;
   /** The Lando 4 service type mounts the app at `/app` unless opted out. */
   readonly appMountByDefault?: true;
 }
@@ -12,7 +14,6 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   php: {
     versions: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"],
     appMountByDefault: true,
-    configKeys: { php: "drop", vhosts: "drop", pool: "drop", server: "drop" },
   },
   node: { versions: ["lts", "22"], containerPort: 3000, appMountByDefault: true },
   mysql: {
@@ -52,8 +53,7 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   phpmyadmin: {
     versions: ["5", "latest"],
     containerPort: 80,
-    configKeys: { config: "server" },
-    configDestination: "/etc/phpmyadmin/config.user.inc.php",
+    configMounts: { config: "/etc/phpmyadmin/config.user.inc.php" },
   },
   varnish: { versions: ["6", "7"], containerPort: 8080, configKeys: { vcl: "drop" } },
   tomcat: { versions: ["9", "10", "11"], containerPort: 8080, appMountByDefault: true },
@@ -66,14 +66,21 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   apache: {
     versions: [],
     containerPort: 80,
-    configKeys: { server: "server", vhosts: "server" },
+    configMounts: {
+      server: "/usr/local/apache2/conf/httpd.conf",
+      vhosts: "/usr/local/apache2/conf/extra/httpd-vhosts.conf",
+    },
     appMountByDefault: true,
   },
   nginx: {
     versions: [],
     appMountByDefault: true,
     containerPort: 80,
-    configKeys: { server: "server", vhosts: "server", params: "drop" },
+    configMounts: {
+      server: "/etc/nginx/nginx.conf",
+      vhosts: "/etc/nginx/conf.d/default.conf",
+    },
+    configKeys: { params: "drop" },
   },
   compose: { versions: [], appMountByDefault: true },
   lando: { versions: [], appMountByDefault: true },

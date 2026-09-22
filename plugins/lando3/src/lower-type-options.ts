@@ -6,12 +6,7 @@ import {
   emptyPatch,
   isPlainObject,
 } from "./lowering-contract.ts";
-import {
-  droppedServiceKey,
-  needsReviewServiceKey,
-  rewrittenServiceKey,
-  unsupportedServiceKey,
-} from "./service-diagnostics.ts";
+import { droppedServiceKey, rewrittenServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
 
 /** Lower only catalog-specific options; shared service fields belong to other lowerers. */
 export const lowerTypeOptions = (
@@ -28,13 +23,26 @@ export const lowerTypeOptions = (
     case "mysql":
     case "mariadb": {
       if (typeof service.authentication === "string") {
-        const instruction = `Add default_authentication_plugin=${service.authentication} to the file mounted at config.server, which lands at /etc/mysql/conf.d/99-lando.cnf in the container.`;
+        if (!/^[A-Za-z0-9_]+$/u.test(service.authentication)) {
+          diagnostics.push(
+            unsupportedServiceKey({
+              ctx,
+              relative: ["authentication"],
+              message: "Authentication plugin names must be explicit identifiers.",
+              remediation: "Use a plugin name such as mysql_native_password.",
+            }),
+          );
+          break;
+        }
+        const directive = `default_authentication_plugin=${service.authentication}`;
+        const run = `mkdir -p /etc/mysql/conf.d && printf '%s\\n' '[mysqld]' '${directive}' > /etc/mysql/conf.d/99-lando.cnf`;
+        patch.build = { artifact: [{ user: "root", run }] };
         diagnostics.push(
-          needsReviewServiceKey({
+          rewrittenServiceKey({
             ctx,
             relative: ["authentication"],
-            message: `Authentication has no typed Lando 4 field and translation cannot write files. ${instruction}`,
-            remediation: instruction,
+            message: `Authentication is written to /etc/mysql/conf.d/99-lando.cnf as ${directive}.`,
+            remediation: "Review the generated artifact step before starting the database.",
           }),
         );
       }

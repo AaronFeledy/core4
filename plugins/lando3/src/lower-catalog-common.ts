@@ -1,9 +1,10 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { CATALOG, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
+import { CATALOG, type CatalogEntry, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
+  type V4Wire,
   asStringArray,
   isPlainObject,
 } from "./lowering-contract.ts";
@@ -24,6 +25,40 @@ const numericPort = (value: unknown): number | undefined => {
   return typeof port === "number" && Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined;
 };
 
+const readOnlyBind = (source: string, target: string): V4Wire => ({
+  type: "bind",
+  source,
+  target,
+  readOnly: true,
+});
+
+const configMount = (
+  id: string,
+  key: string,
+  service: Record<string, unknown>,
+  entry: CatalogEntry | undefined,
+): { readonly target: string; readonly companion: boolean } | undefined => {
+  if (id === "php") {
+    const via = service.via;
+    const nginx = via === "nginx" || (typeof via === "string" && via.startsWith("nginx:"));
+    if (key === "php")
+      return { target: "/usr/local/etc/php/conf.d/zzz-lando-my-custom.ini", companion: false };
+    if (key === "pool") return { target: "/usr/local/etc/php-fpm.d/zz-lando.conf", companion: false };
+    if (key === "vhosts") {
+      return {
+        target: nginx ? "/etc/nginx/conf.d/default.conf" : "/etc/apache2/sites-enabled/000-default.conf",
+        companion: nginx,
+      };
+    }
+    if (key === "server") {
+      return { target: nginx ? "/etc/nginx/nginx.conf" : "/etc/apache2/apache2.conf", companion: nginx };
+    }
+    return undefined;
+  }
+  const target = entry?.configMounts?.[key];
+  return target === undefined ? undefined : { target, companion: false };
+};
+
 export const lowerCatalogCommon = (
   service: Record<string, unknown>,
   ctx: ServiceLoweringContext,
@@ -32,6 +67,7 @@ export const lowerCatalogCommon = (
   const patch: Record<string, unknown> = {};
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   let blocked = false;
+  let companions: Record<string, V4Wire> | undefined;
   const drop = (relative: Lando3Path, message: string): void => {
     diagnostics.push(
       droppedServiceKey({
@@ -156,7 +192,21 @@ export const lowerCatalogCommon = (
 
   if (isPlainObject(service.config)) {
     const config: { server?: string; dir?: string } = {};
+    const mounts: V4Wire[] = [];
+    const companionMounts: V4Wire[] = [];
     for (const [key, value] of Object.entries(service.config)) {
+      const mounted = configMount(resolution.id, key, service, entry);
+      if (mounted !== undefined) {
+        if (typeof value !== "string") {
+          drop(["config", key], "Config slot requires a host path string.");
+          continue;
+        }
+        const mount = readOnlyBind(value, mounted.target);
+        if (mounted.companion) companionMounts.push(mount);
+        else mounts.push(mount);
+        rewrite(["config", key], `Mounted ${key} read-only at ${mounted.target}.`);
+        continue;
+      }
       const slot =
         entry?.configKeys !== undefined && Object.hasOwn(entry.configKeys, key)
           ? entry.configKeys[key]
@@ -175,6 +225,10 @@ export const lowerCatalogCommon = (
           slot satisfies never;
       }
     }
+    if (mounts.length > 0) patch.mounts = mounts;
+    if (companionMounts.length > 0) {
+      companions = { [`${ctx.serviceName}-nginx`]: { type: "nginx", mounts: companionMounts } };
+    }
     if (Object.keys(config).length > 0) {
       patch.config = config;
       rewrite(
@@ -192,5 +246,11 @@ export const lowerCatalogCommon = (
   for (const key of ["scanner", "moreHttpPorts", "home", "mem", "plugins"] as const) {
     if (Object.hasOwn(service, key)) diagnostics.push(deferredServiceKey({ ctx, relative: [key] }));
   }
-  return { patch, diagnostics, resolution, ...(blocked ? { blocked: true as const } : {}) };
+  return {
+    patch,
+    diagnostics,
+    resolution,
+    ...(companions === undefined ? {} : { companions }),
+    ...(blocked ? { blocked: true as const } : {}),
+  };
 };

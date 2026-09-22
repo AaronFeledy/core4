@@ -285,3 +285,58 @@ test("stamps top-level excludes only on app-mounted services", async () => {
     { kind: "rewritten", keyPath: ["excludes"] },
   ]);
 });
+
+test("keeps top-level excludes on API-4 default and string app mounts", async () => {
+  // Given / When
+  const result = await translate(
+    "excludes: [vendor]\nservices:\n  leet:\n    api: 4\n    image: custom:1\n  rooted:\n    api: 4\n    image: custom:1\n    appMount: /srv/app\n  quiet:\n    api: 4\n    image: custom:1\n    appMount: false\n",
+  );
+  // Then
+  expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+    {
+      services: {
+        leet: {
+          type: "lando",
+          image: "custom:1",
+          appMount: { target: "/app", excludes: ["vendor"], includes: [] },
+        },
+        rooted: {
+          type: "lando",
+          image: "custom:1",
+          appMount: { target: "/srv/app", excludes: ["vendor"], includes: [] },
+        },
+        quiet: { type: "lando", image: "custom:1", appMount: false },
+      },
+    },
+  ]);
+});
+
+test("writes MySQL authentication into 99-lando.cnf ahead of authored build steps", async () => {
+  // Given / When
+  const result = await translate(
+    "services:\n  database:\n    type: mysql:8.0\n    authentication: mysql_native_password\n    build:\n      - echo user\n",
+  );
+  // Then
+  expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+    {
+      services: {
+        database: {
+          type: "mysql:8.0",
+          build: {
+            artifact: [
+              {
+                user: "root",
+                run: "mkdir -p /etc/mysql/conf.d && printf '%s\\n' '[mysqld]' 'default_authentication_plugin=mysql_native_password' > /etc/mysql/conf.d/99-lando.cnf",
+              },
+              { run: "echo user" },
+            ],
+          },
+        },
+      },
+    },
+  ]);
+  expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
+    { kind: "rewritten", keyPath: ["services", "database", "authentication"] },
+    { kind: "rewritten", keyPath: ["services", "database", "build"] },
+  ]);
+});

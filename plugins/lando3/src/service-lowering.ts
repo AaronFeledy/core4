@@ -183,7 +183,6 @@ export const lowerServiceViews = (folded: ReadonlyArray<LegacyPrefixView>): Lowe
       if (lowered.blocked === true) continue;
       let patch = lowered.patch;
       if (
-        service.api !== 4 &&
         patch.appMount !== false &&
         mountsAppByDefault(patch.type) &&
         (top.appMountExcludes.length > 0 || top.appMountIncludes.length > 0)

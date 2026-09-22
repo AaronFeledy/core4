@@ -515,3 +515,16 @@ Existing emitter tests that locked key REJECTION were converted into round-trip 
 - Review notes (deferred/rejected): Bugbot's pure image-only overlay case does not rewrite the established file, so merging emitted outputs alone looked like a false failure; the write path replaces a layer file, so a non-empty delta would still drop the overlay. That is why the merge-order fix stayed. URL and git@ compose includes stay on the non-file path.
 - Verification: gate:pr green before the handback; recipe-lowering spot check passed after the overlay fix.
 ---
+## 2026-09-22 13:39 - Review
+- [looper] Review handed the story back at building: US-621C1 still misses residual target rows owned by this story: PHP config.php/vhosts/pool/server are dropped instead of read-only config mounts at documented paths; nginx/apache server and vhosts collapse into one config.server slot; MySQL/MariaDB authentication is needs-review instead of an emitted 99-lando.cnf option; API-4 default or string app mounts drop top-level excludes. Established-overlay merge order was fixed so a carried authored fragment cannot replace an overlay when the layer file is rewritten.
+---
+
+## 2026-09-22 13:50 - US-621C1 Drift Audit
+- Trigger: 4 cycles, 4732 changed lines, 5 commits
+- Weakened proofs: tests locked PHP config drops, a single nginx/apache config.server slot, and MySQL/MariaDB authentication as needs-review. Those rows now emit separate read-only mounts and a 99-lando.cnf option.
+- Deferred work the branch owns: API-4 default and string app mounts keep top-level excludes; phpMyAdmin config is a read-only mount at its documented path because that service never reads config.server. URL and git@ includes, and conversion guides, stay with their existing owners.
+- Ceremony: removed an unused lowerer type. The local Compose disposition table stays because this plugin cannot depend on the landofile package.
+- Scope: quoted Landofile keys stay; they are what lets Composer and Node package rows round-trip. Varnish multi-backend rejection matches the later story's closed disposition and was left in place.
+- Fixed: restored the gamed residual proofs and the API-4 exclude stamp; no story split.
+- Verification: typecheck, lint, and lando3 lowering/translator spot checks passed.
+---

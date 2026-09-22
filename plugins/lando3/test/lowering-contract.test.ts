@@ -68,6 +68,29 @@ describe("lowering patches", () => {
     expect(first.patch.environment.A).toBe("old");
   });
 
+  test("concatenates mounts and build steps when later contributions add more", () => {
+    // Given two patches that each add mounts and artifact steps.
+    const first = {
+      patch: { mounts: [{ target: "/a" }], build: { artifact: [{ run: "first" }] }, ports: [80] },
+      diagnostics: [],
+    };
+    // When merged.
+    const result = mergePatches(first, {
+      patch: {
+        mounts: [{ target: "/b" }],
+        build: { artifact: [{ run: "second" }], app: [{ run: "app" }] },
+        ports: [443],
+      },
+      diagnostics: [],
+    });
+    // Then list-shaped build and mount contributions accumulate, while other arrays still replace.
+    expect(result.patch).toEqual({
+      mounts: [{ target: "/a" }, { target: "/b" }],
+      build: { artifact: [{ run: "first" }, { run: "second" }], app: [{ run: "app" }] },
+      ports: [443],
+    });
+  });
+
   test("concatenates diagnostics in argument order and retains an earlier block", () => {
     // Given
     const later = { ...diagnostic, keyPath: ["services", "web", "ssl"] };
