@@ -15,12 +15,14 @@ const RECIPE_IDS = [
   "drupal",
   "drupal-cms",
   "eleventy",
+  "hugo",
   "joomla",
   "lamp",
   "laravel",
   "lemp",
   "mean",
   "nextjs",
+  "node-api",
   "rails",
   "sveltekit",
   "symfony",
@@ -134,7 +136,9 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/laravel-workflow");
     expect(slugs).toContain("guides/recipes/sveltekit-workflow");
     expect(slugs).toContain("guides/recipes/nextjs-workflow");
+    expect(slugs).toContain("guides/recipes/node-api-workflow");
     expect(slugs).toContain("guides/recipes/eleventy-workflow");
+    expect(slugs).toContain("guides/recipes/hugo-workflow");
     expect(slugs).toContain("guides/recipes/wordpress-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
     expect(slugs).toContain("guides/recipes/authoring-fetch-allowlist");

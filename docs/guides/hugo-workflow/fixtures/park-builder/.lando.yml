@@ -1,0 +1,26 @@
+name: hugo-workflow
+runtime: 4
+recipe: hugo
+services:
+  builder:
+    command: sleep infinity
+    port: 1313
+    type: node:lts
+  web:
+    type: static:nginx
+    appMount:
+      target: /app
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+tooling:
+  hugo:
+    service: builder
+    description: Run the Hugo CLI inside the builder service.
+    cmds:
+      - npx hugo
+  npm:
+    service: builder
+    description: Run npm inside the builder service.
+    cmds:
+      - npm
