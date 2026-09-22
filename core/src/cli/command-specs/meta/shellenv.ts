@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 import { Flags } from "../../spec/metadata";
 
-import { normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
+import { ShellenvInstallRecordError, normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
 import type { LandoCommandSpec } from "../../spec/command-base";
 
 /**
@@ -18,7 +18,7 @@ export const shellenvShellFromInput = (input: unknown) => {
   return normalizeShellenvShell(typeof shell === "string" ? shell : undefined);
 };
 
-export const shellenvSpec: LandoCommandSpec<string> = {
+export const shellenvSpec: LandoCommandSpec<string, ShellenvInstallRecordError, never> = {
   resultSchema: Schema.String,
   id: "meta:shellenv",
   summary: "Print shell-profile snippets to integrate Lando into your PATH.",
@@ -29,6 +29,13 @@ export const shellenvSpec: LandoCommandSpec<string> = {
   flags: {
     shell: Flags.string({ options: ["posix", "powershell", "pwsh"], default: "posix" }),
   },
-  run: (input) => Effect.succeed(renderShellenv(shellenvShellFromInput(input))),
+  run: (input) =>
+    Effect.try({
+      try: () => renderShellenv(shellenvShellFromInput(input)),
+      catch: (error) => {
+        if (error instanceof ShellenvInstallRecordError) return error;
+        throw error;
+      },
+    }),
   render: (result) => (typeof result === "string" ? result : undefined),
 };

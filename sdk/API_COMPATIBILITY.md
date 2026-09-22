@@ -796,6 +796,7 @@ It registers no JSON Schema.
 - `LandoPaths.shellHistoryFile`
 - `LandoPaths.systemPluginsDir`
 - `LandoPaths.userIncludesDir`
+- `LandoPaths.installRecordFile`
 - `ApplyOptions.serviceEnvironment`
 
 ## Additive Beta schema fields

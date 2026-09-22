@@ -222,7 +222,7 @@ export interface WithScenarioContextOptions {
 
 const parseCommand = (command: string | ReadonlyArray<string>): ReadonlyArray<string> => {
   const parsed = typeof command === "string" ? command.trim().split(/\s+/).filter(Boolean) : command;
-  return parsed[0] === "lando" ? parsed.slice(1) : parsed;
+  return parsed[0] === "lando" || parsed[0] === "lando4" ? parsed.slice(1) : parsed;
 };
 
 const stringFlagValue = (args: ReadonlyArray<string>, name: string): string | undefined => {

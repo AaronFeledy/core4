@@ -78,7 +78,9 @@ const expectShellenvOutput = (stdout: string): void => {
 
   expect(lines).toHaveLength(2);
   expect(lines[0]).toStartWith("export LANDO_USER_DATA_ROOT=");
-  expect(lines[1]).toBe('export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"');
+  expect(lines[1]).toMatch(
+    /^case ":\$\{PATH\}:" in \*'.+\/bin:'\*\) ;; \*\) export PATH='.+\/bin'":\$\{PATH\}" ;; esac$/u,
+  );
 };
 
 describe("fast path import canary", () => {

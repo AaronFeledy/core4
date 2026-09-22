@@ -5,27 +5,76 @@ timeout: 60000
 tags: [beta, docs, tutorial, lando3]
 ---
 
-# Start fresh from Lando 3
+# Run Lando 4 next to Lando 3
 
-Lando 4 is a rewrite. A full Lando 3 to 4 migration map is not up.
-
-Start a new Landofile, or scaffold a supported recipe:
+Lando 4 installs as `lando4`. Lando 3 stays `lando`. Keep both:
 
 ```sh
-lando init --recipe lamp --yes
-lando start
+lando --version
+lando4 --version
 ```
 
-Lando 4 does not interpret your Lando 3 file. It writes a new one.
+Installing Lando 4 never renames, replaces, shims, or removes `lando`, and it never touches `~/.lando`. Your Lando 3 apps keep running exactly as they did. Every Lando 4 command on this page is spelled `lando4`. When this page says `lando`, it means Lando 3 and says so.
 
-## What to do instead
+## Put lando4 on PATH
 
-Install the Alpha and run setup. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+Download the platform-qualified binary from a `v4.0.0-dev.N` prerelease. Release assets still start with `lando-` (`lando-linux-x64`, `lando-darwin-arm64`, `lando-windows-x64.exe`). The asset name does not pick the installed name. Save the file as `lando4` (`lando4.exe` on Windows) and put it somewhere on PATH:
 
-Write a [Landofile](../landofile/your-landofile.mdx), or init `lamp`, `lemp`, `wordpress`, `drupal`, or `drupal-cms`.
+```sh
+chmod +x lando-linux-x64
+mv lando-linux-x64 ~/.local/bin/lando4
+lando4 --version
+```
 
-Use the [everyday CLI loop](../cli/everyday-commands.mdx).
+Then run setup once. The default provider is `lando` (managed Podman), so Lando 4 does not borrow the Docker daemon Lando 3 uses:
+
+```sh
+lando4 setup
+```
+
+If default setup fails and you have working system Docker, run `lando4 setup --provider=docker`. `LANDO_PROVIDER=docker` does the same for one shell and does not persist.
+
+## lando4 shellenv
+
+`lando4 shellenv` prints the profile snippet that puts the Lando 4 install directory on PATH. It exports `LANDO_USER_DATA_ROOT` and prepends the directory Lando 4 recorded when it installed itself, so the snippet stays correct even when you installed outside the default `bin` directory. Nothing else on PATH moves, so wherever Lando 3's `lando` lives keeps working, and appending the block twice to a profile does not add the directory twice.
+
+```sh
+lando4 shellenv
+lando4 shellenv --shell=powershell
+```
+
+Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then open a new shell.
+
+<Guide>
+  <Scenario id="shellenv-prints-lando4-path" render>
+    <Step name="shellenv">
+      <Run command="lando4 shellenv" expectExit={0} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export LANDO_USER_DATA_ROOT=" } }} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export PATH=.+[\\\\/]bin.\":\\$\\{PATH\\}\"" } }} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "case \":\\$\\{PATH\\}:\" in" } }} />
+    </Step>
+    <Step name="shellenv-powershell">
+      <Run command="lando4 shellenv --shell=powershell" expectExit={0} />
+      <Verify command="lando4 shellenv --shell=powershell" expect={{ stdout: { regex: "\\$Env:LANDO_USER_DATA_ROOT = " } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Start fresh on Lando 4
+
+Lando 4 does not read a Lando 3 Landofile and there is no converter. Leave the old `.lando.yml` where it is for `lando`, and give Lando 4 its own app:
+
+```sh
+lando4 init --recipe lamp --yes
+lando4 start
+```
+
+Or write a [Landofile](../landofile/your-landofile.mdx) by hand. Supported recipes today: `lamp`, `lemp`, `wordpress`, `drupal`, and `drupal-cms`. Then use the [everyday CLI loop](../cli/everyday-commands.mdx) with `lando4` in front.
 
 Do not wait for a key-by-key converter. It is not up.
 
-The default provider is `lando` (managed Podman). If default setup fails and you have working system Docker, run `lando setup --provider=docker`. `LANDO_PROVIDER` does not persist.
+## Gotchas
+
+- Two apps with the same name, one on each version, do not know about each other. Stop the Lando 3 one before starting the Lando 4 one if they share a port.
+- `lando poweroff` only powers off Lando 3. `lando4 poweroff` only powers off Lando 4.
+- Alpha install details and where to file bugs: [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).

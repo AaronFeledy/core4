@@ -1,23 +1,44 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+// allow: SIZE_OK — exclusive single-file installer harness; trust, roots, and ownership scenarios share fixtures.
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  readlink,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import { renderPowerShellShellenv } from "../../src/cli/commands/shellenv.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.ps1");
 const powershellTestTimeoutMs = 60_000;
+const powershell = Bun.which("pwsh");
+const roots: string[] = [];
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
 
 const powershellTest = (name: string, fn: () => void | Promise<void>): void => {
-  test(name, fn, powershellTestTimeoutMs);
+  (powershell === null ? test.skip : test)(name, fn, powershellTestTimeoutMs);
 };
 
 const fileUrl = (path: string): string => pathToFileURL(path).href;
 
-const makeTempRoot = (): Promise<string> => mkdtemp(join(tmpdir(), "lando-install-windows-"));
+const makeTempRoot = async (): Promise<string> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-install-windows-"));
+  roots.push(root);
+  return root;
+};
 
 const sha256 = (bytes: Uint8Array): string => {
   const hash = new Bun.CryptoHasher("sha256");
@@ -90,6 +111,7 @@ const HOST_ROOT_OVERRIDES = [
   "LANDO_USER_CACHE_ROOT",
   "LANDO_INSTALL_DIR",
   "XDG_DATA_HOME",
+  "LOCALAPPDATA",
 ] as const;
 
 const hostEnvWithoutLandoRoots = (): Record<string, string | undefined> =>
@@ -98,11 +120,17 @@ const hostEnvWithoutLandoRoots = (): Record<string, string | undefined> =>
   );
 
 const runInstaller = async (
-  env: Record<string, string>,
+  env: Record<string, string | undefined>,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
   const proc = Bun.spawn(["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", installerPath], {
-    cwd: repoRoot,
-    env: { ...hostEnvWithoutLandoRoots(), ...env },
+    cwd: roots.at(-1) ?? repoRoot,
+    env: {
+      ...hostEnvWithoutLandoRoots(),
+      HOME: roots.at(-1),
+      LOCALAPPDATA: join(roots.at(-1) ?? tmpdir(), "LocalAppData"),
+      LANDO_INSTALL_NONINTERACTIVE: "1",
+      ...env,
+    },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -113,6 +141,228 @@ const runInstaller = async (
   ]);
   return { exitCode, stdout, stderr };
 };
+
+const treeSnapshot = async (path: string): Promise<readonly unknown[]> => {
+  const stat = await lstat(path);
+  const identity = { path, mode: stat.mode, size: stat.size, ino: stat.ino, mtime: stat.mtimeMs };
+  if (stat.isSymbolicLink()) return [{ ...identity, target: await readlink(path) }];
+  if (stat.isDirectory())
+    return [
+      identity,
+      ...(await Promise.all((await readdir(path)).sort().map((name) => treeSnapshot(join(path, name))))),
+    ];
+  return [{ ...identity, sha256: sha256(await readFile(path)) }];
+};
+
+const ownershipFixture = async () => {
+  const root = await makeTempRoot();
+  const release = await createReleaseFixture(root);
+  const { cosignPath, logPath } = await createFakeCosign(root);
+  const dataRoot = join(root, "data");
+  const installDir = join(root, "bin");
+  await mkdir(installDir);
+  const destination = join(installDir, "lando4.exe");
+  const recordPath = join(dataRoot, "install", "record.json");
+  const bytes = await readFile(release.binaryPath);
+  const record = {
+    version: 1,
+    data: {
+      executable: {
+        path: destination,
+        sha256: sha256(bytes),
+        size: bytes.length,
+        channel: "stable",
+        platform: "windows-x64",
+      },
+      shellProfiles: [],
+    },
+  };
+  const env = {
+    COSIGN_LOG: logPath,
+    HOME: root,
+    LANDO_INSTALL_COSIGN: cosignPath,
+    LANDO_INSTALL_DIR: installDir,
+    LANDO_INSTALL_MANIFEST_URL: fileUrl(release.manifestPath),
+    LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+    LANDO_USER_DATA_ROOT: dataRoot,
+  };
+  return { root, installDir, destination, recordPath, bytes, record, env, logPath };
+};
+
+describe("Windows installer ownership", () => {
+  powershellTest("writes a valid install record and no legacy executable or temporary files", async () => {
+    // Given a verified release and an empty destination.
+    const fixture = await ownershipFixture();
+    // When installed through the real PowerShell entry point.
+    const result = await runInstaller(fixture.env);
+    // Then bytes and the independently decoded record identify only Lando 4.
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect((await lstat(fixture.destination)).isFile()).toBe(true);
+    expect(await readFile(fixture.destination)).toEqual(fixture.bytes);
+    const { decodeInstallRecord } = await import("@lando/engine/install/record");
+    const { Effect } = await import("effect");
+    const decoded = await Effect.runPromise(
+      decodeInstallRecord(await readFile(fixture.recordPath, "utf8"), fixture.recordPath),
+    );
+    expect(decoded).toEqual({ ...fixture.record, version: 1 });
+    expect((await lstat(fixture.recordPath)).isFile()).toBe(true);
+    expect(await readdir(fixture.installDir)).toEqual(["lando4.exe"]);
+    expect(await readdir(join(fixture.env.LANDO_USER_DATA_ROOT, "install"))).toEqual(["record.json"]);
+    await expect(lstat(join(fixture.installDir, "lando.exe"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  powershellTest("repeats an owned install idempotently", async () => {
+    // Given an already installed, record-owned executable.
+    const fixture = await ownershipFixture();
+    expect((await runInstaller(fixture.env)).exitCode).toBe(0);
+    const record = await readFile(fixture.recordPath);
+    // When the same release is installed again.
+    const result = await runInstaller(fixture.env);
+    // Then content and ownership remain unchanged, with no staging residue.
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(await readFile(fixture.destination)).toEqual(fixture.bytes);
+    expect(await readFile(fixture.recordPath)).toEqual(record);
+    expect(await readdir(fixture.installDir)).toEqual(["lando4.exe"]);
+    expect(await readdir(join(fixture.env.LANDO_USER_DATA_ROOT, "install"))).toEqual(["record.json"]);
+  });
+
+  for (const kind of ["file", "symlink"] as const) {
+    powershellTest(`preserves legacy lando.exe and bare lando when seeded as ${kind}`, async () => {
+      // Given hostile legacy executables, including a reparse target.
+      const fixture = await ownershipFixture();
+      const target = join(fixture.root, "legacy-target");
+      await writeFile(target, "legacy target bytes");
+      for (const name of ["lando.exe", "lando"]) {
+        const path = join(fixture.installDir, name);
+        if (kind === "symlink") await symlink(target, path);
+        else {
+          await writeFile(path, `legacy ${name}`);
+          await chmod(path, 0o444);
+        }
+      }
+      const before = await Promise.all(
+        ["lando.exe", "lando"].map((name) => treeSnapshot(join(fixture.installDir, name))),
+      );
+      const targetBefore = await treeSnapshot(target);
+      // When Lando 4 is installed beside them.
+      const result = await runInstaller(fixture.env);
+      // Then every legacy inode, attribute, link, and byte is preserved.
+      expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+      expect(
+        await Promise.all(["lando.exe", "lando"].map((name) => treeSnapshot(join(fixture.installDir, name)))),
+      ).toEqual(before);
+      expect(await treeSnapshot(target)).toEqual(targetBefore);
+    });
+  }
+
+  for (const kind of [
+    "unrecorded",
+    "directory",
+    "symlink",
+    "dangling",
+    "digest-drift",
+    "size-drift",
+    "corrupt",
+    "version",
+    "path",
+    "record-symlink",
+    "record-directory",
+  ] as const) {
+    powershellTest(`rejects foreign destination before writing when ${kind}`, async () => {
+      // Given an unowned destination or unusable ownership evidence.
+      const fixture = await ownershipFixture();
+      const target = join(fixture.root, "target");
+      await mkdir(join(fixture.env.LANDO_USER_DATA_ROOT, "install"), { recursive: true });
+      switch (kind) {
+        case "directory":
+          await mkdir(fixture.destination);
+          break;
+        case "symlink":
+          await writeFile(target, fixture.bytes);
+          await symlink(target, fixture.destination);
+          break;
+        case "dangling":
+          await symlink(target, fixture.destination);
+          break;
+        default:
+          await writeFile(fixture.destination, fixture.bytes);
+      }
+      switch (kind) {
+        case "digest-drift":
+          fixture.record.data.executable.sha256 = "0".repeat(64);
+          break;
+        case "size-drift":
+          fixture.record.data.executable.size++;
+          break;
+        case "version":
+          fixture.record.version = 2;
+          break;
+        case "path":
+          fixture.record.data.executable.path = target;
+          break;
+        default:
+          break;
+      }
+      if (kind === "record-directory") await mkdir(fixture.recordPath);
+      else if (kind === "record-symlink") {
+        await writeFile(target, JSON.stringify(fixture.record));
+        await symlink(target, fixture.recordPath);
+      } else if (kind !== "unrecorded")
+        await writeFile(fixture.recordPath, kind === "corrupt" ? "{broken" : JSON.stringify(fixture.record));
+      const before = await treeSnapshot(fixture.installDir);
+      const dataBefore = await treeSnapshot(fixture.env.LANDO_USER_DATA_ROOT);
+      // When the installer attempts replacement.
+      const result = await runInstaller(fixture.env);
+      // Then it fails with actionable ownership remediation and changes nothing.
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain(fixture.destination);
+      expect(result.stderr).toContain("LANDO_INSTALL_DIR");
+      expect(await treeSnapshot(fixture.installDir)).toEqual(before);
+      expect(await treeSnapshot(fixture.env.LANDO_USER_DATA_ROOT)).toEqual(dataBefore);
+      await expect(lstat(fixture.logPath)).rejects.toMatchObject({ code: "ENOENT" });
+      if (kind === "symlink") expect(await readFile(target)).toEqual(fixture.bytes);
+      if (kind === "dangling") await expect(lstat(target)).rejects.toMatchObject({ code: "ENOENT" });
+    });
+  }
+
+  for (const source of ["override", "localappdata", "home", "userprofile"] as const) {
+    powershellTest(
+      `ignores the entire hostile legacy state tree with ${source} root resolution`,
+      async () => {
+        // Given a legacy configuration that points installs inside Lando 3 state.
+        const fixture = await ownershipFixture();
+        const legacy = join(fixture.root, ".lando");
+        await mkdir(join(legacy, "state"), { recursive: true });
+        await writeFile(join(legacy, "config.yml"), `userDataRoot: ${join(legacy, "hijacked")}\n`);
+        await writeFile(join(legacy, "state", "secret"), "legacy state\0");
+        await symlink("state/secret", join(legacy, "link"));
+        const before = await treeSnapshot(legacy);
+        const local = join(fixture.root, "local");
+        const expected =
+          source === "override"
+            ? fixture.env.LANDO_USER_DATA_ROOT
+            : source === "localappdata"
+              ? join(local, "Lando", "Data")
+              : join(fixture.root, "AppData", "Local", "Lando", "Data");
+        // When v4 resolves its roots independently of every legacy config override.
+        const result = await runInstaller({
+          ...fixture.env,
+          HOME: source === "userprofile" ? undefined : fixture.root,
+          USERPROFILE: fixture.root,
+          LANDO_INSTALL_DIR: "",
+          LANDO_USER_DATA_ROOT: source === "override" ? expected : "",
+          LOCALAPPDATA: source === "localappdata" ? local : "",
+          LANDO_USER_CONF_ROOT: legacy,
+          LANDO_CONFIG__user_conf_root: legacy,
+        });
+        // Then only the v4 matrix root is used; the entire legacy tree is unchanged.
+        expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+        expect(await readFile(join(expected, "bin", "lando4.exe"))).toEqual(fixture.bytes);
+        expect(await treeSnapshot(legacy)).toEqual(before);
+      },
+    );
+  }
+});
 
 describe("scripts/install.ps1", () => {
   powershellTest("installs the verified windows-x64 binary into LANDO_INSTALL_DIR", async () => {
@@ -132,8 +382,8 @@ describe("scripts/install.ps1", () => {
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("platform: windows-x64");
-    expect(result.stdout).toContain(`installed: ${join(installDir, "lando.exe")}`);
-    expect(await Bun.file(join(installDir, "lando.exe")).text()).toBe("lando windows fixture\n");
+    expect(result.stdout).toContain(`installed: ${join(installDir, "lando4.exe")}`);
+    expect(await Bun.file(join(installDir, "lando4.exe")).text()).toBe("lando windows fixture\n");
     const cosignLog = await Bun.file(logPath).text();
     expect(cosignLog).toContain("verify-blob");
     expect(cosignLog).toContain("SHA256SUMS.signature");
@@ -160,7 +410,7 @@ describe("scripts/install.ps1", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Run this command to add Lando to PATH:");
     expect(result.stdout).toContain(
-      `& '${join(userDataRoot, "bin", "lando.exe")}' shellenv --shell=powershell`,
+      `& '${join(userDataRoot, "bin", "lando4.exe")}' shellenv --shell=powershell`,
     );
     expect(result.stdout).toContain(renderPowerShellShellenv(userDataRoot));
   });
@@ -212,7 +462,7 @@ describe("scripts/install.ps1", () => {
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("post-install setup: skipped");
-    expect(await Bun.file(setupLog).exists()).toBe(false);
+    await expect(lstat(setupLog)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   powershellTest("uses the installer cosign trust root for checksum signature verification", async () => {
@@ -260,8 +510,8 @@ describe("scripts/install.ps1", () => {
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Missing or malformed vendored cosign trust root");
-    expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(false);
-    expect(await Bun.file(logPath).exists()).toBe(false);
+    await expect(lstat(join(installDir, "lando4.exe"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(logPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   powershellTest("resolves stable, next, and dev manifests from the selected channel", async () => {
@@ -286,11 +536,11 @@ describe("scripts/install.ps1", () => {
       expect(result.stderr).toBe("");
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`channel: ${channel}`);
-      expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(true);
+      expect((await lstat(join(installDir, "lando4.exe"))).isFile()).toBe(true);
     }
   });
 
-  powershellTest("uses the CLI userDataRoot default when config and install env are unset", async () => {
+  powershellTest("uses HOME/AppData/Local when LOCALAPPDATA and install env are unset", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -305,16 +555,17 @@ describe("scripts/install.ps1", () => {
       LANDO_USER_CONF_ROOT: join(root, "missing-conf"),
       LANDO_USER_DATA_ROOT: "",
       XDG_DATA_HOME: "",
+      LOCALAPPDATA: "",
     });
 
-    const installedPath = join(root, ".local/share/lando/bin/lando.exe");
+    const installedPath = join(root, "AppData/Local/Lando/Data/bin/lando4.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
   });
 
-  powershellTest("uses XDG_DATA_HOME for the default userDataRoot", async () => {
+  powershellTest("uses LOCALAPPDATA rather than XDG_DATA_HOME for the default userDataRoot", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -332,14 +583,15 @@ describe("scripts/install.ps1", () => {
       XDG_DATA_HOME: xdgDataHome,
     });
 
-    const installedPath = join(xdgDataHome, "lando", "bin", "lando.exe");
+    const installedPath = join(root, "LocalAppData/Lando/Data/bin/lando4.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    await expect(lstat(xdgDataHome)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  powershellTest("uses HOME/.lando as the default config root", async () => {
+  powershellTest("ignores HOME/.lando as the legacy config root", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -360,14 +612,15 @@ describe("scripts/install.ps1", () => {
       XDG_DATA_HOME: join(root, "xdg-data"),
     });
 
-    const installedPath = join(userDataRoot, "bin", "lando.exe");
+    const installedPath = join(root, "LocalAppData/Lando/Data/bin/lando4.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    await expect(lstat(userDataRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  powershellTest("reads userDataRoot from config.yml when install env overrides are unset", async () => {
+  powershellTest("ignores userDataRoot from config.yml when install env overrides are unset", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -387,14 +640,15 @@ describe("scripts/install.ps1", () => {
       LOCALAPPDATA: join(root, "LocalAppData"),
     });
 
-    const installedPath = join(userDataRoot, "bin", "lando.exe");
+    const installedPath = join(root, "LocalAppData/Lando/Data/bin/lando4.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    await expect(lstat(userDataRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  powershellTest("matches minimal config parsing for indented top-level userDataRoot", async () => {
+  powershellTest("ignores indented top-level userDataRoot in legacy config", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -422,14 +676,15 @@ describe("scripts/install.ps1", () => {
       LOCALAPPDATA: join(root, "LocalAppData"),
     });
 
-    const installedPath = join(finalRoot, "bin", "lando.exe");
+    const installedPath = join(root, "LocalAppData/Lando/Data/bin/lando4.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    await expect(lstat(finalRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  powershellTest("falls back when the last config userDataRoot is a non-string YAML value", async () => {
+  powershellTest("ignores legacy config with a non-string YAML value", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -455,15 +710,15 @@ userDataRoot: null
       XDG_DATA_HOME: "",
     });
 
-    const installedPath = join(root, ".local/share/lando/bin/lando.exe");
+    const installedPath = join(root, "LocalAppData/Lando/Data/bin/lando4.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
-    expect(await Bun.file(join(staleRoot, "bin", "lando.exe")).exists()).toBe(false);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    await expect(lstat(staleRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  powershellTest("falls back when config.yml contains an unsupported flow scalar", async () => {
+  powershellTest("ignores legacy config containing a flow scalar", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -489,15 +744,15 @@ userDataRoot: ${ignoredRoot}
       XDG_DATA_HOME: "",
     });
 
-    const installedPath = join(root, ".local/share/lando/bin/lando.exe");
+    const installedPath = join(root, "LocalAppData/Lando/Data/bin/lando4.exe");
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(`installed: ${installedPath}`);
-    expect(await Bun.file(installedPath).exists()).toBe(true);
-    expect(await Bun.file(join(ignoredRoot, "bin", "lando.exe")).exists()).toBe(false);
+    expect((await lstat(installedPath)).isFile()).toBe(true);
+    await expect(lstat(ignoredRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  powershellTest("treats quoted YAML keywords as string userDataRoot values", async () => {
+  powershellTest("ignores quoted YAML keywords in legacy config", async () => {
     const root = await makeTempRoot();
     const fixture = await createReleaseFixture(root);
     const { cosignPath, logPath } = await createFakeCosign(root);
@@ -507,26 +762,23 @@ userDataRoot: ${ignoredRoot}
       await mkdir(confRoot, { recursive: true });
       await writeFile(join(confRoot, "config.yml"), `userDataRoot: "${keyword}"\n`);
 
-      try {
-        const result = await runInstaller({
-          COSIGN_LOG: logPath,
-          LANDO_INSTALL_COSIGN: cosignPath,
-          LANDO_INSTALL_DIR: "",
-          LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
-          LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
-          LANDO_USER_CONF_ROOT: confRoot,
-          LANDO_USER_DATA_ROOT: "",
-          LOCALAPPDATA: join(root, "LocalAppData"),
-        });
+      const result = await runInstaller({
+        COSIGN_LOG: logPath,
+        LANDO_INSTALL_COSIGN: cosignPath,
+        LANDO_INSTALL_DIR: "",
+        LANDO_INSTALL_MANIFEST_URL: fileUrl(fixture.manifestPath),
+        LANDO_INSTALL_WINDOWS_ARCH: "AMD64",
+        LANDO_USER_CONF_ROOT: confRoot,
+        LANDO_USER_DATA_ROOT: "",
+        LOCALAPPDATA: join(root, "LocalAppData"),
+      });
 
-        const installedPath = join(keyword, "bin", "lando.exe");
-        expect(result.stderr).toBe("");
-        expect(result.exitCode).toBe(0);
-        expect(result.stdout).toContain(`installed: ${installedPath}`);
-        expect(await Bun.file(join(repoRoot, installedPath)).exists()).toBe(true);
-      } finally {
-        await rm(join(repoRoot, keyword), { recursive: true, force: true });
-      }
+      const installedPath = join(root, "LocalAppData/Lando/Data/bin/lando4.exe");
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`installed: ${installedPath}`);
+      expect((await lstat(installedPath)).isFile()).toBe(true);
+      expect(await readFile(join(confRoot, "config.yml"), "utf8")).toBe(`userDataRoot: "${keyword}"\n`);
     }
   });
 
@@ -549,7 +801,7 @@ userDataRoot: ${ignoredRoot}
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("platform: windows-x64");
-    expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(true);
+    expect((await lstat(join(installDir, "lando4.exe"))).isFile()).toBe(true);
   });
 
   powershellTest("fails closed when signature verification fails", async () => {
@@ -567,7 +819,7 @@ userDataRoot: ${ignoredRoot}
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Signature verification failed");
-    expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(false);
+    await expect(lstat(join(installDir, "lando4.exe"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   powershellTest("rejects unsupported Windows architectures before installing", async () => {
@@ -586,8 +838,8 @@ userDataRoot: ${ignoredRoot}
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("Unsupported Windows architecture");
-    expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(false);
-    expect(await Bun.file(logPath).exists()).toBe(false);
+    await expect(lstat(join(installDir, "lando4.exe"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(logPath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   powershellTest("prints execution policy remediation when PowerShell blocks the installer", async () => {
@@ -604,6 +856,6 @@ userDataRoot: ${ignoredRoot}
     expect(result.stderr).toContain("PowerShell execution policy blocked install.ps1");
     expect(result.stderr).toContain("Set-ExecutionPolicy -Scope CurrentUser RemoteSigned");
     expect(result.stderr).toContain("powershell -ExecutionPolicy Bypass -File install.ps1");
-    expect(await Bun.file(join(installDir, "lando.exe")).exists()).toBe(false);
+    await expect(lstat(join(installDir, "lando4.exe"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

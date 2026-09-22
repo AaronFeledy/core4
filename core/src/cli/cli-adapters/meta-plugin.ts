@@ -24,7 +24,7 @@ import {
   globalStatusOptionsFromInput,
 } from "../command-specs/meta/global/status";
 import { globalUninstallOptionsFromInput } from "../command-specs/meta/global/uninstall";
-import { shellenvShellFromInput } from "../command-specs/meta/shellenv";
+import { shellenvSpec } from "../command-specs/meta/shellenv";
 import { uninstallOptionsFromInput } from "../command-specs/meta/uninstall";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "../commands/bun";
 import { globalConfig, renderGlobalConfigResult } from "../commands/meta/global-config";
@@ -72,7 +72,6 @@ import {
   renderRecipesListResult,
   renderRecipesValidateResult,
 } from "../commands/recipes";
-import { renderShellenv } from "../commands/shellenv";
 import { renderUninstallResult } from "../commands/uninstall";
 import { version as versionOperation } from "../commands/version";
 import { compiledCommandInputFromArgv } from "../compiled-input";
@@ -552,7 +551,5 @@ export const runMetaShellenv = async (argv: ReadonlyArray<string> = []): Promise
     process.exitCode = 2;
     return;
   }
-  await runCompiledCommand(Effect.succeed(shellenvShellFromInput(input)), Layer.empty, (value) =>
-    renderShellenv(value),
-  );
+  await runCompiledCommand(shellenvSpec.run(input), Layer.empty, (value) => value);
 };

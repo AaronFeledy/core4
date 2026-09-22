@@ -1,0 +1,82 @@
+# Lando 3 compatibility progress
+
+## Codebase Patterns
+- The installed Lando 4 executable is `lando4`/`lando4.exe`; Lando 3 keeps `lando`. Published release ASSET names stay in the `lando-<platform>` family — asset naming never selects the installed executable name.
+- Ownership of an installed binary is proven by the v4 install record (`<userDataRoot>/install/record.json`, `installRecordFile` on `@lando/paths`), not by path location. A destination is replaceable only when the record decodes at version 1 AND its recorded path, sha256, and size all match the file on disk; symlinks and directories are always refused. There is no adoption path and no force flag.
+- `@lando/engine/install/record` is the single authority for that rule. Anything that cannot import Effect (installer shell scripts, CLI cold-path modules) must re-implement the same four conditions and pin the agreement with a test that compares verdicts against `installRecordOwnsDestination`.
+- `shellenv` is reachable from the CLI cold path (`dispatch-meta.ts`), so it cannot import Effect, `@lando/sdk`, or `@lando/engine`, and its renderers must stay synchronous. Record reads there need plain `node:fs`.
+- Installers must resolve Lando roots with the v4 matrix from `paths/src/paths-platform.ts`. Reading Lando 3's `~/.lando/config.yml` let a seeded v3 `userDataRoot` redirect the v4 installer; that parser is gone from both installers.
+- The posix shellenv snippet has four consumers that must stay byte-identical: `renderPosixShellenv` produces it, `scripts/install.sh` and `scripts/install.ps1` reprint it as post-install guidance, and `core/test/cli/fast-path.test.ts` plus the compiled-parity case in `core/test/cli/setup.test.ts` pin its exact shape. Change the renderer and all four fail; that is the intended coupling, so fix them together rather than loosening an assertion.
+- The `# >>> LANDO4 shellenv >>>` profile markers are shared between `core/src/cli/commands/shellenv.ts` (writer) and `LANDO_SHELLENV_BEGIN`/`LANDO_SHELLENV_END` in `engine/src/operations/uninstall.ts` (stripper). A Lando 3 era `# >>> LANDO shellenv >>>` block is a foreign PATH entry: uninstall must leave it alone.
+- shellenv resolves its bin directory from the install record, so the exported PATH entry is the literal recorded directory, not `${LANDO_USER_DATA_ROOT}/bin`. An install under `LANDO_INSTALL_DIR` outside the user data root still gets a correct snippet.
+
+## 2026-09-21 - US-619B1 (incomplete, handed back)
+
+Moved most of Lando 4's installed identity onto `lando4` and gave the installer real ownership semantics, but the story did not land.
+
+Shipped and independently green: `@lando/paths` gained `installRecordFile` (plus the additive `LandoPaths` field and its API_COMPATIBILITY entry); `@lando/engine/install-record` now owns the versioned record schema, `InstallRecordError`, and the pure four-condition ownership comparator; the npm bin is `lando4`; the scenario harness accepts a leading `lando4` token; `scripts/install.sh` installs `lando4` atomically behind the ownership gate, writes a mode-0600 record, refuses symlink/directory/unrecorded/digest-drifted destinations, and no longer parses `~/.lando/config.yml`; `docs/guides/tutorial/from-lando-3.mdx` is an executable guide proving `lando4 shellenv` through the real CLI.
+
+Not done: `shellenv` record-backed resolution. Markers moved to `LANDO4` and the PATH export became idempotent, but resolving the bin directory from the record was still mid-edit when the step budget ran out.
+
+Verification: engine record suite 33 pass; paths 48 pass; install-posix 32 pass in isolation; guide 1 pass. Combined spot check ended 52 pass / 1 fail — `install.sh`'s hard-coded shellenv guidance string no longer matches the renderer that the shellenv work was mid-way through changing. Nothing was committed, because the tree is red.
+
+- **Learnings for future iterations:**
+  - Two agents sharing one user-visible string (the installer prints the shellenv snippet verbatim) is a false-independent partition. Either the installer stops reproducing that text or one agent owns both sides.
+  - `bun install` will not rewrite the workspace `bin` name in `bun.lock` from a `package.json` edit alone; the stale `.bin` symlink survives. Do not reach for `bun update` to force it — it bumps unrelated dependency ranges.
+  - Three install-posix tests asserted that `~/.lando/config.yml` IS parsed for `userDataRoot`. They were inverted into coexistence assertions deliberately; that inversion is the intended behavior change, not a regression.
+  - Deferred on purpose: renaming the dev/CI compiled artifact `core/dist/lando` and the `ci-platforms.ts` `binaryName` values. No acceptance criterion binds them — the criteria bind the npm bin, the installed executable, and retained release asset names — and touching them churns seven workflow generators plus their committed YAML.
+---
+## 2026-09-21 16:48 - Build
+- [looper] Build handed the story back at building: lando4 identity landed for npm bin, paths installRecordFile, @lando/engine/install-record ownership module, install.sh (atomic lando4 install, ownership gate, no ~/.lando parsing), scenario harness lando4 token, and the executable from-lando-3 guide. Two defects remain: (1) shellenv record-backed bin-dir resolution is unimplemented - markers moved to LANDO4 and the PATH export is idempotent, but resolution still uses paths.binDir, and it must stay synchronous/Effect-free because shellenv is on the CLI cold path via dispatch-meta.ts; (2) install.sh print_path_guidance hard-codes a copy of the shellenv snippet that has drifted from the renderer, so core/test/scripts/install-posix.test.ts 'prints canonical shellenv PATH guidance after install' fails (52 pass / 1 fail combined with shellenv.test.ts). Tree left uncommitted on branch us-619b1-lando4-identity-ownership because it is red; install.ps1 work completed but unverified against the combined tree.
+---
+## 2026-09-21 16:48 - Review
+- [looper] gate skipped Review: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-09-21 16:48 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-21 16:48 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-09-21 16:48 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-09-21 16:48 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-09-21 16:48 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+## 2026-09-21 - US-619B1
+
+Finished the Lando 4 identity story that the previous pass handed back.
+
+`lando4 shellenv` now resolves its bin directory from the v4 install record and fails closed with a tagged `InstallRecordError` plus remediation when the record is corrupt, versioned forward, or no longer matches the executable on disk; with no record at all it falls back to the default bin directory. Both installers stopped hand-rolling a drifted copy of that snippet and now reprint the renderer output byte for byte, derived from the directory they actually installed into. Renaming the profile markers to `LANDO4` had left uninstall stripping the old `LANDO` marker, which after the rename is a Lando 3 shaped block: uninstall now removes only the v4 block and leaves a legacy block untouched. The engine record module is exported as `@lando/engine/install/record` so the subpath mirrors its file path.
+
+Verification: gate:pr green (typecheck, lint, codegen:check, boundaries, guide-drift); lint:guides, check:guide-coverage, check:public-transcripts green; 297 spot-check tests across shellenv, both installers, uninstall (core and engine), fast-path, package-bin, scenario-context, install record, package seam, and paths, plus the 73-test setup suite including compiled/source parity, and the from-lando-3 guide. Manual CLI runs of `lando4 shellenv` covered record-backed resolution outside the user data root, digest drift, a symlinked executable, a corrupt record, and the `--format=json` failure envelope.
+
+- **Learnings for future iterations:**
+  - A user-visible string reproduced by more than one surface is not a partition boundary. The installer guidance, the fast-path canary, and the compiled-parity assertion all encode the shellenv snippet; a renderer change is a four-file change.
+  - Renaming a shared marker is only half the work. Grep the stripper as well as the writer, or uninstall silently starts deleting the foreign block it was meant to protect.
+  - `engine/test/package-seam.test.ts` requires the export key to mirror the source path exactly, so a nested module cannot take a flattened subpath.
+  - Guide `expect={{ ... }}` props cannot contain a single quote; the parser rewrites every `'` to `"` before JSON parsing, and the failure surfaces as an unhelpful `JSON Parse error`.
+---
+
+## 2026-09-21 - US-619B1 Review
+- Review of commit 7e7ae9e6e found one in-scope ownership drift: shellenv applied an extra realpathSync check that rejected a regular executable under a parent-directory symlink even when the engine four-condition predicate said owned. Removed that check and pinned parent-symlink agreement with installRecordOwnsDestination.
+- Review notes (deferred/rejected): missing-record fallback to binDir is intentional for source/guide runs, not a fail-closed gap; installer mv-before-record crash window is fail-closed by design (no adoption; remediation is remove the file); PATH-hijack of a world-writable custom install dir and elevated profile-symlink writes are pre-existing/out-of-scope of this story; path-and-setup.mdx and posix-installer.mdx still saying `lando` are not this story's owned guide (from-lando-3.mdx).
+- Verification: typecheck and lint passed; core/test/cli/shellenv.test.ts 21 pass; guide gates already green against origin/main.
+- **Learnings for future iterations:** Leaf-symlink refusal is lstat on the destination itself. realpath of a parent symlink is a fifth condition and will disagree with resolve()-based ownership on macOS /var and any LANDO_INSTALL_DIR that walks a linked ancestor.
+---
+## 2026-09-21 - US-619B1 Drift Audit
+- Trigger: 3 cycles, 2114 changed lines, 2 commits
+- Weakened proofs: shellenv agreement covered path-mismatch only through a destination override production never passed, because shellenv always verifies the recorded path.
+- Fixed: removed that override and restored the agreement test to the recorded-path production checks.
+- Split/excise decisions: none; deferred missing-record fallback and compiled-artifact rename remain justified and unlaundered.
+- Verification: typecheck pass, lint pass, core/test/cli/shellenv.test.ts 21 pass
+---
+
+## 2026-09-21 - US-619B1 Verify
+- Compiled `core/dist/lando` plus `scripts/install.sh` against a seeded v3 `lando`: installed executable is `lando4`, record is mode 0600, repeat install succeeds, foreign/symlink destinations refuse, `lando4 shellenv` is record-backed and idempotent, digest-mismatch fails closed with `InstallRecordError`, v3 bytes/mode/`~/.lando` never change. Setup + lamp init/start served HTTP 200 PHP 8.3.33; exec, info, logs, uninstall --yes/--purge leave v3 and the compiled binary (user-owned) intact.
+- **Out-of-scope finding:** `./core/dist/lando setup --yes --no-interactive` and `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. App still came up on `http://us619b1.lndo.site:8080`. Host had no `rootlessport` on 38080/38443; likely WSL mirrored 80/443. Not caused by this identity/shellenv diff.
+---
