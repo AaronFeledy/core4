@@ -1,6 +1,12 @@
 import type { LegacyScalarNode } from "./contract.ts";
 import type { LegacyScanner } from "./scanner.ts";
 
+const trimTrailing = (text: string, chars: string): string => {
+  let end = text.length;
+  while (end > 0 && chars.includes(text[end - 1] ?? "")) end -= 1;
+  return end === text.length ? text : text.slice(0, end);
+};
+
 const ESCAPES: Readonly<Record<string, string>> = {
   "\\": "\\",
   '"': '"',
@@ -73,7 +79,7 @@ export const parseQuotedScalar = (scan: LegacyScanner): LegacyScalarNode => {
           );
       }
     } else if (scan.atBreak) {
-      text = text.replace(/[ \t]+$/, "") + foldBreak(scan, false);
+      text = trimTrailing(text, " \t") + foldBreak(scan, false);
     } else {
       text += char;
       scan.offset += 1;

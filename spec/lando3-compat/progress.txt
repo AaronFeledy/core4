@@ -211,3 +211,8 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - Review notes (deferred/rejected): v4 still accepting a flow sequence and a bare tag is pre-existing and outside this diff. Collection spans that run from the first child to the last child are the pinned contract. The corpus pin's null commit stays because the kitchen-sink is an authored inventory whose bytes match the spec reference. `007` stays a string under the pinned YAML 1.2 core rule. Bugbot found no bugs.
 - Verification: typecheck, lint, and codegen passed; boundaries passed on retry after a transient missing guide file that was not part of this diff; legacy spot checks passed.
 ---
+
+## 2026-09-22 - US-620A Review
+- Trailing-newline and trailing-space chomps used a `$` regex that backtracked quadratically on a long run that was not at the end of the string. They now scan backward. A 32KB blank-line block scalar dropped from about 215ms to about 10ms.
+- Review notes (deferred/rejected): flow and tag spans stay first-child to last-child because that is the pinned collection contract, not a missing delimiter. The corpus pin's null commit remains honest provenance. v4 accepting a flow sequence is unchanged on this branch.
+---

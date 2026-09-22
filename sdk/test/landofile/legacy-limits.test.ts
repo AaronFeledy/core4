@@ -59,6 +59,13 @@ describe("legacy parse limits", () => {
     expect(failureOf(parse(nested(6), { maxDepth: 3 })).message).toContain("depth");
   });
 
+  test("chomps a long blank-line block scalar without quadratic backtracking", () => {
+    const content = `x: |\n${"\n".repeat(32000)}  content\n`;
+    const started = performance.now();
+    expect(Exit.isSuccess(parse(content))).toBe(true);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
   test("parses a long single-line flow sequence in linear time", () => {
     const content = `items: [${"1,".repeat(20000)}1]\n`;
     const started = performance.now();

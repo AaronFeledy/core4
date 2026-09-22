@@ -1,6 +1,12 @@
 import type { LegacyScalarNode } from "./contract.ts";
 import type { LegacyScanner } from "./scanner.ts";
 
+const trimTrailing = (text: string, chars: string): string => {
+  let end = text.length;
+  while (end > 0 && chars.includes(text[end - 1] ?? "")) end -= 1;
+  return end === text.length ? text : text.slice(0, end);
+};
+
 export const parseBlockScalar = (scan: LegacyScanner, parentIndent: number): LegacyScalarNode => {
   const start = scan.offset;
   const header = scan.content.slice(start, scan.lineEnd());
@@ -66,7 +72,10 @@ export const parseBlockScalar = (scan: LegacyScanner, parentIndent: number): Leg
       if (following?.more) text += "\n";
     }
   }
-  if (chomp === "-") text = text.replace(/\n+$/, "");
-  else if (chomp !== "+") text = text.replace(/\n+$/, lastContent < 0 ? "" : "\n");
+  if (chomp === "-") text = trimTrailing(text, "\n");
+  else if (chomp !== "+") {
+    const trimmed = trimTrailing(text, "\n");
+    text = lastContent < 0 || trimmed === text ? trimmed : `${trimmed}\n`;
+  }
   return scan.scalar(text, style, start);
 };
