@@ -180,3 +180,57 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - Review feedback: none — the lone failure was the MongoDB file-backed-config live test timing out on a `ServiceExecError: failed to create an exec session`; it passed on the ubuntu-26.04 runner and every other platform, and the same failure predates this branch (run 35674834744), so it was triaged as a runner flake, rerun with no code change, and passed in 17m38s.
 - Merge: merged (squash)
 ---
+
+## 2026-09-22 - US-620A
+
+Added the source-preserving `LEGACY` parse mode for the Lando 3 dialect and pinned the corpus it is proven against.
+
+`@lando/sdk/landofile` now exports `parseLegacyLandofile`, a second parser that lives entirely under `sdk/src/landofile/legacy/**` and shares nothing with the v4 subset parser but one anchor-name regex. `mode: "legacy"` is a required literal, so no Lando 4 caller can default into the dialect, and `parseLandofile` keeps every restriction it had. The tree stage reads quoted scalars, literal and folded block scalars with chomping and explicit indentation indicators, populated flow maps and sequences, anchors, aliases, and arbitrary tags, and records a UTF-16 source span on every node so a translator can point a diagnostic at exact source text. The projection stage types plain scalars with the js-yaml 4 core schema, applies merge keys, resolves aliases into distinct objects under a count bound plus an expansion budget, and turns every tag into retained `LegacyTagged` data. Duplicate mapping keys, a second document, a directive, tab indentation, oversize input, and over-deep nesting all fail closed as `LandofileParseError` with remediation. Nothing in the mode touches the filesystem, so `!load` and `!import` survive as data for the translator that rewrites them later.
+
+The two kitchen-sink inventories now live in `sdk/test/fixtures/lando3/` behind a sha256 pin manifest and a provenance/license notice, so no production code or test reads authored planning material.
+
+Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen boundary rules including spec-reference, guide-drift against origin/main); 396 spot-check tests across the nine legacy suites, both v4 parser suites, and the SDK backward-compatibility suite; the v4 parser and its reference resolver are byte-identical to origin/main. Driving the published subpath over the real corpus parses 27 services and retains 3 `!load` plus 3 `!import` tags while the v4 parser fails on the same bytes.
+
+- **Learnings for future iterations:**
+  - A second dialect belongs in a second module tree, not in a mode flag threaded through the existing parser. The "v4 restrictions unchanged" proof then collapses to `git diff --quiet` on two files plus a test that runs both parsers over the same bytes.
+  - Freeze the shared type module before fanning work out. Writing `contract.ts` first let the tree stage and the projection stage be built in parallel by agents that never saw each other's code, and the only integration cost was formatting.
+  - The tag census you get from grep is not the tag census the parser sees: comment lines mentioning `!load` inflate it. Pin counts from the parser's own output, then confirm the sites by hand.
+  - `sdk/test/**` is not published (`files` is `src` and `dist`), which is what makes a GPL-licensed fixture corpus safe to vendor there; record that in the notice rather than re-deriving it later.
+---
+
+## 2026-09-22 - US-620A Review
+- A quoted or tagged `<<` was merged as if it were the plain merge token, which dropped the key and injected the target's fields. Only a plain untagged `<<` merges now; a quoted `<<` stays a key.
+- Review notes (deferred/rejected): Bugbot reported no bugs on the build commit. js-yaml's integer resolver accepts `007` as 7, but the pinned YAML 1.2 core contract keeps leading-zero decimals as strings, so that was not changed. The corpus pin's null commit is honest: the kitchen-sink is an authored inventory with no single upstream file, and the fixture bytes match the spec reference checksums. Translator, detection, and doctor surfaces belong to later stories.
+- Verification: gate:pr passed; legacy parser spot checks passed.
+- **Learnings for future iterations:**
+  - A YAML merge key is the plain untagged scalar `<<` only. Comparing key text alone treats `"<<"` as a merge and drops the key.
+---
+
+## 2026-09-22 - US-620A Review
+- Root `|2` kept no leading space because explicit indentation was clamped at 0 instead of the document root's -1. A blank line before more-indented folded text dropped a newline. Both now match js-yaml. Flow marker checks read a fixed window instead of the rest of a long line, so a 40KB flow sequence stays under a second.
+- Review notes (deferred/rejected): v4 still accepting a flow sequence and a bare tag is pre-existing and outside this diff. Collection spans that run from the first child to the last child are the pinned contract. The corpus pin's null commit stays because the kitchen-sink is an authored inventory whose bytes match the spec reference. `007` stays a string under the pinned YAML 1.2 core rule. Bugbot found no bugs.
+- Verification: typecheck, lint, and codegen passed; boundaries passed on retry after a transient missing guide file that was not part of this diff; legacy spot checks passed.
+---
+
+## 2026-09-22 - US-620A Review
+- Trailing-newline and trailing-space chomps used a `$` regex that backtracked quadratically on a long run that was not at the end of the string. They now scan backward. A 32KB blank-line block scalar dropped from about 215ms to about 10ms.
+- Review notes (deferred/rejected): flow and tag spans stay first-child to last-child because that is the pinned collection contract, not a missing delimiter. The corpus pin's null commit remains honest provenance. v4 accepting a flow sequence is unchanged on this branch.
+---
+
+## 2026-09-22 02:04 - US-620A Drift Audit
+- Trigger: 4 cycles, 3752 changed lines, 6 commits
+- Weakened proofs: the corpus service count and tag span were soft, the depth accept case was not at the bound, and mode rejection plus alias expansion were not proven through the public parser.
+- Scar tissue: the byte cap was checked twice, and a legacy error predicate matched every Landofile parse error while nothing called it.
+- Ceremony: parser stages stay split because each one parses, they do not forward; unused exports were removed.
+- Deferred work: leading-zero decimals staying strings, first-child collection spans, quoted merge keys, and v4 still accepting flow sequences remain outside this story.
+- Fixed: deleted the dead predicate and the extra byte check, unexported unused types, named the tagged-data symbol in the compatibility note, and restored the public proofs.
+- Split/excise decisions: none.
+- Verification: typecheck pass, lint pass, legacy spot checks 222 pass
+---
+
+## 2026-09-22 - US-620A Verify
+- Compiled `core/dist/lando` setup completed, a lamp app served PHP 8.3.33 over HTTP, and config lint reported the v4 Landofile valid. That binary rejected a block-scalar Landofile as `LandofileParseError`, while `parseLegacyLandofile` kept the scalar and, on the pinned kitchen-sink, 27 services plus 3 `!load` and 3 `!import` tags as data.
+- **Out-of-scope finding:** `./core/dist/lando setup --yes --no-interactive` on a TTY still opened "Install a systemd socket proxy so Lando can serve http://*.lndo.site on ports 80 and 443?" and waited for Enter. Expected the flags to accept the default. `consentToInstall` auto-approves only when `autoApprove` is set, and live socket-proxy wiring never sets it. Not caused by the legacy parser.
+- **Out-of-scope finding:** `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. The app still served PHP on port 8080. Same warning as US-619B1 and US-619B3.
+- **Learnings for future iterations:** Redirecting setup stdout while leaving stdin a TTY hangs on that socket-proxy confirm: the prompt is drawn on stdout, and `--yes` / `--no-interactive` never reach `consentToInstall`. Run setup on the TTY, or answer the default Yes.
+---

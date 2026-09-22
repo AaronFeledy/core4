@@ -251,6 +251,15 @@
 - `RuntimeProviderShape.destroy` returns `DestroyOutcome` instead of `void`: a provider handed no plan that finds no applied record for the app answers `{ kind: "no-op", reason: "no-applied-plan" }`, so no caller can read silent success as teardown. `RuntimeProviderShape.removeObservedService(observed)` is a new required member that stops and removes the single container behind one `ServiceRuntimeInfo` this provider reported from `list`, without resolving an applied plan, answering `ObservedServiceRemoval`. `@lando/sdk/services` additively exports `DestroyOutcome` and `ObservedServiceRemoval`. This is a pre-ship provider-contract change with no compatibility shim; the frozen service-tag fixture is updated to match and neither type registers a JSON Schema.
 
 
+- `@lando/sdk/landofile` additively exports `parseLegacyLandofile`, `isLegacyTagged`, and `LEGACY_TAGGED`
+  for reading the Lando 3 dialect. `mode: "legacy"` is a required literal, so the
+  Lando 4 `parseLandofile` restrictions are unchanged and unreachable from this
+  entry point. It returns a `LegacyDocument` carrying the projected value, a
+  source span on every node, and a tag inventory; `!load` and `!import` survive as
+  tagged data and no referenced file is ever read. Byte, depth, alias-count, and
+  duplicate-key bounds are configurable through `limits`. It registers no JSON
+  Schema.
+
 ## Additive YAML exports
 
 `@lando/sdk/yaml` exports `quoteYamlScalar`, `isYamlPlainSafe`, `yamlScalarText`,
