@@ -8,7 +8,9 @@ import type { LegacyPrefixView } from "./effective-views.ts";
 import { mergedToPlain, occurrencesAt } from "./legacy-merge.ts";
 import { lowerApi4Service } from "./lower-api4.ts";
 import { lowerCatalogCommon } from "./lower-catalog-common.ts";
+import { lowerEvents } from "./lower-events.ts";
 import { lowerPhpOptions } from "./lower-php.ts";
+import { lowerTooling } from "./lower-tooling.ts";
 import { lowerTopLevel } from "./lower-top-level.ts";
 import { lowerTypeOptions } from "./lower-type-options.ts";
 import {
@@ -19,6 +21,7 @@ import {
   isPlainObject,
   mergePatches,
 } from "./lowering-contract.ts";
+import { makeReport } from "./lowering-report.ts";
 import {
   missingImage,
   rewrittenMeUser,
@@ -142,7 +145,18 @@ const mountsAppByDefault = (loweredType: unknown): boolean => {
   return CATALOG[resolution.id]?.appMountByDefault === true;
 };
 
-export const lowerServiceViews = (folded: ReadonlyArray<LegacyPrefixView>): LoweredServices => {
+/** What recipe decomposition and already-converted layers contribute to tooling and events. */
+export interface InheritedAuthoring {
+  readonly tools: ReadonlySet<string>;
+  readonly recipeServices: ReadonlyArray<string>;
+}
+
+const NOTHING_INHERITED: InheritedAuthoring = { tools: new Set(), recipeServices: [] };
+
+export const lowerServiceViews = (
+  folded: ReadonlyArray<LegacyPrefixView>,
+  inherited: InheritedAuthoring = NOTHING_INHERITED,
+): LoweredServices => {
   const prefixes: LoweredServicePrefix[] = [];
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   for (const view of folded) {
@@ -155,6 +169,21 @@ export const lowerServiceViews = (folded: ReadonlyArray<LegacyPrefixView>): Lowe
     });
     diagnostics.push(...top.diagnostics);
     let topLevel = top.fragment;
+    const report = makeReport(
+      { fallbackSourceId, occurrenceAt: (relative) => occurrencesAt(view.merged, relative).at(-1) },
+      diagnostics,
+    );
+    const tooling = lowerTooling(doc.tooling, report);
+    const events = lowerEvents(
+      doc.events,
+      {
+        services: doc.services,
+        recipeServices: view.recipe === undefined ? [] : inherited.recipeServices,
+        tasks: tooling.tasks,
+        inheritedTools: inherited.tools,
+      },
+      report,
+    );
     const authored = isPlainObject(doc.services) ? doc.services : {};
     const services = new Map<string, V4Wire>();
     for (const [serviceName, service] of Object.entries(authored)) {
@@ -217,6 +246,8 @@ export const lowerServiceViews = (folded: ReadonlyArray<LegacyPrefixView>): Lowe
       sourceIds: view.sourceIds,
       fragment: {
         ...(services.size === 0 ? {} : { services: Object.fromEntries(services) }),
+        ...(Object.keys(tooling.tooling).length === 0 ? {} : { tooling: tooling.tooling }),
+        ...(Object.keys(events).length === 0 ? {} : { events }),
         ...topLevel,
       },
     });

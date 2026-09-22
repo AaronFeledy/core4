@@ -13,6 +13,7 @@
 - Landofile map keys are canonicalized by `yamlMappingKeyText` from `@lando/sdk/yaml`, not by a local allowlist: a key stays plain only when no YAML parser can re-resolve it, and is double-quoted otherwise. The subset parser reads quoted keys through the same JSON escape set, so any string key round-trips. Two lexical facts must survive that: `splitMappingEntry` returns `rawKey` (source columns and comment reconstruction are measured on the raw token, never the decoded key) and `isMergeKey` (only an UNQUOTED `<<` merges; `"<<"` is a literal key).
 - Emitting a plain YAML key is not the same as emitting a key the Landofile parser accepts. `Bun.YAML.parse("@angular/cli: x")` throws because `@` is a reserved indicator, while the subset parser's plain-key charset allows it. Prove an emitter change against BOTH parsers or the emitted Landofile is readable only by Lando.
 - A guide page gets exactly ONE `<Guide>` element. `parseGuideScenarioAst` in `scripts/build-guide-scenarios.ts` does `elementChildren(root).find((child) => child.name === "Guide")`, so a second `<Guide>` block is silently dropped: no lint error, no transcript, no generated test, and `dev:guides` simply reports a smaller pass count. Put every `<Scenario>` in one block and confirm the scenario count went up. Known victim: `docs/guides/landofile/lando3-transition-options.mdx` has two blocks, so its `service-selection` scenario has never run.
+- Every string a translator emits is Lando 4 authoring text, not shell text. `{{` must be escaped as `{{{{`, and any `${` fails the load (`Configuration expressions (${...}) are not supported`), escaped `$${` included. A bare `$NAME` stays literal. The lando3 `lowerText` helper applies this; route new emitted strings through it rather than copying Lando 3 values verbatim.
 - Guide scenarios cannot assert plain-text CLI output for any command whose renderer has a boxed TTY branch. `renderUninstallResult` picks `formatSummary` when `ctx.mode === "lando" && ctx.isTTY`, and that box wraps at terminal width, so labels split across lines and the visible tokens depend on the reader's window size. The harness isolates a temp cwd only, never stdio. Assert `--format=json` instead; it is renderer-independent and single-line.
 
 ## 2026-09-21 - US-619B1 (incomplete, handed back)
@@ -611,4 +612,43 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
 - `home` was not a model property, so the unknown-key drop won dedupe and the US-617A remediation never reached the CLI. Declared `home` on the API-3 and API-4 shapes.
 - **Out-of-scope finding:** `lando start` on a converted `meUser: www-data` php service fails with `HomePathCapabilityError` because php:8.3 declares no home for www-data. The same lowered service without `user` starts. Home persistence belongs to US-617A / US-621C5. `lando start` still warns port 80/443 are in use (8000/4443). A fresh lamp webroot with no index returns HTTP 403.
 - **Learnings for future iterations:** unknown-key diagnostics and deferred-key diagnostics share kind and path, and dedupe keeps the first. A key the lowerer handles must be a model property or the CLI shows "not a Lando 3 key" instead of the story id.
+---
+
+## 2026-09-22 17:11 CDT - Babysit
+- PR: #1050 https://github.com/AaronFeledy/core4/pull/1050
+- CI outcome: pass (after fix; linux journey/platform-readiness jobs flaked on the pinned Ubuntu apt snapshot missing libsqlite3-dev and passed on rerun)
+- Review feedback: fixed (restored rejection of whitespace-bearing keys in the shared Landofile emitter; three config-write serializer-rejection tests failed on it)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-09-22 - US-621C3
+
+Lando 3 `tooling:` and `events:` now convert instead of blocking the preview as sections with no target.
+
+Tooling tasks keep service, description, dir, env, and user. A command list becomes ordered `cmds`, and `{service: command}` entries become service-targeted steps. A task with no `cmd` gets its own name, as in Lando 3. Any non-mapping value, which Lando 3 treated as removing the task, becomes `disabled: true`. yargs `options` become `flags`: first alias kept, `boolean`/`type: boolean` kept, `demandOption` becomes `required`, and each combination Lando 4 would reject (default outside choices, required with a default, boolean with choices or a string default) is dropped and reported. `[x]`/`<x>` tokens in a task key and `positionals` become ordered `args`. `service: :<option>` becomes a `:<flag>` reference. A Lando 3 option named `host` becomes the `host-service` flag, because `service: ":host"` means host execution in Lando 4. `level`, `usage`, `examples`, `interactive`, and a trailing background `&` are each dropped once with a named alternative.
+
+Events keep lifecycle names, including pre/post-restart. `pre-`/`post-<tool>` stays only when that task exists in this app, the recipe, or an already-converted layer. Any other name is dropped rather than emitted, because Lando 4 would reject it. Every step names its service. A bare Lando 3 command ran in the bracketed task's own service (following Lando 3's parse-events-config), or else in the app default: first primary API-4 service, recipe appserver, first API-3 service, first Compose service, then `appserver`. `!load`/`!import` become `{{ load('<path>') | <decoder> }}` with Lando 3's decoder made explicit (`@string`→text, `@json`, `@yaml`/`@yml`, extension otherwise, text by default). `!import` also becomes `load()`, because Lando 4 `import()` is only accepted under a service's certificate authorities. Binary, absolute, and unquotable paths are refused.
+
+Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-drift against origin/main). 631 spot tests pass across the lando3 plugin, the core translate suites, tooling input parity, and a new core suite. That suite runs converted brackets through the real event runtime: order and services, pre failure blocking the body, body failure skipping post, and a failing post step as a fatal tail. Compiled `lando app:config:translate --from lando3` previewed and wrote a kitchen-sink tooling/events app. `app:config:lint` returned valid, `app:config` resolved both load() files to their contents, `app:cache:refresh` compiled 9 commands, `lando word --help`/`lando drupal-update --help` listed the flags and args, and `lando mcp --list --tooling` listed every converted task except the disabled one.
+
+- **Learnings for future iterations:**
+  - Lando 3 `${VAR}` and `{{...}}` in commands are not portable text. A simple `${NAME}`/`${1}` is respelled `$NAME`/`$1`, while `${1:-x}` and friends are `unsupported` because Lando 4 has no spelling for them yet. This surfaced only when the compiled CLI rejected the fragment; schema decode alone passed.
+  - v4 event and `cmds` step arrays merge across layers by the `service` identity key. When a higher Lando 3 layer appends steps for a service that already has one, the layer-delta planner hoists the whole array instead of splitting it.
+  - Service-site tags (build hooks, entrypoint, healthcheck, mounts, security.ca) keep the fail-closed disposition from US-621C1. Wiring `lowerText` into those sites belongs with the residual owner (US-621C8), and `security.ca` is the one place `import()` should survive.
+  - **Out-of-scope finding:** `lando <task> --help` on any task whose service comes from a flag fails with `ToolingInputError: Unknown flag help` (seen on the converted `whoami` task; the service-from-flag path is native v4 code).
+---
+
+## 2026-09-22 - US-621C3 Review
+- Reviewed the tooling, tag, and event lowering against the source story. No code changes: commands, flags, args, load/import decoders, lifecycle and tooling brackets, and the pre/body/post plus fatal-post runtime proofs match the criteria.
+- Review notes (deferred/rejected): Bugbot reported no bugs. `!import` stays `load()` because Lando 4 `import()` is only valid on certificate authorities; emitting `{{ import() }}` would make a command string the product rejects, and `security.ca` belongs to US-621C8. Nested `lando` calls stay shell steps, so they are not rewritten into `task:`/`command:` re-entry; cycle and depth detection is the v4 event runtime's own contract, and changing shell text into in-process calls would change failure behavior. `passthrough` is not a separate diagnostic because Lando 4 already rejects undeclared flags, which the options rewrite reports. Conversion guides stay with US-621D; guide-drift against origin/main passed with no guide edit.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; translator-tooling and tooling-events runtime spot checks passed (20).
+---
+## 2026-09-22 17:47 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-22 - US-621C3 Verify
+- Compiled `core/dist/lando` setup completed. A Lando 3 app translated with `--from lando3`: `!load`/`!import` became `load()` expressions without reading the files, level/usage/examples/interactive/background and `pre-uninstall` were dropped once, and lint accepted the write. Started the app; `build` ran node-before, `/tmp`, uid 0, node-body, php-after, node-tail; `install` ran php then node; pre-step failure skipped the body, body failure skipped post, and a failing post step skipped its tail. `greet` printed the loaded script, `exec` printed PHP 8.3.33, and restart ran post-start and post-restart.
+- **Out-of-scope finding:** `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. URL scan reported HTTP 403 for appserver and HTTP 502 for node. Tooling and lifecycle events still ran. Same port class as earlier verifies; the scan statuses are empty/non-HTTP services, not this lowering.
 ---

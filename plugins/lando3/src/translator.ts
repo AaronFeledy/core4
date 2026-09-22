@@ -78,6 +78,8 @@ const LOWERED_KEYS = new Set<string>([
   "plugins",
   "pluginDirs",
   "keys",
+  "tooling",
+  "events",
 ]);
 
 export const defaultLando3Ports = (): Lando3TranslatorPorts => ({
@@ -358,7 +360,22 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         const merged = mergeLegacySources(sources);
         const folded = foldToTargetLayers(legacyPrefixViews(sources));
         const lowered = yield* lowerRecipeViews(ports, folded, establishedRecipe(established));
-        const authored = lowerServiceViews(folded);
+        const recipeFragments = [
+          ...lowered.prefixes.map(({ fragment }) => fragment),
+          ...established.map(({ fragment }) => fragment),
+        ];
+        const authored = lowerServiceViews(folded, {
+          tools: new Set(
+            recipeFragments.flatMap(({ tooling }) => (isPlainRecord(tooling) ? Object.keys(tooling) : [])),
+          ),
+          recipeServices: [
+            ...new Set(
+              lowered.prefixes.flatMap(({ fragment }) =>
+                isPlainRecord(fragment.services) ? Object.keys(fragment.services) : [],
+              ),
+            ),
+          ],
+        });
         const decoded = decodeLando3Landofile(mergedToPlain(merged));
 
         const writable = new Set<LandofileLayer>(input.writableLayerIds);
