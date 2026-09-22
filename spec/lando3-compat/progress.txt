@@ -339,3 +339,10 @@ Verification: typecheck, lint, all eight boundary rules, codegen drift, and guid
 - Split/excise decisions: none. Dropped WordPress keys and Drupal 7-9 rejection still match the published option maps.
 - Verification: typecheck pass, lint pass, spot checks 50 pass
 ---
+
+## 2026-09-22 - US-621A Verify
+- Compiled `core/dist/lando` setup completed. A layered WordPress conversion wrote full recipe provenance on dist and local, dropped `config.xdebug` and an unmapped secret, relocated `services.cache`, and refused pantheon, drupal9, and a `--file` conversion that needed another layer. The app started as appserver plus database only; exec printed PHP 8.3.33 and http://us621a.lndo.site:8000 returned that version. Doctor reported no lando3 check, and a v4 Landofile still detected as lando4.
+- A higher-layer recipe delta omitted id, version, and producer, so layer decode rejected it. Removing redis also left `dependsOn: cache` on the lower layer; decode turns that list into identity-keyed entries, which a later layer cannot delete, so the plan required a cache service redis false had removed. Each touched layer now repeats the full recipe, and a service absent from the final layer is stripped from every emitted dependsOn.
+- **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. The app still served on port 8000. Same class as US-620B.
+- **Learnings for future iterations:** Each Landofile layer is schema-decoded before merge, so a recipe delta that only carries a changed option is not a valid layer. `dependsOn` is a string list in the authoring fragment and `{service}` objects after decode; identity merge cannot drop an entry that a lower layer still names.
+---

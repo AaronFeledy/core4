@@ -55,6 +55,31 @@ describe("layer deltas", () => {
     ]);
     expect(result.relocations[0]?.unitPath).toEqual(keys("services", "php", "config"));
   });
+  test("a removed service is dropped from earlier dependsOn lists", () => {
+    const result = check([
+      prefix("dist", {
+        services: {
+          appserver: { dependsOn: ["database", "cache"], type: "php:8.3" },
+          cache: { type: "redis" },
+          database: { type: "mariadb" },
+        },
+      }),
+      prefix("local", {
+        services: {
+          appserver: { dependsOn: ["database"], type: "php:8.3" },
+          database: { type: "mariadb" },
+        },
+      }),
+    ]);
+    const dist = result.emitted[0]?.fragment;
+    const dependsOn =
+      isPlainRecord(dist) && isPlainRecord(dist.services) && isPlainRecord(dist.services.appserver)
+        ? dist.services.appserver.dependsOn
+        : undefined;
+    expect(dependsOn).toEqual(["database"]);
+    expect(JSON.stringify(dist)).not.toContain("cache");
+  });
+
   test("scalar array shrink is representable", () => {
     const result = check([prefix("dist", { items: ["a", "b"] }), prefix("local", { items: ["a"] })]);
     expect(result.relocations).toEqual([]);

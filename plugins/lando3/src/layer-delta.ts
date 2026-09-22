@@ -58,6 +58,64 @@ const record = (value: unknown): Record<string, unknown> => {
   if (!isPlainRecord(value)) throw new Error("Layer delta must be a record");
   return value;
 };
+
+/**
+ * dependsOn is a string list in the authoring fragment and an identity-keyed
+ * object list after Landofile decode. A higher layer cannot delete an entry
+ * the decode-then-merge kept, so a service that the final layer does not have
+ * must not be named by any emitted dependsOn.
+ */
+const dropRemovedServiceDependencies = (
+  fragments: ReadonlyArray<Record<string, unknown>>,
+  relocations: ReadonlyArray<Relocation>,
+  finalDesired: Readonly<Record<string, unknown>>,
+): ReadonlyArray<Record<string, unknown>> => {
+  const finalServices = isPlainRecord(finalDesired.services) ? finalDesired.services : {};
+  const removed = new Set<string>();
+  for (const relocation of relocations) {
+    const [services, name] = relocation.unitPath;
+    if (
+      relocation.unitPath.length === 2 &&
+      services?.kind === "key" &&
+      services.key === "services" &&
+      name?.kind === "key" &&
+      !Object.hasOwn(finalServices, name.key)
+    ) {
+      removed.add(name.key);
+    }
+  }
+  if (removed.size === 0) return fragments;
+  return fragments.map((fragment) => stripDependsOn(fragment, removed));
+};
+
+const dependencyKept = (entry: unknown, removed: ReadonlySet<string>): boolean => {
+  if (typeof entry === "string") return !removed.has(entry);
+  return !(isPlainRecord(entry) && typeof entry.service === "string" && removed.has(entry.service));
+};
+
+const stripDependsOn = (
+  fragment: Readonly<Record<string, unknown>>,
+  removed: ReadonlySet<string>,
+): Record<string, unknown> => {
+  const services = fragment.services;
+  if (!isPlainRecord(services)) return fragment;
+  let changed = false;
+  const nextServices: Record<string, unknown> = {};
+  for (const [name, service] of Object.entries(services)) {
+    if (!isPlainRecord(service) || !Array.isArray(service.dependsOn)) {
+      nextServices[name] = service;
+      continue;
+    }
+    const dependsOn = service.dependsOn.filter((entry) => dependencyKept(entry, removed));
+    if (dependsOn.length === service.dependsOn.length) {
+      nextServices[name] = service;
+      continue;
+    }
+    changed = true;
+    nextServices[name] = { ...service, dependsOn };
+  }
+  return changed ? { ...fragment, services: nextServices } : fragment;
+};
 const itemMatches = (item: unknown, segment: Extract<UnitSegment, { kind: "item" }>): boolean =>
   isPlainRecord(item) &&
   (segment.key === "filters"
@@ -260,7 +318,15 @@ export const planLayerDeltas = (prefixes: ReadonlyArray<DesiredPrefix>): LayerDe
         restart = true;
         break;
       }
-      const candidate = fragment === unchanged ? {} : record(sorted(fragment));
+      const partial = fragment === unchanged ? {} : record(sorted(fragment));
+      // A recipe object is decoded on its own layer before merge, so a delta
+      // that only carries a changed option is not a Landofile. Emit the
+      // prefix's full recipe; deep-merge still keeps the highest options.
+      const recipe = isPlainRecord(desired) ? desired.recipe : undefined;
+      const candidate =
+        isPlainRecord(partial.recipe) && isPlainRecord(recipe)
+          ? record(sorted({ ...partial, recipe }))
+          : partial;
       if (!equal(mergeValues(accumulated, candidate), desired))
         throw new Error(`Layer delta replay failed at ${prefix.layer}`);
       fragments.push(candidate);
@@ -270,10 +336,11 @@ export const planLayerDeltas = (prefixes: ReadonlyArray<DesiredPrefix>): LayerDe
       previous = fragments;
       continue;
     }
-    if (!equal(mergeLandofiles(fragments), prefixes.at(-1)?.desired ?? {}))
+    const cleaned = dropRemovedServiceDependencies(fragments, relocations, prefixes.at(-1)?.desired ?? {});
+    if (!equal(mergeLandofiles(cleaned), prefixes.at(-1)?.desired ?? {}))
       throw new Error("Layer delta final desired postcondition failed");
     return {
-      emitted: prefixes.map(({ layer }, index) => ({ layer, fragment: fragments[index] ?? {} })),
+      emitted: prefixes.map(({ layer }, index) => ({ layer, fragment: cleaned[index] ?? {} })),
       relocations,
     };
   }

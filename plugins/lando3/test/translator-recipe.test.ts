@@ -155,6 +155,20 @@ test("emits deterministic outputs and diagnostics", async () => {
   expect(second.diagnostics).toEqual(first.diagnostics);
 });
 
+test("a later option change still emits a complete recipe object", async () => {
+  const { translator } = setup();
+  const result = await Effect.runPromise(translator.translate(documentSet(redisDocuments())));
+  const local = result.outputs.find(({ targetLayer }) => targetLayer === "local");
+  expect(local?.fragment).toMatchObject({
+    recipe: {
+      id: "wordpress",
+      version: "1.0.0",
+      producer: { recipeId: "wordpress", sourceKind: "bundled" },
+      options: { php: "8.3", redis: false },
+    },
+  });
+});
+
 test("rejects a tagged config file instead of lowering defaults", async () => {
   const { translator } = setup();
   const result = await Effect.runPromise(
