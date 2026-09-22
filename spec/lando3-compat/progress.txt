@@ -557,3 +557,11 @@ Verification: gate:pr green (typecheck, lint, codegen drift, thirteen boundary r
   - Diagnostics are ordered by source span, not by lowerer call order, so an integration expectation must follow the authored line order rather than the order the lowerers run.
   - An `unsupported` diagnostic raised during lowering blocks the entire preview, while core's post-encode include validation does not - a missing include target still appears in the preview and only blocks `--write`. Expect an empty preview whenever a fixture mixes in any service-level rejection.
 ---
+
+## 2026-09-22 - US-621C1 Review
+- Preserved Compose overrides were copied onto valid Lando 4 service knobs but tagged non-portable, so app:config:translate --write refused a typical restart/platform/logging/labels block after a successful preview. Those fields are now needs-review: the value stays in the fragment and the capability warning still prints.
+- Review notes (deferred/rejected): conversion guides stay with US-621D; guide-drift against origin/main passed with no guide edit. URL and git@ compose includes stay on the existing non-file path.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; compose-fields, translator-services, and lowering-contract spot checks passed (95).
+- **Learnings for future iterations:**
+  - `non-portable` means the encoder cannot represent the value, and `--write` refuses it. A field that is copied onto a schema-valid knob is `needs-review`, not `non-portable`.
+---

@@ -4,7 +4,7 @@ import type { Lando3Path } from "./contract.ts";
 import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
 import {
   droppedServiceKey,
-  nonPortableServiceKey,
+  needsReviewServiceKey,
   rejectedComposeKey,
   rewrittenServiceKey,
 } from "./service-diagnostics.ts";
@@ -86,7 +86,7 @@ export const lowerComposeFields = (
         continue;
       case "preserved":
         diagnostics.push(
-          nonPortableServiceKey({
+          needsReviewServiceKey({
             ctx,
             relative,
             message: `Compose field ${key} is preserved but only realized when the selected provider supports it.`,

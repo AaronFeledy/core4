@@ -35,11 +35,11 @@ describe("Compose field lowering", () => {
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
       { kind: "rewritten", keyPath: [...ctx.keyPath, "overrides", "build"] },
-      { kind: "non-portable", keyPath: [...ctx.keyPath, "overrides", "platform"] },
-      { kind: "non-portable", keyPath: [...ctx.keyPath, "overrides", "logging"] },
-      { kind: "non-portable", keyPath: [...ctx.keyPath, "overrides", "restart"] },
+      { kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "platform"] },
+      { kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "logging"] },
+      { kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "restart"] },
       { kind: "rewritten", keyPath: [...ctx.keyPath, "overrides", "depends_on"] },
-      { kind: "non-portable", keyPath: [...ctx.keyPath, "overrides", "extra_hosts"] },
+      { kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "extra_hosts"] },
     ]);
     expect(result.diagnostics.every((entry) => Boolean(entry.remediation))).toBe(true);
   });
@@ -79,7 +79,7 @@ describe("Compose field lowering", () => {
     const result = lowerComposeFields(input, ctx, options);
     // Then
     expect(result.patch).toEqual({ [key]: { A: "1", B: "2", TOKEN: "a=b", EMPTY: "" } });
-    expect(result.diagnostics.map(({ kind }) => kind)).toEqual(key === "labels" ? ["non-portable"] : []);
+    expect(result.diagnostics.map(({ kind }) => kind)).toEqual(key === "labels" ? ["needs-review"] : []);
   });
 
   test.each(["environment", "labels"])("drops null entries when %s is a scalar mapping", (key) => {
@@ -158,7 +158,7 @@ describe("Compose field lowering", () => {
     // Then
     expect(result.patch).toEqual(input);
     expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]?.kind).toBe("non-portable");
+    expect(result.diagnostics[0]?.kind).toBe("needs-review");
     expect(result.diagnostics[0]?.remediation).toBeTruthy();
   });
 
