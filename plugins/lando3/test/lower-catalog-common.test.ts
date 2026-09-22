@@ -402,11 +402,11 @@ describe("lowerCatalogCommon", () => {
     ["mem", "US-621C8"],
     ["plugins", "US-621C8"],
   ])("drops %s naming its pending story without blocking the service", (key, story) => {
-    // Given an explicitly authored key whose Lando 4 target has not landed.
+    // Given an explicitly authored key whose Lando 4 target does not exist yet.
     const service = { type: "node", [key]: false };
     // When lowered.
     const result = lowerCatalogCommon(service, ctx);
-    // Then the key is dropped, not unsupported, and the remediation names the story.
+    // Then the key is dropped, not marked unsupported, and the remediation names the pending target.
     expect(result.patch).toEqual({ type: "node" });
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics).toHaveLength(1);

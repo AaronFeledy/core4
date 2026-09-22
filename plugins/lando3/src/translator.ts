@@ -9,11 +9,10 @@
  * ordering, validation, and mutation. Nothing in this module opens a file,
  * follows a reference, resolves a tag, plans, or contacts a provider.
  *
- * Service keys whose Lando 4 target waits on work that has not landed are
- * `dropped`, and the remediation names that story, so they never block
- * conversion. Top-level sections that still have no lowerer stay
- * `unsupported` and block the write until that section is built. Nothing is
- * ever silently omitted.
+ * Service keys whose Lando 4 target is not yet implemented are `dropped`
+ * without blocking conversion; their remediation names the pending target.
+ * Top-level keys with no lowerer remain `unsupported` and block the write.
+ * Nothing is silently omitted.
  */
 import { Effect } from "effect";
 

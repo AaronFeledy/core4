@@ -56,9 +56,9 @@ export const generatedService = (args: ServiceDiagnosticInput): ConfigTranslateD
   serviceDiagnostic("generated", args);
 
 /**
- * Keys whose Lando 4 target is owned by work that has not landed yet. They are
- * dropped rather than rejected, so they never block conversion, and the
- * remediation names the pending work so the user knows when to convert again.
+ * These keys have no Lando 4 authoring target yet, so they are dropped rather
+ * than rejected and never block conversion. Remediation tells the user what
+ * to do instead.
  */
 const DEFERRED_KEYS = {
   scanner: { target: "service scanner", story: "US-617B" },
