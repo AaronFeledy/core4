@@ -819,9 +819,13 @@ const executeUninstall = async (
       if (
         step.id === "install-record" &&
         !["installed-binary", "shell-entries"].every((id) =>
-          executed.some(
-            (entry) => entry.id === id && (entry.outcome === "completed" || entry.outcome === "skipped"),
-          ),
+          executed.some((entry) => {
+            if (entry.id !== id) return false;
+            if (entry.outcome === "completed" || entry.outcome === "skipped") return true;
+            // keep-data deliberately leaves the shellenv block. That is resolved
+            // cleanup, not a reason to keep a record pointing at a deleted binary.
+            return mode === "keep-data" && id === "shell-entries" && entry.outcome === "manual";
+          }),
         )
       ) {
         executed.push({

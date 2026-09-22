@@ -793,6 +793,85 @@ describe("uninstall shellenv profile strip", () => {
     }
   });
 
+  test("keep-data retires the install record while leaving the shellenv block", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-shellenv-record-");
+    const binary = join(roots.root, "external", "lando4");
+    const record = join(roots.userDataRoot, "install", "record.json");
+    const block = [
+      "export USER_LINE=keep-me",
+      LANDO_SHELLENV_BEGIN,
+      "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+      LANDO_SHELLENV_END,
+      "",
+    ].join("\n");
+    try {
+      mkdirSync(join(roots.root, "external"), { recursive: true });
+      mkdirSync(join(roots.userDataRoot, "install"), { recursive: true });
+      writeFileSync(binary, "v4 executable", { mode: 0o755 });
+      writeFileSync(roots.shellProfilePath, block);
+      const bytes = readFileSync(binary);
+      writeFileSync(
+        record,
+        JSON.stringify({
+          version: 1,
+          data: {
+            executable: {
+              path: binary,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: bytes.length,
+              channel: "stable",
+              platform: "linux-x64",
+              releaseVersion: "4.2.0",
+            },
+            shellProfiles: [{ path: roots.shellProfilePath, blockSha256: "a".repeat(64) }],
+          },
+        }),
+      );
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            keepData: true,
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(existsSync(binary)).toBe(false);
+      expect(existsSync(record)).toBe(false);
+      expect(readFileSync(roots.shellProfilePath, "utf8")).toBe(block);
+      expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
+        status: "manual",
+        outcome: "manual",
+      });
+      expect(result.steps.find((step) => step.id === "install-record")).toMatchObject({
+        outcome: "completed",
+      });
+
+      const repeated = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            keepData: true,
+          }),
+        ),
+      );
+      expect(repeated.failed).toBe(false);
+      expect(repeated.steps.find((step) => step.id === "installed-binary")).toMatchObject({
+        status: "skipped",
+        outcome: "skipped",
+      });
+      expect(repeated.steps.find((step) => step.id === "install-record")).toMatchObject({
+        status: "skipped",
+        outcome: "skipped",
+      });
+      expect(readFileSync(roots.shellProfilePath, "utf8")).toBe(block);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
   test("defaultPosixShellProfilePath prefers LANDO_SHELL_PROFILE when set", () => {
     expect(
       defaultPosixShellProfilePath({

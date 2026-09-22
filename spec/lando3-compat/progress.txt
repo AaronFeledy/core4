@@ -155,3 +155,9 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
   - The guide harness gives a scenario a temp working directory and nothing else. There is no HOME or `LANDO_USER_*` isolation and no way for MDX to declare env, so every guide assertion has to hold on a host that may or may not already have a v4 install record, and no guide may run a destructive command.
   - A test that walks one filesystem through many phases is worth more than the same coverage split into independent cases: re-snapshotting the foreign artifact after every phase is what turns it into a preservation proof, and labelling the assertion with the phase name is what makes a failure diagnosable.
 ---
+
+## 2026-09-21 - US-619B3 Review
+- Confirmed keep-data uninstall deleted the recorded `lando4` binary and then kept the install record whenever a `# >>> LANDO4 shellenv >>>` block made `shell-entries` `manual`. The record now retires on that intentional keep-data outcome, while a failed or unresolved purge strip still preserves it. A second keep-data run skips both steps and leaves the block.
+- Review notes (deferred/rejected): an executable `lando4 update` guide scenario stays out of scope — update fetches the signed manifest before it looks at disk and guide scenarios isolate only a temp cwd, so the scenario would be a live self-update; the coexistence guide covers update in prose and uninstall as an executable dry-run. Windows replacement rollback-on-refresh-failure matches the existing swap rollback and was not a new hole.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, check:public-transcripts, and guide-drift against origin/main passed; uninstall, lifecycle, and CLI uninstall spot checks passed (92).
+---
