@@ -12,8 +12,8 @@ import { symfonyDecomposer } from "../../src/recipes/builtin/symfony/decomposer.
 import { symfonyRecipeYaml } from "../../src/recipes/builtin/symfony/manifest.ts";
 import { symfonyProducer, symfonySnapshot } from "../../src/recipes/builtin/symfony/snapshot.ts";
 
-const defaults = { php: "8.3", database: "postgres:16", composer: "2", webroot: "/app/public" };
-const alternate = { php: "8.4", database: "mariadb:11.4", composer: "2.7.7", webroot: "/app/web" };
+const defaults = { php: "8.4", database: "postgres:16", composer: "2", webroot: "/app/public" };
+const alternate = { php: "8.1", database: "mariadb:11.4", composer: "2.7.7", webroot: "/app/web" };
 const validInput: RecipeDecomposeInput = { producer: symfonyProducer, options: defaults, secrets: {} };
 const decomposer = symfonyDecomposer({
   redactor: { redactString: (text) => text, redactValue: (value) => value },

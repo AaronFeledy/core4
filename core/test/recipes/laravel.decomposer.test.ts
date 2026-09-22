@@ -14,14 +14,14 @@ import { laravelRecipeYaml } from "../../src/recipes/builtin/laravel/manifest.ts
 import { laravelProducer, laravelSnapshot } from "../../src/recipes/builtin/laravel/snapshot.ts";
 
 const defaults = {
-  php: "8.3",
+  php: "8.4",
   database: "mariadb:11.4",
   composer: "2",
   webroot: "/app/public",
   worker: false,
 };
 const alternate = {
-  php: "8.4",
+  php: "8.1",
   database: "postgres:16",
   composer: "2.7.7",
   webroot: "/app/web",

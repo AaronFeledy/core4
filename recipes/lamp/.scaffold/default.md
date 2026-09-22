@@ -8,7 +8,7 @@ lando start
 lando info
 ```
 
-`--yes` uses PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, and webroot `/app`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe lamp --name=my-lamp-app --yes \

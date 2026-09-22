@@ -1,11 +1,11 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
-import { PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LAMP_RECIPE_VERSION = "0.1.0";
-export const LAMP_CONTENT_DIGEST = "sha256:9afda4d9f6ee1b8af319c37c89e8afe76f25a911b9b4d2eb66b033b0fbb1689d";
+export const LAMP_CONTENT_DIGEST = "sha256:4c7e92f0c8e2d0fa82b4616c90408bcb711be327ee1cd24f4d4878fa70fd7649";
 export const lampProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-lamp",
@@ -15,7 +15,7 @@ export const lampProducer: RecipeProducer = {
 };
 
 export const lampDefaults = {
-  php: "8.3",
+  php: PHP_DEFAULT,
   database: "mariadb:11.4",
   composer: "2",
   webroot: "/app",

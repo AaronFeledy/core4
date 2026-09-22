@@ -305,7 +305,7 @@ describe("ScratchAppServiceLive recipe acquire", () => {
       if (appliedPlan === undefined) throw new Error("scratch recipe acquire did not apply a plan");
       const rendered = await readFile(join(appliedPlan.root, ".lando.yml"), "utf8");
       expect(rendered).toContain('    php: "8.2"');
-      expect(rendered).not.toContain('    php: "8.3"');
+      expect(rendered).not.toContain('    php: "8.4"');
       expect(rendered).toContain('    type: "php:{{ recipe.php }}"');
     });
   });
@@ -324,7 +324,7 @@ describe("ScratchAppServiceLive recipe acquire", () => {
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch recipe acquire did not apply a plan");
       const rendered = await readFile(join(appliedPlan.root, ".lando.yml"), "utf8");
-      expect(rendered).toContain('    php: "8.3"');
+      expect(rendered).toContain('    php: "8.4"');
       expect(rendered).toContain('    type: "php:{{ recipe.php }}"');
     });
   });

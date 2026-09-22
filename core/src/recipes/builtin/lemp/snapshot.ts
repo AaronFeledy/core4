@@ -1,9 +1,10 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LEMP_RECIPE_VERSION = "0.1.0";
-export const LEMP_CONTENT_DIGEST = "sha256:80ca634229dab6ae0c8b098dfd3b226aad65a9335a3d257495e361a1c0516f39";
+export const LEMP_CONTENT_DIGEST = "sha256:a4b8f18851c70a0b3935e02b2c1378524fe5317b4a9fcf4624e166fb516dd951";
 
 export const lempProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -15,8 +16,8 @@ export const lempProducer: RecipeProducer = {
 
 export const lempSnapshot: RecipeSnapshot = {
   identity: lempProducer,
-  optionTypes: { php: { kind: "enum", values: ["8.2", "8.3"] } },
-  defaults: { php: "8.3" },
+  optionTypes: { php: { kind: "enum", values: [...PHP_VERSIONS] } },
+  defaults: { php: PHP_DEFAULT },
   template: {
     expression: {
       kind: "ObjectLiteral",
