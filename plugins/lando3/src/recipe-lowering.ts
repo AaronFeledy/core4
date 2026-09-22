@@ -19,7 +19,7 @@ import { type LegacyPrefixView, requiredOptionViews } from "./effective-views.ts
 import { type DesiredPrefix, planLayerDeltas } from "./layer-delta.ts";
 import { occurrencesAt } from "./legacy-merge.ts";
 import { BUNDLED_RECIPE_OPTION_MAPS, classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
-import { isPlainRecord, mergeLandofiles } from "./v4-merge.ts";
+import { isPlainRecord, mergeLandofiles, v4LayerRank } from "./v4-merge.ts";
 
 export interface LoweredPrefix {
   readonly targetLayer: LandofileLayer;
@@ -233,19 +233,16 @@ export const recipeLayerOutputs = (
 ) => {
   let desired: LoweredPrefix["fragment"] = {};
   const prefixes: DesiredPrefix[] = [];
-  const establishedLayerIds = new Set(established.map((known) => known.layer));
-  for (const known of established) {
-    // Each established file is a delta. The prefix is the merge through that file.
-    desired = mergeLandofiles([desired, known.fragment]);
-    prefixes.push({ layer: known.layer, sourceIds: known.sourceIds, desired });
-  }
-  for (const view of folded) {
-    if (establishedLayerIds.has(view.targetLayer)) continue;
-    const replacement = lowered.prefixes.find(
-      ({ targetLayer }) => targetLayer === view.targetLayer,
-    )?.fragment;
-    if (replacement !== undefined) desired = replacement;
-    prefixes.push({ layer: view.targetLayer, sourceIds: view.sourceIds, desired });
+  const layers = new Map([
+    ...folded.map(({ targetLayer, sourceIds }) => [targetLayer, sourceIds] as const),
+    ...established.map(({ layer, sourceIds }) => [layer, sourceIds] as const),
+  ]);
+  for (const [layer, sourceIds] of [...layers].sort(([a], [b]) => v4LayerRank(a) - v4LayerRank(b))) {
+    const known = established.find((item) => item.layer === layer);
+    desired = known
+      ? mergeLandofiles([desired, known.fragment])
+      : (lowered.prefixes.find(({ targetLayer }) => targetLayer === layer)?.fragment ?? desired);
+    prefixes.push({ layer, sourceIds, desired });
   }
   const plan = planLayerDeltas(prefixes);
   const outputs: ConfigTranslateOutput[] = plan.emitted.flatMap(({ layer, fragment }) => {

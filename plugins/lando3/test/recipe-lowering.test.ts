@@ -5,7 +5,8 @@ import { Effect } from "effect";
 import type { Lando3SourceLayer } from "../src/contract.ts";
 import { foldToTargetLayers, legacyPrefixViews } from "../src/effective-views.ts";
 import { toMergedValue } from "../src/legacy-merge.ts";
-import { lowerRecipeViews } from "../src/recipe-lowering.ts";
+import { lowerRecipeViews, recipeLayerOutputs } from "../src/recipe-lowering.ts";
+import { isPlainRecord, mergeLandofiles } from "../src/v4-merge.ts";
 import { document, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
 const views = async (entries: ReadonlyArray<readonly [Lando3SourceLayer, string]>) => {
@@ -19,6 +20,32 @@ const views = async (entries: ReadonlyArray<readonly [Lando3SourceLayer, string]
   );
   return foldToTargetLayers(legacyPrefixViews(sources));
 };
+
+test("preserves layer precedence when an established overlay precedes legacy base conversion", async () => {
+  // Given a legacy base and an already converted local overlay sharing a service type.
+  const folded = await views([["base", "recipe: lamp\n"]]);
+  const base = { services: { appserver: { type: "php", image: "php:8.2" } } };
+  const overlay = { services: { appserver: { type: "php", image: "php:8.3" } } };
+  // When planning the newly lowered base alongside the established overlay.
+  const result = recipeLayerOutputs(
+    folded,
+    {
+      prefixes: [{ targetLayer: "base", sourceIds: [], fragment: base }],
+      diagnostics: [],
+      decomposeCalls: 1,
+    },
+    [],
+    [{ layer: "local", sourceIds: [], fragment: overlay }],
+  );
+  // Then the base stands alone and the local overlay wins the final merge.
+  expect(result.outputs.map(({ targetLayer, fragment }) => ({ targetLayer, fragment }))).toEqual([
+    { targetLayer: "base", fragment: base },
+    { targetLayer: "local", fragment: { services: { appserver: { image: "php:8.3" } } } },
+  ]);
+  expect(mergeLandofiles(result.outputs.map(({ fragment }) => fragment).filter(isPlainRecord))).toEqual(
+    overlay,
+  );
+});
 
 test("decomposes changed options with provenance and only redactor ports", async () => {
   // Given two distinct effective option views.
