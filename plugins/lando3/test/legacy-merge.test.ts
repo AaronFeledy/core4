@@ -45,14 +45,25 @@ describe("legacy foreign merge", () => {
     expect(mergedToPlain(result)).toEqual({ items: [{ x: 1 }, ["a"], { x: 1 }, ["a"]] });
   });
 
-  test("collapses repeated aliases and their anchor declaration", () => {
-    const result = mergeLegacySources([source("canonical", "items: [&same {x: 1}, *same, *same]\n")]);
-    expect(mergedToPlain(result)).toEqual({ items: [{ x: 1 }] });
-    expect(occurrencesAt(result, ["items", 0]).map(({ keyPath }) => keyPath)).toEqual([
+  test("keeps repeated aliases until a later array is merged", () => {
+    const alone = mergeLegacySources([source("canonical", "items: [&same {x: 1}, *same, *same]\n")]);
+    expect(mergedToPlain(alone)).toEqual({ items: [{ x: 1 }, { x: 1 }, { x: 1 }] });
+    const merged = mergeLegacySources([
+      source("canonical", "items: [&same {x: 1}, *same, *same]\n"),
+      source("local", "items: [extra]\n"),
+    ]);
+    expect(mergedToPlain(merged)).toEqual({ items: [{ x: 1 }, "extra"] });
+    expect(occurrencesAt(merged, ["items", 0]).map(({ keyPath }) => keyPath)).toEqual([
       ["items", 0],
       ["items", 1],
       ["items", 2],
     ]);
+  });
+
+  test("keeps repeated primitives in one document", () => {
+    expect(mergedToPlain(mergeLegacySources([source("canonical", "items: [a, a]\n")]))).toEqual({
+      items: ["a", "a"],
+    });
   });
 
   test("scopes anchor identity to the source document", () => {

@@ -105,7 +105,7 @@ export const toMergedValue = (args: {
             : itemIdentity(child);
         items.push({ value: child, identity, occurrences: nodeOccurrences(child) });
       });
-      return { kind: "sequence", items: uniqueItems(items), occurrences: [occurrence] };
+      return { kind: "sequence", items, occurrences: [occurrence] };
     }
     if (typeof value === "object" && value !== null) {
       const entries = new Map<string, MergedLegacyValue>();

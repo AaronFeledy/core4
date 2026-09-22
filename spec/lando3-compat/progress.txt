@@ -263,3 +263,14 @@ Verification: gate:pr green; 202 spot-check tests across the plugin model, merge
   - A bundled plugin's `plugin` export is imported as a finished value by the generated composition table, so it cannot receive host ports. Exporting the factory alongside it keeps the eventual injection a composition-root change rather than a package rewrite.
   - Freezing the shared type module before fanning work out paid off again: four agents built merge, model, detection, and the core wiring in parallel against one `contract.ts` and integrated without touching each other's files.
 ---
+
+## 2026-09-22 - US-620B Review
+- Translation now parses and merges only the seven app-root `.yml` layers, so compose files, JSON, nested apps, and `.yaml` neither change the result nor abort conversion. Parse failures no longer quote source text. Custom basename diagnostics name the configured files without opening them. Array dedupe matches Lando 3: a single document keeps repeated items, and `uniq` runs only when a later array is merged. App names use the slugify 1.6.6 strict map, including the corpus name `ландоьслуггы | Lando-Sluggy`.
+- Review notes (deferred/rejected): Bugbot's `.lando.recipe.yaml` detection is not a Lando 3 signal; §5.2 names `.lando.recipe.yml` only, and accepting `.yaml` would widen the set. A root-only `package.json` exports map is not required: `@lando/lando4` has none, and the package already exports its plugin from the root. Detection still inspects every supplied snapshot; only translation membership is filtered.
+- Verification: gate:pr passed; translator, merge, model, contract, and document-set spot checks passed.
+- **Learnings for future iterations:**
+  - Core discovery walks every in-root YAML/JSON/TOML on purpose. The lando3 frontend has to select the seven app-root `.yml` files before it parses.
+  - Lando 3 `uniq` runs only inside a merge onto an existing array. Collapsing aliases while reading one document drops steps Lando 3 would have kept.
+  - `slugify(..., {lower: true, strict: true})` is not NFKD. `|` becomes `or`, and `ß` becomes `ss`.
+- Guide-Coverage-Skip: US-620B does not change a published command or guide; the conversion guide is owned by US-621D.
+---

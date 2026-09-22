@@ -50,6 +50,20 @@ export const sourceLayerForDocument = (document: ConfigTranslateDocument): Lando
   );
   return namedLayer?.[0] ?? LANDO3_SOURCE_LAYERS.find((layer) => layer === document.layerId) ?? "canonical";
 };
+
+const LANDO3_LAYER_FILES: ReadonlySet<string> = new Set(
+  LANDO3_LAYER_BASENAMES.map(([, stem]) => `${stem}.yml`),
+);
+
+/**
+ * Membership in the Lando 3 document set: the seven app-root `.yml` layers.
+ * Core discovery also supplies compose files, JSON, `.yaml`, and nested apps.
+ * Those are not layers, so translation must not parse or merge them.
+ */
+export const isAppRootLando3Layer = (document: ConfigTranslateDocument): boolean => {
+  const name = (document.path ?? String(document.sourceId)).replace(/\\/gu, "/");
+  return LANDO3_LAYER_FILES.has(name);
+};
 const SERVICE_KEYS = [
   ["overrides", "service-overrides"],
   ["build_as_root", "build-as-root"],

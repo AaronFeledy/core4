@@ -31,7 +31,7 @@ const LANDO4_APP = ["runtime: 4", "name: modern-app", "services:", "  web:", "  
 
 const translateInput = Schema.decodeUnknownSync(ConfigTranslateInput)({
   _tag: "landofile-document-set",
-  documents: [document("app:.lando.yml", "/app/.lando.yml", NAME_ONLY)],
+  documents: [document("app:.lando.yml", ".lando.yml", NAME_ONLY)],
   mode: "full",
   selectedSourceIds: ["app:.lando.yml"],
   currentLowerV4Fragments: [],
@@ -101,7 +101,7 @@ describe("ConfigTranslator contract — bundled lando3", () => {
 
     const broken = Schema.decodeUnknownSync(ConfigTranslateInput)({
       _tag: "landofile-document-set",
-      documents: [document("app:.lando.yml", "/app/.lando.yml", "name: a\n\tbad: 1\n")],
+      documents: [document("app:.lando.yml", ".lando.yml", "name: a\n\tbad: 1\n")],
       mode: "full",
       selectedSourceIds: ["app:.lando.yml"],
       currentLowerV4Fragments: [],

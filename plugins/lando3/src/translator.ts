@@ -43,7 +43,7 @@ import {
   lando3SourceLayerOrder,
   lando3TargetLayer,
 } from "./contract.ts";
-import { detectLando3, sourceLayerForDocument } from "./detect.ts";
+import { detectLando3, isAppRootLando3Layer, sourceLayerForDocument } from "./detect.ts";
 import { mergeLegacySources, mergedToPlain, occurrencesAt, toMergedValue } from "./legacy-merge.ts";
 import { decodeLando3Landofile } from "./model.ts";
 import { slugifyAppName } from "./naming.ts";
@@ -96,10 +96,12 @@ const parseSource =
       }).pipe(
         Effect.mapError((cause) =>
           translateError(
-            // A parse failure quotes the offending source text, and a Lando 3
-            // Landofile carries credentials, so the detail is redacted before it
-            // can reach a renderer event or a transcript.
-            ports.redactor.redactString(`Failed to read the Lando 3 layer ${file}: ${cause.message}`),
+            // Parser messages quote the offending source text. The secrets
+            // profile cannot see an arbitrary credential, so the message stays
+            // file and line only.
+            ports.redactor.redactString(
+              `Failed to read the Lando 3 layer ${file}${cause.line === undefined ? "" : ` at line ${cause.line}`}.`,
+            ),
             `Repair ${file} and run the conversion again.`,
           ),
         ),
@@ -190,6 +192,20 @@ const buildOutputs = (
   }));
 };
 
+const configuredBasenames = (value: MergedLegacyValue | undefined): ReadonlyArray<string> => {
+  if (value === undefined) return [];
+  switch (value.kind) {
+    case "scalar":
+      return typeof value.value === "string" && value.value.length > 0 ? [value.value] : [];
+    case "sequence":
+      return value.items.flatMap((item) => configuredBasenames(item.value));
+    case "tagged":
+      return configuredBasenames(value.value);
+    case "mapping":
+      return [];
+  }
+};
+
 const deferredDiagnostics = (
   merged: MergedLegacyValue | undefined,
   fallback: ConfigTranslateSourceId,
@@ -199,13 +215,17 @@ const deferredDiagnostics = (
     .map((key) => {
       const occurrence = lastOccurrence(occurrencesAt(merged, [key]));
       const custom = (CUSTOM_BASENAME_KEYS as ReadonlyArray<string>).includes(key);
+      const names = custom
+        ? configuredBasenames(merged?.kind === "mapping" ? merged.entries.get(key) : undefined)
+        : [];
+      const listed = names.length > 0 ? `: ${names.join(", ")}` : "";
       return {
         kind: custom ? ("needs-review" as const) : ("unsupported" as const),
         sourceId: occurrence?.sourceId ?? fallback,
         keyPath: [key],
         span: spanOf(occurrence),
         message: custom
-          ? `${formatPath([key])} names custom Lando 3 Landofile basenames.`
+          ? `${formatPath([key])} names custom Lando 3 Landofile basenames${listed}.`
           : `${formatPath([key])} has no Lando 4 target yet.`,
         remediation: custom
           ? "Rename the files to the standard Lando 4 basenames before converting; custom Landofile names are not honored."
@@ -254,14 +274,15 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           );
         }
 
-        const sources = yield* Effect.forEach(input.documents, parseSource(ports));
+        const layers = input.documents.filter(isAppRootLando3Layer);
+        const sources = yield* Effect.forEach(layers, parseSource(ports));
         const merged = mergeLegacySources(sources);
         const decoded = decodeLando3Landofile(mergedToPlain(merged));
 
         const writable = new Set<LandofileLayer>(input.writableLayerIds);
         const outputs = buildOutputs(sources, writable);
 
-        const fallback = input.documents[0]?.sourceId;
+        const fallback = layers[0]?.sourceId;
         if (fallback === undefined) {
           return { outputs: [], diagnostics: [], deletions: [] };
         }
