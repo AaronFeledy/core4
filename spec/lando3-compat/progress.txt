@@ -274,3 +274,14 @@ Verification: gate:pr green; 202 spot-check tests across the plugin model, merge
   - `slugify(..., {lower: true, strict: true})` is not NFKD. `|` becomes `or`, and `ß` becomes `ss`.
 - Guide-Coverage-Skip: US-620B does not change a published command or guide; the conversion guide is owned by US-621D.
 ---
+
+## 2026-09-22 05:06 - US-620B Drift Audit
+- Trigger: 2 cycles, 4520 changed lines, 3 commits
+- Contract drift: core treated `.lando.recipe.yaml` as the recipe layer, and the document-set test expected that fold. Only `.lando.recipe.yml` is a Lando 3 layer.
+- Ceremony: unused path and translator re-exports.
+- Package boundary: the DAG allowlist was the shared plugin runtime set, which permits container-runtime and other packages this frontend must not depend on.
+- Deferred work: unfinished sections stay `unsupported`, which blocks a partial write; `dropped` would not. No doctor check and no recipe lowering were absorbed.
+- Fixed: `.yaml` is no longer a recipe layer, the dead re-exports are gone, and the package may depend only on the SDK and paths.
+- Split/excise decisions: none.
+- Verification: typecheck pass, lint pass, spot checks 131 pass, package-dag pass
+---

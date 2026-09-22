@@ -24,7 +24,6 @@ import type {
   ConfigTranslateDiagnostic,
   ConfigTranslateDocument,
   ConfigTranslateInput,
-  ConfigTranslateMatch,
   ConfigTranslateOutput,
   ConfigTranslateResult,
   ConfigTranslateSourceId,
@@ -36,7 +35,6 @@ import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import {
   LANDO3_TRANSLATOR_ID,
   type Lando3Source,
-  type Lando3SourceLayer,
   type Lando3TranslatorPorts,
   type LegacyOccurrence,
   type MergedLegacyValue,
@@ -298,5 +296,3 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
 };
 
 export const lando3ConfigTranslator: ConfigTranslatorShape = makeLando3ConfigTranslator(defaultLando3Ports());
-
-export type { ConfigTranslateMatch, Lando3SourceLayer };

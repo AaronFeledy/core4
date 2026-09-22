@@ -65,7 +65,7 @@ describe("translate document set", () => {
       "canonical",
       "dist",
       "dist",
-      "dist",
+      "canonical",
     ]);
   });
 

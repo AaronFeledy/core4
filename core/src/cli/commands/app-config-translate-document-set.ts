@@ -19,7 +19,7 @@ export type TranslateSourceLayer = LandofileLayer | "recipe";
 
 export const sourceLayerForSourcePath = (path: PortablePath | string): TranslateSourceLayer => {
   const filename = basename(path);
-  if (filename === ".lando.recipe.yml" || filename === ".lando.recipe.yaml") return "recipe";
+  if (filename === ".lando.recipe.yml") return "recipe";
   return (
     longestBasenamesFirst.find(
       (position) => filename === `${position.basename}.yml` || filename === `${position.basename}.yaml`,

@@ -151,7 +151,11 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: PLUGIN_RUNTIME_TARGETS,
     devDependencies: PLUGIN_TEST_TARGETS,
   },
-  "@lando/lando3": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/lando3": {
+    // Decode-only frontend. Workspace dependencies stop at the SDK and paths.
+    dependencies: ["@lando/sdk", "@lando/paths"],
+    devDependencies: [],
+  },
   "@lando/lando4": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/proxy-traefik": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/renderer-lando": {

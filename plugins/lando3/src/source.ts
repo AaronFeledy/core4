@@ -16,14 +16,12 @@
 import type { LegacyNode, LegacySourceSpan } from "@lando/sdk/landofile";
 import type { Lando3Path } from "./contract.ts";
 
-export type { Lando3Path } from "./contract.ts";
-
 /** YAML's merge key. Its entry contributes the target's fields, not a key. */
 const MERGE_KEY = "<<";
 
 const SEPARATOR = "\u0000";
 
-export const pathKey = (path: Lando3Path): string => path.join(SEPARATOR);
+const pathKey = (path: Lando3Path): string => path.join(SEPARATOR);
 
 /** Renders a path the way a reader would type it: `services.web.build[0]`. */
 export const formatPath = (path: Lando3Path): string =>
