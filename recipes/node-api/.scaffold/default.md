@@ -4,11 +4,12 @@
 
 ```sh
 lando init --recipe node-api --name=my-node-api --yes
+cd my-node-api
 lando start
 lando info
 ```
 
-`--yes` uses Node lts, Express, and Postgres. Pass `--answer` to change those.
+The named init creates `my-node-api/`. Change into it before app commands. `--yes` uses Node lts, Express, and Postgres. Pass `--answer` to change those.
 
 ```sh
 lando init --recipe node-api --name=my-node-api --yes \
@@ -36,10 +37,12 @@ lando node --version
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling and Postgres hosts, see [Run the Node API recipe](/guides/recipes/node-api-workflow/).
+
 ## 1. scaffold
 
 ```bash
-lando init --recipe node-api --name=my-node-api-hono --yes
+lando init --recipe node-api --name=my-node-api --yes
 ```
 
 ## 2. start
@@ -52,18 +55,6 @@ lando start
 
 ```bash
 lando info
-```
-
-## 4. init
-
-```bash
-lando init --recipe node-api --name=my-node-api-hono --yes --answer=node=22 --answer=framework=hono --answer=database=none
-```
-
-## 5. inspect
-
-```bash
-lando app:config --format=json
 ```
 
 ## Cleanup
