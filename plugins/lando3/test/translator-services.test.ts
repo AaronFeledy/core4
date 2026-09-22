@@ -340,3 +340,26 @@ test("writes MySQL authentication into 99-lando.cnf ahead of authored build step
     { kind: "rewritten", keyPath: ["services", "database", "build"] },
   ]);
 });
+
+test("rewrites app-relative webroots as container paths across a service and its companion", async () => {
+  // Given / When
+  const result = await translate(
+    "services:\n  appserver:\n    type: php:8.3\n    via: nginx\n    webroot: web\n  legacy:\n    type: apache\n    webroot: ./public/\n",
+  );
+  // Then
+  expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+    {
+      services: {
+        appserver: { type: "php:8.3", via: "fpm", webroot: "/app/web" },
+        "appserver-nginx": { type: "nginx", backend: "appserver", webroot: "/app/web" },
+        legacy: { type: "apache", webroot: "/app/public" },
+      },
+    },
+  ]);
+  expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
+    { kind: "generated", keyPath: ["services", "appserver", "via"] },
+    { kind: "rewritten", keyPath: ["services", "appserver", "via"] },
+    { kind: "rewritten", keyPath: ["services", "appserver", "webroot"] },
+    { kind: "rewritten", keyPath: ["services", "legacy", "webroot"] },
+  ]);
+});

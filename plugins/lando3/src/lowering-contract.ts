@@ -37,6 +37,18 @@ export const asStringArray = (value: unknown): ReadonlyArray<string> | undefined
   return undefined;
 };
 
+/**
+ * Lando 3 webroots are app-root relative, while every Lando 4 service schema
+ * takes an absolute container path. The app is mounted at `/app`, so an
+ * authored relative webroot is that path with the mount target in front.
+ */
+export const containerWebroot = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  if (value.startsWith("/")) return value;
+  const relative = value.replace(/^(?:\.\/+)+/u, "").replace(/\/+$/u, "");
+  return relative === "" || relative === "." ? "/app" : `/app/${relative}`;
+};
+
 const CONCATENATED_WIRE_KEYS: ReadonlySet<string> = new Set(["mounts", "artifact", "app"]);
 
 const mergeWire = (left: V4Wire, right: V4Wire): V4Wire =>

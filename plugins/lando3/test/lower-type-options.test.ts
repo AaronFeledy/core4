@@ -169,14 +169,14 @@ describe("lowerTypeOptions", () => {
       name: "nginx webroot",
       id: "nginx",
       service: { webroot: "public" },
-      patch: { webroot: "public" },
+      patch: { webroot: "/app/public" },
       diagnostics: [],
     },
     {
       name: "Apache options",
       id: "apache",
       service: { webroot: ".", allowOverride: false },
-      patch: { webroot: ".", allowOverride: false },
+      patch: { webroot: "/app", allowOverride: false },
       diagnostics: [],
     },
   ];

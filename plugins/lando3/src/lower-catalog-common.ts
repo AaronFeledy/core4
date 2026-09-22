@@ -6,6 +6,7 @@ import {
   type ServiceLoweringContext,
   type V4Wire,
   asStringArray,
+  containerWebroot,
   isPlainObject,
 } from "./lowering-contract.ts";
 import {
@@ -177,8 +178,15 @@ export const lowerCatalogCommon = (
     patch.environment = Object.fromEntries(environment);
   }
 
-  for (const key of ["command", "creds", "webroot", "user"] as const) {
+  for (const key of ["command", "creds", "user"] as const) {
     if (service[key] !== undefined) patch[key] = service[key];
+  }
+  if (service.webroot !== undefined) {
+    const webroot = containerWebroot(service.webroot);
+    patch.webroot = webroot ?? service.webroot;
+    if (webroot !== undefined && webroot !== service.webroot) {
+      rewrite(["webroot"], `Rewrote the app-relative webroot as the container path ${webroot}.`);
+    }
   }
   const port = numericPort(service.port);
   if (port !== undefined) patch.port = port;

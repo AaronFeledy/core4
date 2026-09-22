@@ -1,6 +1,7 @@
 # Lando 3 compatibility progress
 
 ## Codebase Patterns
+- Lowering proofs must round-trip through the product, not just the schema: `app:config:translate --write` followed by `app:config:lint` on the result. A fragment that decodes can still be a Landofile the service schemas reject (an app-relative `webroot` did exactly that), and neither schema-decode unit tests nor the translate preview catches it.
 - The installed Lando 4 executable is `lando4`/`lando4.exe`; Lando 3 keeps `lando`. Published release ASSET names stay in the `lando-<platform>` family — asset naming never selects the installed executable name.
 - Ownership of an installed binary is proven by the v4 install record (`<userDataRoot>/install/record.json`, `installRecordFile` on `@lando/paths`), not by path location. A destination is replaceable only when the record decodes at version 1 AND its recorded path, sha256, and size all match the file on disk; symlinks and directories are always refused. There is no adoption path and no force flag.
 - `@lando/engine/install/record` is the single authority for that rule. Anything that cannot import Effect (installer shell scripts, CLI cold-path modules) must re-implement the same four conditions and pin the agreement with a test that compares verdicts against `installRecordOwnsDestination`.
@@ -527,4 +528,32 @@ Existing emitter tests that locked key REJECTION were converted into round-trip 
 - Scope: quoted Landofile keys stay; they are what lets Composer and Node package rows round-trip. Varnish multi-backend rejection matches the later story's closed disposition and was left in place.
 - Fixed: restored the gamed residual proofs and the API-4 exclude stamp; no story split.
 - Verification: typecheck, lint, and lando3 lowering/translator spot checks passed.
+---
+## 2026-09-22 13:50 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-09-22 13:50 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-09-22 13:50 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-09-22 13:50 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+
+## 2026-09-22 - US-621C1 (finished)
+
+Verified the residual rows the previous Review handed back, then closed the last defect that kept converted apps from validating.
+
+The four handed-back rows are live on the real command: PHP `config.php`/`vhosts`/`pool`/`server` become read-only binds at the owning image's documented paths (apache-served PHP lands its vhost and server files under `/etc/apache2`, nginx-served PHP moves them onto the generated companion at `/etc/nginx`); standalone nginx and apache mount `server` and `vhosts` separately instead of collapsing into one `config.server` slot; MySQL/MariaDB `authentication` emits a root artifact step that writes `/etc/mysql/conf.d/99-lando.cnf` ahead of authored build steps; and API-4 services with a default, string, or object app mount all keep top-level `excludes`, while `appMount: false` still opts out.
+
+The remaining defect was webroot. Lando 3 webroots are app-root relative and every Lando 4 service schema requires an absolute container path, but lowering passed the authored value through untouched, so the single most common field (`webroot: web`) produced a Landofile that `app:config:translate --write` happily wrote and `app:config:lint` then rejected with "PHP webroot must be an absolute container path". Service, catalog-option, and PHP-companion webroots now normalize through one shared helper: a relative path becomes that path under the `/app` mount with a `rewritten` diagnostic at its source span, an already-absolute path is untouched and silent. The recipe surface is deliberately unchanged - a prior review closed that row with "snapshot webroot patterns stay on the decomposer: a relative path fails there rather than being rewritten", so `config.webroot` still fails loudly in the decomposer rather than being rewritten here.
+
+Verification: gate:pr green (typecheck, lint, codegen drift, thirteen boundary rules, guide-drift against origin/main); 631 tests pass across the lando3 plugin and the core translate suites. End-to-end CLI runs converted layered apps covering every handed-back row plus Solr cores, MailHog sender/maxMessages, Redis, Node globals, Composer packages, ordered build phases, SSL, portforward, unknown-image Compose fallback, and compose includes; the include gate was exercised with missing, symlinked, and escaping targets (retained in the preview, `--write` refused), and the happy path was written and then re-read with `app:config:lint` (`valid: true`) and `app:config` (resolved).
+
+- **Learnings for future iterations:**
+  - A translator that emits a document its own product rejects is invisible to schema-decode unit tests. Lowering changes need the round trip: translate, `--write`, then `app:config:lint` on the result. Decode-only proofs passed the whole time this branch emitted an invalid webroot.
+  - Diagnostics are ordered by source span, not by lowerer call order, so an integration expectation must follow the authored line order rather than the order the lowerers run.
+  - An `unsupported` diagnostic raised during lowering blocks the entire preview, while core's post-encode include validation does not - a missing include target still appears in the preview and only blocks `--write`. Expect an empty preview whenever a fixture mixes in any service-level rejection.
 ---

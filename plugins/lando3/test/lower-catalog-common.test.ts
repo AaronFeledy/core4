@@ -231,7 +231,25 @@ describe("lowerCatalogCommon", () => {
     {
       name: "direct common fields",
       service: { type: "node", command: ["npm", "start"], port: "3001", webroot: "public", user: "node" },
-      patch: { type: "node", command: ["npm", "start"], port: 3001, webroot: "public", user: "node" },
+      patch: { type: "node", command: ["npm", "start"], port: 3001, webroot: "/app/public", user: "node" },
+      kinds: ["rewritten"],
+    },
+    {
+      name: "app-relative webroot with a leading current directory",
+      service: { type: "php:8.3", webroot: "./web/" },
+      patch: { type: "php:8.3", webroot: "/app/web" },
+      kinds: ["rewritten"],
+    },
+    {
+      name: "app-root webroot",
+      service: { type: "php:8.3", webroot: "." },
+      patch: { type: "php:8.3", webroot: "/app" },
+      kinds: ["rewritten"],
+    },
+    {
+      name: "container-absolute webroot",
+      service: { type: "php:8.3", webroot: "/app/web" },
+      patch: { type: "php:8.3", webroot: "/app/web" },
       kinds: [],
     },
     {
