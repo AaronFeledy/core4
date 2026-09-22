@@ -80,15 +80,15 @@ export const resolveSelfUpdateOptions = (
   if (input === false || input === undefined) return undefined;
   return {
     installRecordFile: input.installRecordFile ?? makeLandoPaths({}).installRecordFile,
-    platform: input?.platform ?? process.platform,
-    arch: input?.arch ?? process.arch,
+    platform: input.platform ?? process.platform,
+    arch: input.arch ?? process.arch,
     // Engine owns no process-entry facts (engine-closure): the CLI shell supplies
     // the invocation argv; absent that, re-exec falls back to the bare executable.
     argv: input.argv ?? [],
-    env: input?.env ?? process.env,
-    execve: input?.execve ?? defaultExecve,
-    rename: input?.rename ?? rename,
-    replaceWindows: input?.replaceWindows ?? defaultWindowsReplacement,
+    env: input.env ?? process.env,
+    execve: input.execve ?? defaultExecve,
+    rename: input.rename ?? rename,
+    replaceWindows: input.replaceWindows ?? defaultWindowsReplacement,
   };
 };
 
