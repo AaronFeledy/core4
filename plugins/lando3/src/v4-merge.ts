@@ -25,7 +25,7 @@ export const identityKeyFor = (
 ): (typeof ARRAY_IDENTITY_KEYS)[number] | undefined =>
   ARRAY_IDENTITY_KEYS.find((key) => Object.hasOwn(item, key));
 
-export type RouteFilterIdentity =
+type RouteFilterIdentity =
   | { readonly kind: "name"; readonly value: unknown }
   | { readonly kind: "type"; readonly value: unknown };
 

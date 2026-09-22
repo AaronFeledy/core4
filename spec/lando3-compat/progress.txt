@@ -346,3 +346,30 @@ Verification: typecheck, lint, all eight boundary rules, codegen drift, and guid
 - **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. The app still served on port 8000. Same class as US-620B.
 - **Learnings for future iterations:** Each Landofile layer is schema-decoded before merge, so a recipe delta that only carries a changed option is not a valid layer. `dependsOn` is a string list in the authoring fragment and `{service}` objects after decode; identity merge cannot drop an entry that a lower layer still names.
 ---
+
+## 2026-09-22 09:57 - Babysit
+- PR: #1046 https://github.com/AaronFeledy/core4/pull/1046
+- CI outcome: fail (platform-readiness-linux-x64, platform-readiness-linux-arm64 — pinned Ubuntu snapshot 20260902T000000Z cannot resolve libsqlite3-dev 3.45.1-1ubuntu2.8; unrelated to this story)
+- Review feedback: fixed (renamed banned hosting-provider token, added lando3-ports to the bundled cache fixture, reconciled bundled descriptor assertions with the host-composed lando3 entry, and fixed a real layer-order defect where established and legacy layers merged in conversion-state order instead of Landofile precedence, with a regression test)
+- Drift check: fixes pushed (restored full factory/loader proof in the bundled descriptor test that an earlier triage round had loosened)
+- Merge: deferred (failing platform-readiness checks plus 10 still-pending checks at budget exhaustion)
+---
+## 2026-09-22 09:56 - Babysit
+- [looper] Babysit blocked: CI still red: platform-readiness linux-x64/arm64 fail on unrelated pinned Ubuntu snapshot (libsqlite3-dev 3.45.1-1ubuntu2.8 unresolvable from snapshot 20260902T000000Z); 10 checks still pending at budget exhaustion
+---
+## 2026-09-22 09:57 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-22 09:57 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+
+## 2026-09-22 10:08 - US-621A Drift Audit
+- Trigger: 2 Build/Review cycles, 3226 changed lines, 12 commits
+- Weakened proofs: a non-boolean option was diagnosed as a string, and one-decompose-per-view plus empty secrets were only proven on the helper. The real wordpress regeneration and single-layer refusal proofs still hold.
+- Ceremony: unused type exports had no importers. The lowering modules stay split; they own real logic, not forwarding.
+- Deferred work: WordPress keys absent from the published option map stay dropped, and Drupal 7-9 stay rejected. The local merge fork stays because the plugin cannot import the landofile package.
+- Fixed: boolean, string, and enum option failures now say what they are, the translate path checks one decompose per option view and empty secrets, and unused types are no longer exported.
+- Split/excise decisions: none.
+- Verification: typecheck pass, lint pass, spot checks pass
+---

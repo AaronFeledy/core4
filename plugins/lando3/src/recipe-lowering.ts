@@ -21,12 +21,12 @@ import { occurrencesAt } from "./legacy-merge.ts";
 import { BUNDLED_RECIPE_OPTION_MAPS, classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
 import { isPlainRecord, mergeLandofiles, v4LayerRank } from "./v4-merge.ts";
 
-export interface LoweredPrefix {
+interface LoweredPrefix {
   readonly targetLayer: LandofileLayer;
   readonly sourceIds: ReadonlyArray<ConfigTranslateSourceId>;
   readonly fragment: Readonly<Record<string, unknown>>;
 }
-export interface LoweredRecipes {
+interface LoweredRecipes {
   readonly prefixes: ReadonlyArray<LoweredPrefix>;
   readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
   readonly decomposeCalls: number;
@@ -161,10 +161,13 @@ export const lowerRecipeViews = (
         );
       for (const invalid of mapped.invalid) {
         const diagnostic = invalidOptionValue({
-          ...invalid,
           recipeId,
+          legacyKey: invalid.legacyKey,
+          option: invalid.option,
           occurrence: invalid.occurrences.at(-1) ?? occurrence,
-          allowed: invalid.spec.kind === "enum" ? invalid.spec.values : undefined,
+          ...(invalid.spec.kind === "enum"
+            ? { kind: "enum" as const, allowed: invalid.spec.values }
+            : { kind: invalid.spec.kind }),
         });
         return yield* Effect.fail(
           recipeFailure(view, {

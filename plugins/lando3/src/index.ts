@@ -29,7 +29,7 @@ export const PLUGIN_NAME = "@lando/lando3" as const;
 export { LANDO3_TRANSLATOR_ID };
 export type { Lando3TranslatorPorts };
 
-export type Lando3PortsProvider =
+type Lando3PortsProvider =
   | Lando3TranslatorPorts
   | (() => Lando3TranslatorPorts | Promise<Lando3TranslatorPorts>);
 

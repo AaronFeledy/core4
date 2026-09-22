@@ -23,21 +23,38 @@ export const droppedConfigKey = (args: {
   remediation: "Set the equivalent value by hand in the generated Landofile after conversion.",
 });
 
-export const invalidOptionValue = (args: {
+type InvalidOptionShape = {
   readonly recipeId: string;
   readonly legacyKey: string;
   readonly option: string;
-  readonly allowed: ReadonlyArray<string> | undefined;
-  readonly occurrence: LegacyOccurrence;
-}): ConfigTranslateDiagnostic => ({
+} & (
+  | { readonly kind: "enum"; readonly allowed: ReadonlyArray<string> }
+  | { readonly kind: "boolean" | "string" }
+);
+
+const invalidOptionMessage = (args: InvalidOptionShape): string => {
+  const path = formatPath(["config", args.legacyKey]);
+  const subject = `the Lando 4 ${args.recipeId} recipe option ${args.option}`;
+  switch (args.kind) {
+    case "enum":
+      return `${path} is not a supported value for ${subject}. Allowed values: ${args.allowed.join(", ")}.`;
+    case "boolean":
+      return `${path} must be true or false for ${subject}.`;
+    case "string":
+      return `${path} must be a plain string for ${subject}.`;
+    default:
+      return args satisfies never;
+  }
+};
+
+export const invalidOptionValue = (
+  args: InvalidOptionShape & { readonly occurrence: LegacyOccurrence },
+): ConfigTranslateDiagnostic => ({
   kind: "unsupported",
   sourceId: args.occurrence.sourceId,
   keyPath: ["config", args.legacyKey],
   span: spanOf(args.occurrence),
-  message:
-    args.allowed === undefined
-      ? `${formatPath(["config", args.legacyKey])} must be a plain string for the Lando 4 ${args.recipeId} recipe option ${args.option}.`
-      : `${formatPath(["config", args.legacyKey])} is not a supported value for the Lando 4 ${args.recipeId} recipe option ${args.option}. Allowed values: ${args.allowed.join(", ")}.`,
+  message: invalidOptionMessage(args),
   remediation: `Choose a supported value for ${args.option}, or run the app with Lando 3.`,
 });
 

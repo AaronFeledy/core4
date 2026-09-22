@@ -44,6 +44,8 @@ test("removes redis across layers while preserving appserver and final equivalen
   expect(relocations[0]?.message).toContain(".lando.dist.yml");
   expect(relocations[0]?.message).toContain(".lando.local.yml");
   expect(relocations[0]?.message).toContain("dist prefix");
+  expect(fake.calls).toHaveLength(2);
+  expect(fake.calls.map(({ secrets }) => secrets)).toEqual([{}, {}]);
   const final = fake.results.at(-1);
   expect(mergeLandofiles(result.outputs.map(({ fragment }) => asRecord(fragment)))).toEqual({
     recipe: final?.provenance,
@@ -182,6 +184,23 @@ test("rejects a tagged config file instead of lowering defaults", async () => {
   if (result._tag === "Left") {
     expect(result.left.message).toBe("config is a tagged file reference and was not read.");
     expect(result.left.remediation).toContain("Inline config");
+  }
+});
+
+test("rejects a non-boolean recipe option instead of describing it as a string", async () => {
+  const { translator } = setup();
+  const result = await Effect.runPromise(
+    Effect.either(
+      translator.translate(
+        documentSet([document(".lando.yml", 'recipe: wordpress\nconfig: {redis: "yes"}\n')]),
+      ),
+    ),
+  );
+  expect(result._tag).toBe("Left");
+  if (result._tag === "Left") {
+    expect(result.left.message).toBe(
+      "config.redis must be true or false for the Lando 4 wordpress recipe option redis.",
+    );
   }
 });
 

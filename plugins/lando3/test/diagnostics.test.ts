@@ -48,6 +48,7 @@ describe("recipe diagnostics", () => {
       recipeId: "drupal",
       legacyKey: "php",
       option: "phpVersion",
+      kind: "enum",
       allowed: ["8.4", "8.3"],
       occurrence,
     });
@@ -67,13 +68,26 @@ describe("recipe diagnostics", () => {
       recipeId: "drupal",
       legacyKey: "webroot",
       option: "webroot",
-      allowed: undefined,
+      kind: "string",
       occurrence,
     });
     expect(result.message).toBe(
       "config.webroot must be a plain string for the Lando 4 drupal recipe option webroot.",
     );
     expect(result.remediation).toBe("Choose a supported value for webroot, or run the app with Lando 3.");
+  });
+
+  test("reports a boolean option without calling it a string", () => {
+    const result = invalidOptionValue({
+      recipeId: "wordpress",
+      legacyKey: "redis",
+      option: "redis",
+      kind: "boolean",
+      occurrence,
+    });
+    expect(result.message).toBe(
+      "config.redis must be true or false for the Lando 4 wordpress recipe option redis.",
+    );
   });
 
   test("reports an unsupported hosting-platform recipe", () => {
@@ -151,7 +165,8 @@ describe("recipe diagnostics", () => {
         recipeId: "drupal",
         legacyKey: "php",
         option: "php",
-        allowed: [],
+        kind: "enum",
+        allowed: ["8.3"],
         occurrence: unlocated,
       }),
       unsupportedRecipe({ legacyId: "legacy", reason: "unknown", occurrence: unlocated }),

@@ -1,12 +1,12 @@
 import type { LegacyOccurrence, MergedLegacyValue } from "./contract.ts";
 import { occurrencesAt } from "./legacy-merge.ts";
 
-export type RecipeOptionSpec =
+type RecipeOptionSpec =
   | { readonly kind: "enum"; readonly values: ReadonlyArray<string> }
   | { readonly kind: "boolean" }
   | { readonly kind: "string" };
 
-export interface RecipeOptionMap {
+interface RecipeOptionMap {
   readonly recipeId: string;
   readonly options: Readonly<Record<string, RecipeOptionSpec>>;
   readonly defaults: Readonly<Record<string, string | boolean>>;
@@ -135,7 +135,7 @@ export const LEGACY_RECIPE_ALIASES: ReadonlyMap<
   ["drupal11", { recipeId: "drupal", pinned: { drupal: "11" } }],
 ]);
 
-export type RecipeClassification =
+type RecipeClassification =
   | {
       readonly _tag: "supported";
       readonly recipeId: string;
@@ -181,11 +181,11 @@ export const classifyRecipe = (recipe: MergedLegacyValue | undefined): RecipeCla
     : { _tag: "supported", recipeId, legacyId, pinned: alias?.pinned ?? {}, map };
 };
 
-export interface MappedConfigEntry {
+interface MappedConfigEntry {
   readonly legacyKey: string;
   readonly occurrences: ReadonlyArray<LegacyOccurrence>;
 }
-export interface MappedOptions {
+interface MappedOptions {
   readonly options: Readonly<Record<string, string | boolean>>;
   readonly dropped: ReadonlyArray<MappedConfigEntry>;
   readonly invalid: ReadonlyArray<

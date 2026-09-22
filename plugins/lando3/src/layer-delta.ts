@@ -8,7 +8,7 @@ import {
   routeFilterMatches,
 } from "./v4-merge.ts";
 
-export type UnitSegment =
+type UnitSegment =
   | { readonly kind: "key"; readonly key: string }
   | { readonly kind: "item"; readonly key: string; readonly identityKey: string; readonly identity: string };
 export interface DesiredPrefix {
@@ -17,14 +17,14 @@ export interface DesiredPrefix {
   /** Complete config that must be in force after this layer merges. */
   readonly desired: Readonly<Record<string, unknown>>;
 }
-export interface Relocation {
+interface Relocation {
   readonly unitPath: ReadonlyArray<UnitSegment>;
   readonly hoistedTo: LandofileLayer;
   readonly omittedFrom: ReadonlyArray<LandofileLayer>;
   readonly sourceIds: ReadonlyArray<ConfigTranslateSourceId>;
   readonly changedPrefixes: ReadonlyArray<LandofileLayer>;
 }
-export interface LayerDeltaResult {
+interface LayerDeltaResult {
   readonly emitted: ReadonlyArray<{
     readonly layer: LandofileLayer;
     readonly fragment: Readonly<Record<string, unknown>>;
