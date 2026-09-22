@@ -1,6 +1,8 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { CATALOG, type CatalogEntry, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
+import { withoutHostIpVariable } from "./host-reachability.ts";
+import { lowerScannerAndHome } from "./lower-runtime-intent.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
@@ -177,7 +179,12 @@ export const lowerCatalogCommon = (
         }
       }
     }
-    patch.environment = Object.fromEntries(environment);
+    patch.environment = withoutHostIpVariable(
+      Object.fromEntries(environment),
+      ctx,
+      ["environment"],
+      diagnostics,
+    );
   }
 
   for (const key of ["command", "creds", "user"] as const) {
@@ -259,9 +266,12 @@ export const lowerCatalogCommon = (
   }
   if (Object.hasOwn(service, "moreHttpPorts"))
     diagnostics.push(droppedMoreHttpPorts({ ctx, relative: ["moreHttpPorts"] }));
-  for (const key of ["scanner", "home", "mem", "plugins"] as const) {
+  for (const key of ["mem", "plugins"] as const) {
     if (Object.hasOwn(service, key)) diagnostics.push(deferredServiceKey({ ctx, relative: [key], key }));
   }
+  const runtime = lowerScannerAndHome(service, ctx);
+  Object.assign(patch, runtime.patch);
+  diagnostics.push(...runtime.diagnostics);
   return {
     patch,
     diagnostics,

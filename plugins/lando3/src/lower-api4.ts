@@ -1,6 +1,8 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import type { Lando3Path } from "./contract.ts";
+import { withoutHostIpVariable } from "./host-reachability.ts";
+import { lowerScannerAndHome } from "./lower-runtime-intent.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
@@ -9,7 +11,6 @@ import {
   isPlainObject,
 } from "./lowering-contract.ts";
 import {
-  deferredServiceKey,
   droppedMoreHttpPorts,
   droppedServiceKey,
   rewrittenServiceKey,
@@ -136,7 +137,14 @@ export const lowerApi4Service = (
     patch.workingDirectory = service.working_dir;
     rewrite(["working_dir"]);
   }
-  if (service.environment !== undefined) patch.environment = stringMap(service.environment);
+  if (service.environment !== undefined) {
+    patch.environment = withoutHostIpVariable(
+      stringMap(service.environment),
+      ctx,
+      ["environment"],
+      diagnostics,
+    );
+  }
   const appKey = service["app-mount"] !== undefined ? "app-mount" : "appMount";
   const app = service[appKey];
   if (app === false || app === "disabled" || app === "off") patch.appMount = false;
@@ -244,8 +252,8 @@ export const lowerApi4Service = (
   if (service.moreHttpPorts !== undefined) {
     diagnostics.push(droppedMoreHttpPorts({ ctx, relative: ["moreHttpPorts"] }));
   }
-  for (const key of ["scanner", "home"] as const) {
-    if (service[key] !== undefined) diagnostics.push(deferredServiceKey({ ctx, relative: [key], key }));
-  }
+  const runtime = lowerScannerAndHome(service, ctx);
+  Object.assign(patch, runtime.patch);
+  diagnostics.push(...runtime.diagnostics);
   return { patch, diagnostics, ...(blocked ? { blocked: true as const } : {}) };
 };

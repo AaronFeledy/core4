@@ -10,6 +10,8 @@ import { lowerApi4Service } from "./lower-api4.ts";
 import { lowerCatalogCommon } from "./lower-catalog-common.ts";
 import { lowerEvents } from "./lower-events.ts";
 import { lowerPhpOptions } from "./lower-php.ts";
+import { lowerProxy } from "./lower-proxy.ts";
+import { withHomeIntent } from "./lower-runtime-intent.ts";
 import { lowerTooling } from "./lower-tooling.ts";
 import { lowerTopLevel } from "./lower-top-level.ts";
 import { lowerTypeOptions } from "./lower-type-options.ts";
@@ -174,6 +176,7 @@ export const lowerServiceViews = (
       diagnostics,
     );
     const tooling = lowerTooling(doc.tooling, report);
+    const proxy = lowerProxy(doc.proxy, report);
     const events = lowerEvents(
       doc.events,
       {
@@ -206,7 +209,7 @@ export const lowerServiceViews = (
         );
         continue;
       }
-      const lowered = lowerService(service, ctx);
+      const lowered = withHomeIntent(lowerService(service, ctx), service, ctx);
       diagnostics.push(...lowered.diagnostics);
       if (lowered.blocked === true) continue;
       let patch = lowered.patch;
@@ -248,6 +251,7 @@ export const lowerServiceViews = (
         ...(services.size === 0 ? {} : { services: Object.fromEntries(services) }),
         ...(Object.keys(tooling.tooling).length === 0 ? {} : { tooling: tooling.tooling }),
         ...(Object.keys(events).length === 0 ? {} : { events }),
+        ...proxy.fragment,
         ...topLevel,
       },
     });

@@ -112,7 +112,26 @@ export const relocationDiagnostic = (args: {
   remediation: `Review ${args.unitLabel} in the ${args.hoistedTo} layer; the earlier layers no longer define it on their own.`,
 });
 
-/** Layer order, then source span, then key path. Stable. */
+const compareKeyPaths = (
+  left: ConfigTranslateDiagnostic["keyPath"],
+  right: ConfigTranslateDiagnostic["keyPath"],
+): number => {
+  for (let index = 0; index < Math.min(left.length, right.length); index++) {
+    const a = left[index];
+    const b = right[index];
+    if (a === b) continue;
+    if (typeof a === "number" && typeof b === "number") return a - b;
+    if (typeof a !== typeof b) return typeof a === "number" ? -1 : 1;
+    return String(a) < String(b) ? -1 : 1;
+  }
+  return left.length - right.length;
+};
+
+/**
+ * Layer order, then source span, then key path segment by segment. Stable.
+ * An unlocated diagnostic sorts as line 0, ahead of located ones, because core
+ * rejects a result in any other order.
+ */
 export const orderDiagnostics = (
   diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>,
   rankOf: (sourceId: ConfigTranslateSourceId) => number,
@@ -122,19 +141,13 @@ export const orderDiagnostics = (
     .sort((left, right) => {
       const byRank = left.rank - right.rank;
       if (byRank !== 0) return byRank;
-      const leftSpan = left.diagnostic.span;
-      const rightSpan = right.diagnostic.span;
-      if (leftSpan === undefined && rightSpan !== undefined) return 1;
-      if (leftSpan !== undefined && rightSpan === undefined) return -1;
-      if (leftSpan !== undefined && rightSpan !== undefined) {
-        const byLine = leftSpan.start.line - rightSpan.start.line;
-        if (byLine !== 0) return byLine;
-        const byColumn = leftSpan.start.column - rightSpan.start.column;
-        if (byColumn !== 0) return byColumn;
-      }
-      const leftPath = left.diagnostic.keyPath.join(".");
-      const rightPath = right.diagnostic.keyPath.join(".");
-      return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : left.index - right.index;
+      const leftStart = left.diagnostic.span?.start;
+      const rightStart = right.diagnostic.span?.start;
+      const byLine = (leftStart?.line ?? 0) - (rightStart?.line ?? 0);
+      if (byLine !== 0) return byLine;
+      const byColumn = (leftStart?.column ?? 0) - (rightStart?.column ?? 0);
+      if (byColumn !== 0) return byColumn;
+      return compareKeyPaths(left.diagnostic.keyPath, right.diagnostic.keyPath) || left.index - right.index;
     })
     .map(({ diagnostic }) => diagnostic);
 

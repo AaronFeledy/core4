@@ -61,8 +61,6 @@ export const generatedService = (args: ServiceDiagnosticInput): ConfigTranslateD
  * to do instead.
  */
 const DEFERRED_KEYS = {
-  scanner: { target: "service scanner", story: "US-617B" },
-  home: { target: "default home storage", story: "US-617A" },
   mem: { target: "catalog memory setting", story: "US-621C8" },
   plugins: { target: "catalog plugin installation", story: "US-621C8" },
   xdebug: { target: "typed xdebug settings", story: "US-621C8" },

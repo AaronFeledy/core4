@@ -200,17 +200,21 @@ describe("API-4 service lowering", () => {
     ]);
     expect(result.diagnostics).toHaveLength(3);
   });
-  test("drops scanner naming its pending story even when false", () => {
+  test("keeps scanner false as the typed scanner switch", () => {
     const result = lowerApi4Service({ scanner: false }, ctx);
-    expect(paths(result, "dropped")).toEqual([path("scanner")]);
-    expect(result.blocked).toBeUndefined();
-    expect(result.diagnostics[0]?.remediation).toContain("US-617B");
+    expect(result.patch).toEqual({ type: "lando", scanner: false });
+    expect(result.diagnostics).toEqual([]);
   });
-  test("drops home and moreHttpPorts without blocking", () => {
+  test("drops home true and moreHttpPorts without blocking", () => {
     const result = lowerApi4Service({ home: true, moreHttpPorts: ["8888"] }, ctx);
     expect(paths(result, "dropped")).toEqual([path("moreHttpPorts"), path("home")]);
     expect(result.blocked).toBeUndefined();
-    expect(result.diagnostics[1]?.remediation).toContain("US-617A");
+    expect(result.diagnostics[1]?.message).toContain("Lando 4 default");
+  });
+  test("removes an authored LANDO_HOST_IP so capability decides it", () => {
+    const result = lowerApi4Service({ environment: { LANDO_HOST_IP: "10.0.2.2", KEEP: "1" } }, ctx);
+    expect(result.patch).toEqual({ type: "lando", environment: { KEEP: "1" } });
+    expect(paths(result, "rewritten")).toEqual([path("environment", "LANDO_HOST_IP")]);
   });
   test("preserves ordinary fields and ignores fields owned by other lowerers", () => {
     const result = lowerApi4Service(

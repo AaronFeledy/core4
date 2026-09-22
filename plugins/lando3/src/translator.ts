@@ -80,6 +80,7 @@ const LOWERED_KEYS = new Set<string>([
   "keys",
   "tooling",
   "events",
+  "proxy",
 ]);
 
 export const defaultLando3Ports = (): Lando3TranslatorPorts => ({

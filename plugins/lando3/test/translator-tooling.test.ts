@@ -299,6 +299,7 @@ describe("events", () => {
       "post-restart": [{ cmd: "drush cr", service: "appserver" }],
     });
     expect(summary(result)).toEqual([
+      "generated services.web",
       "generated events.pre-start.0",
       "rewritten events.pre-start.1.node",
       "rewritten events.post-db-import",

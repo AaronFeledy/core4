@@ -40,7 +40,7 @@ const context = (located: LegacyOccurrence | undefined): ServiceLoweringContext 
   topLevel: { excludes: [], includes: [] },
 });
 const ctx = context(occurrence);
-const diagnostic = deferredServiceKey({ ctx, relative: ["scanner"], key: "scanner" });
+const diagnostic = deferredServiceKey({ ctx, relative: ["mem"], key: "mem" });
 
 describe("lowering patches", () => {
   test("deep merges objects and replaces arrays when later contributions overlap", () => {
@@ -186,7 +186,7 @@ const factories: ReadonlyArray<
           }),
       ] as const,
   ),
-  ["deferred", "dropped", (ctx) => deferredServiceKey({ ctx, relative: ["scanner"], key: "scanner" })],
+  ["deferred", "dropped", (ctx) => deferredServiceKey({ ctx, relative: ["mem"], key: "mem" })],
   [
     "version",
     "unsupported",

@@ -93,6 +93,35 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   static: { versions: [], appMountByDefault: true },
 };
 
+/**
+ * Users whose home each Lando 4 catalog image declares, and the user it runs
+ * as by default. Lando 4 persists a home only for these users; `compose` and
+ * `lando` are absent because their image always comes from the Landofile.
+ */
+export interface ServiceHomes {
+  readonly defaultUser: string;
+  readonly users: ReadonlyArray<string>;
+}
+
+const ROOT_HOME: ServiceHomes = { defaultUser: "root", users: ["root"] };
+const ownHome = (user: string): ServiceHomes => ({ defaultUser: user, users: [user, "root"] });
+
+export const SERVICE_HOMES: Readonly<Record<string, ServiceHomes>> = {
+  ...Object.fromEntries(
+    Object.keys(CATALOG)
+      .filter((id) => id !== "compose" && id !== "lando")
+      .map((id) => [id, ROOT_HOME]),
+  ),
+  node: { defaultUser: "root", users: ["root", "node"] },
+  apache: { defaultUser: "root", users: ["root", "www-data"] },
+  solr: ownHome("solr"),
+  elasticsearch: ownHome("elasticsearch"),
+  opensearch: ownHome("opensearch"),
+  mssql: ownHome("mssql"),
+  memcached: ownHome("memcache"),
+  mailhog: ownHome("mailhog"),
+};
+
 export const LEGACY_TYPE_ALIASES: Readonly<Record<string, string>> = { mongo: "mongodb" };
 
 export type CatalogResolution =
