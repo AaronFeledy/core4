@@ -638,3 +638,9 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
   - Service-site tags (build hooks, entrypoint, healthcheck, mounts, security.ca) keep the fail-closed disposition from US-621C1. Wiring `lowerText` into those sites belongs with the residual owner (US-621C8), and `security.ca` is the one place `import()` should survive.
   - **Out-of-scope finding:** `lando <task> --help` on any task whose service comes from a flag fails with `ToolingInputError: Unknown flag help` (seen on the converted `whoami` task; the service-from-flag path is native v4 code).
 ---
+
+## 2026-09-22 - US-621C3 Review
+- Reviewed the tooling, tag, and event lowering against the source story. No code changes: commands, flags, args, load/import decoders, lifecycle and tooling brackets, and the pre/body/post plus fatal-post runtime proofs match the criteria.
+- Review notes (deferred/rejected): Bugbot reported no bugs. `!import` stays `load()` because Lando 4 `import()` is only valid on certificate authorities; emitting `{{ import() }}` would make a command string the product rejects, and `security.ca` belongs to US-621C8. Nested `lando` calls stay shell steps, so they are not rewritten into `task:`/`command:` re-entry; cycle and depth detection is the v4 event runtime's own contract, and changing shell text into in-process calls would change failure behavior. `passthrough` is not a separate diagnostic because Lando 4 already rejects undeclared flags, which the options rewrite reports. Conversion guides stay with US-621D; guide-drift against origin/main passed with no guide edit.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; translator-tooling and tooling-events runtime spot checks passed (20).
+---
