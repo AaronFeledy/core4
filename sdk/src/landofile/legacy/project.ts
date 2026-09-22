@@ -95,7 +95,10 @@ export const projectLegacyTree = (input: {
             tags.push({ tag: entry.key.tag, span: entry.key.span, path: entryPath });
           }
           const resolved = resolve(entry.value, stack, entryPath);
-          if (key !== "<<") {
+          // A merge key is only the plain untagged token. Quoted or tagged
+          // "<<" is an ordinary key whose text happens to look like one.
+          const merge = key === "<<" && entry.key.style === "plain" && entry.key.tag === undefined;
+          if (!merge) {
             explicit.set(key, resolved);
             continue;
           }

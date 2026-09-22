@@ -9,6 +9,7 @@ import {
   isLegacyTagged,
 } from "../../src/landofile/legacy/contract.ts";
 import { expansionBudget, resolveLegacyLimits } from "../../src/landofile/legacy/limits.ts";
+import { parseLegacyTree } from "../../src/landofile/legacy/parse.ts";
 import { projectLegacyTree } from "../../src/landofile/legacy/project.ts";
 import { resolvePlainScalar } from "../../src/landofile/legacy/scalars.ts";
 
@@ -201,6 +202,23 @@ describe("legacy merges and tags", () => {
     // Then: exact equality also excludes the merge key.
     expect(value).toEqual({ shared: "explicit", a: 1 });
   });
+  test.each(["double", "single"] as const)("keeps a %s-quoted << key instead of merging", (style) => {
+    // Given: only a plain untagged << is a merge key.
+    const root: LegacyNode = {
+      kind: "mapping",
+      entries: [
+        { key: scalar("<<", style), value: alias("a"), span },
+        { key: scalar("y"), value: scalar("2"), span },
+      ],
+      tag: undefined,
+      anchor: undefined,
+      span,
+    };
+    // When
+    const { value } = project(tree(root, anchors));
+    // Then
+    expect(value).toEqual({ "<<": { shared: "first", a: 1 }, y: 2 });
+  });
   test("earlier merged sources win", () => {
     // Given / When
     const { value } = project(tree(mapping([["<<", seq([alias("a"), alias("b")])]]), anchors));
@@ -279,5 +297,25 @@ describe("legacy merges and tags", () => {
     // Then
     expect(result.tags).toEqual([{ tag: "!load", span, path: [0] }]);
     expect(result.value).toMatchObject([{ tag: "!load" }, { tag: "!load" }]);
+  });
+  test("parses a quoted << as a key and still merges a plain one", () => {
+    // Given
+    const content = ["x: &a", "  k: 1", "y:", '  "<<": *a', "  n: 2", "z:", "  <<: *a", "  n: 3", ""].join(
+      "\n",
+    );
+    const parsed = parseLegacyTree(content, "merge.yml", resolveLegacyLimits());
+    // When
+    const { value } = projectLegacyTree({
+      tree: parsed,
+      file: "merge.yml",
+      limits: resolveLegacyLimits(),
+      sourceLength: content.length,
+    });
+    // Then
+    expect(value).toEqual({
+      x: { k: 1 },
+      y: { "<<": { k: 1 }, n: 2 },
+      z: { k: 1, n: 3 },
+    });
   });
 });

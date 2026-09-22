@@ -197,3 +197,11 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
   - The tag census you get from grep is not the tag census the parser sees: comment lines mentioning `!load` inflate it. Pin counts from the parser's own output, then confirm the sites by hand.
   - `sdk/test/**` is not published (`files` is `src` and `dist`), which is what makes a GPL-licensed fixture corpus safe to vendor there; record that in the notice rather than re-deriving it later.
 ---
+
+## 2026-09-22 - US-620A Review
+- A quoted or tagged `<<` was merged as if it were the plain merge token, which dropped the key and injected the target's fields. Only a plain untagged `<<` merges now; a quoted `<<` stays a key.
+- Review notes (deferred/rejected): Bugbot reported no bugs on the build commit. js-yaml's integer resolver accepts `007` as 7, but the pinned YAML 1.2 core contract keeps leading-zero decimals as strings, so that was not changed. The corpus pin's null commit is honest: the kitchen-sink is an authored inventory with no single upstream file, and the fixture bytes match the spec reference checksums. Translator, detection, and doctor surfaces belong to later stories.
+- Verification: gate:pr passed; legacy parser spot checks passed.
+- **Learnings for future iterations:**
+  - A YAML merge key is the plain untagged scalar `<<` only. Comparing key text alone treats `"<<"` as a merge and drops the key.
+---
