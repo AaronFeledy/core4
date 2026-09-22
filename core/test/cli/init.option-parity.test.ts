@@ -83,7 +83,7 @@ describe("recipe option parity", () => {
       expect(yaml).toContain('type: "{{ recipe.database }}"');
 
       const landofile = await discoverFrom(result.directory);
-      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
       expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
@@ -115,7 +115,7 @@ describe("recipe option parity", () => {
       });
       expect(yaml).toBe(expected.text);
       const landofile = await discoverFrom(join(dir, "option-parity-lamp"));
-      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
       expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
@@ -314,7 +314,7 @@ describe("recipe option parity", () => {
       expect(yaml).not.toMatch(/^ {2}worker:$/m);
 
       const landofile = await discoverFrom(result.directory);
-      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
       expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app/public");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
@@ -347,7 +347,7 @@ describe("recipe option parity", () => {
       expect(yaml).toMatch(/^ {2}composer:$/m);
 
       const landofile = await discoverFrom(result.directory);
-      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
       expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app/public");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
@@ -448,7 +448,7 @@ describe("recipe option parity", () => {
       expect(settings).toContain('"password":"lando"');
       expect(yaml).not.toContain("via:");
 
-      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
       expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");
@@ -477,7 +477,7 @@ describe("recipe option parity", () => {
       expect(yaml).not.toContain("via:");
 
       const landofile = await discoverFrom(result.directory);
-      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
+      expect(landofile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.4");
       expect(landofile.services?.[ServiceName.make("appserver")]?.composer).toBe("2");
       expect(String(landofile.services?.[ServiceName.make("appserver")]?.webroot ?? "")).toBe("/app");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("mariadb:11.4");

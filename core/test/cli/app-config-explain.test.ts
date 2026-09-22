@@ -353,7 +353,7 @@ describe("appConfigExplain", () => {
       expect(result.form).toBe("declarative");
       expect(blockedReason(result)).toBe("programmatic-landofile");
       expect(result.recipe?.producer).toEqual(lampProducer);
-      expect(optionNamed(result, "php").value).toBe("8.3");
+      expect(optionNamed(result, "php").value).toBe("8.4");
       expect(optionNamed(result, "php").takenOver).toEqual([]);
     });
   });
