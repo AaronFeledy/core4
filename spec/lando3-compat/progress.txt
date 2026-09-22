@@ -163,3 +163,13 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - Review notes (deferred/rejected): an executable `lando4 update` guide scenario stays out of scope — update fetches the signed manifest before it looks at disk and guide scenarios isolate only a temp cwd, so the scenario would be a live self-update; the coexistence guide covers update in prose and uninstall as an executable dry-run. Windows replacement rollback-on-refresh-failure matches the existing swap rollback and was not a new hole.
 - Verification: gate:pr green; lint:guides, check:guide-coverage, check:public-transcripts, and guide-drift against origin/main passed; uninstall, lifecycle, and CLI uninstall spot checks passed (92).
 ---
+## 2026-09-21 23:14 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-21 - US-619B3 Verify
+- Compiled `core/dist/lando` setup, a lamp app, and live PHP 8.3.33 over HTTP. Uninstall removed only the recorded `lando4`, purge stripped the v4 shell block and left the v3 block, and a hostile `lando` plus v3 state stayed byte-identical through update, keep-data, purge, foreign-basename, digest-mismatch, and a second run.
+- Purge after setup left the data root whenever `bin` existed and there was no install record, so mkcert blocked cleanup forever. Purge now removes that root when bin holds only managed setup tools, and still keeps a foreign `lando` in bin.
+- **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. The app still served `http://us619b3.lndo.site:8080`. Same warning as US-619B1; not caused by this diff.
+- **Learnings for future iterations:** `https://update.lando.dev/v4/dev.json` is unreachable, so a compiled `lando update` fails with `UpdateNetworkError` before the ownership gate. No replacement is not evidence the gate is missing. Keep-data leaves the shellenv block manual; only purge strips it.
+---

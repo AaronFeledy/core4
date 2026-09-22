@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -693,6 +693,29 @@ const writeUninstallReport = async (
   return reportPath;
 };
 
+// Setup writes these into bin without an install record. They are Lando's own
+// tools, so a purge with no record may still remove the data root. Any other
+// name (a foreign `lando`, a backup, a user file) keeps the root.
+const MANAGED_BIN_ENTRY_NAMES = new Set([
+  "mutagen",
+  "mutagen.exe",
+  "mutagen-agents",
+  "mkcert",
+  "mkcert.exe",
+  "mkcert.sha256",
+  ".mkcert.version",
+]);
+
+const binDirHoldsPreservedEntry = (binDir: string): boolean => {
+  let names: string[];
+  try {
+    names = readdirSync(binDir);
+  } catch {
+    return false;
+  }
+  return names.some((name) => !MANAGED_BIN_ENTRY_NAMES.has(name));
+};
+
 const executeUninstall = async (
   options: UninstallOptions,
   mode: UninstallMode,
@@ -846,15 +869,18 @@ const executeUninstall = async (
       }
       if (
         step.id === "user-data-root" &&
-        (existsSync(recordFile) || existsSync(makeLandoPaths({ userDataRoot }).binDir))
+        (existsSync(recordFile) || binDirHoldsPreservedEntry(makeLandoPaths({ userDataRoot }).binDir))
       ) {
-        // Defer while the record or bin directory is still present. An unrecorded
-        // binary in bin must survive, and the record has to be retired first.
+        // Defer while the record is still present, or while bin holds a file this
+        // uninstall did not install. Managed setup tools do not count: with no
+        // record there is nothing later to retire, so purge removes the root now.
         executed.push({
           ...step,
           status: "manual",
           outcome: "manual",
-          detail: "Preserve the data root until the install record is removed.",
+          detail: existsSync(recordFile)
+            ? "Preserve the data root until the install record is removed."
+            : "Preserve the data root because its bin directory holds a file Lando did not install.",
         });
         continue;
       }

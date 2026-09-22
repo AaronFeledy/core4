@@ -915,6 +915,38 @@ describe("uninstall shellenv profile strip", () => {
     }
   });
 
+  test("purge removes a setup data root that has no record and only managed bin tools", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-purge-setup-");
+    const bin = join(roots.userDataRoot, "bin");
+    const legacy = join(roots.root, "lando");
+    try {
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(bin, "mkcert"), "mkcert", { mode: 0o755 });
+      writeFileSync(join(bin, "mkcert.sha256"), "abc");
+      writeFileSync(join(bin, ".mkcert.version"), "1.4.4");
+      writeFileSync(legacy, "legacy executable", { mode: 0o755 });
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            listDiscoveredApps: async () => [],
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(existsSync(roots.userDataRoot)).toBe(false);
+      expect(readFileSync(legacy, "utf8")).toBe("legacy executable");
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        outcome: "completed",
+      });
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
   test("keep-data retires the install record while leaving the shellenv block", async () => {
     const roots = makeUninstallRoots("lando-uninstall-shellenv-record-");
     const binary = join(roots.root, "external", "lando4");
