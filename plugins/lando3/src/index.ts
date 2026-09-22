@@ -13,9 +13,8 @@
  *
  * `makeLando3Plugin` exists so a host can inject real ports — recipe
  * decomposition comes from the host, never from a second recipe expansion
- * inside this package. The bundled `plugin` is the same factory with the
- * package's own defaults, which keeps the generated composition table a plain
- * value import.
+ * inside this package. The standalone `plugin` uses the package defaults;
+ * hosts can pass a lazy ports provider at their composition root.
  */
 import { Schema } from "effect";
 
@@ -29,6 +28,10 @@ export const PLUGIN_NAME = "@lando/lando3" as const;
 
 export { LANDO3_TRANSLATOR_ID };
 export type { Lando3TranslatorPorts };
+
+type Lando3PortsProvider =
+  | Lando3TranslatorPorts
+  | (() => Lando3TranslatorPorts | Promise<Lando3TranslatorPorts>);
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
@@ -57,7 +60,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
  * inside the dynamic import, which keeps redaction and decomposer wiring off
  * the module graph that the composition table imports eagerly.
  */
-export const makeLando3Plugin = (ports?: Lando3TranslatorPorts): LandoPluginModule =>
+export const makeLando3Plugin = (ports?: Lando3PortsProvider): LandoPluginModule =>
   definePlugin({
     name: manifest.name,
     manifest,
@@ -65,14 +68,16 @@ export const makeLando3Plugin = (ports?: Lando3TranslatorPorts): LandoPluginModu
   });
 
 export const makeConfigTranslators = (
-  ports?: Lando3TranslatorPorts,
+  ports?: Lando3PortsProvider,
 ): ReadonlyMap<string, ConfigTranslatorLoader> =>
   new Map([
     [
       LANDO3_TRANSLATOR_ID,
       () =>
-        import("./translator.ts").then(({ makeLando3ConfigTranslator, defaultLando3Ports }) =>
-          makeLando3ConfigTranslator(ports ?? defaultLando3Ports()),
+        import("./translator.ts").then(async ({ makeLando3ConfigTranslator, defaultLando3Ports }) =>
+          makeLando3ConfigTranslator(
+            typeof ports === "function" ? await ports() : (ports ?? defaultLando3Ports()),
+          ),
         ),
     ],
   ]);
