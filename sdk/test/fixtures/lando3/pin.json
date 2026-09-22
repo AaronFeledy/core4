@@ -1,0 +1,26 @@
+{
+  "kind": "authored-reference-corpus",
+  "license": "GPL-3.0-only",
+  "notice": "NOTICE.md",
+  "derivedFrom": {
+    "project": "Lando 3",
+    "repository": "https://github.com/lando/core",
+    "releaseLine": "3.26.x",
+    "license": "GPL-3.0-only",
+    "commit": null,
+    "note": "Authored by surveying roughly 1047 real Lando 3 Landofiles and Lando 3 core source, so no single upstream file or commit is its origin."
+  },
+  "surveyed": "2026-09-05",
+  "files": [
+    {
+      "vendored": "kitchen-sink.lando.yml",
+      "bytes": 41587,
+      "sha256": "55a39a76f8f993662c6865e0690e8727553c5862f31c21078b4823a1a8a87245"
+    },
+    {
+      "vendored": "kitchen-sink.config.yml",
+      "bytes": 19649,
+      "sha256": "fd9cf1321cb4b6165a55850c81e17622ba204d64704c9b81a3d735b6a6d7e8b2"
+    }
+  ]
+}
