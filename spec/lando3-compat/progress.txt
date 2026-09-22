@@ -80,3 +80,30 @@ Verification: gate:pr green (typecheck, lint, codegen:check, boundaries, guide-d
 - Compiled `core/dist/lando` plus `scripts/install.sh` against a seeded v3 `lando`: installed executable is `lando4`, record is mode 0600, repeat install succeeds, foreign/symlink destinations refuse, `lando4 shellenv` is record-backed and idempotent, digest-mismatch fails closed with `InstallRecordError`, v3 bytes/mode/`~/.lando` never change. Setup + lamp init/start served HTTP 200 PHP 8.3.33; exec, info, logs, uninstall --yes/--purge leave v3 and the compiled binary (user-owned) intact.
 - **Out-of-scope finding:** `./core/dist/lando setup --yes --no-interactive` and `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. App still came up on `http://us619b1.lndo.site:8080`. Host had no `rootlessport` on 38080/38443; likely WSL mirrored 80/443. Not caused by this identity/shellenv diff.
 ---
+
+## 2026-09-21 19:45 - Babysit
+- PR: #1042 https://github.com/AaronFeledy/core4/pull/1042
+- CI outcome: fail (guide-scenarios-windows-x64, guide-scenarios-windows-arm64)
+- Review feedback: fixed (Windows path-separator in the from-lando-3 shellenv guide assertion, plus a typed install-record failure path for setup's shell-profile step)
+- Drift check: clean
+- Merge: deferred (CI re-run on the fixed HEAD had not reached the Windows guide-scenarios jobs before the step budget ran out)
+---
+
+## 2026-09-21 - US-619B3 (partial, handed back)
+
+Made the v4 install record the sole authority for destructive binary operations, and landed most of the story green.
+
+`engine/src/install/owned-executable.ts` is the new single seat for "which executable may Lando 4 replace or remove". It resolves the target from the install record, layers one explicit operation policy on top of the untouched four-condition ownership predicate (the target must carry Lando 4's own executable name: exact `lando4`, case-insensitive `lando4.exe` on Windows), and owns every refusal string. It also owns `refreshInstallRecord`, because an update that does not re-point the record at the bytes it just installed makes the next update and every later uninstall refuse the binary Lando installed.
+
+`lando update` no longer derives its target from `process.execPath`; the execPath heuristic and the caller-supplied `executablePath` target override are both gone. The Windows deferred helper re-verifies ownership itself before it moves anything, because the parent process is gone by then. `lando uninstall` drops the bin-directory containment heuristic entirely: it targets only the recorded executable, adds an `install-record` step that removes the record last, and extends shell-entry stripping to the profiles the record lists.
+
+Verification: `bun run typecheck` green workspace-wide; 162 tests pass across the ownership contract, update manifest/self-update, Windows replacement, deferred receipt, and both uninstall suites. Manual CLI before/after on `uninstall --dry-run` against isolated roots: previously it reported `installed binary: user-owned` pointing at `/home/aaron/.bun/bin/bun` and told the user to delete their Bun install; it now reports `installed binary: skipped` naming the record path with the ownership remediation.
+
+Not done, and why this is handed back: the step budget ran out before the full gate set could run. `bun run lint`, `bun run check:boundaries`, `bun run check:telemetry-inventory`, and `bun run gate:pr` were never executed against the final tree, and the coexistence guide gained update and uninstall prose (guide lint green) but still has no executable `<Scenario>` covering either command, so `dev:guides`, `check:guide-coverage`, `check:public-transcripts`, and `check:guide-drift` are unrun. The end-to-end install/shellenv/update/uninstall hostile-v3 sequence test named by the fourth acceptance criterion does not exist yet.
+
+- **Learnings for future iterations:**
+  - Making the install record authoritative is incomplete without refreshing it after a successful swap. Skip that and update is a one-shot: the second run fails its own digest check against the binary Lando itself installed.
+  - The basename rule must stay OUTSIDE `installRecordOwnsDestination`. The four conditions prove "this file matches this record"; they cannot prove "this record names a v4 executable". A prior review already rejected adding a fifth condition.
+  - Splitting one story across parallel agents works when each owns disjoint files, but type-level changes leak: making a field required on a shared input and deleting a field from a shared options type broke two test files neither agent owned (`engine/test/update/signed-replacement.proof.ts` and the Windows literals in `update-manifest.test.ts`). Budget a reconciliation pass for shared types.
+  - `process.execPath` was never a safe ownership signal. Running from source made it Bun's own binary, so uninstall was politely offering to delete the user's Bun install.
+---
