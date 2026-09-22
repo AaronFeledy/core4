@@ -262,3 +262,26 @@ test("dispatches API-4 services with hooks and Compose overrides", async () => {
     { kind: "rewritten", keyPath: ["services", "app", "build"] },
   ]);
 });
+
+test("stamps top-level excludes only on app-mounted services", async () => {
+  // Given / When
+  const result = await translate(
+    'excludes: [vendor, "!vendor/keep"]\nservices:\n  appserver: {type: "php:8.3"}\n  database: {type: "mysql:8.0"}\n  cache: {type: "redis:7"}\n',
+  );
+  // Then
+  expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
+    {
+      services: {
+        appserver: {
+          type: "php:8.3",
+          appMount: { target: "/app", excludes: ["vendor"], includes: ["vendor/keep"] },
+        },
+        database: { type: "mysql:8.0" },
+        cache: { type: "redis:7" },
+      },
+    },
+  ]);
+  expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
+    { kind: "rewritten", keyPath: ["excludes"] },
+  ]);
+});

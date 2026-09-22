@@ -4,14 +4,17 @@ export interface CatalogEntry {
   /** Legacy config key to authoring slot; drop means no matching slot exists. */
   readonly configKeys?: Readonly<Record<string, "server" | "dir" | "drop">>;
   readonly configDestination?: string;
+  /** The Lando 4 service type mounts the app at `/app` unless opted out. */
+  readonly appMountByDefault?: true;
 }
 
 export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   php: {
     versions: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"],
+    appMountByDefault: true,
     configKeys: { php: "drop", vhosts: "drop", pool: "drop", server: "drop" },
   },
-  node: { versions: ["lts", "22"], containerPort: 3000 },
+  node: { versions: ["lts", "22"], containerPort: 3000, appMountByDefault: true },
   mysql: {
     versions: ["8.0", "8.4", "9.7"],
     containerPort: 3306,
@@ -53,28 +56,34 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
     configDestination: "/etc/phpmyadmin/config.user.inc.php",
   },
   varnish: { versions: ["6", "7"], containerPort: 8080, configKeys: { vcl: "drop" } },
-  tomcat: { versions: ["9", "10", "11"], containerPort: 8080 },
-  python: { versions: ["3.12"] },
-  ruby: { versions: ["3.3"] },
-  go: { versions: ["1.22", "1.23"] },
-  dotnet: { versions: ["8.0", "9.0"] },
+  tomcat: { versions: ["9", "10", "11"], containerPort: 8080, appMountByDefault: true },
+  python: { versions: ["3.12"], appMountByDefault: true },
+  ruby: { versions: ["3.3"], appMountByDefault: true },
+  go: { versions: ["1.22", "1.23"], appMountByDefault: true },
+  dotnet: { versions: ["8.0", "9.0"], appMountByDefault: true },
   mssql: { versions: ["2019", "2022"], containerPort: 1433 },
   rabbitmq: { versions: ["3", "4"], containerPort: 5672 },
-  apache: { versions: [], containerPort: 80, configKeys: { server: "server", vhosts: "server" } },
+  apache: {
+    versions: [],
+    containerPort: 80,
+    configKeys: { server: "server", vhosts: "server" },
+    appMountByDefault: true,
+  },
   nginx: {
     versions: [],
+    appMountByDefault: true,
     containerPort: 80,
     configKeys: { server: "server", vhosts: "server", params: "drop" },
   },
-  compose: { versions: [] },
-  lando: { versions: [] },
+  compose: { versions: [], appMountByDefault: true },
+  lando: { versions: [], appMountByDefault: true },
   memcached: { versions: [], containerPort: 11211 },
   mailpit: { versions: [], containerPort: 1025 },
   mailhog: { versions: [], containerPort: 1025 },
   minio: { versions: [] },
   localstack: { versions: [] },
   valkey: { versions: [] },
-  static: { versions: [] },
+  static: { versions: [], appMountByDefault: true },
 };
 
 export const LEGACY_TYPE_ALIASES: Readonly<Record<string, string>> = { mongo: "mongodb" };

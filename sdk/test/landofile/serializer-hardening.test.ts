@@ -12,46 +12,68 @@ import {
 const roundTrip = (value: Record<string, unknown>): Promise<unknown> =>
   Effect.runPromise(parseLandofile({ file: ".lando.yml", content: emitLandofileYaml(value), cwd: "/tmp" }));
 
-describe("Landofile serializer hardening — key validation", () => {
-  test("rejects a key with a space", () => {
-    expect(() => emitLandofileYaml({ "web service": 1 })).toThrow(LandofileEmitError);
+describe("Landofile serializer hardening — key canonicalization", () => {
+  const keyLine = (value: Record<string, unknown>): string => emitLandofileYaml(value).trim();
+
+  test("quotes a key with a space", () => {
+    expect(keyLine({ "web service": 1 })).toBe('"web service": 1');
   });
 
-  test("rejects a key with a colon", () => {
-    expect(() => emitLandofileYaml({ "a:b": 1 })).toThrow(LandofileEmitError);
+  test("quotes a key with a colon", () => {
+    expect(keyLine({ "a:b": 1 })).toBe('"a:b": 1');
   });
 
-  test("rejects a key with a slash", () => {
-    expect(() => emitLandofileYaml({ "a/b": 1 })).toThrow(LandofileEmitError);
+  test("keeps a slash key plain, because YAML cannot re-resolve it", () => {
+    expect(keyLine({ "a/b": 1 })).toBe("a/b: 1");
   });
 
-  test("rejects a key with an @ (scoped package name)", () => {
-    expect(() => emitLandofileYaml({ "@lando/foo": 1 })).toThrow(LandofileEmitError);
+  test("quotes a leading @ key, which YAML reserves as an indicator", () => {
+    expect(keyLine({ "@lando/foo": 1 })).toBe('"@lando/foo": 1');
   });
 
-  test("rejects an empty-string key", () => {
-    expect(() => emitLandofileYaml({ "": 1 })).toThrow(LandofileEmitError);
+  test("quotes an empty-string key", () => {
+    expect(keyLine({ "": 1 })).toBe('"": 1');
   });
 
-  test("accepts conforming keys with dots, dashes, underscores, digits", () => {
-    expect(() => emitLandofileYaml({ "php-7.4_x.y": 1, DB_HOST: "x", "0": "z" })).not.toThrow();
+  test("quotes number-looking and reserved-word keys so they stay strings", () => {
+    expect(keyLine({ "0": "z" })).toBe('"0": z');
+    expect(keyLine({ on: "z" })).toBe('"on": z');
   });
 
-  test("validates nested map keys too", () => {
-    expect(() => emitLandofileYaml({ services: { "bad key": { type: "php" } } })).toThrow(LandofileEmitError);
+  test("keeps conforming keys with dots, dashes, underscores plain", () => {
+    expect(emitLandofileYaml({ "php-7.4_x.y": 1, DB_HOST: "x" })).toContain("php-7.4_x.y: 1");
   });
 
-  test("validates list-item map keys too", () => {
-    expect(() => emitLandofileYaml({ includes: [{ "bad key": "x" }] })).toThrow(LandofileEmitError);
+  test("canonicalizes nested map keys too", async () => {
+    const value = { services: { "bad key": { type: "php" } } };
+    expect(await roundTrip(value)).toEqual(value);
   });
 
-  test("the emit error message carries the offending key path", () => {
+  test("canonicalizes list-item map keys too", async () => {
+    const value = { includes: [{ "bad key": "x" }] };
+    expect(await roundTrip(value)).toEqual(value);
+  });
+
+  test('a plain << stays a merge key while a quoted "<<" stays a literal key', async () => {
+    const value = { services: { "<<": "literal" } };
+    expect(emitLandofileYaml(value)).toContain('"<<": literal');
+    expect(await roundTrip(value)).toEqual(value);
+  });
+
+  test("__proto__ round-trips as an own key instead of mutating the prototype", async () => {
+    const value = { services: { ["__proto__"]: "own" } };
+    const parsed = (await roundTrip(value)) as { readonly services: Record<string, unknown> };
+    expect(Object.hasOwn(parsed.services, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(parsed.services)).toBe(Object.prototype);
+  });
+
+  test("the emit error message carries the offending value path", () => {
     try {
-      emitLandofileYaml({ services: { web: { "bad key": 1 } } });
+      emitLandofileYaml({ services: { web: { bad: undefined } } });
       throw new Error("expected throw");
     } catch (error) {
       expect(error).toBeInstanceOf(LandofileEmitError);
-      expect((error as LandofileEmitError).message).toContain("bad key");
+      expect((error as LandofileEmitError).message).toContain("services.web.bad");
     }
   });
 });
@@ -221,5 +243,26 @@ describe("Landofile serializer hardening — list-item map keys with dots/digits
   test("a list-item map key with a leading digit and dot round-trips", async () => {
     const value = { includes: [{ "1.key": "x", other: "y" }] };
     expect(await roundTrip(value)).toEqual(value);
+  });
+});
+
+describe("Landofile serializer hardening — package-map keys", () => {
+  const packageMaps = {
+    services: {
+      appserver: { composer: { packages: { "drush/drush": "^10" } } },
+      node: { globals: { "@angular/cli": "^17.0.0", "gulp-cli": "latest" } },
+    },
+  };
+
+  test("emits Composer and scoped npm package keys", () => {
+    expect(() => emitLandofileYaml(packageMaps)).not.toThrow();
+  });
+
+  test("package-map keys survive the Landofile parser unchanged", async () => {
+    expect(await roundTrip(packageMaps)).toEqual(packageMaps);
+  });
+
+  test("emitted package maps are valid YAML for a full YAML parser", () => {
+    expect(Bun.YAML.parse(emitLandofileYaml(packageMaps))).toEqual(packageMaps);
   });
 });

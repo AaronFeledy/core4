@@ -1,6 +1,7 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic, ConfigTranslateSourceId, LandofileLayer } from "@lando/sdk/schema";
 import { lowerBuildHooks } from "./build-hooks.ts";
+import { CATALOG, resolveCatalogType } from "./catalog.ts";
 import { lowerComposeFields } from "./compose-fields.ts";
 import { dedupeDiagnostics } from "./diagnostics.ts";
 import type { LegacyPrefixView } from "./effective-views.ts";
@@ -129,6 +130,19 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
   }
 };
 
+/**
+ * Lando 3's top-level `excludes` only ever reached the app mount, so it applies
+ * to the services whose lowered Lando 4 type mounts the app. The target type is
+ * what decides that, not the authored one: a raw Compose or unknown-image
+ * service lowers to `type: compose`, which mounts the app on its own.
+ */
+const mountsAppByDefault = (loweredType: unknown): boolean => {
+  if (typeof loweredType !== "string") return false;
+  const resolution = resolveCatalogType(loweredType);
+  if (resolution._tag === "unknown-type") return false;
+  return CATALOG[resolution.id]?.appMountByDefault === true;
+};
+
 export const lowerServiceViews = (folded: ReadonlyArray<LegacyPrefixView>): LoweredServices => {
   const prefixes: LoweredServicePrefix[] = [];
   const diagnostics: ConfigTranslateDiagnostic[] = [];
@@ -171,6 +185,7 @@ export const lowerServiceViews = (folded: ReadonlyArray<LegacyPrefixView>): Lowe
       if (
         service.api !== 4 &&
         patch.appMount !== false &&
+        mountsAppByDefault(patch.type) &&
         (top.appMountExcludes.length > 0 || top.appMountIncludes.length > 0)
       ) {
         const app = isPlainObject(patch.appMount) ? patch.appMount : {};
