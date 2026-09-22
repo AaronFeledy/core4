@@ -373,3 +373,92 @@ Verification: typecheck, lint, all eight boundary rules, codegen drift, and guid
 - Split/excise decisions: none.
 - Verification: typecheck pass, lint pass, spot checks pass
 ---
+## 2026-09-22 10:08 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 10:08 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 10:08 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-22 10:46 CDT - Babysit
+- PR: #1046 https://github.com/AaronFeledy/core4/pull/1046
+- CI outcome: fail (platform-readiness-linux-x64, platform-readiness-linux-arm64)
+- Review feedback: none (no Bugbot findings; no review comments)
+- Merge: deferred (platform-readiness apt-snapshot provenance gate fails on libsqlite3-dev 3.45.1-1ubuntu2.8; pin cannot be advanced because snapshot.ubuntu.com returns 502/timeouts for every candidate stamp — external outage, unrelated to this branch, also failing on main since 2026-09-21)
+---
+## 2026-09-22 10:46 - Babysit
+- [looper] Babysit blocked: CI red: platform-readiness apt-snapshot gate fails because snapshot.ubuntu.com is returning 502/timeouts, so the pin cannot be advanced or verified
+---
+## 2026-09-22 10:46 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-22 10:46 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-22 10:46 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-22 10:46 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 10:46 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 10:46 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 11:30 - Babysit
+- PR: #1046 https://github.com/AaronFeledy/core4/pull/1046
+- Pushed local commit 17dcd1f45 that the PR was missing (Push step had left it unpushed), so the PR now matches the reviewed branch
+- CI outcome: fail (platform-readiness-linux-x64/arm64, drupal-journey-linux-x64/arm64, rails-journey-linux-x64/arm64) — all six fail in the same pinned apt-snapshot prerequisite step
+- Review feedback: none (no Bugbot inline findings, no review comments, mergeable)
+- Merge: deferred (snapshot.ubuntu.com is returning 502/503/500 for every candidate stamp, so the pin can neither be satisfied nor advanced-and-verified; triage correctly refused a speculative pin bump and the supply-chain gate was left intact. Outage is external and also fails other branches and main.)
+---
+## 2026-09-22 11:32 - Babysit
+- [looper] Babysit blocked: CI red: six Linux jobs (platform-readiness, drupal-journey, rails-journey) fail on an upstream snapshot.ubuntu.com 502/503 outage in the pinned apt-snapshot step; no in-repo fix verifiable while the service is down
+---
+## 2026-09-22 11:37 - US-621A Adjudication
+- Contradiction: none. Phase history shows no demotions for US-621A — Build, Review, Drift Audit, Verify, and Push all promoted cleanly. The adjudication trigger was Babysit stagnation (3 attempts), caused solely by an external snapshot.ubuntu.com 502/503 outage failing the pinned apt-snapshot step on six Linux jobs (platform-readiness, drupal-journey, rails-journey), also red on main since 2026-09-21. No gate demanded or excised any disputed AC/spec surface.
+- Decision: no PRD amendment and no human stop — there is no contract to resolve. Verified at 2026-09-22 11:36 CDT that snapshot.ubuntu.com has recovered (HTTP 200 on the root and on the pinned 20260902T000000Z Release file). Next Babysit should re-run the six failed jobs; if the pinned stamp still cannot resolve libsqlite3-dev 3.45.1-1ubuntu2.8, a pin advance is now verifiable through the intact supply-chain gate.
+- Follow-up story: none.
+---
+## 2026-09-22 11:34 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-22 11:34 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-22 11:34 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-22 11:34 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 11:34 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 11:34 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-22 - US-621C1 (partial, handed back)
+
+Lowered hand-authored Lando 3 services into Lando 4 authoring fragments, and landed most of the story green and committed.
+
+`@lando/lando3` gained a frozen lowering contract plus eleven modules behind it: a local catalog matrix (every shipped service type and its published versions, since that metadata is not importable from the SDK), a local copy of the Compose disposition matrix, and per-concern lowerers for build/run hooks, Compose fields, API-4 `lando`/`l337`, shared API-3 catalog fields, PHP, per-type options, and the top-level keys. A new orchestrator dispatches each service by family and feeds authored services into the SAME desired-prefix stream the recipe lowering already used, so authored and recipe-generated services merge exactly as Lando 3 merged them and the existing hoisting/relocation machinery keeps working for both without new removal code.
+
+The behaviors that matter landed: build/run phases collapse into ordered `build.artifact`/`build.app` steps with root steps first carrying an explicit `user: root`; `portforward` becomes a ports publication; an unavailable version is rejected rather than having an image manufactured for it; execution-shaping Compose fields (`tty`, `stdin_open`, `links`, `network_mode`, `container_name`, volume `consistency`) block the affected service instead of being silently dropped; API-4 image `ssh` and remote build contexts are rejected; every unsupported image and mount subfield is diagnosed individually at its own indexed path; top-level `compose:` becomes `includes: [{kind: compose}]` and `excludes:` becomes `appMount` excludes/includes. Core gained the other half of the include rule: it now checks a translated compose include target for existence, regular-file type, symlink rejection and app-root containment, never reads its contents, and reports an `unsupported` diagnostic after encode so the include still appears in the preview while the write is refused.
+
+Not done, and why this is handed back: manual CLI conversion of a real layered app found two defects. (1) Composer global packages cannot round-trip — lowering `composer: {pkg: ver}` emits `composer.packages` whose keys contain `/`, and the Landofile emitter refuses any map key outside `^[A-Za-z0-9_.-]+$`, so the whole conversion fails with `LandofileEmitError`. That blocks the Composer-packages half of the catalog row. (2) The top-level `excludes` stamp is too broad: it lands `appMount` on every API-3 service including `mysql` and `redis`, when it should only reach services that are actually app-mounted.
+
+Verification: typecheck clean workspace-wide; lint and the deprecation check clean; all thirteen boundary rules pass; 535 lando3 tests and 76 core translate/contract tests pass. Real CLI runs against a layered app produced correct Lando 4 YAML for includes, appMount, ordered build steps, `composer.version`, `via: apache`, ports, and redis password/persistence, and emitted the rewritten/needs-review diagnostics at exact source spans.
+
+- **Learnings for future iterations:**
+  - Emitting a fragment that decodes is not the same as emitting a fragment that serializes. The authoring schema accepts `composer.packages`, but the Landofile emitter's plain-key allowlist rejects `/`, so a lowerer has to be proven through the real `app:config:translate` command, not just through schema decode in a unit test.
+  - A deferred `unsupported` subfield blocks the whole encode, so one unmapped xdebug key hides the entire preview. That is the intended fail-closed behavior, but it means goldens that assert emitted YAML must avoid deferred keys or they silently assert an empty document.
+  - Freezing one contract file before fanning work out worked for a third story running nine agents in parallel: every field lowerer stayed a pure `(value, ctx) => patch` with disjoint file ownership, and the only integration defects were in test type annotations, not in the lowering logic.
+  - Cumulative prefix views mean each authored key is visible in every higher view, so service diagnostics must be deduped or a single authored field is reported once per layer.
+---
