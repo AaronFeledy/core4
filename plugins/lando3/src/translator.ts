@@ -54,7 +54,7 @@ import {
   recipeLayerOutputs,
 } from "./recipe-lowering.ts";
 import { formatPath } from "./source.ts";
-import { isPlainRecord, mergeLandofiles } from "./v4-merge.ts";
+import { isPlainRecord, mergeLandofiles, v4LayerRank } from "./v4-merge.ts";
 
 const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml"]);
 
@@ -254,20 +254,6 @@ const unknownKeyDiagnostics = (
       remediation: `Remove ${formatPath(keyPath)}, or author the Lando 4 value you intended.`,
     };
   });
-
-const V4_LAYER_ORDER: ReadonlyArray<LandofileLayer> = [
-  "base",
-  "dist",
-  "upstream",
-  "canonical",
-  "local",
-  "user",
-];
-
-const v4LayerRank = (layer: LandofileLayer): number => {
-  const index = V4_LAYER_ORDER.indexOf(layer);
-  return index === -1 ? V4_LAYER_ORDER.length : index;
-};
 
 const withoutAppName = (fragment: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> => {
   const { name: _name, ...rest } = fragment;

@@ -1,5 +1,21 @@
+import type { LandofileLayer } from "@lando/sdk/schema";
+
 /** Local port of Landofile overlay semantics; the plugin DAG excludes @lando/landofile. */
 export const ARRAY_IDENTITY_KEYS = ["name", "id", "hostname", "service"] as const;
+
+const V4_LAYER_ORDER: ReadonlyArray<LandofileLayer> = [
+  "base",
+  "dist",
+  "upstream",
+  "canonical",
+  "local",
+  "user",
+];
+
+export const v4LayerRank = (layer: LandofileLayer): number => {
+  const index = V4_LAYER_ORDER.indexOf(layer);
+  return index === -1 ? V4_LAYER_ORDER.length : index;
+};
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
