@@ -794,6 +794,72 @@ describe("uninstall shellenv profile strip", () => {
     }
   });
 
+  test("purge strips readable profiles when another recorded profile is unreadable", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-shellenv-partial-");
+    const binary = join(roots.root, "external", "lando4");
+    const record = join(roots.userDataRoot, "install", "record.json");
+    const unreadable = join(roots.root, "unreadable.rc");
+    const block = [
+      LANDO_SHELLENV_BEGIN,
+      "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+      LANDO_SHELLENV_END,
+      "",
+    ].join("\n");
+    try {
+      mkdirSync(join(roots.root, "external"), { recursive: true });
+      mkdirSync(join(roots.userDataRoot, "install"), { recursive: true });
+      writeFileSync(binary, "v4 executable", { mode: 0o755 });
+      writeFileSync(roots.shellProfilePath, block);
+      writeFileSync(unreadable, block);
+      const bytes = readFileSync(binary);
+      writeFileSync(
+        record,
+        JSON.stringify({
+          version: 1,
+          data: {
+            executable: {
+              path: binary,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: bytes.length,
+              channel: "stable",
+              platform: "linux-x64",
+              releaseVersion: "4.2.0",
+            },
+            shellProfiles: [
+              { path: roots.shellProfilePath, blockSha256: "a".repeat(64) },
+              { path: unreadable, blockSha256: "b".repeat(64) },
+            ],
+          },
+        }),
+      );
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            listDiscoveredApps: async () => [],
+            readText: (path) => {
+              if (path === unreadable) throw new Error("denied");
+              return readFileSync(path, "utf8");
+            },
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(readFileSync(roots.shellProfilePath, "utf8")).not.toContain(LANDO_SHELLENV_BEGIN);
+      expect(readFileSync(unreadable, "utf8")).toContain(LANDO_SHELLENV_BEGIN);
+      expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
+        outcome: "manual",
+      });
+      expect(existsSync(record)).toBe(true);
+      expect(existsSync(binary)).toBe(false);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
   test("purge removes the data root when the recorded binary lives in its bin directory", async () => {
     const roots = makeUninstallRoots("lando-uninstall-purge-bin-");
     const binary = join(roots.userDataRoot, "bin", "lando4");

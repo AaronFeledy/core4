@@ -787,17 +787,25 @@ const executeUninstall = async (
       continue;
     }
     if (step.id === "shell-entries") {
-      if (step.status !== "owned") {
+      // keep-data leaves every block. Purge still strips readable profiles when
+      // one sibling is unreadable; that sibling stays manual and holds the record.
+      if (step.status !== "owned" && !(mode === "purge" && step.status === "manual")) {
         executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
         continue;
       }
       try {
+        let unresolved = false;
         for (const profile of shellProfiles) {
           if (!exists(profile)) continue;
-          const { content: rewritten, stripped } = stripLandoShellenvBlock(readText(profile));
+          const content = tryReadText(profile, readText);
+          if (content === undefined) {
+            unresolved = true;
+            continue;
+          }
+          const { content: rewritten, stripped } = stripLandoShellenvBlock(content);
           if (stripped) await writeText(profile, rewritten);
         }
-        executed.push({ ...step, outcome: "completed" });
+        executed.push({ ...step, outcome: unresolved ? "manual" : "completed" });
       } catch (cause) {
         const error = cause instanceof Error ? cause.message : String(cause);
         executed.push({ ...step, outcome: "failed", error });
