@@ -130,7 +130,8 @@ describe("record-backed uninstall", () => {
             } else if (scenario === "owned" || scenario === "missing") {
               expect(existsSync(binary)).toBe(false);
               expect(existsSync(record)).toBe(false);
-              if (scenario === "owned") expect(removals).toEqual([binary, record]);
+              if (scenario === "owned")
+                expect(removals).toEqual(purge ? [binary, record, roots.userDataRoot] : [binary, record]);
               removals.length = 0;
               const repeated = await Effect.runPromise(
                 uninstall(
@@ -788,6 +789,61 @@ describe("uninstall shellenv profile strip", () => {
         status: "manual",
         outcome: "manual",
       });
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge removes the data root when the recorded binary lives in its bin directory", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-purge-bin-");
+    const binary = join(roots.userDataRoot, "bin", "lando4");
+    const record = join(roots.userDataRoot, "install", "record.json");
+    const sentinel = join(roots.userDataRoot, "bin", "lando4.bak");
+    const legacy = join(roots.root, "lando");
+    try {
+      mkdirSync(join(roots.userDataRoot, "bin"), { recursive: true });
+      mkdirSync(join(roots.userDataRoot, "install"), { recursive: true });
+      writeFileSync(binary, "v4 executable", { mode: 0o755 });
+      writeFileSync(sentinel, "previous binary");
+      writeFileSync(legacy, "legacy executable", { mode: 0o755 });
+      const bytes = readFileSync(binary);
+      writeFileSync(
+        record,
+        JSON.stringify({
+          version: 1,
+          data: {
+            executable: {
+              path: binary,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: bytes.length,
+              channel: "stable",
+              platform: "linux-x64",
+              releaseVersion: "4.2.0",
+            },
+            shellProfiles: [],
+          },
+        }),
+      );
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            listDiscoveredApps: async () => [],
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(existsSync(binary)).toBe(false);
+      expect(existsSync(record)).toBe(false);
+      expect(existsSync(roots.userDataRoot)).toBe(false);
+      expect(readFileSync(legacy, "utf8")).toBe("legacy executable");
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        outcome: "completed",
+      });
+      expect(result.steps.filter((step) => step.outcome === "completed").at(-1)?.id).toBe("install-record");
     } finally {
       rmSync(roots.root, { recursive: true, force: true });
     }

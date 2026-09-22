@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
-import { mkdtemp, rm, rmdir } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import { type Context, Effect, Either, Option, Schema } from "effect";
 
@@ -840,12 +840,13 @@ const executeUninstall = async (
         step.id === "user-data-root" &&
         (existsSync(recordFile) || existsSync(makeLandoPaths({ userDataRoot }).binDir))
       ) {
+        // Defer while the record or bin directory is still present. An unrecorded
+        // binary in bin must survive, and the record has to be retired first.
         executed.push({
           ...step,
           status: "manual",
           outcome: "manual",
-          detail:
-            "Preserve remaining files and the install record; only an empty root can be removed after record cleanup.",
+          detail: "Preserve the data root until the install record is removed.",
         });
         continue;
       }
@@ -875,18 +876,21 @@ const executeUninstall = async (
       }
 
       if (step.id === "install-record" && mode === "purge") {
-        for (const path of [dirname(recordFile), userDataRoot]) {
-          try {
-            await rmdir(path);
-          } catch (cause) {
-            if (
-              !(
-                cause instanceof Error &&
-                "code" in cause &&
-                ["ENOENT", "ENOTEMPTY", "EEXIST"].includes(String(cause.code))
-              )
-            )
-              throw cause;
+        const binaryResolved = executed.some(
+          (entry) =>
+            entry.id === "installed-binary" && (entry.outcome === "completed" || entry.outcome === "skipped"),
+        );
+        if (binaryResolved) {
+          await remove(userDataRoot);
+          const deferred = executed.findIndex((entry) => entry.id === "user-data-root");
+          const deferredStep = deferred === -1 ? undefined : executed[deferred];
+          if (deferredStep?.outcome === "manual") {
+            executed[deferred] = {
+              ...deferredStep,
+              status: "owned",
+              outcome: "completed",
+              detail: "Removed the data root after the install record.",
+            };
           }
         }
       }
