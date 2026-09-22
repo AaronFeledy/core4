@@ -567,3 +567,10 @@ Verification: gate:pr green (typecheck, lint, codegen drift, thirteen boundary r
   - `non-portable` means the encoder cannot represent the value, and `--write` refuses it. A field that is copied onto a schema-valid knob is `needs-review`, not `non-portable`.
   - `parseSourceFilePath` rejects every `..` segment because `--file` selection is lexical. Include targets are a different question: collapse, then apply the same realpath containment check.
 ---
+
+## 2026-09-22 - US-621C1 Review (handed back)
+- Kept two write-path fixes: preserved Compose knobs are needs-review so --write is not blocked, and in-app compose includes may collapse through dot segments.
+- Handed back. scanner, home, moreHttpPorts, mem, and plugins still emit unsupported through deferredServiceKey, and any unsupported diagnostic clears the encoded preview, so scanner:false blocks conversion. Section 6.3 requires a waiting or absent key to be dropped, with the remediation naming the story id. Catalog services still do not rewrite meUser to user; only the raw API-3 branch does.
+- Review notes (deferred/rejected): the QA lane's non-portable failure was stale after the needs-review fix. Security review found no high issue. A blocked service is omitted from its layer fragment, but unsupported already blanks the preview, so that merge effect stays with the diagnostic-kind fix. Conversion guides stay with US-621D.
+- Verification: gate:pr green before the include follow-up; typecheck and the include suite (15) plus compose-field suites (95) passed after the fixes.
+---
