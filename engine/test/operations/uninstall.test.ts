@@ -90,14 +90,13 @@ describe("record-backed uninstall", () => {
           if (scenario === "changed-before-remove")
             mkdirSync(join(roots.userDataRoot, "runtime"), { recursive: true });
           try {
-            // When: uninstall uses the recorded destination rather than the running executable.
+            // When: uninstall plans from the install record and has no running-executable target.
             const result = await Effect.runPromise(
               uninstall(
                 sandboxUninstallOptions(roots, {
                   yes: true,
                   dryRun,
                   purge,
-                  execPath: legacy,
                   listDiscoveredApps: async () => [],
                   teardownRuntimeService: async () => {
                     writeFileSync(binary, "v4 drifted!!!");
@@ -838,7 +837,6 @@ describe("uninstall shellenv profile strip", () => {
         uninstall({
           userDataRoot: roots.userDataRoot,
           userCacheRoot: roots.userCacheRoot,
-          execPath: roots.execPath,
           cgroupsDelegatePath: roots.cgroupsDelegatePath,
           socketProxyUnitPaths: [
             join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),
@@ -900,7 +898,6 @@ describe("uninstall shellenv profile strip", () => {
         uninstall({
           userDataRoot: roots.userDataRoot,
           userCacheRoot: roots.userCacheRoot,
-          execPath: roots.execPath,
           cgroupsDelegatePath: roots.cgroupsDelegatePath,
           socketProxyUnitPaths: [
             join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),

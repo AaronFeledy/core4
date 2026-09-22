@@ -93,7 +93,6 @@ export interface UninstallOptions {
   readonly userDataRoot?: string;
   readonly userCacheRoot?: string;
   readonly userConfRoot?: string;
-  readonly execPath?: string;
   readonly exists?: (path: string) => boolean;
   readonly remove?: (path: string) => Promise<void>;
   readonly teardownRuntimeService?: (

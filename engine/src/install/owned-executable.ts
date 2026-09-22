@@ -16,8 +16,8 @@ import { Effect, Either, Schema } from "effect";
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { type InstallRecord, decodeInstallRecord, installRecordOwnsDestination } from "./record";
 
-export const LANDO4_POSIX_EXECUTABLE_NAME = "lando4";
-export const LANDO4_WINDOWS_EXECUTABLE_NAME = "lando4.exe";
+const LANDO4_POSIX_EXECUTABLE_NAME = "lando4";
+const LANDO4_WINDOWS_EXECUTABLE_NAME = "lando4.exe";
 
 // Windows paths must split on both separators even when this runs on a POSIX
 // host, so a win32 verdict does not depend on which machine evaluates it.
@@ -30,7 +30,7 @@ export const isLando4ExecutableName = (path: string, platform: string): boolean 
     ? executableName(path, platform).toLowerCase() === LANDO4_WINDOWS_EXECUTABLE_NAME
     : executableName(path, platform) === LANDO4_POSIX_EXECUTABLE_NAME;
 
-export const INSTALL_OWNERSHIP_REMEDIATION =
+const INSTALL_OWNERSHIP_REMEDIATION =
   "Lando 4 replaces and removes only the executable recorded in its own install record. Rerun the Lando 4 installer to repair the record, or update through the package manager that installed this copy. Lando never adopts an executable it did not install.";
 
 export class InstallOwnershipError extends Schema.TaggedError<InstallOwnershipError>()(
@@ -108,7 +108,9 @@ const hashFile = (path: string): Either.Either<string, "unreadable"> => {
   }
 };
 
-const inspect = (options: ResolveOwnedExecutableOptions): Either.Either<OwnedExecutable, InstallOwnershipError> => {
+const inspect = (
+  options: ResolveOwnedExecutableOptions,
+): Either.Either<OwnedExecutable, InstallOwnershipError> => {
   const { recordFile, platform } = options;
   const record = readRecord(recordFile);
   if (Either.isLeft(record)) return Either.left(record.left);

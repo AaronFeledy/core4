@@ -168,7 +168,6 @@ describe("meta:uninstall", () => {
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
             _userConfRoot: join(root, "config"),
-            _execPath: join(root, "lando"),
             ...sandboxCliExtras(root),
             _exists: () => false,
             _listDiscoveredApps: listDiscoveredApps,
@@ -254,7 +253,6 @@ describe("meta:uninstall", () => {
           flags: { "dry-run": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _exists: (path: string) =>
             path === providerRuntime || path === userDataRoot || path === userCacheRoot,
@@ -308,7 +306,6 @@ describe("meta:uninstall", () => {
           flags: { "dry-run": true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _exists: (path: string) => path === userDataRoot || path === userCacheRoot,
         }),
@@ -336,7 +333,6 @@ describe("meta:uninstall", () => {
       const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
-        execPath: join(root, "lando"),
         ...sandboxUninstallIo(root),
         exists: (path: string) => path === runtimeDir,
       });
@@ -361,7 +357,6 @@ describe("meta:uninstall", () => {
       const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
-        execPath: join(root, "lando"),
         ...sandboxUninstallIo(root),
         exists: (path: string) => path === hostProxyRunDir,
       });
@@ -389,7 +384,6 @@ describe("meta:uninstall", () => {
           keepData: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           exists: (path: string) => path === hostProxyRunDir,
           teardownHostProxySessions: async (rootPath: string) => {
@@ -418,7 +412,6 @@ describe("meta:uninstall", () => {
       const options = {
         userDataRoot,
         userCacheRoot,
-        execPath: join(root, "lando"),
         ...sandboxUninstallIo(root),
         exists: (path: string) => path === runtimeDir,
       };
@@ -454,7 +447,6 @@ describe("meta:uninstall", () => {
           keepData: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           exists: (path: string) => path === runtimeDir && runtimeDirExists,
           teardownRuntimeService: async (rootPath: string) => {
@@ -494,7 +486,6 @@ describe("meta:uninstall", () => {
         uninstall({
           yes: true,
           keepData: true,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           exists: (path: string) => path === runtimeDir && runtimeDirExists,
           teardownRuntimeService: async (rootPath: string) => {
@@ -532,7 +523,6 @@ describe("meta:uninstall", () => {
           keepData: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           exists: () => false,
           teardownRuntimeService: async () => {
@@ -567,7 +557,6 @@ describe("meta:uninstall", () => {
       const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
-        execPath: join(root, "lando"),
         ...sandboxUninstallIo(root),
         exists: (path: string) => path === runtimeDir || path === providerRuntime,
       });
@@ -592,7 +581,6 @@ describe("meta:uninstall", () => {
           flags: {},
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _exists: () => false,
         }),
@@ -619,7 +607,6 @@ describe("meta:uninstall", () => {
           flags: { "dry-run": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: binary,
           ...sandboxCliExtras(root),
         }),
       );
@@ -642,7 +629,6 @@ describe("meta:uninstall", () => {
         flags: { "dry-run": true },
         _userDataRoot: String.raw`C:\Users\me\AppData\Local\lando`,
         _userCacheRoot: String.raw`C:\Users\me\AppData\Local\lando-cache`,
-        _execPath: String.raw`C:\Users\me\AppData\Local\lando\bin\lando.exe`,
         _cgroupsDelegatePath: String.raw`C:\Users\me\AppData\Local\lando\delegate.conf`,
         _shellProfilePath: String.raw`C:\Users\me\AppData\Local\lando\.profile`,
         _exists: () => true,
@@ -673,7 +659,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, "keep-data": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: binary,
           ...sandboxCliExtras(root),
         }),
       );
@@ -710,7 +695,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: binary,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
         }),
@@ -738,7 +722,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: binary,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
         }),
@@ -773,7 +756,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, "keep-data": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _remove: async (path: string) => {
             if (path === runtime) throw new Error("locked runtime");
@@ -815,7 +797,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _reportFallbackDir: reportFallbackDir,
           _listDiscoveredApps: async () => [], // No running apps
@@ -869,7 +850,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
           _remove: async (path: string) => {
@@ -907,7 +887,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _reportFallbackDir: reportFallbackDir,
           _listDiscoveredApps: async () => [], // No running apps
@@ -928,7 +907,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _reportFallbackDir: reportFallbackDir,
           _listDiscoveredApps: async () => [], // No running apps
@@ -973,7 +951,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: join(root, "conf"),
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
         }),
       );
@@ -1004,7 +981,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1074,7 +1050,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
         }),
@@ -1112,7 +1087,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => {
             throw new Error("docker ps query timed out after 1000ms");
@@ -1154,7 +1128,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1203,7 +1176,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => {
             throw new Error(
@@ -1247,7 +1219,6 @@ describe("meta:uninstall", () => {
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
             _userConfRoot: userConfRoot,
-            _execPath: join(root, "lando"),
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1295,7 +1266,6 @@ describe("meta:uninstall", () => {
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
             _userConfRoot: userConfRoot,
-            _execPath: join(root, "lando"),
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1341,7 +1311,6 @@ describe("meta:uninstall", () => {
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
             _userConfRoot: userConfRoot,
-            _execPath: join(root, "lando"),
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1378,7 +1347,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: userConfRoot,
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1435,7 +1403,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: join(root, "conf"),
-          _execPath: join(root, "lando"),
           ...sandboxCliExtras(root),
         }),
       );
@@ -1504,7 +1471,6 @@ describe("meta:uninstall", () => {
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _userConfRoot: join(root, "conf"),
-          _execPath: join(root, "lando"),
           _cgroupsDelegatePath: join(root, "delegate.conf"),
           _listDiscoveredApps: async () => [],
           _exists: (path: string) => (path === root || path.startsWith(`${root}/`)) && existsSync(path),
@@ -1558,7 +1524,6 @@ describe("meta:uninstall", () => {
           dryRun: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
         }),
       );
@@ -1589,7 +1554,6 @@ describe("meta:uninstall", () => {
           yes: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           listDiscoveredApps: async () => [],
         }),

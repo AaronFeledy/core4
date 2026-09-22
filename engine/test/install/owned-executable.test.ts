@@ -3,11 +3,11 @@ import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Either } from "effect";
 import { afterAll, describe, expect, test } from "bun:test";
+import { Effect, Either } from "effect";
 
 import {
-  InstallOwnershipError,
+  type InstallOwnershipError,
   isLando4ExecutableName,
   refreshInstallRecord,
   resolveOwnedExecutable,
@@ -26,8 +26,7 @@ afterAll(async () => {
   await Promise.all(roots.map((root) => Bun.$`rm -rf ${root}`.quiet().nothrow()));
 });
 
-const sha256 = (bytes: Uint8Array | string): string =>
-  createHash("sha256").update(bytes).digest("hex");
+const sha256 = (bytes: Uint8Array | string): string => createHash("sha256").update(bytes).digest("hex");
 
 interface Seed {
   readonly root: string;
@@ -123,9 +122,9 @@ describe("resolveOwnedExecutable", () => {
   test("refuses a record that is not valid version 1 JSON", async () => {
     const fixture = await seed();
     await writeFile(fixture.recordFile, "{not json");
-    expect((await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason).toBe(
-      "record-invalid",
-    );
+    expect(
+      (await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason,
+    ).toBe("record-invalid");
   });
 
   test("refuses a record whose executable entry names a foreign basename", async () => {
@@ -141,17 +140,20 @@ describe("resolveOwnedExecutable", () => {
   test("refuses when the recorded executable digest drifted", async () => {
     const fixture = await seed();
     await writeFile(fixture.executablePath, "tampered-binary-of-the-same-length!");
-    expect((await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason).toBe(
-      "digest-mismatch",
-    );
+    expect(
+      (await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason,
+    ).toBe("digest-mismatch");
   });
 
   test("refuses when the recorded size no longer matches", async () => {
     const fixture = await seed();
-    await writeFile(fixture.recordFile, (await readFile(fixture.recordFile, "utf8")).replace(/"size":\s*\d+/u, '"size": 999999'));
-    expect((await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason).toBe(
-      "size-mismatch",
+    await writeFile(
+      fixture.recordFile,
+      (await readFile(fixture.recordFile, "utf8")).replace(/"size":\s*\d+/u, '"size": 999999'),
     );
+    expect(
+      (await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason,
+    ).toBe("size-mismatch");
   });
 
   test("refuses a symlinked destination", async () => {
@@ -159,16 +161,16 @@ describe("resolveOwnedExecutable", () => {
     const real = join(fixture.root, "bin", "real-binary");
     await writeFile(real, fixture.bytes);
     await symlink(real, fixture.executablePath);
-    expect((await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason).toBe(
-      "not-regular-file",
-    );
+    expect(
+      (await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason,
+    ).toBe("not-regular-file");
   });
 
   test("refuses when the recorded executable is missing", async () => {
     const fixture = await seed({ writeExecutable: false });
-    expect((await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason).toBe(
-      "destination-unreadable",
-    );
+    expect(
+      (await refusal(resolveOwnedExecutable({ recordFile: fixture.recordFile, platform: "linux" }))).reason,
+    ).toBe("destination-unreadable");
   });
 
   test("refuses a destination that is not the recorded path", async () => {

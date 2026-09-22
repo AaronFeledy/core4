@@ -107,3 +107,19 @@ Not done, and why this is handed back: the step budget ran out before the full g
   - Splitting one story across parallel agents works when each owns disjoint files, but type-level changes leak: making a field required on a shared input and deleting a field from a shared options type broke two test files neither agent owned (`engine/test/update/signed-replacement.proof.ts` and the Windows literals in `update-manifest.test.ts`). Budget a reconciliation pass for shared types.
   - `process.execPath` was never a safe ownership signal. Running from source made it Bun's own binary, so uninstall was politely offering to delete the user's Bun install.
 ---
+## 2026-09-21 22:04 - Build
+- [looper] Build handed the story back at building: Record-backed update/Windows-helper/uninstall landed green (typecheck clean, 162 tests pass, CLI verified), but the gate set is unrun: lint, check:boundaries, check:telemetry-inventory and gate:pr were never executed against the final tree; the coexistence guide has update/uninstall prose but no executable Scenario for either command, so dev:guides, check:guide-coverage, check:public-transcripts and check:guide-drift are unrun; and the end-to-end install/shellenv/update/uninstall hostile-v3 test required by AC4 does not exist.
+---
+## 2026-09-21 22:04 - Review
+- [looper] gate skipped Review: gate: phase building is before implemented (expected phase at or past implemented)
+---
+
+## 2026-09-21 22:10 - US-619B3 Drift Audit
+- Trigger: 1 cycle, 1570 changed lines, 3 commits
+- Scar tissue: uninstall still accepted an execPath override, and the CLI still injected process.execPath, after the operation had stopped reading it.
+- Ceremony: ownership name and remediation constants were exported with no importer.
+- Contract: update and uninstall are record-gated, but the operation-specific guide is prose without an executable scenario and the hostile install/shellenv/update/uninstall sequence is still absent, so AC2 and AC4 are not proven.
+- Fixed: deleted the execPath override end to end and unexported the unused constants. Lint format on the new ownership module is now clean.
+- Split/excise decisions: none. Handed back to building for the missing guide scenario and hostile end-to-end proof.
+- Verification: typecheck pass, lint pass, spot checks pass (193, then 102 after format)
+---
