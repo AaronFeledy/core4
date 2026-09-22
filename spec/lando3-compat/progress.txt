@@ -292,3 +292,10 @@ Verification: gate:pr green; 202 spot-check tests across the plugin model, merge
 - **Out-of-scope finding:** A fresh lamp webroot with no index returns HTTP 403 from Apache (`ErrorDocument 403`, directory index forbidden) until `index.php` exists. Not caused by the translator. After adding one, curl returned `php:8.3.33`.
 - **Learnings for future iterations:** `lando logs --format=json` is a live stream of chunk frames followed by a result frame, not one JSON document. `lando start` does not accept `--yes`.
 ---
+
+## 2026-09-22 06:26 - Babysit
+- PR: #1045 https://github.com/AaronFeledy/core4/pull/1045
+- CI outcome: pass (first pass failed `provider-integration-linux-x64-runner (ubuntu-24.04)` on the unchanged MongoDB file-backed-config test — `ServiceExecError: failed to create an exec session` after a 150s readiness wait; the same test passed on the ubuntu-26.04 runner and on `main`, and the branch touches no `service-lando` code, so it was triaged as a provider-runtime flake and the failed jobs were re-run without code changes)
+- Review feedback: none (no review comments, no `cursor[bot]` findings)
+- Merge: merged (squash)
+---
