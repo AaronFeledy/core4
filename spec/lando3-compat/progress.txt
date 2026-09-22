@@ -180,3 +180,20 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - Review feedback: none — the lone failure was the MongoDB file-backed-config live test timing out on a `ServiceExecError: failed to create an exec session`; it passed on the ubuntu-26.04 runner and every other platform, and the same failure predates this branch (run 35674834744), so it was triaged as a runner flake, rerun with no code change, and passed in 17m38s.
 - Merge: merged (squash)
 ---
+
+## 2026-09-22 - US-620A
+
+Added the source-preserving `LEGACY` parse mode for the Lando 3 dialect and pinned the corpus it is proven against.
+
+`@lando/sdk/landofile` now exports `parseLegacyLandofile`, a second parser that lives entirely under `sdk/src/landofile/legacy/**` and shares nothing with the v4 subset parser but one anchor-name regex. `mode: "legacy"` is a required literal, so no Lando 4 caller can default into the dialect, and `parseLandofile` keeps every restriction it had. The tree stage reads quoted scalars, literal and folded block scalars with chomping and explicit indentation indicators, populated flow maps and sequences, anchors, aliases, and arbitrary tags, and records a UTF-16 source span on every node so a translator can point a diagnostic at exact source text. The projection stage types plain scalars with the js-yaml 4 core schema, applies merge keys, resolves aliases into distinct objects under a count bound plus an expansion budget, and turns every tag into retained `LegacyTagged` data. Duplicate mapping keys, a second document, a directive, tab indentation, oversize input, and over-deep nesting all fail closed as `LandofileParseError` with remediation. Nothing in the mode touches the filesystem, so `!load` and `!import` survive as data for the translator that rewrites them later.
+
+The two kitchen-sink inventories now live in `sdk/test/fixtures/lando3/` behind a sha256 pin manifest and a provenance/license notice, so no production code or test reads authored planning material.
+
+Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen boundary rules including spec-reference, guide-drift against origin/main); 396 spot-check tests across the nine legacy suites, both v4 parser suites, and the SDK backward-compatibility suite; the v4 parser and its reference resolver are byte-identical to origin/main. Driving the published subpath over the real corpus parses 27 services and retains 3 `!load` plus 3 `!import` tags while the v4 parser fails on the same bytes.
+
+- **Learnings for future iterations:**
+  - A second dialect belongs in a second module tree, not in a mode flag threaded through the existing parser. The "v4 restrictions unchanged" proof then collapses to `git diff --quiet` on two files plus a test that runs both parsers over the same bytes.
+  - Freeze the shared type module before fanning work out. Writing `contract.ts` first let the tree stage and the projection stage be built in parallel by agents that never saw each other's code, and the only integration cost was formatting.
+  - The tag census you get from grep is not the tag census the parser sees: comment lines mentioning `!load` inflate it. Pin counts from the parser's own output, then confirm the sites by hand.
+  - `sdk/test/**` is not published (`files` is `src` and `dist`), which is what makes a GPL-licensed fixture corpus safe to vendor there; record that in the notice rather than re-deriving it later.
+---
