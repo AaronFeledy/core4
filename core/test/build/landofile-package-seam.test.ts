@@ -157,12 +157,15 @@ describe("Landofile package seam", () => {
     expect(Object.keys(coreModule).sort()).toEqual(
       [
         "LANDOFILE_LEADING_COMMENT_BLOCKS",
+        "LEGACY_TAGGED",
         "LandofileEmitError",
         "declaredConfigTranslateSourceIds",
         "detectLandofileTags",
         "emitLandofileYaml",
         "emitLandofileYamlEither",
+        "isLegacyTagged",
         "parseLandofile",
+        "parseLegacyLandofile",
         "validateConfigTranslateInput",
         "validateConfigTranslateResult",
       ].sort(),
