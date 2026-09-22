@@ -254,7 +254,7 @@ Detection reads only the supplied byte snapshots and their filenames. Every Land
 
 Translation lowers `name` to the Lando 3 slug on each writable target layer that claims it, reports every section whose native target is still being built as `unsupported` rather than `dropped`, and reports explicitly supplied custom Landofile basenames as `needs-review` without ever reading user state.
 
-Verification: gate:pr green; 99 plugin tests, 4 contract-suite tests, and 97 core ship-list, registry, entry-point, coverage, and document-set tests.
+Verification: gate:pr green; 202 spot-check tests across the plugin model, merge, and detection suites, the decode-only contract suite, duplicate-id collision, and the core ship-list, registry, entry-point, coverage, and document-set suites, plus 48 adjacent cold-start, registry, and lando4 tests. Driving the real CLI over a two-layer Lando 3 app detected `exact` with the recipe layer ordered ahead of the canonical one, reported every deferred section `unsupported` at its exact span, and wrote nothing; a name-only app emitted `name: kitchen-sink-app`.
 
 - **Learnings for future iterations:**
   - `dropped` and `unsupported` are not interchangeable. `dropped` asserts a source key has no target at all and is a final answer; a section whose lowering has not been built yet is `unsupported`, which blocks the write instead of quietly shipping a partial file that looks complete.

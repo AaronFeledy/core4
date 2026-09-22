@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
+import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
 import * as lando3 from "@lando/lando3";
-import { ConfigTranslateDetectInput, ConfigTranslateInput } from "@lando/sdk/schema";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import { ConfigTranslateDetectInput, ConfigTranslateInput, PluginManifest } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { type ConfigTranslatorContractHarness, runConfigTranslatorContractSuite } from "@lando/sdk/test";
 
@@ -108,5 +110,40 @@ describe("ConfigTranslator contract — bundled lando3", () => {
     const exit = await Effect.runPromiseExit(translator?.translate(broken) ?? Effect.void);
     expect(exit._tag).toBe("Failure");
     expect(redacted).toBeGreaterThan(0);
+  });
+
+  test("a second contributor of the lando3 id fails closed naming both producers", () => {
+    const rival: LandoPluginModule = {
+      name: "@acme/rival-lando3",
+      manifest: Schema.decodeSync(PluginManifest)({
+        name: "@acme/rival-lando3",
+        version: "0.0.0",
+        api: 4,
+        enabled: true,
+        contributes: {
+          configTranslators: [
+            {
+              id: lando3.LANDO3_TRANSLATOR_ID,
+              module: "./src/translator.ts",
+              inputKinds: [lando3.LANDO3_TRANSLATOR_ID],
+              summary: "A rival contributor of the same id.",
+            },
+          ],
+        },
+      }),
+      configTranslators: lando3.makeConfigTranslators(),
+    };
+    const index = makePluginCapabilityIndex([lando3.plugin, rival]);
+    expect(index._tag).toBe("Left");
+    if (index._tag !== "Left") return;
+    expect(index.left._tag).toBe("ConfigTranslatorConflictError");
+    expect(index.left.message).toContain("lando3");
+    expect(index.left.message).toContain("@lando/lando3");
+    expect(index.left.message).toContain("@acme/rival-lando3");
+  });
+
+  test("one contributor of the lando3 id resolves cleanly", () => {
+    const index = makePluginCapabilityIndex([lando3.plugin]);
+    expect(index._tag).toBe("Right");
   });
 });
