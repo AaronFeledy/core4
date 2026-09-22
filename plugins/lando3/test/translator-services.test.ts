@@ -367,7 +367,7 @@ test("rewrites app-relative webroots as container paths across a service and its
 test("keeps the preview when a catalog service authors deferred keys and meUser", async () => {
   // Given / When
   const result = await translate(
-    'plugins: {"@lando/mailpit": "^1"}\nservices:\n  appserver:\n    type: "php:8.3"\n    meUser: www-data\n    scanner: false\n    moreHttpPorts: ["8888"]\n',
+    'plugins: {"@lando/mailpit": "^1"}\nservices:\n  appserver:\n    type: "php:8.3"\n    meUser: www-data\n    scanner: false\n    home: true\n    moreHttpPorts: ["8888"]\n',
   );
   // Then
   expect(result.outputs.map(({ fragment }) => fragment)).toEqual([
@@ -377,6 +377,10 @@ test("keeps the preview when a catalog service authors deferred keys and meUser"
     { kind: "dropped", keyPath: ["plugins"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "meUser"] },
     { kind: "dropped", keyPath: ["services", "appserver", "scanner"] },
+    { kind: "dropped", keyPath: ["services", "appserver", "home"] },
     { kind: "dropped", keyPath: ["services", "appserver", "moreHttpPorts"] },
   ]);
+  expect(
+    result.diagnostics.find((diagnostic) => diagnostic.keyPath.at(-1) === "home")?.remediation,
+  ).toContain("US-617A");
 });

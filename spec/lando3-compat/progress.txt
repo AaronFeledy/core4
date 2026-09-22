@@ -602,3 +602,13 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
 - Review notes (deferred/rejected): Bugbot reported no bugs. Non-string `meUser` stays ignored, matching the raw API-3 branch. Dropping `mem` and `plugins` on every catalog type, not only elasticsearch/opensearch/memcached, is the uniform interim disposition; US-621C8 owns the eventual mapping, including the residual "reject plugins" cell the adjudication overrode to `dropped`. Include dot-segment collapse is not a write bypass: the runtime loader still rejects a real path outside the app root. Conversion guides stay with US-621D.
 - Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; deferred-key and translator-services spot checks passed (186).
 ---
+## 2026-09-22 15:59 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-22 - US-621C1 Verify
+- Compiled `core/dist/lando` setup completed. A hand-authored Lando 3 app lowered catalog services, ordered root-then-user build steps, `meUser` to `user`, Composer and scoped Node packages, MySQL `99-lando.cnf`, read-only PHP config, appMount excludes only on mounted services, and a dot-collapsed compose include. Deferred keys stayed `dropped` (scanner US-617B, home US-617A, mem/plugins US-621C8, moreHttpPorts, plugins/pluginDirs/keys) and did not block `--write`. `app:config:lint` on the result was valid. `php:1.0` and Compose `tty` stayed unsupported and refused `--write`. A missing include stayed in the preview and refused `--write`. A lowered php:8.3 app served `php:8.3.33` over HTTPS; lamp init/start still exec'd 8.3.33.
+- `home` was not a model property, so the unknown-key drop won dedupe and the US-617A remediation never reached the CLI. Declared `home` on the API-3 and API-4 shapes.
+- **Out-of-scope finding:** `lando start` on a converted `meUser: www-data` php service fails with `HomePathCapabilityError` because php:8.3 declares no home for www-data. The same lowered service without `user` starts. Home persistence belongs to US-617A / US-621C5. `lando start` still warns port 80/443 are in use (8000/4443). A fresh lamp webroot with no index returns HTTP 403.
+- **Learnings for future iterations:** unknown-key diagnostics and deferred-key diagnostics share kind and path, and dedupe keeps the first. A key the lowerer handles must be a model property or the CLI shows "not a Lando 3 key" instead of the story id.
+---

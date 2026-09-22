@@ -53,6 +53,7 @@ const api3 = {
   app_mount: optional(Toggle),
   moreHttpPorts: optional(Schema.Array(Port)),
   meUser: optional(Text),
+  home: optional(Schema.Unknown),
 };
 
 export const Lando3Api3CatalogService = open({
@@ -187,6 +188,7 @@ export const Lando3Api4Service = open({
   labels: optional(Environment),
   overrides: optional(Bag),
   scanner,
+  home: optional(Schema.Unknown),
 });
 export type Lando3Api4Service = typeof Lando3Api4Service.Type;
 
