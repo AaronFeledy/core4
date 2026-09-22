@@ -44,6 +44,7 @@ export interface LandoPaths {
   readonly appPluginsDir: (appId: string) => string;
   readonly pluginAuthFile: string;
   readonly binDir: string;
+  readonly installRecordFile: string;
   readonly keysDir: string;
   readonly certsDir: string;
   readonly runtimeDir: string;

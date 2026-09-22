@@ -69,12 +69,21 @@ const phpFastcgiCommand = (
       "  location / {",
       "    try_files $uri $uri/ /index.php?$query_string;",
       "  }",
-      "  location ~ \\.php$ {",
+      // Widen beyond `\\.php$` so `/script.php/extra` enters FastCGI (RFC 3875 PATH_INFO).
+      "  location ~ [^/]\\.php(/|$) {",
+      // Non-greedy: the first `.php` is the script. A greedy `.+\\.php` lets a
+      // later `.php` in the extra path win and run the wrong file.
+      "    fastcgi_split_path_info ^(.+?\\.php)(/.*)$;",
+      "    if (!-f $document_root$fastcgi_script_name) { return 404; }",
       `    fastcgi_pass ${backend}:${String(ports.fpm)};`,
       "    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;",
       // Absolute: `-c` makes the config file's own directory nginx's
       // configuration prefix, so a bare name would resolve under `/tmp`.
       "    include /etc/nginx/fastcgi_params;",
+      // After the include so this assignment wins. PATH_TRANSLATED is omitted
+      // on purpose: setting it can make the extra path look like the script
+      // and break Apache-via PATH_INFO parity.
+      "    fastcgi_param PATH_INFO $fastcgi_path_info;",
       "    fastcgi_index index.php;",
       "  }",
       "}",

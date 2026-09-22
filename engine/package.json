@@ -47,6 +47,8 @@
     "./deprecation/telemetry": "./src/deprecation/telemetry.ts",
     "./global-app/runtime": "./src/global-app/runtime.ts",
     "./global-app/service": "./src/global-app/service.ts",
+    "./install/owned-executable": "./src/install/owned-executable.ts",
+    "./install/record": "./src/install/record.ts",
     "./landofile/app-resolution": "./src/landofile/app-resolution.ts",
     "./landofile/command-warnings": "./src/landofile/command-warnings.ts",
     "./lifecycle/events": "./src/lifecycle/events.ts",

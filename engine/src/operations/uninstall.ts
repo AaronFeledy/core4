@@ -1,9 +1,9 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
-import { type Context, Effect, Option, Schema } from "effect";
+import { type Context, Effect, Either, Option, Schema } from "effect";
 
 import { PrivilegeService } from "@lando/sdk/services";
 
@@ -12,6 +12,8 @@ import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-s
 import { writeFileAtomicViaRename } from "../cache/atomic";
 import { resolveUserCacheRoot } from "../cache/paths";
 import { resolveUserDataRoot } from "../config/roots";
+import { inspectOwnedExecutable } from "../install/owned-executable";
+import { decodeInstallRecord } from "../install/record";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "../runtime/host-maintenance";
 import {
   type ManagedProviderMachineClassification,
@@ -91,7 +93,6 @@ export interface UninstallOptions {
   readonly userDataRoot?: string;
   readonly userCacheRoot?: string;
   readonly userConfRoot?: string;
-  readonly execPath?: string;
   readonly exists?: (path: string) => boolean;
   readonly remove?: (path: string) => Promise<void>;
   readonly teardownRuntimeService?: (
@@ -148,28 +149,77 @@ export interface UninstallReport {
 const pathStatus = (path: string, exists: (path: string) => boolean): UninstallStepStatus =>
   exists(path) ? "owned" : "skipped";
 
-const normalizePathForContainment = (path: string): string => path.replaceAll("\\", "/").replace(/\/+$/u, "");
+const installedBinaryStep = (recordFile: string, destination?: string): UninstallPlanStep => {
+  const ownership = inspectOwnedExecutable({
+    recordFile,
+    platform: normalizeHostPlatform(),
+    ...(destination === undefined ? {} : { destination }),
+  });
+  const base = { id: "installed-binary", label: "installed binary", destructive: true };
+  if (Either.isRight(ownership))
+    return {
+      ...base,
+      target: ownership.right.path,
+      status: "owned",
+      detail: `The install record ${recordFile} proves ownership of this Lando 4 executable.`,
+    };
+  const error = ownership.left;
+  const target = error.destination ?? recordFile;
+  const detail = `${error.reason}: ${error.message} ${error.remediation}`;
+  switch (error.reason) {
+    case "no-record":
+      return {
+        ...base,
+        target,
+        status: "skipped",
+        detail: `${detail} No executable is owned without ${recordFile}.`,
+      };
+    case "record-invalid":
+    case "record-unreadable":
+      return { ...base, target, status: "manual", detail: `${detail} The install record must be repaired.` };
+    case "destination-unreadable":
+      if (error.destination !== undefined) {
+        try {
+          lstatSync(error.destination);
+        } catch (cause) {
+          if (cause instanceof Error && "code" in cause && cause.code === "ENOENT")
+            return {
+              ...base,
+              target,
+              status: "skipped",
+              detail: `The recorded executable ${target} is already absent.`,
+            };
+        }
+      }
+      return { ...base, target, status: "user-owned", detail };
+    case "foreign-basename":
+    case "path-mismatch":
+    case "not-regular-file":
+    case "digest-mismatch":
+    case "size-mismatch":
+      return { ...base, target, status: "user-owned", detail };
+    default: {
+      const exhaustive: never = error.reason;
+      return exhaustive;
+    }
+  }
+};
 
-const isWindowsAbsolutePath = (path: string): boolean => /^[A-Za-z]:[\\/]/u.test(path);
-
-const normalizedAbsolutePath = (path: string): string => normalizePathForContainment(resolve(path));
-
-const installedBinaryStatus = (execPath: string, userDataRoot: string): UninstallStepStatus => {
-  // Path-shape (not host) drives the column so a Windows-style userDataRoot is
-  // contained correctly when this runs on a POSIX host (e.g. tests).
-  const rawBinDir = makeLandoPaths({
-    userDataRoot,
-    platform: isWindowsAbsolutePath(userDataRoot) ? "win32" : normalizeHostPlatform(),
-  }).binDir;
-  const binDir = isWindowsAbsolutePath(userDataRoot)
-    ? normalizePathForContainment(rawBinDir)
-    : normalizedAbsolutePath(rawBinDir);
-  const binaryPath = isWindowsAbsolutePath(execPath)
-    ? normalizePathForContainment(execPath)
-    : normalizedAbsolutePath(execPath);
-  const compareBinDir = isWindowsAbsolutePath(binDir) ? binDir.toLowerCase() : binDir;
-  const compareBinaryPath = isWindowsAbsolutePath(binaryPath) ? binaryPath.toLowerCase() : binaryPath;
-  return compareBinaryPath.startsWith(`${compareBinDir}/`) ? "owned" : "user-owned";
+const uninstallShellProfiles = (options: UninstallOptions): ReadonlyArray<string> => {
+  const recordFile = makeLandoPaths({
+    userDataRoot: options.userDataRoot ?? resolveUserDataRoot(),
+  }).installRecordFile;
+  const text = tryReadText(recordFile, defaultReadText);
+  const record =
+    text === undefined ? undefined : Effect.runSync(Effect.either(decodeInstallRecord(text, recordFile)));
+  return [
+    ...new Set([
+      options.shellProfilePath ?? defaultPosixShellProfilePath(),
+      ...(record !== undefined && Either.isRight(record)
+        ? record.right.data.shellProfiles.map((profile) => profile.path)
+        : []),
+    ]),
+  ];
 };
 
 const keepDataProtectedStepIds = new Set([
@@ -211,8 +261,8 @@ const isLandoManagedCgroupsDelegateContent = (content: string): boolean =>
 // Lockstep with core/src/cli/commands/shellenv.ts: same delimiters, and the same
 // LANDO_SHELL_PROFILE override setup uses when writing the block.
 // Engine must not import @lando/core.
-export const LANDO_SHELLENV_BEGIN = "# >>> LANDO shellenv >>>";
-export const LANDO_SHELLENV_END = "# <<< LANDO shellenv <<<";
+export const LANDO_SHELLENV_BEGIN = "# >>> LANDO4 shellenv >>>";
+export const LANDO_SHELLENV_END = "# <<< LANDO4 shellenv <<<";
 
 export const defaultPosixShellProfilePath = (env: NodeJS.ProcessEnv = process.env): string => {
   const override = env.LANDO_SHELL_PROFILE;
@@ -364,13 +414,6 @@ const shellEntriesStep = (
     target: profilePath,
     destructive: false,
   };
-  if (mode !== "purge") {
-    return {
-      ...base,
-      status: "manual",
-      detail: "Remove clearly delimited Lando shellenv blocks from shell profiles.",
-    };
-  }
   if (!exists(profilePath)) {
     return {
       ...base,
@@ -382,7 +425,7 @@ const shellEntriesStep = (
   if (content === undefined) {
     return {
       ...base,
-      status: "skipped",
+      status: "manual",
       detail: "Could not read the POSIX shell profile; not rewriting it.",
     };
   }
@@ -396,7 +439,7 @@ const shellEntriesStep = (
   }
   return {
     ...base,
-    status: "owned",
+    status: mode === "purge" ? "owned" : "manual",
     detail: "Strip the delimited Lando shellenv block from the POSIX shell profile.",
   };
 };
@@ -415,12 +458,6 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
         step.id === "running-apps"
           ? "Preserved by --keep-data; rerun with --purge to check for running apps."
           : "Preserved by --keep-data; rerun with --purge to remove this state.",
-    };
-  }
-  if (step.id === "installed-binary" && step.status === "user-owned") {
-    return {
-      ...step,
-      detail: `Remove ${step.target} manually; it is outside Lando's managed bin directory.`,
     };
   }
   return step;
@@ -483,17 +520,31 @@ export const buildUninstallPlan = async (
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const userConfRoot = options.userConfRoot ?? makeLandoPaths({ userDataRoot }).roots.userConfRoot;
-  const execPath = options.execPath ?? process.execPath;
   const exists = options.exists ?? existsSync;
   const classifyMachine = options.readManagedProviderMachine ?? classifyManagedProviderMachine;
   const machineClassification = classifyMachine(userDataRoot);
   const paths = makeLandoPaths({ userDataRoot });
+  const binaryStep = installedBinaryStep(paths.installRecordFile);
   const runtimeDir = paths.runtimeDir;
   const managedProviderRuntime = join(userDataRoot, "providers", "provider-lando");
   const hostProxySessions = paths.hostProxyRunRoot;
   const readText = options.readText ?? defaultReadText;
   const cgroupsDelegatePath = options.cgroupsDelegatePath ?? DEFAULT_CGROUPS_DELEGATE_PATH;
-  const shellProfilePath = options.shellProfilePath ?? defaultPosixShellProfilePath();
+  const shellSteps = uninstallShellProfiles(options).map((path) =>
+    shellEntriesStep(path, exists, readText, mode),
+  );
+  const shellStep: UninstallPlanStep = {
+    id: "shell-entries",
+    label: "shell entries",
+    destructive: false,
+    target: shellSteps.map((step) => step.target).join(", "),
+    status: shellSteps.some((step) => step.status === "manual")
+      ? "manual"
+      : shellSteps.some((step) => step.status === "owned")
+        ? "owned"
+        : "skipped",
+    detail: shellSteps.map((step) => step.detail).join(" "),
+  };
   const mutagenBinary = join(paths.binDir, paths.platform === "win32" ? "mutagen.exe" : "mutagen");
   const mutagenAgents = join(paths.binDir, "mutagen-agents");
   const globalAppState = paths.globalAppRoot;
@@ -574,14 +625,7 @@ export const buildUninstallPlan = async (
       status: pathStatus(hostProxySessions, exists),
       detail: "Terminate owned host-proxy workers and remove only app-scoped host-proxy sockets and shims.",
     },
-    {
-      id: "installed-binary",
-      label: "installed binary",
-      target: execPath,
-      destructive: true,
-      status: installedBinaryStatus(execPath, userDataRoot),
-      detail: "Remove automatically only when the binary lives in Lando's managed bin directory.",
-    },
+    binaryStep,
     cgroupsDelegateStep(cgroupsDelegatePath, exists, readText),
     socketProxyHelperStep(
       {
@@ -590,7 +634,7 @@ export const buildUninstallPlan = async (
       },
       { exists, readText },
     ),
-    shellEntriesStep(shellProfilePath, exists, readText, mode),
+    shellStep,
     {
       id: "user-conf-root",
       label: "user config root",
@@ -615,6 +659,21 @@ export const buildUninstallPlan = async (
       status: pathStatus(userCacheRoot, exists),
       detail: "Remove Lando cache root.",
     },
+    {
+      id: "install-record",
+      label: "install record",
+      target: paths.installRecordFile,
+      destructive: true,
+      status: Either.match(
+        inspectOwnedExecutable({ recordFile: paths.installRecordFile, platform: paths.platform }),
+        {
+          onLeft: (error) => (error.reason === "no-record" ? ("skipped" as const) : ("owned" as const)),
+          onRight: () => "owned" as const,
+        },
+      ),
+      detail:
+        "Remove the install record last, only after executable and shell cleanup completed or were skipped.",
+    },
   ];
   return mode === undefined ? steps : steps.map((step) => stepWithMode(step, mode));
 };
@@ -632,6 +691,29 @@ const writeUninstallReport = async (
   };
   await writeFileAtomicViaRename(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   return reportPath;
+};
+
+// Setup writes these into bin without an install record. They are Lando's own
+// tools, so a purge with no record may still remove the data root. Any other
+// name (a foreign `lando`, a backup, a user file) keeps the root.
+const MANAGED_BIN_ENTRY_NAMES = new Set([
+  "mutagen",
+  "mutagen.exe",
+  "mutagen-agents",
+  "mkcert",
+  "mkcert.exe",
+  "mkcert.sha256",
+  ".mkcert.version",
+]);
+
+const binDirHoldsPreservedEntry = (binDir: string): boolean => {
+  let names: string[];
+  try {
+    names = readdirSync(binDir);
+  } catch {
+    return false;
+  }
+  return names.some((name) => !MANAGED_BIN_ENTRY_NAMES.has(name));
 };
 
 const executeUninstall = async (
@@ -654,6 +736,8 @@ const executeUninstall = async (
     options.teardownProviderMachines ?? ((root: string) => teardownManagedProviderMachine(root));
   const teardownHostProxySessions = options.teardownHostProxySessions ?? defaultTeardownHostProxySessions;
   const steps = await buildUninstallPlan(options, mode);
+  const shellProfiles = uninstallShellProfiles(options);
+  const recordFile = makeLandoPaths({ userDataRoot }).installRecordFile;
   const executed: UninstallPlanStep[] = [];
 
   for (const step of steps) {
@@ -726,15 +810,25 @@ const executeUninstall = async (
       continue;
     }
     if (step.id === "shell-entries") {
-      if (step.status !== "owned") {
+      // keep-data leaves every block. Purge still strips readable profiles when
+      // one sibling is unreadable; that sibling stays manual and holds the record.
+      if (step.status !== "owned" && !(mode === "purge" && step.status === "manual")) {
         executed.push({ ...step, outcome: outcomeForSkippedStep(step) });
         continue;
       }
       try {
-        const content = readText(step.target);
-        const { content: rewritten, stripped } = stripLandoShellenvBlock(content);
-        if (stripped) await writeText(step.target, rewritten);
-        executed.push({ ...step, outcome: "completed" });
+        let unresolved = false;
+        for (const profile of shellProfiles) {
+          if (!exists(profile)) continue;
+          const content = tryReadText(profile, readText);
+          if (content === undefined) {
+            unresolved = true;
+            continue;
+          }
+          const { content: rewritten, stripped } = stripLandoShellenvBlock(content);
+          if (stripped) await writeText(profile, rewritten);
+        }
+        executed.push({ ...step, outcome: unresolved ? "manual" : "completed" });
       } catch (cause) {
         const error = cause instanceof Error ? cause.message : String(cause);
         executed.push({ ...step, outcome: "failed", error });
@@ -746,6 +840,50 @@ const executeUninstall = async (
       continue;
     }
     try {
+      if (step.id === "installed-binary") {
+        const current = installedBinaryStep(recordFile, step.target);
+        if (current.status !== "owned") {
+          executed.push({ ...current, outcome: outcomeForSkippedStep(current) });
+          continue;
+        }
+      }
+      if (
+        step.id === "install-record" &&
+        !["installed-binary", "shell-entries"].every((id) =>
+          executed.some((entry) => {
+            if (entry.id !== id) return false;
+            if (entry.outcome === "completed" || entry.outcome === "skipped") return true;
+            // keep-data deliberately leaves the shellenv block. That is resolved
+            // cleanup, not a reason to keep a record pointing at a deleted binary.
+            return mode === "keep-data" && id === "shell-entries" && entry.outcome === "manual";
+          }),
+        )
+      ) {
+        executed.push({
+          ...step,
+          status: "manual",
+          outcome: "manual",
+          detail: "Preserve the install record until executable and shell cleanup is resolved.",
+        });
+        continue;
+      }
+      if (
+        step.id === "user-data-root" &&
+        (existsSync(recordFile) || binDirHoldsPreservedEntry(makeLandoPaths({ userDataRoot }).binDir))
+      ) {
+        // Defer while the record is still present, or while bin holds a file this
+        // uninstall did not install. Managed setup tools do not count: with no
+        // record there is nothing later to retire, so purge removes the root now.
+        executed.push({
+          ...step,
+          status: "manual",
+          outcome: "manual",
+          detail: existsSync(recordFile)
+            ? "Preserve the data root until the install record is removed."
+            : "Preserve the data root because its bin directory holds a file Lando did not install.",
+        });
+        continue;
+      }
       if (step.id === "runtime-service") {
         const result = await teardownRuntimeService(userDataRoot);
         if (!result.terminated && result.pid !== undefined) {
@@ -769,6 +907,26 @@ const executeUninstall = async (
         }
       } else {
         await remove(step.target);
+      }
+
+      if (step.id === "install-record" && mode === "purge") {
+        const binaryResolved = executed.some(
+          (entry) =>
+            entry.id === "installed-binary" && (entry.outcome === "completed" || entry.outcome === "skipped"),
+        );
+        if (binaryResolved) {
+          await remove(userDataRoot);
+          const deferred = executed.findIndex((entry) => entry.id === "user-data-root");
+          const deferredStep = deferred === -1 ? undefined : executed[deferred];
+          if (deferredStep?.outcome === "manual") {
+            executed[deferred] = {
+              ...deferredStep,
+              status: "owned",
+              outcome: "completed",
+              detail: "Removed the data root after the install record.",
+            };
+          }
+        }
       }
 
       executed.push({ ...step, outcome: "completed" });

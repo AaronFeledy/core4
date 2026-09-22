@@ -1146,7 +1146,7 @@ describe("meta:setup command", () => {
     expect(providerSetupOptions).toEqual([expect.objectContaining({ privilege })]);
     expect(caSetupOptions).toEqual([expect.objectContaining({ privilege })]);
     expect(elevated).toHaveLength(1);
-    expect(elevated[0]?.join(" ")).toContain("LANDO shellenv");
+    expect(elevated[0]?.join(" ")).toContain("LANDO4 shellenv");
     expect(elevated[0]?.join(" ")).toContain("/tmp/Lando User");
   });
 
@@ -1212,57 +1212,74 @@ describe("meta:setup command", () => {
     expect(elevated).toEqual([]);
   });
 
-  test("fails setup when shell profile integration returns a nonzero exit", async () => {
-    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-profile-fail-"));
-    try {
-      const provider = {
-        ...TestRuntimeProvider,
-        id: "lando",
-        setup: () => Effect.void,
-      };
-      const registry = {
-        list: Effect.succeed([ProviderId.make("lando")]),
-        capabilities: Effect.succeed(provider.capabilities),
-        select: () => Effect.succeed(provider),
-      };
-      const privilege = {
-        elevate: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "sudo denied" }),
-      };
+  test.each(["nonzero exit", "invalid install record"])(
+    "fails setup when shell profile integration has %s",
+    async (reason) => {
+      const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-profile-fail-"));
+      try {
+        // Given either an elevation failure or a corrupt install record.
+        const detail = reason === "nonzero exit" ? "sudo denied" : "Install record is not valid JSON.";
+        if (reason === "invalid install record") {
+          await mkdir(join(userDataRoot, "install"));
+          await writeFile(join(userDataRoot, "install", "record.json"), "{");
+        }
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          setup: () => Effect.void,
+        };
+        const registry = {
+          list: Effect.succeed([ProviderId.make("lando")]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        };
+        let elevations = 0;
+        const privilege = {
+          elevate: () =>
+            Effect.sync(() => {
+              elevations += 1;
+              return { exitCode: 1, stdout: "", stderr: "sudo denied" };
+            }),
+        };
 
-      const exit = await Effect.runPromiseExit(
-        setupSpec
-          .run({ installDir: "/opt/lando" })
-          .pipe(Effect.provide(buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot }))),
-      );
+        // When setup attempts shell profile integration.
+        const exit = await Effect.runPromiseExit(
+          setupSpec
+            .run({ installDir: "/opt/lando" })
+            .pipe(Effect.provide(buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot }))),
+        );
 
-      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
-        readonly steps: ReadonlyArray<{
-          readonly id: string;
-          readonly status: string;
-          readonly evidence?: string;
-          readonly remediation?: string;
-        }>;
-      };
-      const shellSteps = readiness.steps.filter((step) => step.id === "shell");
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (!Exit.isFailure(exit)) throw new Error("expected shell profile integration failure");
-      const failure = Cause.failureOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      expect(failure._tag === "Some" ? (failure.value as { readonly _tag?: string })._tag : undefined).toBe(
-        "ShellProfileIntegrationError",
-      );
-      expect(shellSteps).toHaveLength(1);
-      expect(shellSteps[0]).toEqual(
-        expect.objectContaining({
-          status: "failed",
-          evidence: expect.stringContaining("sudo denied"),
-          remediation: expect.stringContaining("sudo denied"),
-        }),
-      );
-    } finally {
-      await rm(userDataRoot, { recursive: true, force: true });
-    }
-  });
+        const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+          readonly steps: ReadonlyArray<{
+            readonly id: string;
+            readonly status: string;
+            readonly evidence?: string;
+            readonly remediation?: string;
+          }>;
+        };
+        // Then it reports a typed failure with readiness evidence and never elevates a corrupt record.
+        const shellSteps = readiness.steps.filter((step) => step.id === "shell");
+        expect(elevations).toBe(reason === "nonzero exit" ? 1 : 0);
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (!Exit.isFailure(exit)) throw new Error("expected shell profile integration failure");
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        expect(failure._tag === "Some" ? (failure.value as { readonly _tag?: string })._tag : undefined).toBe(
+          "ShellProfileIntegrationError",
+        );
+        expect(shellSteps).toHaveLength(1);
+        expect(shellSteps[0]).toEqual(
+          expect.objectContaining({
+            status: "failed",
+            evidence: expect.stringContaining(detail),
+            remediation: expect.stringContaining(detail),
+          }),
+        );
+      } finally {
+        await rm(userDataRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("validates network trust before provider and file-sync downloads and honors config proxy precedence", async () => {
     const calls: string[] = [];
@@ -2820,7 +2837,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(compiled.stdout).toBe(source.stdout);
     expect(normalizeSetupFailure(compiled.stderr)).toBe(normalizeSetupFailure(source.stderr));
     expect(shellenv.stdout).toContain(`LANDO_USER_DATA_ROOT='${commandEnv.LANDO_USER_DATA_ROOT}'`);
-    expect(shellenv.stdout).toContain('export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"');
+    expect(shellenv.stdout).toContain(`export PATH='${commandEnv.LANDO_USER_DATA_ROOT}/bin'":\${PATH}"`);
     expect(compiled.stderr).toContain(`LANDO_INSTALL_DIR="${dirname(binaryPath)}"`);
   }, 120_000);
 });

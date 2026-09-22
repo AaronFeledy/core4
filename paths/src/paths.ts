@@ -180,6 +180,7 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     appPluginsDir: (appId: string) => j(userDataRoot, "apps", appId, "plugins"),
     pluginAuthFile: j(userDataRoot, "plugin-auth.json"),
     binDir: j(userDataRoot, "bin"),
+    installRecordFile: j(userDataRoot, "install", "record.json"),
     keysDir: j(userDataRoot, "keys"),
     certsDir: j(userDataRoot, "certs"),
     runtimeDir: j(userDataRoot, "runtime"),

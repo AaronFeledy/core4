@@ -59,7 +59,6 @@ describe("runtime-service uninstall execution", () => {
           keepData: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
         }).pipe(Effect.provide(Layer.succeed(HostMaintenanceRegistry, { maintainers: [maintainer] }))),
       );
@@ -90,7 +89,6 @@ describe("runtime-service uninstall execution", () => {
           keepData: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
         }),
       );
@@ -118,7 +116,6 @@ describe("runtime-service uninstall execution", () => {
           keepData: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           teardownRuntimeService: async () => ({ terminated: false }),
           remove: async (path: string) => {
@@ -152,7 +149,6 @@ describe("runtime-service uninstall execution", () => {
           keepData: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           teardownRuntimeService: async () => ({ terminated: false, pid: 1234 }),
           remove: async (path: string) => {
@@ -186,7 +182,6 @@ describe("runtime-service uninstall execution", () => {
           keepData: true,
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           ...sandboxUninstallIo(root),
           teardownRuntimeService: async () => ({ terminated: false }),
           remove: async () => {

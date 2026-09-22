@@ -279,7 +279,6 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _userDataRoot?: unknown;
     readonly _userCacheRoot?: unknown;
     readonly _userConfRoot?: unknown;
-    readonly _execPath?: unknown;
     readonly _exists?: unknown;
     readonly _remove?: unknown;
     readonly _readManagedProviderMachine?: unknown;
@@ -321,7 +320,6 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),
-    ...(typeof extra._execPath === "string" ? { execPath: extra._execPath } : {}),
     ...(typeof extra._exists === "function" ? { exists: extra._exists as (path: string) => boolean } : {}),
     ...(typeof extra._remove === "function"
       ? { remove: extra._remove as (path: string) => Promise<void> }
