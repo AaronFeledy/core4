@@ -227,3 +227,10 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - Split/excise decisions: none.
 - Verification: typecheck pass, lint pass, legacy spot checks 222 pass
 ---
+
+## 2026-09-22 - US-620A Verify
+- Compiled `core/dist/lando` setup completed, a lamp app served PHP 8.3.33 over HTTP, and config lint reported the v4 Landofile valid. That binary rejected a block-scalar Landofile as `LandofileParseError`, while `parseLegacyLandofile` kept the scalar and, on the pinned kitchen-sink, 27 services plus 3 `!load` and 3 `!import` tags as data.
+- **Out-of-scope finding:** `./core/dist/lando setup --yes --no-interactive` on a TTY still opened "Install a systemd socket proxy so Lando can serve http://*.lndo.site on ports 80 and 443?" and waited for Enter. Expected the flags to accept the default. `consentToInstall` auto-approves only when `autoApprove` is set, and live socket-proxy wiring never sets it. Not caused by the legacy parser.
+- **Out-of-scope finding:** `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. The app still served PHP on port 8080. Same warning as US-619B1 and US-619B3.
+- **Learnings for future iterations:** Redirecting setup stdout while leaving stdin a TTY hangs on that socket-proxy confirm: the prompt is drawn on stdout, and `--yes` / `--no-interactive` never reach `consentToInstall`. Run setup on the TTY, or answer the default Yes.
+---
