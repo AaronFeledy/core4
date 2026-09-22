@@ -299,3 +299,23 @@ Verification: gate:pr green; 202 spot-check tests across the plugin model, merge
 - Review feedback: none (no review comments, no `cursor[bot]` findings)
 - Merge: merged (squash)
 ---
+
+## 2026-09-22 - US-621A
+
+Lowered Lando 3 recipes into ordinary Lando 4 authoring files while keeping the final layered result equivalent.
+
+`@lando/lando3` now maps a Lando 3 `recipe:` id plus the foreign-merged `config:` onto a bundled Lando 4 recipe's published option map, and calls the injected `RecipeDecomposer` once per distinct effective option view. Every lowered layer carries mandatory `recipe: {id, version, producer, options}` provenance, and the decomposer is always invoked with `secrets: {}`, so no raw answer can reach a file. Hoster recipes, unknown ids, a non-string `recipe:`, and a Drupal major Lando 4 does not ship all fail closed with `Lando3UnsupportedRecipeError` riding in `ConfigTranslateError.cause`; an unmapped `config:` key is `dropped` at its exact span with manual-edit remediation, and an out-of-enum value is `unsupported` rather than silently coerced.
+
+The layered part is the real work. Lando 4 layers deep-merge maps, so a lower layer that emits a key makes it undeletable. The new planner diffs the per-prefix decomposed fragments, emits representable changes as ordinary deltas, and for an unrepresentable removal hoists the smallest merge-identity unit to its last-transition layer, deletes every lower copy, and emits one `needs-review` relocation naming all contributing sources and the prefixes whose behavior changed. It iterates to a replay-verified fixpoint because deleting a unit from a lower layer can invalidate a higher delta, and it asserts the final merge equals the final desired fragment rather than trusting the diff. `.lando.recipe.yml` folds into `.lando.dist.yml` at its real interval, so the `dist` target prefix corresponds to the legacy prefix *through* the recipe layer and no v4 recipe-layer prefix is ever asserted. `--file` refuses before staging when a hoist would reach outside the selected write set.
+
+Because the package is DAG-locked to the SDK and paths, the v4 merge algebra is re-implemented inside the plugin rather than imported from `@lando/landofile`. Host wiring landed too: the bundled-plugin generator gained an optional `compose` entry so the composition root builds the frontend with the real 24 bundled decomposers behind a lazy provider that keeps them off the cold-start path.
+
+Verification: typecheck, lint, all eight boundary rules, codegen drift, and guide-drift against origin/main all pass; 262 spot-check tests across the nine lando3 suites, the generated plugin table, the translator contract, the new SDK error, and SDK backward compatibility. Real CLI runs converted a two-layer wordpress app — provenance written to dist, `services.cache` hoisted to local with the exact relocation diagnostic, `config.xdebug` dropped at its span — and rejected `recipe: pantheon` with the spec remediation.
+
+- **Learnings for future iterations:**
+  - Hoisting a single item out of a keyed object array is unsound. `mergeArrays` clones the left array and *appends* unmatched right items, so omitting one item and re-emitting it higher reorders the array. Any item removal, reorder, identity-key change, or duplicate identity must relocate the whole array.
+  - `[]` on the right does not clear an array. `every()` is vacuously true, so a keyed left survives an empty right; only an unkeyed left is replaced by `[]`.
+  - Decide representability by replaying the real merge against the accumulated value, never by structural diff rules alone. The diff proposes; only the replay accepts.
+  - Detect removals on the decomposed authoring fragment, not on the option view. One option flip can rename services, reorder an array, or change a route filter in ways only the fragment exposes.
+  - A recipe introduced mid-stack needs no extra baseline call: the previous fragment is simply empty, and hand-authored services in lower layers are a separate channel that must not be diffed against it.
+  - `core/src/plugins/generated/bundled.ts` is gitignored and derived, so the committed change for a composition-root edit is the generator plus `core/build.config.ts` — the emitted file never appears in the diff.
