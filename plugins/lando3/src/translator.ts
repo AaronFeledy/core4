@@ -9,11 +9,11 @@
  * ordering, validation, and mutation. Nothing in this module opens a file,
  * follows a reference, resolves a tag, plans, or contacts a provider.
  *
- * Sections whose native target is not yet available are reported `unsupported`
- * rather than `dropped`. `dropped` is a final disposition that says a source
- * key has no target at all; an `unsupported` section instead blocks the write,
- * which is the honest answer while lowering for that section is still being
- * built. Nothing is ever silently omitted.
+ * Service keys whose Lando 4 target waits on work that has not landed are
+ * `dropped`, and the remediation names that story, so they never block
+ * conversion. Top-level sections that still have no lowerer stay
+ * `unsupported` and block the write until that section is built. Nothing is
+ * ever silently omitted.
  */
 import { Effect } from "effect";
 

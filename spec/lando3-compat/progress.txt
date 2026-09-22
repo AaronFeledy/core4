@@ -596,3 +596,9 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
   - A top-level key gets diagnosed in two places: `lowerTopLevel` and the translator's `deferredDiagnostics` fallback for anything missing from `LOWERED_KEYS`. When a key gains a lowering, add it to `LOWERED_KEYS` or it gets reported twice, once as `unsupported`, which clears the preview.
   - An unrecognized Lando 3 service key gets an extra "is not a Lando 3 key" drop from the model's open-struct check. When a lowerer starts honoring a key for a new family, move the key into the shared `api3` model fields as well.
 ---
+
+## 2026-09-22 - US-621C1 Review
+- Reviewed the deferred-key handback. Waiting keys and unconditional drops are `dropped` and do not clear the preview or block `--write`; catalog `meUser` rewrites to `user`. Synced the adjudicated criteria into the source story so a later gate quotes the closed finish line instead of the unbounded §6.3 reading. Corrected the translator header, which still told the next story to report waiting keys as `unsupported`.
+- Review notes (deferred/rejected): Bugbot reported no bugs. Non-string `meUser` stays ignored, matching the raw API-3 branch. Dropping `mem` and `plugins` on every catalog type, not only elasticsearch/opensearch/memcached, is the uniform interim disposition; US-621C8 owns the eventual mapping, including the residual "reject plugins" cell the adjudication overrode to `dropped`. Include dot-segment collapse is not a write bypass: the runtime loader still rejects a real path outside the app root. Conversion guides stay with US-621D.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; deferred-key and translator-services spot checks passed (186).
+---
