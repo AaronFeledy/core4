@@ -218,7 +218,7 @@ const lowerTask = (
       "Review which step should receive caller arguments.",
     );
   }
-  if (commands.some((step) => typeof step.cmd === "string" && POSITIONAL_PARAMETER.test(step.cmd))) {
+  if (commands.some((step) => POSITIONAL_PARAMETER.test(step.cmd))) {
     report(
       "needs-review",
       [...path, "cmd"],
