@@ -18,7 +18,7 @@ import {
 import { type LegacyPrefixView, requiredOptionViews } from "./effective-views.ts";
 import { type DesiredPrefix, planLayerDeltas } from "./layer-delta.ts";
 import { occurrencesAt } from "./legacy-merge.ts";
-import { classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
+import { BUNDLED_RECIPE_OPTION_MAPS, classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
 import { isPlainRecord } from "./v4-merge.ts";
 
 export interface LoweredPrefix {
@@ -30,6 +30,18 @@ export interface LoweredRecipes {
   readonly prefixes: ReadonlyArray<LoweredPrefix>;
   readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
   readonly decomposeCalls: number;
+}
+/** A layer core already validated as v4. Its fragment is the desired prefix, not a legacy source. */
+export interface EstablishedLayer {
+  readonly layer: LandofileLayer;
+  readonly sourceIds: ReadonlyArray<ConfigTranslateSourceId>;
+  readonly fragment: Readonly<Record<string, unknown>>;
+}
+/** Recipe identity recovered from an established layer's provenance. */
+export interface EstablishedRecipe {
+  readonly recipeId: string;
+  readonly options: Readonly<Record<string, string | boolean>>;
+  readonly fragment: Readonly<Record<string, unknown>>;
 }
 
 const recipeFailure = (
@@ -61,19 +73,47 @@ const sortFragment = (fragment: object): Readonly<Record<string, unknown>> =>
       .map(([key, value]) => [key, sortedValue(value)]),
   );
 
+const optionMemoKey = (recipeId: string, options: Readonly<Record<string, string | boolean>>): string =>
+  JSON.stringify({ recipeId, options: Object.fromEntries(Object.entries(options).sort()) });
+
 export const lowerRecipeViews = (
   ports: Lando3TranslatorPorts,
   folded: ReadonlyArray<LegacyPrefixView>,
+  established?: EstablishedRecipe,
 ): Effect.Effect<LoweredRecipes, ConfigTranslateError, never> =>
   Effect.gen(function* () {
     const prefixes: LoweredPrefix[] = [];
     const diagnostics: ConfigTranslateDiagnostic[] = [];
     const memo = new Map<string, LoweredPrefix["fragment"]>();
     let decomposeCalls = 0;
-    for (const view of requiredOptionViews(folded)) {
-      const classification = classifyRecipe(view.recipe);
+    if (established !== undefined)
+      memo.set(optionMemoKey(established.recipeId, established.options), established.fragment);
+    const views =
+      established === undefined
+        ? requiredOptionViews(folded)
+        : folded.filter((view) => view.recipe !== undefined || view.config !== undefined);
+    for (const view of views) {
+      let classification = classifyRecipe(view.recipe);
+      if (classification === undefined && established !== undefined && view.config !== undefined) {
+        const map = BUNDLED_RECIPE_OPTION_MAPS.get(established.recipeId);
+        if (map === undefined)
+          return yield* Effect.fail(
+            new ConfigTranslateError({
+              translator: "lando3",
+              message: `The already converted ${established.recipeId} recipe has no bundled option map.`,
+              remediation: `Convert the app in one pass, or replace recipe ${established.recipeId} with explicit v4 services.`,
+            }),
+          );
+        classification = {
+          _tag: "supported",
+          recipeId: established.recipeId,
+          legacyId: established.recipeId,
+          pinned: {},
+          map,
+        };
+      }
       if (classification === undefined) continue;
-      const occurrence = occurrencesAt(view.recipe, []).at(-1);
+      const occurrence = occurrencesAt(view.recipe, []).at(-1) ?? occurrencesAt(view.config, []).at(-1);
       if (occurrence === undefined) continue;
       switch (classification._tag) {
         case "unsupported": {
@@ -105,7 +145,20 @@ export const lowerRecipeViews = (
             remediation: `Provide the missing bundled ${recipeId} decomposer before converting.`,
           }),
         );
-      const mapped = mapConfigOptions(classification, view.config);
+      const mapped = mapConfigOptions(
+        classification,
+        view.config,
+        established?.recipeId === recipeId ? established.options : undefined,
+      );
+      if (mapped.blocked !== undefined)
+        return yield* Effect.fail(
+          new ConfigTranslateError({
+            translator: "lando3",
+            message: "config is a tagged file reference and was not read.",
+            remediation:
+              "Inline config as a mapping before converting, or run the app with Lando 3. File tags are not resolved during conversion.",
+          }),
+        );
       for (const invalid of mapped.invalid) {
         const diagnostic = invalidOptionValue({
           ...invalid,
@@ -127,7 +180,7 @@ export const lowerRecipeViews = (
         for (const authored of entry.occurrences) {
           diagnostics.push(droppedConfigKey({ recipeId, legacyKey: entry.legacyKey, occurrence: authored }));
         }
-      const key = JSON.stringify({ recipeId, options: mapped.options });
+      const key = optionMemoKey(recipeId, mapped.options);
       let fragment = memo.get(key);
       if (fragment === undefined) {
         const decomposer = factory({ redactor: ports.redactor });
@@ -176,15 +229,31 @@ export const recipeLayerOutputs = (
   folded: ReadonlyArray<LegacyPrefixView>,
   lowered: LoweredRecipes,
   names: ReadonlyArray<ConfigTranslateOutput>,
+  established: ReadonlyArray<EstablishedLayer> = [],
 ) => {
   let desired: LoweredPrefix["fragment"] = {};
-  const prefixes: DesiredPrefix[] = folded.map((view) => {
-    desired =
-      lowered.prefixes.find(({ targetLayer }) => targetLayer === view.targetLayer)?.fragment ?? desired;
-    return { layer: view.targetLayer, sourceIds: view.sourceIds, desired };
-  });
+  const prefixes: DesiredPrefix[] = [];
+  const establishedLayerIds = new Set(established.map((known) => known.layer));
+  for (const known of established) {
+    desired = known.fragment;
+    prefixes.push({ layer: known.layer, sourceIds: known.sourceIds, desired });
+  }
+  for (const view of folded) {
+    if (establishedLayerIds.has(view.targetLayer)) continue;
+    const replacement = lowered.prefixes.find(
+      ({ targetLayer }) => targetLayer === view.targetLayer,
+    )?.fragment;
+    if (replacement !== undefined) desired = replacement;
+    prefixes.push({ layer: view.targetLayer, sourceIds: view.sourceIds, desired });
+  }
   const plan = planLayerDeltas(prefixes);
   const outputs: ConfigTranslateOutput[] = plan.emitted.flatMap(({ layer, fragment }) => {
+    const known = established.find((item) => item.layer === layer);
+    if (
+      known !== undefined &&
+      JSON.stringify(sortFragment(known.fragment)) === JSON.stringify(sortFragment(fragment))
+    )
+      return [];
     const name = names.find(({ targetLayer }) => targetLayer === layer);
     const combined = sortFragment({ ...fragment, ...(isPlainRecord(name?.fragment) ? name.fragment : {}) });
     if (Object.keys(combined).length === 0) return [];
@@ -195,7 +264,7 @@ export const recipeLayerOutputs = (
         sourceIds:
           Object.keys(fragment).length === 0
             ? (name?.sourceIds ?? [])
-            : (folded.find(({ targetLayer }) => targetLayer === layer)?.sourceIds ?? []),
+            : (folded.find(({ targetLayer }) => targetLayer === layer)?.sourceIds ?? known?.sourceIds ?? []),
       },
     ];
   });

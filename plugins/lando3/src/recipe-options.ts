@@ -191,6 +191,8 @@ export interface MappedOptions {
   readonly invalid: ReadonlyArray<
     MappedConfigEntry & { readonly option: string; readonly spec: RecipeOptionSpec; readonly value: string }
   >;
+  /** Set when config is a tag, so callers fail closed instead of using defaults. */
+  readonly blocked: MappedConfigEntry | undefined;
 }
 
 const coerceOption = (value: MergedLegacyValue, spec: RecipeOptionSpec): string | boolean | undefined => {
@@ -212,11 +214,21 @@ const coerceOption = (value: MergedLegacyValue, spec: RecipeOptionSpec): string 
 export const mapConfigOptions = (
   classification: Extract<RecipeClassification, { _tag: "supported" }>,
   config: MergedLegacyValue | undefined,
+  baseOptions?: Readonly<Record<string, string | boolean>>,
 ): MappedOptions => {
   const { map, pinned } = classification;
-  const options = { ...map.defaults, ...pinned };
+  const options = { ...map.defaults, ...pinned, ...baseOptions };
   const dropped: MappedConfigEntry[] = [];
   const invalid: Array<MappedOptions["invalid"][number]> = [];
+  // A tagged config is a file reference. Defaults would hide it, and this translator does not read the file.
+  if (config?.kind === "tagged") {
+    return {
+      options: Object.fromEntries(Object.entries(options).sort()),
+      dropped,
+      invalid,
+      blocked: { legacyKey: "config", occurrences: occurrencesAt(config, []) },
+    };
+  }
   if (config?.kind === "mapping") {
     for (const [legacyKey, value] of config.entries) {
       const option =
@@ -236,5 +248,10 @@ export const mapConfigOptions = (
       }
     }
   }
-  return { options: Object.fromEntries(Object.entries(options).sort()), dropped, invalid };
+  return {
+    options: Object.fromEntries(Object.entries(options).sort()),
+    dropped,
+    invalid,
+    blocked: undefined,
+  };
 };

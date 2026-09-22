@@ -47,8 +47,14 @@ import { foldToTargetLayers, legacyPrefixViews } from "./effective-views.ts";
 import { mergeLegacySources, mergedToPlain, occurrencesAt, toMergedValue } from "./legacy-merge.ts";
 import { decodeLando3Landofile } from "./model.ts";
 import { slugifyAppName } from "./naming.ts";
-import { lowerRecipeViews, recipeLayerOutputs } from "./recipe-lowering.ts";
+import {
+  type EstablishedLayer,
+  type EstablishedRecipe,
+  lowerRecipeViews,
+  recipeLayerOutputs,
+} from "./recipe-lowering.ts";
 import { formatPath } from "./source.ts";
+import { isPlainRecord } from "./v4-merge.ts";
 
 const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml"]);
 
@@ -231,6 +237,64 @@ const unknownKeyDiagnostics = (
     };
   });
 
+const V4_LAYER_ORDER: ReadonlyArray<LandofileLayer> = [
+  "base",
+  "dist",
+  "upstream",
+  "canonical",
+  "local",
+  "user",
+];
+
+const v4LayerRank = (layer: LandofileLayer): number => {
+  const index = V4_LAYER_ORDER.indexOf(layer);
+  return index === -1 ? V4_LAYER_ORDER.length : index;
+};
+
+const withoutAppName = (fragment: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> => {
+  const { name: _name, ...rest } = fragment;
+  return rest;
+};
+
+const readProvenance = (fragment: Readonly<Record<string, unknown>>): EstablishedRecipe | undefined => {
+  const recipe = fragment.recipe;
+  if (!isPlainRecord(recipe) || typeof recipe.id !== "string" || !isPlainRecord(recipe.options))
+    return undefined;
+  const options: Record<string, string | boolean> = {};
+  for (const [key, value] of Object.entries(recipe.options)) {
+    if (typeof value !== "string" && typeof value !== "boolean") return undefined;
+    options[key] = value;
+  }
+  return { recipeId: recipe.id, options, fragment };
+};
+
+const establishedLayers = (
+  fragments: ReadonlyArray<{ readonly layerId: LandofileLayer; readonly fragment: unknown }>,
+  layers: ReadonlyArray<ConfigTranslateDocument>,
+): ReadonlyArray<EstablishedLayer> =>
+  [...fragments]
+    .sort((left, right) => v4LayerRank(left.layerId) - v4LayerRank(right.layerId))
+    .flatMap((fragment): EstablishedLayer[] => {
+      if (!isPlainRecord(fragment.fragment)) return [];
+      return [
+        {
+          layer: fragment.layerId,
+          sourceIds: layers
+            .filter((document) => lando3TargetLayer(sourceLayerForDocument(document)) === fragment.layerId)
+            .map((document) => document.sourceId),
+          fragment: withoutAppName(fragment.fragment),
+        },
+      ];
+    });
+
+const establishedRecipe = (layers: ReadonlyArray<EstablishedLayer>): EstablishedRecipe | undefined => {
+  for (const layer of [...layers].reverse()) {
+    const recipe = readProvenance(layer.fragment);
+    if (recipe !== undefined) return recipe;
+  }
+  return undefined;
+};
+
 /**
  * Builds the frontend over host-supplied ports. Recipe decomposition arrives
  * this way so the package never grows a second recipe expansion, and redaction
@@ -256,14 +320,19 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         }
 
         const layers = input.documents.filter(isAppRootLando3Layer);
-        const sources = yield* Effect.forEach(layers, parseSource(ports));
+        const established = establishedLayers(input.currentLowerV4Fragments, layers);
+        const establishedTargets = new Set(established.map((layer) => layer.layer));
+        const legacyLayers = layers.filter(
+          (document) => !establishedTargets.has(lando3TargetLayer(sourceLayerForDocument(document))),
+        );
+        const sources = yield* Effect.forEach(legacyLayers, parseSource(ports));
         const merged = mergeLegacySources(sources);
         const folded = foldToTargetLayers(legacyPrefixViews(sources));
-        const lowered = yield* lowerRecipeViews(ports, folded);
+        const lowered = yield* lowerRecipeViews(ports, folded, establishedRecipe(established));
         const decoded = decodeLando3Landofile(mergedToPlain(merged));
 
         const writable = new Set<LandofileLayer>(input.writableLayerIds);
-        const planned = recipeLayerOutputs(folded, lowered, buildOutputs(sources, writable));
+        const planned = recipeLayerOutputs(folded, lowered, buildOutputs(sources, writable), established);
         const missing = planned.required.filter((layer) => !writable.has(layer));
         if (input.mode === "single-layer" && missing.length > 0) {
           return yield* Effect.fail(

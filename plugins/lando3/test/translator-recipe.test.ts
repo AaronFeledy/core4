@@ -154,3 +154,81 @@ test("emits deterministic outputs and diagnostics", async () => {
   expect(second.outputs).toEqual(first.outputs);
   expect(second.diagnostics).toEqual(first.diagnostics);
 });
+
+test("rejects a tagged config file instead of lowering defaults", async () => {
+  const { translator } = setup();
+  const result = await Effect.runPromise(
+    Effect.either(
+      translator.translate(
+        documentSet([document(".lando.yml", "recipe: wordpress\nconfig: !load config.yml\n")]),
+      ),
+    ),
+  );
+  expect(result._tag).toBe("Left");
+  if (result._tag === "Left") {
+    expect(result.left.message).toBe("config is a tagged file reference and was not read.");
+    expect(result.left.remediation).toContain("Inline config");
+  }
+});
+
+test("single-layer conversion keeps an already lowered recipe and applies a later option", async () => {
+  const { fake, translator } = setup();
+  const first = await Effect.runPromise(
+    translator.translate(documentSet([document(".lando.dist.yml", "name: app\nrecipe: wordpress\n")])),
+  );
+  const dist = first.outputs.find(({ targetLayer }) => targetLayer === "dist");
+  if (dist === undefined) throw new Error("expected dist output");
+  const input = documentSet([
+    document(
+      ".lando.dist.yml",
+      'name: app\nrecipe:\n  id: wordpress\n  version: "1.0.0"\n  options:\n    php: "8.3"\n    redis: false\nservices:\n  appserver:\n    image: php:8.3\n',
+    ),
+    document(".lando.local.yml", "config: {redis: true}\n"),
+  ]);
+  const result = await Effect.runPromise(
+    translator.translate({
+      ...input,
+      mode: "single-layer",
+      selectedSourceIds: [document(".lando.local.yml", "").sourceId],
+      writableLayerIds: ["local"],
+      currentLowerV4Fragments: [{ layerId: "dist", fragment: dist.fragment }],
+    }),
+  );
+  expect(result.outputs.map(({ targetLayer }) => targetLayer)).toEqual(["local"]);
+  const final = fake.results.at(-1);
+  expect(
+    mergeLandofiles([asRecord(dist.fragment), ...result.outputs.map(({ fragment }) => asRecord(fragment))]),
+  ).toEqual({
+    name: "app",
+    recipe: final?.provenance,
+    ...asRecord(final?.fragment),
+  });
+});
+
+test("single-layer conversion still refuses a hoist into an already lowered layer", async () => {
+  const { translator } = setup();
+  const first = await Effect.runPromise(
+    translator.translate(
+      documentSet([document(".lando.dist.yml", "recipe: wordpress\nconfig: {redis: true}\n")]),
+    ),
+  );
+  const dist = first.outputs.find(({ targetLayer }) => targetLayer === "dist");
+  if (dist === undefined) throw new Error("expected dist output");
+  const input = documentSet([
+    document(".lando.dist.yml", "recipe:\n  id: wordpress\n"),
+    document(".lando.local.yml", "config: {redis: false}\n"),
+  ]);
+  const result = await Effect.runPromise(
+    Effect.either(
+      translator.translate({
+        ...input,
+        mode: "single-layer",
+        selectedSourceIds: [document(".lando.local.yml", "").sourceId],
+        writableLayerIds: ["local"],
+        currentLowerV4Fragments: [{ layerId: "dist", fragment: dist.fragment }],
+      }),
+    ),
+  );
+  expect(result._tag).toBe("Left");
+  if (result._tag === "Left") expect(result.left.remediation).toContain("dist");
+});

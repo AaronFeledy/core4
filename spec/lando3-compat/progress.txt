@@ -319,3 +319,13 @@ Verification: typecheck, lint, all eight boundary rules, codegen drift, and guid
   - Detect removals on the decomposed authoring fragment, not on the option view. One option flip can rename services, reorder an array, or change a route filter in ways only the fragment exposes.
   - A recipe introduced mid-stack needs no extra baseline call: the previous fragment is simply empty, and hand-authored services in lower layers are a separate channel that must not be diffed against it.
   - `core/src/plugins/generated/bundled.ts` is gitignored and derived, so the committed change for a composition-root edit is the generator plus `core/build.config.ts` — the emitted file never appears in the diff.
+
+## 2026-09-22 - US-621A Review
+- Tagged `config` (`!load`) no longer lowers as if the author supplied no config. Conversion fails closed and tells them to inline the mapping; the file is not read.
+- Single-layer conversion treats `currentLowerV4Fragments` as already-lowered context. A later representable option change is applied without parsing the v4 recipe object as a legacy id. A hoist that must edit the earlier layer still refuses.
+- Review notes (deferred/rejected): recipe ids stay on `Lando3UnsupportedRecipeError` because that error's contract names the id; decompose is still called with `secrets: {}`. WordPress `via`/`database`/`webroot`/`xdebug` are not v4 wordpress options (`php` and `redis` only), so they stay `dropped` at their span. Drupal 7-9 stay `no-v4-version` because v4 ships 10 and 11. Identical option views are memoized; that is one call per distinct view. `recipe.ts`, postInit, and provider action are outside the decomposer port, which cannot run them. Snapshot `webroot` patterns stay on the decomposer: a relative path fails there rather than being rewritten.
+- Verification: `@lando/lando3` typecheck and biome passed; lando3 plugin spot checks passed (256); guide-drift against origin/main passed. No guide change: the conversion guide is US-621D.
+- **Learnings for future iterations:**
+  - A tagged `config` is not an empty config. Defaults would hide a file reference and still emit a complete-looking recipe.
+  - `currentLowerV4Fragments` are already v4. Parsing those bytes again as Lando 3 turns recipe provenance into a non-string id and makes the second `--file` fail.
+---

@@ -257,15 +257,24 @@ describe("config option mapping", () => {
     ]);
     expect(result.options).toMatchObject({ drupal: "11", php: "8.4", webroot: "public" });
   });
-  test.each(["", "config: null\n", "config: []\n", "config: !load config.yml\n"])(
+  test.each(["", "config: null\n", "config: []\n"])(
     "uses defaults and pins for non-mapping config %s",
     (config) => {
       const result = mapped(`recipe: drupal10\n${config}`);
       expect(result.options.drupal).toBe("10");
       expect(result.dropped).toEqual([]);
       expect(result.invalid).toEqual([]);
+      expect(result.blocked).toBeUndefined();
     },
   );
+  test("blocks a tagged config file instead of applying it as defaults", () => {
+    const result = mapped("recipe: drupal10\nconfig: !load config.yml\n");
+    expect(result.blocked?.legacyKey).toBe("config");
+    expect(result.blocked?.occurrences.length).toBeGreaterThan(0);
+    expect(result.blocked?.occurrences.some(({ span }) => span !== undefined)).toBe(true);
+    expect(result.dropped).toEqual([]);
+    expect(result.invalid).toEqual([]);
+  });
   test.each(['"true"', "1", "null", "[]", "{}", "!load flag.txt"])(
     "rejects non-boolean redis %s",
     (value) => {
