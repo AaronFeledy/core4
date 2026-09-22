@@ -200,10 +200,7 @@ export const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => 
   if (rejectInvalidInvocation("meta:uninstall", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("meta:uninstall", argv);
   return runCompiledCommand(
-    uninstall({
-      ...uninstallOptionsFromInput(input),
-      execPath: process.execPath,
-    }),
+    uninstall(uninstallOptionsFromInput(input)),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderUninstallResult,
   );

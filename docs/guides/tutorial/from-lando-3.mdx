@@ -45,6 +45,40 @@ lando4 shellenv --shell=powershell
 
 Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then open a new shell.
 
+## Update lando4
+
+`lando4 update` replaces the binary Lando 4 installed, and nothing else.
+
+```sh
+lando4 update --dry-run
+lando4 update
+```
+
+Both read the signed release manifest from the update server before they look at your disk, so neither one runs offline.
+
+Lando 4 writes an install record when it installs itself. Update reads that record to find the executable, confirms the file on disk still matches the record byte for byte, and only then stages, verifies, and swaps the new binary. A file named anything other than `lando4` (`lando4.exe` on Windows) is never a target, so Lando 3's `lando` is safe even when it sits in the same directory.
+
+If the record is missing, points somewhere else, or no longer matches the file, update refuses and tells you to rerun the installer. It does not guess, and it never adopts a binary it did not install. Installed Lando 4 some other way, such as through a package manager? Update it the same way you installed it.
+
+Windows cannot replace a running `lando4.exe`, so Lando 4 stages the new binary, exits, and lets a helper finish the swap. The helper re-reads the install record before it moves anything, moves only `lando4.exe`, and puts the original back if the swap fails. You see the result on your next `lando4` command.
+
+After a successful swap Lando 4 rewrites the record to describe the new binary, so the next update and any later uninstall still recognize it. The previous binary stays beside it as `lando4.bak` and is yours to delete.
+
+## Uninstall lando4
+
+```sh
+lando4 uninstall --dry-run
+lando4 uninstall --yes
+```
+
+Uninstall removes what the install record lists and leaves everything else alone. `lando`, `~/.lando`, and your Lando 3 containers stay exactly where they are. Run the dry run first: it prints every step and what it will do before anything is removed.
+
+A binary Lando 4 did not install is never removed, even if it sits in Lando 4's own `bin` directory. If the recorded binary changed underneath, uninstall reports it and leaves the file for you.
+
+Add `--purge` to also remove Lando 4's data, cache, and config roots, and to strip the `# >>> LANDO4 shellenv >>>` block from the profiles Lando 4 wrote to. That deletes Lando 4 app state, so check the dry run first. A Lando 3 `# >>> LANDO shellenv >>>` block is a foreign PATH entry and survives, as does every line you added yourself.
+
+Uninstall is safe to run twice. The second run finds nothing left and removes nothing.
+
 <Guide>
   <Scenario id="shellenv-prints-lando4-path" render>
     <Step name="shellenv">
@@ -56,6 +90,15 @@ Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then o
     <Step name="shellenv-powershell">
       <Run command="lando4 shellenv --shell=powershell" expectExit={0} />
       <Verify command="lando4 shellenv --shell=powershell" expect={{ stdout: { regex: "\\$Env:LANDO_USER_DATA_ROOT = " } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="uninstall-dry-run-targets-the-install-record" render>
+    <Step name="dry-run">
+      <Run command="lando4 uninstall --dry-run" expectExit={0} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "dryRun.:true" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "mode.:.keep-data" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "installed-binary" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "install-record" } }} />
     </Step>
   </Scenario>
 </Guide>

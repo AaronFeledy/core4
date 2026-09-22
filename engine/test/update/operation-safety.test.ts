@@ -1,18 +1,26 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 import { withPluginMutationLock } from "../../src/plugins/mutation-lock";
 import { guardCoreReplacement } from "../../src/update/compatibility";
 import { type UpdateOptions, update } from "../../src/update/operation";
 
 const roots: string[] = [];
+const originalDataRoot = process.env.LANDO_USER_DATA_ROOT;
 const binaryBytes = new TextEncoder().encode("candidate");
 const binarySha = createHash("sha256").update(binaryBytes).digest("hex");
 afterEach(async () => {
+  if (originalDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+  else process.env.LANDO_USER_DATA_ROOT = originalDataRoot;
+  for (const root of roots) {
+    expect(await readFile(join(root, "bin", "lando"), "utf8")).toBe("hostile-lando3");
+    expect((await stat(join(root, "bin", "lando"))).mode & 0o777).toBe(0o755);
+    expect(await Bun.file(join(root, "bin", "lando.bak")).exists()).toBe(false);
+  }
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 const run = (options: UpdateOptions) =>
@@ -72,6 +80,29 @@ test.each([
 const fixture = async (): Promise<UpdateOptions> => {
   const root = await mkdtemp(join(tmpdir(), "lando-core-safety-"));
   roots.push(root);
+  await mkdir(join(root, "bin"));
+  await mkdir(join(root, "install"));
+  await writeFile(join(root, "bin", "lando4"), "old", { mode: 0o755 });
+  await writeFile(join(root, "bin", "lando"), "hostile-lando3", { mode: 0o755 });
+  await writeFile(
+    join(root, "install", "record.json"),
+    JSON.stringify({
+      version: 1,
+      data: {
+        executable: {
+          path: join(root, "bin", "lando4"),
+          sha256: createHash("sha256").update("old").digest("hex"),
+          size: 3,
+          channel: "stable",
+          platform: "linux-x64",
+          releaseVersion: "4.1.0",
+        },
+        shellProfiles: [],
+      },
+    }),
+    { mode: 0o600 },
+  );
+  process.env.LANDO_USER_DATA_ROOT = root;
   const binary = { url: "https://fixture.invalid/lando", sha256: binarySha, size: binaryBytes.length };
   const manifest = {
     channel: "stable",
@@ -106,7 +137,7 @@ test("failed re-exec cannot restore old core beneath a plugin activated after re
   const root = roots[roots.length - 1];
   if (root === undefined || options.fetchManifestBytes === undefined) throw new Error("missing fixture");
   const fetchManifest = options.fetchManifestBytes;
-  const executablePath = join(root, "lando");
+  const executablePath = join(root, "bin", "lando4");
   const pluginsRoot = join(root, "plugins");
   await writeFile(executablePath, "old");
   const precondition = { pluginsRoot, currentCoreVersion: "4.1.0", targetCoreVersion: "4.2.0" };
@@ -130,7 +161,6 @@ test("failed re-exec cannot restore old core beneath a plugin activated after re
         guardCoreReplacement: (body) => guardCoreReplacement(precondition, body),
       }),
     selfUpdate: {
-      executablePath,
       platform: "linux",
       arch: "x64",
       argv: [],
@@ -172,7 +202,82 @@ test("failed re-exec cannot restore old core beneath a plugin activated after re
   expect(result.coreFailure?.tag).toBe("UpdatePermissionError");
   expect(await Bun.file(executablePath).text()).toBe("candidate");
   expect(await Bun.file(`${executablePath}.bak`).text()).toBe("old");
+  expect((await Bun.file(join(root, "install", "record.json")).json()).data.executable).toMatchObject({
+    sha256: binarySha,
+    size: binaryBytes.length,
+    releaseVersion: "4.2.0",
+  });
 });
+
+test.each(["post-swap-probe", "record-refresh"] as const)(
+  "restores the binary and old record after %s failure",
+  async (failure) => {
+    // Given an owned binary and a real, readable install record.
+    const options = await fixture();
+    const root = roots[0];
+    const fetchManifest = options.fetchManifestBytes;
+    if (root === undefined || fetchManifest === undefined) throw new Error("missing fixture");
+    const executablePath = join(root, "bin", "lando4");
+    const recordFile = join(root, "install", "record.json");
+    const originalRecord = await readFile(recordFile, "utf8");
+    let probes = 0;
+    let execs = 0;
+    try {
+      // When the post-swap probe fails or makes the record directory unwritable.
+      const outcome = await Effect.runPromise(
+        update({
+          ...options,
+          selfUpdate: {
+            platform: "linux",
+            arch: "x64",
+            execve: () =>
+              Effect.sync(() => {
+                execs += 1;
+              }),
+          },
+          verifyChecksumSignature: () => Effect.void,
+          fetchManifestBytes: async (url) =>
+            url === "https://fixture.invalid/lando"
+              ? binaryBytes
+              : url === "https://fixture.invalid/SHA256SUMS"
+                ? new TextEncoder().encode(`${binarySha}  lando\n`)
+                : fetchManifest(url),
+        }).pipe(
+          Effect.provideService(Telemetry, { enabled: false, record: () => Effect.void }),
+          Effect.provideService(ProcessRunner, {
+            run: () =>
+              Effect.promise(async () => {
+                probes += 1;
+                if (probes === 2 && failure === "record-refresh") await chmod(join(root, "install"), 0o500);
+                return {
+                  exitCode: probes === 2 && failure === "post-swap-probe" ? 126 : 0,
+                  stdout: "",
+                  stderr: "",
+                };
+              }),
+            stream: () => {
+              throw new Error("unused stream");
+            },
+          }),
+          Effect.either,
+        ),
+      );
+      // Then replacement rolls back before execve and leaves the old ownership proof intact.
+      expect(Either.isLeft(outcome)).toBe(true);
+      if (!Either.isLeft(outcome)) throw new Error("expected replacement failure");
+      expect(outcome.left._tag).toBe(
+        failure === "record-refresh" ? "InstallOwnershipError" : "UpdateLaunchProbeError",
+      );
+      expect(await readFile(executablePath, "utf8")).toBe("old");
+      expect(await readFile(recordFile, "utf8")).toBe(originalRecord);
+      expect(probes).toBe(2);
+      expect(execs).toBe(0);
+      expect((await readdir(join(root, "bin"))).sort()).toEqual(["lando", "lando4"]);
+    } finally {
+      await chmod(join(root, "install"), 0o700);
+    }
+  },
+);
 
 test.each([false, true])("core-only retains plugin safety validation (dryRun=%s)", async (dryRun) => {
   // Given: installed plugins cannot support the proposed core.
@@ -216,7 +321,14 @@ test.each(["download", "verify", "replace"])(
     // When: the combined update reaches binary download.
     const result = await run({
       ...options,
-      selfUpdate: { executablePath: join(roots[0] ?? "", "lando"), platform: "linux", arch: "x64", argv: [] },
+      selfUpdate: {
+        platform: "linux",
+        arch: "x64",
+        argv: [],
+        rename: async () => {
+          throw new Error("fixture replacement failed");
+        },
+      },
       fetchManifestBytes: async (url) => {
         if (url === "https://fixture.invalid/lando") {
           if (failure === "download") throw new Error("fixture download failed");

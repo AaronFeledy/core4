@@ -9,6 +9,8 @@
 - The posix shellenv snippet has four consumers that must stay byte-identical: `renderPosixShellenv` produces it, `scripts/install.sh` and `scripts/install.ps1` reprint it as post-install guidance, and `core/test/cli/fast-path.test.ts` plus the compiled-parity case in `core/test/cli/setup.test.ts` pin its exact shape. Change the renderer and all four fail; that is the intended coupling, so fix them together rather than loosening an assertion.
 - The `# >>> LANDO4 shellenv >>>` profile markers are shared between `core/src/cli/commands/shellenv.ts` (writer) and `LANDO_SHELLENV_BEGIN`/`LANDO_SHELLENV_END` in `engine/src/operations/uninstall.ts` (stripper). A Lando 3 era `# >>> LANDO shellenv >>>` block is a foreign PATH entry: uninstall must leave it alone.
 - shellenv resolves its bin directory from the install record, so the exported PATH entry is the literal recorded directory, not `${LANDO_USER_DATA_ROOT}/bin`. An install under `LANDO_INSTALL_DIR` outside the user data root still gets a correct snippet.
+- A guide page gets exactly ONE `<Guide>` element. `parseGuideScenarioAst` in `scripts/build-guide-scenarios.ts` does `elementChildren(root).find((child) => child.name === "Guide")`, so a second `<Guide>` block is silently dropped: no lint error, no transcript, no generated test, and `dev:guides` simply reports a smaller pass count. Put every `<Scenario>` in one block and confirm the scenario count went up. Known victim: `docs/guides/landofile/lando3-transition-options.mdx` has two blocks, so its `service-selection` scenario has never run.
+- Guide scenarios cannot assert plain-text CLI output for any command whose renderer has a boxed TTY branch. `renderUninstallResult` picks `formatSummary` when `ctx.mode === "lando" && ctx.isTTY`, and that box wraps at terminal width, so labels split across lines and the visible tokens depend on the reader's window size. The harness isolates a temp cwd only, never stdio. Assert `--format=json` instead; it is renderer-independent and single-line.
 
 ## 2026-09-21 - US-619B1 (incomplete, handed back)
 
@@ -79,4 +81,95 @@ Verification: gate:pr green (typecheck, lint, codegen:check, boundaries, guide-d
 ## 2026-09-21 - US-619B1 Verify
 - Compiled `core/dist/lando` plus `scripts/install.sh` against a seeded v3 `lando`: installed executable is `lando4`, record is mode 0600, repeat install succeeds, foreign/symlink destinations refuse, `lando4 shellenv` is record-backed and idempotent, digest-mismatch fails closed with `InstallRecordError`, v3 bytes/mode/`~/.lando` never change. Setup + lamp init/start served HTTP 200 PHP 8.3.33; exec, info, logs, uninstall --yes/--purge leave v3 and the compiled binary (user-owned) intact.
 - **Out-of-scope finding:** `./core/dist/lando setup --yes --no-interactive` and `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. App still came up on `http://us619b1.lndo.site:8080`. Host had no `rootlessport` on 38080/38443; likely WSL mirrored 80/443. Not caused by this identity/shellenv diff.
+---
+
+## 2026-09-21 19:45 - Babysit
+- PR: #1042 https://github.com/AaronFeledy/core4/pull/1042
+- CI outcome: fail (guide-scenarios-windows-x64, guide-scenarios-windows-arm64)
+- Review feedback: fixed (Windows path-separator in the from-lando-3 shellenv guide assertion, plus a typed install-record failure path for setup's shell-profile step)
+- Drift check: clean
+- Merge: deferred (CI re-run on the fixed HEAD had not reached the Windows guide-scenarios jobs before the step budget ran out)
+---
+
+## 2026-09-21 - US-619B3 (partial, handed back)
+
+Made the v4 install record the sole authority for destructive binary operations, and landed most of the story green.
+
+`engine/src/install/owned-executable.ts` is the new single seat for "which executable may Lando 4 replace or remove". It resolves the target from the install record, layers one explicit operation policy on top of the untouched four-condition ownership predicate (the target must carry Lando 4's own executable name: exact `lando4`, case-insensitive `lando4.exe` on Windows), and owns every refusal string. It also owns `refreshInstallRecord`, because an update that does not re-point the record at the bytes it just installed makes the next update and every later uninstall refuse the binary Lando installed.
+
+`lando update` no longer derives its target from `process.execPath`; the execPath heuristic and the caller-supplied `executablePath` target override are both gone. The Windows deferred helper re-verifies ownership itself before it moves anything, because the parent process is gone by then. `lando uninstall` drops the bin-directory containment heuristic entirely: it targets only the recorded executable, adds an `install-record` step that removes the record last, and extends shell-entry stripping to the profiles the record lists.
+
+Verification: `bun run typecheck` green workspace-wide; 162 tests pass across the ownership contract, update manifest/self-update, Windows replacement, deferred receipt, and both uninstall suites. Manual CLI before/after on `uninstall --dry-run` against isolated roots: previously it reported `installed binary: user-owned` pointing at `/home/aaron/.bun/bin/bun` and told the user to delete their Bun install; it now reports `installed binary: skipped` naming the record path with the ownership remediation.
+
+Not done, and why this is handed back: the step budget ran out before the full gate set could run. `bun run lint`, `bun run check:boundaries`, `bun run check:telemetry-inventory`, and `bun run gate:pr` were never executed against the final tree, and the coexistence guide gained update and uninstall prose (guide lint green) but still has no executable `<Scenario>` covering either command, so `dev:guides`, `check:guide-coverage`, `check:public-transcripts`, and `check:guide-drift` are unrun. The end-to-end install/shellenv/update/uninstall hostile-v3 sequence test named by the fourth acceptance criterion does not exist yet.
+
+- **Learnings for future iterations:**
+  - Making the install record authoritative is incomplete without refreshing it after a successful swap. Skip that and update is a one-shot: the second run fails its own digest check against the binary Lando itself installed.
+  - The basename rule must stay OUTSIDE `installRecordOwnsDestination`. The four conditions prove "this file matches this record"; they cannot prove "this record names a v4 executable". A prior review already rejected adding a fifth condition.
+  - Splitting one story across parallel agents works when each owns disjoint files, but type-level changes leak: making a field required on a shared input and deleting a field from a shared options type broke two test files neither agent owned (`engine/test/update/signed-replacement.proof.ts` and the Windows literals in `update-manifest.test.ts`). Budget a reconciliation pass for shared types.
+  - `process.execPath` was never a safe ownership signal. Running from source made it Bun's own binary, so uninstall was politely offering to delete the user's Bun install.
+---
+## 2026-09-21 22:04 - Build
+- [looper] Build handed the story back at building: Record-backed update/Windows-helper/uninstall landed green (typecheck clean, 162 tests pass, CLI verified), but the gate set is unrun: lint, check:boundaries, check:telemetry-inventory and gate:pr were never executed against the final tree; the coexistence guide has update/uninstall prose but no executable Scenario for either command, so dev:guides, check:guide-coverage, check:public-transcripts and check:guide-drift are unrun; and the end-to-end install/shellenv/update/uninstall hostile-v3 test required by AC4 does not exist.
+---
+## 2026-09-21 22:04 - Review
+- [looper] gate skipped Review: gate: phase building is before implemented (expected phase at or past implemented)
+---
+
+## 2026-09-21 22:10 - US-619B3 Drift Audit
+- Trigger: 1 cycle, 1570 changed lines, 3 commits
+- Scar tissue: uninstall still accepted an execPath override, and the CLI still injected process.execPath, after the operation had stopped reading it.
+- Ceremony: ownership name and remediation constants were exported with no importer.
+- Contract: update and uninstall are record-gated, but the operation-specific guide is prose without an executable scenario and the hostile install/shellenv/update/uninstall sequence is still absent, so AC2 and AC4 are not proven.
+- Fixed: deleted the execPath override end to end and unexported the unused constants. Lint format on the new ownership module is now clean.
+- Split/excise decisions: none. Handed back to building for the missing guide scenario and hostile end-to-end proof.
+- Verification: typecheck pass, lint pass, spot checks pass (193, then 102 after format)
+---
+## 2026-09-21 22:11 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-09-21 22:11 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-09-21 22:11 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-09-21 22:11 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+
+## 2026-09-21 22:50 - US-619B3
+
+Closed the two gaps the previous pass handed back. The record-gating implementation itself was already landed and green; this pass supplied the missing proofs.
+
+`core/test/scripts/install-lifecycle-posix.test.ts` is the end-to-end preservation proof. Over one real filesystem fixture, parameterized across a regular and a symlinked hostile Lando 3, it runs the real POSIX installer, then shellenv, then a real-CLI uninstall dry run, then an offline in-process update, then shellenv again, then a confirmed uninstall, then the same uninstall a second time, then shellenv with no record left. Lando 3's bytes, permission bits, link identity, private state directory, and its `# >>> LANDO shellenv >>>` profile block are re-snapshotted and compared after every single phase, so a regression names the phase that broke it. Update replaces only `lando4`, leaves `lando4.bak`, never writes `lando.bak`, and refreshes the record so the following shellenv still resolves. Uninstall removes the recorded executable and retires the record last, leaves the unrecorded `lando4.bak` alone, and the second run reports both steps skipped.
+
+The coexistence guide stopped being prose-only. `from-lando-3.mdx` now carries an executable `uninstall-dry-run-targets-the-install-record` scenario that drives the real CLI and asserts the plan is a dry run in keep-data mode naming both the `installed-binary` and `install-record` steps. Update stays prose on purpose: `defaultUpdate` fetches the signed manifest before it looks at the disk and there is no manifest-URL override, so every `lando4 update` path is network-bound. A scenario for it would either assert a transient Alpha 404 or, once the update host serves v4, turn into a live self-update against the reader's own binary, because guide scenarios isolate a temp working directory and nothing else. Update's executable proof lives in the manifest, safety, and lifecycle suites instead.
+
+Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen boundary rules, guide-drift against origin/main); check:telemetry-inventory, lint:guides, check:guide-coverage, check:public-transcripts, and docs:check green; 322 spot-check tests across the lifecycle, both installers, four uninstall suites, update manifest and deferred receipt, owned-executable, update safety, Windows replacement, engine uninstall, shellenv, and the fast-path canary; the guide runs 2 scenarios and 19 assertions. Both new proofs were mutation-checked: tampering Lando 3's bytes mid-sequence fails with `Lando 3 preservation: update`, pointing update at a missing record fails with `InstallOwnershipError` reason `no-record`, and corrupting one guide regex drops the run to 1 pass 1 fail. Manual CLI runs against a seeded hostile Lando 3 confirmed the installer publishes only `lando4`, shellenv exports the recorded directory rather than the default bin, and uninstall refuses with `foreign-basename`, `digest-mismatch`, and `no-record` when the record names `lando`, when the binary is overwritten, and when the record is gone, with Lando 3 byte-identical after all three.
+
+- **Learnings for future iterations:**
+  - One `<Guide>` element per page. The parser reads the first and silently ignores the rest, so a second block looks authored but never executes. Always confirm the scenario count rose after adding one.
+  - Do not assert a command's plain-text output from a guide when that command has a boxed TTY renderer. The box wraps at terminal width, so the same assertion passes piped in CI and fails in a developer's terminal. Use `--format=json`.
+  - `scripts/install.sh` needs `SHA256SUMS.asc` present next to the release even when the manifest points its signature at the cosign `.sig`, so a hand-built local release fixture that omits the `.asc` fails the copy step before it ever installs.
+  - The guide harness gives a scenario a temp working directory and nothing else. There is no HOME or `LANDO_USER_*` isolation and no way for MDX to declare env, so every guide assertion has to hold on a host that may or may not already have a v4 install record, and no guide may run a destructive command.
+  - A test that walks one filesystem through many phases is worth more than the same coverage split into independent cases: re-snapshotting the foreign artifact after every phase is what turns it into a preservation proof, and labelling the assertion with the phase name is what makes a failure diagnosable.
+---
+
+## 2026-09-21 - US-619B3 Review
+- Confirmed keep-data uninstall deleted the recorded `lando4` binary and then kept the install record whenever a `# >>> LANDO4 shellenv >>>` block made `shell-entries` `manual`. The record now retires on that intentional keep-data outcome, while a failed or unresolved purge strip still preserves it. A second keep-data run skips both steps and leaves the block.
+- Purge of an in-bin recorded `lando4` left the data root behind: the root step deferred while `bin` existed, and the follow-up `rmdir` could not remove a non-empty directory. After the record is retired, purge now removes the data root when the binary step completed or was already absent. An unrecorded binary in `bin` is still left alone.
+- Purge no longer abandons every recorded shell profile when one of them cannot be read. Readable `# >>> LANDO4 shellenv >>>` blocks are stripped; the unreadable profile stays manual and still holds the install record for a retry.
+- Review notes (deferred/rejected): an executable `lando4 update` guide scenario stays out of scope — update fetches the signed manifest before it looks at disk and guide scenarios isolate only a temp cwd, so the scenario would be a live self-update; the coexistence guide covers update in prose and uninstall as an executable dry-run. Windows replacement rollback-on-refresh-failure matches the existing swap rollback and was not a new hole.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, check:public-transcripts, and guide-drift against origin/main passed; uninstall, lifecycle, and CLI uninstall spot checks passed (92).
+---
+## 2026-09-21 23:14 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-21 - US-619B3 Verify
+- Compiled `core/dist/lando` setup, a lamp app, and live PHP 8.3.33 over HTTP. Uninstall removed only the recorded `lando4`, purge stripped the v4 shell block and left the v3 block, and a hostile `lando` plus v3 state stayed byte-identical through update, keep-data, purge, foreign-basename, digest-mismatch, and a second run.
+- Purge after setup left the data root whenever `bin` existed and there was no install record, so mkcert blocked cleanup forever. Purge now removes that root when bin holds only managed setup tools, and still keeps a foreign `lando` in bin.
+- **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. The app still served `http://us619b3.lndo.site:8080`. Same warning as US-619B1; not caused by this diff.
+- **Learnings for future iterations:** `https://update.lando.dev/v4/dev.json` is unreachable, so a compiled `lando update` fails with `UpdateNetworkError` before the ownership gate. No replacement is not evidence the gate is missing. Keep-data leaves the shellenv block manual; only purge strips it.
 ---

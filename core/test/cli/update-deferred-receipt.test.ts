@@ -1,12 +1,14 @@
+// allow: SIZE_OK — Required ownership-receipt scenario stays with existing deferred-receipt regressions in this owned test file.
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { resolveOwnedExecutable } from "@lando/engine/install/owned-executable";
 import { makeUpdateHandoff } from "@lando/engine/operations/update";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { StateStore, type StateStoreShape } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
-import { Effect, Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -53,6 +55,8 @@ test("detached helper persists an abort which the next real invocation surfaces 
       executablePath,
       stagedBinaryPath,
       backupPath: `${executablePath}.bak`,
+      installRecordFile: join(root, "record.json"),
+      attemptedVersion: "4.2.0",
       token,
       parentPid: 2147483647,
       precondition: { pluginsRoot: root, currentCoreVersion: "4.1.0", targetCoreVersion: "4.2.0" },
@@ -98,6 +102,83 @@ test("detached helper persists an abort which the next real invocation surfaces 
   expect(following.exit).toBe(0);
   expect(following.stderr).toBe("");
   expect(following.stdout).not.toContain("completed-plugin");
+});
+
+test("the next CLI run surfaces the helper's canonical ownership refusal", async () => {
+  // Given a deferred request with no ownership record and an unrelated executable.
+  const root = await mkdtemp(join(tmpdir(), "lando-deferred-ownership-"));
+  roots.push(root);
+  const cache = Schema.decodeUnknownSync(AbsolutePath)(join(root, "cache"));
+  const live = await Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
+  const handoff = makeUpdateHandoff(isolatedStore(live, cache));
+  const token = await Effect.runPromise(handoff.saveDeferred({ updatedCore: false, updatedPlugins: [] }));
+  const executablePath = join(root, "lando.exe");
+  const installRecordFile = join(root, "record.json");
+  await writeFile(executablePath, "foreign");
+  const expected = await Effect.runPromise(
+    Effect.either(
+      resolveOwnedExecutable({
+        recordFile: installRecordFile,
+        platform: "win32",
+        destination: executablePath,
+      }),
+    ),
+  );
+  if (Either.isRight(expected)) throw new Error("Expected ownership refusal");
+  const requestPath = join(root, "request.json");
+  await writeFile(
+    requestPath,
+    JSON.stringify({
+      executablePath,
+      installRecordFile,
+      stagedBinaryPath: join(root, "candidate.exe"),
+      backupPath: `${executablePath}.bak`,
+      attemptedVersion: "4.2.0",
+      token,
+      parentPid: 2147483647,
+      precondition: { pluginsRoot: root, currentCoreVersion: "4.1.0", targetCoreVersion: "4.2.0" },
+    }),
+  );
+  const env = {
+    ...process.env,
+    LANDO_USER_CACHE_ROOT: cache,
+    LANDO_USER_DATA_ROOT: join(root, "data"),
+    LANDO_USER_CONF_ROOT: join(root, "conf"),
+  };
+  const cli = resolve("core/bin/lando.ts");
+  const helper = Bun.spawn([process.execPath, cli, "--lando-update-replacement", requestPath, token], {
+    env,
+    stdout: "ignore",
+    stderr: "pipe",
+  });
+  await new Response(helper.stderr).text();
+  expect(await helper.exited).toBe(1);
+  // When the next invocation consumes the persisted receipt.
+  const next = Bun.spawn([process.execPath, cli, "meta:version", "--format=json"], {
+    env,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, stderr, exit] = await Promise.all([
+    new Response(next.stdout).text(),
+    new Response(next.stderr).text(),
+    next.exited,
+  ]);
+  // Then machine output preserves the ownership tag and the contract's remediation.
+  expect(exit).toBe(1);
+  expect(stderr).toBe("");
+  expect(JSON.parse(stdout)).toMatchObject({
+    result: {
+      updatedCore: false,
+      hasFailures: true,
+      coreFailure: {
+        tag: "InstallOwnershipError",
+        message: expected.left.message,
+        remediation: expected.left.remediation,
+      },
+    },
+  });
+  expect(await Bun.file(executablePath).text()).toBe("foreign");
 });
 
 test.each(["json", "yaml", "ndjson"])(
