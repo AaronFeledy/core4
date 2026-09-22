@@ -9,6 +9,8 @@
 - The posix shellenv snippet has four consumers that must stay byte-identical: `renderPosixShellenv` produces it, `scripts/install.sh` and `scripts/install.ps1` reprint it as post-install guidance, and `core/test/cli/fast-path.test.ts` plus the compiled-parity case in `core/test/cli/setup.test.ts` pin its exact shape. Change the renderer and all four fail; that is the intended coupling, so fix them together rather than loosening an assertion.
 - The `# >>> LANDO4 shellenv >>>` profile markers are shared between `core/src/cli/commands/shellenv.ts` (writer) and `LANDO_SHELLENV_BEGIN`/`LANDO_SHELLENV_END` in `engine/src/operations/uninstall.ts` (stripper). A Lando 3 era `# >>> LANDO shellenv >>>` block is a foreign PATH entry: uninstall must leave it alone.
 - shellenv resolves its bin directory from the install record, so the exported PATH entry is the literal recorded directory, not `${LANDO_USER_DATA_ROOT}/bin`. An install under `LANDO_INSTALL_DIR` outside the user data root still gets a correct snippet.
+- A guide page gets exactly ONE `<Guide>` element. `parseGuideScenarioAst` in `scripts/build-guide-scenarios.ts` does `elementChildren(root).find((child) => child.name === "Guide")`, so a second `<Guide>` block is silently dropped: no lint error, no transcript, no generated test, and `dev:guides` simply reports a smaller pass count. Put every `<Scenario>` in one block and confirm the scenario count went up. Known victim: `docs/guides/landofile/lando3-transition-options.mdx` has two blocks, so its `service-selection` scenario has never run.
+- Guide scenarios cannot assert plain-text CLI output for any command whose renderer has a boxed TTY branch. `renderUninstallResult` picks `formatSummary` when `ctx.mode === "lando" && ctx.isTTY`, and that box wraps at terminal width, so labels split across lines and the visible tokens depend on the reader's window size. The harness isolates a temp cwd only, never stdio. Assert `--format=json` instead; it is renderer-independent and single-line.
 
 ## 2026-09-21 - US-619B1 (incomplete, handed back)
 
@@ -122,4 +124,34 @@ Not done, and why this is handed back: the step budget ran out before the full g
 - Fixed: deleted the execPath override end to end and unexported the unused constants. Lint format on the new ownership module is now clean.
 - Split/excise decisions: none. Handed back to building for the missing guide scenario and hostile end-to-end proof.
 - Verification: typecheck pass, lint pass, spot checks pass (193, then 102 after format)
+---
+## 2026-09-21 22:11 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-09-21 22:11 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-09-21 22:11 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-09-21 22:11 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+
+## 2026-09-21 22:50 - US-619B3
+
+Closed the two gaps the previous pass handed back. The record-gating implementation itself was already landed and green; this pass supplied the missing proofs.
+
+`core/test/scripts/install-lifecycle-posix.test.ts` is the end-to-end preservation proof. Over one real filesystem fixture, parameterized across a regular and a symlinked hostile Lando 3, it runs the real POSIX installer, then shellenv, then a real-CLI uninstall dry run, then an offline in-process update, then shellenv again, then a confirmed uninstall, then the same uninstall a second time, then shellenv with no record left. Lando 3's bytes, permission bits, link identity, private state directory, and its `# >>> LANDO shellenv >>>` profile block are re-snapshotted and compared after every single phase, so a regression names the phase that broke it. Update replaces only `lando4`, leaves `lando4.bak`, never writes `lando.bak`, and refreshes the record so the following shellenv still resolves. Uninstall removes the recorded executable and retires the record last, leaves the unrecorded `lando4.bak` alone, and the second run reports both steps skipped.
+
+The coexistence guide stopped being prose-only. `from-lando-3.mdx` now carries an executable `uninstall-dry-run-targets-the-install-record` scenario that drives the real CLI and asserts the plan is a dry run in keep-data mode naming both the `installed-binary` and `install-record` steps. Update stays prose on purpose: `defaultUpdate` fetches the signed manifest before it looks at the disk and there is no manifest-URL override, so every `lando4 update` path is network-bound. A scenario for it would either assert a transient Alpha 404 or, once the update host serves v4, turn into a live self-update against the reader's own binary, because guide scenarios isolate a temp working directory and nothing else. Update's executable proof lives in the manifest, safety, and lifecycle suites instead.
+
+Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen boundary rules, guide-drift against origin/main); check:telemetry-inventory, lint:guides, check:guide-coverage, check:public-transcripts, and docs:check green; 322 spot-check tests across the lifecycle, both installers, four uninstall suites, update manifest and deferred receipt, owned-executable, update safety, Windows replacement, engine uninstall, shellenv, and the fast-path canary; the guide runs 2 scenarios and 19 assertions. Both new proofs were mutation-checked: tampering Lando 3's bytes mid-sequence fails with `Lando 3 preservation: update`, pointing update at a missing record fails with `InstallOwnershipError` reason `no-record`, and corrupting one guide regex drops the run to 1 pass 1 fail. Manual CLI runs against a seeded hostile Lando 3 confirmed the installer publishes only `lando4`, shellenv exports the recorded directory rather than the default bin, and uninstall refuses with `foreign-basename`, `digest-mismatch`, and `no-record` when the record names `lando`, when the binary is overwritten, and when the record is gone, with Lando 3 byte-identical after all three.
+
+- **Learnings for future iterations:**
+  - One `<Guide>` element per page. The parser reads the first and silently ignores the rest, so a second block looks authored but never executes. Always confirm the scenario count rose after adding one.
+  - Do not assert a command's plain-text output from a guide when that command has a boxed TTY renderer. The box wraps at terminal width, so the same assertion passes piped in CI and fails in a developer's terminal. Use `--format=json`.
+  - `scripts/install.sh` needs `SHA256SUMS.asc` present next to the release even when the manifest points its signature at the cosign `.sig`, so a hand-built local release fixture that omits the `.asc` fails the copy step before it ever installs.
+  - The guide harness gives a scenario a temp working directory and nothing else. There is no HOME or `LANDO_USER_*` isolation and no way for MDX to declare env, so every guide assertion has to hold on a host that may or may not already have a v4 install record, and no guide may run a destructive command.
+  - A test that walks one filesystem through many phases is worth more than the same coverage split into independent cases: re-snapshotting the foreign artifact after every phase is what turns it into a preservation proof, and labelling the assertion with the phase name is what makes a failure diagnosable.
 ---
