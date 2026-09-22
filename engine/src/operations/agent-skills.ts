@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 
+import { ManagedFileServiceFactory } from "@lando/managed-file/service";
 import { LandofileFormConflictError, LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
 import type { ManagedFileError } from "@lando/sdk/errors";
 import type { ManagedFileAction, ManagedFileResult } from "@lando/sdk/schema";
-import { ManagedFileService } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
 import { AGENT_SKILLS_OWNER, agentSkillManagedFiles } from "./agent-skills-pack.ts";
@@ -40,17 +40,6 @@ export type AgentSkillsError =
   | LandofileParseError
   | LandofileFormConflictError
   | ManagedFileError;
-
-const withAppCwd = <A, E, R>(directory: string, effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
-  Effect.acquireUseRelease(
-    Effect.sync(() => {
-      const previous = process.cwd();
-      process.chdir(directory);
-      return previous;
-    }),
-    () => effect,
-    (previous) => Effect.sync(() => process.chdir(previous)),
-  );
 
 const resolveAppRoot = (
   options: AgentSkillsOptions,
@@ -93,28 +82,35 @@ const toEntries = (result: ManagedFileResult): ReadonlyArray<AgentSkillsFileResu
 const applyPack = (
   verb: Exclude<AgentSkillsVerb, "remove">,
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
   Effect.gen(function* () {
     const appRoot = yield* resolveAppRoot(options);
-    const managed = yield* ManagedFileService;
-    const result = yield* withAppCwd(appRoot, Effect.scoped(managed.apply(agentSkillManagedFiles())));
+    const factory = yield* ManagedFileServiceFactory;
+    const managed = yield* factory.forBase(appRoot);
+    const result = yield* Effect.scoped(managed.apply(agentSkillManagedFiles(appRoot)));
     return { verb, appRoot, entries: toEntries(result) };
   });
 
 export const installAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> => applyPack("install", options);
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
+  applyPack("install", options);
 
 export const updateAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> => applyPack("update", options);
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
+  applyPack("update", options);
 
 export const removeAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
   Effect.gen(function* () {
     const appRoot = yield* resolveAppRoot(options);
-    const managed = yield* ManagedFileService;
-    const result = yield* withAppCwd(appRoot, managed.remove({ owner: AGENT_SKILLS_OWNER }));
+    const factory = yield* ManagedFileServiceFactory;
+    const managed = yield* factory.forBase(appRoot);
+    const result = yield* managed.remove({
+      owner: AGENT_SKILLS_OWNER,
+      base: appRoot,
+    });
     return { verb: "remove", appRoot, entries: toEntries(result) };
   });

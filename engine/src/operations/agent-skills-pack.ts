@@ -2,7 +2,7 @@
 // tooling through Lando. Content points at existing agent-native docs; it does
 // not copy those guides into the app.
 
-import { type ManagedFile, PortablePath } from "@lando/sdk/schema";
+import { AbsolutePath, type ManagedFile, PortablePath } from "@lando/sdk/schema";
 
 export const AGENT_SKILLS_OWNER = "lando:agent-skills";
 
@@ -10,7 +10,12 @@ export const AGENT_SKILLS_SKILL_ID = "lando:agent-skills:skill";
 
 export const AGENT_SKILLS_SKILL_PATH = ".agents/skills/lando/SKILL.md";
 
-export const AGENT_SKILLS_SKILL_BODY = `# Run tooling in Lando
+export const AGENT_SKILLS_SKILL_BODY = `---
+name: lando
+description: Run this app's tooling and inspect its state through Lando.
+---
+
+# Run tooling in Lando
 
 This app is a Lando app. Do not invent a host package manager or language runtime
 as the default way to run project tools.
@@ -52,13 +57,14 @@ Install, update, or remove it with \`lando agent:skills:install\`,
 \`lando agent:skills:update\`, and \`lando agent:skills:remove\`.
 `;
 
-export const agentSkillManagedFiles = (): ReadonlyArray<ManagedFile> => [
+export const agentSkillManagedFiles = (base?: string): ReadonlyArray<ManagedFile> => [
   {
     id: AGENT_SKILLS_SKILL_ID,
     owner: AGENT_SKILLS_OWNER,
     path: PortablePath.make(AGENT_SKILLS_SKILL_PATH),
     mode: "file",
     format: "text",
+    ...(base === undefined ? {} : { base: AbsolutePath.make(base) }),
     content: { kind: "text", value: AGENT_SKILLS_SKILL_BODY },
     onConflict: "skip",
   },

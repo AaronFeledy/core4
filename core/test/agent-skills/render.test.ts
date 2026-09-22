@@ -15,6 +15,24 @@ describe("agent skills CLI presentation", () => {
     expect(text).not.toContain("(update)");
   });
 
+  test("remove reports preserved conflicts and adopted files truthfully", () => {
+    const conflict = renderAgentSkillsResult({
+      verb: "remove",
+      appRoot: "/app",
+      entries: [{ id: "lando:agent-skills:skill", path: AGENT_SKILLS_SKILL_PATH, action: "conflict" }],
+    });
+    const adopted = renderAgentSkillsResult({
+      verb: "remove",
+      appRoot: "/app",
+      entries: [{ id: "lando:agent-skills:skill", path: AGENT_SKILLS_SKILL_PATH, action: "adopt-detected" }],
+    });
+
+    expect(conflict).toContain(`! ${AGENT_SKILLS_SKILL_PATH} (conflict)`);
+    expect(adopted).toContain(`! ${AGENT_SKILLS_SKILL_PATH} (adopt-detected)`);
+    expect(conflict).not.toContain("Removed agent skills");
+    expect(adopted).not.toContain("Removed agent skills");
+  });
+
   test("install and update keep ManagedFile action glyphs", () => {
     expect(
       renderAgentSkillsResult({

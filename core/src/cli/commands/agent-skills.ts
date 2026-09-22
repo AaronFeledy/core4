@@ -1,7 +1,8 @@
 import { type Effect, Schema } from "effect";
 
 import { ManagedFileAction } from "@lando/sdk/schema";
-import type { ManagedFileService } from "@lando/sdk/services";
+
+import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
 
 import {
   type AgentSkillsError,
@@ -36,17 +37,17 @@ export const AgentSkillsResultSchema = Schema.Struct({
 
 export const installAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
   installAgentSkillsOperation(options);
 
 export const updateAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
   updateAgentSkillsOperation(options);
 
 export const removeAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
   removeAgentSkillsOperation(options);
 
 const ACTION_GLYPH: Readonly<Record<ManagedFileAction, string>> = {
@@ -62,7 +63,7 @@ const presentEntry = (
   verb: AgentSkillsVerb,
   action: ManagedFileAction,
 ): { readonly glyph: string; readonly label: string } => {
-  if (verb === "remove") {
+  if (verb === "remove" && action === "update") {
     return { glyph: "-", label: "remove" };
   }
   return { glyph: ACTION_GLYPH[action], label: action };
@@ -80,9 +81,11 @@ const verbLabel = (verb: AgentSkillsVerb): string => {
 };
 
 export const renderAgentSkillsResult = (result: AgentSkillsResult): string => {
-  const lines = [
-    `${verbLabel(result.verb)} agent skills in ${result.appRoot} (${result.entries.length} file${result.entries.length === 1 ? "" : "s"}).`,
-  ];
+  const heading =
+    result.verb === "remove"
+      ? `Processed agent skill removal in ${result.appRoot}`
+      : `${verbLabel(result.verb)} agent skills in ${result.appRoot}`;
+  const lines = [`${heading} (${result.entries.length} file${result.entries.length === 1 ? "" : "s"}).`];
   for (const entry of result.entries) {
     const presented = presentEntry(result.verb, entry.action);
     lines.push(`  ${presented.glyph} ${entry.path} (${presented.label})`);
