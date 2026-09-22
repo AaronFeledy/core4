@@ -193,6 +193,24 @@ const configuredBasenames = (value: MergedLegacyValue | undefined): ReadonlyArra
   }
 };
 
+const orphanConfigDiagnostic = (
+  merged: MergedLegacyValue | undefined,
+  fallback: ConfigTranslateSourceId,
+): ReadonlyArray<ConfigTranslateDiagnostic> => {
+  if (merged?.kind !== "mapping" || !merged.entries.has("config")) return [];
+  const occurrence = lastOccurrence(occurrencesAt(merged, ["config"]));
+  return [
+    {
+      kind: "unsupported",
+      sourceId: occurrence?.sourceId ?? fallback,
+      keyPath: ["config"],
+      span: spanOf(occurrence),
+      message: "config has no Lando 3 recipe to apply to.",
+      remediation: "Add a recipe, or remove config and author the Lando 4 services directly.",
+    },
+  ];
+};
+
 const deferredDiagnostics = (
   merged: MergedLegacyValue | undefined,
   fallback: ConfigTranslateSourceId,
@@ -352,9 +370,12 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         const ranks = new Map(
           sources.map((source) => [source.sourceId, lando3SourceLayerOrder(source.layer)]),
         );
+        const recipePresent =
+          establishedRecipe(established) !== undefined || folded.some((view) => view.recipe !== undefined);
         const diagnostics = orderDiagnostics(
           dedupeDiagnostics([
             ...deferredDiagnostics(merged, fallback),
+            ...(recipePresent ? [] : orphanConfigDiagnostic(merged, fallback)),
             ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
             ...planned.diagnostics,
           ]),

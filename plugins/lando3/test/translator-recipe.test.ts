@@ -232,3 +232,17 @@ test("single-layer conversion still refuses a hoist into an already lowered laye
   expect(result._tag).toBe("Left");
   if (result._tag === "Left") expect(result.left.remediation).toContain("dist");
 });
+
+test("reports config that has no recipe", async () => {
+  const { translator } = setup();
+  const result = await Effect.runPromise(
+    translator.translate(documentSet([document(".lando.yml", "config: {php: 8.3}\n")])),
+  );
+  expect(result.diagnostics).toContainEqual(
+    expect.objectContaining({
+      kind: "unsupported",
+      keyPath: ["config"],
+      message: "config has no Lando 3 recipe to apply to.",
+    }),
+  );
+});
