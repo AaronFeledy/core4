@@ -509,3 +509,9 @@ Existing emitter tests that locked key REJECTION were converted into round-trip 
 - Review notes (deferred/rejected): conversion guides stay with US-621D; guide-drift against origin/main passed without a guide edit. Compose include targets that use a URL or git@ are left to the existing non-file path rather than diagnosed as missing files.
 - Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; recipe-lowering, translator-recipe, and translator-services spot checks passed (39).
 ---
+
+## 2026-09-22 13:45 - US-621C1 Review
+- Handed back. The overlay merge fix stays, but three residual target rows owned by this story are still unmet: PHP `config.php`/`vhosts`/`pool`/`server` are dropped instead of read-only config mounts; nginx/apache `server` and `vhosts` collapse into one `config.server` slot; MySQL/MariaDB `authentication` is only a needs-review note instead of an emitted `99-lando.cnf` option; API-4 services with a default or string app mount drop top-level `excludes`.
+- Review notes (deferred/rejected): Bugbot's pure image-only overlay case does not rewrite the established file, so merging emitted outputs alone looked like a false failure; the write path replaces a layer file, so a non-empty delta would still drop the overlay. That is why the merge-order fix stayed. URL and git@ compose includes stay on the non-file path.
+- Verification: gate:pr green before the handback; recipe-lowering spot check passed after the overlay fix.
+---
