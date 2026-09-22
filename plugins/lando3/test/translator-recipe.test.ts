@@ -105,12 +105,10 @@ test("deduplicates dropped config and orders diagnostics by source layer", async
     span: { start: { line: 2 } },
     remediation: expect.any(String),
   });
-  expect(result.diagnostics.findIndex(({ kind }) => kind === "dropped")).toBeLessThan(
-    result.diagnostics.findIndex(({ kind }) => kind === "unsupported"),
-  );
+  expect(result.diagnostics.map(({ kind }) => kind)).toEqual(["generated", "dropped"]);
   expect(
     result.diagnostics.filter(({ kind }) => kind === "unsupported").map(({ keyPath }) => keyPath),
-  ).toEqual([["services"]]);
+  ).toEqual([]);
 });
 
 test.each(["pantheon", "unknown-id", "drupal9"])(

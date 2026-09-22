@@ -47,6 +47,32 @@ test("preserves layer precedence when an established overlay precedes legacy bas
   );
 });
 
+test("keeps an established overlay ahead of carried authored services", async () => {
+  // Given a lowered base service and an already converted local image overlay.
+  const folded = await views([["base", "recipe: lamp\n"]]);
+  const recipeBase = { services: { appserver: { type: "php", image: "php:8.2" } } };
+  const authoredBase = {
+    services: { appserver: { type: "php", image: "php:8.2", environment: { FOO: "from-base" } } },
+  };
+  const overlay = { services: { appserver: { type: "php", image: "php:8.3" } } };
+  // When the local layer has no authored prefix of its own.
+  const result = recipeLayerOutputs(
+    folded,
+    {
+      prefixes: [{ targetLayer: "base", sourceIds: [], fragment: recipeBase }],
+      diagnostics: [],
+      decomposeCalls: 1,
+    },
+    [],
+    [{ layer: "local", sourceIds: [], fragment: overlay }],
+    [{ targetLayer: "base", sourceIds: [], fragment: authoredBase }],
+  );
+  // Then the overlay image wins and the untouched authored field survives.
+  expect(mergeLandofiles(result.outputs.map(({ fragment }) => fragment).filter(isPlainRecord))).toEqual({
+    services: { appserver: { type: "php", image: "php:8.3", environment: { FOO: "from-base" } } },
+  });
+});
+
 test("decomposes changed options with provenance and only redactor ports", async () => {
   // Given two distinct effective option views.
   const fake = fakeDecomposers();

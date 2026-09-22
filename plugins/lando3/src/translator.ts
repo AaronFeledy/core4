@@ -9,11 +9,10 @@
  * ordering, validation, and mutation. Nothing in this module opens a file,
  * follows a reference, resolves a tag, plans, or contacts a provider.
  *
- * Sections whose native target is not yet available are reported `unsupported`
- * rather than `dropped`. `dropped` is a final disposition that says a source
- * key has no target at all; an `unsupported` section instead blocks the write,
- * which is the honest answer while lowering for that section is still being
- * built. Nothing is ever silently omitted.
+ * Service keys whose Lando 4 target is not yet implemented are `dropped`
+ * without blocking conversion; their remediation names the pending target.
+ * Top-level keys with no lowerer remain `unsupported` and block the write.
+ * Nothing is silently omitted.
  */
 import { Effect } from "effect";
 
@@ -53,6 +52,7 @@ import {
   lowerRecipeViews,
   recipeLayerOutputs,
 } from "./recipe-lowering.ts";
+import { lowerServiceViews } from "./service-lowering.ts";
 import { formatPath } from "./source.ts";
 import { isPlainRecord, mergeLandofiles, v4LayerRank } from "./v4-merge.ts";
 
@@ -65,7 +65,20 @@ const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "tex
  */
 const CUSTOM_BASENAME_KEYS = ["landoFile", "preLandoFiles", "postLandoFiles"] as const;
 
-const LOWERED_KEYS = new Set<string>(["name", "recipe", "config"]);
+const LOWERED_KEYS = new Set<string>([
+  "name",
+  "recipe",
+  "config",
+  "services",
+  "compose",
+  "excludes",
+  "env_file",
+  "volumes",
+  "networks",
+  "plugins",
+  "pluginDirs",
+  "keys",
+]);
 
 export const defaultLando3Ports = (): Lando3TranslatorPorts => ({
   decomposers: new Map(),
@@ -216,7 +229,7 @@ const deferredDiagnostics = (
   fallback: ConfigTranslateSourceId,
 ): ReadonlyArray<ConfigTranslateDiagnostic> =>
   topLevelKeys(merged)
-    .filter((key) => !LOWERED_KEYS.has(key))
+    .filter((key) => !LOWERED_KEYS.has(key) && !key.startsWith("x-"))
     .map((key) => {
       const occurrence = lastOccurrence(occurrencesAt(merged, [key]));
       const custom = (CUSTOM_BASENAME_KEYS as ReadonlyArray<string>).includes(key);
@@ -345,10 +358,17 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         const merged = mergeLegacySources(sources);
         const folded = foldToTargetLayers(legacyPrefixViews(sources));
         const lowered = yield* lowerRecipeViews(ports, folded, establishedRecipe(established));
+        const authored = lowerServiceViews(folded);
         const decoded = decodeLando3Landofile(mergedToPlain(merged));
 
         const writable = new Set<LandofileLayer>(input.writableLayerIds);
-        const planned = recipeLayerOutputs(folded, lowered, buildOutputs(sources, writable), established);
+        const planned = recipeLayerOutputs(
+          folded,
+          lowered,
+          buildOutputs(sources, writable),
+          established,
+          authored.prefixes,
+        );
         const missing = planned.required.filter((layer) => !writable.has(layer));
         if (input.mode === "single-layer" && missing.length > 0) {
           return yield* Effect.fail(
@@ -376,6 +396,7 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
             ...(recipePresent ? [] : orphanConfigDiagnostic(merged, fallback)),
             ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
             ...planned.diagnostics,
+            ...authored.diagnostics,
           ]),
           (sourceId) => ranks.get(sourceId) ?? 0,
         );

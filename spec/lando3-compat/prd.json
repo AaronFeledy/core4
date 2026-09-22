@@ -86,12 +86,15 @@
         "Lower `build_as_root`, `build_internal`, `build`, `run_as_root`, `run_internal`, and `run` to ordered artifact/app steps with resolved explicit users and correct internal/external semantics.",
         "Preserve command order and build-key identity, reject unsafe remote context/build-ssh variants, and pass provider/build/runtime plus applicable standard gates.",
         "Lower US-618A/B/C/E fields and every `target` or mixed `target/drop` residual catalog row, including exact config destinations, Composer/Node packages, Redis, Mailpit, Apache, Node, and generated version metadata.",
-        "Separate supported real-runtime fixtures from unavailable-version and unsupported-option rejections; do not manufacture images; README/provider and applicable standard gates pass."
+        "Separate supported real-runtime fixtures from unavailable-version and unsupported-option rejections; do not manufacture images; README/provider and applicable standard gates pass.",
+        "Deferred and dropped keys never block conversion: a source key whose §6.3 target waits for a story that has not landed (`scanner` naming US-617B, implicit per-service home persistence naming US-617A, elasticsearch/opensearch `mem` and `plugins` naming US-621C8) emits `dropped` with remediation naming that pending story id, and unconditionally dropped keys (`moreHttpPorts`; top-level `plugins`, `pluginDirs`, `keys`) emit `dropped` with their documented manual remediation; none of these emit `unsupported`, clear the encoded preview, or block `--write`. `unsupported` is reserved for inputs that cannot produce a valid v4 fragment per §6.6.",
+        "Catalog-typed services rewrite `meUser` to `user` with a `rewritten` diagnostic, identically to the raw API-3 branch.",
+        "Closed finish line: the criteria above are the complete proof set for this story. A gate that finds a further §6.3 or residual-table gap outside these criteria records it against US-621C8 (which owns every residual row not owned by US-621C1/C3/C5) or files a new follow-up story, instead of demoting this story."
       ],
       "dependsOn": ["US-607", "US-616", "US-618A", "US-618B", "US-618C", "US-618E", "US-620B", "US-621A"],
       "priority": 38,
       "passes": false,
-      "notes": ""
+      "notes": "Adjudicated 2026-09-22: deferred-key disposition pinned to §6.3 preamble (dropped + story-id remediation, not fail-closed unsupported); AC1 blanket reading bounded by the closed-finish-line criterion to stop implemented/building oscillation."
     },
     {
       "id": "US-621C3",

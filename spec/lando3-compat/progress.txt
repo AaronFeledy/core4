@@ -1,6 +1,7 @@
 # Lando 3 compatibility progress
 
 ## Codebase Patterns
+- Lowering proofs must round-trip through the product, not just the schema: `app:config:translate --write` followed by `app:config:lint` on the result. A fragment that decodes can still be a Landofile the service schemas reject (an app-relative `webroot` did exactly that), and neither schema-decode unit tests nor the translate preview catches it.
 - The installed Lando 4 executable is `lando4`/`lando4.exe`; Lando 3 keeps `lando`. Published release ASSET names stay in the `lando-<platform>` family — asset naming never selects the installed executable name.
 - Ownership of an installed binary is proven by the v4 install record (`<userDataRoot>/install/record.json`, `installRecordFile` on `@lando/paths`), not by path location. A destination is replaceable only when the record decodes at version 1 AND its recorded path, sha256, and size all match the file on disk; symlinks and directories are always refused. There is no adoption path and no force flag.
 - `@lando/engine/install/record` is the single authority for that rule. Anything that cannot import Effect (installer shell scripts, CLI cold-path modules) must re-implement the same four conditions and pin the agreement with a test that compares verdicts against `installRecordOwnsDestination`.
@@ -9,6 +10,8 @@
 - The posix shellenv snippet has four consumers that must stay byte-identical: `renderPosixShellenv` produces it, `scripts/install.sh` and `scripts/install.ps1` reprint it as post-install guidance, and `core/test/cli/fast-path.test.ts` plus the compiled-parity case in `core/test/cli/setup.test.ts` pin its exact shape. Change the renderer and all four fail; that is the intended coupling, so fix them together rather than loosening an assertion.
 - The `# >>> LANDO4 shellenv >>>` profile markers are shared between `core/src/cli/commands/shellenv.ts` (writer) and `LANDO_SHELLENV_BEGIN`/`LANDO_SHELLENV_END` in `engine/src/operations/uninstall.ts` (stripper). A Lando 3 era `# >>> LANDO shellenv >>>` block is a foreign PATH entry: uninstall must leave it alone.
 - shellenv resolves its bin directory from the install record, so the exported PATH entry is the literal recorded directory, not `${LANDO_USER_DATA_ROOT}/bin`. An install under `LANDO_INSTALL_DIR` outside the user data root still gets a correct snippet.
+- Landofile map keys are canonicalized by `yamlMappingKeyText` from `@lando/sdk/yaml`, not by a local allowlist: a key stays plain only when no YAML parser can re-resolve it, and is double-quoted otherwise. The subset parser reads quoted keys through the same JSON escape set, so any string key round-trips. Two lexical facts must survive that: `splitMappingEntry` returns `rawKey` (source columns and comment reconstruction are measured on the raw token, never the decoded key) and `isMergeKey` (only an UNQUOTED `<<` merges; `"<<"` is a literal key).
+- Emitting a plain YAML key is not the same as emitting a key the Landofile parser accepts. `Bun.YAML.parse("@angular/cli: x")` throws because `@` is a reserved indicator, while the subset parser's plain-key charset allows it. Prove an emitter change against BOTH parsers or the emitted Landofile is readable only by Lando.
 - A guide page gets exactly ONE `<Guide>` element. `parseGuideScenarioAst` in `scripts/build-guide-scenarios.ts` does `elementChildren(root).find((child) => child.name === "Guide")`, so a second `<Guide>` block is silently dropped: no lint error, no transcript, no generated test, and `dev:guides` simply reports a smaller pass count. Put every `<Scenario>` in one block and confirm the scenario count went up. Known victim: `docs/guides/landofile/lando3-transition-options.mdx` has two blocks, so its `service-selection` scenario has never run.
 - Guide scenarios cannot assert plain-text CLI output for any command whose renderer has a boxed TTY branch. `renderUninstallResult` picks `formatSummary` when `ctx.mode === "lando" && ctx.isTTY`, and that box wraps at terminal width, so labels split across lines and the visible tokens depend on the reader's window size. The harness isolates a temp cwd only, never stdio. Assert `--format=json` instead; it is renderer-independent and single-line.
 
@@ -372,4 +375,240 @@ Verification: typecheck, lint, all eight boundary rules, codegen drift, and guid
 - Fixed: boolean, string, and enum option failures now say what they are, the translate path checks one decompose per option view and empty secrets, and unused types are no longer exported.
 - Split/excise decisions: none.
 - Verification: typecheck pass, lint pass, spot checks pass
+---
+## 2026-09-22 10:08 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 10:08 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 10:08 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-22 10:46 CDT - Babysit
+- PR: #1046 https://github.com/AaronFeledy/core4/pull/1046
+- CI outcome: fail (platform-readiness-linux-x64, platform-readiness-linux-arm64)
+- Review feedback: none (no Bugbot findings; no review comments)
+- Merge: deferred (platform-readiness apt-snapshot provenance gate fails on libsqlite3-dev 3.45.1-1ubuntu2.8; pin cannot be advanced because snapshot.ubuntu.com returns 502/timeouts for every candidate stamp — external outage, unrelated to this branch, also failing on main since 2026-09-21)
+---
+## 2026-09-22 10:46 - Babysit
+- [looper] Babysit blocked: CI red: platform-readiness apt-snapshot gate fails because snapshot.ubuntu.com is returning 502/timeouts, so the pin cannot be advanced or verified
+---
+## 2026-09-22 10:46 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-22 10:46 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-22 10:46 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-22 10:46 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 10:46 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 10:46 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 11:30 - Babysit
+- PR: #1046 https://github.com/AaronFeledy/core4/pull/1046
+- Pushed local commit 17dcd1f45 that the PR was missing (Push step had left it unpushed), so the PR now matches the reviewed branch
+- CI outcome: fail (platform-readiness-linux-x64/arm64, drupal-journey-linux-x64/arm64, rails-journey-linux-x64/arm64) — all six fail in the same pinned apt-snapshot prerequisite step
+- Review feedback: none (no Bugbot inline findings, no review comments, mergeable)
+- Merge: deferred (snapshot.ubuntu.com is returning 502/503/500 for every candidate stamp, so the pin can neither be satisfied nor advanced-and-verified; triage correctly refused a speculative pin bump and the supply-chain gate was left intact. Outage is external and also fails other branches and main.)
+---
+## 2026-09-22 11:32 - Babysit
+- [looper] Babysit blocked: CI red: six Linux jobs (platform-readiness, drupal-journey, rails-journey) fail on an upstream snapshot.ubuntu.com 502/503 outage in the pinned apt-snapshot step; no in-repo fix verifiable while the service is down
+---
+## 2026-09-22 11:37 - US-621A Adjudication
+- Contradiction: none. Phase history shows no demotions for US-621A — Build, Review, Drift Audit, Verify, and Push all promoted cleanly. The adjudication trigger was Babysit stagnation (3 attempts), caused solely by an external snapshot.ubuntu.com 502/503 outage failing the pinned apt-snapshot step on six Linux jobs (platform-readiness, drupal-journey, rails-journey), also red on main since 2026-09-21. No gate demanded or excised any disputed AC/spec surface.
+- Decision: no PRD amendment and no human stop — there is no contract to resolve. Verified at 2026-09-22 11:36 CDT that snapshot.ubuntu.com has recovered (HTTP 200 on the root and on the pinned 20260902T000000Z Release file). Next Babysit should re-run the six failed jobs; if the pinned stamp still cannot resolve libsqlite3-dev 3.45.1-1ubuntu2.8, a pin advance is now verifiable through the intact supply-chain gate.
+- Follow-up story: none.
+---
+## 2026-09-22 11:34 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-22 11:34 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-22 11:34 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-22 11:34 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 11:34 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 11:34 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-22 - US-621C1 (partial, handed back)
+
+Lowered hand-authored Lando 3 services into Lando 4 authoring fragments, and landed most of the story green and committed.
+
+`@lando/lando3` gained a frozen lowering contract plus eleven modules behind it: a local catalog matrix (every shipped service type and its published versions, since that metadata is not importable from the SDK), a local copy of the Compose disposition matrix, and per-concern lowerers for build/run hooks, Compose fields, API-4 `lando`/`l337`, shared API-3 catalog fields, PHP, per-type options, and the top-level keys. A new orchestrator dispatches each service by family and feeds authored services into the SAME desired-prefix stream the recipe lowering already used, so authored and recipe-generated services merge exactly as Lando 3 merged them and the existing hoisting/relocation machinery keeps working for both without new removal code.
+
+The behaviors that matter landed: build/run phases collapse into ordered `build.artifact`/`build.app` steps with root steps first carrying an explicit `user: root`; `portforward` becomes a ports publication; an unavailable version is rejected rather than having an image manufactured for it; execution-shaping Compose fields (`tty`, `stdin_open`, `links`, `network_mode`, `container_name`, volume `consistency`) block the affected service instead of being silently dropped; API-4 image `ssh` and remote build contexts are rejected; every unsupported image and mount subfield is diagnosed individually at its own indexed path; top-level `compose:` becomes `includes: [{kind: compose}]` and `excludes:` becomes `appMount` excludes/includes. Core gained the other half of the include rule: it now checks a translated compose include target for existence, regular-file type, symlink rejection and app-root containment, never reads its contents, and reports an `unsupported` diagnostic after encode so the include still appears in the preview while the write is refused.
+
+Not done, and why this is handed back: manual CLI conversion of a real layered app found two defects. (1) Composer global packages cannot round-trip — lowering `composer: {pkg: ver}` emits `composer.packages` whose keys contain `/`, and the Landofile emitter refuses any map key outside `^[A-Za-z0-9_.-]+$`, so the whole conversion fails with `LandofileEmitError`. That blocks the Composer-packages half of the catalog row. (2) The top-level `excludes` stamp is too broad: it lands `appMount` on every API-3 service including `mysql` and `redis`, when it should only reach services that are actually app-mounted.
+
+Verification: typecheck clean workspace-wide; lint and the deprecation check clean; all thirteen boundary rules pass; 535 lando3 tests and 76 core translate/contract tests pass. Real CLI runs against a layered app produced correct Lando 4 YAML for includes, appMount, ordered build steps, `composer.version`, `via: apache`, ports, and redis password/persistence, and emitted the rewritten/needs-review diagnostics at exact source spans.
+
+- **Learnings for future iterations:**
+  - Emitting a fragment that decodes is not the same as emitting a fragment that serializes. The authoring schema accepts `composer.packages`, but the Landofile emitter's plain-key allowlist rejects `/`, so a lowerer has to be proven through the real `app:config:translate` command, not just through schema decode in a unit test.
+  - A deferred `unsupported` subfield blocks the whole encode, so one unmapped xdebug key hides the entire preview. That is the intended fail-closed behavior, but it means goldens that assert emitted YAML must avoid deferred keys or they silently assert an empty document.
+  - Freezing one contract file before fanning work out worked for a third story running nine agents in parallel: every field lowerer stayed a pure `(value, ctx) => patch` with disjoint file ownership, and the only integration defects were in test type annotations, not in the lowering logic.
+  - Cumulative prefix views mean each authored key is visible in every higher view, so service diagnostics must be deduped or a single authored field is reported once per layer.
+---
+## 2026-09-22 12:56 - Build
+- [looper] Build handed the story back at building: Service/build/catalog lowering landed green and committed (typecheck, lint, 13/13 boundary rules, 535 lando3 + 76 core translate tests), but manual CLI conversion found two defects: (1) BLOCKER - lowering Lando 3 'composer: {pkg: ver}' emits composer.packages whose keys contain '/', and the Landofile emitter rejects any plain map key outside ^[A-Za-z0-9_.-]+$, so the whole conversion aborts with LandofileEmitError; the emitter must quote such keys (or the lowerer must use an emittable shape) before AC5's Composer-packages row is satisfied. (2) top-level 'excludes' stamps appMount onto every API-3 service including mysql and redis, but it must only reach services that are actually app-mounted.
+---
+## 2026-09-22 12:56 - Review
+- [looper] gate skipped Review: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-09-22 12:56 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-22 12:56 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-09-22 12:56 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-09-22 12:56 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-09-22 12:56 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+
+## 2026-09-22 - US-621C1 (finished)
+
+Closed the two defects the previous pass handed back, so hand-authored Lando 3 service lowering now survives the real `app:config:translate` emit path.
+
+Landofile map keys are no longer written verbatim behind a local `^[A-Za-z0-9_.-]+$` allowlist. The emitter routes every key through the shared `yamlMappingKeyText` policy and the subset parser learned double-quoted keys, so a Composer `vendor/name` stays plain, a scoped npm `@scope/name` is quoted (YAML reserves a leading `@`), and keys with spaces, colons, digits, reserved words, or an empty string round-trip instead of aborting the whole conversion. Because keys can now be quoted, the parser keeps each mapping entry's raw source token: columns, comment reconstruction, and merge-key detection are lexical questions a decoded key cannot answer, so only an unquoted `<<` still merges and `__proto__` is defined as an own property rather than assigned through the prototype setter. That unblocks both the Composer-packages and Node-globals catalog rows.
+
+Top-level `excludes` stopped stamping `appMount` onto every API-3 service. The Lando 3 catalog gained explicit `appMountByDefault` metadata mirroring the Lando 4 service types that actually mount the app, and the stamp is decided by the LOWERED target type, so a raw Compose or unknown-image service still qualifies while mysql and redis no longer get a fabricated `/app` mount.
+
+Verification: typecheck clean workspace-wide; lint and the deprecation check clean; all thirteen boundary rules pass; 910 tests pass across the lando3, landofile emit/parse, parser, and core translate-include suites. Real CLI runs converted a layered LAMP app (Composer package emitted as `drush/drush: "^10"`, appMount only on appserver) and a Node app with a scoped global (`"@angular/cli": "^17.0.0"`).
+
+Existing emitter tests that locked key REJECTION were converted into round-trip proofs rather than deleted: each former rejection case now asserts the emitted text and that both the Landofile parser and `Bun.YAML` read the key back unchanged, which is a strictly stronger claim. `legacy-isolation` lost `kitchen-sink.config.yml` from its v4-rejection loop for the same reason - quoted keys are ordinary YAML, not Lando 3 syntax - and gained an assertion that the fixture carries no legacy tag data; `kitchen-sink.lando.yml`, which holds the real Lando 3 constructs, is still rejected by v4.
+
+- **Learnings for future iterations:**
+  - A value-only quoting policy is not a serializer. Values went through `yamlScalarText` while keys were compared to a hand-rolled regex whose comment claimed parity with a parser that had already drifted wider, so emit and parse disagreed in both directions at once.
+  - `{ __proto__: "own" }` in a test fixture sets the prototype and emits an empty map. Use a computed `{ ["__proto__"]: "own" }` when the point is an own key.
+  - Deciding a service-level rewrite from the AUTHORED type is wrong whenever lowering can change the type. Unknown-image and raw Compose services both become `type: compose`, so the question has to be asked of the lowered patch.
+---
+
+## 2026-09-22 13:32 - US-621C1 Review
+- An established local/user overlay was losing to a lower layer's carried authored services: a layer with no authored prefix reused the previous fragment and merged it on top of the overlay. The overlay now stays on top, and a layer that does author services still overrides the recipe fragment.
+- Review notes (deferred/rejected): conversion guides stay with US-621D; guide-drift against origin/main passed without a guide edit. Compose include targets that use a URL or git@ are left to the existing non-file path rather than diagnosed as missing files.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; recipe-lowering, translator-recipe, and translator-services spot checks passed (39).
+---
+
+## 2026-09-22 13:45 - US-621C1 Review
+- Handed back. The overlay merge fix stays, but three residual target rows owned by this story are still unmet: PHP `config.php`/`vhosts`/`pool`/`server` are dropped instead of read-only config mounts; nginx/apache `server` and `vhosts` collapse into one `config.server` slot; MySQL/MariaDB `authentication` is only a needs-review note instead of an emitted `99-lando.cnf` option; API-4 services with a default or string app mount drop top-level `excludes`.
+- Review notes (deferred/rejected): Bugbot's pure image-only overlay case does not rewrite the established file, so merging emitted outputs alone looked like a false failure; the write path replaces a layer file, so a non-empty delta would still drop the overlay. That is why the merge-order fix stayed. URL and git@ compose includes stay on the non-file path.
+- Verification: gate:pr green before the handback; recipe-lowering spot check passed after the overlay fix.
+---
+## 2026-09-22 13:39 - Review
+- [looper] Review handed the story back at building: US-621C1 still misses residual target rows owned by this story: PHP config.php/vhosts/pool/server are dropped instead of read-only config mounts at documented paths; nginx/apache server and vhosts collapse into one config.server slot; MySQL/MariaDB authentication is needs-review instead of an emitted 99-lando.cnf option; API-4 default or string app mounts drop top-level excludes. Established-overlay merge order was fixed so a carried authored fragment cannot replace an overlay when the layer file is rewritten.
+---
+
+## 2026-09-22 13:50 - US-621C1 Drift Audit
+- Trigger: 4 cycles, 4732 changed lines, 5 commits
+- Weakened proofs: tests locked PHP config drops, a single nginx/apache config.server slot, and MySQL/MariaDB authentication as needs-review. Those rows now emit separate read-only mounts and a 99-lando.cnf option.
+- Deferred work the branch owns: API-4 default and string app mounts keep top-level excludes; phpMyAdmin config is a read-only mount at its documented path because that service never reads config.server. URL and git@ includes, and conversion guides, stay with their existing owners.
+- Ceremony: removed an unused lowerer type. The local Compose disposition table stays because this plugin cannot depend on the landofile package.
+- Scope: quoted Landofile keys stay; they are what lets Composer and Node package rows round-trip. Varnish multi-backend rejection matches the later story's closed disposition and was left in place.
+- Fixed: restored the gamed residual proofs and the API-4 exclude stamp; no story split.
+- Verification: typecheck, lint, and lando3 lowering/translator spot checks passed.
+---
+## 2026-09-22 13:50 - Verify
+- [looper] gate skipped Verify: gate: phase building is before reviewed (expected phase at or past reviewed)
+---
+## 2026-09-22 13:50 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-09-22 13:50 - Push
+- [looper] gate skipped Push: gate: phase building is before verified (expected phase at or past verified)
+---
+## 2026-09-22 13:50 - Babysit
+- [looper] gate skipped Babysit: gate: phase building is before published (expected phase at or past published)
+---
+
+## 2026-09-22 - US-621C1 (finished)
+
+Verified the residual rows the previous Review handed back, then closed the last defect that kept converted apps from validating.
+
+The four handed-back rows are live on the real command: PHP `config.php`/`vhosts`/`pool`/`server` become read-only binds at the owning image's documented paths (apache-served PHP lands its vhost and server files under `/etc/apache2`, nginx-served PHP moves them onto the generated companion at `/etc/nginx`); standalone nginx and apache mount `server` and `vhosts` separately instead of collapsing into one `config.server` slot; MySQL/MariaDB `authentication` emits a root artifact step that writes `/etc/mysql/conf.d/99-lando.cnf` ahead of authored build steps; and API-4 services with a default, string, or object app mount all keep top-level `excludes`, while `appMount: false` still opts out.
+
+The remaining defect was webroot. Lando 3 webroots are app-root relative and every Lando 4 service schema requires an absolute container path, but lowering passed the authored value through untouched, so the single most common field (`webroot: web`) produced a Landofile that `app:config:translate --write` happily wrote and `app:config:lint` then rejected with "PHP webroot must be an absolute container path". Service, catalog-option, and PHP-companion webroots now normalize through one shared helper: a relative path becomes that path under the `/app` mount with a `rewritten` diagnostic at its source span, an already-absolute path is untouched and silent. The recipe surface is deliberately unchanged - a prior review closed that row with "snapshot webroot patterns stay on the decomposer: a relative path fails there rather than being rewritten", so `config.webroot` still fails loudly in the decomposer rather than being rewritten here.
+
+Verification: gate:pr green (typecheck, lint, codegen drift, thirteen boundary rules, guide-drift against origin/main); 631 tests pass across the lando3 plugin and the core translate suites. End-to-end CLI runs converted layered apps covering every handed-back row plus Solr cores, MailHog sender/maxMessages, Redis, Node globals, Composer packages, ordered build phases, SSL, portforward, unknown-image Compose fallback, and compose includes; the include gate was exercised with missing, symlinked, and escaping targets (retained in the preview, `--write` refused), and the happy path was written and then re-read with `app:config:lint` (`valid: true`) and `app:config` (resolved).
+
+- **Learnings for future iterations:**
+  - A translator that emits a document its own product rejects is invisible to schema-decode unit tests. Lowering changes need the round trip: translate, `--write`, then `app:config:lint` on the result. Decode-only proofs passed the whole time this branch emitted an invalid webroot.
+  - Diagnostics are ordered by source span, not by lowerer call order, so an integration expectation must follow the authored line order rather than the order the lowerers run.
+  - An `unsupported` diagnostic raised during lowering blocks the entire preview, while core's post-encode include validation does not - a missing include target still appears in the preview and only blocks `--write`. Expect an empty preview whenever a fixture mixes in any service-level rejection.
+---
+
+## 2026-09-22 - US-621C1 Review
+- Preserved Compose overrides were copied onto valid Lando 4 service knobs but tagged non-portable, so app:config:translate --write refused a typical restart/platform/logging/labels block after a successful preview. Those fields are now needs-review: the value stays in the fragment and the capability warning still prints.
+- Review notes (deferred/rejected): conversion guides stay with US-621D; guide-drift against origin/main passed with no guide edit. URL and git@ compose includes stay on the existing non-file path.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; compose-fields, translator-services, and lowering-contract spot checks passed (95).
+- Compose include targets collapse `.` and `..` before the containment check, so `extra/../compose.yml` is the in-app file and still writes. A `..` that leaves the root, plus absolute, drive, and UNC paths, stay unsupported. The authored source string is not rewritten.
+- **Learnings for future iterations:**
+  - `non-portable` means the encoder cannot represent the value, and `--write` refuses it. A field that is copied onto a schema-valid knob is `needs-review`, not `non-portable`.
+  - `parseSourceFilePath` rejects every `..` segment because `--file` selection is lexical. Include targets are a different question: collapse, then apply the same realpath containment check.
+---
+
+## 2026-09-22 - US-621C1 Review (handed back)
+- Kept two write-path fixes: preserved Compose knobs are needs-review so --write is not blocked, and in-app compose includes may collapse through dot segments.
+- Handed back. scanner, home, moreHttpPorts, mem, and plugins still emit unsupported through deferredServiceKey, and any unsupported diagnostic clears the encoded preview, so scanner:false blocks conversion. Section 6.3 requires a waiting or absent key to be dropped, with the remediation naming the story id. Catalog services still do not rewrite meUser to user; only the raw API-3 branch does.
+- Review notes (deferred/rejected): the QA lane's non-portable failure was stale after the needs-review fix. Security review found no high issue. A blocked service is omitted from its layer fragment, but unsupported already blanks the preview, so that merge effect stays with the diagnostic-kind fix. Conversion guides stay with US-621D.
+- Verification: gate:pr green before the include follow-up; typecheck and the include suite (15) plus compose-field suites (95) passed after the fixes.
+---
+## 2026-09-22 14:31 - Review
+- [looper] Review handed the story back at building: scanner/home/moreHttpPorts/mem/plugins emit unsupported and any unsupported diagnostic clears the encoded preview, so scanner:false blocks conversion; §6.3 requires those keys to be dropped with story-id remediation. Catalog services also do not rewrite meUser to user.
+---
+
+## 2026-09-22 14:52 - US-621C1 Adjudication
+- Contradiction: Review (iter 13, 14:31 handback) demanded the §6.3 preamble rule — "Before a required story lands, the affected source key is `dropped` and its remediation MUST name that story id" — for `scanner` (US-617B), implicit home persistence (US-617A), elasticsearch/opensearch `mem`/`plugins` (US-621C8), and unconditional `moreHttpPorts`/`plugins` drops, plus the `meUser` row ("`ssl`, `sslExpose`, `sport`, `meUser` → ... `user` | `rewritten`") for catalog services. But Build (iter 12) had recorded fail-closed `unsupported` via `deferredServiceKey` as "the intended fail-closed behavior", the iter-13 first Review pass (13:32) gate-passed the branch with that behavior, and Drift Audit (13:50) audited the same surface concluding "no story split" without flagging deferred keys — three gate passes blessed the disposition the final Review rejected. Compounding: AC1's blanket "exactly as §6.3 and the residual table specify" is an unbounded surface, so each Review pass discovered a distinct new subset (iter-12: PHP config mounts, nginx/apache slots, MySQL authentication, API-4 excludes; iter-13: deferred-key disposition, meUser), producing implemented→building oscillation with no closed finish line.
+- Decision: narrowed/clarified US-621C1 acceptance criteria in spec/lando3-compat/prd.json (no code touched). Added three criteria: (1) deferred/waiting keys emit `dropped` with story-id remediation and unconditional drops emit `dropped` with documented remediation — never `unsupported`, never clearing the preview or blocking `--write`; (2) catalog-typed services rewrite `meUser` to `user` identically to the raw API-3 branch; (3) a closed-finish-line clause: these criteria are the complete proof set — further §6.3/residual gaps found by a gate are recorded against US-621C8 (owner of every residual row not owned by US-621C1/C3/C5) or a new follow-up story instead of demoting this one. Spec §6.3 itself is unambiguous, so no human stop brief was needed.
+- Follow-up story (if created): none — US-621C8 already owns the residual remainder by its existing scope text.
+---
+
+## 2026-09-22 - US-621C1 (finished)
+
+Closed the adjudicated handback: deferred and unconditionally dropped keys no longer block conversion, and catalog services honor `meUser`.
+
+Keys whose Lando 4 target waits on unlanded work are now `dropped`, not `unsupported`, and their remediation names the pending story: `scanner` (US-617B), per-service `home` (US-617A), catalog `mem`/`plugins` and every non-`mode` xdebug subkey (US-621C8). One table in the service diagnostics maps key to target and story, so catalog, API-4, and PHP lowering share it. `moreHttpPorts` drops with manual endpoint remediation, and the top-level `plugins`, `pluginDirs`, and `keys` drop with manual plugin and SSH-agent remediation. The translator's generic "has no Lando 4 target yet" top-level fallback used to report those three keys as `unsupported` and blank the preview; it now treats them as lowered keys. Catalog-typed services rewrite `meUser` to `user` through the same helper and message the raw API-3 branch uses. The model also moved `meUser` into the shared API-3 fields, because catalog services had been flagging it as an unknown Lando 3 key.
+
+Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-drift against origin/main); lando3 plugin tests 541 pass and core translate suites 97 pass. On a real CLI app mixing every deferred key, `meUser`, and the three top-level drops, the preview kept its content with each key reported as `dropped`, `--write` wrote the file and its backup, and `app:config:lint` on the result returned `valid: true`.
+
+- **Learnings for future iterations:**
+  - A top-level key gets diagnosed in two places: `lowerTopLevel` and the translator's `deferredDiagnostics` fallback for anything missing from `LOWERED_KEYS`. When a key gains a lowering, add it to `LOWERED_KEYS` or it gets reported twice, once as `unsupported`, which clears the preview.
+  - An unrecognized Lando 3 service key gets an extra "is not a Lando 3 key" drop from the model's open-struct check. When a lowerer starts honoring a key for a new family, move the key into the shared `api3` model fields as well.
+---
+
+## 2026-09-22 - US-621C1 Review
+- Reviewed the deferred-key handback. Waiting keys and unconditional drops are `dropped` and do not clear the preview or block `--write`; catalog `meUser` rewrites to `user`. Synced the adjudicated criteria into the source story so a later gate quotes the closed finish line instead of the unbounded §6.3 reading. Corrected the translator header, which still told the next story to report waiting keys as `unsupported`.
+- Review notes (deferred/rejected): Bugbot reported no bugs. Non-string `meUser` stays ignored, matching the raw API-3 branch. Dropping `mem` and `plugins` on every catalog type, not only elasticsearch/opensearch/memcached, is the uniform interim disposition; US-621C8 owns the eventual mapping, including the residual "reject plugins" cell the adjudication overrode to `dropped`. Include dot-segment collapse is not a write bypass: the runtime loader still rejects a real path outside the app root. Conversion guides stay with US-621D.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; deferred-key and translator-services spot checks passed (186).
+---
+## 2026-09-22 15:59 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-22 - US-621C1 Verify
+- Compiled `core/dist/lando` setup completed. A hand-authored Lando 3 app lowered catalog services, ordered root-then-user build steps, `meUser` to `user`, Composer and scoped Node packages, MySQL `99-lando.cnf`, read-only PHP config, appMount excludes only on mounted services, and a dot-collapsed compose include. Deferred keys stayed `dropped` (scanner US-617B, home US-617A, mem/plugins US-621C8, moreHttpPorts, plugins/pluginDirs/keys) and did not block `--write`. `app:config:lint` on the result was valid. `php:1.0` and Compose `tty` stayed unsupported and refused `--write`. A missing include stayed in the preview and refused `--write`. A lowered php:8.3 app served `php:8.3.33` over HTTPS; lamp init/start still exec'd 8.3.33.
+- `home` was not a model property, so the unknown-key drop won dedupe and the US-617A remediation never reached the CLI. Declared `home` on the API-3 and API-4 shapes.
+- **Out-of-scope finding:** `lando start` on a converted `meUser: www-data` php service fails with `HomePathCapabilityError` because php:8.3 declares no home for www-data. The same lowered service without `user` starts. Home persistence belongs to US-617A / US-621C5. `lando start` still warns port 80/443 are in use (8000/4443). A fresh lamp webroot with no index returns HTTP 403.
+- **Learnings for future iterations:** unknown-key diagnostics and deferred-key diagnostics share kind and path, and dedupe keeps the first. A key the lowerer handles must be a model property or the CLI shows "not a Lando 3 key" instead of the story id.
 ---
