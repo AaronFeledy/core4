@@ -15,14 +15,35 @@ const longestBasenamesFirst = LANDOFILE_LAYER_POSITIONS.toSorted(
   (left, right) => right.basename.length - left.basename.length,
 );
 
-export const layerForSourcePath = (path: PortablePath | string): LandofileLayer => {
+export type TranslateSourceLayer = LandofileLayer | "recipe";
+
+export const sourceLayerForSourcePath = (path: PortablePath | string): TranslateSourceLayer => {
   const filename = basename(path);
+  if (filename === ".lando.recipe.yml" || filename === ".lando.recipe.yaml") return "recipe";
   return (
     longestBasenamesFirst.find(
       (position) => filename === `${position.basename}.yml` || filename === `${position.basename}.yaml`,
     )?.layer ?? "canonical"
   );
 };
+
+const SOURCE_LAYER_ORDER = {
+  base: 0,
+  dist: 1,
+  recipe: 2,
+  upstream: 3,
+  canonical: 4,
+  local: 5,
+  user: 6,
+} as const satisfies Readonly<Record<TranslateSourceLayer, number>>;
+
+export const sourceLayerOrder = (layer: TranslateSourceLayer): number => SOURCE_LAYER_ORDER[layer];
+
+export const targetLayerForSourceLayer = (layer: TranslateSourceLayer): LandofileLayer =>
+  layer === "recipe" ? "dist" : layer;
+
+export const layerForSourcePath = (path: PortablePath | string): LandofileLayer =>
+  targetLayerForSourceLayer(sourceLayerForSourcePath(path));
 
 const LANDOFILE_LAYER_ORDER: ReadonlyArray<LandofileLayer> = LANDOFILE_LAYER_POSITIONS.toSorted(
   (left, right) => left.order - right.order,
@@ -33,7 +54,7 @@ export const layerOrder = (layer: LandofileLayer): number => LANDOFILE_LAYER_ORD
 export const orderSourcePaths = (paths: ReadonlyArray<PortablePath>): ReadonlyArray<PortablePath> =>
   paths.toSorted(
     (left, right) =>
-      layerOrder(layerForSourcePath(left)) - layerOrder(layerForSourcePath(right)) ||
+      sourceLayerOrder(sourceLayerForSourcePath(left)) - sourceLayerOrder(sourceLayerForSourcePath(right)) ||
       (left < right ? -1 : left > right ? 1 : 0),
   );
 

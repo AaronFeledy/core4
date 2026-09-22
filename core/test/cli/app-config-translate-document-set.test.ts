@@ -3,8 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ConfigTranslateDocument } from "@lando/sdk/schema";
-import { ConfigTranslateSourceId, PortablePath } from "@lando/sdk/schema";
-import { Cause, Effect, Exit, Option } from "effect";
+import { ConfigTranslateSourceId, LandofileLayer, PortablePath } from "@lando/sdk/schema";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 import {
   buildDocumentSetShape,
   layerForSourcePath,
@@ -50,11 +50,23 @@ describe("translate document set", () => {
       ".lando.user.yml",
       "docker-compose.yml",
       "sub/dir/.lando.dist.yml",
+      ".lando.recipe.yml",
+      "sub/dir/.lando.recipe.yaml",
     ];
     // When
     const layers = paths.map(layerForSourcePath);
     // Then
-    expect(layers).toEqual(["canonical", "local", "local", "base", "user", "canonical", "dist"]);
+    expect(layers).toEqual([
+      "canonical",
+      "local",
+      "local",
+      "base",
+      "user",
+      "canonical",
+      "dist",
+      "dist",
+      "dist",
+    ]);
   });
 
   test("orders documents by layer position then path", () => {
@@ -87,6 +99,40 @@ describe("translate document set", () => {
       });
     },
   );
+
+  test("orders all seven source layers with recipe between dist and upstream", () => {
+    // Given
+    const expected = [
+      ".lando.base.yml",
+      ".lando.dist.yml",
+      ".lando.recipe.yml",
+      ".lando.upstream.yml",
+      ".lando.yml",
+      ".lando.local.yml",
+      ".lando.user.yml",
+    ].map((path) => PortablePath.make(path));
+    // When
+    const ordered = orderSourcePaths(expected.toReversed());
+    // Then
+    expect(ordered).toEqual(expected);
+  });
+
+  test.each([
+    { selected: undefined },
+    { selected: [".lando.recipe.yml"] },
+    { selected: [".lando.dist.yml", ".lando.recipe.yml"] },
+  ])("keeps recipe and dist sources distinct with only declared writable targets: %j", ({ selected }) => {
+    // Given
+    const sourceIds = [".lando.dist.yml", ".lando.recipe.yml", ".lando.yml"];
+    // When
+    const shape = buildDocumentSetShape({ sourceIds, selected });
+    // Then
+    expect(shape.selectedSourceIds).toEqual(selected ?? sourceIds);
+    expect(shape.writableLayerIds).toEqual(
+      selected === undefined ? ["base", "dist", "upstream", "canonical", "local", "user"] : ["dist"],
+    );
+    expect(shape.writableLayerIds.every(Schema.is(LandofileLayer))).toBe(true);
+  });
 
   test("single-layer selection narrows writable layers to the selected closure", () => {
     // Given / When

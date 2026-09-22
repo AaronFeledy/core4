@@ -21,6 +21,7 @@ const EXPECTED_PLUGIN_NAMES = [
   "@lando/template-mustache",
   "@lando/sql",
   "@lando/lando4",
+  "@lando/lando3",
 ];
 
 const generatedDir = resolve(import.meta.dirname, "../../src/plugins/generated");

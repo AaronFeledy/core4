@@ -53,6 +53,32 @@
         "configTranslators": [
           {
             "detects": ["**/.lando.yml", "**/.lando.*.yml"],
+            "id": "lando3",
+            "inputKinds": ["lando3"],
+            "module": "./src/translator.ts",
+            "summary": "Decode-only Lando 3 Landofile set frontend."
+          }
+        ]
+      },
+      "description": "Source-preserving Lando 3 Landofile document-set frontend for Lando v4.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/lando3",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/lando3"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "configTranslators": [
+          {
+            "detects": ["**/.lando.yml", "**/.lando.*.yml"],
             "id": "lando4",
             "inputKinds": ["lando4"],
             "module": "./src/translator.ts",

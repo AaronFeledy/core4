@@ -234,3 +234,32 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - **Out-of-scope finding:** `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. The app still served PHP on port 8080. Same warning as US-619B1 and US-619B3.
 - **Learnings for future iterations:** Redirecting setup stdout while leaving stdin a TTY hangs on that socket-proxy confirm: the prompt is drawn on stdout, and `--yes` / `--no-interactive` never reach `consentToInstall`. Run setup on the TTY, or answer the default Yes.
 ---
+
+## 2026-09-22 03:25 - Babysit
+- PR: #1044 https://github.com/AaronFeledy/core4/pull/1044
+- CI outcome: pass (after fix; initially `unit-tests-linux-x64-shard (1, ubuntu-24.04)` and `(1, ubuntu-26.04)` failed)
+- Review feedback: fixed (the Landofile package-seam test's exact expected-export list was stale; added `LEGACY_TAGGED`, `isLegacyTagged`, and `parseLegacyLandofile` — both strict equality assertions kept intact; no Bugbot findings)
+- Merge: merged (squash)
+---
+
+## 2026-09-22 - US-620B
+
+Modeled the Lando 3 document set and bundled the conservative frontend.
+
+`@lando/lando3` is a new bundled plugin that depends on `@lando/sdk` alone and contributes one decode-only config translator through a lazy literal dynamic import, so ordinary bootstrap, help, version, and tooling never construct it. It ships no doctor check. `makeLando3Plugin(ports)` is the injection seam: the bundled `plugin` is that same factory with package defaults, and a host that owns recipe decomposition can build the module with real ports without the package ever importing core. The redactor half of that seam is live today, because a legacy parse failure quotes source text from a file that carries credentials.
+
+The shape model decodes the pinned kitchen-sink corpus with zero unknown keys across API-3 catalog services, API-3 `type: lando`/`compose` with nested Compose services, API-4 `lando`/`l337`, recipe and config, tooling, events, proxy, top-level Compose, and the anchor-holding `x-*` keys, while `!load` and `!import` survive as tagged data that nothing resolves. Unknown keys are reported at their maximal path rather than per leaf. The foreign merge reimplements Lando 3's mapping deep-merge and array concatenate-then-`uniq`, including the detail that matters most: `uniq` is SameValueZero, so two structurally equal object items authored in different layers both survive, while two items written as the same anchor in one document collapse to one. Every merged node carries the sources and spans that produced it, so a diagnostic can name the layer and point at real text.
+
+Detection reads only the supplied byte snapshots and their filenames. Every Lando-3-only signal fires; `type: php:8.3`, `api: 4`, and a missing `runtime: 4` deliberately do not, so an ambiguous document that is also valid v4 returns no match and needs explicit selection, which already bypasses detection in core. Core's translate-source classifier no longer calls `.lando.recipe.yml` canonical: source order now places it between dist and upstream, and its target folds into dist.
+
+Translation lowers `name` to the Lando 3 slug on each writable target layer that claims it, reports every section whose native target is still being built as `unsupported` rather than `dropped`, and reports explicitly supplied custom Landofile basenames as `needs-review` without ever reading user state.
+
+Verification: gate:pr green; 99 plugin tests, 4 contract-suite tests, and 97 core ship-list, registry, entry-point, coverage, and document-set tests.
+
+- **Learnings for future iterations:**
+  - `dropped` and `unsupported` are not interchangeable. `dropped` asserts a source key has no target at all and is a final answer; a section whose lowering has not been built yet is `unsupported`, which blocks the write instead of quietly shipping a partial file that looks complete.
+  - Lando 3 array dedupe is lodash `uniq`, not deep equality. Anything that compares stable JSON will merge two distinct objects that Lando 3 kept apart.
+  - Legacy alias identity does not survive projection: the parser rebuilds a distinct object per alias expansion, so identity has to be recovered from the anchor name on the source tree, not from the projected value.
+  - A bundled plugin's `plugin` export is imported as a finished value by the generated composition table, so it cannot receive host ports. Exporting the factory alongside it keeps the eventual injection a composition-root change rather than a package rewrite.
+  - Freezing the shared type module before fanning work out paid off again: four agents built merge, model, detection, and the core wiring in parallel against one `contract.ts` and integrated without touching each other's files.
+---
