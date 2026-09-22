@@ -45,21 +45,6 @@ lando4 shellenv --shell=powershell
 
 Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then open a new shell.
 
-<Guide>
-  <Scenario id="shellenv-prints-lando4-path" render>
-    <Step name="shellenv">
-      <Run command="lando4 shellenv" expectExit={0} />
-      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export LANDO_USER_DATA_ROOT=" } }} />
-      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export PATH=.+[\\\\/]bin.\":\\$\\{PATH\\}\"" } }} />
-      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "case \":\\$\\{PATH\\}:\" in" } }} />
-    </Step>
-    <Step name="shellenv-powershell">
-      <Run command="lando4 shellenv --shell=powershell" expectExit={0} />
-      <Verify command="lando4 shellenv --shell=powershell" expect={{ stdout: { regex: "\\$Env:LANDO_USER_DATA_ROOT = " } }} />
-    </Step>
-  </Scenario>
-</Guide>
-
 ## Update lando4
 
 `lando4 update` replaces the binary Lando 4 installed, and nothing else.
@@ -68,6 +53,8 @@ Append the output to `~/.bashrc`, `~/.zshrc`, or your PowerShell profile, then o
 lando4 update --dry-run
 lando4 update
 ```
+
+Both read the signed release manifest from the update server before they look at your disk, so neither one runs offline.
 
 Lando 4 writes an install record when it installs itself. Update reads that record to find the executable, confirms the file on disk still matches the record byte for byte, and only then stages, verifies, and swaps the new binary. A file named anything other than `lando4` (`lando4.exe` on Windows) is never a target, so Lando 3's `lando` is safe even when it sits in the same directory.
 
@@ -91,6 +78,30 @@ A binary Lando 4 did not install is never removed, even if it sits in Lando 4's 
 Add `--purge` to also remove Lando 4's data, cache, and config roots, and to strip the `# >>> LANDO4 shellenv >>>` block from the profiles Lando 4 wrote to. That deletes Lando 4 app state, so check the dry run first. A Lando 3 `# >>> LANDO shellenv >>>` block is a foreign PATH entry and survives, as does every line you added yourself.
 
 Uninstall is safe to run twice. The second run finds nothing left and removes nothing.
+
+<Guide>
+  <Scenario id="shellenv-prints-lando4-path" render>
+    <Step name="shellenv">
+      <Run command="lando4 shellenv" expectExit={0} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export LANDO_USER_DATA_ROOT=" } }} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "export PATH=.+[\\\\/]bin.\":\\$\\{PATH\\}\"" } }} />
+      <Verify command="lando4 shellenv" expect={{ stdout: { regex: "case \":\\$\\{PATH\\}:\" in" } }} />
+    </Step>
+    <Step name="shellenv-powershell">
+      <Run command="lando4 shellenv --shell=powershell" expectExit={0} />
+      <Verify command="lando4 shellenv --shell=powershell" expect={{ stdout: { regex: "\\$Env:LANDO_USER_DATA_ROOT = " } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="uninstall-dry-run-targets-the-install-record" render>
+    <Step name="dry-run">
+      <Run command="lando4 uninstall --dry-run" expectExit={0} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "dryRun.:true" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "mode.:.keep-data" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "installed-binary" } }} />
+      <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "install-record" } }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 ## Start fresh on Lando 4
 
