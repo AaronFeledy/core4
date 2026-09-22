@@ -27,6 +27,8 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead.
 
+For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for database commands.
+
 `lando joomla` is `php cli/joomla.php`. That file arrives with the CMS package, not with init.
 
 ## Put mysqli on appserver
