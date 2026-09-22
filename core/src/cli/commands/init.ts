@@ -12,7 +12,7 @@ import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import { type AgentSkillsResult, installAgentSkills } from "@lando/engine/operations/agent-skills";
-import { ManagedFileServiceFactoryLive } from "@lando/managed-file/service";
+import { ManagedFileServiceLive } from "@lando/managed-file/service";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service";
 import { getInteractionServiceOverride } from "../../interaction/testing-override";
@@ -536,7 +536,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   }
 
   const agentSkills = await Effect.runPromise(
-    installAgentSkills({ appRoot: directory }).pipe(Effect.provide(ManagedFileServiceFactoryLive)),
+    installAgentSkills({ appRoot: directory }).pipe(Effect.provide(ManagedFileServiceLive)),
     options.signal === undefined ? undefined : { signal: options.signal },
   );
   return { appName, directory, answers: publicAnswers, postInit, skippedScaffold, agentSkills };

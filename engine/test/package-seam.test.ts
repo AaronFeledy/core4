@@ -164,7 +164,6 @@ describe("Engine package seam", () => {
       ["@lando/container-runtime", "workspace:*"],
       ["@lando/http-client", "workspace:*"],
       ["@lando/landofile", "workspace:*"],
-      ["@lando/managed-file", "workspace:*"],
       ["@lando/paths", "workspace:*"],
       ["@lando/redaction", "workspace:*"],
       ["@lando/sdk", "workspace:*"],

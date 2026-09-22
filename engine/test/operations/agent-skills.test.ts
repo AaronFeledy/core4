@@ -5,11 +5,9 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect, type Scope } from "effect";
 
-import {
-  ManagedFileServiceFactoryLive,
-  makeDiskBackend,
-  makeManagedFileService,
-} from "@lando/managed-file/service";
+import { ManagedFileService } from "@lando/sdk/services";
+
+import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 
 import {
@@ -148,34 +146,28 @@ describe("agent skill pack ownership", () => {
       const prior = { ...declared, content: { kind: "text" as const, value: "prior skill body\n" } };
       const skillPath = join(dir, AGENT_SKILLS_SKILL_PATH);
       const cwd = process.cwd();
+      const againstApp = <A, E>(effect: Effect.Effect<A, E, ManagedFileService>) =>
+        effect.pipe(Effect.provideService(ManagedFileService, legacy));
 
       await runScoped(legacy.apply([prior]));
-      const updated = await runScoped(
-        updateAgentSkills({ appRoot: dir }).pipe(Effect.provide(ManagedFileServiceFactoryLive)),
-      );
+      const updated = await runScoped(againstApp(updateAgentSkills({ appRoot: dir })));
       expect(updated.entries[0]?.action).toBe("update");
       expect(await readFile(skillPath, "utf8")).toContain("name: lando");
 
-      const removed = await run(
-        removeAgentSkills({ appRoot: dir }).pipe(Effect.provide(ManagedFileServiceFactoryLive)),
-      );
+      const removed = await run(againstApp(removeAgentSkills({ appRoot: dir })));
       expect(removed.entries[0]?.action).toBe("update");
       await expect(readFile(skillPath, "utf8")).rejects.toBeDefined();
 
       await runScoped(legacy.apply([prior]));
       await writeFile(skillPath, "user adopted skill\n");
-      const adopted = await run(
-        removeAgentSkills({ appRoot: dir }).pipe(Effect.provide(ManagedFileServiceFactoryLive)),
-      );
+      const adopted = await run(againstApp(removeAgentSkills({ appRoot: dir })));
       expect(adopted.entries[0]?.action).toBe("adopt-detected");
       expect(await readFile(skillPath, "utf8")).toBe("user adopted skill\n");
 
       await rm(skillPath);
       await runScoped(legacy.apply([prior]));
       await writeFile(skillPath, `${await readFile(skillPath, "utf8")}user edit\n`);
-      const edited = await run(
-        removeAgentSkills({ appRoot: dir }).pipe(Effect.provide(ManagedFileServiceFactoryLive)),
-      );
+      const edited = await run(againstApp(removeAgentSkills({ appRoot: dir })));
       expect(edited.entries[0]?.action).toBe("conflict");
       expect(await readFile(skillPath, "utf8")).toContain("user edit");
       expect(process.cwd()).toBe(cwd);

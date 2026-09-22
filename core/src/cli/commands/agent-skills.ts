@@ -1,8 +1,7 @@
 import { type Effect, Schema } from "effect";
 
 import { ManagedFileAction } from "@lando/sdk/schema";
-
-import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
+import type { ManagedFileService } from "@lando/sdk/services";
 
 import {
   type AgentSkillsError,
@@ -37,17 +36,17 @@ export const AgentSkillsResultSchema = Schema.Struct({
 
 export const installAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
   installAgentSkillsOperation(options);
 
 export const updateAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
   updateAgentSkillsOperation(options);
 
 export const removeAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileServiceFactory> =>
+): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
   removeAgentSkillsOperation(options);
 
 const ACTION_GLYPH: Readonly<Record<ManagedFileAction, string>> = {
