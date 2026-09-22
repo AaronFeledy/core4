@@ -76,8 +76,18 @@ export class LegacyScanner {
   }
 
   lineEnd(offset = this.offset): number {
-    let end = offset;
-    while (end < this.content.length && this.content[end] !== "\n" && this.content[end] !== "\r") end += 1;
+    let low = 0;
+    let high = this.starts.length;
+    while (low + 1 < high) {
+      const middle = Math.floor((low + high) / 2);
+      if ((this.starts[middle] ?? 0) <= offset) low = middle;
+      else high = middle;
+    }
+    const next = this.starts[low + 1];
+    if (next === undefined) return this.content.length;
+    // `next` is the first character of the following line, after the break.
+    let end = next - 1;
+    if (end > 0 && this.content[end] === "\n" && this.content[end - 1] === "\r") end -= 1;
     return end;
   }
 
@@ -104,7 +114,10 @@ export class LegacyScanner {
   }
 
   structural(): void {
-    const text = this.content.slice(this.offset, this.lineEnd());
+    // Markers below are at most 5 characters. One extra character keeps `$`
+    // from matching a truncated slice when the line continues.
+    const end = Math.min(this.lineEnd(), this.offset + 6);
+    const text = this.content.slice(this.offset, end);
     if (/^(---|\.\.\.)(?:\s|$)/.test(text)) {
       this.fail(
         "Multiple YAML documents and document end markers are not supported.",

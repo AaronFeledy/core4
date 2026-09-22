@@ -14,7 +14,8 @@ export const parseBlockScalar = (scan: LegacyScanner, parentIndent: number): Leg
   const style = match[1] === "|" ? "literal" : "folded";
   const digit = match[2] ?? match[5];
   const chomp = match[3] ?? match[4];
-  let indent = digit === undefined ? undefined : Math.max(0, parentIndent) + Number(digit);
+  // The indicator is relative to the parent, and the document root parent is -1.
+  let indent = digit === undefined ? undefined : parentIndent + Number(digit);
   const lines: { readonly text: string; readonly break: boolean; readonly more: boolean }[] = [];
   scan.nextLine();
   let leadingIndent = 0;
@@ -50,6 +51,20 @@ export const parseBlockScalar = (scan: LegacyScanner, parentIndent: number): Leg
     if (style === "literal" || next === undefined || line.more || next.more) text += "\n";
     else if (line.text !== "" && next.text !== "") text += " ";
     else if (line.text === "" || index >= lastContent) text += "\n";
+    else if (next.text === "") {
+      // A blank line before a more-indented line keeps the paragraph break
+      // and the blank line. Before ordinary text, the empty line supplies
+      // the single paragraph break.
+      let following: typeof line | undefined;
+      for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+        const candidate = lines[cursor];
+        if (candidate !== undefined && candidate.text !== "") {
+          following = candidate;
+          break;
+        }
+      }
+      if (following?.more) text += "\n";
+    }
   }
   if (chomp === "-") text = text.replace(/\n+$/, "");
   else if (chomp !== "+") text = text.replace(/\n+$/, lastContent < 0 ? "" : "\n");
