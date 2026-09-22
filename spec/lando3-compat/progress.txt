@@ -285,3 +285,10 @@ Verification: gate:pr green; 202 spot-check tests across the plugin model, merge
 - Split/excise decisions: none.
 - Verification: typecheck pass, lint pass, spot checks 131 pass, package-dag pass
 ---
+
+## 2026-09-22 - US-620B Verify
+- Compiled `core/dist/lando` setup completed on the managed runtime. A two-layer Lando 3 set detected `lando3` at `exact` with `.lando.recipe.yml` ahead of `.lando.yml`; preview reported `recipe`, `config`, `proxy`, `services`, and `tooling` as `unsupported` at source spans; `--write` refused with `ConfigTranslateError` and left every source byte-identical. Name-only input stayed on `lando4` until `--from lando3`, which emitted `name: kitchen-sink-app`. `api: 4` / `type: php:8.3` did not auto-select `lando3`. A custom `landoFile` was `needs-review` and the named file was not read. `.lando.recipe.yaml` and `docker-compose.yml` did not enter the lowered result. `events` was `unsupported` at its span. Doctor output contained no lando3 check. A lamp app started, `exec` printed PHP 8.3.33, and `http://us620b.lndo.site:8000` returned that version. Config lint passed, and the v4 app detected as `lando4` `exact` only.
+- **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. The app still served on port 8000. Same class as US-619B1, US-619B3, and US-620A; the holder is the sandbox socket proxy, not this diff.
+- **Out-of-scope finding:** A fresh lamp webroot with no index returns HTTP 403 from Apache (`ErrorDocument 403`, directory index forbidden) until `index.php` exists. Not caused by the translator. After adding one, curl returned `php:8.3.33`.
+- **Learnings for future iterations:** `lando logs --format=json` is a live stream of chunk frames followed by a result frame, not one JSON document. `lando start` does not accept `--yes`.
+---
