@@ -503,3 +503,9 @@ Existing emitter tests that locked key REJECTION were converted into round-trip 
   - `{ __proto__: "own" }` in a test fixture sets the prototype and emits an empty map. Use a computed `{ ["__proto__"]: "own" }` when the point is an own key.
   - Deciding a service-level rewrite from the AUTHORED type is wrong whenever lowering can change the type. Unknown-image and raw Compose services both become `type: compose`, so the question has to be asked of the lowered patch.
 ---
+
+## 2026-09-22 13:32 - US-621C1 Review
+- An established local/user overlay was losing to a lower layer's carried authored services: a layer with no authored prefix reused the previous fragment and merged it on top of the overlay. The overlay now stays on top, and a layer that does author services still overrides the recipe fragment.
+- Review notes (deferred/rejected): conversion guides stay with US-621D; guide-drift against origin/main passed without a guide edit. Compose include targets that use a URL or git@ are left to the existing non-file path rather than diagnosed as missing files.
+- Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; recipe-lowering, translator-recipe, and translator-services spot checks passed (39).
+---

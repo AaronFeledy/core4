@@ -251,8 +251,18 @@ export const recipeLayerOutputs = (
     desired = known
       ? mergeLandofiles([desired, known.fragment])
       : (lowered.prefixes.find(({ targetLayer }) => targetLayer === layer)?.fragment ?? desired);
-    authoredDesired = authored.find((prefix) => prefix.targetLayer === layer)?.fragment ?? authoredDesired;
-    prefixes.push({ layer, sourceIds, desired: mergeLandofiles([desired, authoredDesired]) });
+    // A layer with no authored prefix keeps the previous authored services in force,
+    // but an established overlay already merged into `desired` must stay on top.
+    // A layer that does author services still overrides the recipe fragment.
+    const authoredHere = authored.find((prefix) => prefix.targetLayer === layer);
+    if (authoredHere !== undefined) authoredDesired = authoredHere.fragment;
+    prefixes.push({
+      layer,
+      sourceIds,
+      desired: mergeLandofiles(
+        authoredHere === undefined ? [authoredDesired, desired] : [desired, authoredDesired],
+      ),
+    });
   }
   const plan = planLayerDeltas(prefixes);
   const outputs: ConfigTranslateOutput[] = plan.emitted.flatMap(({ layer, fragment }) => {
