@@ -16,7 +16,7 @@ import { Effect } from "effect";
 import { LandofileParseError } from "../../errors/index.ts";
 import type { LegacyDocument, LegacyParseOptions } from "./contract.ts";
 import { legacyParseError } from "./errors.ts";
-import { assertLegacyContentSize, resolveLegacyLimits } from "./limits.ts";
+import { resolveLegacyLimits } from "./limits.ts";
 import { parseLegacyTree } from "./parse.ts";
 import { projectLegacyTree } from "./project.ts";
 
@@ -33,7 +33,6 @@ const parseLegacySync = ({ mode, file, content, limits }: LegacyParseOptions): L
   assertLegacyMode(mode, file);
 
   const resolvedLimits = resolveLegacyLimits(limits);
-  assertLegacyContentSize(content, file, resolvedLimits.maxContentBytes);
 
   const tree = parseLegacyTree(content, file, resolvedLimits);
   const { value, tags } = projectLegacyTree({

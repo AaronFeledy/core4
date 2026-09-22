@@ -14,7 +14,14 @@ const parse = (
   );
 
 const failureOf = (
-  exit: Exit.Exit<unknown, { readonly message: string; readonly line?: number | undefined }>,
+  exit: Exit.Exit<
+    unknown,
+    {
+      readonly message: string;
+      readonly line?: number | undefined;
+      readonly remediation?: string | undefined;
+    }
+  >,
 ) => {
   if (Exit.isSuccess(exit)) throw new Error("expected a parse failure");
   const failure = Exit.causeOption(exit);
@@ -55,8 +62,8 @@ describe("legacy parse limits", () => {
   });
 
   test("accepts nesting at the depth bound and rejects one level past it", () => {
-    expect(Exit.isSuccess(parse(nested(4), { maxDepth: 8 }))).toBe(true);
-    expect(failureOf(parse(nested(6), { maxDepth: 3 })).message).toContain("depth");
+    expect(Exit.isSuccess(parse(nested(6), { maxDepth: 8 }))).toBe(true);
+    expect(failureOf(parse(nested(7), { maxDepth: 8 })).message).toContain("depth");
   });
 
   test("chomps a long blank-line block scalar without quadratic backtracking", () => {
@@ -78,5 +85,32 @@ describe("legacy parse limits", () => {
 
     expect(error.message).toContain("services");
     expect(error.line).toBe(4);
+  });
+
+  test("rejects a mode other than legacy", () => {
+    const error = failureOf(
+      Effect.runSync(
+        Effect.exit(
+          parseLegacyLandofile({
+            mode: "v4" as "legacy",
+            file: FILE,
+            content: "name: app\n",
+          }),
+        ),
+      ),
+    );
+
+    expect(error.message).toContain("Unsupported Landofile parse mode");
+    expect(error.remediation).toContain('mode: "legacy"');
+  });
+
+  test("rejects alias expansion past the budget through the public parser", () => {
+    const lines = ["0: &0 x"];
+    for (let level = 1; level <= 16; level += 1) {
+      lines.push(`${level}: &${level} [*${level - 1}, *${level - 1}]`);
+    }
+    lines.push("use: *16");
+
+    expect(failureOf(parse(`${lines.join("\n")}\n`)).message).toContain("expanded nodes");
   });
 });

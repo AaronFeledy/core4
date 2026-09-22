@@ -7,7 +7,7 @@
 
 import { LandofileParseError } from "../../errors/index.ts";
 
-export interface LegacyErrorPosition {
+interface LegacyErrorPosition {
   readonly line: number;
   readonly column: number;
 }
@@ -25,6 +25,3 @@ export const legacyParseError = (
     column: position?.column,
     remediation,
   });
-
-export const isLegacyParseError = (cause: unknown): cause is LandofileParseError =>
-  cause instanceof LandofileParseError;

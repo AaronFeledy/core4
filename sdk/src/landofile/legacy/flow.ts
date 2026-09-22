@@ -4,7 +4,7 @@ import { parseQuotedScalar } from "./quoted-scalar.ts";
 import type { LegacyScanner } from "./scanner.ts";
 
 const REFERENCE = new RegExp(`^(?:${YAML_REFERENCE_NAME_PATTERN.source})`);
-export interface NodeProperties {
+interface NodeProperties {
   readonly anchor: string | undefined;
   readonly tag: string | undefined;
   readonly start: number;

@@ -26,7 +26,7 @@ describe("legacy mode over the Lando 3 corpus", () => {
 
     expect(document.mode).toBe("legacy");
     expect(document.root?.kind).toBe("mapping");
-    expect(Object.keys(asRecord(root.services)).length).toBeGreaterThan(20);
+    expect(Object.keys(asRecord(root.services)).length).toBe(27);
 
     // Every tag in the corpus survives as data; none is resolved or read.
     expect(document.tags.filter((occurrence) => occurrence.tag === "!load")).toHaveLength(3);
@@ -90,7 +90,9 @@ describe("legacy mode over the Lando 3 corpus", () => {
 
     const occurrence = document.tags.find((candidate) => candidate.tag === "!import");
     if (occurrence === undefined) throw new Error("expected an import tag");
-    expect(content.slice(occurrence.span.start.offset, occurrence.span.end.offset).length).toBeGreaterThan(0);
+    const slice = content.slice(occurrence.span.start.offset, occurrence.span.end.offset);
+    expect(occurrence.path.at(-1)).toBe("/tmp/somewhere-else");
+    expect(slice).toBe("rooster");
 
     let tagged: unknown = document.value;
     for (const segment of occurrence.path) {
@@ -98,5 +100,9 @@ describe("legacy mode over the Lando 3 corpus", () => {
       if (isLegacyTagged(tagged)) break;
     }
     expect(isLegacyTagged(tagged)).toBe(true);
+    if (!isLegacyTagged(tagged)) throw new Error("expected a tagged value");
+    expect(tagged.tag).toBe("!import");
+    expect(tagged.value).toBe("rooster");
+    expect(tagged.span).toEqual(occurrence.span);
   });
 });

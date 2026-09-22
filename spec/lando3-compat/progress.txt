@@ -216,3 +216,14 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - Trailing-newline and trailing-space chomps used a `$` regex that backtracked quadratically on a long run that was not at the end of the string. They now scan backward. A 32KB blank-line block scalar dropped from about 215ms to about 10ms.
 - Review notes (deferred/rejected): flow and tag spans stay first-child to last-child because that is the pinned collection contract, not a missing delimiter. The corpus pin's null commit remains honest provenance. v4 accepting a flow sequence is unchanged on this branch.
 ---
+
+## 2026-09-22 02:04 - US-620A Drift Audit
+- Trigger: 4 cycles, 3752 changed lines, 6 commits
+- Weakened proofs: the corpus service count and tag span were soft, the depth accept case was not at the bound, and mode rejection plus alias expansion were not proven through the public parser.
+- Scar tissue: the byte cap was checked twice, and a legacy error predicate matched every Landofile parse error while nothing called it.
+- Ceremony: parser stages stay split because each one parses, they do not forward; unused exports were removed.
+- Deferred work: leading-zero decimals staying strings, first-child collection spans, quoted merge keys, and v4 still accepting flow sequences remain outside this story.
+- Fixed: deleted the dead predicate and the extra byte check, unexported unused types, named the tagged-data symbol in the compatibility note, and restored the public proofs.
+- Split/excise decisions: none.
+- Verification: typecheck pass, lint pass, legacy spot checks 222 pass
+---
