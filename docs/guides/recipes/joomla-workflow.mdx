@@ -1,0 +1,184 @@
+---
+id: joomla-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, joomla, php, mariadb]
+---
+
+# Run the Joomla recipe
+
+```sh
+lando init --recipe joomla --name=joomla-demo --yes
+cd joomla-demo
+lando start
+```
+
+The named init creates `joomla-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Joomla into the app root so `index.php` and `cli/joomla.php` exist, then open the URL `lando info` prints.
+
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: joomla`, Apache on port `80`, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando joomla`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead.
+
+`lando joomla` is `php cli/joomla.php`. That file arrives with the CMS package, not with init.
+
+## Put mysqli on appserver
+
+Stock PHP images ship Composer and `pdo_mysql`. Joomla's CLI installer defaults to MySQLi, so add the extension as a root `build.artifact` on `appserver`, then rebuild so it lands in the image:
+
+```yaml
+services:
+  appserver:
+    build:
+      artifact:
+        - run: docker-php-ext-install mysqli
+          user: root
+```
+
+Refresh the plan and rebuild:
+
+```sh
+lando app:cache:refresh
+lando rebuild
+```
+
+`app:rebuild` has no `-y` flag. `lando restart` alone reuses the previous image. After rebuild, confirm the extension:
+
+```sh
+lando php -r 'echo extension_loaded("mysqli") ? "mysqli=yes\n" : "mysqli=no\n";'
+lando composer --version
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="joomla-workflow" display="joomla-demo" />
+      <Run command="lando init --recipe joomla --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"joomla\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"joomla\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mysql-php82" render>
+    <Step name="init">
+      <Variable name="appName" value="joomla-workflow-mysql" display="joomla-mysql" />
+      <Run command="lando init --recipe joomla --name={{appName}} --yes --answer=php=8.2 --answer=database=mysql:8.0 --answer=composer=2.7.7 --answer=webroot=/app" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.2\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mysql:8\\.0\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"joomla\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Download and install Joomla
+
+Pin a published full package. This path used Joomla 5.4.8 from the GitHub release assets and checked the SHA-1 digest published on downloads.joomla.org for that tarball:
+
+```sh
+lando exec appserver -- sh -lc '
+  set -eu
+  curl -fsSL -o /tmp/joomla.tgz \
+    https://github.com/joomla/joomla-cms/releases/download/5.4.8/Joomla_5.4.8-Stable-Full_Package.tar.gz
+  echo "bdb3752f735cf19a498bf3c8bcfc7535a65acdf7  /tmp/joomla.tgz" | sha1sum -c -
+  tar -xzf /tmp/joomla.tgz -C /app
+  rm -f /tmp/joomla.tgz
+'
+```
+
+A digest mismatch fails before extract. Generate an admin password locally, then run the installer. The generated value is printed once so you can save it; it is not written to shell history by this snippet.
+
+```sh
+JOOMLA_ADMIN_PASSWORD="$(openssl rand -base64 24)"
+printf 'Save this Joomla admin password: %s\n' "$JOOMLA_ADMIN_PASSWORD"
+lando exec appserver -- php installation/joomla.php install \
+  --site-name='Joomla Demo' \
+  --admin-user=Admin \
+  --admin-username=admin \
+  --admin-password="$JOOMLA_ADMIN_PASSWORD" \
+  --admin-email=admin@example.com \
+  --db-type=mysqli \
+  --db-host=database \
+  --db-user=lando \
+  --db-pass=lando \
+  --db-name=joomla-demo \
+  --db-prefix=jos_ \
+  --db-encryption=0 \
+  -n
+unset JOOMLA_ADMIN_PASSWORD
+```
+
+Match `--db-name` to the app name (here `joomla-demo`). Install runs as root inside `exec`, so hand the CMS tree to the web user without touching the host Landofile:
+
+```sh
+lando exec appserver -- sh -lc \
+  'find /app -mindepth 1 ! -name .lando.yml -exec chown -R www-data:www-data {} +'
+```
+
+`chown -R www-data:www-data /app` also reowns `.lando.yml` and breaks host `lando` commands. Keep the Landofile for your user.
+
+Then confirm the day-to-day tools:
+
+```sh
+lando joomla --version
+lando composer --version
+lando mariadb -e 'SHOW TABLES FROM `joomla-demo`;'
+```
+
+Open the HTTPS URL `lando info` prints. A fresh install serves the site name you passed to `install`.
+
+## Connect Joomla to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `joomla-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you do not need it for the site.
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Joomla recipe](/recipes/joomla/)
+- [Add PHP](../services/php.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
