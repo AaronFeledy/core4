@@ -173,3 +173,10 @@ Verification: gate:pr green (typecheck, lint, codegen:check, all thirteen bounda
 - **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8080` and `Port 443 is in use; using 8443`. The app still served `http://us619b3.lndo.site:8080`. Same warning as US-619B1; not caused by this diff.
 - **Learnings for future iterations:** `https://update.lando.dev/v4/dev.json` is unreachable, so a compiled `lando update` fails with `UpdateNetworkError` before the ownership gate. No replacement is not evidence the gate is missing. Keep-data leaves the shellenv block manual; only purge strips it.
 ---
+
+## 2026-09-22 00:40 - Babysit
+- PR: #1043 https://github.com/AaronFeledy/core4/pull/1043
+- CI outcome: pass on rerun (first pass failed `provider-integration-linux-x64-runner (ubuntu-24.04)`)
+- Review feedback: none — the lone failure was the MongoDB file-backed-config live test timing out on a `ServiceExecError: failed to create an exec session`; it passed on the ubuntu-26.04 runner and every other platform, and the same failure predates this branch (run 35674834744), so it was triaged as a runner flake, rerun with no code change, and passed in 17m38s.
+- Merge: merged (squash)
+---
