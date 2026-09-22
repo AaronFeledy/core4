@@ -246,3 +246,49 @@ test("reports config that has no recipe", async () => {
     }),
   );
 });
+
+test("single-layer conversion merges established deltas before applying a later option", async () => {
+  const { fake, translator } = setup();
+  const full = await Effect.runPromise(
+    translator.translate(
+      documentSet([
+        document(".lando.dist.yml", "recipe: wordpress\nconfig: {redis: false}\n"),
+        document(".lando.yml", "config: {redis: true}\n"),
+      ]),
+    ),
+  );
+  const dist = full.outputs.find(({ targetLayer }) => targetLayer === "dist");
+  const canonical = full.outputs.find(({ targetLayer }) => targetLayer === "canonical");
+  if (dist === undefined || canonical === undefined) throw new Error("expected dist and canonical outputs");
+  const local = document(".lando.local.yml", 'config: {php: "8.2"}\n');
+  const input = documentSet([
+    document(".lando.dist.yml", "recipe: wordpress\n"),
+    document(".lando.yml", "recipe: wordpress\n"),
+    local,
+  ]);
+  const result = await Effect.runPromise(
+    translator.translate({
+      ...input,
+      mode: "single-layer",
+      selectedSourceIds: [local.sourceId],
+      writableLayerIds: ["local"],
+      currentLowerV4Fragments: [
+        { layerId: "dist", fragment: dist.fragment },
+        { layerId: "canonical", fragment: canonical.fragment },
+      ],
+    }),
+  );
+  expect(result.outputs.map(({ targetLayer }) => targetLayer)).toEqual(["local"]);
+  expect(fake.calls.at(-1)?.options).toMatchObject({ php: "8.2", redis: true });
+  const final = fake.results.at(-1);
+  expect(
+    mergeLandofiles([
+      asRecord(dist.fragment),
+      asRecord(canonical.fragment),
+      ...result.outputs.map(({ fragment }) => asRecord(fragment)),
+    ]),
+  ).toEqual({
+    recipe: final?.provenance,
+    ...asRecord(final?.fragment),
+  });
+});

@@ -19,7 +19,7 @@ import { type LegacyPrefixView, requiredOptionViews } from "./effective-views.ts
 import { type DesiredPrefix, planLayerDeltas } from "./layer-delta.ts";
 import { occurrencesAt } from "./legacy-merge.ts";
 import { BUNDLED_RECIPE_OPTION_MAPS, classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
-import { isPlainRecord } from "./v4-merge.ts";
+import { isPlainRecord, mergeLandofiles } from "./v4-merge.ts";
 
 export interface LoweredPrefix {
   readonly targetLayer: LandofileLayer;
@@ -235,7 +235,8 @@ export const recipeLayerOutputs = (
   const prefixes: DesiredPrefix[] = [];
   const establishedLayerIds = new Set(established.map((known) => known.layer));
   for (const known of established) {
-    desired = known.fragment;
+    // Each established file is a delta. The prefix is the merge through that file.
+    desired = mergeLandofiles([desired, known.fragment]);
     prefixes.push({ layer: known.layer, sourceIds: known.sourceIds, desired });
   }
   for (const view of folded) {

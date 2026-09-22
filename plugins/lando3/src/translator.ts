@@ -54,7 +54,7 @@ import {
   recipeLayerOutputs,
 } from "./recipe-lowering.ts";
 import { formatPath } from "./source.ts";
-import { isPlainRecord } from "./v4-merge.ts";
+import { isPlainRecord, mergeLandofiles } from "./v4-merge.ts";
 
 const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml"]);
 
@@ -274,16 +274,36 @@ const withoutAppName = (fragment: Readonly<Record<string, unknown>>): Readonly<R
   return rest;
 };
 
-const readProvenance = (fragment: Readonly<Record<string, unknown>>): EstablishedRecipe | undefined => {
-  const recipe = fragment.recipe;
-  if (!isPlainRecord(recipe) || typeof recipe.id !== "string" || !isPlainRecord(recipe.options))
-    return undefined;
+const persistedOptions = (value: unknown): Readonly<Record<string, string | boolean>> | undefined => {
+  if (!isPlainRecord(value)) return undefined;
   const options: Record<string, string | boolean> = {};
-  for (const [key, value] of Object.entries(recipe.options)) {
-    if (typeof value !== "string" && typeof value !== "boolean") return undefined;
-    options[key] = value;
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== "string" && typeof entry !== "boolean") return undefined;
+    options[key] = entry;
   }
-  return { recipeId: recipe.id, options, fragment };
+  return options;
+};
+
+/**
+ * Effective recipe after every established file. Each file is a delta, so id
+ * and options accumulate low-to-high instead of trusting the highest file.
+ */
+const establishedRecipe = (layers: ReadonlyArray<EstablishedLayer>): EstablishedRecipe | undefined => {
+  let recipeId: string | undefined;
+  const options: Record<string, string | boolean> = {};
+  let fragment: Readonly<Record<string, unknown>> = {};
+  let sawRecipe = false;
+  for (const layer of layers) {
+    fragment = mergeLandofiles([fragment, layer.fragment]);
+    const recipe = layer.fragment.recipe;
+    if (!isPlainRecord(recipe)) continue;
+    sawRecipe = true;
+    if (typeof recipe.id === "string") recipeId = recipe.id;
+    const next = persistedOptions(recipe.options);
+    if (next !== undefined) Object.assign(options, next);
+  }
+  if (!sawRecipe || recipeId === undefined) return undefined;
+  return { recipeId, options, fragment };
 };
 
 const establishedLayers = (
@@ -304,14 +324,6 @@ const establishedLayers = (
         },
       ];
     });
-
-const establishedRecipe = (layers: ReadonlyArray<EstablishedLayer>): EstablishedRecipe | undefined => {
-  for (const layer of [...layers].reverse()) {
-    const recipe = readProvenance(layer.fragment);
-    if (recipe !== undefined) return recipe;
-  }
-  return undefined;
-};
 
 /**
  * Builds the frontend over host-supplied ports. Recipe decomposition arrives

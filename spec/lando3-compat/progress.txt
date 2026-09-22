@@ -330,3 +330,12 @@ Verification: typecheck, lint, all eight boundary rules, codegen drift, and guid
   - A tagged `config` is not an empty config. Defaults would hide a file reference and still emit a complete-looking recipe.
   - `currentLowerV4Fragments` are already v4. Parsing those bytes again as Lando 3 turns recipe provenance into a non-string id and makes the second `--file` fail.
 ---
+
+## 2026-09-22 08:17 - US-621A Drift Audit
+- Trigger: 2 cycles, 2946 changed lines, 4 commits
+- Weakened proofs: a later single-layer option change treated each already-lowered file as a complete prefix and refused, and structural redis regeneration never ran through the real wordpress decomposer.
+- Contract drift: recipe id and options were read from the highest established file, which is often a delta without an id, so options applied in between were lost.
+- Fixed: established files now merge into each prefix, and provenance options accumulate low to high. The structural regeneration proof uses the bundled decomposer.
+- Split/excise decisions: none. Dropped WordPress keys and Drupal 7-9 rejection still match the published option maps.
+- Verification: typecheck pass, lint pass, spot checks 50 pass
+---
