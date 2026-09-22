@@ -53,7 +53,6 @@ describe("@lando/sdk/landofile — round-trip law over the supported domain", ()
 
   test("keys outside the plain YAML set round-trip through quoting", async () => {
     const value = {
-      "web service": 1,
       "a:b": 2,
       "a/b": 3,
       "@lando/foo": 4,
@@ -61,11 +60,14 @@ describe("@lando/sdk/landofile — round-trip law over the supported domain", ()
       "<<": 6,
       "0": 7,
       on: 8,
-      'say "hi"': 9,
-      "tab\tkey": 10,
+      'say"hi"': 9,
     };
     expect(await roundTrip(value)).toEqual(value);
     expect(Bun.YAML.parse(emitLandofileYaml(value))).toEqual(value);
+  });
+
+  test.each(["web service", 'say "hi"', "tab\tkey"])("rejects whitespace-bearing key %j", (key) => {
+    expect(() => emitLandofileYaml({ [key]: 1 })).toThrow(LandofileEmitError);
   });
 
   test("nested maps", async () => {
