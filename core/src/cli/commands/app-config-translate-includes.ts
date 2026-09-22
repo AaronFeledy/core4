@@ -1,8 +1,38 @@
 import { lstat } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { ConfigTranslateDiagnostic, ConfigTranslateOutput } from "@lando/sdk/schema";
+import { type ConfigTranslateDiagnostic, type ConfigTranslateOutput, PortablePath } from "@lando/sdk/schema";
 import { Effect, Either } from "effect";
-import { parseSourceFilePath, resolveContainedSourcePath } from "./app-config-translate-sources.ts";
+import { resolveContainedSourcePath } from "./app-config-translate-sources.ts";
+
+const WINDOWS_ABSOLUTE_PATH = /^[A-Za-z]:[\\/]/u;
+
+/**
+ * Include targets are app-root relative after `.` and `..` collapse. A `..`
+ * that stays inside the app is the same file; one that leaves it is not.
+ * Absolute, drive, and UNC paths never collapse into the root.
+ */
+const containedIncludePath = (source: string): PortablePath | undefined => {
+  const portable = source.replace(/\\/gu, "/");
+  if (
+    portable.length === 0 ||
+    portable.startsWith("/") ||
+    source.startsWith("\\") ||
+    WINDOWS_ABSOLUTE_PATH.test(source)
+  ) {
+    return undefined;
+  }
+  const segments: string[] = [];
+  for (const part of portable.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      if (segments.length === 0) return undefined;
+      segments.pop();
+      continue;
+    }
+    segments.push(part);
+  }
+  return segments.length === 0 ? undefined : PortablePath.make(segments.join("/"));
+};
 
 export const validateTranslatedIncludeTargets = (
   appRoot: string,
@@ -24,13 +54,13 @@ export const validateTranslatedIncludeTargets = (
         )
           continue;
         const problem = yield* Effect.gen(function* () {
-          const path = yield* Effect.either(parseSourceFilePath(entry.source));
-          if (Either.isLeft(path)) return "target must be a relative path inside the app root";
-          const metadata = yield* Effect.either(Effect.tryPromise(() => lstat(resolve(appRoot, path.right))));
+          const path = containedIncludePath(entry.source);
+          if (path === undefined) return "target must be a relative path inside the app root";
+          const metadata = yield* Effect.either(Effect.tryPromise(() => lstat(resolve(appRoot, path))));
           if (Either.isLeft(metadata)) return "target does not exist";
           if (metadata.right.isSymbolicLink()) return "target is a symbolic link";
           if (!metadata.right.isFile()) return "target is not a regular file";
-          const contained = yield* Effect.either(resolveContainedSourcePath(appRoot, path.right));
+          const contained = yield* Effect.either(resolveContainedSourcePath(appRoot, path));
           return Either.isLeft(contained) ? "target resolves outside the app root" : undefined;
         });
         if (problem !== undefined)

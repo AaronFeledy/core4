@@ -83,6 +83,20 @@ test("preserves the include without exposing contents when its target is a regul
   expect(JSON.stringify(result)).not.toContain(canary);
 });
 
+test("accepts a compose include whose dot segments stay inside the app root", async () => {
+  // Given: a regular file reached only after collapsing `..`.
+  const cwd = await makeApp();
+  await mkdir(join(cwd, "extra"));
+  await Bun.write(join(cwd, "compose.yml"), "services: {}\n");
+  // When: previewing the un-normalized reference.
+  const result = await preview(cwd, "extra/../compose.yml");
+  // Then: containment accepts it and the authored source is unchanged.
+  expect(result.diagnostics).toEqual([]);
+  expect(Bun.YAML.parse(result.targets[0]?.content ?? "")).toMatchObject({
+    includes: [{ source: "extra/../compose.yml", kind: "compose" }],
+  });
+});
+
 test.each([
   ["missing", "compose.yml", "target does not exist"],
   ["symlink", "compose.yml", "target is a symbolic link"],
