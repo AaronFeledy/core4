@@ -7,7 +7,12 @@ import { Effect, type Scope } from "effect";
 
 import { ManagedFileService } from "@lando/sdk/services";
 
-import { makeDiskBackend, makeManagedFileService } from "@lando/managed-file/service";
+import {
+  ManagedFileServiceFactory,
+  ManagedFileServiceFactoryLive,
+  makeDiskBackend,
+  makeManagedFileService,
+} from "@lando/managed-file/service";
 import { makeTestManagedFileStore } from "@lando/managed-file/testing";
 
 import {
@@ -146,8 +151,12 @@ describe("agent skill pack ownership", () => {
       const prior = { ...declared, content: { kind: "text" as const, value: "prior skill body\n" } };
       const skillPath = join(dir, AGENT_SKILLS_SKILL_PATH);
       const cwd = process.cwd();
-      const againstApp = <A, E>(effect: Effect.Effect<A, E, ManagedFileService>) =>
-        effect.pipe(Effect.provideService(ManagedFileService, legacy));
+      const againstApp = <A, E>(effect: Effect.Effect<A, E, ManagedFileService>): Effect.Effect<A, E> =>
+        Effect.gen(function* () {
+          const factory = yield* ManagedFileServiceFactory;
+          const managed = yield* factory.forBase(dir);
+          return yield* effect.pipe(Effect.provideService(ManagedFileService, managed));
+        }).pipe(Effect.provide(ManagedFileServiceFactoryLive));
 
       await runScoped(legacy.apply([prior]));
       const updated = await runScoped(againstApp(updateAgentSkills({ appRoot: dir })));

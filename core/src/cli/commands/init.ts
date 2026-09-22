@@ -11,8 +11,6 @@ import { type ProgressEmitter, makeTaskTree } from "@lando/sdk/task-progress";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
-import { type AgentSkillsResult, installAgentSkills } from "@lando/engine/operations/agent-skills";
-import { ManagedFileServiceLive } from "@lando/managed-file/service";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service";
 import { getInteractionServiceOverride } from "../../interaction/testing-override";
@@ -39,6 +37,7 @@ import {
 } from "../../recipes/tarball-source";
 import { readAnswersFile } from "../prompts/answer-flags";
 import { activeRendererMode } from "../renderer-mode-state";
+import { type AgentSkillsResult, installAgentSkills } from "./agent-skills";
 import type { BunSelfSpawner } from "./bun-self-runner";
 import { defaultAppNameFromCwd, withAppNameDefault } from "./init-app-name";
 import { chromeForInitNamePrompt } from "./init-app-name-chrome";
@@ -536,7 +535,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   }
 
   const agentSkills = await Effect.runPromise(
-    installAgentSkills({ appRoot: directory }).pipe(Effect.provide(ManagedFileServiceLive)),
+    installAgentSkills({ appRoot: directory }),
     options.signal === undefined ? undefined : { signal: options.signal },
   );
   return { appName, directory, answers: publicAnswers, postInit, skippedScaffold, agentSkills };

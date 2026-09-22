@@ -1,7 +1,7 @@
-import { type Effect, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { ManagedFileAction } from "@lando/sdk/schema";
-import type { ManagedFileService } from "@lando/sdk/services";
+import { ManagedFileService } from "@lando/sdk/services";
 
 import {
   type AgentSkillsError,
@@ -11,8 +11,10 @@ import {
   type AgentSkillsVerb,
   installAgentSkills as installAgentSkillsOperation,
   removeAgentSkills as removeAgentSkillsOperation,
+  resolveAgentSkillsAppRoot,
   updateAgentSkills as updateAgentSkillsOperation,
 } from "@lando/engine/operations/agent-skills";
+import { ManagedFileServiceFactory, ManagedFileServiceFactoryLive } from "@lando/managed-file/service";
 
 export type {
   AgentSkillsError,
@@ -34,20 +36,31 @@ export const AgentSkillsResultSchema = Schema.Struct({
   entries: Schema.Array(AgentSkillsFileResultSchema),
 });
 
+const withAppManagedFiles = (
+  options: AgentSkillsOptions,
+  run: (appRoot: string) => Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService>,
+): Effect.Effect<AgentSkillsResult, AgentSkillsError> =>
+  Effect.gen(function* () {
+    const appRoot = yield* resolveAgentSkillsAppRoot(options);
+    const factory = yield* ManagedFileServiceFactory;
+    const managed = yield* factory.forBase(appRoot);
+    return yield* run(appRoot).pipe(Effect.provideService(ManagedFileService, managed));
+  }).pipe(Effect.provide(ManagedFileServiceFactoryLive));
+
 export const installAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
-  installAgentSkillsOperation(options);
+): Effect.Effect<AgentSkillsResult, AgentSkillsError> =>
+  withAppManagedFiles(options, (appRoot) => installAgentSkillsOperation({ ...options, appRoot }));
 
 export const updateAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
-  updateAgentSkillsOperation(options);
+): Effect.Effect<AgentSkillsResult, AgentSkillsError> =>
+  withAppManagedFiles(options, (appRoot) => updateAgentSkillsOperation({ ...options, appRoot }));
 
 export const removeAgentSkills = (
   options: AgentSkillsOptions = {},
-): Effect.Effect<AgentSkillsResult, AgentSkillsError, ManagedFileService> =>
-  removeAgentSkillsOperation(options);
+): Effect.Effect<AgentSkillsResult, AgentSkillsError> =>
+  withAppManagedFiles(options, (appRoot) => removeAgentSkillsOperation({ ...options, appRoot }));
 
 const ACTION_GLYPH: Readonly<Record<ManagedFileAction, string>> = {
   create: "+",
