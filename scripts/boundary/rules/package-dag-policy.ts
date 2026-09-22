@@ -107,6 +107,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/landofile",
       "@lando/redaction",
       "@lando/http-client",
+      "@lando/managed-file",
       "@lando/telemetry",
     ],
     // Engine base-composition tests exercise the bundled service feature definitions.
