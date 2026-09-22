@@ -55,10 +55,10 @@ Refresh the plan and rebuild:
 
 ```sh
 lando app:cache:refresh
-lando rebuild -y
+lando rebuild
 ```
 
-`lando restart` alone reuses the previous image. After rebuild, confirm the tools:
+`app:rebuild` has no `-y` flag. `lando restart` alone reuses the previous image. After rebuild, confirm the tools:
 
 ```sh
 lando wp --allow-root --info
