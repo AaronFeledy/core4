@@ -218,6 +218,7 @@ describe("recipe option parity", () => {
         postInitIO: { out: () => {}, err: () => {} },
       });
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain('php: "8.4"');
       expect(yaml).toContain("webroot: /app/web");
       expect(yaml).toContain("vendor/bin/drush");
       expect(yaml).toContain("allowOverride: true");
@@ -265,6 +266,7 @@ describe("recipe option parity", () => {
         postInitIO: { out: () => {}, err: () => {} },
       });
       const yaml = await Bun.file(join(result.directory, ".lando.yml")).text();
+      expect(yaml).toContain('php: "8.4"');
       expect(yaml).toContain("webroot: /app/web");
       expect(yaml).toContain("vendor/bin/drush");
       expect(yaml).toContain("drupal/cms");
