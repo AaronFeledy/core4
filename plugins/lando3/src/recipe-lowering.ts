@@ -19,6 +19,7 @@ import { type LegacyPrefixView, requiredOptionViews } from "./effective-views.ts
 import { type DesiredPrefix, planLayerDeltas } from "./layer-delta.ts";
 import { occurrencesAt } from "./legacy-merge.ts";
 import { BUNDLED_RECIPE_OPTION_MAPS, classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
+import type { LoweredServicePrefix } from "./service-lowering.ts";
 import { isPlainRecord, mergeLandofiles, v4LayerRank } from "./v4-merge.ts";
 
 interface LoweredPrefix {
@@ -233,19 +234,25 @@ export const recipeLayerOutputs = (
   lowered: LoweredRecipes,
   names: ReadonlyArray<ConfigTranslateOutput>,
   established: ReadonlyArray<EstablishedLayer> = [],
+  authored: ReadonlyArray<LoweredServicePrefix> = [],
 ) => {
   let desired: LoweredPrefix["fragment"] = {};
+  let authoredDesired: LoweredPrefix["fragment"] = {};
   const prefixes: DesiredPrefix[] = [];
   const layers = new Map([
     ...folded.map(({ targetLayer, sourceIds }) => [targetLayer, sourceIds] as const),
     ...established.map(({ layer, sourceIds }) => [layer, sourceIds] as const),
   ]);
+  for (const { targetLayer, sourceIds } of authored) {
+    layers.set(targetLayer, [...new Set([...(layers.get(targetLayer) ?? []), ...sourceIds])]);
+  }
   for (const [layer, sourceIds] of [...layers].sort(([a], [b]) => v4LayerRank(a) - v4LayerRank(b))) {
     const known = established.find((item) => item.layer === layer);
     desired = known
       ? mergeLandofiles([desired, known.fragment])
       : (lowered.prefixes.find(({ targetLayer }) => targetLayer === layer)?.fragment ?? desired);
-    prefixes.push({ layer, sourceIds, desired });
+    authoredDesired = authored.find((prefix) => prefix.targetLayer === layer)?.fragment ?? authoredDesired;
+    prefixes.push({ layer, sourceIds, desired: mergeLandofiles([desired, authoredDesired]) });
   }
   const plan = planLayerDeltas(prefixes);
   const outputs: ConfigTranslateOutput[] = plan.emitted.flatMap(({ layer, fragment }) => {

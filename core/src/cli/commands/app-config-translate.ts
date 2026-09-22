@@ -32,6 +32,7 @@ import {
   orderSourcePaths,
 } from "./app-config-translate-document-set.ts";
 import { encodeTranslateOutputs } from "./app-config-translate-encode.ts";
+import { validateTranslatedIncludeTargets } from "./app-config-translate-includes.ts";
 import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
 import { renderTranslateTargets } from "./app-config-translate-output.ts";
 import { selectTranslator } from "./app-config-translate-selection.ts";
@@ -252,16 +253,16 @@ export const appConfigTranslate = (
     const redactor = Option.isSome(service)
       ? yield* service.value.forProfile("secrets")
       : createStandaloneRedactor("secrets");
-    const diagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)].map(
-      (diagnostic) => ({
-        ...diagnostic,
-        message: redactor.redactString(diagnostic.message),
-        ...(diagnostic.remediation === undefined
-          ? {}
-          : { remediation: redactor.redactString(diagnostic.remediation) }),
-      }),
-    );
-    const targets = diagnostics.some((diagnostic) => diagnostic.kind === "unsupported")
+    const encodingDiagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)];
+    const includeDiagnostics = yield* validateTranslatedIncludeTargets(appRoot, outputs);
+    const diagnostics = [...encodingDiagnostics, ...includeDiagnostics].map((diagnostic) => ({
+      ...diagnostic,
+      message: redactor.redactString(diagnostic.message),
+      ...(diagnostic.remediation === undefined
+        ? {}
+        : { remediation: redactor.redactString(diagnostic.remediation) }),
+    }));
+    const targets = encodingDiagnostics.some((diagnostic) => diagnostic.kind === "unsupported")
       ? []
       : encoded.map((result) => result.target);
     const canonicalYaml = renderTranslateTargets(targets);
