@@ -1,5 +1,6 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { RouteFilter, RouteObjectInput } from "@lando/sdk/schema";
+import { CATALOG, resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
 import { type V4Wire, isPlainObject } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
@@ -185,4 +186,66 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
     if (routes.length > 0) proxy.set(service, routes);
   }
   return { fragment: proxy.size === 0 ? {} : { proxy: Object.fromEntries(proxy) } };
+};
+
+const LANDO3_DEFAULT_ROUTE_PORT = 80;
+
+const servedPorts = (service: V4Wire): ReadonlySet<number> => {
+  const ports = new Set<number>();
+  for (const endpoint of Array.isArray(service.endpoints) ? service.endpoints : []) {
+    if (
+      isPlainObject(endpoint) &&
+      typeof endpoint.port === "number" &&
+      /^https?$/.test(String(endpoint.protocol))
+    )
+      ports.add(endpoint.port);
+  }
+  const resolution = typeof service.type === "string" ? resolveCatalogType(service.type) : undefined;
+  if (resolution?._tag === "resolved" && resolution.id !== "compose" && resolution.id !== "lando") {
+    // The catalog type already serves HTTP on its own port; a portless route uses it.
+    ports.add(
+      typeof service.port === "number" ? service.port : (CATALOG[resolution.id]?.containerPort ?? 80),
+    );
+  }
+  return ports;
+};
+
+/**
+ * Lando 3 sent a route to any container port and spoke HTTP to it, defaulting
+ * to port 80. A Lando 4 route must land on a declared HTTP endpoint, so each
+ * converted service gains an internal HTTP endpoint for every routed port it
+ * does not already serve.
+ */
+export const declareRouteEndpoints = (
+  fragment: V4Wire,
+  services: Map<string, V4Wire>,
+  report: Report,
+): void => {
+  const proxy = isPlainObject(fragment.proxy) ? fragment.proxy : {};
+  for (const [name, routes] of Object.entries(proxy)) {
+    const service = services.get(name);
+    if (service === undefined || !Array.isArray(routes)) continue;
+    const served = servedPorts(service);
+    const catalogServed = served.size > 0;
+    const added: number[] = [];
+    for (const route of routes) {
+      const port = isPlainObject(route) && typeof route.endpoint === "number" ? route.endpoint : undefined;
+      if (port === undefined && catalogServed) continue;
+      const wanted = port ?? LANDO3_DEFAULT_ROUTE_PORT;
+      if (served.has(wanted) || added.includes(wanted)) continue;
+      added.push(wanted);
+    }
+    if (added.length === 0) continue;
+    const existing = Array.isArray(service.endpoints) ? service.endpoints : [];
+    services.set(name, {
+      ...service,
+      endpoints: [...existing, ...added.map((port) => ({ _tag: "internal", protocol: "http", port }))],
+    });
+    report(
+      "generated",
+      ["proxy", name],
+      `Declared internal HTTP endpoints on port ${added.join(", ")} of ${name} for its routes; Lando 3 routed to container ports directly.`,
+      `Review services.${name}.endpoints; change the protocol if the port does not speak HTTP.`,
+    );
+  }
 };

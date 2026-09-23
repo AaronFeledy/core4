@@ -282,3 +282,32 @@ test("hoists a split secured route that a higher layer overrides and still order
     ],
   });
 });
+
+test("declares the HTTP endpoints a route targets on services without catalog endpoints", async () => {
+  // Given Lando 3 routes to a Compose service's container ports, which Lando 3 treated as HTTP.
+  const result = await translateFiles([
+    [
+      ".lando.yml",
+      "name: routes\nservices:\n  who: {type: compose, services: {image: 'traefik/whoami:v1.10'}}\n  node: {type: 'node:22'}\nproxy:\n  who: [who.demo, 'who.demo:8080/api']\n  node: ['node.demo:3000', 'node.demo:9229']\n",
+    ],
+  ]);
+  // Then the Compose service gains internal HTTP endpoints on port 80 and 8080,
+  // and the catalog service only gains the port its type does not already serve.
+  const services = result.merged.services;
+  expect(isPlainRecord(services) ? services.who : undefined).toMatchObject({
+    endpoints: [
+      { _tag: "internal", protocol: "http", port: 80 },
+      { _tag: "internal", protocol: "http", port: 8080 },
+    ],
+  });
+  expect(isPlainRecord(services) ? services.node : undefined).toMatchObject({
+    endpoints: [{ _tag: "internal", protocol: "http", port: 9229 }],
+  });
+  expect(result.diagnostics.filter(({ kind }) => kind === "generated").map(({ keyPath }) => keyPath)).toEqual(
+    [
+      ["services", "who"],
+      ["proxy", "who"],
+      ["proxy", "node"],
+    ],
+  );
+});

@@ -10,7 +10,7 @@ import { lowerApi4Service } from "./lower-api4.ts";
 import { lowerCatalogCommon } from "./lower-catalog-common.ts";
 import { lowerEvents } from "./lower-events.ts";
 import { lowerPhpOptions } from "./lower-php.ts";
-import { lowerProxy } from "./lower-proxy.ts";
+import { declareRouteEndpoints, lowerProxy } from "./lower-proxy.ts";
 import { withHomeIntent } from "./lower-runtime-intent.ts";
 import { lowerTooling } from "./lower-tooling.ts";
 import { lowerTopLevel } from "./lower-top-level.ts";
@@ -244,6 +244,7 @@ export const lowerServiceViews = (
         } else services.set(name, mergeLandofiles([services.get(name) ?? {}, companion]));
       }
     }
+    declareRouteEndpoints(proxy.fragment, services, report);
     prefixes.push({
       targetLayer: view.targetLayer,
       sourceIds: view.sourceIds,
