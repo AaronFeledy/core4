@@ -718,3 +718,12 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
 - **Learnings for future iterations:**
   - Xdebug documents `XDEBUG_CONFIG` only on settings that say so. `client_host` and `client_port` qualify. `start_with_request` does not.
 ---
+## 2026-09-22 21:21 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-22 - US-621C8 Verify
+- Compiled `core/dist/lando` setup completed. A Lando 3 app translated, wrote, and linted: xdebug `mode` became `xdebug: debug` and `client_port` became `XDEBUG_CONFIG`; `start_with_request` and the ini `config` key were dropped; memcached `mem: 64` became `memcached -p 11211 -m 64`; php `mem`/`plugins` were dropped; custom `landoFile`, `appEnv`/`appLabels`, and runtime `cli`/`command` were diagnosed and not imported; tooling references to `lando info --deep`/`-s`, `logs -t`, `version --all`, `list`, `rebuild -s`, `LANDO_INFO`, `LANDO_MOUNT`, and `settings.lando.php` were needs-review and did not block `--write`. The started app served PHP 8.3.33 with Xdebug 3.5.3 in mode `debug`, `XDEBUG_CONFIG=client_host=host.docker.internal client_port=9003`, no `COMPOSER_ALLOW_SUPERUSER`, and no drush/wp launchers, over HTTP 200 and HTTPS 200. Elasticsearch `mem` became `ES_JAVA_OPTS` and OpenSearch `mem` became `OPENSEARCH_JAVA_OPTS`; that file linted valid. Pantheon, `pluginConfig`/`pluginConfigFile`, search `plugins`, API-4 `tty`/`stdin_open`, and `lando pull`/`push`/`share` left an empty preview and `--write` refused with the source unchanged. An adjacent tooling/events/proxy translate still previewed.
+- **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. Routes still served on 8000/4443. Same class as earlier verifies.
+- **Out-of-scope finding:** A converted API-4 `traefik/whoami` with a proxy route linted valid, then `lando start` failed `LandofileValidationError: Route edge.us621c8.lndo.site for service edge does not resolve to an HTTP endpoint` even though the written service declared an internal HTTP endpoint on port 80. After that route was removed, the edge build failed in about 300ms with `ProviderUnavailableError: Container image build stream reported an error` and aborted the other services. Suspected area: `type: lando` endpoint realization / image build, not the disposition table. PHP and memcached started once that service was removed.
+---
