@@ -938,3 +938,11 @@ Verification: gate:pr passed. lint:guides, guide-coverage, public-transcripts, a
   - Guide scenarios that run `lando config set` write the host's real config root; the harness isolates only the working directory.
   - Section 6 promises the Xdebug object maps `start`, but `start_with_request` is dropped with ini guidance. That is still a non-silent target/drop outcome. Revisit only if a native field appears.
 ---
+
+## 2026-09-23 03:54 CDT - US-622B Review
+- Recorded `passes: true` on every story in this PRD, including US-622A and US-622B, once merged predecessors had positive-count evidence and US-611B was already passing. The conversion matrix no longer says each key has exactly one row, and it no longer treats bare `overrides` as a non-blocking conversion; rejected Compose override fields stay on the unsupported row.
+- Review notes (deferred/rejected): ir-gaps dependencies have no `passes` field, so this story does not invent one. Bugbot on the build commits found no bugs. Production uninstall still uses the real config root when `userConfRoot` is omitted; that is existing purge behavior, and this branch only sandboxes tests. Section 6 was left unchanged because it never promised a Redis or Elasticsearch `config.server` rewrite. The version matrix is the existing service-type reference, which the guide now links instead of copying.
+- Verification: gate:pr passed; lint:guides, guide-coverage, public transcripts, and guide-drift against origin/main passed; convert guide 10 pass, from-lando-3 3 pass, transition-options 3 pass; catalog and uninstall spot checks passed.
+- **Learnings for future iterations:**
+  - A conversion matrix row that names a whole key (`overrides`) claims every form of that key. Put rejected subfields on the blocking row, and do not say each key appears in exactly one row when both forms exist.
+---

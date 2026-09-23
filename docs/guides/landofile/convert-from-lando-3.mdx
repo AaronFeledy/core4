@@ -93,13 +93,13 @@ Two families of `needs-review` come from your commands rather than your keys. An
 
 ## What converts and what doesn't
 
-Every Lando 3 key lands in exactly one row. Nothing falls through silently.
+Nothing falls through silently. When a key has both a supported form and a rejected form, the rejected form blocks `--write`.
 
 | Lando 3 input | Result | Blocks `--write` |
 | --- | --- | --- |
 | A bundled recipe from the table above, with its `config:` | The matching Lando 4 recipe with `options` | No |
 | A service type and version Lando 4 ships (`php:8.3`, `mariadb:11.4`, `redis:7`) | The same service | No |
-| `portforward`, `overrides`, `build_as_root`, `build`, `run_as_root`, `run`, `proxy` routes, `tooling`, `events`, `!load` and `!import` | Native Lando 4 keys, with a `rewritten` or `generated` note | No |
+| Supported `portforward`, override fields, `build_as_root`, `build`, `run_as_root`, `run`, `proxy` routes, `tooling`, `events`, and text `!load` / `!import` | Native Lando 4 keys, with a `rewritten` or `generated` note | No |
 | `moreHttpPorts`, `plugins`, `pluginDirs`, `keys`, tooling `level`, `usage`, `examples`, and `interactive` | `dropped`, with where to set it by hand | No |
 | A version Lando 4 doesn't ship (PHP 7.4, Node 18, MariaDB 10.6, Postgres 14, Solr 8) | `unsupported`, naming the versions you can pick | Yes |
 | Compose `tty`, `stdin_open`, `links`, `network_mode`, or `container_name`; image build `ssh`; Varnish with several backends; Elasticsearch or OpenSearch `plugins` | `unsupported` | Yes |
