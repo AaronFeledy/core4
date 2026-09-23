@@ -78,8 +78,10 @@ describe("ConfigTranslator contract — bundled lando3", () => {
     expect([...(lando3.plugin.configTranslators?.keys() ?? [])]).toEqual(declared);
   });
 
-  test("the scaffold contributes no doctor check", () => {
-    expect(lando3.plugin.doctorChecks).toBeUndefined();
+  test("the bundled doctor checks agree with the declared contributions", () => {
+    const declared = [lando3.lando3LeftoversCheck, lando3.lando3ShadowCheck];
+    expect(declared.map(({ id }) => id)).toEqual(["lando3-leftovers", "lando3-shadow"]);
+    expect(lando3.plugin.doctorChecks).toEqual(declared);
   });
 
   test("an injected port set reaches the translator the loader builds", async () => {
