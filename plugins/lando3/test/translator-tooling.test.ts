@@ -77,6 +77,7 @@ describe("tooling", () => {
       php: { disabled: true },
     });
     expect(summary(result)).toEqual([
+      "needs-review services.appserver.type",
       "generated tooling.git",
       "rewritten tooling.test.cmd",
       "rewritten tooling.install.cmd",
@@ -127,6 +128,7 @@ describe("tooling", () => {
       },
     });
     expect(summary(result)).toEqual([
+      "needs-review services.appserver.type",
       "rewritten tooling.word.options",
       "dropped tooling.word.options.word.alias.1",
       "dropped tooling.word.options.word.interactive",
@@ -300,6 +302,7 @@ describe("events", () => {
     });
     expect(summary(result)).toEqual([
       "generated services.web",
+      "needs-review services.appserver.type",
       "generated events.pre-start.0",
       "rewritten events.pre-start.1.node",
       "rewritten events.post-db-import",
@@ -331,6 +334,7 @@ describe("events", () => {
     );
     // Then
     expect(summary(result)).toEqual([
+      "needs-review services.appserver.type",
       "dropped events.pre-uninstall",
       "dropped events.post-db-import",
       "dropped events.post-pull",

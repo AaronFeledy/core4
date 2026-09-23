@@ -97,6 +97,14 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("PHP xdebug option", () => {
+  test("preserves authored XDEBUG_CONFIG when Xdebug is enabled", async () => {
+    // Given
+    const XDEBUG_CONFIG = "client_host=host.docker.internal client_port=9005 start_with_request=yes";
+    // When
+    const plan = await composePhpPlan({ xdebug: true, environment: { XDEBUG_CONFIG } });
+    // Then
+    expect(plan.environment.XDEBUG_CONFIG).toBe(XDEBUG_CONFIG);
+  });
   test("Given no xdebug key, when planning, then it installs nothing and contributes no tooling", async () => {
     const plan = await composePhpPlan();
     const steps = buildStepsFor(plan);

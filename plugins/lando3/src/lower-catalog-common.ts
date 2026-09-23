@@ -1,8 +1,9 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { CATALOG, type CatalogEntry, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
+import { CATALOG, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
 import { withoutHostIpVariable } from "./host-reachability.ts";
 import { lowerScannerAndHome } from "./lower-runtime-intent.ts";
+import { lowerServiceMemory } from "./lower-service-memory.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
@@ -11,8 +12,8 @@ import {
   containerWebroot,
   isPlainObject,
 } from "./lowering-contract.ts";
+import { serviceConfigMount } from "./service-config-mount.ts";
 import {
-  deferredServiceKey,
   droppedMoreHttpPorts,
   droppedServiceKey,
   rewrittenMeUser,
@@ -36,33 +37,6 @@ const readOnlyBind = (source: string, target: string): V4Wire => ({
   target,
   readOnly: true,
 });
-
-const configMount = (
-  id: string,
-  key: string,
-  service: Record<string, unknown>,
-  entry: CatalogEntry | undefined,
-): { readonly target: string; readonly companion: boolean } | undefined => {
-  if (id === "php") {
-    const via = service.via;
-    const nginx = via === "nginx" || (typeof via === "string" && via.startsWith("nginx:"));
-    if (key === "php")
-      return { target: "/usr/local/etc/php/conf.d/zzz-lando-my-custom.ini", companion: false };
-    if (key === "pool") return { target: "/usr/local/etc/php-fpm.d/zz-lando.conf", companion: false };
-    if (key === "vhosts") {
-      return {
-        target: nginx ? "/etc/nginx/conf.d/default.conf" : "/etc/apache2/sites-enabled/000-default.conf",
-        companion: nginx,
-      };
-    }
-    if (key === "server") {
-      return { target: nginx ? "/etc/nginx/nginx.conf" : "/etc/apache2/apache2.conf", companion: nginx };
-    }
-    return undefined;
-  }
-  const target = entry?.configMounts?.[key];
-  return target === undefined ? undefined : { target, companion: false };
-};
 
 export const lowerCatalogCommon = (
   service: Record<string, unknown>,
@@ -216,7 +190,7 @@ export const lowerCatalogCommon = (
     const mounts: V4Wire[] = [];
     const companionMounts: V4Wire[] = [];
     for (const [key, value] of Object.entries(service.config)) {
-      const mounted = configMount(resolution.id, key, service, entry);
+      const mounted = serviceConfigMount({ id: resolution.id, entry }, key, service);
       if (mounted !== undefined) {
         if (typeof value !== "string") {
           drop(["config", key], "Config slot requires a host path string.");
@@ -266,9 +240,10 @@ export const lowerCatalogCommon = (
   }
   if (Object.hasOwn(service, "moreHttpPorts"))
     diagnostics.push(droppedMoreHttpPorts({ ctx, relative: ["moreHttpPorts"] }));
-  for (const key of ["mem", "plugins"] as const) {
-    if (Object.hasOwn(service, key)) diagnostics.push(deferredServiceKey({ ctx, relative: [key], key }));
-  }
+  const memory = lowerServiceMemory(service, { id: resolution.id, patch }, ctx);
+  Object.assign(patch, memory.patch);
+  diagnostics.push(...memory.diagnostics);
+  blocked ||= memory.blocked === true;
   const runtime = lowerScannerAndHome(service, ctx);
   Object.assign(patch, runtime.patch);
   diagnostics.push(...runtime.diagnostics);

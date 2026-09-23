@@ -85,6 +85,11 @@ describe("lando3 document set", () => {
     expect(custom.map((diagnostic) => diagnostic.message).join("\n")).toContain("custom.yml");
     expect(custom.map((diagnostic) => diagnostic.message).join("\n")).toContain("before.yml");
     expect(custom.map((diagnostic) => diagnostic.message).join("\n")).toContain("after.yml");
+    expect(result.right.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
+      { kind: "needs-review", keyPath: ["landoFile"] },
+      { kind: "needs-review", keyPath: ["preLandoFiles"] },
+      { kind: "needs-review", keyPath: ["postLandoFiles"] },
+    ]);
   });
 
   test("omits source text from a parse failure", async () => {

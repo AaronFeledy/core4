@@ -13,6 +13,7 @@ import {
 import {
   droppedMoreHttpPorts,
   droppedServiceKey,
+  rejectedComposeKey,
   rewrittenServiceKey,
   unsafeBuildSource,
   unsupportedServiceKey,
@@ -255,5 +256,10 @@ export const lowerApi4Service = (
   const runtime = lowerScannerAndHome(service, ctx);
   Object.assign(patch, runtime.patch);
   diagnostics.push(...runtime.diagnostics);
+  for (const key of ["tty", "stdin_open"]) {
+    if (!Object.hasOwn(service, key)) continue;
+    diagnostics.push(rejectedComposeKey({ ctx, relative: [key], key }));
+    blocked = true;
+  }
   return { patch, diagnostics, ...(blocked ? { blocked: true as const } : {}) };
 };
