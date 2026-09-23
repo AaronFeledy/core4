@@ -680,3 +680,12 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
 - A proxy port aimed at a recipe service now appends an internal HTTP endpoint on that service. Endpoint objects have no merge identity, so the port is copied onto the layer that owns the route, including an already converted service, instead of mutating that service or replacing its endpoints.
 - A catalog container port counts as an existing HTTP endpoint only when the type actually serves HTTP there. A route to a database port declares an HTTP endpoint; a portless route to a type that already serves HTTP does not invent port 80.
 ---
+## 2026-09-22 19:39 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-22 - US-621C5 Verify
+- Compiled `core/dist/lando` setup completed. A two-layer Lando 3 app translated, linted, and started: Traefik served string, port, path, wildcard, and secured routes; `/api` and `/v1` were stripped; a higher-layer header merged onto the string route; `X-Lando-Test` was injected; `X-TLS` was present only on HTTPS. Middleware `ratelimit` was dropped by name and did not block `--write`. Scanner settings capped retries at 20 with a 21000ms deadline, and `scanner: false` skipped the php service. The default php home was mounted at `/root` and writable; `LANDO_HOST_IP` was `host.lando.internal` rather than the authored address; there was no `/lando`, `/helpers`, `/user`, or `LANDO_MOUNT`. An API-4 image and `meUser: www-data` set `home: false` with `home.path` remediation. `proxy: OFF` started with no endpoints. A native compose route and a tooling/events translate still worked.
+- **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. Routes still served on 8000/4443. Same class as earlier verifies.
+- **Out-of-scope finding:** URL scan requested the literal hostname `http://*.wild.us621c5.lndo.site:8000/` and reported `deadline exceeded` after the lowered scanner timeout. `http://foo.wild.us621c5.lndo.site:8000/hello` still returned 200. Suspected area: URL scanner treats wildcard route hostnames as literal URLs.
+---
