@@ -153,6 +153,58 @@ describe("runPostStartScan", () => {
 });
 
 describe("startupScanUrls", () => {
+  test.each([
+    "http://*.wild.demo.lndo.site:8000",
+    "https://wild.*.demo.lndo.site:4443",
+    "http://web*.demo.lndo.site:8000/prefix",
+    "https://%2A.demo.lndo.site",
+  ])("skips wildcard hostname %s while keeping exact routes and provider endpoints", (wildcard) => {
+    // Given a displayed URL list containing a route pattern and concrete endpoints.
+    const endpoints = [wildcard, "https://web.demo.lndo.site", "http://localhost:8080"];
+    const services = [{ name: "web", endpoints }];
+
+    // When selecting startup scan targets.
+    const urls = startupScanUrls(plan, services);
+
+    // Then only concrete endpoints are scanned, without changing the displayed list.
+    expect(urls).toEqual([
+      { service: ServiceName.make("web"), url: "https://web.demo.lndo.site/" },
+      { service: ServiceName.make("web"), url: "http://localhost:8080/" },
+    ]);
+    expect(services[0]?.endpoints).toEqual([wildcard, "https://web.demo.lndo.site", "http://localhost:8080"]);
+  });
+
+  test("keeps an exact hostname when its path contains an asterisk", () => {
+    // Given an exact route whose path contains a literal asterisk.
+    const services = [{ name: "web", endpoints: ["https://web.demo.lndo.site/files/*"] }];
+
+    // When selecting startup scan targets.
+    const urls = startupScanUrls(plan, services);
+
+    // Then the path does not make the hostname a wildcard.
+    expect(urls).toEqual([{ service: ServiceName.make("web"), url: "https://web.demo.lndo.site/files/*/" }]);
+  });
+
+  test("forwards an empty target list when every displayed URL has a wildcard hostname", async () => {
+    // Given a service with only a wildcard route.
+    const services = [{ name: "web", endpoints: ["http://*.demo.lndo.site:8000"] }];
+    const seen: { urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }> } = {};
+    const events = collector();
+
+    // When the post-start scan runs with the selected targets.
+    await Effect.runPromise(
+      runPostStartScan({
+        scanner: scannerReturning([], seen),
+        plan,
+        events,
+        urls: startupScanUrls(plan, services),
+      }),
+    );
+
+    // Then an explicit empty list prevents fallback endpoint discovery.
+    expect(seen.urls).toEqual([]);
+  });
+
   test("joins scanner paths onto published and routed bases", () => {
     const urls = startupScanUrls(
       {
