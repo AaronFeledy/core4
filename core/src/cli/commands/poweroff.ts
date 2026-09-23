@@ -1,8 +1,9 @@
-import { type Context, Effect, Option, Schema } from "effect";
+import { type Context, DateTime, Effect, Option, Schema } from "effect";
 
 import type { CacheError, ConfigError, LandoCommandError } from "@lando/sdk/errors";
-import { AppId, ProviderId } from "@lando/sdk/schema";
-import { ConfigService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
+import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
+import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
+import { ConfigService, EventService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
 
 import { MANAGED_PROVIDER_SELECT_PLAN, taggedErrorRemediation } from "@lando/engine/providers/managed";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
@@ -42,7 +43,6 @@ export const PoweroffResultSchema = Schema.Struct({
 });
 
 const GLOBAL_APP_ID = "global";
-const SCRATCH_PREFIX = "scratch-";
 
 export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("PoweroffStopError", {
   message: Schema.String,
@@ -52,11 +52,10 @@ export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("
   remediation: Schema.String,
 }) {}
 
-export type PoweroffServices = ConfigService | RuntimeProviderRegistry | ScratchAppService;
+export type PoweroffServices = ConfigService | EventService | RuntimeProviderRegistry | ScratchAppService;
 export type PoweroffError = CacheError | ConfigError | LandoCommandError | PoweroffStopError;
 
-const isScratch = (entry: AppsListEntry): boolean =>
-  entry.scratch === true || entry.appId.startsWith(SCRATCH_PREFIX);
+const isScratch = (entry: AppsListEntry): boolean => entry.scratch === true;
 
 const stopDiscoveredApp = (entry: AppsListEntry) =>
   Effect.gen(function* () {
@@ -71,12 +70,37 @@ const stopDiscoveredApp = (entry: AppsListEntry) =>
         ? MANAGED_PROVIDER_SELECT_PLAN
         : { ...MANAGED_PROVIDER_SELECT_PLAN, provider: ProviderId.make(entry.providerId) };
     const provider = yield* registry.select(selection);
+    const globalApp =
+      entry.appId === GLOBAL_APP_ID
+        ? { kind: "global" as const, id: AppId.make(entry.appId), root: AbsolutePath.make(entry.appRoot) }
+        : undefined;
+    if (globalApp !== undefined) {
+      const events = yield* EventService;
+      yield* events.publish(
+        PreGlobalStopEvent.make({
+          scope: "global",
+          app: globalApp,
+          triggeredBy: "apps:poweroff",
+          timestamp: yield* DateTime.now,
+        }),
+      );
+    }
     const outcome = yield* provider.destroy(
       { app: AppId.make(entry.appId) },
       { volumes: false, removeState: false },
     );
     switch (outcome.kind) {
       case "destroyed":
+        if (globalApp !== undefined) {
+          const events = yield* EventService;
+          yield* events.publish(
+            PostGlobalStopEvent.make({
+              scope: "global",
+              app: globalApp,
+              timestamp: yield* DateTime.now,
+            }),
+          );
+        }
         return;
       case "no-op":
         return yield* Effect.fail(
@@ -158,7 +182,7 @@ export function poweroff(
         continue;
       }
       const injectedStop = options.stopApp;
-      const stop: Effect.Effect<void, unknown, RuntimeProviderRegistry | ScratchAppService> =
+      const stop: Effect.Effect<void, unknown, EventService | RuntimeProviderRegistry | ScratchAppService> =
         injectedStop === undefined
           ? stopDiscoveredApp(app)
           : Effect.tryPromise({ try: () => injectedStop(app), catch: (cause) => cause });

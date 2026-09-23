@@ -46,7 +46,14 @@ beforeAll(async () => {
   await mkdir(appsDir, { recursive: true });
   await writeFile(join(appsDir, "user.json"), JSON.stringify(makePlan("user-app", "user-app", ["web"])));
   await writeFile(join(appsDir, "global.json"), JSON.stringify(makePlan("global", "global", ["proxy"])));
-  await writeFile(join(appsDir, "scratch.json"), JSON.stringify(makePlan("scratch-1", "scratch-1", ["web"])));
+  const scratch = makePlan("scratch-1", "scratch-1", ["web"]);
+  await writeFile(
+    join(appsDir, "scratch.json"),
+    JSON.stringify({
+      ...scratch,
+      plan: { ...scratch.plan, extensions: { "@lando/core/scratch": {} } },
+    }),
+  );
   await Effect.runPromise(
     writeCwdAppMapEntry({
       cacheRoot: userCacheRoot,
