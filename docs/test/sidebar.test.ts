@@ -16,6 +16,7 @@ const RECIPE_IDS = [
   "drupal-cms",
   "eleventy",
   "hugo",
+  "jekyll",
   "joomla",
   "lamp",
   "laravel",
