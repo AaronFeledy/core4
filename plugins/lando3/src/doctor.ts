@@ -136,9 +136,23 @@ export const runLando3Shadow = (
           }) as const,
       ),
       Match.when({ kind: "found" }, ({ path }): PluginDoctorReport => {
+        const candidatePath = path.slice(0, 2000);
+        if (location.runningPath === undefined)
+          return {
+            name,
+            status: "pass",
+            severity: "info",
+            runtimeStatus: "unverified",
+            context: {
+              candidate: candidatePath,
+              reason:
+                "The running executable path could not be resolved, so this candidate was not compared.",
+            },
+            solutions: [],
+          };
         const context = {
-          candidate: path.slice(0, 2000),
-          ...(location.runningPath === undefined ? {} : { runningPath: location.runningPath.slice(0, 2000) }),
+          candidate: candidatePath,
+          runningPath: location.runningPath.slice(0, 2000),
         };
         if (path === location.runningPath)
           return {

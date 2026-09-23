@@ -899,3 +899,11 @@ Verification: gate:pr passed. lint:guides, guide-coverage, public-transcripts, a
   - Never put `Cause.pretty` into a doctor report: it leaks bundled source paths and stack frames. Use `describeDoctorCause` from `doctor-self.ts` and report `<tag>: <message>`.
   - `test.each` rejects a `ReadonlyArray` table under this repo's typings. Spread it (`test.each([...cases])`).
 ---
+
+## 2026-09-23 01:52 CDT - US-622A Review
+- A found `lando` is no longer reported as a potential shadow when the running executable path could not be resolved. That case stays unverified and informational. The coexistence guide no longer calls the other file probably Lando 3, and it points Lando 3's old proxy at the existing preferred-port check instead of adding a proxy check.
+- Review notes (deferred/rejected): using the Landofile provider instead of the selected provider would inspect on managed `lando`, which the criterion forbids. A byte cap on the engine list body is the existing list transport, not this story's bound (filtered name/label query plus a result limit). App identity stays on `loadUserLandofile`; the no-read rule belongs to the locator. Folding `LegacyProxyContainerDetected` into the preferred-port owner is §20.10.3, outside these checks. Bugbot on the build commit found no bugs.
+- Verification: gate:pr passed on the story commit before this fix; doctor and locator spot checks passed (47); the from-lando-3 guide passed (3); lint:guides passed.
+- **Learnings for future iterations:**
+  - A potential shadow needs two resolved paths. A missing running path is unverified, not distinct.
+---

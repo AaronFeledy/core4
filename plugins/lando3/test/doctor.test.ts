@@ -216,8 +216,11 @@ describe("lando3 shadow", () => {
     },
     {
       location: { runningBasename: "lando4", candidate: { kind: "found", path: "/bin/lando" } },
-      runtimeStatus: "potential-shadow",
-      context: { candidate: "/bin/lando" },
+      runtimeStatus: "unverified",
+      context: {
+        candidate: "/bin/lando",
+        reason: "The running executable path could not be resolved, so this candidate was not compared.",
+      },
     },
   ];
   test.each([...cases])(
