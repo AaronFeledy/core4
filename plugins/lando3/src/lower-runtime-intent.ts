@@ -11,11 +11,13 @@ import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { SERVICE_HOMES } from "./catalog.ts";
 import type { Lando3Path } from "./contract.ts";
 import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
+import { type Report, lowerText } from "./lowering-report.ts";
 import {
   droppedServiceKey,
   generatedService,
   needsReviewServiceKey,
   rewrittenServiceKey,
+  unsupportedServiceKey,
 } from "./service-diagnostics.ts";
 
 /** Lando 4 bounds for the post-start probe. */
@@ -33,6 +35,16 @@ const lowerScanner = (
 ): unknown => {
   const drop = (relative: Lando3Path, message: string, remediation: string): void => {
     diagnostics.push(droppedServiceKey({ ctx, relative: ["scanner", ...relative], message, remediation }));
+  };
+  const report: Report = (kind, relative, message, remediation) => {
+    const input = { ctx, relative, message, remediation };
+    diagnostics.push(
+      kind === "rewritten"
+        ? rewrittenServiceKey(input)
+        : kind === "unsupported"
+          ? unsupportedServiceKey(input)
+          : droppedServiceKey(input),
+    );
   };
   if (value === false) return false;
   if (value === true) {
@@ -53,7 +65,8 @@ const lowerScanner = (
   }
   const scanner: Record<string, unknown> = {};
   if (typeof value.path === "string") {
-    scanner.path = value.path.startsWith("/") ? value.path : `/${value.path}`;
+    const text = lowerText(value.path, ["scanner", "path"], report);
+    if (typeof text === "string") scanner.path = text.startsWith("/") ? text : `/${text}`;
   } else if (value.path !== undefined) {
     drop(["path"], "Scanner path must be a plain string.", "Set scanner.path to a path such as /health.");
   }
@@ -65,6 +78,8 @@ const lowerScanner = (
         drop(["okCodes", index], "Scanner okCodes must be HTTP status codes.", "Use codes from 100 to 599.");
     });
     scanner.okCodes = codes;
+  } else if (value.okCodes !== undefined) {
+    drop(["okCodes"], "Scanner okCodes must be a list of HTTP status codes.", "Use codes from 100 to 599.");
   }
   const retry = nonNegativeInt(value.retry);
   const retries = retry === undefined ? undefined : Math.min(retry, MAX_RETRIES);
@@ -87,7 +102,7 @@ const lowerScanner = (
       "Add the redirect status codes the service returns to scanner.okCodes instead.",
     );
   }
-  if (value.retry !== undefined || value.timeout !== undefined) {
+  if (retries !== undefined || typeof scanner.timeout === "number") {
     diagnostics.push(
       rewrittenServiceKey({
         ctx,
@@ -105,7 +120,19 @@ const lowerAuthoredHome = (
   ctx: ServiceLoweringContext,
   diagnostics: ConfigTranslateDiagnostic[],
 ): unknown => {
-  const path = isPlainObject(value) && !isLegacyTagged(value) ? value.path : value;
+  const rawPath = isPlainObject(value) && !isLegacyTagged(value) ? value.path : value;
+  const report: Report = (kind, relative, message, remediation) => {
+    const input = { ctx, relative, message, remediation };
+    diagnostics.push(
+      kind === "rewritten"
+        ? rewrittenServiceKey(input)
+        : kind === "unsupported"
+          ? unsupportedServiceKey(input)
+          : droppedServiceKey(input),
+    );
+  };
+  const path = typeof rawPath === "string" ? lowerText(rawPath, ["home"], report) : rawPath;
+  if (path === null) return undefined;
   if (value === false || (typeof path === "string" && path.startsWith("/"))) {
     diagnostics.push(
       rewrittenServiceKey({

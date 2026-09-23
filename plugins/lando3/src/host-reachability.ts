@@ -12,8 +12,12 @@ import { rewrittenServiceKey } from "./service-diagnostics.ts";
 export const HOST_ALIAS = "host.lando.internal";
 export const HOST_IP_VARIABLE = "LANDO_HOST_IP";
 
-const isHostAliasEntry = (entry: unknown): boolean =>
-  typeof entry === "string" && entry.trim().split(/[:=\s]/u)[0] === HOST_ALIAS;
+const isHostAliasName = (name: string): boolean => name.toLowerCase() === HOST_ALIAS;
+
+const isHostAliasEntry = (entry: unknown): boolean => {
+  const name = typeof entry === "string" ? entry.trim().split(/[:=\s]/u)[0] : undefined;
+  return name !== undefined && isHostAliasName(name);
+};
 
 /**
  * Removes hand-wired host reachability from Compose `extra_hosts`. Lando 4
@@ -44,10 +48,13 @@ export const withoutHostAlias = (
     });
     return kept.length === 0 ? undefined : kept;
   }
-  if (isPlainObject(value) && Object.hasOwn(value, HOST_ALIAS)) {
-    rewrite([...relative, HOST_ALIAS]);
-    const { [HOST_ALIAS]: _alias, ...kept } = value;
-    return Object.keys(kept).length === 0 ? undefined : kept;
+  if (isPlainObject(value)) {
+    const aliasKey = Object.keys(value).find((key) => isHostAliasName(key));
+    if (aliasKey !== undefined) {
+      rewrite([...relative, aliasKey]);
+      const { [aliasKey]: _alias, ...kept } = value;
+      return Object.keys(kept).length === 0 ? undefined : kept;
+    }
   }
   return value;
 };

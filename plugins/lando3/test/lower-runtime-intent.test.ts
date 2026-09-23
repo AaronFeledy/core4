@@ -53,6 +53,23 @@ describe("scanner", () => {
     expect(result.patch).toEqual({ scanner: { timeout: 600_000 } });
   });
 
+  test("respells a scanner path and refuses one Lando 4 cannot hold", () => {
+    const respelled = lowerScannerAndHome({ scanner: { path: "${HEALTH}" } }, ctx);
+    expect(respelled.patch).toEqual({ scanner: { path: "/$HEALTH" } });
+    const refused = lowerScannerAndHome({ scanner: { path: "${HEALTH:-x}", okCodes: 200 } }, ctx);
+    expect(refused.patch).toEqual({ scanner: {} });
+    expect(summary(refused.diagnostics)).toEqual([
+      "unsupported services.web.scanner.path",
+      "dropped services.web.scanner.okCodes",
+    ]);
+  });
+
+  test("does not claim a rewrite when retry cannot lower", () => {
+    const result = lowerScannerAndHome({ scanner: { retry: "nope" } }, ctx);
+    expect(result.patch).toEqual({ scanner: {} });
+    expect(summary(result.diagnostics)).toEqual(["dropped services.web.scanner.retry"]);
+  });
+
   test("keeps false and drops the redundant true", () => {
     expect(lowerScannerAndHome({ scanner: false }, ctx)).toEqual({
       patch: { scanner: false },
@@ -79,6 +96,11 @@ describe("home", () => {
     const result = lowerScannerAndHome({ home: "var/www" }, ctx);
     expect(result.patch).toEqual({});
     expect(summary(result.diagnostics)).toEqual(["dropped services.web.home"]);
+  });
+
+  test("respells a home path shell reference before emitting it", () => {
+    const result = lowerScannerAndHome({ home: "/var/www/${NAME}" }, ctx);
+    expect(result.patch).toEqual({ home: { path: "/var/www/$NAME" } });
   });
 
   test.each([
@@ -136,9 +158,13 @@ describe("host reachability", () => {
     expect(
       withoutHostAlias({ "host.lando.internal": "host-gateway" }, ctx, ["extra_hosts"], diagnostics),
     ).toBeUndefined();
+    expect(
+      withoutHostAlias(["HOST.LANDO.INTERNAL:172.17.0.1"], ctx, ["extra_hosts"], diagnostics),
+    ).toBeUndefined();
     expect(summary(diagnostics)).toEqual([
       "rewritten services.web.overrides.extra_hosts.0",
       "rewritten services.web.extra_hosts.host.lando.internal",
+      "rewritten services.web.extra_hosts.0",
     ]);
   });
 

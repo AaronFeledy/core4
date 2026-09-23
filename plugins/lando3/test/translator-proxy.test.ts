@@ -249,6 +249,27 @@ describe("proxy lowering", () => {
     });
     expect(result.diagnostics.filter(({ kind }) => kind === "unsupported")).toEqual([]);
   });
+
+  test("merges a string route with an object route of the same host, port, and path", async () => {
+    // Given a lower layer's string route and a higher layer's object route for that same identity.
+    const result = await translateFiles([
+      [".lando.upstream.yml", "proxy:\n  appserver:\n    - demo:8080/api\n"],
+      [
+        ".lando.yml",
+        "name: routes\nproxy:\n  appserver:\n    - hostname: demo\n      port: 8080\n      pathname: /api\n      middlewares:\n        - {name: req, key: headers.customrequestheaders.X-One, value: on}\n",
+      ],
+    ]);
+    // Then one route keeps the string route's prefix strip and the object route's header.
+    expect(result.merged.proxy).toEqual({
+      appserver: [
+        route("demo", {
+          endpoint: 8080,
+          pathPrefix: "/api",
+          filters: [strip("/api"), { type: "requestHeader", name: "req", header: "X-One", value: "on" }],
+        }),
+      ],
+    });
+  });
 });
 
 test("hoists a split secured route that a higher layer overrides and still orders diagnostics for core", async () => {

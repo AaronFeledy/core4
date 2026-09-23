@@ -159,11 +159,13 @@ export const lowerProxy = (value: unknown, report: Report): { readonly fragment:
       );
       const identity = JSON.stringify([route.hostname, route.endpoint, route.pathPrefix]);
       const object = isPlainObject(entry) ? entry : undefined;
-      const existing = object === undefined ? undefined : objects.get(identity);
+      const existing = objects.get(identity);
       const group = existing ?? { route, middlewares: new Map<string | symbol, Middleware>() };
-      if (existing === undefined) groups.push(group);
+      if (existing === undefined) {
+        groups.push(group);
+        objects.set(identity, group);
+      }
       if (object === undefined) return;
-      objects.set(identity, group);
       if (object.middlewares === undefined) return;
       if (!Array.isArray(object.middlewares)) {
         report(
