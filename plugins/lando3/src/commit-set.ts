@@ -7,6 +7,9 @@ export const completeLando3CommitSet = (
   input: ConfigTranslateDocumentSetInput,
   planned: readonly ConfigTranslateOutput[],
 ) => {
+  // Completion must not turn a cleared translation into writes or deletions.
+  if (planned.length === 0) return { outputs: [], deletions: [] };
+
   const selected = input.documents.filter(
     (document) =>
       isAppRootLando3Layer(document) &&
