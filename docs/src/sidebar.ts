@@ -162,6 +162,7 @@ export const sidebar = [
       { label: "Drupal CMS", slug: "recipes/drupal-cms" },
       { label: "Eleventy", slug: "recipes/eleventy" },
       { label: "Hugo", slug: "recipes/hugo" },
+      { label: "Jekyll", slug: "recipes/jekyll" },
       { label: "Joomla", slug: "recipes/joomla" },
       { label: "LAMP", slug: "recipes/lamp" },
       { label: "Laravel", slug: "recipes/laravel" },
