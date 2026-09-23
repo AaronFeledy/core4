@@ -946,3 +946,10 @@ Verification: gate:pr passed. lint:guides, guide-coverage, public-transcripts, a
 - **Learnings for future iterations:**
   - A conversion matrix row that names a whole key (`overrides`) claims every form of that key. Put rejected subfields on the blocking row, and do not say each key appears in exactly one row when both forms exist.
 ---
+## 2026-09-23 03:58 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-23 04:05 CDT - US-622B Verify
+- Compiled `core/dist/lando` setup completed on the managed runtime. Redis 7 and Elasticsearch 8 `config.server` previewed as `dropped` (not rewritten) and the MySQL diagnostic named `/etc/mysql/my.cnf`; `--write` omitted the unread server files and kept the MySQL slot. PHP 7.4 and MariaDB 10.6 previewed `unsupported` with an empty target list, `--write` exited 1 as `ConfigTranslateError`, and the source file was unchanged. A Lando 3 lamp converted, linted valid, started, and both `exec` and `http://us622b.lndo.site:8000` returned PHP 8.3.33. Doctor reported `lando3-leftovers` as `managed-provider` in the app and `no-app-context` outside it. The app was purged and the global app stopped.
+- **Out-of-scope finding:** `./core/dist/lando setup --yes --no-interactive` warned port 80 is in use (using 8000) and port 443 is in use by `systemd-socket-` / lando-proxy-https (using 4443). The app still served on port 8000. Same warning as US-622A. Doctor also warned `wsl-root-mount-propagation` and `preferred-host-ports`. Not caused by this diff.
+---
