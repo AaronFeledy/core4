@@ -7,6 +7,7 @@ import { ConfigService, EventService, RuntimeProviderRegistry, ScratchAppService
 
 import { MANAGED_PROVIDER_SELECT_PLAN, taggedErrorRemediation } from "@lando/engine/providers/managed";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
+import { ScratchResourceScanner, isCanonicalScratchId } from "@lando/engine/scratch-app/scanner";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { type AppsListEntry, listServices } from "./list";
 
@@ -52,7 +53,12 @@ export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("
   remediation: Schema.String,
 }) {}
 
-export type PoweroffServices = ConfigService | EventService | RuntimeProviderRegistry | ScratchAppService;
+export type PoweroffServices =
+  | ConfigService
+  | EventService
+  | RuntimeProviderRegistry
+  | ScratchAppService
+  | ScratchResourceScanner;
 export type PoweroffError = CacheError | ConfigError | LandoCommandError | PoweroffStopError;
 
 const isScratch = (entry: AppsListEntry): boolean => entry.scratch === true;
@@ -61,7 +67,16 @@ const stopDiscoveredApp = (entry: AppsListEntry) =>
   Effect.gen(function* () {
     if (isScratch(entry)) {
       const scratches = yield* ScratchAppService;
-      yield* scratches.destroy(entry.appId, { keepVolumes: false });
+      yield* scratches.destroy(entry.appId, { keepVolumes: false }).pipe(
+        Effect.asVoid,
+        Effect.catchTag("ScratchAppNotFoundError", (error) =>
+          Effect.gen(function* () {
+            if (!isCanonicalScratchId(entry.appId)) return yield* Effect.fail(error);
+            const scanner = yield* ScratchResourceScanner;
+            yield* scanner.pruneScratch(entry.appId);
+          }),
+        ),
+      );
       return;
     }
     const registry = yield* RuntimeProviderRegistry;
@@ -182,10 +197,10 @@ export function poweroff(
         continue;
       }
       const injectedStop = options.stopApp;
-      const stop: Effect.Effect<void, unknown, EventService | RuntimeProviderRegistry | ScratchAppService> =
-        injectedStop === undefined
-          ? stopDiscoveredApp(app)
-          : Effect.tryPromise({ try: () => injectedStop(app), catch: (cause) => cause });
+      const stop: Effect.Effect<void, unknown, Exclude<PoweroffServices, ConfigService>> = injectedStop ===
+      undefined
+        ? stopDiscoveredApp(app)
+        : Effect.tryPromise({ try: () => injectedStop(app), catch: (cause) => cause });
       yield* stop.pipe(
         Effect.mapError((cause) =>
           cause instanceof PoweroffStopError
@@ -198,9 +213,10 @@ export function poweroff(
                     ? String(MANAGED_PROVIDER_SELECT_PLAN.provider)
                     : app.providerId,
                 cause,
-                remediation:
-                  taggedErrorRemediation(cause) ??
-                  "Resolve the app stop failure and retry poweroff; the managed runtime has been left available.",
+                remediation: isScratch(app)
+                  ? `${taggedErrorRemediation(cause) ?? "Resolve the scratch cleanup failure."} Run \`lando scratch gc --prune\`, then retry poweroff; the managed runtime has been left available.`
+                  : (taggedErrorRemediation(cause) ??
+                    "Resolve the app stop failure and retry poweroff; the managed runtime has been left available."),
               }),
         ),
       );

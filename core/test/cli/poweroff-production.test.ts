@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Queue, Stream } from "effect";
 
+import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import { ConfigServiceLive } from "@lando/engine/services/config";
 import { ProviderUnavailableError, ScratchAppError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
@@ -115,7 +116,16 @@ const makeFixture = async (failure?: "provider" | "no-plan" | "scratch") => {
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   });
-  const layer = Layer.mergeAll(ConfigServiceLive, providerLayer, scratchLayer, eventLayer);
+  const layer = Layer.mergeAll(
+    ConfigServiceLive,
+    providerLayer,
+    scratchLayer,
+    eventLayer,
+    Layer.succeed(ScratchResourceScanner, {
+      listScratchIds: Effect.die("unexpected scratch scan"),
+      pruneScratch: () => Effect.die("registered scratch must use destroy"),
+    }),
+  );
   return { root, calls, options, layer, events };
 };
 
