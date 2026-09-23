@@ -20,7 +20,7 @@ export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
   namespace: "apps",
   topLevelAlias: true,
   aliases: ["poweroff"],
-  bootstrap: "minimal",
+  bootstrap: "scratch",
   flags: {
     "keep-global": Flags.boolean({ description: "Do not stop the global app.", default: false }),
     "keep-scratch": Flags.boolean({ description: "Do not stop scratch apps.", default: false }),

@@ -1,8 +1,10 @@
 import { type Context, Effect, Option, Schema } from "effect";
 
 import type { CacheError, ConfigError, LandoCommandError } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
+import { AppId, ProviderId } from "@lando/sdk/schema";
+import { ConfigService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
 
+import { MANAGED_PROVIDER_SELECT_PLAN, taggedErrorRemediation } from "@lando/engine/providers/managed";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "@lando/engine/runtime/host-maintenance";
 import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { type AppsListEntry, listServices } from "./list";
@@ -42,6 +44,56 @@ export const PoweroffResultSchema = Schema.Struct({
 const GLOBAL_APP_ID = "global";
 const SCRATCH_PREFIX = "scratch-";
 
+export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("PoweroffStopError", {
+  message: Schema.String,
+  appId: Schema.String,
+  providerId: Schema.String,
+  cause: Schema.Unknown,
+  remediation: Schema.String,
+}) {}
+
+export type PoweroffServices = ConfigService | RuntimeProviderRegistry | ScratchAppService;
+export type PoweroffError = CacheError | ConfigError | LandoCommandError | PoweroffStopError;
+
+const isScratch = (entry: AppsListEntry): boolean =>
+  entry.scratch === true || entry.appId.startsWith(SCRATCH_PREFIX);
+
+const stopDiscoveredApp = (entry: AppsListEntry) =>
+  Effect.gen(function* () {
+    if (isScratch(entry)) {
+      const scratches = yield* ScratchAppService;
+      yield* scratches.destroy(entry.appId, { keepVolumes: false });
+      return;
+    }
+    const registry = yield* RuntimeProviderRegistry;
+    const selection =
+      entry.appId === GLOBAL_APP_ID
+        ? MANAGED_PROVIDER_SELECT_PLAN
+        : { ...MANAGED_PROVIDER_SELECT_PLAN, provider: ProviderId.make(entry.providerId) };
+    const provider = yield* registry.select(selection);
+    const outcome = yield* provider.destroy(
+      { app: AppId.make(entry.appId) },
+      { volumes: false, removeState: false },
+    );
+    switch (outcome.kind) {
+      case "destroyed":
+        return;
+      case "no-op":
+        return yield* Effect.fail(
+          new PoweroffStopError({
+            message: `Cannot stop ${entry.appId}: its provider has no applied plan.`,
+            appId: entry.appId,
+            providerId: String(provider.id),
+            cause: outcome,
+            remediation:
+              "Restore the app's applied state or stop its orphaned resources with `lando stop` from its app root, then retry poweroff.",
+          }),
+        );
+      default:
+        return outcome satisfies never;
+    }
+  });
+
 export const renderPoweroffResult = (result: PoweroffResult): string => {
   const lines: string[] = [];
   if (result.appsPoweredOff.length === 0) {
@@ -70,38 +122,64 @@ const stopManagedRuntimeService = (
   });
 };
 
-export const poweroff = (
+export function poweroff(
+  options: PoweroffOptions & { readonly stopApp: NonNullable<PoweroffOptions["stopApp"]> },
+): Effect.Effect<PoweroffResult, PoweroffError, ConfigService>;
+export function poweroff(
+  options?: PoweroffOptions,
+): Effect.Effect<PoweroffResult, PoweroffError, PoweroffServices>;
+export function poweroff(
   options: PoweroffOptions = {},
-): Effect.Effect<PoweroffResult, CacheError | ConfigError | LandoCommandError, ConfigService> =>
-  Effect.gen(function* () {
+): Effect.Effect<PoweroffResult, PoweroffError, PoweroffServices> {
+  return Effect.gen(function* () {
     const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
     const configService = yield* ConfigService;
     const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
     const list = yield* listServices({
+      includeScratch: true,
       ...(userDataRoot === undefined ? {} : { userDataRoot }),
       ...(options.userCacheRoot === undefined ? {} : { userCacheRoot: options.userCacheRoot }),
       ...(options.discoverContainers === undefined ? {} : { discoverContainers: options.discoverContainers }),
     });
 
-    const stopApp =
-      options.stopApp ??
-      (async (_entry: AppsListEntry) => {
-        return;
-      });
     const stopRuntimeService =
       options.stopRuntimeService ??
       ((root: string) => stopManagedRuntimeService(hostMaintenanceRegistry, root));
 
     const targets: string[] = [];
     let keptScratch = 0;
-    for (const app of list.apps) {
+    const stopOrder = (app: AppsListEntry): number =>
+      app.appId === GLOBAL_APP_ID ? 2 : isScratch(app) ? 1 : 0;
+    for (const app of [...list.apps].sort((left, right) => stopOrder(left) - stopOrder(right))) {
       if (app.providerId === "cache") continue;
       if (options.keepGlobal === true && app.appId === GLOBAL_APP_ID) continue;
-      if (options.keepScratch === true && app.appId.startsWith(SCRATCH_PREFIX)) {
+      if (options.keepScratch === true && isScratch(app)) {
         keptScratch += 1;
         continue;
       }
-      yield* Effect.promise(() => stopApp(app));
+      const injectedStop = options.stopApp;
+      const stop: Effect.Effect<void, unknown, RuntimeProviderRegistry | ScratchAppService> =
+        injectedStop === undefined
+          ? stopDiscoveredApp(app)
+          : Effect.tryPromise({ try: () => injectedStop(app), catch: (cause) => cause });
+      yield* stop.pipe(
+        Effect.mapError((cause) =>
+          cause instanceof PoweroffStopError
+            ? cause
+            : new PoweroffStopError({
+                message: `Failed to power off ${app.appId}.`,
+                appId: app.appId,
+                providerId:
+                  app.appId === GLOBAL_APP_ID
+                    ? String(MANAGED_PROVIDER_SELECT_PLAN.provider)
+                    : app.providerId,
+                cause,
+                remediation:
+                  taggedErrorRemediation(cause) ??
+                  "Resolve the app stop failure and retry poweroff; the managed runtime has been left available.",
+              }),
+        ),
+      );
       targets.push(app.appId);
     }
 
@@ -118,3 +196,4 @@ export const poweroff = (
       ...(runtimeServiceResult.pid === undefined ? {} : { runtimeServicePid: runtimeServiceResult.pid }),
     };
   });
+}

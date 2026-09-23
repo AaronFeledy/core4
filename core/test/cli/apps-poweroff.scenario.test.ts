@@ -171,7 +171,9 @@ describe("apps:poweroff command", () => {
 
     // When: poweroff uses its default runtime teardown seam.
     const result = await Effect.runPromise(
-      poweroff({ userDataRoot, userCacheRoot, stopApp: async () => {} }).pipe(Effect.provide(services)),
+      poweroff({ userDataRoot, userCacheRoot, discoverContainers: noDiscover, stopApp: async () => {} }).pipe(
+        Effect.provide(services),
+      ),
     );
 
     // Then: the maintainer receives canonical paths and drives the command result.
@@ -186,7 +188,7 @@ describe("apps:poweroff command", () => {
 
     // When: poweroff uses its default runtime teardown seam without a registry.
     const result = await Effect.runPromise(
-      poweroff({ userDataRoot, userCacheRoot, stopApp: async () => {} }).pipe(
+      poweroff({ userDataRoot, userCacheRoot, discoverContainers: noDiscover, stopApp: async () => {} }).pipe(
         Effect.provide(fakeConfigService(userDataRoot)),
       ),
     );
