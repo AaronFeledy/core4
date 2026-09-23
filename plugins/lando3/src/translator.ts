@@ -367,7 +367,11 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           ...established.map(({ fragment }) => fragment),
         ];
         const recipeServiceWires = new Map<string, V4Wire>();
-        for (const { fragment } of lowered.prefixes) {
+        const serviceHolders = [
+          ...[...established].sort((left, right) => v4LayerRank(left.layer) - v4LayerRank(right.layer)),
+          ...lowered.prefixes,
+        ];
+        for (const { fragment } of serviceHolders) {
           if (!isPlainRecord(fragment.services)) continue;
           for (const [name, service] of Object.entries(fragment.services)) {
             if (!isPlainRecord(service)) continue;

@@ -357,3 +357,40 @@ test("declares a routed port on the recipe service without dropping its endpoint
     { _tag: "internal", protocol: "http", port: 8080 },
   ]);
 });
+
+test("copies a route endpoint onto an already converted recipe service", async () => {
+  // Given dist was already lowered and still owns the recipe service.
+  const dist = {
+    services: {
+      appserver: {
+        image: "php:8.3",
+        endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
+      },
+    },
+  };
+  const fake = fakeDecomposers(false, true);
+  const input = documentSet([
+    document(".lando.dist.yml", "name: routes\nrecipe:\n  id: lamp\n"),
+    document(".lando.local.yml", "proxy:\n  appserver: ['extra.demo:8080']\n"),
+  ]);
+  const result = await Effect.runPromise(
+    makeLando3ConfigTranslator({
+      decomposers: fake.decomposers,
+      redactor: createRedactor("secrets"),
+    }).translate({
+      ...input,
+      currentLowerV4Fragments: [{ layerId: "dist", fragment: dist }],
+    }),
+  );
+  const merged = mergeLandofiles([
+    dist,
+    ...result.outputs.map(({ fragment }) => (isPlainRecord(fragment) ? fragment : {})),
+  ]);
+  const appserver = isPlainRecord(merged.services) ? merged.services.appserver : undefined;
+  // Then the established endpoint is copied forward and the new port is added.
+  expect(dist.services.appserver.endpoints).toEqual([{ _tag: "internal", protocol: "http", port: 80 }]);
+  expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual([
+    { _tag: "internal", protocol: "http", port: 80 },
+    { _tag: "internal", protocol: "http", port: 8080 },
+  ]);
+});

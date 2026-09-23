@@ -252,8 +252,9 @@ export const declareRouteEndpoints = (
     if (added.length === 0) continue;
     const existing = Array.isArray(service.endpoints) ? service.endpoints : [];
     const endpoints = [...existing, ...added.map((port) => ({ _tag: "internal", protocol: "http", port }))];
-    if (service === authored && authored !== undefined) services.set(name, { ...authored, endpoints });
-    else (service as { endpoints: unknown }).endpoints = endpoints;
+    // Copy onto this layer. Mutating a recipe or already-converted service would
+    // either change a shared fragment or a caller's established layer.
+    services.set(name, { ...(authored ?? {}), endpoints });
     report(
       "generated",
       ["proxy", name],
