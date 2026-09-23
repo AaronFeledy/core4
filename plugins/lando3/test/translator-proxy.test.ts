@@ -394,3 +394,21 @@ test("copies a route endpoint onto an already converted recipe service", async (
     { _tag: "internal", protocol: "http", port: 8080 },
   ]);
 });
+
+test("does not treat a TCP catalog port as an HTTP endpoint", async () => {
+  // Given a database route on its TCP port and a portless route to a type that already serves HTTP.
+  const result = await translateFiles([
+    [
+      ".lando.yml",
+      "name: routes\nservices:\n  cache: {type: 'redis:7'}\n  app: {type: 'python:3.12'}\nproxy:\n  cache: ['cache.demo:6379']\n  app: [app.demo]\n",
+    ],
+  ]);
+  const services = result.merged.services;
+  const cache = isPlainRecord(services) ? services.cache : undefined;
+  const app = isPlainRecord(services) ? services.app : undefined;
+  // Then redis gains an HTTP endpoint on 6379, and python keeps its own HTTP port.
+  expect(isPlainRecord(cache) ? cache.endpoints : undefined).toEqual([
+    { _tag: "internal", protocol: "http", port: 6379 },
+  ]);
+  expect(isPlainRecord(app) ? app.endpoints : undefined).toBeUndefined();
+});

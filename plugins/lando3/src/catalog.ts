@@ -1,6 +1,8 @@
 export interface CatalogEntry {
   readonly versions: ReadonlyArray<string>;
   readonly containerPort?: number;
+  /** Port the v4 type already serves over HTTP. TCP-only types omit this. */
+  readonly httpPort?: number;
   /** Legacy config key to authoring slot; drop means no matching slot exists. */
   readonly configKeys?: Readonly<Record<string, "server" | "dir" | "drop">>;
   readonly configDestination?: string;
@@ -13,9 +15,10 @@ export interface CatalogEntry {
 export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   php: {
     versions: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"],
+    httpPort: 80,
     appMountByDefault: true,
   },
-  node: { versions: ["lts", "22"], containerPort: 3000, appMountByDefault: true },
+  node: { versions: ["lts", "22"], containerPort: 3000, httpPort: 3000, appMountByDefault: true },
   mysql: {
     versions: ["8.0", "8.4", "9.7"],
     containerPort: 3306,
@@ -44,28 +47,31 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   solr: {
     versions: ["9"],
     containerPort: 8983,
+    httpPort: 8983,
     configKeys: { dir: "dir" },
     configDestination: "/var/solr/data/<core>/conf",
   },
-  elasticsearch: { versions: ["8"], containerPort: 9200, configKeys: { server: "server" } },
-  opensearch: { versions: ["2"], containerPort: 9200 },
-  meilisearch: { versions: ["1"], containerPort: 7700 },
+  elasticsearch: { versions: ["8"], containerPort: 9200, httpPort: 9200, configKeys: { server: "server" } },
+  opensearch: { versions: ["2"], containerPort: 9200, httpPort: 9200 },
+  meilisearch: { versions: ["1"], containerPort: 7700, httpPort: 7700 },
   phpmyadmin: {
     versions: ["5", "latest"],
     containerPort: 80,
+    httpPort: 80,
     configMounts: { config: "/etc/phpmyadmin/config.user.inc.php" },
   },
-  varnish: { versions: ["6", "7"], containerPort: 8080, configKeys: { vcl: "drop" } },
-  tomcat: { versions: ["9", "10", "11"], containerPort: 8080, appMountByDefault: true },
-  python: { versions: ["3.12"], appMountByDefault: true },
-  ruby: { versions: ["3.3"], appMountByDefault: true },
-  go: { versions: ["1.22", "1.23"], appMountByDefault: true },
-  dotnet: { versions: ["8.0", "9.0"], appMountByDefault: true },
+  varnish: { versions: ["6", "7"], containerPort: 8080, httpPort: 8080, configKeys: { vcl: "drop" } },
+  tomcat: { versions: ["9", "10", "11"], containerPort: 8080, httpPort: 8080, appMountByDefault: true },
+  python: { versions: ["3.12"], httpPort: 8000, appMountByDefault: true },
+  ruby: { versions: ["3.3"], httpPort: 3000, appMountByDefault: true },
+  go: { versions: ["1.22", "1.23"], httpPort: 8080, appMountByDefault: true },
+  dotnet: { versions: ["8.0", "9.0"], httpPort: 5000, appMountByDefault: true },
   mssql: { versions: ["2019", "2022"], containerPort: 1433 },
   rabbitmq: { versions: ["3", "4"], containerPort: 5672 },
   apache: {
     versions: [],
     containerPort: 80,
+    httpPort: 80,
     configMounts: {
       server: "/usr/local/apache2/conf/httpd.conf",
       vhosts: "/usr/local/apache2/conf/extra/httpd-vhosts.conf",
@@ -76,6 +82,7 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
     versions: [],
     appMountByDefault: true,
     containerPort: 80,
+    httpPort: 80,
     configMounts: {
       server: "/etc/nginx/nginx.conf",
       vhosts: "/etc/nginx/conf.d/default.conf",
@@ -85,12 +92,12 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
   compose: { versions: [], appMountByDefault: true },
   lando: { versions: [], appMountByDefault: true },
   memcached: { versions: [], containerPort: 11211 },
-  mailpit: { versions: [], containerPort: 1025 },
-  mailhog: { versions: [], containerPort: 1025 },
+  mailpit: { versions: [], containerPort: 1025, httpPort: 8025 },
+  mailhog: { versions: [], containerPort: 1025, httpPort: 8025 },
   minio: { versions: [] },
   localstack: { versions: [] },
   valkey: { versions: [] },
-  static: { versions: [], appMountByDefault: true },
+  static: { versions: [], httpPort: 80, appMountByDefault: true },
 };
 
 /**

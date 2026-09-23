@@ -204,10 +204,10 @@ const servedPorts = (service: V4Wire): ReadonlySet<number> => {
   }
   const resolution = typeof service.type === "string" ? resolveCatalogType(service.type) : undefined;
   if (resolution?._tag === "resolved" && resolution.id !== "compose" && resolution.id !== "lando") {
-    // The catalog type already serves HTTP on its own port; a portless route uses it.
-    ports.add(
-      typeof service.port === "number" ? service.port : (CATALOG[resolution.id]?.containerPort ?? 80),
-    );
+    // Only an HTTP port counts. A database containerPort is TCP, so a route to it
+    // still needs an HTTP endpoint; inventing port 80 would hide that.
+    const httpPort = CATALOG[resolution.id]?.httpPort;
+    if (httpPort !== undefined) ports.add(typeof service.port === "number" ? service.port : httpPort);
   }
   return ports;
 };
