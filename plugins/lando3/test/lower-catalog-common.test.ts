@@ -396,6 +396,35 @@ describe("lowerCatalogCommon", () => {
     ]);
   });
 
+  test("names the destination the MySQL service mounts its server configuration at", () => {
+    // Given a mapped MySQL database slot.
+    const service = { type: "mysql:8.0", config: { database: "config/my.cnf" } };
+    // When lowered.
+    const result = lowerCatalogCommon(service, ctx);
+    // Then the diagnostic names the path the native service actually mounts.
+    expect(result.patch).toEqual({ type: "mysql:8.0", config: { server: "config/my.cnf" } });
+    expect(result.diagnostics.find((diagnostic) => diagnostic.kind === "rewritten")?.message).toContain(
+      "/etc/mysql/my.cnf",
+    );
+  });
+
+  test.each(["redis:7", "elasticsearch:8"])(
+    "drops %s server configuration because the native service has no config file slot",
+    (type) => {
+      // Given a Lando 3 server config file for a service Lando 4 never reads one for.
+      const service = { type, config: { server: "config/server.conf" } };
+      // When lowered.
+      const result = lowerCatalogCommon(service, ctx);
+      // Then the file is reported as dropped instead of carried into an ignored field.
+      expect(result.patch).toEqual({ type });
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]).toMatchObject({
+        kind: "dropped",
+        keyPath: [...ctx.keyPath, "config", "server"],
+      });
+    },
+  );
+
   test.each(["mem", "plugins"])("drops %s when it is not an option of the service", (key) => {
     // Given an explicitly authored key unsupported by this service type.
     const service = { type: "node", [key]: false };

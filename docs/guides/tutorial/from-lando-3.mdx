@@ -151,6 +151,17 @@ lando4 start
 
 Or write a [Landofile](../landofile/your-landofile.mdx) by hand. Supported recipes today: `lamp`, `lemp`, `wordpress`, `drupal`, and `drupal-cms`. Then use the [everyday CLI loop](../cli/everyday-commands.mdx) with `lando4` in front.
 
+## What each lando4 command touches
+
+| Command | Changes | Leaves alone |
+| --- | --- | --- |
+| `lando4 shellenv` | Nothing. It prints a profile snippet | Your profiles and `PATH` until you paste it |
+| `lando4 update` | The recorded `lando4` binary, the install record, and a `lando4.bak` beside it | `lando`, `lando.exe`, and any file the record doesn't match |
+| `lando4 uninstall --yes` | Entries in the install record | `lando`, `~/.lando`, and Lando 3 containers and volumes |
+| `lando4 uninstall --purge --yes` | The above, Lando 4's data, cache, and config roots, and the `LANDO4` shellenv block | The Lando 3 `LANDO` shellenv block and every line you wrote |
+| `lando4 doctor` | Nothing. It never runs or opens `lando` | Everything |
+| `lando4 app:config:translate --from lando3 --write` | Landofile layers in that app, each replaced file kept as `<file>.bak.<sha256>` | Lando 3 containers, volumes, and `~/.lando` |
+
 ## Gotchas
 
 - Two apps with the same name, one on each version, do not know about each other. Stop the Lando 3 one before starting the Lando 4 one if they share a port.

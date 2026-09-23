@@ -907,3 +907,49 @@ Verification: gate:pr passed. lint:guides, guide-coverage, public-transcripts, a
 - **Learnings for future iterations:**
   - A potential shadow needs two resolved paths. A missing running path is unverified, not distinct.
 ---
+## 2026-09-23 01:57 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-23 02:05 CDT - US-622A Verify
+- Compiled `core/dist/lando` setup completed on the managed runtime. A lamp app started, `php` and `exec` printed PHP 8.3.33, and `http://us622a.lndo.site:8000` returned that version. Outside an app, `lando3-leftovers` skipped as `no-app-context`. Inside the app on provider `lando` it skipped as `managed-provider` while the managed runtime socket was reachable. `--provider=docker` and `--provider=podman` both inspected and stayed `unverified` (no system daemon; podman looked at `/run/user/1000/podman/podman.sock`, not the managed socket). A `lando4` copy with an execute-only `lando` on PATH reported `potential-shadow` and did not run or read it; the `lando`-named binary skipped shadow as `not-running-as-lando4`. Adjacent provider, setup-readiness, runtime-service, config lint, info, and destroy stayed healthy. The app was purged and the global app stopped.
+- **Out-of-scope finding:** `lando setup` warned port 80 is in use (using 8000) and port 443 is in use by `systemd-socket-` / lando-proxy-https (using 4443), and that advertised ports 8000/4443 did not answer during setup. The app still served on port 8000. Same class as US-621D. Doctor also warned `wsl-root-mount-propagation` (private root mount). Neither is this diff.
+- **Learnings for future iterations:** `lando4-dev --check` fails on the `uidmap` package after a prior managed setup even when `podman` and `docker` are absent from PATH. That is not a missing runtime; run `lando setup` anyway.
+---
+
+## 2026-09-23 03:07 CDT - Babysit
+- PR: #1056 https://github.com/AaronFeledy/core4/pull/1056
+- CI outcome: pass (after fix; the first run failed unit shards on a stale lando3 contract assertion, plus a schema-snapshot manifest-fixture timeout that did not recur)
+- Review feedback: fixed (the lando3 contract test now pins the bundled `lando3-leftovers`/`lando3-shadow` doctor checks instead of asserting none; the local Bugbot Podman-socket finding was a false positive)
+- Merge: merged (squash)
+---
+
+## 2026-09-23 03:55 CDT - US-622B
+- Closed the compatibility wave. Every predecessor is terminal with positive-count evidence: the twelve stories here are merged, US-611B passes, and every cross-PRD dependency (US-607 through US-618E) is merged. Ids, dependencies, and index rows agree with `prd.json`. One inconsistency is recorded rather than renumbered: the adjudication-created US-621C9 shares priority 42 with US-621D. It now has its own index row.
+- Guide index: US-621D and US-622A rows had been filed under IR-GAPS-01. A new Lando 3 compatibility section maps US-619B1, US-619B3, US-621D, US-622A, and US-622B to their guides.
+- `convert-from-lando-3` gained a "What converts and what doesn't" matrix and a scenario proving unavailable versions (PHP 7.4, MariaDB 10.6) block `--write` (9 to 10 scenarios). It links the generated service-type version reference instead of copying it. `from-lando-3` gained a table of what each `lando4` command touches. `lando3-transition-options` had two `<Guide>` blocks, so `service-selection` never ran. They are now one block (2 to 3 scenarios).
+- The gap analysis was re-audited against code: rows now state native behavior plus the conversion result. Sections 5 and 6 are unchanged.
+- Verification found two defects, both fixed. (1) Redis and Elasticsearch `config.server` was reported `rewritten` into a `config.server` field those services never read, which is a silent drop. It is now `dropped` with remediation. The MySQL config diagnostic named `99-lando.cnf`, but the service mounts `/etc/mysql/my.cnf`. (2) Uninstall purge tests in engine and core never sandboxed the config root. They deleted the real `$XDG_CONFIG_HOME/lando` on any host where it existed. This was proven with a sentinel directory, and the test helpers now pin `userConfRoot`.
+- Real provider (lando4-dev, compiled binary, managed `lando` provider): the guide's layered lamp fixture converted with backups, lint returned valid, and `lando4 start` succeeded. The route served PHP 8.3.33, so the local-layer PHP override beat the recipe layer's 8.2. `exec` worked too. `destroy --purge` removed all nine volumes. PHP 7.4, Node 18, Solr 8, MariaDB 10.6, and Postgres 14 each previewed as `unsupported` with the supported list.
+- Verification: gate:pr passed (typecheck, lint, codegen:check, boundaries, guide-drift against origin/main). lint:guides, guide-coverage, public-transcripts, telemetry-inventory, schema-compatibility, runtime-bundle-manifest, compose-coverage, and deprecations also passed. Spot checks: lando3 plugin 1425, managed-file transaction 146, 60 core translate/shellenv/uninstall files 928, SDK contract/landofile/schema 2007, engine install/update/uninstall 146, core contract 22, release/install/npm scripts 184, build docs/package 22. Guides: convert 10, from-lando-3 3, transition-options 3.
+- **Learnings for future iterations:**
+  - A translator `rewritten` diagnostic is only true if the native service consumes the emitted field. A catalog `configKeys` slot must point at a key the v4 service feature actually reads (`service.config?.server` in `plugins/service-lando/src/services/*.ts`); otherwise use `drop`.
+  - Uninstall tests must sandbox all three roots (data, cache, config). Purge falls back to the real XDG config root when `userConfRoot` is omitted. Run such suites with `XDG_CONFIG_HOME` pointed at a temp dir containing a sentinel to prove isolation.
+  - Guide scenarios that run `lando config set` write the host's real config root; the harness isolates only the working directory.
+  - Section 6 promises the Xdebug object maps `start`, but `start_with_request` is dropped with ini guidance. That is still a non-silent target/drop outcome. Revisit only if a native field appears.
+---
+
+## 2026-09-23 03:54 CDT - US-622B Review
+- Recorded `passes: true` on every story in this PRD, including US-622A and US-622B, once merged predecessors had positive-count evidence and US-611B was already passing. The conversion matrix no longer says each key has exactly one row, and it no longer treats bare `overrides` as a non-blocking conversion; rejected Compose override fields stay on the unsupported row.
+- Review notes (deferred/rejected): ir-gaps dependencies have no `passes` field, so this story does not invent one. Bugbot on the build commits found no bugs. Production uninstall still uses the real config root when `userConfRoot` is omitted; that is existing purge behavior, and this branch only sandboxes tests. Section 6 was left unchanged because it never promised a Redis or Elasticsearch `config.server` rewrite. The version matrix is the existing service-type reference, which the guide now links instead of copying.
+- Verification: gate:pr passed; lint:guides, guide-coverage, public transcripts, and guide-drift against origin/main passed; convert guide 10 pass, from-lando-3 3 pass, transition-options 3 pass; catalog and uninstall spot checks passed.
+- **Learnings for future iterations:**
+  - A conversion matrix row that names a whole key (`overrides`) claims every form of that key. Put rejected subfields on the blocking row, and do not say each key appears in exactly one row when both forms exist.
+---
+## 2026-09-23 03:58 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-23 04:05 CDT - US-622B Verify
+- Compiled `core/dist/lando` setup completed on the managed runtime. Redis 7 and Elasticsearch 8 `config.server` previewed as `dropped` (not rewritten) and the MySQL diagnostic named `/etc/mysql/my.cnf`; `--write` omitted the unread server files and kept the MySQL slot. PHP 7.4 and MariaDB 10.6 previewed `unsupported` with an empty target list, `--write` exited 1 as `ConfigTranslateError`, and the source file was unchanged. A Lando 3 lamp converted, linted valid, started, and both `exec` and `http://us622b.lndo.site:8000` returned PHP 8.3.33. Doctor reported `lando3-leftovers` as `managed-provider` in the app and `no-app-context` outside it. The app was purged and the global app stopped.
+- **Out-of-scope finding:** `./core/dist/lando setup --yes --no-interactive` warned port 80 is in use (using 8000) and port 443 is in use by `systemd-socket-` / lando-proxy-https (using 4443). The app still served on port 8000. Same warning as US-622A. Doctor also warned `wsl-root-mount-propagation` and `preferred-host-ports`. Not caused by this diff.
+---

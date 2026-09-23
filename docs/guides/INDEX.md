@@ -152,7 +152,6 @@ End-to-end tutorials that exercise several capabilities at once.
 | PRD | User Story | Feature | Guide Path | Status |
 |---|---|---|---|---|
 | — | — | everyday app lifecycle (start / inspect / exec / restart / destroy) | `docs/guides/tutorial/app-lifecycle.mdx` | Shipped |
-| — | — | run Lando 4 next to Lando 3 and convert apps side by side | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
 | — | — | Node + Postgres app scaffolded from a recipe | `docs/guides/node-postgres.mdx` | Shipped |
 | — | — | port a Compose service block and remediate rejected keys | `docs/guides/config/compose-service-block.mdx` | Shipped |
 | — | — | share tooling fragments through `includes:` with `kind: tooling` | `docs/guides/tooling/tooling-includes.mdx` | Shipped |
@@ -189,6 +188,19 @@ outside `docs/guides/` so they are not gate-validated here.
 | `eleventy` | Eleventy (Node build service + nginx static frontend) | `recipes/eleventy/README.mdx` | Shipped |
 | `empty` | Blank Landofile starter with no services | `recipes/empty/README.mdx` | Shipped |
 | `toolbox` | Disposable CLI tool runner on a pinned Debian image | `recipes/toolbox/README.mdx` | Shipped |
+
+## Lando 3 compatibility
+
+Run Lando 4 as `lando4` beside Lando 3's `lando`, then convert an app explicitly when you're ready. Each row maps a LANDO3-COMPAT-01 story to the guide that exercises it. Supported conversions and intentional rejections are both covered; a rejection scenario proves the input is refused, not that it converts.
+
+| PRD | User Story | Feature | Guide Path | Status |
+|---|---|---|---|---|
+| LANDO3-COMPAT-01 | US-619B1 | `lando4` executable, installer, and shellenv coexistence with Lando 3 | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-619B3 | update and uninstall that touch only Lando 4 artifacts | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-621D | explicit layered Lando 3 conversion with immutable backups | `docs/guides/landofile/convert-from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-622A | read-only Lando 3 leftovers and PATH shadow doctor checks | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-622B | side-by-side coexistence matrix | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-622B | supported and rejected conversion matrix | `docs/guides/landofile/convert-from-lando-3.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)
 
@@ -257,8 +269,6 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | L3-PARITY-07 | US-580 | CLI verbosity, renderer modes, and debug output | `docs/guides/cli/verbosity-and-debug.mdx` | Shipped |
 | IR-GAPS-01 | US-618D1 | service-scoped rebuild and info | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
 | IR-GAPS-01 | US-618D3 | bounded global environment and label defaults for user apps | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
-| IR-GAPS-01 | US-621D | explicit layered Lando 3 conversion | `docs/guides/landofile/convert-from-lando-3.mdx` | Shipped |
-| IR-GAPS-01 | US-622A | read-only Lando 3 leftovers and PATH shadow doctor checks | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
 | IR-GAPS-01 | US-642 | router file-watcher diagnostics | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
 | — | — | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
 | — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |

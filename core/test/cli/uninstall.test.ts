@@ -80,6 +80,7 @@ const makeRoots = () => {
 };
 
 const sandboxCliExtras = (root: string) => ({
+  _userConfRoot: join(root, "conf"),
   _cgroupsDelegatePath: join(root, "delegate.conf"),
   _shellProfilePath: join(root, ".profile"),
   _socketProxyUnitPaths: [
@@ -92,6 +93,7 @@ const sandboxCliExtras = (root: string) => ({
 });
 
 const sandboxUninstallIo = (root: string) => ({
+  userConfRoot: join(root, "conf"),
   cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
   socketProxyUnitPaths: [
@@ -167,7 +169,6 @@ describe("meta:uninstall", () => {
             flags: { "dry-run": true, purge: true },
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
-            _userConfRoot: join(root, "config"),
             ...sandboxCliExtras(root),
             _exists: () => false,
             _listDiscoveredApps: listDiscoveredApps,
@@ -950,7 +951,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, "keep-data": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: join(root, "conf"),
           ...sandboxCliExtras(root),
         }),
       );
@@ -980,7 +980,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1049,7 +1048,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
         }),
@@ -1086,7 +1084,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => {
             throw new Error("docker ps query timed out after 1000ms");
@@ -1127,7 +1124,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1175,7 +1171,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => {
             throw new Error(
@@ -1218,7 +1213,6 @@ describe("meta:uninstall", () => {
             flags: { yes: true, purge: true },
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
-            _userConfRoot: userConfRoot,
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1265,7 +1259,6 @@ describe("meta:uninstall", () => {
             flags: { yes: true, purge: true },
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
-            _userConfRoot: userConfRoot,
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1310,7 +1303,6 @@ describe("meta:uninstall", () => {
             flags: { yes: true, purge: true },
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
-            _userConfRoot: userConfRoot,
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1346,7 +1338,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1402,7 +1393,6 @@ describe("meta:uninstall", () => {
           flags: { "dry-run": true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: join(root, "conf"),
           ...sandboxCliExtras(root),
         }),
       );

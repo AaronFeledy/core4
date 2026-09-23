@@ -15,7 +15,7 @@
       ],
       "dependsOn": ["US-607"],
       "priority": 33,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -30,7 +30,7 @@
       ],
       "dependsOn": ["US-619B1"],
       "priority": 34,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -43,7 +43,7 @@
       ],
       "dependsOn": ["US-608A"],
       "priority": 35,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -58,7 +58,7 @@
       ],
       "dependsOn": ["US-608B", "US-609B", "US-620A"],
       "priority": 36,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -73,7 +73,7 @@
       ],
       "dependsOn": ["US-609B", "US-609C", "US-609E", "US-620B"],
       "priority": 37,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -93,7 +93,7 @@
       ],
       "dependsOn": ["US-607", "US-616", "US-618A", "US-618B", "US-618C", "US-618E", "US-620B", "US-621A"],
       "priority": 38,
-      "passes": false,
+      "passes": true,
       "notes": "Adjudicated 2026-09-22: deferred-key disposition pinned to §6.3 preamble (dropped + story-id remediation, not fail-closed unsupported); AC1 blanket reading bounded by the closed-finish-line criterion to stop implemented/building oscillation."
     },
     {
@@ -108,7 +108,7 @@
       ],
       "dependsOn": ["US-613", "US-614", "US-621C1"],
       "priority": 39,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -123,7 +123,7 @@
       ],
       "dependsOn": ["US-615", "US-617A", "US-617B", "US-621C1"],
       "priority": 40,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -136,7 +136,7 @@
       ],
       "dependsOn": ["US-618D1", "US-618D3", "US-621C1", "US-621C3", "US-621C5"],
       "priority": 41,
-      "passes": false,
+      "passes": true,
       "notes": "Adjudication 2026-09-22: implementation verified; PR #1053 is green on every check except rails-journey-linux-arm64, which fails only because the runtime-bundle apt snapshot pin drifted (libsqlite3-dev 3.45.1-1ubuntu2.8 absent from Ubuntu snapshot 20260902T000000Z). That pin is outside this story: the refresh is owned by US-621C9. Merge PR #1053 once US-621C9 lands and the arm64 journey is green."
     },
     {
@@ -149,7 +149,7 @@
       ],
       "dependsOn": [],
       "priority": 42,
-      "passes": false,
+      "passes": true,
       "notes": "Created by adjudication 2026-09-22 to unblock US-621C8 PR #1053, red only on rails-journey-linux-arm64 because apt snapshot 20260902T000000Z no longer resolves libsqlite3-dev 3.45.1-1ubuntu2.8. Pure CI-infrastructure pin refresh; owns no translator scope."
     },
     {
@@ -173,7 +173,7 @@
         "US-619B3"
       ],
       "priority": 42,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -186,7 +186,7 @@
       ],
       "dependsOn": ["US-620B", "US-621D"],
       "priority": 43,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -199,7 +199,7 @@
       ],
       "dependsOn": ["US-611B", "US-622A"],
       "priority": 44,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]
