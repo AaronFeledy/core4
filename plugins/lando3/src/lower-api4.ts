@@ -13,6 +13,7 @@ import {
 import {
   droppedMoreHttpPorts,
   droppedServiceKey,
+  rejectedComposeKey,
   rewrittenServiceKey,
   unsafeBuildSource,
   unsupportedServiceKey,
@@ -66,6 +67,11 @@ export const lowerApi4Service = (
       }),
     );
   };
+  const dropOwned = (item: Record<string, unknown>, relative: Lando3Path): void => {
+    for (const key of ["owner", "permissions", "user", "group", "contents", "content"] as const) {
+      if (item[key] !== undefined) drop([...relative, key]);
+    }
+  };
   const rewrite = (relative: Lando3Path): void => {
     diagnostics.push(
       rewrittenServiceKey({
@@ -114,6 +120,7 @@ export const lowerApi4Service = (
     if (Object.keys(build).length > 1) patch.build = build;
     if (image.ssh) unsafe(["image", "ssh"]);
     entries(image.context).forEach((item, index) => {
+      if (isPlainObject(item)) dropOwned(item, ["image", "context", index]);
       const source = isPlainObject(item) ? (item.source ?? item.src) : item;
       if (typeof source === "string" && (source.includes("://") || source.startsWith("git@")))
         unsafe(["image", "context", index]);
@@ -166,12 +173,12 @@ export const lowerApi4Service = (
   const mounts: V4Wire[] = [];
   entries(service.mounts).forEach((item, index) => {
     if (isPlainObject(item)) {
+      dropOwned(item, ["mounts", index]);
       if (item.source === undefined && (item.contents !== undefined || item.content !== undefined)) {
         drop(["mounts", index]);
         return;
       }
       if (item.type === "copy") drop(["mounts", index, "type"]);
-      if (item.group !== undefined) drop(["mounts", index, "group"]);
     }
     const mount = bind(item);
     if (mount !== undefined) mounts.push(mount);
@@ -180,6 +187,7 @@ export const lowerApi4Service = (
   for (const key of ["storage", "persistent-storage"]) {
     if (key === "persistent-storage" && service[key] !== undefined) rewrite([key]);
     entries(service[key]).forEach((item, index) => {
+      if (isPlainObject(item)) dropOwned(item, [key, index]);
       if (isPlainObject(item) && item.type === "image") {
         drop([key, index]);
         return;
@@ -255,5 +263,10 @@ export const lowerApi4Service = (
   const runtime = lowerScannerAndHome(service, ctx);
   Object.assign(patch, runtime.patch);
   diagnostics.push(...runtime.diagnostics);
+  for (const key of ["tty", "stdin_open"]) {
+    if (!Object.hasOwn(service, key)) continue;
+    diagnostics.push(rejectedComposeKey({ ctx, relative: [key], key }));
+    blocked = true;
+  }
   return { patch, diagnostics, ...(blocked ? { blocked: true as const } : {}) };
 };

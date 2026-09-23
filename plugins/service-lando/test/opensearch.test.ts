@@ -52,6 +52,15 @@ const serviceTypes: ReadonlyArray<{ readonly label: string; readonly serviceType
 
 describe("opensearch ServiceType", () => {
   for (const { label, serviceType } of serviceTypes) {
+    test(`${label} preserves authored heap options when planning`, async () => {
+      // Given / When
+      const plan = await planOpenSearchService(serviceType, {
+        type: label,
+        environment: { OPENSEARCH_JAVA_OPTS: "-Xms2g -Xmx2g" },
+      });
+      // Then
+      expect(plan.environment.OPENSEARCH_JAVA_OPTS).toBe("-Xms2g -Xmx2g");
+    });
     test(`${label} plans a default OpenSearch 2 service with persistent data volume and HTTP endpoint`, async () => {
       const plan = await planOpenSearchService(serviceType, { type: label });
 

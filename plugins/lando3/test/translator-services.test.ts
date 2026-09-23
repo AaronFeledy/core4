@@ -239,6 +239,7 @@ test("keeps authored services when a generated PHP companion collides", async ()
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "unsupported", keyPath: ["services", "app"] },
+    { kind: "needs-review", keyPath: ["services", "app", "type"] },
     { kind: "generated", keyPath: ["services", "app", "via"] },
     { kind: "rewritten", keyPath: ["services", "app", "via"] },
   ]);
@@ -289,6 +290,7 @@ test("stamps top-level excludes only on app-mounted services", async () => {
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "rewritten", keyPath: ["excludes"] },
+    { kind: "needs-review", keyPath: ["services", "appserver", "type"] },
   ]);
 });
 
@@ -365,6 +367,7 @@ test("rewrites app-relative webroots as container paths across a service and its
     },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
+    { kind: "needs-review", keyPath: ["services", "appserver", "type"] },
     { kind: "generated", keyPath: ["services", "appserver", "via"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "via"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "webroot"] },
@@ -384,6 +387,7 @@ test("keeps the preview when a catalog service authors scanner, home, and meUser
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "dropped", keyPath: ["plugins"] },
     { kind: "needs-review", keyPath: ["services", "appserver"] },
+    { kind: "needs-review", keyPath: ["services", "appserver", "type"] },
     { kind: "rewritten", keyPath: ["services", "appserver", "meUser"] },
     { kind: "dropped", keyPath: ["services", "appserver", "home"] },
     { kind: "dropped", keyPath: ["services", "appserver", "moreHttpPorts"] },

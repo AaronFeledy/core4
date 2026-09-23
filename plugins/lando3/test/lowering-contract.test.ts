@@ -10,7 +10,6 @@ import {
   mergePatches,
 } from "../src/lowering-contract.ts";
 import {
-  deferredServiceKey,
   droppedServiceKey,
   generatedService,
   missingImage,
@@ -40,7 +39,12 @@ const context = (located: LegacyOccurrence | undefined): ServiceLoweringContext 
   topLevel: { excludes: [], includes: [] },
 });
 const ctx = context(occurrence);
-const diagnostic = deferredServiceKey({ ctx, relative: ["mem"], key: "mem" });
+const diagnostic = droppedServiceKey({
+  ctx,
+  relative: ["mem"],
+  message: "Memory was dropped.",
+  remediation: "Set memory in the command.",
+});
 
 describe("lowering patches", () => {
   test("deep merges objects and replaces arrays when later contributions overlap", () => {
@@ -186,7 +190,6 @@ const factories: ReadonlyArray<
           }),
       ] as const,
   ),
-  ["deferred", "dropped", (ctx) => deferredServiceKey({ ctx, relative: ["mem"], key: "mem" })],
   [
     "version",
     "unsupported",
@@ -245,15 +248,4 @@ describe("service diagnostics", () => {
       });
     }
   }
-
-  test("names the full deferred path and its pending story", () => {
-    // Given / When
-    const result = deferredServiceKey({ ctx, relative: ["xdebug", "client_port"], key: "xdebug" });
-    // Then
-    expect(result.kind).toBe("dropped");
-    expect(result.message).toBe(
-      "services.web.xdebug.client_port was dropped: Lando 4 has no typed xdebug settings until US-621C8 lands.",
-    );
-    expect(result.remediation).toContain("US-621C8");
-  });
 });

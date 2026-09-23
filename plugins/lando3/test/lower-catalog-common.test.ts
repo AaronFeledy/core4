@@ -396,20 +396,18 @@ describe("lowerCatalogCommon", () => {
     ]);
   });
 
-  test.each([
-    ["mem", "US-621C8"],
-    ["plugins", "US-621C8"],
-  ])("drops %s naming its pending story without blocking the service", (key, story) => {
-    // Given an explicitly authored key whose Lando 4 target does not exist yet.
+  test.each(["mem", "plugins"])("drops %s when it is not an option of the service", (key) => {
+    // Given an explicitly authored key unsupported by this service type.
     const service = { type: "node", [key]: false };
     // When lowered.
     const result = lowerCatalogCommon(service, ctx);
-    // Then the key is dropped, not marked unsupported, and the remediation names the pending target.
+    // Then the key is dropped with removal remediation, without blocking.
     expect(result.patch).toEqual({ type: "node" });
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({ kind: "dropped", keyPath: [...ctx.keyPath, key] });
-    expect(result.diagnostics[0]?.remediation).toContain(story);
+    expect(result.diagnostics[0]?.message).toBe(`${key} is not an option of node in Lando 3 or Lando 4.`);
+    expect(result.diagnostics[0]?.remediation).toBe(`Remove ${key}.`);
   });
 
   test("drops moreHttpPorts with manual endpoint remediation", () => {

@@ -1,7 +1,6 @@
 import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
 import type { Lando3Path, LegacyOccurrence } from "./contract.ts";
 import type { ServiceLoweringContext } from "./lowering-contract.ts";
-import { formatPath } from "./source.ts";
 
 type ServiceLocation = {
   readonly ctx: ServiceLoweringContext;
@@ -54,31 +53,6 @@ export const needsReviewServiceKey = (args: ServiceDiagnosticInput): ConfigTrans
 
 export const generatedService = (args: ServiceDiagnosticInput): ConfigTranslateDiagnostic =>
   serviceDiagnostic("generated", args);
-
-/**
- * These keys have no Lando 4 authoring target yet, so they are dropped rather
- * than rejected and never block conversion. Remediation tells the user what
- * to do instead.
- */
-const DEFERRED_KEYS = {
-  mem: { target: "catalog memory setting", story: "US-621C8" },
-  plugins: { target: "catalog plugin installation", story: "US-621C8" },
-  xdebug: { target: "typed xdebug settings", story: "US-621C8" },
-} as const;
-
-export type DeferredServiceKey = keyof typeof DEFERRED_KEYS;
-
-export const deferredServiceKey = (
-  args: ServiceLocation & { readonly key: DeferredServiceKey },
-): ConfigTranslateDiagnostic => {
-  const { target, story } = DEFERRED_KEYS[args.key];
-  return droppedServiceKey({
-    ctx: args.ctx,
-    relative: args.relative,
-    message: `${formatPath([...args.ctx.keyPath, ...args.relative])} was dropped: Lando 4 has no ${target} until ${story} lands.`,
-    remediation: `Configure the equivalent by hand in the generated Landofile, or convert again after ${story} lands.`,
-  });
-};
 
 export const droppedMoreHttpPorts = (args: ServiceLocation): ConfigTranslateDiagnostic =>
   droppedServiceKey({

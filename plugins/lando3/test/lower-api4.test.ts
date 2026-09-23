@@ -104,11 +104,37 @@ describe("API-4 service lowering", () => {
       { source: "./d", target: "/d" },
     ]);
     expect(paths(result, "dropped")).toEqual([
+      path("mounts", 2, "contents"),
       path("mounts", 2),
       path("mounts", 3, "type"),
       path("mounts", 4, "group"),
     ]);
-    expect(result.diagnostics).toHaveLength(3);
+    expect(result.diagnostics).toHaveLength(4);
+  });
+  test("diagnoses ownership and contents beside a kept bind", () => {
+    const result = lowerApi4Service(
+      {
+        mounts: [
+          { source: "./src", target: "/dst", contents: "literal", owner: "nginx", permissions: "775" },
+        ],
+        storage: [{ type: "image", destination: "/run", owner: "mysql", permissions: 777 }],
+        image: { context: [{ source: "./src", destination: "/dst", owner: "nginx", permissions: "775" }] },
+      },
+      ctx,
+    );
+    expect(result.patch.mounts).toEqual([{ source: "./src", target: "/dst" }]);
+    expect(result.patch.storage).toBeUndefined();
+    expect(paths(result, "dropped")).toEqual([
+      path("image", "context", 0, "owner"),
+      path("image", "context", 0, "permissions"),
+      path("image", "context", 0),
+      path("mounts", 0, "owner"),
+      path("mounts", 0, "permissions"),
+      path("mounts", 0, "contents"),
+      path("storage", 0, "owner"),
+      path("storage", 0, "permissions"),
+      path("storage", 0),
+    ]);
   });
   test("splits negated excludes into includes when app mount is expanded", () => {
     const result = lowerApi4Service(

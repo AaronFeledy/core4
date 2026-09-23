@@ -1,7 +1,62 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
-import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
-import type { Lando3Path, LegacyOccurrence } from "./contract.ts";
+import {
+  type ConfigTranslateDiagnostic,
+  type ConfigTranslateOutput,
+  ConfigTranslateSourceId,
+  type LandofileLayer,
+} from "@lando/sdk/schema";
+import {
+  type Lando3Path,
+  type Lando3Source,
+  type LegacyOccurrence,
+  lando3SourceLayerOrder,
+  lando3TargetLayer,
+} from "./contract.ts";
 import { type V4Wire, asStringArray, isPlainObject } from "./lowering-contract.ts";
+import { slugifyAppName } from "./naming.ts";
+
+const nameAssignments = (
+  sources: ReadonlyArray<Lando3Source>,
+): ReadonlyArray<{ readonly source: Lando3Source; readonly name: string }> =>
+  sources.flatMap((source) => {
+    const root = source.value;
+    if (root?.kind !== "mapping") return [];
+    const entry = root.entries.get("name");
+    if (entry?.kind !== "scalar" || typeof entry.value !== "string") return [];
+    return [{ source, name: entry.value }];
+  });
+
+export const lowerAppNames = (
+  sources: ReadonlyArray<Lando3Source>,
+  writable: ReadonlySet<LandofileLayer>,
+): ReadonlyArray<ConfigTranslateOutput> => {
+  const byTarget = new Map<
+    LandofileLayer,
+    { readonly sourceIds: Array<ConfigTranslateSourceId>; name: string; order: number }
+  >();
+  for (const { source, name } of nameAssignments(sources)) {
+    const target = lando3TargetLayer(source.layer);
+    if (!writable.has(target)) continue;
+    const order = lando3SourceLayerOrder(source.layer);
+    const existing = byTarget.get(target);
+    if (existing === undefined) {
+      byTarget.set(target, { sourceIds: [source.sourceId], name, order });
+      continue;
+    }
+    existing.sourceIds.push(source.sourceId);
+    // Two Lando 3 layers can fold onto one target. Later Lando 3 order wins,
+    // exactly as it would have at load time.
+    if (order >= existing.order) {
+      existing.name = name;
+      existing.order = order;
+    }
+  }
+  return [...byTarget.entries()].map(([targetLayer, claim]) => ({
+    targetLayer,
+    fragment: { name: slugifyAppName(claim.name) },
+    sourceIds: claim.sourceIds,
+  }));
+};
 
 export interface TopLevelContext {
   readonly fallbackSourceId: string;

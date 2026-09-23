@@ -1,4 +1,5 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { lowerXdebugObject } from "./lower-xdebug-object.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
@@ -7,9 +8,9 @@ import {
   isPlainObject,
 } from "./lowering-contract.ts";
 import {
-  deferredServiceKey,
   droppedServiceKey,
   generatedService,
+  needsReviewServiceKey,
   rewrittenServiceKey,
 } from "./service-diagnostics.ts";
 
@@ -18,7 +19,16 @@ export const lowerPhpOptions = (
   ctx: ServiceLoweringContext,
 ): LoweringPatch => {
   const patch: Record<string, unknown> = {};
-  const diagnostics: ConfigTranslateDiagnostic[] = [];
+  const diagnostics: ConfigTranslateDiagnostic[] = [
+    needsReviewServiceKey({
+      ctx,
+      relative: ["type"],
+      message:
+        "Lando 3 injected COMPOSER_ALLOW_SUPERUSER=1, COMPOSER_MEMORY_LIMIT=-1 and drush/wp-cli launchers; Lando 4 adds no hidden environment or launchers.",
+      remediation:
+        "Add those variables under the service environment if scripts depend on them, and install drush/wp-cli as Composer dependencies.",
+    }),
+  ];
   let companions: Readonly<Record<string, V4Wire>> | undefined;
   const via = service.via;
   const webrootPath = containerWebroot(service.webroot);
@@ -113,11 +123,9 @@ export const lowerPhpOptions = (
   if (typeof xdebug === "boolean" || typeof xdebug === "string") {
     patch.xdebug = xdebug;
   } else if (isPlainObject(xdebug)) {
-    patch.xdebug = typeof xdebug.mode === "string" && xdebug.mode.length > 0 ? xdebug.mode : true;
-    for (const key of Object.keys(xdebug)) {
-      if (key !== "mode")
-        diagnostics.push(deferredServiceKey({ ctx, relative: ["xdebug", key], key: "xdebug" }));
-    }
+    const lowered = lowerXdebugObject(service, xdebug, ctx);
+    Object.assign(patch, lowered.patch);
+    diagnostics.push(...lowered.diagnostics);
   }
 
   if (Object.hasOwn(service, "db_client")) patch.db_client = service.db_client;
