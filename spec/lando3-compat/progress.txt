@@ -677,4 +677,5 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
 - Review notes (deferred/rejected): Bugbot reported no bugs on the build commits. An authored mount or LANDO_MOUNT is kept; the criterion forbids adding implicit /lando, /helpers, /user, and LANDO_MOUNT, not deleting an explicit author value, and mount lowering belongs to US-621C1. A rewrite message that still mentions retry when only timeout lowered is imprecise and does not change the fragment. Conversion guides stay with US-621D.
 - Verification: gate:pr green; lint:guides, check:guide-coverage, public transcripts, and guide-drift against origin/main passed; proxy, runtime-intent, services, contract, and diagnostics spot checks passed.
 - Guide-Coverage-Skip: US-621C5 lowers the lando3 translator only; the conversion guide is owned by US-621D and no published command changed.
+- A proxy port aimed at a recipe service now appends an internal HTTP endpoint on that service. Endpoint objects have no merge identity, so the port is written onto the recipe service instead of a higher-layer array that would replace it.
 ---

@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { validateConfigTranslateResult } from "@lando/sdk/landofile";
 import { LandofileAuthoringFragment, LandofileShape } from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Either, Schema } from "effect";
 import { defaultLando3Ports, makeLando3ConfigTranslator } from "../src/translator.ts";
 import { isPlainRecord, mergeLandofiles } from "../src/v4-merge.ts";
-import { document, documentSet } from "./fixtures/fake-decomposers.ts";
+import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
 const translateFiles = async (files: ReadonlyArray<readonly [string, string]>) => {
   const result = await Effect.runPromise(
@@ -331,4 +332,28 @@ test("declares the HTTP endpoints a route targets on services without catalog en
       ["proxy", "node"],
     ],
   );
+});
+
+test("declares a routed port on the recipe service without dropping its endpoints", async () => {
+  // Given a recipe service that already serves HTTP, plus a proxy port it does not.
+  const fake = fakeDecomposers(false, true);
+  const translateRecipe = (text: string) =>
+    Effect.runPromise(
+      makeLando3ConfigTranslator({
+        decomposers: fake.decomposers,
+        redactor: createRedactor("secrets"),
+      }).translate(documentSet([document(".lando.yml", text)])),
+    );
+  const result = await translateRecipe(
+    "name: routes\nrecipe: lamp\nproxy:\n  appserver: ['extra.demo:8080']\n",
+  );
+  const merged = mergeLandofiles(
+    result.outputs.map(({ fragment }) => (isPlainRecord(fragment) ? fragment : {})),
+  );
+  const appserver = isPlainRecord(merged.services) ? merged.services.appserver : undefined;
+  // Then the recipe endpoint survives and the routed port is appended.
+  expect(isPlainRecord(appserver) ? appserver.endpoints : undefined).toEqual([
+    { _tag: "internal", protocol: "http", port: 80 },
+    { _tag: "internal", protocol: "http", port: 8080 },
+  ]);
 });

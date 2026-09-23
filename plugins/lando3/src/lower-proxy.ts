@@ -222,11 +222,23 @@ export const declareRouteEndpoints = (
   fragment: V4Wire,
   services: Map<string, V4Wire>,
   report: Report,
+  external: ReadonlyMap<string, V4Wire> = new Map(),
 ): void => {
   const proxy = isPlainObject(fragment.proxy) ? fragment.proxy : {};
   for (const [name, routes] of Object.entries(proxy)) {
-    const service = services.get(name);
-    if (service === undefined || !Array.isArray(routes)) continue;
+    if (!Array.isArray(routes)) continue;
+    const authored = services.get(name);
+    const recipe = external.get(name);
+    // Endpoint objects have no merge identity, so a new array on an authored
+    // override replaces the recipe service's endpoints. Append to an array
+    // that already wins, otherwise to the recipe service itself.
+    const service =
+      authored !== undefined && Array.isArray(authored.endpoints)
+        ? authored
+        : recipe !== undefined && (Array.isArray(recipe.endpoints) || authored === undefined)
+          ? recipe
+          : authored;
+    if (service === undefined) continue;
     const served = servedPorts(service);
     const catalogServed = served.size > 0;
     const added: number[] = [];
@@ -239,10 +251,9 @@ export const declareRouteEndpoints = (
     }
     if (added.length === 0) continue;
     const existing = Array.isArray(service.endpoints) ? service.endpoints : [];
-    services.set(name, {
-      ...service,
-      endpoints: [...existing, ...added.map((port) => ({ _tag: "internal", protocol: "http", port }))],
-    });
+    const endpoints = [...existing, ...added.map((port) => ({ _tag: "internal", protocol: "http", port }))];
+    if (service === authored && authored !== undefined) services.set(name, { ...authored, endpoints });
+    else (service as { endpoints: unknown }).endpoints = endpoints;
     report(
       "generated",
       ["proxy", name],

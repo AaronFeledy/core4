@@ -151,6 +151,8 @@ const mountsAppByDefault = (loweredType: unknown): boolean => {
 export interface InheritedAuthoring {
   readonly tools: ReadonlySet<string>;
   readonly recipeServices: ReadonlyArray<string>;
+  /** Recipe-owned service objects. Route ports append to these in place. */
+  readonly recipeServiceWires?: ReadonlyMap<string, V4Wire>;
 }
 
 const NOTHING_INHERITED: InheritedAuthoring = { tools: new Set(), recipeServices: [] };
@@ -244,7 +246,7 @@ export const lowerServiceViews = (
         } else services.set(name, mergeLandofiles([services.get(name) ?? {}, companion]));
       }
     }
-    declareRouteEndpoints(proxy.fragment, services, report);
+    declareRouteEndpoints(proxy.fragment, services, report, inherited.recipeServiceWires);
     prefixes.push({
       targetLayer: view.targetLayer,
       sourceIds: view.sourceIds,
