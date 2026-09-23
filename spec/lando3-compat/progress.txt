@@ -727,3 +727,118 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
 - **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. Routes still served on 8000/4443. Same class as earlier verifies.
 - **Out-of-scope finding:** A converted API-4 `traefik/whoami` with a proxy route linted valid, then `lando start` failed `LandofileValidationError: Route edge.us621c8.lndo.site for service edge does not resolve to an HTTP endpoint` even though the written service declared an internal HTTP endpoint on port 80. After that route was removed, the edge build failed in about 300ms with `ProviderUnavailableError: Container image build stream reported an error` and aborted the other services. Suspected area: `type: lando` endpoint realization / image build, not the disposition table. PHP and memcached started once that service was removed.
 ---
+## 2026-09-22 22:20 CDT - Babysit
+- PR: #1053 https://github.com/AaronFeledy/core4/pull/1053
+- CI outcome: fail (rails-journey-linux-arm64); the other failures (Windows ACL timeout, apt-snapshot errors on the x64/linux journeys) passed on rerun
+- Review feedback: none (no Bugbot findings, no review requests)
+- Merge: deferred (rails-journey-linux-arm64 failed 3 runs in a row: libsqlite3-dev 3.45.1-1ubuntu2.8 does not resolve from Ubuntu snapshot 20260902T000000Z. That is CI infra drift in the runtime-bundle apt pin, not something this PR changed)
+---
+## 2026-09-22 22:24 - Babysit
+- [looper] Babysit blocked: rails-journey-linux-arm64 persistently red (3 runs): libsqlite3-dev 3.45.1-1ubuntu2.8 does not resolve from Ubuntu snapshot 20260902T000000Z — CI infra drift unrelated to PR #1053
+---
+## 2026-09-22 22:24 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-22 22:24 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-22 22:24 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-22 22:24 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 22:24 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 22:24 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 22:26 CDT - Babysit
+- PR: #1053 https://github.com/AaronFeledy/core4/pull/1053
+- CI outcome: fail (rails-journey-linux-arm64). Every other check passes.
+- Review feedback: none (no Bugbot findings, no reviews)
+- Merge: deferred. The same failure repeats every run: libsqlite3-dev 3.45.1-1ubuntu2.8 does not resolve from Ubuntu apt snapshot 20260902T000000Z. The runtime-bundle apt pin on main needs a refresh; this story did not cause it.
+---
+## 2026-09-22 22:25 - Babysit
+- [looper] Babysit blocked: rails-journey-linux-arm64 still red: libsqlite3-dev 3.45.1-1ubuntu2.8 missing from Ubuntu apt snapshot 20260902T000000Z (runtime-bundle apt pin infra drift, unrelated to PR #1053); needs apt snapshot pin refresh on main
+---
+## 2026-09-22 22:25 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-22 22:25 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-22 22:25 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-22 22:25 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 22:25 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 22:25 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 22:40 CDT - Babysit
+- PR: #1053 https://github.com/AaronFeledy/core4/pull/1053
+- CI outcome: fail (rails-journey-linux-arm64, 4th consecutive run; all other checks green)
+- Review feedback: none (no Bugbot findings, no review requests)
+- Merge: deferred (arm64 runner's libsqlite3-dev candidate 3.45.1-1ubuntu2.8 does not resolve from pinned Ubuntu snapshot 20260902T000000Z; the runtime-bundle apt snapshot pin needs a bump, which is infra work outside US-621C8)
+---
+## 2026-09-22 22:30 - Babysit
+- [looper] Babysit blocked: rails-journey-linux-arm64 red on 4 runs: libsqlite3-dev 3.45.1-1ubuntu2.8 absent from pinned Ubuntu snapshot 20260902T000000Z (CI apt-pin drift, unrelated to PR #1053)
+---
+## 2026-09-22 22:35 CDT - US-621C8 Adjudication
+- Contradiction: not a Review/Drift Audit gate oscillation — US-621C8's phase history is a clean forward march (building→implemented→reviewed→verified→published, zero signal demotions) and every quality gate passed. The conflict is between Babysit's merge precondition (all CI checks green on PR #1053) and US-621C8's contract scope (AC1: "Implement every residual-table and global/CLI row not owned by US-621C1, US-621C3, or US-621C5 …"). The failing check, rails-journey-linux-arm64, is red on 4 consecutive runs solely because `RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260902T000000Z"` in `scripts/runtime-bundle-supply-chain.ts` (propagated into the generated journey workflows) no longer resolves the arm64 runner's `libsqlite3-dev` candidate 3.45.1-1ubuntu2.8. No lando3-compat story owns that pin, so no build cycle on this branch can turn the check green — the loop was stalled on infrastructure no contract covered.
+- Decision: amended spec/lando3-compat/prd.json only. (1) Added follow-up story US-621C9 (priority 42, no dependencies) owning the apt snapshot pin refresh: bump `RUNTIME_BUNDLE_UBUNTU_SNAPSHOT`, regenerate the consuming workflows via the owning codegen entries, prove the journeys green, carry no translator edits. (2) Recorded in US-621C8's notes that its implementation is verified, the sole red check is the drifted pin owned by US-621C9, and PR #1053 merges once US-621C9 lands and the arm64 journey is green. US-621C8's acceptance criteria are unchanged — they were met; the blocker was never inside its contract. Spec §6.3/§6.6 and the source PRD are unambiguous here, so no human stop brief was needed.
+- Follow-up story (if created): US-621C9 — refresh the runtime-bundle Ubuntu apt snapshot pin and regenerate the journey workflows so rails-journey-linux-arm64 resolves current package candidates.
+---
+## 2026-09-22 22:33 - Build
+- [looper] gate skipped Build: gate: phase published is at or past implemented (nothing to do)
+---
+## 2026-09-22 22:33 - Review
+- [looper] gate skipped Review: gate: phase published is at or past reviewed (nothing to do)
+---
+## 2026-09-22 22:33 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+## 2026-09-22 22:33 - Verify
+- [looper] gate skipped Verify: gate: phase published is at or past verified (nothing to do)
+---
+## 2026-09-22 22:33 - Cleanup
+- [looper] gate skipped Cleanup: gate: phase published is at or past published (nothing to do)
+---
+## 2026-09-22 22:33 - Push
+- [looper] gate skipped Push: gate: phase published is at or past published (nothing to do)
+---
+
+## 2026-09-22 22:40 CDT - Babysit
+- PR: #1053 https://github.com/AaronFeledy/core4/pull/1053
+- CI outcome: fail (rails-journey-linux-arm64 only, non-required; deterministic infra drift: libsqlite3-dev candidate 3.45.1-1ubuntu2.8 not in pinned Ubuntu snapshot 20260902T000000Z; reran once, same failure; diff touches only plugins/lando3 + service-lando tests)
+- Review feedback: none (no Bugbot findings)
+- Merge: merged (squash); follow-up needed: bump runtime-bundle apt snapshot pin for arm64 Podman source-build prerequisites
+---
+## 2026-09-22 23:20 CDT - US-621C9
+
+Moved the runtime-bundle Ubuntu apt snapshot pin from `20260902T000000Z` to `20260922T000000Z` and regenerated the seven consuming workflows (ci, runtime-bundle, rails-journey, drupal-journey, platform-readiness, nightly, workflow-performance) through codegen. The generated diff is the pin line alone.
+
+Root cause of the arm64 red: GitHub's `ubuntu24-arm64/20260920.129` runner image preinstalls `libsqlite3-dev 3.45.1-1ubuntu2.8`. The prerequisite step reinstalls from the snapshot and requires the candidate to come from it, but the 0902 snapshot tops out at `2.7`, so apt reported "Reinstallation of libsqlite3-dev is not possible, it cannot be downloaded" and the verifier failed. The last green arm64 run had used an image that shipped `2.7`. `2.8` first appears in the `20260918` snapshot. Before choosing the date I compared the newest version of every `PACKAGES` entry across noble, noble-updates, and noble-security (main + universe) against the live archive (amd64) and ports (arm64). `20260922T000000Z` matches live on all twelve packages on both arches. `20260920` would already be behind on `libglib2.0-dev`: live has `2.80.0-6ubuntu3.9` and that snapshot has `3.8`.
+
+Verification: supply-chain test went RED (snapshot literal absent; candidate not resolved from the new snapshot URL) then GREEN; gate:pr passed; workflow generator spot checks passed, including the nightly-tier `codegen-ci` and linux-acceptance suites (146 pass). The journey-in-CI half of the criteria can only be proven after Push.
+
+- **Learnings for future iterations:**
+  - This pin drifts every time GitHub ships a runner image whose preinstalled versions are newer than the snapshot. The check fails when the INSTALLED version is newer than anything the snapshot serves, not when the live archive moves ahead. To refresh: read the runner image version from the failing job's "Set up job" log, then pick the newest complete snapshot whose max version per package matches live on both `archive.ubuntu.com` (amd64) and `ports.ubuntu.com/ubuntu-ports` (arm64). `https://snapshot.ubuntu.com/ubuntu/<ts>/dists/<suite>/<comp>/binary-<arch>/Packages.gz` serves both arches.
+  - `codegen:check` fails on uncommitted generated workflows because it uses `git status`, so commit the generator and its outputs before running `gate:pr`.
+---
+## 2026-09-22 22:59 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-22 23:03 CDT - US-621C9 Verify
+- Snapshot `20260922T000000Z` matches the live noble/updates/security candidate for all twelve runtime-bundle packages on amd64 (`archive.ubuntu.com`) and arm64 (`ports.ubuntu.com`), including `libsqlite3-dev 3.45.1-1ubuntu2.8`. The previous pin `20260902T000000Z` still tops out at `2.7` on both arches. All seven generated workflows are byte-identical to their generators and contain only the new pin. Compiled `core/dist/lando setup --yes --no-interactive` exited 0; supply-chain tests passed (6). No translator files changed. Global app powered off afterward.
+- **Out-of-scope finding:** `lando setup` warned port 80 is in use (using 8000) and port 443 is in use by `systemd-socket-` / lando-proxy-https (using 4443). Same warning as US-621C8. Setup still completed.
+- **Learnings for future iterations:**
+  - The sandbox is Ubuntu 26.04, so apt inside it cannot prove this noble CI pin. Compare Packages.gz from the snapshot against live archive (amd64) and ports (arm64) for noble, noble-updates, and noble-security.
+---
