@@ -1,0 +1,30 @@
+name: jekyll-workflow
+runtime: 4
+recipe: jekyll
+services:
+  builder:
+    build:
+      artifact:
+        - apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev
+    command: sleep infinity
+    framework: none
+    port: 4000
+    type: ruby:3.3
+  web:
+    type: static:nginx
+    appMount:
+      target: /app
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+tooling:
+  jekyll:
+    service: builder
+    description: Run the Jekyll CLI inside the builder service.
+    cmds:
+      - bundle exec jekyll
+  bundle:
+    service: builder
+    description: Run Bundler inside the builder service.
+    cmds:
+      - bundle

@@ -1,0 +1,166 @@
+---
+id: jekyll-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, jekyll, static, ruby]
+---
+
+# Run the Jekyll recipe
+
+```sh
+lando init --recipe jekyll --name=jekyll-demo --yes
+cd jekyll-demo
+```
+
+`--yes` skips prompts. Jekyll declares no recipe options, so the only prompt is the app name. Before the first start, park `builder` on `sleep infinity` and add a build step that installs compile tooling. That keeps the service up while you install gems, and it gives Bundler the headers native gems need.
+
+Stock start runs `bundle exec jekyll serve` on `builder`. Install Jekyll into the app before you expect that server to stay up. The steps below are the day-to-day install path.
+
+## See what the recipe writes
+
+Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parked.
+
+| Piece | What you get |
+| --- | --- |
+| `builder` | `ruby:3.3`, port `4000`, command `bundle exec jekyll serve --host 0.0.0.0 --port 4000` |
+| `web` | `static:nginx` with the app mounted at `/app` and one route on both schemes |
+| Tooling | `lando jekyll` (`bundle exec jekyll`) and `lando bundle` on `builder` |
+
+`builder` is the day-to-day browse target while Jekyll serves. `web` is the nginx sidecar on the app hostname. Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
+
+<Guide>
+  <Scenario id="parked-first-start" render={false} reason="Test provider validates the parked first start without claiming live Jekyll output">
+    <Step name="scaffold">
+      <Variable name="appName" value="jekyll-workflow" display="jekyll-demo" />
+      <Run command="lando init --recipe jekyll --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"builder\":\\s*\\{[^}]*\"type\":\\s*\"ruby:3\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*4000" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "bundle exec jekyll serve --host 0.0.0.0 --port 4000" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"jekyll\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bundle\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+    </Step>
+    <Step name="park-builder">
+      <UseFixture name="park-builder" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "sleep infinity" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "build-essential" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-unknown-answer" render={false} reason="Regression for undeclared recipe option answers">
+    <Step name="init-invalid">
+      <Variable name="appName" value="jekyll-workflow-bad" display="jekyll-bad" />
+      <Run command="lando init --recipe jekyll --name={{appName}} --yes --answer=ruby=3.2" expectExit={1} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Park builder and install compile tooling
+
+Before the first install (or right after init), park `builder` on `sleep infinity` and add a build step so native gems can compile. Edit `.lando.yml`:
+
+```yaml
+services:
+  builder:
+    build:
+      artifact:
+        - apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev
+    command: sleep infinity
+    framework: none
+    port: 4000
+    type: ruby:3.3
+```
+
+Then start. First start runs that apt step on `builder`.
+
+```sh
+lando start
+```
+
+## Install Jekyll into the app
+
+Write a minimal Gemfile, then install with Bundler:
+
+```sh
+printf '%s\n' 'source "https://rubygems.org"' 'gem "jekyll", "~> 4.4.1"' > Gemfile
+lando bundle install
+lando jekyll --version
+```
+
+`lando jekyll --version` prints something like `jekyll 4.4.1`. The patch may float; check the printed version rather than hardcoding it.
+
+## Scaffold the site
+
+`.lando.yml` already lives in the app root, so tell Jekyll to write into this directory while `builder` is still parked:
+
+```sh
+lando jekyll new . --force
+lando bundle install
+```
+
+`jekyll new` rewrites the Gemfile (Minima theme, `jekyll-feed`, and friends). Run `lando bundle install` again so those gems land before you build or serve.
+
+Confirm a one-off build:
+
+```sh
+lando jekyll build
+```
+
+That writes `_site/`. Keep the build step on `builder` for later gem installs.
+
+## Restore the server command
+
+Restore the recipe server command after the gems and site are in place. Keep the build step:
+
+```yaml
+services:
+  builder:
+    build:
+      artifact:
+        - apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev
+    command: "bundle exec jekyll serve --host 0.0.0.0 --port 4000"
+    framework: none
+    port: 4000
+    type: ruby:3.3
+```
+
+```sh
+lando restart
+```
+
+Run `lando info` and open the `builder` URL it prints. If host ports 80 or 443 are already taken, the URL may use a fallback port such as `:8443`.
+
+Day to day, leave the recipe command on `bundle exec jekyll serve --host 0.0.0.0 --port 4000` and open the **builder** URL `lando info` prints (for example `https://builder.jekyll-demo.lndo.site` or the same host with a fallback port such as `:8443`). Live reload rides with that serve.
+
+Skip the bare app hostname for now. `web` mounts `/app` with no `root`, so Jekyll's `_site/` build is not the document root until you set `root: _site` on `web` (same class of gap as Eleventy `_site` in [#1012](https://github.com/AaronFeledy/core4/issues/1012)).
+
+Need a one-off rebuild while the development server keeps running? Use `lando jekyll build`.
+
+## Destroy without surprises
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Jekyll recipe](/recipes/jekyll/)
+- [Serve a static site](../services/static.mdx)
+- [Add Ruby](../services/ruby.mdx)

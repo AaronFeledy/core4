@@ -254,6 +254,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Node API recipe day-to-day workflow | `docs/guides/recipes/node-api-workflow.mdx` | Shipped |
 | — | — | Eleventy recipe day-to-day workflow | `docs/guides/recipes/eleventy-workflow.mdx` | Shipped |
 | — | — | Hugo recipe day-to-day workflow | `docs/guides/recipes/hugo-workflow.mdx` | Shipped |
+| — | — | Jekyll recipe day-to-day workflow | `docs/guides/recipes/jekyll-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
