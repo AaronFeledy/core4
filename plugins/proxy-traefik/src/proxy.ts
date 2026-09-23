@@ -247,7 +247,12 @@ export const makeTraefikRouterService = (
         const socketProxy = yield* resolveSocketProxy(dependencies);
         const decision = yield* persistPortAcquisition({
           ...dependencies,
-          ...(socketProxy === undefined ? {} : { socketProxy }),
+          ...(socketProxy === undefined
+            ? {}
+            : {
+                socketProxy:
+                  config.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
+              }),
           ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
           ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
         });

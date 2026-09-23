@@ -44,6 +44,9 @@ export const RouterConfig = Schema.Struct({
 export type RouterConfig = typeof RouterConfig.Type;
 
 export const ProxyConfig = Schema.Struct({
+  autoApprove: Schema.optional(Schema.Boolean).annotations({
+    description: "Accept default router setup confirmations without prompting for this invocation.",
+  }),
   defaultDomain: Schema.propertySignature(Schema.String).annotations({
     description: "Default local domain used when routes omit a custom domain.",
   }),
