@@ -60,12 +60,12 @@ const harness = (isInteractive: boolean) => {
 };
 
 test("installs without calling confirm when TTY setup carries automatic consent", async () => {
-  // Given: fresh helper state, a TTY that would decline, and schema-decoded invocation consent.
+  // Given: fresh helper state and a TTY that would decline.
   const { router, confirms, elevations } = harness(true);
-  const config = Schema.decodeUnknownSync(ProxyConfig)({ defaultDomain: "lndo.site", autoApprove: true });
+  const config = Schema.decodeUnknownSync(ProxyConfig)({ defaultDomain: "lndo.site" });
 
   // When
-  await Effect.runPromise(Effect.scoped(router.setup(config)));
+  await Effect.runPromise(Effect.scoped(router.setup(config, { autoApprove: true })));
 
   // Then: the default install path runs without drawing a confirmation.
   expect(confirms).toEqual([]);
@@ -80,7 +80,7 @@ test.each([undefined, false])("honors a TTY refusal when automatic consent is %j
   // When
   await Effect.runPromise(
     Effect.scoped(
-      router.setup({ defaultDomain: "lndo.site", ...(autoApprove === undefined ? {} : { autoApprove }) }),
+      router.setup({ defaultDomain: "lndo.site" }, autoApprove === undefined ? undefined : { autoApprove }),
     ),
   );
 
@@ -99,4 +99,32 @@ test("keeps default installation without confirmation on non-TTY input", async (
   // Then
   expect(confirms).toEqual([]);
   expect(elevations).toHaveLength(1);
+});
+
+test("does not grant consent from decoded proxy configuration", async () => {
+  // Given: configuration containing an invocation-only flag and a refusing TTY.
+  const { router, confirms, elevations } = harness(true);
+  const config = Schema.decodeUnknownSync(ProxyConfig)({ defaultDomain: "lndo.site", autoApprove: true });
+
+  // When
+  await Effect.runPromise(Effect.scoped(router.setup(config)));
+
+  // Then
+  expect(confirms).toEqual(["install-socket-proxy"]);
+  expect(elevations).toEqual([]);
+});
+
+test("does not retain approval for a subsequent setup invocation", async () => {
+  // Given: a prior approved invocation; the fake host still reports no installed helper.
+  const { router, confirms, elevations } = harness(true);
+  await Effect.runPromise(Effect.scoped(router.setup({ defaultDomain: "lndo.site" }, { autoApprove: true })));
+  confirms.length = 0;
+  elevations.length = 0;
+
+  // When
+  await Effect.runPromise(Effect.scoped(router.setup({ defaultDomain: "lndo.site" })));
+
+  // Then
+  expect(confirms).toEqual(["install-socket-proxy"]);
+  expect(elevations).toEqual([]);
 });

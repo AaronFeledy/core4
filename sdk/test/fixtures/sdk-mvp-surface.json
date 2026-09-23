@@ -18,6 +18,16 @@
     "getJsonSchema"
   ],
   "serviceTags": {
+    "RouterService": [
+      "id: string",
+      "capabilities: ProxyCapabilities",
+      "setup: (config: ProxyConfig, options?: { readonly autoApprove?: boolean }) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError, Scope.Scope>",
+      "revalidateStartup: Effect.Effect<void, ProxyError | RouterWatcherError>",
+      "applyRoutes: (routes: ReadonlyArray<RoutePlan>, appId: AppId) => Effect.Effect<ProxyApplyResult, ProxyApplyError>",
+      "removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>",
+      "status: Effect.Effect<ProxyStatus, ProxyError>",
+      "stop: Effect.Effect<void, ProxyError>"
+    ],
     "AppPlanner": [
       "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, AppPlannerError>"
     ],

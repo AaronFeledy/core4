@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import type { ProxyConfig } from "@lando/sdk/schema";
-import { RouterService } from "@lando/sdk/services";
+import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { runProxySetupStep } from "../../src/cli/command-specs/meta/setup-service-steps.ts";
 import { makeSetupReadinessRecorder } from "../../src/cli/command-specs/meta/setup-steps.ts";
@@ -13,9 +13,14 @@ test.each([{ argv: ["--yes"] }, { argv: ["--no-interactive"] }, { argv: ["--yes"
   async ({ argv }) => {
     // Given: a parsed setup invocation and an in-memory router.
     const configs: ProxyConfig[] = [];
+    const approvals: Parameters<RouterServiceShape["setup"]>[1][] = [];
     const router = {
       ...makeTestRouterService(),
-      setup: (config: ProxyConfig) => Effect.sync(() => void configs.push(config)),
+      setup: (config: ProxyConfig, options: Parameters<RouterServiceShape["setup"]>[1]) =>
+        Effect.sync(() => {
+          configs.push(config);
+          approvals.push(options);
+        }),
     };
     const input = compiledCommandInputFromArgv("meta:setup", argv);
 
@@ -27,16 +32,23 @@ test.each([{ argv: ["--yes"] }, { argv: ["--no-interactive"] }, { argv: ["--yes"
     );
 
     // Then: the invocation grants automatic consent to the router.
-    expect(configs).toEqual([expect.objectContaining({ autoApprove: true })]);
+    expect(approvals).toEqual([{ autoApprove: true }]);
+    expect(configs).toHaveLength(1);
+    expect(configs[0]).not.toHaveProperty("autoApprove");
   },
 );
 
 test("preserves interactive consent when setup has no approval flags", async () => {
   // Given
   const configs: ProxyConfig[] = [];
+  const approvals: Parameters<RouterServiceShape["setup"]>[1][] = [];
   const router = {
     ...makeTestRouterService(),
-    setup: (config: ProxyConfig) => Effect.sync(() => void configs.push(config)),
+    setup: (config: ProxyConfig, options: Parameters<RouterServiceShape["setup"]>[1]) =>
+      Effect.sync(() => {
+        configs.push(config);
+        approvals.push(options);
+      }),
   };
 
   // When
@@ -48,5 +60,6 @@ test("preserves interactive consent when setup has no approval flags", async () 
 
   // Then
   expect(configs).toHaveLength(1);
-  expect(configs[0]).not.toEqual(expect.objectContaining({ autoApprove: true }));
+  expect(configs[0]).not.toHaveProperty("autoApprove");
+  expect(approvals).toEqual([{ autoApprove: false }]);
 });
