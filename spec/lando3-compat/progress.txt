@@ -832,3 +832,13 @@ Verification: supply-chain test went RED (snapshot literal absent; candidate not
   - This pin drifts every time GitHub ships a runner image whose preinstalled versions are newer than the snapshot. The check fails when the INSTALLED version is newer than anything the snapshot serves, not when the live archive moves ahead. To refresh: read the runner image version from the failing job's "Set up job" log, then pick the newest complete snapshot whose max version per package matches live on both `archive.ubuntu.com` (amd64) and `ports.ubuntu.com/ubuntu-ports` (arm64). `https://snapshot.ubuntu.com/ubuntu/<ts>/dists/<suite>/<comp>/binary-<arch>/Packages.gz` serves both arches.
   - `codegen:check` fails on uncommitted generated workflows because it uses `git status`, so commit the generator and its outputs before running `gate:pr`.
 ---
+## 2026-09-22 22:59 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-22 23:03 CDT - US-621C9 Verify
+- Snapshot `20260922T000000Z` matches the live noble/updates/security candidate for all twelve runtime-bundle packages on amd64 (`archive.ubuntu.com`) and arm64 (`ports.ubuntu.com`), including `libsqlite3-dev 3.45.1-1ubuntu2.8`. The previous pin `20260902T000000Z` still tops out at `2.7` on both arches. All seven generated workflows are byte-identical to their generators and contain only the new pin. Compiled `core/dist/lando setup --yes --no-interactive` exited 0; supply-chain tests passed (6). No translator files changed. Global app powered off afterward.
+- **Out-of-scope finding:** `lando setup` warned port 80 is in use (using 8000) and port 443 is in use by `systemd-socket-` / lando-proxy-https (using 4443). Same warning as US-621C8. Setup still completed.
+- **Learnings for future iterations:**
+  - The sandbox is Ubuntu 26.04, so apt inside it cannot prove this noble CI pin. Compare Packages.gz from the snapshot against live archive (amd64) and ports (arm64) for noble, noble-updates, and noble-security.
+---
