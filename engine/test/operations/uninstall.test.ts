@@ -1070,6 +1070,7 @@ describe("uninstall shellenv profile strip", () => {
         uninstall({
           userDataRoot: roots.userDataRoot,
           userCacheRoot: roots.userCacheRoot,
+          userConfRoot: roots.userConfRoot,
           cgroupsDelegatePath: roots.cgroupsDelegatePath,
           socketProxyUnitPaths: [
             join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),
@@ -1131,6 +1132,7 @@ describe("uninstall shellenv profile strip", () => {
         uninstall({
           userDataRoot: roots.userDataRoot,
           userCacheRoot: roots.userCacheRoot,
+          userConfRoot: roots.userConfRoot,
           cgroupsDelegatePath: roots.cgroupsDelegatePath,
           socketProxyUnitPaths: [
             join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),
