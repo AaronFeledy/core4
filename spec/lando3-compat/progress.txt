@@ -689,3 +689,23 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
 - **Out-of-scope finding:** `lando setup` and `lando start` warned `Port 80 is in use; using 8000` and `Port 443 is in use by process "systemd-socket-" (lando-proxy-https); using 4443`. Routes still served on 8000/4443. Same class as earlier verifies.
 - **Out-of-scope finding:** URL scan requested the literal hostname `http://*.wild.us621c5.lndo.site:8000/` and reported `deadline exceeded` after the lowered scanner timeout. `http://foo.wild.us621c5.lndo.site:8000/hello` still returned 200. Suspected area: URL scanner treats wildcard route hostnames as literal URLs.
 ---
+
+## 2026-09-22 - US-621C8
+
+Every remaining Lando 3 variant now has one explicit disposition, and the translator no longer has a catch-all fallback.
+
+Service rows: the `xdebug` object lowers `mode` to `xdebug:`, and `start_with_request`/`client_port` to an `XDEBUG_CONFIG` environment value. Each `xdebug.config` key and each unknown subkey is dropped separately, so no residual object survives. Each PHP service gets one `needs-review` saying Lando 4 adds no hidden Composer environment or drush/wp-cli launchers. Memcached `mem` becomes a port-aware `memcached -m` command. Elasticsearch/OpenSearch `mem` becomes `ES_JAVA_OPTS`/`OPENSEARCH_JAVA_OPTS` heap flags. Their `plugins` are `unsupported` and block the service. `mem`/`plugins` on any other type are dropped. An authored variable or command always wins. The pending-story placeholder table is gone. API-4 `tty` and `stdin_open` had been dropping silently; they are now rejected like the Compose override fields.
+
+Top level: an explicit table covers all 88 Lando 3 global and runtime keys when they appear in a Landofile. Custom basenames stay `needs-review`. `appEnv`/`appLabels` are dropped with Lando 4 global-config guidance and are never imported. CLI history and runtime keys are dropped. `pluginConfig`/`pluginConfigFile` (private registry) are `unsupported`. The "has no Lando 4 target yet" fallback is removed; an unknown key gets the model's single "not a Lando 3 key" drop.
+
+References: a pure scan of every merged string emits one diagnostic per path. `lando pull|push|share` is `unsupported`. `info --deep/--filter`, scoped `-s`, `logs -t`, `version --all/--component`, `list`, and any other `lando <verb>` get command-transition `needs-review`, since `lando` stays Lando 3 after conversion. `LANDO_INFO`, `LANDO_MOUNT`, `settings.lando.php`, and `wp-config` references get environment guidance.
+
+A test-only disposition inventory walks every kitchen-sink Landofile path, every global-config key, and the CLI/env reference variants. It asserts exactly one longest-pattern owner per path, no unused entries, and a real golden per entry (283 goldens), with no residual legacy keys in the output.
+
+Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-drift against origin/main). lando3 plugin 1375 pass. Core translate plus service-lando php-xdebug/elasticsearch/opensearch: 150 pass. Service-lando tests prove authored `XDEBUG_CONFIG`/`*_JAVA_OPTS` survive planning. CLI round trips: a service-option app and a global/reference app each previewed, wrote, and linted `valid: true`. A `lando pull` tooling app returned an empty preview and `--write` was refused.
+
+- **Learnings for future iterations:**
+  - Catalog `ctx.addEnv` overwrites the draft environment, but `lando.env` (priority 700) reapplies authored environment after catalog features (600). An authored variable therefore wins without a catalog change.
+  - Dedupe keys on kind+sourceId+keyPath. A scanner that can find several things in one string must fold them into one diagnostic, or the later findings disappear.
+  - An inventory walker with longest-pattern ownership is what surfaced the silent API-4 `tty`/`stdin_open` loss. Omission with no diagnostic is invisible to per-lowerer goldens.
+---
