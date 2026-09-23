@@ -26,7 +26,9 @@ import type {
   GlobalAutoStartError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
+  Lando3LandofileDetected,
   LandoCommandError,
+  LandofileDialectMixError,
   LandofileEventInvocationDepthError,
   LandofileEventLifecycleReentryError,
   LandofileEventStepFailedError,
@@ -233,6 +235,8 @@ export interface StopAppResult {
 }
 
 export type StopAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | AppPlannerError
   | BuildError
   | ManagedFileTransactionError
@@ -436,6 +440,8 @@ export interface LogsAppOptions {
 }
 
 export type LogsAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | AppPlannerError
   | ProviderSelectionError
   | ProviderError

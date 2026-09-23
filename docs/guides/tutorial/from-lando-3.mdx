@@ -103,9 +103,26 @@ Uninstall is safe to run twice. The second run finds nothing left and removes no
   </Scenario>
 </Guide>
 
-## Start fresh on Lando 4
+## Convert an app when you are ready
 
-Lando 4 does not read a Lando 3 Landofile and there is no converter. Leave the old `.lando.yml` where it is for `lando`, and give Lando 4 its own app:
+Keep running the app with Lando 3's `lando` until you choose to move it. Lando 4 never reads a Lando 3 Landofile on the fly: run `lando4 start` in that directory and it stops with `Lando3LandofileDetected` and the exact command to run instead.
+
+Conversion is explicit, and preview comes first:
+
+```sh
+lando4 app:config:translate --from lando3
+lando4 app:config:translate --from lando3 --write
+lando4 app:config:lint
+lando4 start
+```
+
+The preview prints every Lando 4 layer the Lando 3 files would become, with a diagnostic for each key it generated, rewrote, dropped, or could not carry. Nothing is written until `--write`, and `--write` refuses while any `unsupported` diagnostic stands. The full walkthrough, layer by layer, is [Convert a Lando 3 app to Lando 4](../landofile/convert-from-lando-3.mdx).
+
+`--write` keeps an immutable backup beside every file it replaces or removes, named `<file>.bak.<sha256>` after the original bytes. Going back to Lando 3 is copying each backup over its original name (and deleting a `.lando.dist.yml` the conversion created). Lando 4 does not adopt Lando 3 containers or volumes. They stay owned by Lando 3, so `lando` picks the app up exactly where it left it.
+
+## Or start fresh on Lando 4
+
+Would rather not carry the old config? Leave the Lando 3 `.lando.yml` where it is for `lando` and give Lando 4 its own app in another directory:
 
 ```sh
 lando4 init --recipe lamp --yes
@@ -113,8 +130,6 @@ lando4 start
 ```
 
 Or write a [Landofile](../landofile/your-landofile.mdx) by hand. Supported recipes today: `lamp`, `lemp`, `wordpress`, `drupal`, and `drupal-cms`. Then use the [everyday CLI loop](../cli/everyday-commands.mdx) with `lando4` in front.
-
-Do not wait for a key-by-key converter. It is not up.
 
 ## Gotchas
 

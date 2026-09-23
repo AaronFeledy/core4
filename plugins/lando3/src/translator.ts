@@ -29,6 +29,7 @@ import type {
 import { createRedactor } from "@lando/sdk/secrets";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 
+import { completeLando3CommitSet } from "./commit-set.ts";
 import {
   LANDO3_TRANSLATOR_ID,
   type Lando3Source,
@@ -262,7 +263,7 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
             ),
           );
         }
-        const outputs = planned.outputs;
+        const { outputs, deletions } = completeLando3CommitSet(input, planned.outputs);
 
         const fallback = layers[0]?.sourceId;
         if (fallback === undefined) {
@@ -286,7 +287,7 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           (sourceId) => ranks.get(sourceId) ?? 0,
         );
 
-        return { outputs, diagnostics, deletions: [] };
+        return { outputs, diagnostics, deletions };
       }),
   };
 };

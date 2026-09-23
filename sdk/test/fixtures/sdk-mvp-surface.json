@@ -1,4 +1,5 @@
 {
+  "landofileDialectErrorTags": ["Lando3LandofileDetected", "LandofileDialectMixError"],
   "schemaNames": [
     "AppId",
     "AppPlan",

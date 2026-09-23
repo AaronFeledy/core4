@@ -15,6 +15,8 @@ import type {
   GlobalServiceCollisionError,
   GlobalServiceMissingError,
   HomePathCapabilityError,
+  Lando3LandofileDetected,
+  LandofileDialectMixError,
   LandofileParseError,
   LandofileUnknownEventError,
   LandofileValidationError,
@@ -40,6 +42,7 @@ import type {
   UserLandofileError,
 } from "@lando/sdk/services";
 
+import type { loadUserLandofile } from "../../src/landofile/app-resolution.ts";
 import type { EnsureGlobalServicesError } from "../../src/operations/ensure-global-services.ts";
 import type { globalInstall } from "../../src/operations/global-install.ts";
 import type { LoadGlobalPlanError } from "../../src/operations/global-plan.ts";
@@ -159,6 +162,17 @@ type LegacyShareListCommandError =
   | StateStoreError;
 
 describe("Engine plan-carrying error channels", () => {
+  test("preserves dialect failures in user loading without adding them to planning", () => {
+    // Given
+    type DialectError = Lando3LandofileDetected | LandofileDialectMixError;
+    // When / Then
+    expect(
+      assertType<Equal<Extract<ErrOf<ReturnType<typeof loadUserLandofile>>, DialectError>, DialectError>>(
+        true,
+      ),
+    ).toBe(true);
+    expect(assertType<Equal<Extract<AppPlannerError, DialectError>, never>>(true)).toBe(true);
+  });
   // When: extract each operation channel. Then: require exact member-set equality under tsc.
   test("LoadGlobalPlanError retains its pre-refactor members", () => {
     assertType<Equal<LoadGlobalPlanError, LegacyLoadGlobalPlanError>>(true);
