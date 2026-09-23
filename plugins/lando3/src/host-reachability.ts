@@ -19,11 +19,7 @@ const isHostAliasEntry = (entry: unknown): boolean => {
   return name !== undefined && isHostAliasName(name);
 };
 
-/**
- * Removes hand-wired host reachability from Compose `extra_hosts`. Lando 4
- * adds the alias itself whenever the provider can reach the host, so copying
- * the entry would duplicate it, and on a provider that cannot, fabricate it.
- */
+/** Removes hand-wired host reachability from Compose `extra_hosts`. */
 export const withoutHostAlias = (
   value: unknown,
   ctx: ServiceLoweringContext,
