@@ -776,6 +776,7 @@ export declare class RouterService extends Context.Tag("@lando/core/RouterServic
     readonly capabilities: ProxyCapabilities;
     readonly setup: (
       config: ProxyConfig,
+      options?: { readonly autoApprove?: boolean },
     ) => Effect.Effect<
       void,
       ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,

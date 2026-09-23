@@ -63,6 +63,7 @@ export interface RouterServiceShape {
   readonly capabilities: ProxyCapabilities;
   readonly setup: (
     config: ProxyConfig,
+    options?: { readonly autoApprove?: boolean },
   ) => Effect.Effect<
     void,
     ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
