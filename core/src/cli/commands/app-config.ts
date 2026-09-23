@@ -5,6 +5,8 @@ import { Effect, Either, Schema } from "effect";
 import type {
   AppIdReservedError,
   ComposeKeyRejectedError,
+  Lando3LandofileDetected,
+  LandofileDialectMixError,
   LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLoadExpressionError,
@@ -107,6 +109,8 @@ export const AppConfigResultSchema = Schema.Struct({
 });
 
 type AppConfigError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | ManagedFileTransactionError
   | AppIdReservedError
   | LandofileNotFoundError

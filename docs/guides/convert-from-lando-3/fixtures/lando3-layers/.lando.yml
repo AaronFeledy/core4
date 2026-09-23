@@ -1,0 +1,12 @@
+name: convert-demo
+services:
+  cache:
+    type: redis:7
+    portforward: true
+tooling:
+  drush:
+    service: appserver
+    cmd: drush
+  settings:
+    service: appserver
+    cmd: cat /app/web/sites/default/settings.lando.php

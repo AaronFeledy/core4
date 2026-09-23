@@ -24,6 +24,29 @@ export class LandofileParseError extends Schema.TaggedError<LandofileParseError>
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+/** Native loading stays v4-only; conversion is an explicit user operation. */
+export class Lando3LandofileDetected extends Schema.TaggedError<Lando3LandofileDetected>()(
+  "Lando3LandofileDetected",
+  {
+    appRoot: Schema.String,
+    sourceFile: Schema.String,
+    message: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+/** A rejected secondary dialect must never reach the native layer merge. */
+export class LandofileDialectMixError extends Schema.TaggedError<LandofileDialectMixError>()(
+  "LandofileDialectMixError",
+  {
+    appRoot: Schema.String,
+    canonicalFile: Schema.String,
+    conflictingLayer: Schema.String,
+    message: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 export class LandofileFormConflictError extends Schema.TaggedError<LandofileFormConflictError>()(
   "LandofileFormConflictError",
   {

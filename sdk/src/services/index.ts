@@ -355,6 +355,7 @@ export declare class ConfigService extends Context.Tag("@lando/core/ConfigServic
 export declare class LandofileService extends Context.Tag("@lando/core/LandofileService")<
   LandofileService,
   {
+    /** Includes Lando3LandofileDetected and LandofileDialectMixError from native load failures. */
     readonly discover: Effect.Effect<LandofileShape, LandofileServiceError>;
   }
 >() {}
