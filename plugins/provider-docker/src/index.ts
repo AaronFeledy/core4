@@ -1,5 +1,6 @@
 import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
+import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 
 import {
   type HostProxyContainerTarget,
@@ -889,6 +890,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     Effect.map(
       ({ capabilities: resolvedCapabilities, logFileHelperPayload }): RuntimeProviderShape => ({
         id: PROVIDER_ID,
+        inspectResourceNames: (query) => inspectEngineResourceNames(dockerApi, query, DOCKER_CTX),
         displayName: "Docker Runtime Provider",
         version: "0.0.0",
         platform,

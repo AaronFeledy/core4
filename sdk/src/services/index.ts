@@ -17,6 +17,7 @@ import type {
   DeprecationNotice,
   DeprecationSurfaceKind,
   DeprecationUse,
+  DoctorResourceNameQuery,
   GlobalConfig,
   HostPlatform,
   HttpClientCapabilities,
@@ -318,6 +319,9 @@ export interface RuntimeProviderShape {
   readonly restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>;
   readonly locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>;
+  readonly inspectResourceNames?: (
+    query: DoctorResourceNameQuery,
+  ) => Effect.Effect<ReadonlyArray<string>, ProviderError>;
   readonly observeVolume?: (
     target: ServiceSelector,
     destination: PortablePath,

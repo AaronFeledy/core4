@@ -842,3 +842,60 @@ Verification: supply-chain test went RED (snapshot literal absent; candidate not
 - **Learnings for future iterations:**
   - The sandbox is Ubuntu 26.04, so apt inside it cannot prove this noble CI pin. Compare Packages.gz from the snapshot against live archive (amd64) and ports (arm64) for noble, noble-updates, and noble-security.
 ---
+## 2026-09-23 00:40 CDT - US-621D
+
+Explicit Lando 3 conversion now commits the whole lowered set in one managed-file transaction, and the v4 loader explains how to convert an unconverted Lando 3 app.
+
+- Full conversion emits a deletion intent for `.lando.recipe.yml`, so the folded recipe layer is removed in the same transaction that writes `.lando.dist.yml`. Single-layer runs delete it only when it is selected. A Lando 3 layer whose lowered delta is empty is still rewritten. Before this change it kept its legacy bytes, which the v4 loader would then reject. The core write path refuses targets outside the declared writable layer paths and deletions that are not input documents. Every replaced or removed file, including the recipe layer, gets an immutable `<file>.bak.<full-before-sha256>` backup.
+- Failure injection runs through an internal `transactionCheckpoint` seam that has no CLI flag. It covers every commit and recovery checkpoint and mutation index. After recovery the tree holds either all the original bytes or the complete converted set, never a mix. It also covers concurrent edits (pre-prepare refuses and leaves no backups; post-prepare recovery blocks and keeps the edit), deleted originals, single-layer refusal before staging, strict v4 fragment round-trip plus lint valid, and byte-identical repeat.
+- Loader: `Lando3LandofileDetected` and `LandofileDialectMixError` are new SDK tagged errors in `LandofileServiceError`, and `StopAppError`/`LogsAppError` also include them. A bounded raw-key check (1 MiB / 10,000 lines of already-read bytes) runs only after native v4 parse or schema validation fails. It never parses legacy YAML, loads a plugin, or calls a translator. Ambiguous content keeps its original error. Transaction recovery still runs before parsing.
+- Guides: the new `docs/guides/landofile/convert-from-lando-3.mdx` has 9 scenarios: detect, preview/relocation, write with backups and recipe removal, unsupported blocks write, pantheon rejected, single-layer refusal and write, and both loader errors. The side-by-side section of `docs/guides/tutorial/from-lando-3.mdx` now describes conversion instead of "there is no converter". INDEX row added.
+
+Verification: gate:pr passed (against origin/main); 772 spot-check tests across loader, SDK error channels, translate commit/safety/scope, and the lando3 plugin passed. Both guides pass (9 + 2). lint:guides, guide-coverage, and public-transcripts passed. Real-provider start after conversion was not run in this step.
+
+- **Learnings for future iterations:**
+  - The managed-file coordinator writes backups before the stage checkpoints. To make a concurrent-edit test assert "no backups left", the edit has to happen before prepare. An edit after prepare is the recovery-blocks case.
+  - Only `drupal10`/`drupal11` map to the bundled `drupal` recipe; `drupal7`-`drupal9` are rejected as `no-v4-version`. Docs follow the code.
+  - `docs/guides/landofile/lando3-transition-options.mdx` still has two `<Guide>` blocks (pre-existing), so its `service-selection` scenario never runs.
+---
+
+## 2026-09-23 - US-621D Review
+- Reviewed commit c49e2bc57 against the US-621D acceptance criteria. No in-scope defect.
+- Review notes (deferred/rejected): a live provider start of the converted app is not a review defect. The criterion says real provider evidence where meaningful; conversion is proven by the write transaction, v4 fragment decode, app:config:lint, and the executable guide. lando start is short-circuited in guide scenarios and belongs to Verify if a container run is wanted. Bugbot reported no bugs.
+- Verification: lint:guides, guide-coverage, public transcripts, and guide-drift against origin/main passed; convert-from-lando-3 guide 9 pass; from-lando-3 guide 2 pass; 100 spot-check tests passed.
+---
+## 2026-09-23 00:10 - Drift Audit
+- [looper] gate skipped Drift Audit: gate: script exited with code 1
+---
+
+## 2026-09-23 00:17 CDT - US-621D Verify
+- Compiled `core/dist/lando` setup completed. A Lando 3 lamp (`recipe: lamp`, php 8.3, webroot `/app`) was refused by `info` as `Lando3LandofileDetected`, then `--from lando3 --write` committed a v4 lamp with an immutable `.bak.<sha256>` of the original. `app:config:lint` was valid. `start` served `us621d-ok 8.3.33` at `http://us621d.lndo.site:8000` and `exec` printed the same PHP version. Layered conversion removed `.lando.recipe.yml` in the same transaction, backed up every replaced file, and linted valid. A second conversion of the same original bytes matched. Unsupported `lando pull`, pantheon, single-layer-over-lando3, and a v4-plus-lando3-local mix all refused with the documented tags and left originals untouched; the local layer then converted alone. Ambiguous v4-shaped input detected as `lando4`. Adjacent `app:config`, v4 detect/lint/preview, and `info` on the running app were fine. Scenario app destroyed and global stopped.
+- **Out-of-scope finding:** `lando setup` and `lando start` warned port 80 is in use (using 8000) and port 443 is in use by `systemd-socket-` / lando-proxy-https (using 4443). Same warning as US-621C9. The app still served on port 8000.
+- **Out-of-scope finding:** `lando poweroff --yes` printed `Powered off: global` and `Stopped Lando runtime service`, but `global:status` still showed traefik, traefik-diagnostics, and ssh-agent running. `lando global:stop` then stopped them. Not caused by this conversion diff.
+- **Learnings for future iterations:** Byte-identical repeat is two conversions of the same original bytes. A second `--from lando3 --write` on the already converted tree fails closed (`recipe must be a plain string id`) and must not change bytes. A name-only `.lando.yml` beside `.lando.recipe.yml` is valid v4, so `info` does not emit `Lando3LandofileDetected`; the canonical file needs an unambiguous Lando 3 key for that error.
+---
+
+## 2026-09-23 01:25 CDT - Babysit
+- PR: #1055 https://github.com/AaronFeledy/core4/pull/1055
+- CI outcome: pass (after fix; first run failed unit-tests shard 3)
+- Review feedback: fixed (commit-set completion no longer manufactures an empty canonical write/deletions when translation was cleared or blocked)
+- Merge: merged (squash)
+---
+
+## 2026-09-23 01:55 CDT - US-622A
+
+`lando4 doctor` now reports Lando 3 leftovers and potential PATH shadowing without running an unknown binary or reading its contents.
+
+- SDK: `PluginDoctorCheckContribution.run` takes a named `PluginDoctorCheckInput`. It now optionally carries app identity (name and canonical root only), a bounded resource name/label inspector over the selected provider, and a filesystem/PATH-only executable locator. The result shapes are Effect Schemas in `@lando/sdk/schema`. `RuntimeProviderShape` gained an optional `inspectResourceNames`.
+- Providers: Docker and Podman answer the inspector with one bounded Engine API list request, filtered by name prefix and/or exact label. They post-filter strictly, drop anything carrying a `dev.lando.*` label, and cap the result. The shared implementation lives in `@lando/container-runtime/resource-names`. provider-lando has its own builder and does not implement it.
+- Core: doctor resolves app identity through `loadUserLandofile` inside an isolated, budgeted section. The inspector is lazy and cached, so the provider is only built when a check actually asks. It never fails; it reports `unsupported` or `unavailable` with a redacted tag and message. The locator only stats and realpaths: a bounded PATH scan with PATHEXT on Windows, and `lando4` / `lando4.exe` normalized to `lando4`.
+- Plugin: `@lando/lando3` contributes `lando3-leftovers` and `lando3-shadow` through a lazy literal import. Leftovers skips outside an app, skips the managed `lando` provider before any inspector call, and inspects `<project>_*` volumes and `io.lando.root=<root>` containers only on `docker` or `podman`. Shadow is always informational. There is no proxy-port check and no container-runtime import.
+- Guide: the coexistence tutorial has a doctor section plus a scenario, and there is a new INDEX row.
+
+Verification: gate:pr passed. lint:guides, guide-coverage, public-transcripts, and guide-drift (against origin/main) passed. 106 focused tests across the SDK compat, container-runtime, both provider descriptors, core doctor context/contributions/doctor, and lando3 passed. The from-lando-3 guide passed 3 scenarios. In the lando4-dev sandbox, a compiled `lando4` with a booby-trapped, execute-only `lando` on PATH reported potential-shadow and never ran it. In an app it reported leftovers `unverified` on docker with no daemon, `managed-provider` on lando, and `no-app-context` outside an app. A live leftovers hit against a real Docker/Podman daemon was not exercised, because the sandbox baseline forbids installing a runtime; unit tests cover hit reporting.
+
+- **Learnings for future iterations:**
+  - Plugin doctor checks run before provider selection, so any provider-backed port handed to them must be lazy. Otherwise the provider is built even for checks that skip.
+  - Never put `Cause.pretty` into a doctor report: it leaks bundled source paths and stack frames. Use `describeDoctorCause` from `doctor-self.ts` and report `<tag>: <message>`.
+  - `test.each` rejects a `ReadonlyArray` table under this repo's typings. Spread it (`test.each([...cases])`).
+---

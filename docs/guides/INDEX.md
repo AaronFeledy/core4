@@ -258,6 +258,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | IR-GAPS-01 | US-618D1 | service-scoped rebuild and info | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
 | IR-GAPS-01 | US-618D3 | bounded global environment and label defaults for user apps | `docs/guides/landofile/lando3-transition-options.mdx` | Shipped |
 | IR-GAPS-01 | US-621D | explicit layered Lando 3 conversion | `docs/guides/landofile/convert-from-lando-3.mdx` | Shipped |
+| IR-GAPS-01 | US-622A | read-only Lando 3 leftovers and PATH shadow doctor checks | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
 | IR-GAPS-01 | US-642 | router file-watcher diagnostics | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
 | — | — | route shorthand strings and route filters | `docs/guides/proxy/route-shorthand.mdx` | Shipped |
 | — | — | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |

@@ -15,7 +15,13 @@ import type {
   ProviderId,
   ServiceConfig,
 } from "../schema/index.ts";
-import type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
+import type {
+  DoctorAppIdentity,
+  DoctorExecutableLocation,
+  DoctorResourceInspection,
+  DoctorResourceNameQuery,
+  PluginDoctorReport,
+} from "../schema/plugin-doctor.ts";
 import type { ConfigTranslatorShape } from "../services/config-translator.ts";
 import type { LogFileHelperAssets } from "../services/host-assets.ts";
 import type {
@@ -81,17 +87,41 @@ export interface HostTeardownResult {
   readonly pid?: number;
 }
 
+/**
+ * Bounded name/label inspector over the selected provider. Core runs each
+ * query under a deadline and never lets it fail; the provider is contacted
+ * only when `inspect` is called.
+ */
+export interface DoctorResourceInspector {
+  readonly inspect: (query: DoctorResourceNameQuery) => Effect.Effect<DoctorResourceInspection, never>;
+}
+
+/**
+ * Filesystem/PATH-only executable locator. It never executes a candidate and
+ * never reads candidate contents or user/Lando state.
+ */
+export interface DoctorExecutableLocator {
+  readonly locate: (name: string) => Effect.Effect<DoctorExecutableLocation, never>;
+}
+
+export interface PluginDoctorCheckInput {
+  /** Selected provider id; the check decides whether it may contact the daemon. */
+  readonly providerId: string;
+  readonly platform: HostPlatform;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly userDataRoot: string | undefined;
+  readonly binDir: string | undefined;
+  readonly stateDir: string | undefined;
+  /** Present only when doctor runs inside a loadable app. */
+  readonly app?: DoctorAppIdentity | undefined;
+  readonly resources?: DoctorResourceInspector | undefined;
+  readonly executables?: DoctorExecutableLocator | undefined;
+}
+
 export interface PluginDoctorCheckContribution {
   readonly id: string;
   readonly relevant?: (capabilities: ProviderCapabilities) => boolean;
-  readonly run: (input: {
-    readonly providerId: string;
-    readonly platform: HostPlatform;
-    readonly env: Readonly<Record<string, string | undefined>>;
-    readonly userDataRoot: string | undefined;
-    readonly binDir: string | undefined;
-    readonly stateDir: string | undefined;
-  }) => Effect.Effect<ReadonlyArray<PluginDoctorReport>, never>;
+  readonly run: (input: PluginDoctorCheckInput) => Effect.Effect<ReadonlyArray<PluginDoctorReport>, never>;
 }
 
 export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";

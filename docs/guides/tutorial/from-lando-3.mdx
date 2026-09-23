@@ -79,6 +79,19 @@ Add `--purge` to also remove Lando 4's data, cache, and config roots, and to str
 
 Uninstall is safe to run twice. The second run finds nothing left and removes nothing.
 
+## Check for Lando 3 leftovers
+
+```sh
+lando4 doctor
+```
+
+Doctor adds two read-only Lando 3 checks. Neither changes anything.
+
+- `lando3-leftovers` runs when you are inside an app on the `docker` or `podman` provider. It looks for volumes named after the app's Lando 3 project (`<project>_...`) and containers labeled with the app's root. A hit is a warning that names what it found. Back up or confirm any data you need, then remove those resources with Lando 3's `lando destroy`. Outside an app, and on the default `lando` provider where Lando 3 never ran, the check says it skipped.
+- `lando3-shadow` looks on `PATH` for a `lando` executable other than the running `lando4`. It never runs or opens that file, so it cannot tell you what version it is. A different `lando` is reported as information, not a problem: it is probably Lando 3, and keeping both is the point.
+
+Add `--format=json` when a script or an agent reads the result. Each check reports a `runtimeStatus` such as `skipped`, `none-found`, `lando3-resources-found`, or `potential-shadow`.
+
 <Guide>
   <Scenario id="shellenv-prints-lando4-path" render>
     <Step name="shellenv">
@@ -99,6 +112,13 @@ Uninstall is safe to run twice. The second run finds nothing left and removes no
       <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "mode.:.keep-data" } }} />
       <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "installed-binary" } }} />
       <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "install-record" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="doctor-reports-lando3-checks" render>
+    <Step name="doctor">
+      <Run command="lando4 doctor --format=json" />
+      <Verify command="lando4 doctor --format=json" expect={{ stdout: { regex: "lando3-leftovers" } }} />
+      <Verify command="lando4 doctor --format=json" expect={{ stdout: { regex: "lando3-shadow" } }} />
     </Step>
   </Scenario>
 </Guide>
