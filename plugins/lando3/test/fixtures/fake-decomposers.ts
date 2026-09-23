@@ -25,7 +25,7 @@ export const documentSet = (documents: ReadonlyArray<ReturnType<typeof document>
     writableLayerIds: ["base", "dist", "upstream", "canonical", "local", "user"],
   });
 
-export const fakeDecomposers = (nested = false) => {
+export const fakeDecomposers = (nested = false, withEndpoint = false) => {
   const calls: RecipeDecomposeInput[] = [];
   const receivedPorts: RecipeDecomposerPorts[] = [];
   const results: RecipeDecomposeResult[] = [];
@@ -64,7 +64,12 @@ export const fakeDecomposers = (nested = false) => {
                     }
                   : {
                       services: {
-                        appserver: { image: "php:8.3" },
+                        appserver: {
+                          image: "php:8.3",
+                          ...(withEndpoint
+                            ? { endpoints: [{ _tag: "internal", protocol: "http", port: 80 }] }
+                            : {}),
+                        },
                         ...(input.options.redis === true ? { redis: { image: "redis:7" } } : {}),
                       },
                     };

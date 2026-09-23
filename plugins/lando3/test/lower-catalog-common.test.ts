@@ -397,8 +397,6 @@ describe("lowerCatalogCommon", () => {
   });
 
   test.each([
-    ["scanner", "US-617B"],
-    ["home", "US-617A"],
     ["mem", "US-621C8"],
     ["plugins", "US-621C8"],
   ])("drops %s naming its pending story without blocking the service", (key, story) => {

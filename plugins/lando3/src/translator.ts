@@ -44,6 +44,7 @@ import { detectLando3, isAppRootLando3Layer, sourceLayerForDocument } from "./de
 import { dedupeDiagnostics, orderDiagnostics } from "./diagnostics.ts";
 import { foldToTargetLayers, legacyPrefixViews } from "./effective-views.ts";
 import { mergeLegacySources, mergedToPlain, occurrencesAt, toMergedValue } from "./legacy-merge.ts";
+import type { V4Wire } from "./lowering-contract.ts";
 import { decodeLando3Landofile } from "./model.ts";
 import { slugifyAppName } from "./naming.ts";
 import {
@@ -80,6 +81,7 @@ const LOWERED_KEYS = new Set<string>([
   "keys",
   "tooling",
   "events",
+  "proxy",
 ]);
 
 export const defaultLando3Ports = (): Lando3TranslatorPorts => ({
@@ -364,17 +366,31 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           ...lowered.prefixes.map(({ fragment }) => fragment),
           ...established.map(({ fragment }) => fragment),
         ];
+        const recipeServiceWires = new Map<string, V4Wire>();
+        const serviceHolders = [
+          ...[...established].sort((left, right) => v4LayerRank(left.layer) - v4LayerRank(right.layer)),
+          ...lowered.prefixes,
+        ];
+        for (const { fragment } of serviceHolders) {
+          if (!isPlainRecord(fragment.services)) continue;
+          for (const [name, service] of Object.entries(fragment.services)) {
+            if (!isPlainRecord(service)) continue;
+            const current = recipeServiceWires.get(name);
+            if (
+              current === undefined ||
+              !Array.isArray(current.endpoints) ||
+              Array.isArray(service.endpoints)
+            ) {
+              recipeServiceWires.set(name, service);
+            }
+          }
+        }
         const authored = lowerServiceViews(folded, {
           tools: new Set(
             recipeFragments.flatMap(({ tooling }) => (isPlainRecord(tooling) ? Object.keys(tooling) : [])),
           ),
-          recipeServices: [
-            ...new Set(
-              lowered.prefixes.flatMap(({ fragment }) =>
-                isPlainRecord(fragment.services) ? Object.keys(fragment.services) : [],
-              ),
-            ),
-          ],
+          recipeServices: [...recipeServiceWires.keys()],
+          recipeServiceWires,
         });
         const decoded = decodeLando3Landofile(mergedToPlain(merged));
 

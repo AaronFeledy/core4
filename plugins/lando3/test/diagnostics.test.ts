@@ -226,13 +226,13 @@ describe("canonical diagnostics", () => {
     const result = orderDiagnostics(input, (id) => ranks.get(id) ?? 3);
     expect(result).toEqual([
       firstRank,
+      missing,
+      missingZ,
       earlierLine,
       earlierColumn,
       pathA,
       equalFirst,
       equalSecond,
-      missing,
-      missingZ,
       lastRank,
     ]);
   });

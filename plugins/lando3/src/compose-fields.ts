@@ -1,6 +1,7 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-dispositions.ts";
 import type { Lando3Path } from "./contract.ts";
+import { withoutHostAlias, withoutHostIpVariable } from "./host-reachability.ts";
 import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";
 import {
   droppedServiceKey,
@@ -74,8 +75,10 @@ export const lowerComposeFields = (
     drop(options.basePath);
     return { patch: {}, diagnostics };
   }
-  for (const [key, input] of Object.entries(value)) {
+  for (const [key, authored] of Object.entries(value)) {
     const relative = [...options.basePath, key];
+    const input = key === "extra_hosts" ? withoutHostAlias(authored, ctx, relative, diagnostics) : authored;
+    if (input === undefined) continue;
     const disposition = dispositionOf(key);
     switch (disposition) {
       case "rejected":
@@ -106,7 +109,9 @@ export const lowerComposeFields = (
     }
 
     let output = input;
-    if (key === "environment" || key === "labels") {
+    if (key === "environment") {
+      output = withoutHostIpVariable(stringMap(input, relative), ctx, relative, diagnostics);
+    } else if (key === "labels") {
       output = stringMap(input, relative);
     } else if (key === "build") {
       if (typeof input === "string") {
