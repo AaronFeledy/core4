@@ -9,10 +9,9 @@
  * ordering, validation, and mutation. Nothing in this module opens a file,
  * follows a reference, resolves a tag, plans, or contacts a provider.
  *
- * Service keys whose Lando 4 target is not yet implemented are `dropped`
- * without blocking conversion; their remediation names the pending target.
- * Global-only keys have explicit dispositions; unknown keys belong to the model.
- * Nothing is silently omitted.
+ * Every key is diagnosed; nothing is silently omitted. Global-only keys have
+ * explicit dispositions, and unknown keys are dropped by the model. Diagnostic
+ * kind determines whether conversion is blocked.
  */
 import { Effect } from "effect";
 
