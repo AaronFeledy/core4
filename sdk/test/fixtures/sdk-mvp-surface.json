@@ -1,4 +1,5 @@
 {
+  "landofileDialectErrorTags": ["Lando3LandofileDetected", "LandofileDialectMixError"],
   "schemaNames": [
     "AppId",
     "AppPlan",
@@ -93,6 +94,7 @@
       "list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>",
       "listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>",
       "locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>",
+      "inspectResourceNames?: (query: DoctorResourceNameQuery) => Effect.Effect<ReadonlyArray<string>, ProviderError>",
       "observeVolume?: (target: ServiceSelector, destination: PortablePath) => Effect.Effect<VolumeInfo, ProviderError>",
       "adoptVolume?: (target: ServiceSelector, destination: PortablePath) => Effect.Effect<VolumeInfo, ProviderError>",
       "logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>",

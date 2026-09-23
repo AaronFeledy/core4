@@ -1,6 +1,7 @@
 import type { HostPlatform } from "@lando/sdk/schema";
 
 export interface DoctorOptions {
+  readonly execPath?: string;
   readonly flagProviderId?: string | undefined;
   readonly landofileProviderId?: string | undefined;
   /** Environment lookup used for `LANDO_PROVIDER`. Defaults to `process.env`. */

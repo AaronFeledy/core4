@@ -79,6 +79,19 @@ Add `--purge` to also remove Lando 4's data, cache, and config roots, and to str
 
 Uninstall is safe to run twice. The second run finds nothing left and removes nothing.
 
+## Check for Lando 3 leftovers
+
+```sh
+lando4 doctor
+```
+
+Doctor adds two read-only Lando 3 checks. Neither changes anything.
+
+- `lando3-leftovers` runs when you are inside an app on the `docker` or `podman` provider. It looks for volumes named after the app's Lando 3 project (`<project>_...`) and containers labeled with the app's root. A hit is a warning that names what it found. Back up or confirm any data you need, then remove those resources with Lando 3's `lando destroy`. Outside an app, and on the default `lando` provider where Lando 3 never ran, the check says it skipped. Lando 3's old proxy is not this check. If that proxy still holds port 80 or 443, the existing preferred-port check names it.
+- `lando3-shadow` looks on `PATH` for a `lando` executable other than the running `lando4`. It never runs or opens that file, and it does not say what that file is. A different resolved path is information, not a problem: keep using `lando4` and `lando` side by side. If the running path cannot be resolved, the check stays unverified instead of calling the other file a shadow.
+
+Add `--format=json` when a script or an agent reads the result. Each check reports a `runtimeStatus` such as `skipped`, `none-found`, `lando3-resources-found`, or `potential-shadow`.
+
 <Guide>
   <Scenario id="shellenv-prints-lando4-path" render>
     <Step name="shellenv">
@@ -101,11 +114,35 @@ Uninstall is safe to run twice. The second run finds nothing left and removes no
       <Verify command="lando4 uninstall --dry-run --format=json" expect={{ stdout: { regex: "install-record" } }} />
     </Step>
   </Scenario>
+  <Scenario id="doctor-reports-lando3-checks" render>
+    <Step name="doctor">
+      <Run command="lando4 doctor --format=json" />
+      <Verify command="lando4 doctor --format=json" expect={{ stdout: { regex: "lando3-leftovers" } }} />
+      <Verify command="lando4 doctor --format=json" expect={{ stdout: { regex: "lando3-shadow" } }} />
+    </Step>
+  </Scenario>
 </Guide>
 
-## Start fresh on Lando 4
+## Convert an app when you are ready
 
-Lando 4 does not read a Lando 3 Landofile and there is no converter. Leave the old `.lando.yml` where it is for `lando`, and give Lando 4 its own app:
+Keep running the app with Lando 3's `lando` until you choose to move it. Lando 4 never reads a Lando 3 Landofile on the fly: run `lando4 start` in that directory and it stops with `Lando3LandofileDetected` and the exact command to run instead.
+
+Conversion is explicit, and preview comes first:
+
+```sh
+lando4 app:config:translate --from lando3
+lando4 app:config:translate --from lando3 --write
+lando4 app:config:lint
+lando4 start
+```
+
+The preview prints every Lando 4 layer the Lando 3 files would become, with a diagnostic for each key it generated, rewrote, dropped, or could not carry. Nothing is written until `--write`, and `--write` refuses while any `unsupported` diagnostic stands. The full walkthrough, layer by layer, is [Convert a Lando 3 app to Lando 4](../landofile/convert-from-lando-3.mdx).
+
+`--write` keeps an immutable backup beside every file it replaces or removes, named `<file>.bak.<sha256>` after the original bytes. Going back to Lando 3 is copying each backup over its original name (and deleting a `.lando.dist.yml` the conversion created). Lando 4 does not adopt Lando 3 containers or volumes. They stay owned by Lando 3, so `lando` picks the app up exactly where it left it.
+
+## Or start fresh on Lando 4
+
+Would rather not carry the old config? Leave the Lando 3 `.lando.yml` where it is for `lando` and give Lando 4 its own app in another directory:
 
 ```sh
 lando4 init --recipe lamp --yes
@@ -113,8 +150,6 @@ lando4 start
 ```
 
 Or write a [Landofile](../landofile/your-landofile.mdx) by hand. Supported recipes today: `lamp`, `lemp`, `wordpress`, `drupal`, and `drupal-cms`. Then use the [everyday CLI loop](../cli/everyday-commands.mdx) with `lando4` in front.
-
-Do not wait for a key-by-key converter. It is not up.
 
 ## Gotchas
 

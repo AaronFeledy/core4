@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 
 import * as caMkcert from "@lando/ca-mkcert";
 import * as fileSyncMutagen from "@lando/file-sync-mutagen";
+import * as lando3 from "@lando/lando3";
 import * as lando4 from "@lando/lando4";
 import * as notifyLando from "@lando/notify-lando";
 import * as providerDocker from "@lando/provider-docker";
@@ -20,11 +21,13 @@ import * as sshAgent from "@lando/ssh-agent";
 import * as templateHandlebars from "@lando/template-handlebars";
 import * as templateMustache from "@lando/template-mustache";
 
+import { ConfigTranslateInput } from "@lando/sdk/schema";
 import { ConfigService, Logger } from "@lando/sdk/services";
 
 import { PluginRegistry, PluginRegistryLive } from "@lando/engine/plugins/registry";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";
+import { loadLando3TranslatorPorts } from "../../src/recipes/lando3-ports.ts";
 
 const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   providerLando.plugin,
@@ -41,6 +44,7 @@ const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   templateMustache.plugin,
   sqlPlugin.plugin,
   lando4.plugin,
+  lando3.plugin,
 ];
 
 const generatedDir = resolve(import.meta.dirname, "../../src/plugins/generated");
@@ -49,12 +53,54 @@ const notifyIndexPath = resolve(import.meta.dirname, "../../../plugins/notify-la
 const rendererIndexPath = resolve(import.meta.dirname, "../../../plugins/renderer-lando/src/index.ts");
 
 describe("bundled plugin descriptor tables", () => {
-  test("exports every bundled plugin descriptor in ship-list order", () => {
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(14);
+  test("exports every bundled plugin descriptor in ship-list order", async () => {
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(15);
     expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );
-    expect(BUNDLED_PLUGIN_MODULES).toEqual(EXPECTED_BUNDLED_PLUGIN_MODULES);
+    for (const [index, expected] of EXPECTED_BUNDLED_PLUGIN_MODULES.entries()) {
+      const actual = BUNDLED_PLUGIN_MODULES[index];
+      if (expected === lando3.plugin) {
+        // Only loader closure identity differs from the package factory's output.
+        const composed = lando3.makeLando3Plugin(loadLando3TranslatorPorts);
+        expect({ ...actual, configTranslators: undefined }).toEqual({
+          ...composed,
+          configTranslators: undefined,
+        });
+        expect(actual?.name).toBe(lando3.PLUGIN_NAME);
+        expect(actual?.manifest).toBe(lando3.manifest);
+        expect([...(actual?.configTranslators?.keys() ?? [])]).toEqual(["lando3"]);
+        expect(actual?.configTranslators?.get("lando3")).toBeFunction();
+        const translator = await actual?.configTranslators?.get("lando3")?.();
+        const packageTranslator = await composed.configTranslators?.get("lando3")?.();
+        if (translator === undefined || packageTranslator === undefined)
+          throw new Error("lando3 translator did not load");
+        expect(translator.id).toBe("lando3");
+        const text = "name: bundled-proof\n";
+        const input = Schema.decodeUnknownSync(ConfigTranslateInput)({
+          _tag: "landofile-document-set",
+          documents: [
+            {
+              sourceId: ".lando.yml",
+              layerId: "canonical",
+              path: ".lando.yml",
+              mediaType: "application/yaml",
+              contentDigest: `sha256:${new Bun.CryptoHasher("sha256").update(text).digest("hex")}`,
+              bytes: Buffer.from(text).toString("base64"),
+            },
+          ],
+          mode: "full",
+          selectedSourceIds: [".lando.yml"],
+          currentLowerV4Fragments: [],
+          writableLayerIds: ["canonical"],
+        });
+        const result = await Effect.runPromise(translator.translate(input));
+        expect(result).toEqual(await Effect.runPromise(packageTranslator.translate(input)));
+        expect(result.outputs.map(({ fragment }) => fragment)).toEqual([{ name: "bundled-proof" }]);
+      } else {
+        expect(actual).toBe(expected);
+      }
+    }
     expect(BUNDLED_RENDERER_MODULES).toEqual([rendererLando.plugin]);
 
     const mkcertEntry = BUNDLED_PLUGIN_MODULES.find((plugin) => plugin.name === "@lando/ca-mkcert");

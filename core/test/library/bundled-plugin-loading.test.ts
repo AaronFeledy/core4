@@ -24,6 +24,7 @@ const fullBundledPluginNames = [
   "@lando/template-mustache",
   "@lando/sql",
   "@lando/lando4",
+  "@lando/lando3",
 ] as const;
 const bundledPluginRuntimeDependencies = ["@opentui/core", "handlebars", "mustache"] as const;
 

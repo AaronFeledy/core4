@@ -31,7 +31,9 @@ import type {
   HomePathCapabilityError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
+  Lando3LandofileDetected,
   LandoCommandError,
+  LandofileDialectMixError,
   LandofileEventInvocationDepthError,
   LandofileEventLifecycleReentryError,
   LandofileEventStepFailedError,
@@ -122,6 +124,8 @@ type LegacyBuildAppChannel =
   | ProviderUnavailableError;
 
 type LegacyDiscoverChannel =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
@@ -141,6 +145,8 @@ type LegacyDiscoverChannel =
 
 // The app contract's local LandofileNotFoundError alias includes LandofileFormConflictError.
 type LegacyStartAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | ManagedFileTransactionError
   | AppIdReservedError
   | BuildPhaseFailedError
@@ -193,6 +199,8 @@ type LegacyStartAppError =
   | VolumeOperationError;
 
 type LegacyStopAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | ManagedFileTransactionError
   | AppIdReservedError
   | AppResolveError
@@ -233,6 +241,8 @@ type LegacyStopAppError =
   | VolumeOperationError;
 
 type LegacyInfoAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
@@ -265,6 +275,8 @@ type LegacyInfoAppError =
   | ProviderUnavailableError;
 
 type LegacyExecAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | ManagedFileTransactionError
   | AppIdReservedError
   | ComposeKeyRejectedError
@@ -296,6 +308,8 @@ type LegacyExecAppError =
   | ToolingExecError;
 
 type LegacyToolingError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | ManagedFileTransactionError
   | AppIdReservedError
   | LandofileEventLifecycleReentryError
@@ -337,6 +351,8 @@ type LegacyToolingError =
   | ToolingExecError;
 
 type LegacyLogsAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | ManagedFileTransactionError
   | AppIdReservedError
   | LandofileNotFoundError

@@ -1,3 +1,5 @@
+import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
+
 /**
  * `@lando/provider-podman` — opt-in RuntimeProvider for a user-installed
  * Podman socket.
@@ -731,6 +733,7 @@ export const makeRuntimeProvider = (
         logFileHelperPayload,
       }): RuntimeProviderWithContainerEvents => ({
         id: PROVIDER_ID,
+        inspectResourceNames: (query) => inspectEngineResourceNames(podmanApi, query, PODMAN_CTX),
         displayName: "Podman Runtime Provider (user-installed)",
         version: "0.0.0",
         platform,

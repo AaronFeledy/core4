@@ -17,6 +17,12 @@ export interface BundledPluginEntry {
   readonly name: string;
   /** Workspace path relative to the repo root. */
   readonly path: string;
+  readonly compose?: {
+    /** Named factory export on the plugin package used instead of its `plugin` export. */
+    readonly factoryExport: string;
+    /** Module + export supplying the factory's single argument. */
+    readonly ports: { readonly module: string; readonly export: string };
+  };
   /** Contribution summary embedded in the bundled manifest. */
   readonly contributes?: {
     readonly providers?: ReadonlyArray<string>;
@@ -110,6 +116,14 @@ export const buildConfig: BuildConfig = {
     },
     { name: "@lando/sql", path: "plugins/sql" },
     { name: "@lando/lando4", path: "plugins/lando4" },
+    {
+      name: "@lando/lando3",
+      path: "plugins/lando3",
+      compose: {
+        factoryExport: "makeLando3Plugin",
+        ports: { module: "../../recipes/lando3-ports.ts", export: "loadLando3TranslatorPorts" },
+      },
+    },
   ],
   bundledRecipes: [
     { id: "node-postgres" },

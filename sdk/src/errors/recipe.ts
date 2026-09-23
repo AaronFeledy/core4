@@ -168,6 +168,23 @@ export class RecipeDecomposeError extends Schema.TaggedError<RecipeDecomposeErro
 }) {}
 
 /**
+ * A Lando 3 `recipe:` id with no bundled Lando 4 counterpart: a hoster recipe,
+ * unknown id, or major with no shipped version. Carried in ConfigTranslateError.cause
+ * because ConfigTranslatorShape.translate pins its error channel.
+ */
+export class Lando3UnsupportedRecipeError extends Schema.TaggedError<Lando3UnsupportedRecipeError>()(
+  "Lando3UnsupportedRecipeError",
+  {
+    message: Schema.String,
+    remediation: Schema.String,
+    recipeId: Schema.String,
+    sourceLayer: Schema.String,
+    reason: Schema.Literal("hoster", "unknown", "non-string", "no-v4-version", "invalid-option"),
+    keyPath: Schema.Array(Schema.String),
+  },
+) {}
+
+/**
  * Reports invalid recipe provenance when its identity, version, or service map
  * does not match the recipe, or the provenance record is malformed.
  */

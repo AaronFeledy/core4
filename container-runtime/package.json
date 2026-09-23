@@ -33,6 +33,7 @@
     "./dependency-schedule": "./src/dependency-schedule.ts",
     "./service-start-schedule": "./src/service-start-schedule.ts",
     "./engine-api": "./src/engine-api.ts",
+    "./resource-names": "./src/resource-names.ts",
     "./redact": "./src/redact.ts",
     "./engine-errors": "./src/engine-errors.ts",
     "./dialect": "./src/dialect.ts",

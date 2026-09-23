@@ -33,6 +33,7 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/template-mustache",
   "@lando/sql",
   "@lando/lando4",
+  "@lando/lando3",
 ];
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

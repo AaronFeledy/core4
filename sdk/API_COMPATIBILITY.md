@@ -4,6 +4,9 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/errors` adds `Lando3LandofileDetected` (`appRoot`, `sourceFile`, `message`, `remediation`) and `LandofileDialectMixError` (`appRoot`, `canonicalFile`, `conflictingLayer`, `message`, `remediation`). Both belong to `LandofileServiceError`, inherited user-load channels, and the explicit `StopAppError` and `LogsAppError` load subsets. The service mirror retains the named alias; `sdk-mvp-surface.json` pins the dialect tags separately. These errors register no JSON Schema. Planner-only channels remain unchanged. Config lint still returns load failures as violations; config view/get/validate and includes update propagate native-load errors, while raw edit/parse paths do not acquire dialect detection.
+- Native Landofile loading remains v4-only. After a layer fails native parsing or schema validation, a dependency-free raw-key scan examines at most the first 1 MiB and 10,000 lines already read from that file. It never invokes a legacy parser, translator, plugin, planner, provider, or user-home lookup. Canonical failures may also stat `.lando.recipe.yml` without reading it. Recovery of managed-file transactions runs before loading. A valid canonical layer plus a rejected legacy secondary layer fails before merge. Successful or ambiguous v4-shaped content never selects a legacy dialect; use `lando4 app:config:translate --from lando3` explicitly. Canonical remediation is `lando4 app:config:translate --from lando3 --write`; secondary remediation is `lando4 app:config:translate --from lando3 --file <layer> --write`, with the app-root-relative layer path.
+
 - `@lando/sdk/services` additively exports the type-only aliases `LandofileServiceError`, `UserLandofileError`, `ProviderSelectionError`, `AppPlannerError`, `BuildError`, `BuildAppError`, and `@lando/sdk/app` exports `AppPlanResolutionError`; `LandofileService.discover`, `RuntimeProviderRegistry.capabilities`/`select`, `AppPlanner.plan`, and `BuildOrchestrator.build`/`buildApp` are respelled with them with identical member sets (guarded by `sdk/test/types/plan-error-channels.test.ts`); `AppConfigApi.lint` remains fully explicit, while `StopAppError` and `LogsAppError` inherit planner/provider aliases but keep their narrower landofile-load subsets explicit.
 
 - `App.config.lint()` also resolves service-contributed tooling and authored event names. Its error channel includes `LandofileValidationError`, `CommandAliasConflictError`, and `NotImplementedError` for resolution failures; those failures are not schema violations or unknown-event diagnostics.
@@ -45,6 +48,8 @@
 
 - `@lando/sdk/schema` additively exports `VolumeIdentity`; `VolumeInfo.identity` is optional. Its `coordinationKey` identifies a daemon namespace and native volume name, not an app slug, root, or generation. `generation` changes on recreation. `ownerRoot` binds the generation to a canonical app root. `origin: adopted` must never establish creation history or freshness.
 - Bundled Docker and Podman volume creation requests attach `dev.lando.volume-owner` from `AppPlan.identity.appRoot` alongside the existing random creation label. Plans without canonical identity do not receive an inferred owner label. An idempotent create response does not itself establish freshness; subsequent observation reads the stored labels, not the submitted token.
+- `PluginDoctorCheckContribution.run` now takes the named `PluginDoctorCheckInput`, which additively carries optional `app` (`DoctorAppIdentity`: name and canonical root only), `resources` (`DoctorResourceInspector`), and `executables` (`DoctorExecutableLocator`). The inspector answers bounded name-prefix/label queries against the selected provider, never returns Lando 4-owned resources, and resolves to `unsupported` or `unavailable` instead of failing. The locator performs filesystem/PATH resolution only: it never executes a candidate or reads its contents, and it reports `lando4`/case-insensitive Windows `lando4.exe` as the normalized running basename `lando4`.
+- `RuntimeProviderShape.inspectResourceNames(query)` is additive and optional. Bundled Docker and Podman providers answer it with one bounded list request filtered by name prefix and/or exact label, drop any resource carrying a `dev.lando.` label, and return at most `query.limit` names. A provider without it makes the doctor inspector report `unsupported`.
 - `RuntimeProviderShape.observeVolume(target, destination)` is optional. Bundled providers resolve the existing container identity, inspect its actual mount at the requested destination, then inspect that native volume. Missing containers, missing or ambiguous destinations, bind mounts, malformed responses, and disappeared volumes fail closed. Identity comes from creation/owner labels or a validated in-volume witness. Legacy observations retain legacy provenance without an invented creation ID. A missing method or identity does not authorize recovery. Observation is not a lock or mutation precondition; callers must recheck generation at mutation time.
 - `RuntimeProviderShape.adoptVolume(target, destination)` is additive and optional. It requires the plan's canonical `identity.appRoot`, rejects conflicting owner labels, and supports only the local driver without driver options. An existing creation identity is preserved. Otherwise a scoped root-owned Bun helper inherits mounts from the inspected container ID, never a name-based mount that could auto-create a replacement volume. It publishes `.lando-volume-witness.json` by fsync plus atomic no-clobber hard link, then re-reads the token. Same-owner contenders converge; different owners fail. The witness is a version-1 JSON record with a random generation and owner root, a regular owner-only `0600` file, accessed through no-follow directory/file descriptors. Unsafe records are rejected, not repaired or overwritten. Adoption yields `origin: adopted`, not creation history or freshness.
 - Bundled providers use their stable configured endpoint namespace for `coordinationKey`, including Podman endpoints without `/info.ID`; direct adapters without an endpoint may use the observed daemon ID. Neither namespace includes an app slug or owner root. Endpoint configuration must consistently identify the same provider connection; changing that configuration requires re-observation. Deleting and recreating a volume without its witness produces a new generation. Provider snapshots exclude witness records and temporary witness stages; physical restore preserves the target's record and never imports the source's record. Downstream StateStore locking, generation-guarded mutation, lifecycle coordination, and SQL policy remain separate work.
@@ -349,6 +354,11 @@ It registers no JSON Schema.
 - `ConfigTranslateSpan`
 - `ConfigTranslatorContribution`
 - `PluginDoctorReport`
+- `DoctorAppIdentity`
+- `DoctorResourceNameQuery`
+- `DoctorResourceInspection`
+- `DoctorExecutableLocation`
+- `DOCTOR_RESOURCE_QUERY_MAX_LIMIT`
 - `FileRef`
 - `ImportRef`
 - `LandofileLayer`
@@ -884,6 +894,7 @@ It registers no JSON Schema.
 
 ## Additive Alpha errors
 
+- `Lando3UnsupportedRecipeError`
 - `RouteInputError`
 
 - `PluginDescriptorMismatchError`

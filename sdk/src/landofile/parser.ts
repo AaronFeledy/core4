@@ -68,34 +68,66 @@ const DEFAULT_MAX_DEPTH = 64;
 
 const ANCHOR_PREFIX_PATTERN = new RegExp(`^&${YAML_REFERENCE_NAME_PATTERN.source}\\s+`);
 
-const MAPPING_ENTRY_PATTERN = /^(<<|[A-Za-z0-9_.@/-]+(?::[A-Za-z0-9_.@/-]+)*):((?:\s+.*)?)$/;
-const MAPPING_ENTRY_FALLBACK_PATTERN = /^(<<|[A-Za-z0-9_.@/-]+):(.*)$/;
+// A double-quoted key carries the JSON escape subset the emitter writes, so any
+// string key round-trips even when YAML cannot hold it plain.
+const QUOTED_KEY = String.raw`"(?:[^"\\\u0000-\u001F]|\\(?:["\\/bfnrt]|u[0-9A-Fa-f]{4}))*"`;
+const MAPPING_ENTRY_PATTERN = new RegExp(
+  `^(${QUOTED_KEY}|<<|[A-Za-z0-9_.@/-]+(?::[A-Za-z0-9_.@/-]+)*):((?:\\s+.*)?)$`,
+);
+const MAPPING_ENTRY_FALLBACK_PATTERN = new RegExp(`^(${QUOTED_KEY}|<<|[A-Za-z0-9_.@/-]+):(.*)$`);
+
+/**
+ * A mapping entry keeps its raw source token beside the decoded key. Source
+ * columns, comment reconstruction, and merge-key detection are lexical
+ * questions a decoded key can no longer answer once quotes and escapes are gone.
+ */
+interface MappingEntry {
+  readonly key: string;
+  readonly rawKey: string;
+  readonly rawValue: string;
+  readonly isMergeKey: boolean;
+}
 
 const splitMappingEntry = (
   text: string,
   options: { readonly compactValue?: boolean } = {},
-): readonly [string, string] | undefined => {
+): MappingEntry | undefined => {
   const match =
     text.match(MAPPING_ENTRY_PATTERN) ??
     (options.compactValue === true ? text.match(MAPPING_ENTRY_FALLBACK_PATTERN) : null);
   if (match === null) return undefined;
-  const key = match[1];
+  const rawKey = match[1];
   const rawValue = match[2];
-  if (key === undefined || rawValue === undefined) return undefined;
-  return [key, rawValue];
+  if (rawKey === undefined || rawValue === undefined) return undefined;
+  const quoted = rawKey.startsWith('"');
+  return {
+    key: quoted ? unescapeDoubleQuotedScalar(rawKey.slice(1, -1)) : rawKey,
+    rawKey,
+    rawValue,
+    isMergeKey: !quoted && rawKey === "<<",
+  };
 };
 
 const assignKeyedValue = (
   references: YamlReferenceState,
   target: Record<string, unknown>,
-  key: string,
+  entry: { readonly key: string; readonly isMergeKey: boolean },
   value: unknown,
   location: { readonly line: number; readonly column: number },
   blockAnchorName: string | undefined,
 ): void => {
   if (blockAnchorName !== undefined) bindYamlAnchor(references, blockAnchorName, value);
-  if (key === "<<") registerYamlMerge(references, target, value, location);
-  else target[key] = value;
+  if (entry.isMergeKey) registerYamlMerge(references, target, value, location);
+  // `__proto__` is an ordinary document key, so define the property instead of
+  // assigning through a setter that would mutate the prototype.
+  else {
+    Object.defineProperty(target, entry.key, {
+      value,
+      writable: true,
+      enumerable: true,
+      configurable: true,
+    });
+  }
 };
 
 const assertContentSize = (content: string, filePath: string, maxContentBytes: number): void => {
@@ -125,8 +157,8 @@ const stripComment = (line: string): string => {
     return line.replace(/\s+#.*$/, "");
   }
 
-  const [key, afterColon] = entry;
-  const beforeColon = `${indent}${key}:`;
+  const { rawKey, rawValue: afterColon } = entry;
+  const beforeColon = `${indent}${rawKey}:`;
   const valueIdx = afterColon.search(/\S/);
   if (valueIdx === -1) {
     return line;
@@ -403,11 +435,10 @@ export const detectLandofileTags: (options: {
 
       const sequenceEntry = splitMappingEntry(sequenceValue);
       if (sequenceEntry !== undefined) {
-        const [sequenceKey, sequenceRawValue] = sequenceEntry;
         occurrences.push(
-          ...detectTagsInValue(sequenceRawValue, {
+          ...detectTagsInValue(sequenceEntry.rawValue, {
             line: line.line,
-            column: sequenceColumn + sequenceKey.length + 1,
+            column: sequenceColumn + sequenceEntry.rawKey.length + 1,
           }),
         );
       }
@@ -416,11 +447,10 @@ export const detectLandofileTags: (options: {
 
     const entry = splitMappingEntry(line.text, { compactValue: true });
     if (entry === undefined) continue;
-    const [key, rawValue] = entry;
     occurrences.push(
-      ...detectTagsInValue(rawValue, {
+      ...detectTagsInValue(entry.rawValue, {
         line: line.line,
-        column: line.indent + key.length + 2,
+        column: line.indent + entry.rawKey.length + 2,
       }),
     );
   }
@@ -461,8 +491,8 @@ const parseMap = (
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
 
-    const [key, rawValue] = entry;
-    const valueColumn = line.indent + key.length + 2;
+    const { rawValue } = entry;
+    const valueColumn = line.indent + entry.rawKey.length + 2;
     const reference = parseYamlReferenceSyntax(rawValue, { line: line.line, column: valueColumn });
     const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
     if (blockAnchor !== undefined) reserveYamlAnchor(references, blockAnchor);
@@ -471,7 +501,7 @@ const parseMap = (
       const next = lines[index + 1];
       const location = { line: line.line, column: valueColumn };
       if (next === undefined || next.indent <= line.indent) {
-        assignKeyedValue(references, result, key, {}, location, blockAnchor?.name);
+        assignKeyedValue(references, result, entry, {}, location, blockAnchor?.name);
         index += 1;
         continue;
       }
@@ -485,7 +515,7 @@ const parseMap = (
           maxDepth,
           references,
         );
-        assignKeyedValue(references, result, key, items, location, blockAnchor?.name);
+        assignKeyedValue(references, result, entry, items, location, blockAnchor?.name);
         index = nextIndex;
         continue;
       }
@@ -498,13 +528,13 @@ const parseMap = (
         maxDepth,
         references,
       );
-      assignKeyedValue(references, result, key, nested, location, blockAnchor?.name);
+      assignKeyedValue(references, result, entry, nested, location, blockAnchor?.name);
       index = nextIndex;
       continue;
     }
 
     const value = parseScalar(rawValue, filePath, line.line, valueColumn, depth, maxDepth, references);
-    assignKeyedValue(references, result, key, value, { line: line.line, column: valueColumn }, undefined);
+    assignKeyedValue(references, result, entry, value, { line: line.line, column: valueColumn }, undefined);
     index += 1;
   }
 
@@ -572,15 +602,13 @@ const parseList = (
 
     const mapEntry = splitMappingEntry(value);
     if (mapEntry !== undefined) {
-      const [firstKey, firstRawValue] = mapEntry;
       const [item, nextIndex] = parseListItemMap(
         lines,
         filePath,
         index,
         line,
         indent + 2,
-        firstKey,
-        firstRawValue,
+        mapEntry,
         depth + 1,
         maxDepth,
         references,
@@ -603,8 +631,7 @@ const parseListItemMap = (
   startIndex: number,
   startLine: ParsedLine,
   childIndent: number,
-  firstKey: string,
-  firstRawValue: string,
+  firstEntry: MappingEntry,
   depth: number,
   maxDepth: number,
   references: YamlReferenceState,
@@ -614,8 +641,9 @@ const parseListItemMap = (
   const item: Record<string, unknown> = {};
   let index = startIndex + 1;
 
-  const consumeKey = (key: string, rawValue: string, keyLine: number, keyIndent: number): void => {
-    const valueColumn = keyIndent + key.length + 2;
+  const consumeKey = (entry: MappingEntry, keyLine: number, keyIndent: number): void => {
+    const { rawValue } = entry;
+    const valueColumn = keyIndent + entry.rawKey.length + 2;
     const location = { line: keyLine, column: valueColumn };
     const reference = parseYamlReferenceSyntax(rawValue, location);
     const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
@@ -623,7 +651,7 @@ const parseListItemMap = (
     if (rawValue.trim() === "" || blockAnchor !== undefined) {
       const next = lines[index];
       if (next === undefined || next.indent <= keyIndent) {
-        assignKeyedValue(references, item, key, {}, location, blockAnchor?.name);
+        assignKeyedValue(references, item, entry, {}, location, blockAnchor?.name);
         return;
       }
       if (next.text.startsWith("- ")) {
@@ -636,7 +664,7 @@ const parseListItemMap = (
           maxDepth,
           references,
         );
-        assignKeyedValue(references, item, key, items, location, blockAnchor?.name);
+        assignKeyedValue(references, item, entry, items, location, blockAnchor?.name);
         index = nextIndex;
         return;
       }
@@ -649,15 +677,15 @@ const parseListItemMap = (
         maxDepth,
         references,
       );
-      assignKeyedValue(references, item, key, nested, location, blockAnchor?.name);
+      assignKeyedValue(references, item, entry, nested, location, blockAnchor?.name);
       index = nextIndex;
       return;
     }
     const value = parseScalar(rawValue, filePath, keyLine, valueColumn, depth, maxDepth, references);
-    assignKeyedValue(references, item, key, value, location, undefined);
+    assignKeyedValue(references, item, entry, value, location, undefined);
   };
 
-  consumeKey(firstKey, firstRawValue, startLine.line, childIndent);
+  consumeKey(firstEntry, startLine.line, childIndent);
 
   while (index < lines.length) {
     const line = lines[index];
@@ -676,9 +704,8 @@ const parseListItemMap = (
     if (entry === undefined) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
-    const [key, rawValue] = entry;
     index += 1;
-    consumeKey(key, rawValue, line.line, childIndent);
+    consumeKey(entry, line.line, childIndent);
   }
 
   return [item, index];
