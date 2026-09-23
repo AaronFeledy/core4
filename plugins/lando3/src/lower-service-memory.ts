@@ -22,7 +22,7 @@ export const lowerServiceMemory = (
         unsupportedServiceKey({
           ctx,
           relative,
-          message: `Lando 4 cannot install ${id} plugins: ${JSON.stringify(service.plugins)}.`,
+          message: `Lando 4 cannot install ${id} plugins.`,
           remediation:
             "Lando 4 has no catalog plugin installation; build a custom image that installs them and set image:, or keep the app on Lando 3.",
         }),

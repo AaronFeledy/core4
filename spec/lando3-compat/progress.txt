@@ -709,3 +709,12 @@ Verification: gate:pr green (typecheck, lint, codegen drift, boundaries, guide-d
   - Dedupe keys on kind+sourceId+keyPath. A scanner that can find several things in one string must fold them into one diagnostic, or the later findings disappear.
   - An inventory walker with longest-pattern ownership is what surfaced the silent API-4 `tty`/`stdin_open` loss. Omission with no diagnostic is invisible to per-lowerer goldens.
 ---
+
+## 2026-09-22 - US-621C8 Review
+- Xdebug `start_with_request` is dropped with PHP ini remediation. Xdebug reads `client_port` from `XDEBUG_CONFIG` and does not read `start_with_request` there, so the previous rewrite did not change request-start behavior. `client_port` still becomes `XDEBUG_CONFIG`.
+- API-4 image-context, mount, and storage ownership fields (`owner`, `permissions`, `user`, `group`) and mount `contents`/`content` now each get their own drop diagnostic instead of disappearing inside a parent omit. Search `plugins` diagnostics no longer embed the authored plugin value.
+- Review notes (deferred/rejected): a `lando pull` token inside quoted printf text still blocks conversion. The scan is every delimited command token; treating quotes as documentation would also miss `sh -c "lando pull"`. Bugbot reported no bugs on the build commit. Guide updates stay with US-621D; guide-drift against origin/main passed with no guide edit.
+- Verification: gate:pr passed; disposition, PHP, API-4, and service-option spot checks passed (670).
+- **Learnings for future iterations:**
+  - Xdebug documents `XDEBUG_CONFIG` only on settings that say so. `client_host` and `client_port` qualify. `start_with_request` does not.
+---

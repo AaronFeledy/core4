@@ -290,25 +290,37 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
       ]),
     ],
   },
-  ...["start_with_request", "client_port"].map(
-    (key): DispositionEntry => ({
-      pattern: ["services", "*", "xdebug", key],
-      disposition: "target",
-      owner: "lower-xdebug-object",
-      golden: [
-        diagnostic(
-          service(`type: php:8.3, xdebug: {${key}: ${key === "client_port" ? "9003" : "'yes'"}}`),
-          "rewritten",
-          ["services", "s", "xdebug", key],
-        ),
-        output(
-          service(`type: php:8.3, xdebug: {${key}: ${key === "client_port" ? "9005" : "'yes'"}}`),
-          ["services", "s", "environment", "XDEBUG_CONFIG"],
-          `client_host=host.docker.internal client_port=${key === "client_port" ? "9005" : "9003 start_with_request=yes"}`,
-        ),
-      ],
-    }),
-  ),
+  {
+    pattern: ["services", "*", "xdebug", "start_with_request"],
+    disposition: "drop",
+    owner: "lower-xdebug-object",
+    golden: [
+      diagnostic(service("type: php:8.3, xdebug: {start_with_request: 'yes'}"), "dropped", [
+        "services",
+        "s",
+        "xdebug",
+        "start_with_request",
+      ]),
+    ],
+  },
+  {
+    pattern: ["services", "*", "xdebug", "client_port"],
+    disposition: "target",
+    owner: "lower-xdebug-object",
+    golden: [
+      diagnostic(service("type: php:8.3, xdebug: {client_port: 9003}"), "rewritten", [
+        "services",
+        "s",
+        "xdebug",
+        "client_port",
+      ]),
+      output(
+        service("type: php:8.3, xdebug: {client_port: 9005}"),
+        ["services", "s", "environment", "XDEBUG_CONFIG"],
+        "client_host=host.docker.internal client_port=9005",
+      ),
+    ],
+  },
   {
     pattern: ["services", "*", "xdebug", "config"],
     disposition: "drop",
@@ -713,6 +725,54 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
           "dropped",
           ["services", "s", "image", key, ...(["context", "groups", "steps"].includes(key) ? [0] : [])],
         ),
+      ],
+    }),
+  ),
+  ...["owner", "permissions", "user", "group"].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "image", "context", "*", key],
+      disposition: "drop",
+      owner: "lower-api4",
+      golden: [
+        diagnostic(
+          api4(
+            `image: {imagefile: 'FROM nginx', context: [{source: ./src, destination: /dst, ${key}: nginx}]}`,
+          ),
+          "dropped",
+          ["services", "s", "image", "context", 0, key],
+        ),
+      ],
+    }),
+  ),
+  ...["contents", "content", "group"].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "mounts", "*", key],
+      disposition: "drop",
+      owner: "lower-api4",
+      golden: [
+        diagnostic(
+          api4(
+            `mounts: [{source: ./src, target: /dst, ${key}: ${key === "contents" || key === "content" ? "literal" : "nginx"}}]`,
+          ),
+          "dropped",
+          ["services", "s", "mounts", 0, key],
+        ),
+      ],
+    }),
+  ),
+  ...["owner", "permissions"].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "storage", "*", key],
+      disposition: "drop",
+      owner: "lower-api4",
+      golden: [
+        diagnostic(api4(`storage: [{type: image, destination: /run, ${key}: mysql}]`), "dropped", [
+          "services",
+          "s",
+          "storage",
+          0,
+          key,
+        ]),
       ],
     }),
   ),

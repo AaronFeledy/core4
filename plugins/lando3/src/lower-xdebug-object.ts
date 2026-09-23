@@ -5,7 +5,6 @@ import { hasAuthoredEnvironment } from "./service-option-environment.ts";
 
 // Match service-lando's PHP_XDEBUG_CLIENT_HOST / PHP_XDEBUG_PORT without a cross-plugin dependency.
 const CLIENT_HOST = "host.docker.internal";
-const CLIENT_PORT = 9003;
 
 export const lowerXdebugObject = (
   service: Record<string, unknown>,
@@ -27,19 +26,30 @@ export const lowerXdebugObject = (
   const authored = hasAuthoredEnvironment(service.environment, "XDEBUG_CONFIG");
   for (const [key, value] of Object.entries(xdebug)) {
     if (key === "mode") continue;
-    if (key === "start_with_request" || key === "client_port") {
+    // Xdebug reads client_port from XDEBUG_CONFIG. start_with_request is ini-only.
+    if (key === "start_with_request") {
+      diagnostics.push(
+        droppedServiceKey({
+          ctx,
+          relative: ["xdebug", key],
+          message: "Xdebug does not read start_with_request from XDEBUG_CONFIG.",
+          remediation:
+            "Set xdebug.start_with_request in a PHP ini file mounted through the service config or mounts.",
+        }),
+      );
+      continue;
+    }
+    if (key === "client_port") {
       const valid =
-        key === "start_with_request"
-          ? typeof value === "boolean" || typeof value === "string"
-          : (typeof value === "number" && Number.isFinite(value)) ||
-            (typeof value === "string" && /^\d+$/u.test(value));
+        (typeof value === "number" && Number.isFinite(value)) ||
+        (typeof value === "string" && /^\d+$/u.test(value));
       if (valid && !authored) {
-        settings.set(key, typeof value === "boolean" ? (value ? "yes" : "no") : String(value));
+        settings.set(key, String(value));
         diagnostics.push(
           rewrittenServiceKey({
             ctx,
             relative: ["xdebug", key],
-            message: `${key} moved to environment.XDEBUG_CONFIG.`,
+            message: "client_port moved to environment.XDEBUG_CONFIG.",
             remediation: "Review the generated XDEBUG_CONFIG environment variable.",
           }),
         );
@@ -50,8 +60,8 @@ export const lowerXdebugObject = (
             relative: ["xdebug", key],
             message: authored
               ? "The authored XDEBUG_CONFIG takes precedence."
-              : `${key} has an invalid value.`,
-            remediation: `Add a valid ${key} setting to the service's environment.XDEBUG_CONFIG.`,
+              : "client_port has an invalid value.",
+            remediation: "Add a numeric client_port to the service's environment.XDEBUG_CONFIG.",
           }),
         );
       }
@@ -80,10 +90,10 @@ export const lowerXdebugObject = (
       );
     }
   }
-  if (settings.size > 0) {
-    const start = settings.get("start_with_request");
+  const clientPort = settings.get("client_port");
+  if (clientPort !== undefined) {
     patch.environment = {
-      XDEBUG_CONFIG: `client_host=${CLIENT_HOST} client_port=${settings.get("client_port") ?? CLIENT_PORT}${start === undefined ? "" : ` start_with_request=${start}`}`,
+      XDEBUG_CONFIG: `client_host=${CLIENT_HOST} client_port=${clientPort}`,
     };
   }
   return { patch, diagnostics };

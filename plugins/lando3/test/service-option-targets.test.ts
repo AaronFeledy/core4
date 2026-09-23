@@ -90,11 +90,11 @@ for (const [type, variable] of [
     // Then
     expect(result.blocked).toBe(true);
     expect(locations(result)).toEqual([diagnostic("unsupported", "plugins")]);
-    expect(result.diagnostics[0]?.message).toContain("analysis-icu");
-    expect(result.diagnostics[0]?.message).toContain("analysis-phonetic");
+    const id = type.startsWith("opensearch") ? "opensearch" : "elasticsearch";
+    expect(result.diagnostics[0]?.message).toBe(`Lando 4 cannot install ${id} plugins.`);
   });
 }
-test.each([true, false, "trigger"])("rewrites Xdebug request setting %j and merges environment", (start) => {
+test.each([true, false, "trigger"])("drops Xdebug request setting %j and maps the port", (start) => {
   // Given
   const service = {
     type: "php:8.3",
@@ -109,13 +109,13 @@ test.each([true, false, "trigger"])("rewrites Xdebug request setting %j and merg
     xdebug: "debug",
     environment: {
       KEEP: "yes",
-      XDEBUG_CONFIG: `client_host=host.docker.internal client_port=9005 start_with_request=${typeof start === "boolean" ? (start ? "yes" : "no") : start}`,
+      XDEBUG_CONFIG: "client_host=host.docker.internal client_port=9005",
     },
   });
   expect(locations(result)).toEqual([
     diagnostic("needs-review", "type"),
     diagnostic("rewritten", "xdebug"),
-    diagnostic("rewritten", "xdebug", "start_with_request"),
+    diagnostic("dropped", "xdebug", "start_with_request"),
     diagnostic("rewritten", "xdebug", "client_port"),
   ]);
 });
@@ -154,18 +154,15 @@ test("drops invalid Xdebug values and each ini key without retaining an object",
     diagnostic("dropped", "xdebug", "other"),
   ]);
 });
-test("uses the catalog port when only start_with_request is authored", () => {
+test("does not invent XDEBUG_CONFIG when only start_with_request is authored", () => {
   // Given / When
   const result = lowerPhpOptions({ xdebug: { start_with_request: false, config: "bad" } }, ctx);
   // Then
-  expect(result.patch).toEqual({
-    xdebug: true,
-    environment: { XDEBUG_CONFIG: "client_host=host.docker.internal client_port=9003 start_with_request=no" },
-  });
+  expect(result.patch).toEqual({ xdebug: true });
   expect(locations(result)).toEqual([
     diagnostic("needs-review", "type"),
     diagnostic("rewritten", "xdebug"),
-    diagnostic("rewritten", "xdebug", "start_with_request"),
+    diagnostic("dropped", "xdebug", "start_with_request"),
     diagnostic("dropped", "xdebug", "config"),
   ]);
 });

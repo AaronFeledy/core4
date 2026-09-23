@@ -38,7 +38,7 @@ describe("lowerPhpOptions", () => {
       composer: { version: "2.3.10", packages: { "phpunit/phpunit": "*" } },
       xdebug: "debug",
       environment: {
-        XDEBUG_CONFIG: "client_host=host.docker.internal client_port=9003 start_with_request=yes",
+        XDEBUG_CONFIG: "client_host=host.docker.internal client_port=9003",
       },
       db_client: "mysql:8.4",
     });
@@ -47,7 +47,7 @@ describe("lowerPhpOptions", () => {
       { kind: "rewritten", keyPath: [...ctx.keyPath, "via"] },
       { kind: "rewritten", keyPath: [...ctx.keyPath, "composer_version"] },
       { kind: "rewritten", keyPath: [...ctx.keyPath, "xdebug"] },
-      { kind: "rewritten", keyPath: [...ctx.keyPath, "xdebug", "start_with_request"] },
+      { kind: "dropped", keyPath: [...ctx.keyPath, "xdebug", "start_with_request"] },
       { kind: "rewritten", keyPath: [...ctx.keyPath, "xdebug", "client_port"] },
       { kind: "dropped", keyPath: [...ctx.keyPath, "xdebug", "config", "max_nesting_level"] },
     ]);
