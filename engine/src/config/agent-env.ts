@@ -3,13 +3,22 @@ import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
 
 export type { HostEnv };
 
+// Presence markers for agent detectors; no tokens, no session/path dumps.
 export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
   "CLAUDECODE",
   "CLAUDE_CODE",
+  "CLAUDE_CODE_IS_COWORK",
   "CURSOR_AGENT",
   "OPENCODE",
+  "OPENCODE_CLIENT",
   "COPILOT_CLI",
   "GEMINI_CLI",
+  "CODEX_SANDBOX",
+  "CODEX_CI",
+  "AUGMENT_AGENT",
+  "ANTIGRAVITY_AGENT",
+  "PI_CODING_AGENT",
+  "AI_AGENT",
   "AGENT",
   "CI",
 ];
