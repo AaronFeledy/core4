@@ -137,7 +137,20 @@
       "dependsOn": ["US-618D1", "US-618D3", "US-621C1", "US-621C3", "US-621C5"],
       "priority": 41,
       "passes": false,
-      "notes": ""
+      "notes": "Adjudication 2026-09-22: implementation verified; PR #1053 is green on every check except rails-journey-linux-arm64, which fails only because the runtime-bundle apt snapshot pin drifted (libsqlite3-dev 3.45.1-1ubuntu2.8 absent from Ubuntu snapshot 20260902T000000Z). That pin is outside this story: the refresh is owned by US-621C9. Merge PR #1053 once US-621C9 lands and the arm64 journey is green."
+    },
+    {
+      "id": "US-621C9",
+      "title": "Refresh the runtime-bundle Ubuntu apt snapshot pin",
+      "description": "As a release engineer, CI journey workflows install build packages from a pinned Ubuntu snapshot that still resolves every runner current candidate version, so unrelated PRs are not blocked by apt-pin drift.",
+      "acceptanceCriteria": [
+        "Bump RUNTIME_BUNDLE_UBUNTU_SNAPSHOT in scripts/runtime-bundle-supply-chain.ts to a snapshot date that resolves the current candidate version of every package in its PACKAGES list on all journey runners, including libsqlite3-dev 3.45.1-1ubuntu2.8 on linux-arm64, and regenerate every consuming workflow through the owning codegen entries (ci-workflow, runtime-bundle-workflow, rails-journey-workflow, and any other catalog entry embedding the snapshot); no generated file is hand-edited.",
+        "rails-journey-linux-arm64 and the other journey workflows pass on the refreshed pin in CI; codegen:check and applicable standard gates pass; the change carries no lando3-compat translator source edits."
+      ],
+      "dependsOn": [],
+      "priority": 42,
+      "passes": false,
+      "notes": "Created by adjudication 2026-09-22 to unblock US-621C8 PR #1053, red only on rails-journey-linux-arm64 because apt snapshot 20260902T000000Z no longer resolves libsqlite3-dev 3.45.1-1ubuntu2.8. Pure CI-infrastructure pin refresh; owns no translator scope."
     },
     {
       "id": "US-621D",
