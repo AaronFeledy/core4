@@ -61,6 +61,10 @@ export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAu
 export interface RouterServiceShape {
   readonly id: string;
   readonly capabilities: ProxyCapabilities;
+  /** Resolve and persist route publication ports before starting required global services. */
+  readonly prepare?: (
+    config: ProxyConfig,
+  ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
   readonly setup: (
     config: ProxyConfig,
     options?: { readonly autoApprove?: boolean },

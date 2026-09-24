@@ -54,6 +54,12 @@ const graphLayer = (
 ) =>
   Layer.succeed(PluginContributionGraph, {
     plugins: plugins.map(({ source, entry }) => ({ source, manifest: entry.manifest, entry, module: entry })),
+    globalPlugins: plugins.map(({ source, entry }) => ({
+      source,
+      manifest: entry.manifest,
+      entry,
+      module: entry,
+    })),
     certificateAuthorities: [],
     commands: [],
     hostContext: Context.empty(),

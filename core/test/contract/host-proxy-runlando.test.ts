@@ -10,7 +10,7 @@ import {
   type RoutePlan,
   ServiceName,
 } from "@lando/sdk/schema";
-import { EventService, ShellRunner } from "@lando/sdk/services";
+import { EventService, RouterService, ShellRunner } from "@lando/sdk/services";
 
 import {
   type HostProxyRunLandoExecutor,
@@ -92,8 +92,19 @@ const redactionLayer = () =>
     ...standaloneRedactionService,
   });
 
-const commandServices = (eventLayer: Layer.Layer<EventService>) =>
-  Layer.mergeAll(shellLayer(), eventLayer, redactionLayer());
+const commandServices = (eventLayer: Layer.Layer<EventService>, httpsPort = 443) =>
+  Layer.mergeAll(
+    shellLayer(),
+    eventLayer,
+    redactionLayer(),
+    Layer.succeed(RouterService, {
+      status: Effect.succeed({
+        state: "running",
+        configuredApps: [],
+        authorities: [{ hostname: "web.myapp.lndo.site", scheme: "https", port: httpsPort }],
+      }),
+    } as never),
+  );
 
 const hostSideEnvelope = (
   plan: AppPlan,
@@ -128,11 +139,18 @@ const hostSideEnvelope = (
 const roundTrip = (
   plan: AppPlan,
   argv: ReadonlyArray<string>,
-  extras: { readonly allowlist?: ReadonlyArray<string>; readonly cwd?: string; readonly tty?: boolean } = {},
+  extras: {
+    readonly allowlist?: ReadonlyArray<string>;
+    readonly cwd?: string;
+    readonly tty?: boolean;
+    readonly httpsPort?: number;
+  } = {},
 ) => {
   const { events, layer } = recordingEventLayer();
   const executor: HostProxyRunLandoExecutor = (input) =>
-    runOpenForHostProxy(plan, input).pipe(Effect.provide(commandServices(silentEventLayer())));
+    runOpenForHostProxy(plan, input).pipe(
+      Effect.provide(commandServices(silentEventLayer(), extras.httpsPort)),
+    );
   const request = buildRunLandoRequest({
     argv: [...argv],
     cwd: extras.cwd ?? "/app",
@@ -177,6 +195,15 @@ describe("in-container lando open host-proxy round-trip", () => {
     expect(result.value.exitCode).toBe(host.exitCode);
     expect(result.value.envelope).toEqual(host.envelope);
     expect(result.value.envelope.ok).toBe(true);
+  });
+
+  test("in-container open prints the acquired nondefault HTTPS port", async () => {
+    const { exit } = roundTrip(httpsPlan(), ["open", "--print"], { httpsPort: 4433 });
+    const result = await exit;
+    if (!Exit.isSuccess(result)) throw new Error("round-trip failed");
+    expect(result.value.exitCode).toBe(0);
+    const body = result.value.envelope.result as { targets?: ReadonlyArray<{ url: string }> } | undefined;
+    expect(body?.targets?.[0]?.url).toBe("https://web.myapp.lndo.site:4433");
   });
 
   test("headless degradation round-trips identically to host-side", async () => {

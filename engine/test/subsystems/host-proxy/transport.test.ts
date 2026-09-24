@@ -1,8 +1,6 @@
-import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import * as fsPromises from "node:fs/promises";
+import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
-import type { IncomingMessage } from "node:http";
-import { request as httpRequest } from "node:http";
+import { type IncomingMessage, createServer, request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -25,6 +23,7 @@ import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
 } from "../../../src/subsystems/host-proxy/dispatch.ts";
+import { listenHostProxyServer } from "../../../src/subsystems/host-proxy/transport-listener.ts";
 import { requestPathname } from "../../../src/subsystems/host-proxy/transport-response.ts";
 import {
   defaultHostProxyShimArtifactPath,
@@ -802,38 +801,39 @@ describe("host-proxy runLando physical transport", () => {
     await expectMissingPath(join(failedStateDir, "lando"));
   });
 
-  test("closes the listener when chmod fails after bind", async () => {
-    const paths = { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot() };
-    const shimArtifactPath = await fakeExecutable();
-    const originalChmod = fsPromises.chmod.bind(fsPromises);
-    const chmodSpy = spyOn(fsPromises, "chmod").mockImplementation(async (path, mode) => {
-      if (String(path).endsWith("host-proxy.sock")) {
-        const error = new Error("chmod failed after bind");
-        Object.assign(error, { code: "ENOENT" });
-        throw error;
-      }
-      return originalChmod(path, mode);
-    });
+  test.skipIf(process.platform === "win32")("closes the listener when chmod fails after bind", async () => {
+    const stateDir = join(await tempRoot(), "state");
+    await mkdir(stateDir, { recursive: true });
+    const socketPath = join(stateDir, "host-proxy.sock");
+    const server = createServer();
+    let chmodCalled = false;
 
-    try {
-      const failed = await runExit(
-        createHostProxyRunLandoSession({
-          app,
-          mountInfo: mount,
-          allowlist: ["app:open"],
-          callerService: "web",
-          executor: () => Effect.succeed({ envelope, exitCode: 0 }),
-          paths,
-          shimArtifactPath,
-        }),
-      );
+    const failed = await runExit(
+      listenHostProxyServer(
+        server,
+        {
+          stateDir,
+          socketPath,
+          shimPath: join(stateDir, "lando"),
+          platform: "linux",
+          transport: "unix-socket",
+        },
+        {},
+        async (path) => {
+          chmodCalled = true;
+          expect(path).toBe(socketPath);
+          expect((await stat(path)).isSocket()).toBe(true);
+          throw new Error("injected chmod failure");
+        },
+      ),
+    );
 
-      expect(Exit.isFailure(failed)).toBe(true);
-      if (Exit.isFailure(failed) && failed.cause._tag === "Fail")
-        expect(failed.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
-    } finally {
-      chmodSpy.mockRestore();
-    }
+    expect(chmodCalled).toBe(true);
+    expect(Exit.isFailure(failed)).toBe(true);
+    if (Exit.isFailure(failed) && failed.cause._tag === "Fail")
+      expect(failed.cause.error).toBeInstanceOf(HostProxyTransportUnavailableError);
+    expect(server.listening).toBe(false);
+    await expectMissingPath(socketPath);
   });
 
   test("cleans socket and shim artifacts on Effect scope close", async () => {

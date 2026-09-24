@@ -111,7 +111,7 @@ describe("meta:doctor subsystem checks", () => {
     expect(hostProxy?.context.loopback).toBe("127.0.0.1");
   });
 
-  test("warns when host-proxy is skipped because start still needs a worker", async () => {
+  test("warns about inactive host DNS without conflating container callbacks", async () => {
     // Given / When
     const result = await runDefault();
 
@@ -121,8 +121,10 @@ describe("meta:doctor subsystem checks", () => {
     expect(hostProxy?.severity).toBe("warn");
     expect(hostProxy?.context.mechanism).toBe("skipped");
     expect(hostProxy?.solutions[0]?.kind).toBe("manual");
-    expect(hostProxy?.solutions[0]?.description).toContain("lando start");
-    expect(hostProxy?.solutions[0]?.description).toContain("HostProxyTransportUnavailableError");
+    expect(hostProxy?.solutions[0]?.description).toContain("Host DNS integration is inactive");
+    expect(hostProxy?.solutions[0]?.description).toContain(
+      "Container-to-host callbacks are checked separately",
+    );
     expect(hostProxy?.solutions[0]?.command).toBe("lando setup");
   });
 

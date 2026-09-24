@@ -11,7 +11,6 @@ import { type HostProxyControlRecord, HostProxyWorkerIdentity } from "./worker-r
 const CONTROL_HEADER = "x-lando-host-proxy-control";
 const CONTROL_TIMEOUT_MS = 2_000;
 const SHUTDOWN_WAIT_MS = 5_000;
-const KILL_GRACE_MS = 5_000;
 
 export type ProbeWorkerResult = "live" | "dead";
 
@@ -86,7 +85,7 @@ export const probeWorker = (record: HostProxyControlRecord): Effect.Effect<Probe
           return identity.appId === record.appId &&
             identity.protocolVersion === record.protocolVersion &&
             identity.pid === record.pid &&
-            identity.transport === record.transport
+            identity.transport === (record.url === undefined ? record.transport : "tcp-host-gateway")
             ? "green"
             : "red";
         },
@@ -133,6 +132,44 @@ const awaitWorkerDisconnect = (record: HostProxyControlRecord): Effect.Effect<bo
     Effect.catchAll(() => Effect.succeed(false)),
   );
 
+const workerProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (cause) {
+    return !(cause instanceof Error && "code" in cause && cause.code === "ESRCH");
+  }
+};
+
+const awaitWorkerProcessExit = (record: HostProxyControlRecord): Effect.Effect<boolean> =>
+  runProbe(
+    {
+      id: `host-proxy-worker-process-exit:${record.appId}`,
+      policy: { maxAttempts: 25, delay: Duration.millis(200), timeout: Duration.millis(SHUTDOWN_WAIT_MS) },
+      classify: { success: (alive) => (alive ? "red" : "green"), failure: () => "red" },
+    },
+    Effect.sync(() => workerProcessAlive(record.pid)),
+  ).pipe(
+    Effect.map((result) => result.outcome === "green"),
+    Effect.catchAll(() => Effect.succeed(false)),
+  );
+
+const terminateWorkerProcess = (
+  record: HostProxyControlRecord,
+  options: WorkerControlTerminationOptions,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const terminate = options.terminateProcess ?? defaultTerminateProcess;
+    yield* Effect.promise(() => terminate(record.pid, "SIGTERM"));
+    if (yield* awaitWorkerProcessExit(record)) return;
+    yield* Effect.promise(() => terminate(record.pid, "SIGKILL"));
+    if (!(yield* awaitWorkerProcessExit(record))) {
+      return yield* Effect.die(
+        new Error(`Host-proxy worker ${record.appId} did not exit after termination.`),
+      );
+    }
+  });
+
 export const terminateControlRecord = (
   record: HostProxyControlRecord,
   options: WorkerControlTerminationOptions,
@@ -144,16 +181,8 @@ export const terminateControlRecord = (
         ? removeDir
         : shutdownWorker(record).pipe(
             Effect.zipRight(awaitWorkerDisconnect(record)),
-            Effect.flatMap((stopped) =>
-              stopped
-                ? Effect.void
-                : Effect.promise(async () => {
-                    const terminate = options.terminateProcess ?? defaultTerminateProcess;
-                    await terminate(record.pid, "SIGTERM");
-                    await new Promise((resolve) => setTimeout(resolve, KILL_GRACE_MS));
-                    await terminate(record.pid, "SIGKILL");
-                  }),
-            ),
+            Effect.zipRight(awaitWorkerProcessExit(record)),
+            Effect.flatMap((stopped) => (stopped ? Effect.void : terminateWorkerProcess(record, options))),
             Effect.zipRight(removeDir),
           ),
     ),
