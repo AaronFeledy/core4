@@ -18,13 +18,13 @@ import {
   dimText,
   displayWidth,
   hyperlink,
-  padEndToWidth,
   paintTone,
   styleBoxBottom,
   styleBoxFooter,
   styleBoxSeparator,
   styleBoxTop,
   toneChip,
+  wrapFieldToWidth,
   wrapToWidth,
 } from "./console-layout.ts";
 
@@ -167,12 +167,20 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
     lines.push(styleBoxSeparator(boxSeparator(sectionTitle(section), width)));
     if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0))
       pushBody("(none)", 2, undefined);
+    const labelWidth = Math.min(
+      Math.max(
+        0,
+        ...section.rows.flatMap((row) => row.fields?.map((field) => displayWidth(field.label)) ?? []),
+      ),
+      Math.max(1, innerWidth - 2 - 3 - 8),
+    );
     for (const row of section.rows) {
       pushBody(rowHead(row), 0, composeRowStyle(row));
       if (row.fields !== undefined && row.fields.length > 0) {
-        const labelWidth = Math.max(...row.fields.map((field) => displayWidth(field.label)));
         for (const field of row.fields) {
-          pushBody(`${padEndToWidth(field.label, labelWidth)} : ${field.value}`, 2, styleBoxBottom);
+          for (const segment of wrapFieldToWidth(field.label, field.value, labelWidth, innerWidth - 2)) {
+            lines.push(boxBody(`  ${segment}`, width, styleBoxBottom));
+          }
         }
       }
       if (row.detail !== undefined) pushBody(row.detail, 2, styleBoxBottom);

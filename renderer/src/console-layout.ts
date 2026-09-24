@@ -231,10 +231,63 @@ export const REMEDY_ARROW = "↳ ";
 export const padEndToWidth = (text: string, width: number): string =>
   `${text}${repeat(" ", width - displayWidth(text))}`;
 
+/**
+ * Wrap field values without changing their bytes. Prefer the last ordinary
+ * space that fits, leaving that space on the preceding line; oversized tokens
+ * are split at the width limit.
+ */
+const wrapFieldValueToWidth = (value: string, width: number): ReadonlyArray<string> => {
+  const budget = Math.max(1, width);
+  const lines: string[] = [];
+  let remaining = value;
+  while (displayWidth(remaining) > budget) {
+    let end = 0;
+    let used = 0;
+    let lastSpaceEnd = 0;
+    for (const ch of remaining) {
+      const charWidth = codePointWidth(ch.codePointAt(0) ?? 0);
+      if (used + charWidth > budget) break;
+      end += ch.length;
+      used += charWidth;
+      if (ch === " ") lastSpaceEnd = end;
+    }
+    const breakAt = lastSpaceEnd > 0 && /\S/u.test(remaining.slice(0, lastSpaceEnd)) ? lastSpaceEnd : end;
+    if (breakAt === 0) return [...lines, ...hardBreakToken(remaining, budget)];
+    lines.push(remaining.slice(0, breakAt));
+    remaining = remaining.slice(breakAt);
+  }
+  lines.push(remaining);
+  return lines;
+};
+
+/** Keep the field separator aligned while long labels and values wrap. */
+export const wrapFieldToWidth = (
+  label: string,
+  value: string,
+  labelWidth: number,
+  width: number,
+): ReadonlyArray<string> => {
+  const labels = wrapToWidth(label, Math.max(1, labelWidth));
+  const lastLabel = labels[labels.length - 1] ?? "";
+  const prefix = `${padEndToWidth(lastLabel, labelWidth)} : `;
+  if (
+    !/\s/u.test(value) &&
+    displayWidth(value) > width - displayWidth(prefix) &&
+    displayWidth(value) <= width
+  ) {
+    return [...labels.slice(0, -1), prefix.slice(0, -1), value];
+  }
+  const values = wrapFieldValueToWidth(value, width - displayWidth(prefix));
+  return [
+    ...labels.slice(0, -1),
+    `${prefix}${values[0] ?? ""}`,
+    ...values.slice(1).map((line) => `${repeat(" ", displayWidth(prefix))}${line}`),
+  ];
+};
+
 /** ANSI accents for the framed surfaces, mirroring the task-tree cockpit palette. */
 export const styleBoxTop = (line: string): string => `${csi.bold}${csi.pink}${line}${csi.reset}`;
-export const styleBoxBottom = (line: string): string =>
-  `${csi.dim}${csi.cyan}${line}${csi.dimReset}${csi.reset}`;
+export const styleBoxBottom = (line: string): string => `${csi.cyan}${line}${csi.reset}`;
 export const styleBoxFooter = (line: string): string =>
   `${csi.dim}${csi.pink}${line}${csi.dimReset}${csi.reset}`;
 export const styleBoxSeparator = (line: string): string => `${csi.pink}${line}${csi.reset}`;
