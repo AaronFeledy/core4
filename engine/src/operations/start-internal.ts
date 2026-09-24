@@ -1,4 +1,4 @@
-import { Cause, DateTime, Effect, Exit, Option, Ref, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Ref, Schema } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
@@ -391,11 +391,20 @@ export const startAppForTargetUnlocked = (
                         const app = builtPlan.fileSync[0]?.session.app;
                         const engine =
                           boundEngine ?? (selectedEngine._tag === "Some" ? selectedEngine.value : undefined);
+                        // The parent may already be interrupted. Verify ownership in
+                        // an interruptible child with a deadline, while keeping this
+                        // compensation boundary masked until it can decide safely.
                         const noOwnedSessions =
                           safe && app !== undefined && engine !== undefined
-                            ? yield* Effect.exit(engine.listSessions({ app })).pipe(
+                            ? yield* Effect.forkDaemon(
+                                restore(engine.listSessions({ app })).pipe(Effect.timeoutOption("3 seconds")),
+                              ).pipe(
+                                Effect.flatMap(Fiber.await),
                                 Effect.map(
-                                  (listExit) => Exit.isSuccess(listExit) && listExit.value.length === 0,
+                                  (inventoryExit) =>
+                                    Exit.isSuccess(inventoryExit) &&
+                                    Option.isSome(inventoryExit.value) &&
+                                    inventoryExit.value.value.length === 0,
                                 ),
                               )
                             : false;
