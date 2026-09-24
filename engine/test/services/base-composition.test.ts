@@ -132,7 +132,7 @@ describe("lando base composition", () => {
         {
           id: "lando.boot:scaffold",
           phase: "build",
-          command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
+          command: { directories: ["/etc/lando", "/etc/lando/env.d", "/etc/lando/certs"] },
         },
         { id: "lando.security:trust-store", phase: "build" },
       ],
