@@ -704,6 +704,7 @@ describe("prepared Windows Mutagen transport", () => {
     ),
     verifyInstalled: async () => true,
     prepareDockerCli,
+    hostPlatform: "win32",
     resolveTarget: () => Effect.succeed({ containerId: helper, path: "/lando-data" }),
     runner: {
       run: ({ env }: { env?: Readonly<Record<string, string>> }) =>
@@ -761,6 +762,18 @@ describe("prepared Windows Mutagen transport", () => {
           makePreparedWindowsMutagenProcessClient(
             makeOptions(() => Effect.fail(new Error("managed runtime missing")), calls),
           ),
+        ),
+      ),
+    ).toBe(true);
+    expect(calls).toHaveLength(0);
+
+    expect(
+      Exit.isFailure(
+        await Effect.runPromiseExit(
+          makePreparedWindowsMutagenProcessClient({
+            ...makeOptions(() => Effect.succeed(alias), calls),
+            hostPlatform: "linux",
+          }),
         ),
       ),
     ).toBe(true);

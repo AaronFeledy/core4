@@ -321,3 +321,9 @@ export {
   makeMutagenProcessClient,
   makePreparedWindowsMutagenProcessClient,
 } from "./mutagen-process-client.ts";
+
+export {
+  type PreparedWindowsMutagenAppClientOptions,
+  type PreparedWindowsMutagenTargets,
+  makePreparedWindowsMutagenAppClient,
+} from "./windows-app-client.ts";
