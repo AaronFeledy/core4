@@ -36,7 +36,9 @@ export const AppsListEntrySchema = Schema.Struct({
   providerId: Schema.String,
   appRoot: Schema.String,
   services: Schema.Array(Schema.String),
-  stale: Schema.optional(Schema.Boolean),
+  status: Schema.Literal("active", "stopped", "unknown"),
+  stale: Schema.optionalWith(Schema.Boolean, { exact: true }),
+  scratch: Schema.optionalWith(Schema.Boolean, { exact: true }),
 });
 
 export const AppsListResultSchema = Schema.Struct({
@@ -60,10 +62,7 @@ export interface ListServicesOptions {
   readonly includeScratch?: boolean;
 }
 
-export interface ListServicesResult {
-  readonly apps: ReadonlyArray<AppsListEntry>;
-  readonly pruned?: ReadonlyArray<AppsListEntry>;
-}
+export type ListServicesResult = typeof AppsListResultSchema.Type;
 
 const cacheEntryToApp = (entry: { readonly appRoot: string }): AppsListEntry => ({
   appId: basename(entry.appRoot) || entry.appRoot,
@@ -82,7 +81,7 @@ export const renderAppsListResult = (
     const header = ["APP", "STATUS", "PROVIDER", "SERVICES", "ROOT"];
     const rows = result.apps.map((app) => [
       app.appName,
-      app.stale === true ? "stale" : "active",
+      `${app.status}${app.stale === true ? " (stale)" : ""}`,
       app.providerId,
       app.services.join(",") || "-",
       app.appRoot,
@@ -135,7 +134,7 @@ const listServicesInternal = <E, R>(
     );
 
     const discoverEvidence = (): Effect.Effect<AppsDiscoveryEvidence> =>
-      Effect.promise(async () => {
+      Effect.tryPromise(async () => {
         if (options.discoverContainersEvidence !== undefined) {
           const discovered = await options.discoverContainersEvidence(userDataRoot);
           return {
@@ -170,18 +169,26 @@ const listServicesInternal = <E, R>(
     const apps = yield* Effect.promise(() =>
       Promise.all(
         merged.map(async (app) => {
-          if (app.appRoot === "") return app;
+          const status = running.some(
+            (entry) => entry.appId === app.appId && entry.providerId === app.providerId,
+          )
+            ? "active"
+            : evidence.confirmedProviderIds.includes(app.providerId)
+              ? "stopped"
+              : "unknown";
+          const entry = { ...app, status } satisfies typeof AppsListEntrySchema.Type;
+          if (app.appRoot === "") return entry;
           try {
             await access(app.appRoot);
-            return app;
+            return entry;
           } catch {
-            return { ...app, stale: true as const };
+            return { ...entry, stale: true as const };
           }
         }),
       ),
     );
 
-    const pruned: AppsListEntry[] = [];
+    const pruned: Array<typeof AppsListEntrySchema.Type> = [];
     if (options.prune === true && evidence.providerConfirmed && pruneCandidate !== undefined) {
       const ownedAppIds = new Set(evidence.ownedAppIds);
       const confirmedProviderIds = new Set(evidence.confirmedProviderIds);
