@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const ELEVENTY_RECIPE_VERSION = "0.1.0";
 export const ELEVENTY_CONTENT_DIGEST =
-  "sha256:2f1f05fc13c618a58c6736bd33bc3a517f7d3fff927077db42c5d4186642cd59";
+  "sha256:89591241116d13890e347502e7e25c2a9ace413e695cb217728602466ec7ace1";
 
 export const eleventyProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -46,6 +46,7 @@ export const eleventySnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "node:lts" } },
+                    { key: "primary", value: { kind: "Literal", value: true } },
                     {
                       key: "command",
                       value: { kind: "Literal", value: "npx @11ty/eleventy --serve --port 8080" },
@@ -60,6 +61,7 @@ export const eleventySnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "static:nginx" } },
+                    { key: "primary", value: { kind: "Literal", value: false } },
                     {
                       key: "appMount",
                       value: {

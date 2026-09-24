@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 
 import {
   MYSQL_CONFIG_TARGET,
@@ -138,6 +138,8 @@ describe("mysql ServiceType", () => {
     const resolution = await resolveMysqlService({ type: "mysql", creds });
 
     expect(resolution.tooling?.mysql).toEqual({
+      description: "Open the MySQL client for this service.",
+      dir: PortablePath.make("/"),
       service: "db",
       cmd: ["mysql", "-h", "127.0.0.1", "-u", "alice", "appdb"],
       env: { MYSQL_PWD: "s3cret" },

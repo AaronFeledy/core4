@@ -4,7 +4,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const WORDPRESS_RECIPE_VERSION = "0.1.0";
 export const WORDPRESS_CONTENT_DIGEST =
-  "sha256:150513ad53c5872e77c67ea226b472d7c985e3379998c550aa04bed92368be10";
+  "sha256:97fa603f460a19a7e207f6269f64c4fddd9cffd64bee21647d080aa2ccef24bf";
 
 export const wordpressProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -41,6 +41,7 @@ export const wordpressSnapshot: RecipeSnapshot = {
                       kind: "ObjectLiteral",
                       entries: [
                         { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+                        { key: "primary", value: { kind: "Literal", value: true } },
                         { key: "framework", value: { kind: "Literal", value: "wordpress" } },
                         { key: "port", value: { kind: "Literal", value: 80 } },
                         {

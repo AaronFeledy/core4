@@ -58,6 +58,7 @@ interface ParsedLine {
   readonly indent: number;
   readonly line: number;
   readonly text: string;
+  readonly sourceLines: ReadonlyArray<string>;
 }
 
 const parseError = (filePath: string, message: string, line?: number, column?: number): LandofileParseError =>
@@ -353,7 +354,8 @@ const parseScalar = (
 
 const toLines = (content: string, filePath: string): ReadonlyArray<ParsedLine> => {
   const lines: ParsedLine[] = [];
-  for (const [index, rawLine] of content.split(/\r?\n/).entries()) {
+  const sourceLines = content.split(/\r?\n/);
+  for (const [index, rawLine] of sourceLines.entries()) {
     if (rawLine.includes("\t")) {
       throw parseError(filePath, `Tabs are not supported in Landofiles at line ${index + 1}`, index + 1);
     }
@@ -362,7 +364,7 @@ const toLines = (content: string, filePath: string): ReadonlyArray<ParsedLine> =
     const text = withoutComment.trim();
     if (text === "" || text.startsWith("#")) continue;
 
-    lines.push({ indent: withoutComment.match(/^ */)?.[0].length ?? 0, line: index + 1, text });
+    lines.push({ indent: withoutComment.match(/^ */)?.[0].length ?? 0, line: index + 1, text, sourceLines });
   }
   return lines;
 };
@@ -427,7 +429,10 @@ export const detectLandofileTags: (options: {
 
   // YAML 1.2 reserves a leading unquoted `!` for tags. Match compose-go's
   // exact value/sequence-item tags without treating mapping keys as tags.
-  for (const line of toLines(content, file)) {
+  const lines = toLines(content, file);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === undefined) continue;
     if (line.text.startsWith("- ")) {
       const sequenceValue = line.text.slice(2);
       const sequenceColumn = line.indent + 3;
@@ -441,6 +446,19 @@ export const detectLandofileTags: (options: {
             column: sequenceColumn + sequenceEntry.rawKey.length + 1,
           }),
         );
+        if (BLOCK_SCALAR_HEADER.test(sequenceEntry.rawValue.trim())) {
+          const [, nextIndex] = parseBlockScalar(
+            lines,
+            file,
+            index,
+            { ...line, indent: line.indent + 2 },
+            sequenceEntry.rawValue.trim(),
+          );
+          index = nextIndex - 1;
+        }
+      } else if (BLOCK_SCALAR_HEADER.test(sequenceValue.trim())) {
+        const [, nextIndex] = parseBlockScalar(lines, file, index, line, sequenceValue.trim());
+        index = nextIndex - 1;
       }
       continue;
     }
@@ -453,9 +471,95 @@ export const detectLandofileTags: (options: {
         column: line.indent + entry.rawKey.length + 2,
       }),
     );
+    if (BLOCK_SCALAR_HEADER.test(entry.rawValue.trim())) {
+      const [, nextIndex] = parseBlockScalar(lines, file, index, line, entry.rawValue.trim());
+      index = nextIndex - 1;
+    }
   }
 
   return occurrences;
+};
+
+const BLOCK_SCALAR_HEADER = /^([|>])([+-]?)$/;
+
+const parseBlockScalar = (
+  lines: ReadonlyArray<ParsedLine>,
+  filePath: string,
+  index: number,
+  header: ParsedLine,
+  indicator: string,
+): readonly [string, number] => {
+  const match = indicator.match(BLOCK_SCALAR_HEADER);
+  if (match === null)
+    throw parseError(filePath, `Malformed block scalar at line ${header.line}`, header.line);
+  const style = match[1];
+  const chomping = match[2];
+  const source = header.sourceLines;
+  const content: string[] = [];
+  let contentIndent: number | undefined;
+  let cursor = header.line;
+  while (cursor < source.length) {
+    const raw = source[cursor] ?? "";
+    if (raw.trim() === "") {
+      content.push("");
+      cursor += 1;
+      continue;
+    }
+    const lineIndent = raw.match(/^ */)?.[0].length ?? 0;
+    if (lineIndent <= header.indent) break;
+    contentIndent ??= lineIndent;
+    if (lineIndent < contentIndent) {
+      throw parseError(
+        filePath,
+        `Malformed YAML indentation at line ${cursor + 1}`,
+        cursor + 1,
+        lineIndent + 1,
+      );
+    }
+    content.push(raw.slice(contentIndent));
+    cursor += 1;
+  }
+
+  const finalBreak = content.length > 0 && (cursor < source.length || source.at(-1) === "");
+  if (cursor === source.length && source.at(-1) === "" && content.at(-1) === "") content.pop();
+  let trailingBlank = 0;
+  while (content.at(-1) === "") {
+    content.pop();
+    trailingBlank += 1;
+  }
+  let body = "";
+  if (style === "|") {
+    body = content.join("\n");
+  } else {
+    let position = 0;
+    while (position < content.length) {
+      const current = content[position] ?? "";
+      if (current === "") {
+        body += "\n";
+        position += 1;
+        continue;
+      }
+      body += current;
+      let blanks = 0;
+      while (content[position + 1 + blanks] === "") blanks += 1;
+      const next = content[position + 1 + blanks];
+      if (next !== undefined) {
+        const moreIndented = current.startsWith(" ") || next.startsWith(" ");
+        body += blanks > 0 ? "\n".repeat(blanks + (moreIndented ? 1 : 0)) : moreIndented ? "\n" : " ";
+      }
+      position += blanks + 1;
+    }
+  }
+  const suffix =
+    chomping === "+"
+      ? "\n".repeat(trailingBlank + (content.length > 0 && finalBreak ? 1 : 0))
+      : content.length === 0 || !finalBreak || chomping === "-"
+        ? ""
+        : "\n";
+  let nextIndex = index + 1;
+  while (nextIndex < lines.length && (lines[nextIndex]?.line ?? Number.POSITIVE_INFINITY) <= cursor)
+    nextIndex += 1;
+  return [body + suffix, nextIndex];
 };
 
 const parseMap = (
@@ -493,6 +597,12 @@ const parseMap = (
 
     const { rawValue } = entry;
     const valueColumn = line.indent + entry.rawKey.length + 2;
+    if (BLOCK_SCALAR_HEADER.test(rawValue.trim())) {
+      const [value, nextIndex] = parseBlockScalar(lines, filePath, index, line, rawValue.trim());
+      assignKeyedValue(references, result, entry, value, { line: line.line, column: valueColumn }, undefined);
+      index = nextIndex;
+      continue;
+    }
     const reference = parseYamlReferenceSyntax(rawValue, { line: line.line, column: valueColumn });
     const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
     if (blockAnchor !== undefined) reserveYamlAnchor(references, blockAnchor);
@@ -600,6 +710,13 @@ const parseList = (
       );
     }
 
+    if (BLOCK_SCALAR_HEADER.test(value)) {
+      const [scalar, nextIndex] = parseBlockScalar(lines, filePath, index, line, value);
+      result.push(scalar);
+      index = nextIndex;
+      continue;
+    }
+
     const mapEntry = splitMappingEntry(value);
     if (mapEntry !== undefined) {
       const [item, nextIndex] = parseListItemMap(
@@ -645,6 +762,21 @@ const parseListItemMap = (
     const { rawValue } = entry;
     const valueColumn = keyIndent + entry.rawKey.length + 2;
     const location = { line: keyLine, column: valueColumn };
+    if (BLOCK_SCALAR_HEADER.test(rawValue.trim())) {
+      const header = lines.find((line) => line.line === keyLine);
+      if (header === undefined) throw parseError(filePath, `Malformed YAML at line ${keyLine}`, keyLine);
+      const headerIndex = lines.indexOf(header);
+      const [value, nextIndex] = parseBlockScalar(
+        lines,
+        filePath,
+        headerIndex,
+        { ...header, indent: keyIndent },
+        rawValue.trim(),
+      );
+      assignKeyedValue(references, item, entry, value, location, undefined);
+      index = nextIndex;
+      return;
+    }
     const reference = parseYamlReferenceSyntax(rawValue, location);
     const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
     if (blockAnchor !== undefined) reserveYamlAnchor(references, blockAnchor);

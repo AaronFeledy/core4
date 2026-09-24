@@ -1,4 +1,5 @@
 import type { RecipeAuxiliaryContentSource } from "../init-pipeline/files.ts";
+import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH } from "./drupal-cms/php-config.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "./mean/scaffold.ts";
 import { NODE_POSTGRES_PACKAGE_JSON_TEMPLATE, NODE_POSTGRES_SERVER_JS } from "./node-postgres/scaffold.ts";
 import { RAILS_GEMFILE } from "./rails/scaffold.ts";
@@ -12,6 +13,7 @@ import { RAILS_GEMFILE } from "./rails/scaffold.ts";
  * published in each recipe snapshot hash exactly these values.
  */
 const BUNDLED_SCAFFOLD_ASSETS: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map([
+  ["drupal-cms", new Map([[DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI]])],
   [
     "mean",
     new Map([

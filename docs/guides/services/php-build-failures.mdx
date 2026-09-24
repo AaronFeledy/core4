@@ -51,7 +51,7 @@ surfaces.
 
 Fix the failing command in `build.app`. Most often that means fixing the underlying script itself, not the Landofile. Then rerun `lando start`.
 Editing a `build.app` entry changes that step's content-hash build key, so
-the next build always reruns it; you don't need `lando rebuild -y` the way
+the next build always reruns it; you don't need `lando rebuild` the way
 you do for `build.artifact` image-layer changes.
 
 ## Prove the plan
