@@ -43,9 +43,16 @@ export const sameState = (left: FileState, right: FileState): boolean => {
   );
 };
 
+export const observedStateMatches = (observed: FileState, recorded: FileState): boolean =>
+  observed.present === recorded.present &&
+  (!observed.present ||
+    (recorded.present &&
+      observed.digest === recorded.digest &&
+      (process.platform === "win32" || observed.mode === recorded.mode)));
+
 export const verifyState = async (root: string, entry: Entry, state: FileState): Promise<void> => {
   const path = await targetPath(root, entry.path);
-  if (!sameState((await snapshot(path)).state, state))
+  if (!observedStateMatches((await snapshot(path)).state, state))
     throw transactionError("conflict", "commit", entry.path);
 };
 
