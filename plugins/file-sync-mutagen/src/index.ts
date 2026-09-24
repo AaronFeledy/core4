@@ -316,5 +316,8 @@ export {
 
 export {
   type MutagenProcessClientOptions,
+  type PreparedWindowsMutagenProcessClientOptions,
+  WINDOWS_LANDO_DOCKER_HOST,
   makeMutagenProcessClient,
+  makePreparedWindowsMutagenProcessClient,
 } from "./mutagen-process-client.ts";

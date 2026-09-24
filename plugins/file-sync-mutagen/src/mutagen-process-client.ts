@@ -115,6 +115,8 @@ export interface MutagenProcessClientOptions {
   readonly dataDir: string;
   /** The Docker-compatible CLI shipped by the selected provider; its directory is used for Mutagen discovery. */
   readonly dockerCliPath: string;
+  /** Recheck a provider-prepared CLI before every subprocess, including later commands. */
+  readonly verifyDockerCli?: (() => Effect.Effect<string, FileSyncStartError>) | undefined;
   /** Provider socket, e.g. npipe:////./pipe/podman-lando on Windows. */
   readonly dockerHost: string;
   readonly runner: Runner;
@@ -249,6 +251,58 @@ export interface MutagenProcessClient extends MutagenClient {
   readonly completeAppDisposal: (app: FileSyncSessionSpec["app"]) => Effect.Effect<void, FileSyncStopError>;
 }
 
+/** Keep the Lando-owned Podman pipe confined to the opt-in Windows transport. */
+export const WINDOWS_LANDO_DOCKER_HOST = "npipe:////./pipe/podman-lando" as const;
+
+export interface PreparedWindowsMutagenProcessClientOptions
+  extends Omit<MutagenProcessClientOptions, "dockerCliPath" | "dockerHost" | "platform" | "verifyDockerCli"> {
+  /** Provider preflight verifies the alias against its managed Podman binary. */
+  readonly prepareDockerCli: () => Effect.Effect<string, unknown>;
+}
+
+/**
+ * Compose the provider's verified docker.exe alias with Mutagen's docker://
+ * transport. This does not activate the bundled FileSyncEngine; the caller
+ * must also guarantee populated targets and lifecycle cleanup.
+ */
+export const makePreparedWindowsMutagenProcessClient = (
+  options: PreparedWindowsMutagenProcessClientOptions,
+): Effect.Effect<MutagenProcessClient, FileSyncStartError> => {
+  const { prepareDockerCli, ...clientOptions } = options;
+  const prepare = () =>
+    prepareDockerCli().pipe(
+      Effect.flatMap((cliPath) =>
+        path.win32.isAbsolute(cliPath) && path.win32.basename(cliPath).toLowerCase() === "docker.exe"
+          ? Effect.succeed(cliPath)
+          : Effect.fail(startError("The provider did not prepare an absolute Windows docker.exe path.")),
+      ),
+      Effect.mapError((error) =>
+        error instanceof FileSyncStartError
+          ? error
+          : startError("Could not verify the managed Docker-compatible CLI for Mutagen."),
+      ),
+    );
+
+  return prepare().pipe(
+    Effect.map((dockerCliPath) =>
+      makeMutagenProcessClient({
+        ...clientOptions,
+        dockerCliPath,
+        dockerHost: WINDOWS_LANDO_DOCKER_HOST,
+        platform: "win32",
+        verifyDockerCli: () =>
+          prepare().pipe(
+            Effect.flatMap((current) =>
+              pathMatches(dockerCliPath, current, "win32")
+                ? Effect.succeed(current)
+                : Effect.fail(startError("The provider-prepared Docker-compatible CLI changed.")),
+            ),
+          ),
+      }),
+    ),
+  );
+};
+
 export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): MutagenProcessClient => {
   const platform = options.platform ?? process.platform;
   const arch = options.arch ?? process.arch;
@@ -310,8 +364,20 @@ export const makeMutagenProcessClient = (options: MutagenProcessClientOptions): 
         ),
   );
 
+  const verifiedTransport =
+    options.verifyDockerCli === undefined
+      ? Effect.void
+      : Effect.suspend(options.verifyDockerCli).pipe(
+          Effect.flatMap((current) =>
+            pathMatches(options.dockerCliPath, current, platform)
+              ? Effect.void
+              : Effect.fail(startError("The provider-prepared Docker-compatible CLI changed.")),
+          ),
+        );
+
   const run = (args: ReadonlyArray<string>, timeoutMs = DEFAULT_TIMEOUT_MS) =>
-    installed.pipe(
+    verifiedTransport.pipe(
+      Effect.zipRight(installed),
       Effect.flatMap(() => options.runner.run({ cmd: binary, args, env, timeoutMs })),
       Effect.mapError((error) =>
         error instanceof FileSyncStartError
