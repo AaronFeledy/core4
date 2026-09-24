@@ -83,6 +83,45 @@ services:
 
 Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
 
+## Choose a catalog service's endpoints
+
+Name an endpoint when a route should target it explicitly:
+
+```yaml
+name: catalog-endpoints
+services:
+  web:
+    type: nginx
+    endpoints:
+      - _tag: internal
+        name: browser
+        protocol: http
+        port: 80
+    routes:
+      - hostname: catalog-endpoints.lndo.site
+        endpoint: browser
+  cache:
+    type: redis
+    endpoints: []
+```
+
+Check the complete plan without starting containers:
+
+```sh
+lando app:cache:refresh --format=json
+```
+
+An explicit `endpoints:` list replaces the service type's default endpoints and
+anything inferred from `ports:` or `expose:`. This applies to catalog types such
+as Redis, PHP, and nginx as well as raw `lando` and `compose` services. An explicit
+`endpoints: []` contributes no service endpoints; omit the key to keep defaults.
+
+This does not change what the daemon listens on or disable its healthcheck.
+Keep endpoint ports aligned with the daemon's configuration. Routes must target
+an HTTP or HTTPS endpoint that remains in the list; Lando won't restore a default
+endpoint to satisfy a route. Normal Landofile layer merging still happens first,
+including merging named endpoint entries by name.
+
 ## Choose which overlapping route wins
 
 Keep several paths on one host. This example sends `/api` to `api` and every
@@ -234,6 +273,15 @@ lando app:config:lint --format=json
 A route like `api..lndo.site:99999` fails lint with `valid: false`, a `path` of `services.app.routes[0]`, and a `suggestedFix` that repeats the grammar. Fix the entry, lint again, then `lando start`.
 
 <Guide>
+  <Scenario id="catalog-endpoints" render>
+    <Step name="plan-authored-endpoints">
+      <UseFixture name="catalog-endpoints" />
+      <Run command="lando app:cache:refresh --format=json" />
+    </Step>
+    <Step name="cleanup-catalog-endpoints">
+      <Cleanup />
+    </Step>
+  </Scenario>
   <Scenario id="route-identity" render>
     <Step name="plan-overlapping-routes">
       <UseFixture name="route-identity" />

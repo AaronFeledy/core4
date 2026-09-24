@@ -2,6 +2,7 @@ import { Effect, Either, ParseResult, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import {
+  PortablePath,
   type ServiceConfig,
   type ServicePlan,
   containerDestinationRefusalMessage,
@@ -9,16 +10,15 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 
-import { type DraftServicePlan, deterministicMetadata, sortRecord } from "./draft.ts";
+import {
+  type BaseSeed,
+  type DraftServicePlan,
+  deterministicMetadata,
+  makeDraft,
+  sortRecord,
+} from "./draft.ts";
 
-export interface BaseSeed {
-  readonly name: ServicePlan["name"];
-  readonly type: ServicePlan["type"];
-  readonly provider: ServicePlan["provider"];
-  readonly primary: ServicePlan["primary"];
-  readonly environment?: Readonly<Record<string, string>>;
-  readonly defaultFeatures: ReadonlyArray<ServiceFeatureDefinition>;
-}
+export type { BaseSeed } from "./draft.ts";
 
 export interface ComposeServiceFeature {
   readonly id: string;
@@ -36,11 +36,8 @@ export interface ComposeServiceInput {
   readonly features: ReadonlyArray<ComposeServiceFeature>;
 }
 
-interface OrderedFeature {
+interface OrderedFeature extends ComposeServiceFeature {
   readonly index: number;
-  readonly id: string;
-  readonly config?: Readonly<Record<string, unknown>>;
-  readonly definition: ServiceFeatureDefinition;
 }
 
 const recordConfig = (
@@ -81,22 +78,6 @@ const decodeFeatureConfig = (
     }),
   );
 };
-
-const makeDraft = (base: BaseSeed): DraftServicePlan => ({
-  name: base.name,
-  type: base.type,
-  provider: base.provider,
-  primary: base.primary,
-  environment: sortRecord(base.environment ?? {}),
-  mounts: [],
-  featureIds: base.defaultFeatures.map((feature) => feature.id),
-  buildSteps: [],
-  storage: [],
-  storageOwnership: [],
-  endpoints: [],
-  dependsOn: [],
-  hostAliases: [],
-});
 
 const stableFeatureOrder = (input: ComposeServiceInput): ReadonlyArray<OrderedFeature> =>
   [...input.base.defaultFeatures.map((definition) => ({ id: definition.id, definition })), ...input.features]
@@ -268,6 +249,22 @@ export const composeService = (input: ComposeServiceInput): Effect.Effect<Servic
       { discard: true },
     );
 
+    // Explicit endpoint intent replaces feature defaults, including an empty list.
+    if (input.normalizedConfig.endpoints !== undefined) {
+      draft.endpoints = input.normalizedConfig.endpoints.map((endpoint) => {
+        switch (endpoint.protocol) {
+          case "unix":
+            return { ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) };
+          case "http":
+          case "https":
+          case "tcp":
+          case "udp":
+            return { ...endpoint };
+          default:
+            return endpoint satisfies never;
+        }
+      });
+    }
     const finalized = finalizeDraft(draft);
     if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
     return finalized;

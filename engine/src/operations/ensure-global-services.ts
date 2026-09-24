@@ -161,6 +161,7 @@ export const ensureGlobalServicesRunning = (
       provider
         .apply(builtPlan, {
           reconcile: false,
+          recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
           ...(options.signal === undefined ? {} : { signal: options.signal }),
           serviceEnvironment,
         })

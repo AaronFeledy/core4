@@ -132,24 +132,22 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  if (service.endpoints !== undefined) {
-    for (const endpoint of service.endpoints) {
-      if (endpoint.protocol === "unix") {
+  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
+    ctx.addEndpoint(endpoint);
+  }
+  for (const endpoint of internalEndpointsFromExpose(service.expose ?? [], "tcp")) {
+    switch (endpoint.protocol) {
+      case "unix":
         ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
-      } else {
+        break;
+      case "http":
+      case "https":
+      case "tcp":
+      case "udp":
         ctx.addEndpoint(endpoint);
-      }
-    }
-  } else {
-    for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
-      ctx.addEndpoint(endpoint);
-    }
-    for (const endpoint of internalEndpointsFromExpose(service.expose ?? [], "tcp")) {
-      if (endpoint.protocol === "unix") {
-        ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
-      } else {
-        ctx.addEndpoint(endpoint);
-      }
+        break;
+      default:
+        endpoint satisfies never;
     }
   }
 

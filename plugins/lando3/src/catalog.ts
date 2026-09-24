@@ -23,7 +23,7 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
     versions: ["8.0", "8.4", "9.7"],
     containerPort: 3306,
     configKeys: { database: "server" },
-    configDestination: "/etc/mysql/conf.d/99-lando.cnf",
+    configDestination: "/etc/mysql/my.cnf",
   },
   mariadb: {
     versions: ["11.4"],
@@ -43,7 +43,7 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
     configKeys: { database: "server" },
     configDestination: "/etc/lando/mongod.conf",
   },
-  redis: { versions: ["7"], containerPort: 6379, configKeys: { server: "server" } },
+  redis: { versions: ["7"], containerPort: 6379, configKeys: { server: "drop" } },
   solr: {
     versions: ["9"],
     containerPort: 8983,
@@ -51,7 +51,7 @@ export const CATALOG: Readonly<Record<string, CatalogEntry>> = {
     configKeys: { dir: "dir" },
     configDestination: "/var/solr/data/<core>/conf",
   },
-  elasticsearch: { versions: ["8"], containerPort: 9200, httpPort: 9200, configKeys: { server: "server" } },
+  elasticsearch: { versions: ["8"], containerPort: 9200, httpPort: 9200, configKeys: { server: "drop" } },
   opensearch: { versions: ["2"], containerPort: 9200, httpPort: 9200 },
   meilisearch: { versions: ["1"], containerPort: 7700, httpPort: 7700 },
   phpmyadmin: {

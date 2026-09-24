@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope, type Stream } from "effect";
 
 import type {
   AppResolveError,
+  ArtifactBuildError,
   ArtifactTransferError,
   NoProviderInstalledError,
   ProviderCapabilityError,
@@ -49,6 +50,7 @@ import type {
 import type { PrivilegeService } from "./process.ts";
 
 export type ProviderError =
+  | ArtifactBuildError
   | ProviderCapabilityError
   | ProviderConfigError
   | ProviderInternalError

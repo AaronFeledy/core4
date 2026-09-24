@@ -91,6 +91,23 @@ Two families of `needs-review` come from your commands rather than your keys. An
 
 `lando pull`, `lando push`, and `lando share` are `unsupported`. Lando 4 does not emulate hoster sync. Remove the command, move the workflow to `lando4 remote:add` and dataset `pull`/`push`, or keep that app on Lando 3.
 
+## What converts and what doesn't
+
+Nothing falls through silently. When a key has both a supported form and a rejected form, the rejected form blocks `--write`.
+
+| Lando 3 input | Result | Blocks `--write` |
+| --- | --- | --- |
+| A bundled recipe from the table above, with its `config:` | The matching Lando 4 recipe with `options` | No |
+| A service type and version Lando 4 ships (`php:8.3`, `mariadb:11.4`, `redis:7`) | The same service | No |
+| Supported `portforward`, override fields, `build_as_root`, `build`, `run_as_root`, `run`, `proxy` routes, `tooling`, `events`, and text `!load` / `!import` | Native Lando 4 keys, with a `rewritten` or `generated` note | No |
+| `moreHttpPorts`, `plugins`, `pluginDirs`, `keys`, tooling `level`, `usage`, `examples`, and `interactive` | `dropped`, with where to set it by hand | No |
+| A version Lando 4 doesn't ship (PHP 7.4, Node 18, MariaDB 10.6, Postgres 14, Solr 8) | `unsupported`, naming the versions you can pick | Yes |
+| Compose `tty`, `stdin_open`, `links`, `network_mode`, or `container_name`; image build `ssh`; Varnish with several backends; Elasticsearch or OpenSearch `plugins` | `unsupported` | Yes |
+| `lando pull`, `lando push`, or `lando share` in a command | `unsupported` | Yes |
+| Hosting-platform recipes, `drupal7` through `drupal9`, and unbundled recipes | Rejected with `ConfigTranslateError` | Yes |
+
+The versions that convert are exactly the ones listed in [Service type versions](../../reference/service-types.mdx). Lando 4 never builds an image for a version it doesn't ship. Bump the version in your Lando 3 file first, check the app still works on Lando 3, then convert.
+
 ## Write with backups
 
 ```sh
@@ -202,6 +219,25 @@ Every `lando4` app command (`info`, `start`, `exec`, `app:config:lint`) fails th
       <Verify file="lando3-blocked/.lando.yml" expect={{ regex: "cmd: lando pull" }} />
     </Step>
     <Step name="blocked-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="unavailable-versions-block-write" render>
+    <Step name="preview-versions">
+      <UseFixture name="lando3-old-versions" />
+      <Run command="lando4 app:config:translate --from lando3 --format=json" />
+      <Verify command="lando4 app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"kind\":\\s*\"unsupported\"[\\s\\S]*php version 7\\.4 is not available in Lando 4" } }} />
+      <Verify command="lando4 app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "mariadb version 10\\.6 is not available in Lando 4" } }} />
+      <Verify command="lando4 app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "Choose a supported php version: 8\\.1" } }} />
+      <Verify command="lando4 app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"targets\":\\s*\\[\\s*\\]" } }} />
+    </Step>
+    <Step name="write-refused-versions">
+      <Run command="lando4 app:config:translate --from lando3 --write --format=json" expectExit={1} />
+      <Verify errorTag="ConfigTranslateError" expect={{ regex: "Cannot write translation: unsupported" }} />
+      <Verify file="lando3-old-versions/.lando.yml" expect={{ regex: "type: php:7\\.4" }} />
+    </Step>
+    <Step name="versions-cleanup">
       <Cleanup />
     </Step>
   </Scenario>

@@ -240,14 +240,19 @@ export const makeTraefikRouterService = (
   return {
     id: TRAEFIK_PROXY_ID,
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-    setup: (config) =>
+    setup: (config, options) =>
       Effect.gen(function* () {
         defaultDomain = normalizeDefaultDomain(config.defaultDomain);
         yield* dependencies.fileSystem.mkdir(dynamicConfigDir(dependencies.paths));
         const socketProxy = yield* resolveSocketProxy(dependencies);
         const decision = yield* persistPortAcquisition({
           ...dependencies,
-          ...(socketProxy === undefined ? {} : { socketProxy }),
+          ...(socketProxy === undefined
+            ? {}
+            : {
+                socketProxy:
+                  options?.autoApprove === true ? { ...socketProxy, autoApprove: true } : socketProxy,
+              }),
           ...(config.router === undefined ? {} : { router: routerListsFromConfig(config.router) }),
           ...(config.routerPin === undefined ? {} : { routerPin: routerPinFromConfig(config.routerPin) }),
         });

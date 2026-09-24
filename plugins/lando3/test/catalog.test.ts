@@ -38,7 +38,7 @@ describe("local service catalog", () => {
       versions: ["8.0", "8.4", "9.7"],
       containerPort: 3306,
       configKeys: { database: "server" },
-      configDestination: "/etc/mysql/conf.d/99-lando.cnf",
+      configDestination: "/etc/mysql/my.cnf",
     });
     expect(LEGACY_TYPE_ALIASES).toEqual({ mongo: "mongodb" });
     expect(Object.keys(CATALOG)).toHaveLength(31);

@@ -124,7 +124,8 @@ export const runProxySetupStep = (
     if (proxy._tag === "Some") {
       const defaultDomain = yield* resolveProxyDefaultDomain;
       const { router, routerPin } = yield* resolveRouterConfigForApp();
-      yield* Effect.scoped(proxy.value.setup({ defaultDomain, router, routerPin })).pipe(
+      const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
+      yield* Effect.scoped(proxy.value.setup({ defaultDomain, router, routerPin }, { autoApprove })).pipe(
         Effect.tapError((cause) => recorder.recordFailure("proxy", cause)),
       );
       yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });

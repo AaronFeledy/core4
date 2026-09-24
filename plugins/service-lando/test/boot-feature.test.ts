@@ -6,6 +6,8 @@ import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { composeService } from "@lando/engine/services/feature";
 import { serviceFeatures } from "../src/features/index.ts";
+import { landoServiceType } from "../src/services/lando.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 
 const FeatureExtension = Schema.Struct({
   buildSteps: Schema.optional(
@@ -50,19 +52,45 @@ const buildStepsFor = (plan: ServicePlan) =>
   [];
 
 describe("lando.boot feature", () => {
-  test("emits only the idempotent artifact scaffold step", async () => {
+  test("the default lando stack adds no executable steps for a custom image", async () => {
+    // Given
+    const service = { type: "lando", image: "traefik/whoami", home: false as const };
+    // When
+    const plan = await composeServicePlan({
+      serviceType: landoServiceType,
+      service,
+      appRoot: "/srv/apps/boot-test",
+      metadata: { resolvedAt: "2026-09-23T00:00:00Z", source: "boot-feature.test.ts", runtime: 4 },
+    });
+    // Then
+    expect(buildStepsFor(plan)).toEqual([
+      {
+        id: "lando.boot:scaffold",
+        phase: "build",
+        command: { directories: ["/etc/lando", "/etc/lando/env.d", "/etc/lando/certs"] },
+      },
+    ]);
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "traefik/whoami" });
+    expect(plan.command).toBeUndefined();
+    expect(plan.entrypoint).toBeUndefined();
+    expect(plan.user).toBeUndefined();
+    expect(plan.environment.LANDO).toBe("ON");
+  });
+
+  test("scaffolds directories without executing a command in the image", async () => {
+    // Given / When: compose the boot feature for an image with no assumed executables.
     const plan = await composeBootPlan();
     const steps = buildStepsFor(plan);
     const rawSteps =
       (plan.extensions["@lando/core/service-features"] as { buildSteps?: ReadonlyArray<object> } | undefined)
         ?.buildSteps ?? [];
 
+    // Then: directory creation is filesystem intent, not a shell or executable command.
     expect(steps).toEqual([
       {
         id: "lando.boot:scaffold",
         phase: "build",
-        command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
-        user: "root",
+        command: { directories: ["/etc/lando", "/etc/lando/env.d", "/etc/lando/certs"] },
       },
     ]);
     expect("privileged" in (rawSteps[0] ?? {})).toBe(false);
