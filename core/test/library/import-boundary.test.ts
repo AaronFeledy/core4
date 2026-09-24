@@ -434,7 +434,7 @@ describe("TUI import-boundary classifier (detection self-check)", () => {
   test("renderer production source has only the sanctioned OpenTUI module edge", () => {
     const edges = collectTsFiles(rendererSrc).flatMap((file) =>
       scanModuleEdges(file, readFileSync(file, "utf8"))
-        .filter((edge) => isTuiNpmSpecifier(edge.specifier))
+        .filter((edge) => !edge.typeOnly && isTuiNpmSpecifier(edge.specifier))
         .map((edge) => ({ file, kind: edge.kind, specifier: edge.specifier })),
     );
 
@@ -452,6 +452,20 @@ describe("TUI import-boundary classifier (detection self-check)", () => {
         },
       ].sort((left, right) => left.file.localeCompare(right.file)),
     );
+  });
+
+  test("renderer edge self-check ignores erased types but retains static runtime imports", () => {
+    const source = [
+      'import type { BoxOptions } from "@opentui/core";',
+      'import { createCliRenderer } from "@opentui/core";',
+    ].join("\n");
+    const edges = scanModuleEdges("renderer-edge-check.ts", source).filter(
+      (edge) => !edge.typeOnly && isTuiNpmSpecifier(edge.specifier),
+    );
+
+    expect(edges.map((edge) => ({ kind: edge.kind, specifier: edge.specifier }))).toEqual([
+      { kind: "import", specifier: "@opentui/core" },
+    ]);
   });
 
   test("signal A: flags a direct @opentui/* npm import from anywhere", () => {

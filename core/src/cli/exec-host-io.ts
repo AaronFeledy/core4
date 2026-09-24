@@ -3,6 +3,8 @@ import { Chunk, Effect, Stream } from "effect";
 import type { ExecAppOptions } from "@lando/sdk/app";
 import type { HostTerminal } from "@lando/sdk/schema";
 
+import { cancellableTerminalStdin } from "./commands/terminal-stdin";
+
 export type ExecAppHostOptions = ExecAppOptions & {
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
@@ -87,7 +89,8 @@ export const withInheritedStdinRawMode = <A, E, R>(
       stdin.resume();
       return () => {
         setRawMode(wasRaw);
-        if (!wasFlowing) stdin.pause();
+        if (wasFlowing) stdin.resume();
+        else stdin.pause();
       };
     }),
     () => effect,
@@ -100,16 +103,29 @@ export const attachExecHostIo = (
   stdin: InheritedStdin = process.stdin,
   output: TerminalOutput = process.stdout,
 ): ExecAppHostOptions => {
-  const interactive = options.interactive === true;
   const tty = options.tty === true;
   const hostTerminal = attachedHostTerminal(output);
+  const inheritStdin = options.interactive === true || stdin.isTTY !== true;
+  const terminalEnvironment = tty
+    ? {
+        COLUMNS: String(output.columns || 80),
+        LINES: String(output.rows || 24),
+        ...options.env,
+      }
+    : undefined;
   return {
     ...options,
     tty,
+    ...(terminalEnvironment === undefined ? {} : { env: terminalEnvironment }),
     ...(hostTerminal === undefined ? {} : { hostTerminal }),
     ...(tty && hostTerminal !== undefined ? { terminalResize: stdoutResizeStream(output) } : {}),
-    ...(interactive
-      ? { stdinStream: { [Symbol.asyncIterator]: () => stdin.iterator({ destroyOnReturn: false }) } }
+    ...(inheritStdin
+      ? {
+          stdinStream:
+            stdin === process.stdin
+              ? cancellableTerminalStdin(process.stdin)
+              : { [Symbol.asyncIterator]: () => stdin.iterator({ destroyOnReturn: false }) },
+        }
       : {}),
   };
 };

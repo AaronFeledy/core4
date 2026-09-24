@@ -103,7 +103,7 @@ describe("renderStartAppResult decorated ready", () => {
         "Next",
         "  lando info",
         "  lando logs",
-        "  lando exec -- <cmd>",
+        "  lando exec <service> -- <command>",
         "",
         "2 services ready",
       ].join("\n"),
@@ -160,7 +160,7 @@ describe("renderStartAppResult decorated degraded", () => {
         "1 of 2 services ready",
       ].join("\n"),
     );
-    expect(plain).not.toContain("lando exec -- <cmd>");
+    expect(plain).not.toContain("lando exec <service> -- <command>");
     expect(out).not.toContain("[OK]");
   });
 

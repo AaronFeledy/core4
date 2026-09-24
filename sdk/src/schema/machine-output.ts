@@ -20,6 +20,17 @@ const TaggedErrorJson = Schema.Struct({
   _tag: Schema.String,
   message: Schema.String,
   remediation: Schema.optional(Schema.String),
+  service: Schema.optional(Schema.String),
+  steps: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        label: Schema.String,
+        target: Schema.String,
+        destructive: Schema.Boolean,
+      }),
+    ),
+  ),
 });
 
 /** JSON envelope for `--format json` (and the terminal `result` stream frame). `apiVersion` changes only on breaking envelope edits. */

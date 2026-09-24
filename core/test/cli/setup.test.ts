@@ -1424,6 +1424,67 @@ describe("meta:setup command", () => {
     }
   });
 
+  test("reports provisioned Mutagen binaries without a live session client as unavailable", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-file-sync-no-client-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        setup: () => Effect.void,
+      };
+      const fileSync = {
+        ...TestFileSyncEngine,
+        isAvailable: Effect.succeed(false),
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: makeTestRouterService(),
+                ssh: makeTestSshService(),
+                fileSync,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      expect(result.fileSyncStatus).toBe("unavailable");
+      expect(setupSpec.render?.(result)).toContain(
+        "file-sync: unavailable (ordinary mounts remain available)",
+      );
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly evidence: string;
+          readonly remediation?: string;
+        }>;
+      };
+      expect(readiness.status).toBe("ready");
+      expect(readiness.steps.find((step) => step.id === "file-sync")).toMatchObject({
+        status: "skipped",
+        evidence: "Mutagen binaries are installed, but this build has no live file-sync session client.",
+        remediation: "Continue with ordinary mounts; accelerated file sync is unavailable in this build.",
+      });
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("loads configured and environment CA certificate files before provider setup", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-"));
     const configCert = join(tempRoot, "config.pem");
@@ -1945,7 +2006,7 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toContain(fileSyncSatisfiedLine);
   });
 
-  test("--skip-file-sync records deferred setup for the first accelerated app:start", async () => {
+  test("--skip-file-sync skips Mutagen download until setup is rerun", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-file-sync-deferred-"));
     try {
       const provider = {
@@ -1989,9 +2050,11 @@ describe("meta:setup command", () => {
       expect(marker).toEqual({
         status: "deferred",
         engineId: "mutagen",
-        resumeCommand: "lando start",
+        resumeCommand: "lando setup",
       });
-      expect(setupSpec.render?.(result)).toContain("file-sync: deferred until first accelerated app:start");
+      expect(setupSpec.render?.(result)).toContain(
+        "file-sync: Mutagen download skipped (run lando setup to install later)",
+      );
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
     }
@@ -2820,7 +2883,7 @@ describe("meta:setup command", () => {
 });
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled setup install dir", () => {
-  test("matches source setup failure output and keeps shellenv on the user data bin path", async () => {
+  test("matches source setup failure output and points shellenv at the compiled binary", async () => {
     const build = await runCommand([process.execPath, "run", "build"]);
     expect(build.exitCode).toBe(0);
 
@@ -2837,7 +2900,8 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(compiled.stdout).toBe(source.stdout);
     expect(normalizeSetupFailure(compiled.stderr)).toBe(normalizeSetupFailure(source.stderr));
     expect(shellenv.stdout).toContain(`LANDO_USER_DATA_ROOT='${commandEnv.LANDO_USER_DATA_ROOT}'`);
-    expect(shellenv.stdout).toContain(`export PATH='${commandEnv.LANDO_USER_DATA_ROOT}/bin'":\${PATH}"`);
+    expect(shellenv.stdout).toContain(`export PATH='${commandEnv.LANDO_USER_DATA_ROOT}/bin'`);
+
     expect(compiled.stderr).toContain(`LANDO_INSTALL_DIR="${dirname(binaryPath)}"`);
   }, 120_000);
 });

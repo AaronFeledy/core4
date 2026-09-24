@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CapabilityError,
+  GlobalAppError,
   GlobalAutoStartError,
   LandofileEventStepFailedError,
   NotImplementedError,
   ProviderUnavailableError,
+  ProxySetupError,
   ServiceStartError,
 } from "@lando/sdk/errors";
 
@@ -199,6 +201,60 @@ describe("buildBugReport: envelope extraction", () => {
     expect(text).toContain("providerId: docker");
     expect(text).not.toContain("manually");
     expect(text).not.toContain("global:start");
+  });
+
+  test("surfaces the nested provider failure behind proxy setup and global startup", () => {
+    const env = buildBugReport({
+      error: new ProxySetupError({
+        proxyId: "traefik",
+        message: "Traefik ingress setup failed.",
+        remediation: "Run `lando global:start --service=traefik`.",
+        cause: new GlobalAppError({
+          message: "Unable to ensure global services are running.",
+          operation: "ensureRunning",
+          cause: new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "bringUp.create",
+            message: "Podman container create failed with HTTP 500. API_TOKEN=secret-value",
+            remediation: "Inspect the managed runtime, then retry setup.",
+          }),
+        }),
+      }),
+      context: ctx({ commandId: "meta:setup" }),
+    });
+    expect(env.code).toBe("ProxySetupError");
+    expect(env.body).toContain("Podman container create failed with HTTP 500.");
+    expect(env.body).not.toContain("secret-value");
+    expect(env.remediation).toContain("Inspect the managed runtime");
+    expect(env.extra).toContainEqual(["cause", "ProviderUnavailableError"]);
+    expect(env.extra).toContainEqual(["operation", "bringUp.create"]);
+    expect(env.providerId).toBe("lando");
+    const json = renderJsonBugReport(env);
+    expect(json).toContain("bringUp.create");
+    expect(json).not.toContain("secret-value");
+  });
+
+  test("retains middle tagged remediation when the provider cause has none", () => {
+    const env = buildBugReport({
+      error: new ProxySetupError({
+        proxyId: "traefik",
+        message: "Traefik ingress setup failed.",
+        remediation: "Retry global startup after resolving the failure.",
+        cause: new GlobalAppError({
+          message: "Unable to ensure global services are running.",
+          remediation: "Run `lando doctor` to inspect the managed runtime.",
+          cause: new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "bringUp.create",
+            message: "Container creation failed.",
+          }),
+        }),
+      }),
+      context: ctx({ commandId: "meta:setup" }),
+    });
+    expect(env.remediation).toContain("Retry global startup");
+    expect(env.remediation).toContain("lando doctor");
+    expect(env.extra).toContainEqual(["cause", "ProviderUnavailableError"]);
   });
 
   test("does not leak untagged raw cause messages that contain user paths", () => {

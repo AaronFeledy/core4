@@ -4,12 +4,16 @@ import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 
-import { type GuideScenarioAst, buildGuideScenarioAst } from "./build-guide-scenarios.ts";
+import {
+  type GuideScenarioAst,
+  buildGuideScenarioAst,
+  resolveGeneratedGuideTestRoot,
+} from "./build-guide-scenarios.ts";
 import { rewriteScenarioSourceMappedOutput } from "./test-reporters/scenario-source-mapper.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GENERATOR_PATH = resolve(import.meta.dirname, "build-guide-scenarios.ts");
-const GENERATED_ROOT = "test/scenarios/generated/guides";
+const GENERATED_ROOT = resolveGeneratedGuideTestRoot();
 const GUIDE_ROOT = "docs/guides";
 const TSC_PATH = resolve(REPO_ROOT, "node_modules/.bin/tsc");
 const DEBOUNCE_MS = 150;
@@ -230,10 +234,20 @@ const testGuides = async (guideIds: readonly string[], isAll: boolean): Promise<
 
 const writeMapped = (result: RunResult): void => {
   if (result.stdout.length > 0) {
-    process.stdout.write(rewriteScenarioSourceMappedOutput(result.stdout, { repoRoot: REPO_ROOT }));
+    process.stdout.write(
+      rewriteScenarioSourceMappedOutput(result.stdout, {
+        repoRoot: REPO_ROOT,
+        generatedRoot: resolve(REPO_ROOT, GENERATED_ROOT),
+      }),
+    );
   }
   if (result.stderr.length > 0) {
-    process.stderr.write(rewriteScenarioSourceMappedOutput(result.stderr, { repoRoot: REPO_ROOT }));
+    process.stderr.write(
+      rewriteScenarioSourceMappedOutput(result.stderr, {
+        repoRoot: REPO_ROOT,
+        generatedRoot: resolve(REPO_ROOT, GENERATED_ROOT),
+      }),
+    );
   }
 };
 

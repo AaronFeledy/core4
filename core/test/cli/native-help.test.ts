@@ -6,6 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { suggestBuiltInCommandForSuffix } from "../../src/cli/built-in-command-registry.ts";
 import { renderColdAllHelp } from "../../src/cli/cold-path-output.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
@@ -194,6 +195,48 @@ describe("native registry help", () => {
 });
 
 describe("native unknown-command failures", () => {
+  test("Given a unique built-in suffix, when dispatched, then the canonical command is suggested without resolving the suffix", async () => {
+    const result = await runCli(["includes:verify"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("UnknownCommandError");
+    expect(result.stderr).toContain("Command includes:verify not found");
+    expect(result.stderr).toContain("Run `lando app:includes:verify` instead.");
+    expect(result.stderr).not.toContain("lando help --all");
+  });
+
+  test("Given a unique built-in suffix, when JSON is requested, then the tagged failure carries the suggestion", async () => {
+    const result = await runCli(["includes:verify", "--format=json"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      command: "cli:unknown-command",
+      ok: false,
+      error: {
+        _tag: "UnknownCommandError",
+        message: "Command includes:verify not found",
+        remediation: "Run `lando app:includes:verify` instead.",
+      },
+    });
+  });
+
+  test("Given an ambiguous, absent, or deferred suffix, when searched, then no canonical command is suggested", () => {
+    expect(suggestBuiltInCommandForSuffix("config")).toBeUndefined();
+    expect(suggestBuiltInCommandForSuffix("does-not-exist")).toBeUndefined();
+    expect(suggestBuiltInCommandForSuffix("plugin:login")).toBeUndefined();
+  });
+
+  test("Given control characters in a near suffix, when dispatched, then the generic diagnostic stays escaped", async () => {
+    const result = await runCli(["config:lint\u001b[31m"]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("config:lint\\u001b[31m");
+    expect(result.stderr).toContain("lando help --all");
+    expect(result.stderr).not.toContain("lando app:config:lint");
+    expect(result.stderr).not.toContain("\u001b");
+  });
+
   test.each([
     ["plain unknown command", ["does-not-exist"]],
     ["unknown help target", ["does-not-exist", "--help"]],

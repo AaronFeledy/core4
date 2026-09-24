@@ -55,7 +55,7 @@ Ctrl+D at an empty prompt ends the REPL with the exit status of the last execute
 `lando shell --no-interactive`, a non-TTY stdin/stdout, or a redirected invocation never opens the REPL. The command fails fast with tagged `ShellRequiresTtyError` instead of hanging. The error points at the scriptable equivalent:
 
 ```sh
-app:exec --interactive --tty -- <command>
+lando exec <service> -- <command>
 ```
 
 <Guide>

@@ -1,5 +1,8 @@
 import type { SqlFamily } from "./families.ts";
 
+/** Public fallback credential used by the bundled SQL recipes. */
+export const DEFAULT_SQL_PASSWORD = "lando";
+
 export type SqlCreds = {
   readonly user: string;
   readonly password: string;
@@ -83,7 +86,7 @@ export const resolveSqlCreds = (input: ResolveSqlCredsInput): SqlCreds => {
   const rootPassword = authored?.rootPassword ?? fromEnv.rootPassword;
   return {
     user: authored?.user ?? fromEnv.user ?? defaultUser,
-    password: authored?.password ?? fromEnv.password ?? "lando",
+    password: authored?.password ?? fromEnv.password ?? DEFAULT_SQL_PASSWORD,
     database: authored?.database ?? fromEnv.database ?? input.appName,
     ...(rootPassword === undefined ? {} : { rootPassword }),
   };

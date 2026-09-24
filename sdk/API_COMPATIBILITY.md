@@ -96,6 +96,8 @@
 
 - `FileSyncEngineShape.sessionsPersistAcrossProcesses` tells startup whether existing sessions survive process exit. Managed app handles leave persistent running sessions in place when their scope closes; failed starts still terminate sessions they created. Engines that omit the property retain scope-bound cleanup.
 
+- StartAppError and StopAppError, including the inherited restart, rebuild, and destroy error unions, now include the existing tagged StateStoreError when a per-app lifecycle lock cannot be acquired. Callers receive its lock reason and retry remediation.
+
 - `RuntimeProviderShape.inspectAppliedFileSync(plan)` optionally reports whether the provider has a prior accelerated app mount, an ordinary applied plan, no applied state, or an unknown state. A proven accelerated result carries the saved engine ID and exact previously applied session specs; volume-only evidence stays unknown. Startup uses this read-only verdict before falling back from an accelerated plan to ordinary mounts; unknown or accelerated state stops startup so unflushed container writes cannot be hidden by a host bind.
 
 - `RuntimeProviderShape.quiesceForFileSync(target)` is an optional teardown hook that stops app writers while keeping accelerated mount volumes intact for a final synchronization flush. Destroy fails before volume removal if an active file sync session exists and the provider lacks the hook.
@@ -113,6 +115,8 @@
 
 - `HostProxyBridgeInput` and `HostProxyBridgeResult` add schema-derived contracts for a provider-scoped loopback-to-guest bridge. `RuntimeProviderShape.openHostProxyBridge(input)` is optional and lets managed Windows Podman expose its authenticated host-proxy worker through a private guest Unix socket without changing other providers.
 - `GlobalAppService.restartRunningService(service)` additively restarts an existing running global service and reports whether one was restarted. The Traefik router uses it to load route file changes on Windows-backed mounts whose host writes do not notify Linux file watchers.
+
+- `CommandResultEnvelope.error` additively includes optional `service` and structured `steps` for `SqlConfirmRequiredError`. The machine result encoder carries these confirmation details through canonical secret redaction so scripts can review the same destructive steps named by remediation.
 
 - `RuntimeProviderShape.occupiedPublishPorts(ports)` additively exposes read-only provider-host TCP publication occupancy. `GlobalAppService.occupiedPublishPorts(ports)` delegates to the selected managed provider, while `GlobalAppService.ownedPublishPorts(service, ports)` identifies running global-service publications for stable router reuse. `RouterService.prepare(config)` additively lets app startup persist a port decision before required global services start. All inputs and results use the existing `PortNumber` and `ServiceName` schema-derived types; no new JSON Schema is registered.
 - `LandofileService.discover` additively exposes `ManagedFileTransactionError` without adding an Effect context requirement. The frozen service-surface fixture matches the expanded error union. `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` preserve the same failure through app operations; restart, rebuild, and destroy inherit it. The additive `ManagedFileTransactionGuard` service provides `ensureConsistent(appRoot)` and `pending(appRoot)` and is included in `LandoRuntimeServices`.
@@ -164,6 +168,7 @@
   failures. The start, stop, restart, rebuild, destroy, logs, pull, and push SDK error unions are not
   widened by this change.
 - `RouterServiceContributionLayer` additively requires the existing `CertificateAuthority` service so proxy plugins can terminate TLS with the selected active CA; core supplies a deferred resolver-backed implementation to selected proxy contributions.
+- The unreleased `LandoPluginModule.routerServices` map now stores `RouterServiceContribution` factories. Core calls each factory with the owning plugin scoped `LandoPluginContext`, allowing router implementations to use the supported plugin `stateStore` without depending on host internals. Static router layers have no compatibility path before the first public release.
 - `@lando/sdk/services` additively exports the runtime `ServiceCaFileDescriptor` Effect Schema and
   its inferred type. `ServiceBuildStepIntent` additively accepts optional `caFiles` so derived
   artifact builders can verify and pack host CA inputs without adding provider-specific intent.

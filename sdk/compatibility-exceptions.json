@@ -1692,6 +1692,12 @@
     "justification": "The unreleased snapshot reference now carries provider-observed artifact size for pre-mutation restore verification."
   },
   {
+    "surface": "schema:StreamFrame",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid."
+  },
+  {
     "surface": "schema:FileSyncSessionInfo",
     "changeKind": "property-added",
     "path": "$.spec",

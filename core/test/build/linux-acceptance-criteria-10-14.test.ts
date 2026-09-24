@@ -101,10 +101,11 @@ describe("linux-x64 acceptance criteria 10-14", () => {
     expect(provisionSource).toContain("linux-armv7");
     expect(manifestJson).toContain("toolVersion");
     expect(manifestJson).toContain("linux-amd64");
+    expect(manifestJson).toContain("mutagen-agents.tar.gz");
 
     await expectPassingSpotCheck(
       "plugins/file-sync-mutagen/test/provision.test.ts",
-      "installs host CLI plus all three agents from one shared host tar.gz",
+      "installs host CLI, agent bundle, and all three agents from one shared host tar.gz",
     );
   });
 
@@ -115,7 +116,7 @@ describe("linux-x64 acceptance criteria 10-14", () => {
         "runs provider, CA, router, shell integration, and file sync in deterministic order",
         "validates network trust before provider and file-sync downloads and honors config proxy precedence",
         "reports file sync as already satisfied for native bind-mount providers",
-        "--skip-file-sync records deferred setup for the first accelerated app:start",
+        "--skip-file-sync skips Mutagen download until setup is rerun",
       ];
       for (const filter of setupSpotChecks) {
         await expectPassingSpotCheck("core/test/cli/setup.test.ts", filter);
@@ -124,7 +125,7 @@ describe("linux-x64 acceptance criteria 10-14", () => {
       if (isLinuxX64) {
         await expectPassingSpotCheck(
           "core/test/cli/setup.test.ts",
-          "matches source setup failure output and keeps shellenv on the user data bin path",
+          "matches source setup failure output and points shellenv at the compiled binary",
         );
       }
     },

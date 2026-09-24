@@ -70,6 +70,7 @@
     "./operations/exec": "./src/operations/exec.ts",
     "./operations/global-install": "./src/operations/global-install.ts",
     "./operations/global-plan": "./src/operations/global-plan.ts",
+    "./operations/global-routes": "./src/operations/global-routes.ts",
     "./operations/info": "./src/operations/info.ts",
     "./operations/logs": "./src/operations/logs.ts",
     "./operations/plugin-install": "./src/operations/plugin-install.ts",
