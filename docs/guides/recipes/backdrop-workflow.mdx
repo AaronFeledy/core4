@@ -1,0 +1,219 @@
+---
+id: backdrop-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, backdrop, php, mariadb, bee]
+---
+
+# Run the Backdrop recipe
+
+```sh
+lando init --recipe backdrop --name=backdrop-demo --yes
+cd backdrop-demo
+lando start
+```
+
+The named init creates `backdrop-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Apache and MariaDB are up after start. Drop Backdrop into the app root so `index.php` exists, then open the URL `lando info` prints.
+
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: backdrop`, Apache on port `80`, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando bee`, `lando composer`, and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` or `--answer=database=mysql:8.0` when you want those instead. PHP 8.6 is a valid `--answer=php=8.6`.
+
+For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for database commands.
+
+`lando bee` runs the `bee` binary on `appserver`. That binary is not in the stock PHP image. Install it (and `mysqli`) before day-to-day Bee commands.
+
+Init also injects `appserver.environment.BACKDROP_SETTINGS` with a JSON database blob. Remove that key after init and put credentials in `settings.php` instead. Bee and the Apache site both read `settings.php` cleanly that way.
+
+## Put Bee, mysqli, and a MySQL client on appserver
+
+Stock PHP images ship Composer and `pdo_mysql`. Backdrop day-to-day also wants the `mysqli` extension, Bee, and a `mysql` / `mysqldump` client Bee can call. Add them as root `build.artifact` steps on `appserver`, then rebuild so they land in the image.
+
+While you are editing `.lando.yml`, delete the whole `environment:` block under `appserver` (the one whose only key is `BACKDROP_SETTINGS`).
+
+```yaml
+services:
+  appserver:
+    build:
+      artifact:
+        - run: docker-php-ext-install mysqli
+          user: root
+        - run: apt-get update && apt-get install -y --no-install-recommends default-mysql-client curl ca-certificates unzip && rm -rf /var/lib/apt/lists/*
+          user: root
+        - run: ln -sf /usr/bin/mariadb /usr/local/bin/mysql && ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump
+          user: root
+        - run: curl -fsSL -o /usr/local/bin/bee https://github.com/backdrop-contrib/bee/releases/download/1.x-1.2.0/bee.phar && echo 9c7aaced21b0fe1e78bb34d8476e328b04da81beae4c422a065b483c1430937e\ \ /usr/local/bin/bee | sha256sum -c - && chmod 0755 /usr/local/bin/bee
+          user: root
+```
+
+This pins Bee 1.x-1.2.0 and checks its published SHA-256 digest before `chmod` can leave a bad binary on `PATH`. A mismatch fails the rebuild. Debian's `default-mysql-client` ships `mariadb` / `mariadb-dump`; the `ln` step gives Bee the `mysql` and `mysqldump` names it looks up.
+
+Refresh the plan and rebuild:
+
+```sh
+lando app:cache:refresh
+lando rebuild
+```
+
+`app:rebuild` has no `-y` flag. `lando restart` alone reuses the previous image. After rebuild, confirm the tools:
+
+```sh
+lando bee version
+# Yes, the binary is literally named bee. Lean into it.
+lando php -r 'echo extension_loaded("mysqli") ? "mysqli=yes\n" : "mysqli=no\n";'
+lando composer --version
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="backdrop-workflow" display="backdrop-demo" />
+      <Run command="lando init --recipe backdrop --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"backdrop\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bee\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mysql-php82" render>
+    <Step name="init">
+      <Variable name="appName" value="backdrop-workflow-mysql" display="backdrop-mysql" />
+      <Run command="lando init --recipe backdrop --name={{appName}} --yes --answer=php=8.2 --answer=database=mysql:8.0 --answer=composer=2.7.7 --answer=webroot=/app" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.2\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mysql:8\\.0\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"backdrop\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Download and install Backdrop
+
+Pin a published full package. This path used Backdrop 1.35.1 from the GitHub release assets and checked the SHA-256 digest published on that release for `backdrop.zip`:
+
+```sh
+lando exec appserver -- sh -lc '
+  set -eu
+  curl -fsSL -o /tmp/backdrop.zip \
+    https://github.com/backdrop/backdrop/releases/download/1.35.1/backdrop.zip
+  echo "7add8d49fdbfee6819cfb4866cd3501f5e06df8000e39652ecf896a2fa7a729c  /tmp/backdrop.zip" | sha256sum -c -
+  rm -rf /tmp/backdrop-extract
+  mkdir -p /tmp/backdrop-extract
+  unzip -q /tmp/backdrop.zip -d /tmp/backdrop-extract
+  ROOT=$(find /tmp/backdrop-extract -maxdepth 2 -name index.php -print | head -n1 | xargs dirname)
+  for f in "$ROOT"/* "$ROOT"/.[!.]*; do
+    base=$(basename "$f")
+    [ "$base" = "." ] && continue
+    [ "$base" = ".." ] && continue
+    [ "$base" = ".lando.yml" ] && continue
+    cp -a "$f" /app/
+  done
+  rm -rf /tmp/backdrop.zip /tmp/backdrop-extract
+'
+```
+
+A digest mismatch fails before extract. Keep `.lando.yml` for your host user. Extract runs as root inside `exec`, so hand the CMS tree to the web user without touching the Landofile:
+
+```sh
+lando exec appserver -- sh -lc \
+  'find /app -mindepth 1 ! -name .lando.yml -exec chown -R www-data:www-data {} +'
+```
+
+`chown -R www-data:www-data /app` also reowns `.lando.yml` and breaks host `lando` commands.
+
+Put MariaDB credentials in `settings.php` (replace the stock `$database` array):
+
+```php
+$database = array(
+  'database' => 'backdrop-demo',
+  'username' => 'lando',
+  'password' => 'lando',
+  'host' => 'database',
+  'port' => 3306,
+);
+```
+
+Match `'database'` to the app name (here `backdrop-demo`). Generate an admin password locally, then run the installer. The generated value is printed once so you can save it; it is not written to shell history by this snippet.
+
+```sh
+BACKDROP_ADMIN_PASSWORD="$(openssl rand -base64 24)"
+printf 'Save this Backdrop admin password: %s\n' "$BACKDROP_ADMIN_PASSWORD"
+lando bee install \
+  --db-name=backdrop-demo \
+  --db-user=lando \
+  --db-pass=lando \
+  --db-host=database \
+  --username=admin \
+  --password="$BACKDROP_ADMIN_PASSWORD" \
+  --email=admin@example.com \
+  --site-name='Backdrop Demo' \
+  --yes
+unset BACKDROP_ADMIN_PASSWORD
+```
+
+Then confirm the day-to-day tools:
+
+```sh
+lando bee status
+lando bee cache-clear all
+lando composer --version
+lando mariadb -e 'SHOW TABLES FROM `backdrop-demo`;'
+```
+
+Open the HTTPS URL `lando info` prints. A fresh install serves the site name you passed to `install`.
+
+## Connect Backdrop to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `backdrop-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you do not need it for the site.
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Backdrop recipe](/recipes/backdrop/)
+- [Add PHP](../services/php.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
