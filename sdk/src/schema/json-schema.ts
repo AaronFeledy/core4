@@ -207,6 +207,7 @@ import {
   FileSyncEventChunk,
   FileSyncSessionInfo,
   FileSyncSessionSpec,
+  PreparedFileSyncTarget,
 } from "./file-sync-engine.ts";
 import { HostTerminal } from "./host-terminal.ts";
 import {
@@ -661,6 +662,7 @@ const basePublicSchemaRegistry = {
   GlobalServiceContribution,
   FileSyncEngineCapabilities,
   FileSyncSessionSpec,
+  PreparedFileSyncTarget,
   FileSyncSessionInfo,
   FileSyncEventChunk,
   FileSyncPlan,
@@ -1108,6 +1110,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RouterServiceContribution: "Public Lando schema contract for Router Service Contribution.",
   FileSyncEngineCapabilities: "Public Lando schema contract for File Sync Engine Capabilities.",
   FileSyncSessionSpec: "Public Lando schema contract for File Sync Session Spec.",
+  PreparedFileSyncTarget: "Public Lando schema contract for a prepared file-sync target.",
   FileSyncSessionInfo: "Public Lando schema contract for File Sync Session Info.",
   FileSyncEventChunk: "Public Lando schema contract for File Sync Event Chunk.",
   FileSyncPlan: "Public Lando schema contract for File Sync Plan.",

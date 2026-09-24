@@ -271,6 +271,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   GlobalServiceContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   FileSyncEngineCapabilities: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   FileSyncSessionSpec: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PreparedFileSyncTarget: "sdk/test/schema/prepared-file-sync-target.test.ts",
   FileSyncSessionInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   FileSyncEventChunk: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   FileSyncPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

@@ -115,7 +115,7 @@
 
 - `RuntimeProviderShape.quiesceForFileSync(target)` is an optional teardown hook that stops app writers while keeping accelerated mount volumes intact for a final synchronization flush. Destroy fails before volume removal if an active file sync session exists and the provider lacks the hook.
 
-- `RuntimeProviderShape.prepareFileSyncTargets(plan)` is an optional pre-apply hook for providers that can verify accelerated mount targets before app containers start. It returns a rollback action for resources created during preparation. Providers without the hook use ordinary bind mounts; the bundled managed provider does not yet expose this hook while durable session ownership and safe cleanup are being completed.
+- `RuntimeProviderShape.prepareFileSyncTargets(plan)` is an optional pre-apply hook for providers that can verify accelerated mount targets before app containers start. It returns exact, schema-derived container endpoints for every planned session plus a rollback action for resources created during preparation. Startup rejects incomplete, duplicate, or mismatched endpoints before creating a session. Providers without the hook use ordinary bind mounts; the bundled managed provider does not yet expose this hook while durable session ownership and safe cleanup are being completed.
 
 - `FileSyncSessionInfo.spec` is now required and retains the complete applied session spec so startup can verify reuse. `FileSyncEngineShape.flushSession(ref)` blocks until initial or resumed synchronization reaches the target; startup waits for it before reporting a mount ready. These replace unreleased incomplete readiness behavior without a compatibility path.
 
@@ -539,6 +539,7 @@ It registers no JSON Schema.
 - `FileSyncSessionInfo`
 - `FileSyncSessionRef`
 - `FileSyncSessionSpec`
+- `PreparedFileSyncTarget`
 - `FileSyncSessionStatus`
 - `FileSyncSessionTarget`
 - `FileSyncSetupOptions`

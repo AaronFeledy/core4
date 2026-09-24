@@ -50,6 +50,7 @@ import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
+import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
@@ -2024,10 +2025,10 @@ describe("lando start", () => {
       platform: "linux",
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
-      prepareFileSyncTargets: () =>
+      prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.sync(() => {
           order.push("prepare");
-          return { rollback: Effect.void };
+          return { targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void };
         }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
@@ -2170,7 +2171,8 @@ describe("lando start", () => {
       platform: "linux",
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
-      prepareFileSyncTargets: () => Effect.succeed({ rollback: Effect.void }),
+      prepareFileSyncTargets: (syncPlan: AppPlan) =>
+        Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2298,7 +2300,8 @@ describe("lando start", () => {
       platform: "linux",
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
-      prepareFileSyncTargets: () => Effect.succeed({ rollback: Effect.void }),
+      prepareFileSyncTargets: (syncPlan: AppPlan) =>
+        Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2429,8 +2432,9 @@ describe("lando start", () => {
       platform: "linux",
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
-      prepareFileSyncTargets: () =>
+      prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
+          targets: preparedFileSyncTargets(syncPlan),
           rollback: Effect.sync(() => {
             rollbackCalls.push("rollback");
           }),
@@ -2573,8 +2577,9 @@ describe("lando start", () => {
       platform: "linux",
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
-      prepareFileSyncTargets: () =>
+      prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
+          targets: preparedFileSyncTargets(syncPlan),
           rollback: Effect.sync(() => {
             rollbackCalls.push("rollback");
           }),
@@ -2748,8 +2753,9 @@ describe("lando start", () => {
       platform: "linux",
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
-      prepareFileSyncTargets: () =>
+      prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
+          targets: preparedFileSyncTargets(syncPlan),
           rollback: Effect.sync(() => {
             callLog.push("rollback");
           }),
@@ -2914,8 +2920,9 @@ describe("lando start", () => {
       platform: "linux",
       capabilities,
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
-      prepareFileSyncTargets: () =>
+      prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
+          targets: preparedFileSyncTargets(syncPlan),
           rollback: Effect.sync(() => {
             callLog.push("rollback");
           }),

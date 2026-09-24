@@ -9,6 +9,7 @@ import {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import {
+  AbsoluteContainerPath,
   AbsolutePath,
   AppId,
   type AppPlan,
@@ -1074,6 +1075,93 @@ describe("pre-apply accelerated mount preparation", () => {
       ),
     );
   });
+  test("rejects missing, extra, duplicate, or altered prepared targets before creating sessions", async () => {
+    const planned = acceleratedPlan.fileSync;
+    const good = planned.map(({ session }, index) => ({
+      session,
+      endpoint: {
+        _tag: "container" as const,
+        containerId: ["helper", index].join("-"),
+        path: AbsoluteContainerPath.make("/sync"),
+        volumeName: session.target._tag === "volume" ? session.target.name : "",
+      },
+    }));
+    const first = good[0];
+    const second = good[1];
+    if (first === undefined || second === undefined) throw new Error("Expected two prepared targets.");
+    const cases = [
+      { name: "missing", targets: [first] },
+      {
+        name: "extra",
+        targets: [...good, { ...first, endpoint: { ...first.endpoint, containerId: "extra" } }],
+      },
+      { name: "duplicate session", targets: [first, { ...first, endpoint: second.endpoint }] },
+      { name: "duplicate endpoint", targets: [first, { ...second, endpoint: first.endpoint }] },
+      {
+        name: "changed source",
+        targets: [first, { ...second, session: { ...second.session, source: AbsolutePath.make("/other") } }],
+      },
+      {
+        name: "changed volume",
+        targets: [first, { ...second, endpoint: { ...second.endpoint, volumeName: "other-volume" } }],
+      },
+    ] as const;
+    for (const item of cases) {
+      const actions: string[] = [];
+      const harness = makeHarness({
+        plannedApp: acceleratedPlan,
+        preparedFileSyncTargets: () => item.targets,
+        onFileSyncRollback: () => actions.push("rollback"),
+        onApply: () => actions.push("apply"),
+        fileSync: {
+          ...TestFileSyncEngine,
+          id: "mutagen",
+          isAvailable: Effect.succeed(true),
+          listSessions: () => Effect.succeed([]),
+          createSession: () =>
+            Effect.sync(() => {
+              actions.push("create");
+              return FileSyncSessionRef.make("unexpected");
+            }),
+        },
+      });
+      await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
+      expect(actions).toEqual(["rollback"]);
+      await Effect.runPromise(
+        requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+          Effect.provide(harness.stateStore.layer),
+        ),
+      );
+    }
+  });
+
+  test("retains the accelerated-start journal if rejected-target rollback fails", async () => {
+    const actions: string[] = [];
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      preparedFileSyncTargets: () => [],
+      onFileSyncRollback: () => actions.push("rollback"),
+      fileSyncRollbackEffect: Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "prepareFileSyncTargets.rollback",
+          message: "Owned helper removal failed.",
+          remediation: "Inspect retained targets before retrying.",
+        }),
+      ),
+      fileSync: { ...TestFileSyncEngine, id: "mutagen", isAvailable: Effect.succeed(true) },
+      onApply: () => actions.push("apply"),
+    });
+    await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
+    expect(actions).toEqual(["rollback"]);
+    const pending = await Effect.runPromiseExit(
+      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+        Effect.provide(harness.stateStore.layer),
+      ),
+    );
+    expect(Exit.isFailure(pending)).toBe(true);
+  });
+
   test("does not invalidate a drain for an ordinary first start", async () => {
     const order: string[] = [];
     const harness = makeHarness({

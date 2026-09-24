@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { NetworkConfig } from "./config.ts";
 import { FileSyncMode as FileSyncModeSchema } from "./file-sync.ts";
 import { AppRef } from "./networking.ts";
-import { AbsolutePath, PortablePath, ServiceName } from "./primitives.ts";
+import { AbsoluteContainerPath, AbsolutePath, PortablePath, ServiceName } from "./primitives.ts";
 
 // FileSyncEngine - pluggable file-sync engine contract.
 
@@ -99,6 +99,30 @@ export const FileSyncSessionSpec = Schema.Struct({
   ),
 });
 export type FileSyncSessionSpec = Schema.Schema.Type<typeof FileSyncSessionSpec>;
+
+/**
+ * Provider-owned, verified container endpoint for one planned sync session.
+ * The endpoint is data only; its cleanup action stays with the provider.
+ */
+export const PreparedFileSyncTarget = Schema.Struct({
+  session: FileSyncSessionSpec.annotations({
+    description: "Exact planned file-sync session backed by this prepared target.",
+  }),
+  endpoint: Schema.TaggedStruct("container", {
+    containerId: Schema.String.pipe(Schema.minLength(1)).annotations({
+      description: "Verified running helper container ID, never a mutable name.",
+    }),
+    path: AbsoluteContainerPath.annotations({
+      description: "Absolute path mounted inside the verified helper container.",
+    }),
+    volumeName: Schema.String.pipe(Schema.minLength(1)).annotations({
+      description: "Owned named volume backing the planned session target.",
+    }),
+  }).annotations({
+    description: "Provider-verified container endpoint for the session.",
+  }),
+});
+export type PreparedFileSyncTarget = Schema.Schema.Type<typeof PreparedFileSyncTarget>;
 
 /** Lifecycle status surfaced by `FileSyncEngine.listSessions`. */
 export const FileSyncSessionStatus = Schema.Literal("running", "paused", "draining", "errored");

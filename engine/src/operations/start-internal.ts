@@ -63,6 +63,7 @@ import {
 } from "./file-sync-plan.ts";
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
+import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
 import {
   type PreparedFileSyncSessions,
   type StartManagedScope,
@@ -336,6 +337,17 @@ export const startAppForTargetUnlocked = (
                     >;
                     const prepared = yield* selectedPrepare(builtPlan);
                     preparedRollback = prepared.rollback;
+                    const coverage = yield* Effect.exit(
+                      verifyPreparedFileSyncTargets(builtPlan, prepared.targets),
+                    );
+                    if (Exit.isFailure(coverage)) {
+                      const rollback = yield* Effect.exit(prepared.rollback);
+                      if (Exit.isFailure(rollback)) {
+                        return yield* Effect.failCause(Cause.sequential(coverage.cause, rollback.cause));
+                      }
+                      if (pendingStart !== undefined) yield* pendingStart.clear;
+                      return yield* Effect.failCause(coverage.cause);
+                    }
                     const safeToRollbackTargets = yield* Ref.make(false);
                     sessionLease = yield* Effect.matchCauseEffect(
                       startFileSyncSessions(plan, events, managed, safeToRollbackTargets),
