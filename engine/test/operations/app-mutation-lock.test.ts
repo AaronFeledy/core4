@@ -174,6 +174,36 @@ describe("per-app mutation lock", () => {
     }
   });
 
+  test("lock keys accept missing roots but reject dangling symlinks", async () => {
+    const isolated = await isolate();
+    const missingRoot = join(isolated.appRoot, "missing");
+    const danglingRoot = join(isolated.userDataRoot, "dangling-root");
+    try {
+      const strict = await Effect.runPromiseExit(canonicalAppRoot(missingRoot));
+      expect(Exit.isFailure(strict)).toBe(true);
+
+      const identity = await Effect.runPromise(appMutationLockIdentity({ id: "missing", root: missingRoot }));
+      expect(identity.canonicalRoot).toBe(join(await realpath(isolated.appRoot), "missing"));
+      const entered = await Effect.runPromise(
+        withAppMutationLock({ id: "missing", root: missingRoot }, Effect.succeed(true)).pipe(
+          Effect.provide(isolated.layer),
+        ),
+      );
+      expect(entered).toBe(true);
+
+      await symlink(join(isolated.appRoot, "absent-target"), danglingRoot, "dir");
+      const dangling = await Effect.runPromiseExit(
+        withAppMutationLock({ id: "dangling", root: danglingRoot }, Effect.succeed(true)).pipe(
+          Effect.provide(isolated.layer),
+        ),
+      );
+      expect(Exit.isFailure(dangling)).toBe(true);
+    } finally {
+      await rm(isolated.userDataRoot, { recursive: true, force: true });
+      await rm(isolated.appRoot, { recursive: true, force: true });
+    }
+  });
+
   test("missing-root inventory lock rejects a retargeted parent before entering", async () => {
     const isolated = await isolate();
     const otherRoot = await mkdtemp(join(tmpdir(), "lando-app-root-other-"));
