@@ -1291,6 +1291,57 @@ describe("pre-apply accelerated mount preparation", () => {
     }
   });
 
+  test("interruption finishes when the ownership inventory stalls", async () => {
+    const actions: string[] = [];
+    let checkingAvailability = (): void => undefined;
+    const entered = new Promise<void>((resolve) => {
+      checkingAvailability = resolve;
+    });
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      onPrepareFileSync: () => actions.push("prepare"),
+      onFileSyncRollback: () => actions.push("rollback"),
+      onApply: () => actions.push("apply"),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        createSession: () => Effect.die(new Error("Interrupted availability reached creation.")),
+        bindPreparedTargets: () =>
+          Effect.succeed({
+            ...TestFileSyncEngine,
+            id: "mutagen",
+            isAvailable: Effect.sync(() => {
+              actions.push("availability");
+              checkingAvailability();
+            }).pipe(Effect.zipRight(Effect.never)),
+            listSessions: () =>
+              Effect.sync(() => actions.push("inventory")).pipe(Effect.zipRight(Effect.never)),
+          }),
+      },
+    });
+    const fiber = Effect.runFork(
+      startApp(
+        {},
+        {
+          plan: acceleratedPlan,
+          root: acceleratedPlan.root,
+          app: { kind: "user", id: acceleratedPlan.id, root: acceleratedPlan.root },
+        },
+      ).pipe(Effect.provide(harness.layer)),
+    );
+    await entered;
+    const exit = await Effect.runPromise(Fiber.interrupt(fiber));
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(actions).toEqual(["prepare", "availability", "inventory"]);
+    const journal = await Effect.runPromiseExit(
+      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+        Effect.provide(harness.stateStore.layer),
+      ),
+    );
+    expect(Exit.isFailure(journal)).toBe(true);
+  }, 10_000);
+
   test("keeps simultaneous apps on separate bound engines", async () => {
     const otherRootPath = mkdtempSync(join(tmpdir(), "lando-other-start-"));
     const otherRoot = AbsolutePath.make(otherRootPath);
