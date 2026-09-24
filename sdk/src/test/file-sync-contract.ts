@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { DateTime, Effect, Either, Schema, Stream } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
@@ -125,6 +126,10 @@ export const runFileSyncEngineContract = (
       "resumeSession is Effect-typed",
     );
     yield* requireFileSyncContract(
+      Effect.isEffect(engine.flushSession(sentinelRef)),
+      "flushSession is Effect-typed",
+    );
+    yield* requireFileSyncContract(
       Effect.isEffect(engine.terminateSession(sentinelRef)),
       "terminateSession is Effect-typed",
     );
@@ -180,6 +185,21 @@ export const runFileSyncEngineContract = (
           "newly created session reports status = running",
           { listed, ref },
         );
+        yield* requireFileSyncContract(
+          isDeepStrictEqual(
+            listed.find((info: FileSyncSessionInfo) => info.ref === ref)?.spec,
+            lifecycleSpec,
+          ),
+          "listed session retains its full creation spec",
+          { listed, ref },
+        );
+        yield* engine
+          .flushSession(ref)
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("flushSession resolves after create", details as unknown),
+            ),
+          );
 
         yield* engine
           .pauseSession(ref)
@@ -228,6 +248,13 @@ export const runFileSyncEngineContract = (
           "resumed session reports status = running",
           { listed: afterResume, ref },
         );
+        yield* engine
+          .flushSession(ref)
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("flushSession resolves after resume", details as unknown),
+            ),
+          );
 
         yield* engine
           .terminateSession(ref)
@@ -492,6 +519,7 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
         app: spec.app,
         service: spec.service,
         mountKey: spec.mountKey,
+        spec,
         status: "running",
         lastUpdatedAt: DateTime.unsafeMake("2026-05-28T00:00:00Z"),
       };
@@ -504,6 +532,8 @@ export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCa
       return ref;
     });
   },
+
+  flushSession: () => Effect.void,
 
   pauseSession(this: TestFileSyncEngineStateCarrier, ref: FileSyncSessionRef) {
     const state = testFileSyncEngineState(this);

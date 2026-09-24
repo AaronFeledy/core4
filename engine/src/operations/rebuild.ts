@@ -37,11 +37,14 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
+import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
+import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
+import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
 export type RebuildAppError = SdkRebuildAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -155,7 +158,6 @@ export const rebuildApp = (
     const plan = resolvedTarget.plan;
     const selectedPlan = yield* selectRebuildPlan(plan, options.services);
     const scoped = options.services !== undefined && options.services.length > 0;
-    yield* runAppInitEvents(plan);
     const context = yield* Effect.context<RebuildAppServices>();
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
@@ -167,6 +169,11 @@ export const rebuildApp = (
         stateStore,
         body: () =>
           Effect.gen(function* () {
+            yield* requireNoPendingAcceleratedStart(resolvedTarget.app, plan);
+            const stopPreflight = yield* preflightStopApp(resolvedTarget);
+            yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
+            yield* ensureStartTransactionConsistent(resolvedTarget);
+            yield* runAppInitEvents(plan);
             const proxy = yield* RouterService;
             const events = yield* EventService;
             const ref: AppRef = resolvedTarget.app;
@@ -184,7 +191,7 @@ export const rebuildApp = (
                   servicesStarted: yield* rebuildSelectedServices(selectedPlan, plan, options.signal),
                 }
               : yield* Effect.gen(function* () {
-                  yield* stopAppWithPlan({}, resolvedTarget);
+                  yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
                   yield* managed?.onStopped ?? Effect.void;
                   return yield* compensateFailureUnless(
                     startApp(
@@ -194,7 +201,7 @@ export const rebuildApp = (
                       },
                       resolvedTarget,
                       managed,
-                      { forceAppBuild: true },
+                      { forceAppBuild: true, skipInitEvents: true, transactionPreflightDone: true },
                     ),
                     proxy.removeRoutes(plan.id),
                     isPostStartStepError,

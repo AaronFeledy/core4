@@ -1741,6 +1741,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "FileSyncSessionInfo.mountKey",
   "FileSyncSessionInfo.ref",
   "FileSyncSessionInfo.service",
+  "FileSyncSessionInfo.spec",
   "FileSyncSessionInfo.status",
   "FileSyncSessionSpec.app",
   "FileSyncSessionSpec.excludes",

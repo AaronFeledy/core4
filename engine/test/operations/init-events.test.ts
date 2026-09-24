@@ -169,14 +169,16 @@ describe("app initialization lifecycle events", () => {
     const source = await Bun.file(new URL("../../src/operations/rebuild.ts", import.meta.url)).text();
 
     // When
+    const preflightIndex = source.indexOf("yield* preflightStopApp(resolvedTarget)");
     const initIndex = source.indexOf("yield* runAppInitEvents(plan)");
     const preRebuildIndex = source.indexOf("PreRebuildEvent.make");
 
     // Then
     expect(source.match(/runAppInitEvents\(plan\)/gu)).toHaveLength(1);
-    expect(initIndex).toBeGreaterThan(-1);
+    expect(preflightIndex).toBeGreaterThan(-1);
+    expect(preflightIndex).toBeLessThan(initIndex);
     expect(initIndex).toBeLessThan(preRebuildIndex);
-    expect(source).toContain("stopAppWithPlan({}, resolvedTarget)");
+    expect(source).toContain("stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true })");
     expect(source).toMatch(/resolvedTarget,\s+managed,/u);
   });
 
@@ -186,10 +188,14 @@ describe("app initialization lifecycle events", () => {
 
     // When
     const initCalls = source.match(/runAppInitEvents\(plan\)/gu) ?? [];
+    const preflightIndex = source.indexOf("yield* preflightStopApp(mysqlResolvedTarget)");
+    const initIndex = source.indexOf("yield* runAppInitEvents(plan)");
 
     // Then
     expect(initCalls).toHaveLength(1);
-    expect(source).toContain("stopAppWithPlan({}, mysqlResolvedTarget)");
+    expect(preflightIndex).toBeGreaterThan(-1);
+    expect(preflightIndex).toBeLessThan(initIndex);
+    expect(source).toContain("stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true })");
     expect(source).toMatch(/mysqlResolvedTarget,\s+managed,/u);
   });
 });

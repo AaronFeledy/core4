@@ -16,11 +16,12 @@
  * Drift gate: re-run + `git diff --exit-code` on the output. The manifest is
  * byte-stable for a given pinned upstream tag.
  *
- * Artifact-key scheme (one binary per key): `<hostKey>/cli` installs the host
- * CLI; `<hostKey>/agent/<guest>` installs a per-platform agent extracted from
- * the host archive's nested `mutagen-agents.tar.gz` via the single-boundary
- * nested-member selector. Agent entries reuse the host archive's url/sha256 so
- * the byte cache de-duplicates the one download across host + agents.
+ * Artifact-key scheme: `<hostKey>/cli` installs the host CLI;
+ * `<hostKey>/agent-bundle` installs the nested `mutagen-agents.tar.gz` beside
+ * it, where Mutagen looks for agents; `<hostKey>/agent/<guest>` installs a
+ * per-platform agent via the single-boundary nested-member selector. All
+ * entries reuse the host archive's url/sha256 so the byte cache de-duplicates
+ * the one download.
  */
 import { resolve } from "node:path";
 
@@ -115,6 +116,15 @@ const buildManifest = (version: string): typeof ToolManifest.Type => {
       archive: host.ext === "zip" ? "zip" : "tar.gz",
       member: host.cli,
       installName: host.cli,
+    };
+
+    artifacts[`${host.hostKey}/agent-bundle`] = {
+      url,
+      sha256: checksum.sha256,
+      sizeBytes: checksum.sizeBytes,
+      archive: host.ext === "zip" ? "zip" : "tar.gz",
+      member: "mutagen-agents.tar.gz",
+      installName: "mutagen-agents.tar.gz",
     };
 
     for (const agent of GUEST_AGENTS) {

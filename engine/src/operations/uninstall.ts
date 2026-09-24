@@ -214,7 +214,9 @@ const uninstallShellProfiles = (options: UninstallOptions): ReadonlyArray<string
     text === undefined ? undefined : Effect.runSync(Effect.either(decodeInstallRecord(text, recordFile)));
   return [
     ...new Set([
-      options.shellProfilePath ?? defaultPosixShellProfilePath(),
+      ...(normalizeHostPlatform() === "win32" && options.shellProfilePath === undefined
+        ? []
+        : [options.shellProfilePath ?? defaultPosixShellProfilePath()]),
       ...(record !== undefined && Either.isRight(record)
         ? record.right.data.shellProfiles.map((profile) => profile.path)
         : []),
@@ -223,6 +225,13 @@ const uninstallShellProfiles = (options: UninstallOptions): ReadonlyArray<string
 };
 
 const keepDataProtectedStepIds = new Set([
+  "managed-provider-machines",
+  "podman-network-definitions",
+  "runtime-service",
+  "managed-provider-runtime",
+  "mutagen-binary",
+  "mutagen-agents",
+  "host-proxy-sessions",
   "global-app-state",
   "caches",
   "user-data-root",
@@ -457,7 +466,17 @@ const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPl
       detail:
         step.id === "running-apps"
           ? "Preserved by --keep-data; rerun with --purge to check for running apps."
-          : "Preserved by --keep-data; rerun with --purge to remove this state.",
+          : step.id === "managed-provider-machines"
+            ? "Preserved by --keep-data because the managed machine contains app volumes; --purge removes it."
+            : step.id === "podman-network-definitions"
+              ? "Preserved by --keep-data along with the managed machine; review after --purge."
+              : step.id === "managed-provider-runtime"
+                ? "Preserved by --keep-data to retain machine ownership state and the runtime bundle."
+                : step.id === "mutagen-binary" || step.id === "mutagen-agents"
+                  ? "Preserved by --keep-data so accelerated file-sync sessions can reconnect."
+                  : step.id === "runtime-service" || step.id === "host-proxy-sessions"
+                    ? "Preserved by --keep-data so running Lando apps retain runtime connectivity."
+                    : "Preserved by --keep-data; rerun with --purge to remove this state.",
     };
   }
   return step;
@@ -516,13 +535,15 @@ const buildRunningAppsStep = async (
 export const buildUninstallPlan = async (
   options: UninstallOptions = {},
   mode?: UninstallMode,
+  platform: ReturnType<typeof normalizeHostPlatform> = normalizeHostPlatform(),
 ): Promise<ReadonlyArray<UninstallPlanStep>> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const userConfRoot = options.userConfRoot ?? makeLandoPaths({ userDataRoot }).roots.userConfRoot;
   const exists = options.exists ?? existsSync;
-  const classifyMachine = options.readManagedProviderMachine ?? classifyManagedProviderMachine;
-  const machineClassification = classifyMachine(userDataRoot);
+  const machineClassification =
+    options.readManagedProviderMachine?.(userDataRoot) ??
+    classifyManagedProviderMachine(userDataRoot, undefined, platform);
   const paths = makeLandoPaths({ userDataRoot });
   const binaryStep = installedBinaryStep(paths.installRecordFile);
   const runtimeDir = paths.runtimeDir;
@@ -559,6 +580,20 @@ export const buildUninstallPlan = async (
 
   const steps: ReadonlyArray<UninstallPlanStep> = [
     runningAppsStep,
+    managedProviderMachineStep(machineClassification),
+    ...(platform === "win32" && machineClassification.ownership !== "absent"
+      ? [
+          {
+            id: "podman-network-definitions",
+            label: "Windows Podman network definitions",
+            target: "Windows Podman network config",
+            destructive: false,
+            status: "manual" as const,
+            detail:
+              "Podman stores network definitions outside its WSL machine. Unlabeled definitions can survive VM removal; review residual Lando networks manually and leave entries with uncertain ownership in place.",
+          },
+        ]
+      : []),
     {
       id: "runtime-service",
       label: "managed runtime service",
@@ -576,7 +611,6 @@ export const buildUninstallPlan = async (
       status: pathStatus(managedProviderRuntime, exists),
       detail: "Remove Lando-managed runtime bundles when present.",
     },
-    managedProviderMachineStep(machineClassification),
     {
       id: "mutagen-binary",
       label: "Mutagen binary",
@@ -626,15 +660,27 @@ export const buildUninstallPlan = async (
       detail: "Terminate owned host-proxy workers and remove only app-scoped host-proxy sockets and shims.",
     },
     binaryStep,
-    cgroupsDelegateStep(cgroupsDelegatePath, exists, readText),
-    socketProxyHelperStep(
-      {
-        unitPaths: options.socketProxyUnitPaths ?? [...DEFAULT_SOCKET_PROXY_UNIT_PATHS],
-        polkitPath: options.socketProxyPolkitPath ?? DEFAULT_SOCKET_PROXY_POLKIT_PATH,
-      },
-      { exists, readText },
-    ),
-    shellStep,
+    ...(platform === "linux" || platform === "wsl"
+      ? [
+          cgroupsDelegateStep(cgroupsDelegatePath, exists, readText),
+          socketProxyHelperStep(
+            {
+              unitPaths: options.socketProxyUnitPaths ?? [...DEFAULT_SOCKET_PROXY_UNIT_PATHS],
+              polkitPath: options.socketProxyPolkitPath ?? DEFAULT_SOCKET_PROXY_POLKIT_PATH,
+            },
+            { exists, readText },
+          ),
+        ]
+      : []),
+    platform === "win32"
+      ? {
+          ...shellStep,
+          target: "PowerShell profiles",
+          status: "manual",
+          detail:
+            "Windows setup does not edit PowerShell profiles. Review any Lando shellenv lines you added manually.",
+        }
+      : shellStep,
     {
       id: "user-conf-root",
       label: "user config root",
@@ -938,6 +984,7 @@ const executeUninstall = async (
             ? cause.message
             : String(cause);
       executed.push({ ...step, outcome: "failed", error });
+      if (step.id === "managed-provider-machines" || step.id === "runtime-service") break;
     }
   }
 
