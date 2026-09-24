@@ -64,7 +64,8 @@ export const installHostProxyShim = (
       new HostProxyTransportUnavailableError({
         message: cause instanceof Error ? cause.message : String(cause),
         socketPath: artifact,
-        remediation:
-          "Run `bun run --filter='@lando/core' build:host-proxy-shim` before starting apps that use host-proxy runLando.",
+        remediation: Bun.isStandaloneExecutable
+          ? "Reinstall the Lando executable and retry; its embedded host-proxy shim could not be installed."
+          : "Run `bun run --filter='@lando/core' build:host-proxy-shim` before starting apps that use host-proxy runLando.",
       }),
   });

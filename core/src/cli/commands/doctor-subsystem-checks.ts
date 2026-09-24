@@ -114,7 +114,7 @@ export const HOST_PROXY_SPEC: SubsystemSpec = {
   name: "host-proxy",
   recovery: "manual",
   manualRemediation:
-    "Host-proxy DNS is not active, but `lando start` still tries to spawn a detached host-proxy worker. Run `lando setup` to configure host DNS. A skipped or inactive host-proxy check is not a healthy start path; start can still fail with HostProxyTransportUnavailableError.",
+    "Host DNS integration is inactive. If .lndo.site routes do not resolve to 127.0.0.1, run `lando setup` to configure hostname resolution. Container-to-host callbacks are checked separately under host-proxy-transport.",
 };
 
 const SUBSYSTEM_SPECS: ReadonlyArray<SubsystemSpec> = [

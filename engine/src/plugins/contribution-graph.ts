@@ -47,6 +47,7 @@ export interface GraphCommandCandidate {
 
 export interface PluginContributionGraphShape {
   readonly plugins: ReadonlyArray<LoadedPluginContribution>;
+  readonly globalPlugins: ReadonlyArray<LoadedPluginContribution>;
   readonly certificateAuthorities: ReadonlyArray<GraphCertificateAuthorityCandidate>;
   readonly commands: ReadonlyArray<GraphCommandCandidate>;
   readonly hostContext: Context.Context<never>;
@@ -242,6 +243,10 @@ export const makePluginContributionGraphLive = (
           onRight: Effect.succeed,
         }),
       );
+      const globalPlugins = mergeLoadedPluginSources(
+        [bundled, system, user, explicit],
+        policy.discovery.disable,
+      );
       const merged = mergeLoadedPluginSources(
         [bundled, system, user, app, explicit],
         policy.discovery.disable,
@@ -252,6 +257,7 @@ export const makePluginContributionGraphLive = (
       });
       const graph: PluginContributionGraphShape = {
         plugins: merged,
+        globalPlugins,
         certificateAuthorities: [...rawCandidates, ...manifestCandidates(merged)],
         commands,
         hostContext: rawContext,

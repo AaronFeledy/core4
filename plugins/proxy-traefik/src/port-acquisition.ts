@@ -1,5 +1,5 @@
 import { RouterPortsExhausted } from "@lando/sdk/errors";
-import type { PortNumber } from "@lando/sdk/schema";
+import { DEFAULT_ROUTER_HTTPS_PORTS, DEFAULT_ROUTER_HTTP_PORTS, type PortNumber } from "@lando/sdk/schema";
 import { commLooksLikeRootlessport } from "./leftover-proxy-ports-linux.ts";
 import { occupiedHopNotices } from "./occupied-port-warning.ts";
 import type { ProxyPaths } from "./proxy-types.ts";
@@ -8,8 +8,8 @@ export const DESIRED_HTTP_PORT = 80;
 export const DESIRED_HTTPS_PORT = 443;
 export const LOOPBACK_HOST = "127.0.0.1" as const;
 
-export const DEFAULT_HTTP_TRY_LIST = [80, 8080, 8000, 8888, 8008] as const;
-export const DEFAULT_HTTPS_TRY_LIST = [443, 8443, 4443, 4433, 4444, 444] as const;
+export const DEFAULT_HTTP_TRY_LIST = DEFAULT_ROUTER_HTTP_PORTS;
+export const DEFAULT_HTTPS_TRY_LIST = DEFAULT_ROUTER_HTTPS_PORTS;
 export const DEFAULT_BACKEND_HTTP_TRY_LIST = [38080, 48080, 58080] as const;
 export const DEFAULT_BACKEND_HTTPS_TRY_LIST = [38443, 48443, 58443] as const;
 

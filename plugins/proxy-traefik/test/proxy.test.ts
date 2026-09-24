@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
-import { AppId, ServiceName } from "@lando/sdk/schema";
+import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
+import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import type { SchemeProbe } from "../src/port-acquisition.ts";
@@ -54,9 +56,50 @@ type WatcherDependencies = {
   readonly redactDiagnostic?: (text: string) => string;
 };
 
-const makeHarness = (failingPathSuffix?: string, watcherDependencies: WatcherDependencies = {}) => {
+// Keep the persistence fixture inside the plugin test tier, below the engine.
+const makeMemoryPluginStateStore = (): PluginStateStore => {
+  const values = new Map<string, unknown>();
+  return {
+    open: <A, I>(spec: PluginStateBucketSpec<A, I>) => {
+      const key = [spec.namespace ?? "", spec.key].join("/");
+      const current = (): A | null => (values.has(key) ? (values.get(key) as A) : null);
+      const bucket: StateBucket<A> = {
+        path: AbsolutePath.make(`/tmp/proxy-state/${key}`),
+        get: Effect.sync(current),
+        set: (value) => Effect.sync(() => void values.set(key, value)),
+        update: (f) =>
+          Effect.sync(() => {
+            const next = f(current());
+            values.set(key, next);
+            return next;
+          }),
+        modify: (f) =>
+          Effect.sync(() => {
+            const [result, next] = f(current());
+            values.set(key, next);
+            return result;
+          }),
+        remove: Effect.sync(() => void values.delete(key)),
+        exists: Effect.sync(() => values.has(key)),
+      };
+      return Effect.succeed(bucket);
+    },
+    withLock: (_key, body) => body,
+  };
+};
+
+const makeHarness = (
+  failingPathSuffix?: string,
+  watcherDependencies: WatcherDependencies = {},
+  platform: "linux" | "win32" = "linux",
+  durableReloadState = false,
+) => {
+  let failRestart = false;
   const ensured: Array<ReadonlyArray<string>> = [];
+  const restarted: string[] = [];
+  let running = false;
   const files = new Map<string, string>();
+  const stateStore = durableReloadState ? makeMemoryPluginStateStore() : undefined;
   const socketProxy = {
     user: "test",
     hasHostSystemd: () => false,
@@ -95,16 +138,25 @@ const makeHarness = (failingPathSuffix?: string, watcherDependencies: WatcherDep
         return Effect.fail(new FileNotFoundError({ message: "removed", path }));
       },
     },
-    paths: { platform: "linux", globalAppRoot: "/lando/global" },
+    paths: { platform, globalAppRoot: "/lando/global" },
     globalApp: {
+      restartRunningService: (service) =>
+        Effect.gen(function* () {
+          if (!running) return false;
+          if (failRestart) return yield* Effect.fail(new Error("injected Traefik restart failure"));
+          restarted.push(String(service));
+          return true;
+        }),
       ensureRunning: (services) =>
         Effect.sync(() => {
+          running = true;
           ensured.push(services);
           const endpoints = ["http://127.0.0.1:38080", "https://127.0.0.1:38443"];
           return [{ name: "traefik", state: "running", endpoints }];
         }),
     },
     socketProxy,
+    ...(stateStore === undefined ? {} : { stateStore }),
   });
   const makePersistedService = (watcherDependencies: WatcherDependencies = {}) =>
     makeTraefikRouterService({
@@ -125,10 +177,27 @@ const makeHarness = (failingPathSuffix?: string, watcherDependencies: WatcherDep
           ),
         readText: (path) => Effect.succeed(files.get(path) ?? ""),
       },
-      paths: { platform: "linux", globalAppRoot: "/lando/global" },
-      globalApp: { ensureRunning: () => Effect.succeed([]) },
+      paths: { platform, globalAppRoot: "/lando/global" },
+      globalApp: {
+        ensureRunning: () => Effect.succeed([]),
+        restartRunningService: (service) =>
+          Effect.sync(() => {
+            restarted.push(String(service));
+            return true;
+          }),
+      },
+      ...(stateStore === undefined ? {} : { stateStore }),
     });
-  return { ensured, files, makePersistedService, service };
+  return {
+    ensured,
+    files,
+    makePersistedService,
+    restarted,
+    service,
+    setFailRestart: (value: boolean) => {
+      failRestart = value;
+    },
+  };
 };
 
 describe("Traefik RouterService", () => {
@@ -212,6 +281,26 @@ describe("Traefik RouterService", () => {
     expect(html).not.toContain("$host");
     expect(html).not.toContain("$http_host");
     expect(html).not.toContain("/home/");
+  });
+
+  test("prepare carries custom domain and router ports into the first route application", async () => {
+    const harness = makeHarness();
+
+    const prepare = harness.service.prepare;
+    if (prepare === undefined) throw new Error("Traefik prepare is unavailable");
+    await Effect.runPromise(
+      prepare({
+        defaultDomain: "example.test",
+        router: { httpFallbacks: [19080], httpsFallbacks: [19443] },
+      }),
+    );
+    const applied = await Effect.runPromise(harness.service.applyRoutes(routes, app));
+
+    expect(applied.authorities.map(({ port }) => port)).toEqual([19443, 19080]);
+    expect([...harness.files.keys()]).toContain(
+      "/lando/global/proxy-traefik/dynamic/certs/default-example.test.crt",
+    );
+    expect(harness.ensured).toEqual([]);
   });
 
   test("apply reports selected external authorities and atomically replaces stale routes", async () => {
@@ -308,6 +397,79 @@ describe("Traefik RouterService", () => {
     expect(exit._tag).toBe("Failure");
     expect(harness.files.get(path)).toBe("previous");
     expect(harness.ensured).toEqual([]);
+  });
+
+  test("reloads running Windows Traefik only when routes change, including removal", async () => {
+    const harness = makeHarness(undefined, {}, "win32");
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+
+    await Effect.runPromise(harness.service.applyRoutes(routes, app));
+    await Effect.runPromise(harness.service.applyRoutes(routes, app));
+    expect(harness.restarted).toEqual(["traefik", "traefik"]);
+
+    await Effect.runPromise(harness.service.applyRoutes(routes.slice(1), app));
+    await Effect.runPromise(harness.service.removeRoutes(app));
+    await Effect.runPromise(harness.service.removeRoutes(app));
+    expect(harness.restarted).toEqual(["traefik", "traefik", "traefik", "traefik"]);
+  });
+
+  test("reuses a durable acknowledged HTTP route across fresh Windows service instances", async () => {
+    const harness = makeHarness(undefined, {}, "win32", true);
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    const httpRoutes = routes.slice(1);
+
+    await Effect.runPromise(harness.service.applyRoutes(httpRoutes, app));
+    const fresh = harness.makePersistedService();
+    await Effect.runPromise(fresh.applyRoutes(httpRoutes, app));
+
+    expect(harness.restarted).toEqual(["traefik"]);
+  });
+
+  test("does not trust an acknowledgement after route bytes change", async () => {
+    const harness = makeHarness(undefined, {}, "win32", true);
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    const httpRoutes = routes.slice(1);
+    await Effect.runPromise(harness.service.applyRoutes(httpRoutes, app));
+    const routePath = [...harness.files.keys()].find((path) => path.endsWith("routes-demo.yml"));
+    if (routePath === undefined) throw new Error("route fixture missing");
+    harness.files.set(routePath, "stale route bytes");
+
+    await Effect.runPromise(harness.makePersistedService().applyRoutes(httpRoutes, app));
+
+    expect(harness.restarted).toEqual(["traefik", "traefik"]);
+  });
+
+  test("does not acknowledge a failed Windows reload and retries unchanged persisted routes", async () => {
+    const harness = makeHarness(undefined, {}, "win32", true);
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+    harness.setFailRestart(true);
+    const httpRoutes = routes.slice(1);
+
+    const first = await Effect.runPromiseExit(harness.service.applyRoutes(httpRoutes, app));
+    expect(first._tag).toBe("Failure");
+    expect(harness.restarted).toEqual([]);
+
+    harness.setFailRestart(false);
+    await Effect.runPromise(harness.makePersistedService().applyRoutes(httpRoutes, app));
+    expect(harness.restarted).toEqual(["traefik"]);
+  });
+
+  test("does not restart a Windows router before the global service starts", async () => {
+    const harness = makeHarness(undefined, {}, "win32");
+
+    await Effect.runPromise(harness.service.applyRoutes(routes, app));
+
+    expect(harness.restarted).toEqual([]);
+  });
+
+  test("keeps Linux route updates on file-provider watch without restarting Traefik", async () => {
+    const harness = makeHarness();
+    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
+
+    await Effect.runPromise(harness.service.applyRoutes(routes, app));
+    await Effect.runPromise(harness.service.removeRoutes(app));
+
+    expect(harness.restarted).toEqual([]);
   });
 
   test("removeRoutes is idempotent", async () => {

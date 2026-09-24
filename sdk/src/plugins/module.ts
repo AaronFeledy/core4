@@ -144,6 +144,9 @@ export type RouterServiceContributionLayer = Layer.Layer<
   ProxyError,
   CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
+export interface RouterServiceContribution {
+  readonly make: (ctx: LandoPluginContext) => RouterServiceContributionLayer;
+}
 export type SshServiceContributionLayer = Layer.Layer<
   SshService,
   SshError,
@@ -163,7 +166,7 @@ export interface LandoPluginModule {
   readonly fileSyncEngines?: ReadonlyMap<string, FileSyncEngineContribution>;
   readonly certificateAuthorities?: ReadonlyMap<string, CertificateAuthorityContributionLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
-  readonly routerServices?: ReadonlyMap<string, RouterServiceContributionLayer>;
+  readonly routerServices?: ReadonlyMap<string, RouterServiceContribution>;
   readonly sshServices?: ReadonlyMap<string, SshServiceContributionLayer>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceContributionEffect>;
   readonly serviceTypes?: ReadonlyMap<string, ServiceType>;

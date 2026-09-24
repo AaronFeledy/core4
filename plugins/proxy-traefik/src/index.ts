@@ -8,7 +8,11 @@
  */
 import { Schema } from "effect";
 
-import { type GlobalServiceContributionEffect, definePlugin } from "@lando/sdk/plugins";
+import {
+  type GlobalServiceContributionEffect,
+  type LandoPluginContext,
+  definePlugin,
+} from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 
 import { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
@@ -18,11 +22,11 @@ import diagnosticsGlobalService from "./global-services/diagnostics.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 import { preferredHostPortsCheck } from "./preferred-host-ports.ts";
-import { proxy } from "./proxy.ts";
+import { makeProxyLayer } from "./proxy.ts";
 
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
-export { makeTraefikRouterService, proxy, renderTraefikDynamicConfig } from "./proxy.ts";
+export { makeProxyLayer, makeTraefikRouterService, renderTraefikDynamicConfig } from "./proxy.ts";
 export { advertisedProxyPortsCheck } from "./advertised-proxy-ports.ts";
 export { leftoverProxyPortsCheck } from "./leftover-proxy-ports.ts";
 export { preferredHostPortsCheck } from "./preferred-host-ports.ts";
@@ -43,7 +47,9 @@ export {
   renderTraefikDiagnosticNginxConfig,
   renderTraefikFallbackConfig,
 } from "./diagnostics.ts";
-export const routerServices = new Map([["traefik", proxy]]);
+export const routerServices = new Map([
+  ["traefik", { make: (ctx: LandoPluginContext) => makeProxyLayer(ctx.stateStore) }],
+]);
 
 export const globalServices: ReadonlyMap<string, GlobalServiceContributionEffect> = new Map([
   ["traefik", traefikGlobalService],
@@ -88,7 +94,6 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  layer: proxy,
   routerServices,
   globalServices,
   doctorChecks: [
