@@ -134,16 +134,20 @@ export const phpXdebugTooling = (
     `  printf "xdebug.mode=%s\nxdebug.client_host=%s\nxdebug.client_port=%s\n" "$1" "${PHP_XDEBUG_CLIENT_HOST}" "${String(PHP_XDEBUG_PORT)}" > "$ini"`,
     "}",
     `reload() { ${reload}; }`,
+    "status() {",
+    `  php -r '$m = function_exists("xdebug_info") ? xdebug_info("mode") : []; if (!is_array($m) || count($m) === 0) { echo "Xdebug disabled\\n"; } else { echo "Xdebug enabled (" . implode(",", $m) . ")\\n"; }'`,
+    "}",
     'case "$cmd" in',
-    '  on) write_ini "$mode"; reload; php -m | grep -i xdebug || true; php -r \'echo ini_get("xdebug.mode"), "\\n";\' ;;',
-    "  off) write_ini off; reload; echo off ;;",
-    '  status) php -m | grep -i xdebug || true; php -r \'echo ini_get("xdebug.mode"), "\\n";\' ;;',
+    '  on) write_ini "$mode"; reload; status ;;',
+    "  off) write_ini off; reload; status ;;",
+    "  status) status ;;",
     '  *) echo "Use lando xdebug on, lando xdebug off, or lando xdebug status."; exit 1 ;;',
     "esac",
   ].join("\n");
 
   return {
     xdebug: {
+      description: "Turn Xdebug on or off, or show its current status.",
       service: serviceName,
       cmd: ["sh", "-c", script, "xdebug"],
     },

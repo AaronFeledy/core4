@@ -318,7 +318,10 @@ describe("php serving modes (via:)", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
     expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
-    expect(plan.command?.[0]).toBe("apache2-foreground");
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).toContain('LANDO_HOST_OS:-}" = win32');
+    expect(plan.command?.[2]).toContain("stat -c '%u:%g'");
+    expect(plan.command?.[2]).toContain('usermod --uid "$lando_mount_uid" --gid "$lando_mount_gid" www-data');
   });
 
   test("starts a non-root Apache-served PHP service without writing config from PID 1", async () => {
@@ -430,6 +433,48 @@ describe("php serving modes (via:)", () => {
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
+  test("an authored /app mount replaces the default app-root bind", async () => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      mounts: [{ source: "./alternate", target: "/app", readOnly: true }],
+    });
+
+    expect(plan.appMount).toBeUndefined();
+    expect(plan.mounts).toHaveLength(1);
+    expect(plan.mounts[0]).toMatchObject({
+      type: "bind",
+      source: "/srv/apps/myapp/alternate",
+      target: "/app",
+      readOnly: true,
+    });
+  });
+
+  test("plans authored PHP ini bind mounts alongside the app mount", async () => {
+    const appRoot = "C:\\Users\\aaron\\Windows Projects\\windows-cms-fresh";
+    const plan = await composePhpPlan(
+      php83ServiceType,
+      {
+        type: "php:8.3",
+        mounts: [
+          {
+            source: "./.lando/php/drupal-cms.ini",
+            target: "/usr/local/etc/php/conf.d/zz-lando-drupal-cms.ini",
+            readOnly: true,
+          },
+        ],
+      },
+      appRoot,
+    );
+
+    expect(plan.mounts).toHaveLength(2);
+    expect(plan.mounts[1]).toMatchObject({
+      type: "bind",
+      source: `${appRoot}\\.lando\\php\\drupal-cms.ini`,
+      target: "/usr/local/etc/php/conf.d/zz-lando-drupal-cms.ini",
+      readOnly: true,
+      realization: "passthrough",
+    });
+  });
   test("via fpm uses the fpm image and listens on 9000", async () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm" });
 
@@ -439,6 +484,9 @@ describe("php serving modes (via:)", () => {
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain("listen = 9000");
+    expect(plan.command?.[2]).toContain('LANDO_HOST_OS:-}" = win32');
+    expect(plan.command?.[2]).toContain("stat -c '%u:%g'");
+    expect(plan.command?.[2]).toContain('usermod --uid "$lando_mount_uid" --gid "$lando_mount_gid" www-data');
     expect(plan.command?.[2]).toContain("exec php-fpm");
     expect(plan.command).not.toContain("apache2-foreground");
   });
@@ -466,6 +514,21 @@ describe("php serving modes (via:)", () => {
     // FPM serves no HTML, so it installs none of the shared error pages.
     expect(buildStepsFor(plan).map((step) => step.id)).not.toContain(LANDO_ERROR_PAGES_BUILD_STEP_ID);
   });
+
+  test.each(["apache", "fpm"] as const)(
+    "preserves an explicit service user for via %s without root-only worker remapping",
+    async (via) => {
+      const plan = await composePhpPlan(php82ServiceType, {
+        type: "php:8.2",
+        via,
+        user: "root",
+      });
+
+      expect(plan.user).toBe("root");
+      expect(plan.command?.[2]).not.toContain("lando_mount_owner");
+      expect(plan.command?.[2]).not.toContain("usermod");
+    },
+  );
 
   test("via fpm listens on an authored port", async () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm", port: 9070 });

@@ -3,7 +3,7 @@ import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LEMP_RECIPE_VERSION = "0.1.0";
-export const LEMP_CONTENT_DIGEST = "sha256:80ca634229dab6ae0c8b098dfd3b226aad65a9335a3d257495e361a1c0516f39";
+export const LEMP_CONTENT_DIGEST = "sha256:67331adb4acec417a95838f782c2cf77a21c760f9de5e27632c65e2d1446ad33";
 
 export const lempProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -33,6 +33,7 @@ export const lempSnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "nginx" } },
+                    { key: "primary", value: { kind: "Literal", value: false } },
                     { key: "port", value: { kind: "Literal", value: 80 } },
                     {
                       key: "dependsOn",
@@ -65,6 +66,7 @@ export const lempSnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+                    { key: "primary", value: { kind: "Literal", value: true } },
                     { key: "framework", value: { kind: "Literal", value: "none" } },
                     {
                       key: "dependsOn",

@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const JOOMLA_RECIPE_VERSION = "0.1.0";
 export const JOOMLA_CONTENT_DIGEST =
-  "sha256:f3c7fd97b9914813f0178ddf4507e0db27519ac218c99cf84d254b5aab87bfa8";
+  "sha256:5b7857528fdadc538a3f5fa03dfef698f04ed391f53cc7b40017f1cd7b340eda";
 
 export const joomlaProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -70,6 +70,7 @@ export const joomlaSnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+                    { key: "primary", value: { kind: "Literal", value: true } },
                     { key: "framework", value: { kind: "Literal", value: "joomla" } },
                     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
                     {

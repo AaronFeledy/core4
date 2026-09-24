@@ -1,7 +1,12 @@
 import { homedir } from "node:os";
-import { isAbsolute, resolve as resolvePath } from "node:path";
+import { isAbsolute, resolve as resolvePath, win32 } from "node:path";
 
-import { type ComposeVolumeEntry, type ServiceConfig, parseShortVolume } from "@lando/sdk/schema";
+import {
+  type ComposeVolumeEntry,
+  type MountInput,
+  type ServiceConfig,
+  parseShortVolume,
+} from "@lando/sdk/schema";
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
@@ -44,9 +49,47 @@ export const resolveBindSource = (source: string, appRoot: string): string => {
   if (DRIVE_LETTER_PREFIX.test(source)) return source;
   const expanded =
     source === "~" ? homedir() : source.startsWith("~/") ? homedir() + source.slice(1) : source;
+  if (DRIVE_LETTER_PREFIX.test(appRoot) || appRoot.startsWith("\\\\")) {
+    return win32.resolve(appRoot, expanded);
+  }
   return isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
 };
 
+export const parseServiceMount = (
+  entry: MountInput,
+  appRoot: string,
+): {
+  readonly type: "bind" | "volume" | "tmpfs";
+  readonly source?: string;
+  readonly target: string;
+  readonly readOnly: boolean;
+} => {
+  if (typeof entry === "string") {
+    const parsed = parseShortVolume(entry);
+    const source =
+      parsed.type === "bind" && parsed.source !== undefined
+        ? resolveBindSource(parsed.source, appRoot)
+        : parsed.source;
+    return {
+      type: parsed.type,
+      ...(source === undefined ? {} : { source }),
+      target: parsed.target,
+      readOnly: parsed.readOnly,
+    };
+  }
+  const type = entry.type ?? "bind";
+  if (type === "bind" && entry.source === undefined) {
+    throw new Error(`Bind mount at "${entry.target}" requires a source.`);
+  }
+  const source =
+    type === "bind" && entry.source !== undefined ? resolveBindSource(entry.source, appRoot) : entry.source;
+  return {
+    type,
+    ...(source === undefined ? {} : { source }),
+    target: entry.target,
+    readOnly: entry.readOnly ?? false,
+  };
+};
 const kebabTarget = (target: string): string =>
   target
     .split("/")

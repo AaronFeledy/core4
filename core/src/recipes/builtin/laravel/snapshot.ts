@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LARAVEL_RECIPE_VERSION = "0.1.0";
 export const LARAVEL_CONTENT_DIGEST =
-  "sha256:2a8648f1a02131d930313a58e609cc337c21a63334092fed3a126afb47286079";
+  "sha256:cad615b0881b6c614bb027104fc1980eef72f30aa6802e99207afee7928168b7";
 export const laravelProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-laravel",
@@ -62,6 +62,7 @@ const expression: ExpressionNode = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+                    { key: "primary", value: { kind: "Literal", value: true } },
                     { key: "framework", value: { kind: "Literal", value: "laravel" } },
                     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
                     { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
