@@ -7,6 +7,11 @@ const zeroBlock = new Uint8Array(512);
 
 export type BuildContextEntry =
   | {
+      readonly kind: "directory";
+      readonly name: string;
+      readonly mode: number;
+    }
+  | {
       readonly kind: "file";
       readonly name: string;
       readonly mode: number;
@@ -148,7 +153,8 @@ const tarEntry = (entry: BuildContextEntry): Uint8Array => {
   writeOctal(header, 124, 12, content.byteLength);
   writeOctal(header, 136, 12, 0);
   header.fill(32, 148, 156);
-  header[156] = (entry.kind === "symlink" ? "2" : "0").charCodeAt(0);
+  const typeFlags = { file: "0", symlink: "2", directory: "5" } as const;
+  header[156] = typeFlags[entry.kind].charCodeAt(0);
   if (entry.kind === "symlink") writeString(header, 157, 100, entry.linkName);
   writeString(header, 257, 6, "ustar");
   writeString(header, 263, 2, "00");
