@@ -13,10 +13,12 @@ A single database service needs no `--service` flag. Two or more database servic
 
 ```sh
 lando db:export dump.sql.gz
+lando db:export dump.sql.zst
 lando db:import dump.sql.gz --yes
+lando db:import dump.sql.zst --yes
 ```
 
-`.gz` files gzip and gunzip on the way through. Credentials stay in the service environment, not on argv.
+`.gz` and `.zst` compress and decompress on the host process. The default export name stays `<service>.sql.gz` when you omit a path. Import trusts magic bytes, so a gzip or zstd dump still decompresses if the suffix is missing. Credentials stay in the service environment, not on argv.
 
 ## Dump files
 
@@ -24,7 +26,9 @@ lando db:import dump.sql.gz --yes
 
 ```sh
 lando db:export backups/app.sql.gz --service database
+lando db:export backups/app.sql.zst --service database
 lando db:import backups/app.sql.gz --service database --yes
+lando db:import backups/app.sql.zst --service database --yes
 ```
 
 MySQL, MariaDB, Postgres, and MongoDB stream through the client. SQL Server uses `sqlcmd` backup and restore files.

@@ -16,7 +16,7 @@ import {
 } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
 
-import { wrapExportCommand, wrapImportCommand } from "../src/gzip.ts";
+import { dumpCommand, loadCommand } from "../src/families.ts";
 import { dbInputFromCommand, executeDbCommand } from "../src/run.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
@@ -266,29 +266,16 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("serviceCmd");
     expect(transfer?.to._tag).toBe("hostPath");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(
-        wrapExportCommand(
-          [
-            "mysqldump",
-            "-h",
-            "127.0.0.1",
-            "-u",
-            "lando",
-            "--single-transaction",
-            "--quick",
-            "--set-gtid-purged=OFF",
-            "--no-tablespaces",
-            "sql-app",
-          ],
-          true,
-        ),
-      );
+      expect(transfer.from.command).toEqual(dumpCommand("mysql", { user: "lando", database: "sql-app" }));
       expect(transfer.from.env?.MYSQL_PWD).toBe(SECRET);
       expect(JSON.stringify(transfer.from.command)).not.toContain(SECRET);
     }
+    expect(
+      new Uint8Array(await Bun.file(join(harness.root, "database.sql.gz")).bytes()).subarray(0, 2),
+    ).toEqual(Uint8Array.from([0x1f, 0x8b]));
   });
 
-  test("exports postgres through serviceCmd with gzip wrap", async () => {
+  test("exports postgres through serviceCmd and gzip on the host", async () => {
     const harness = makeSqlTestDeps({
       password: SECRET,
       type: "postgres:16",
@@ -301,14 +288,12 @@ describe("executeDbCommand", () => {
     const transfer = harness.transfers()[0];
     expect(transfer?.from._tag).toBe("serviceCmd");
     if (transfer?.from._tag === "serviceCmd") {
-      expect(transfer.from.command).toEqual(
-        wrapExportCommand(["pg_dump", "-U", "lando", "-d", "sql-app"], true),
-      );
+      expect(transfer.from.command).toEqual(dumpCommand("postgres", { user: "lando", database: "sql-app" }));
       expect(transfer.from.env?.PGPASSWORD).toBe(SECRET);
     }
   });
 
-  test("exports mongodb through serviceCmd with gzip wrap", async () => {
+  test("exports mongodb through serviceCmd and gzip on the host", async () => {
     const harness = makeSqlTestDeps({
       password: SECRET,
       type: "mongodb:7",
@@ -330,7 +315,8 @@ describe("executeDbCommand", () => {
       if (!Array.isArray(command)) throw new Error("expected argv command");
       expect(command[0]).toBe("sh");
       expect(command.join(" ")).toContain("mongodump --archive");
-      expect(command.join(" ")).toContain("| gzip");
+      expect(command.join(" ")).not.toContain("| gzip");
+      expect(command.join(" ")).not.toContain("zstd");
       expect(transfer.from.env?.MONGO_URI).toContain(SECRET);
       expect(JSON.stringify(command)).not.toContain(SECRET);
     }
@@ -385,6 +371,98 @@ describe("executeDbCommand", () => {
       expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
     ]);
     expect(exit.value.sizeBytes).toBe(12);
+  });
+
+  test("exports zstd when the destination ends with .zst", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const file = join(harness.root, "dump.sql.zst");
+
+    const exit = await run(harness.deps, { action: "export", file, yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const transfer = harness.transfers()[0];
+    expect(transfer?.from._tag).toBe("serviceCmd");
+    if (transfer?.from._tag === "serviceCmd") {
+      expect(transfer.from.command.join(" ")).not.toContain("| gzip");
+      expect(transfer.from.command.join(" ")).not.toContain("zstd");
+    }
+    expect(new Uint8Array(await Bun.file(file).bytes()).subarray(0, 4)).toEqual(
+      Uint8Array.from([0x28, 0xb5, 0x2f, 0xfd]),
+    );
+  });
+
+  test("imports zstd from magic bytes without an in-service decompressor", async () => {
+    const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
+    const file = join(harness.root, "magic.sql");
+    await Bun.write(file, new Blob(["select 1;"]).stream().pipeThrough(new CompressionStream("zstd")));
+
+    const exit = await run(harness.deps, { action: "import", file, yes: true });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    const transfer = harness.transfers()[0];
+    expect(transfer?.to._tag).toBe("serviceCmd");
+    if (transfer?.to._tag === "serviceCmd") {
+      expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
+    }
+    if (transfer?.from._tag === "hostPath") expect(transfer.from.path).not.toBe(file);
+  });
+
+  test("exports mssql bak.zst on the host without in-service compression", async () => {
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "mssql:2022",
+      environment: { SA_PASSWORD: SECRET },
+    });
+    const file = join(harness.root, "dump.bak.zst");
+
+    const exit = await run(harness.deps, { action: "export", file, yes: false });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(
+      harness
+        .execs()
+        .map(({ command }) => command.join(" "))
+        .join("\n"),
+    ).not.toContain("gzip");
+    expect(
+      harness
+        .execs()
+        .map(({ command }) => command.join(" "))
+        .join("\n"),
+    ).not.toContain("zstd");
+    expect(new Uint8Array(await Bun.file(file).bytes()).subarray(0, 4)).toEqual(
+      Uint8Array.from([0x28, 0xb5, 0x2f, 0xfd]),
+    );
+  });
+
+  test("imports mssql bak.gz on the host without in-service gunzip", async () => {
+    const harness = makeSqlTestDeps({
+      password: SECRET,
+      type: "mssql:2022",
+      environment: { SA_PASSWORD: SECRET },
+      countStdout: "0",
+    });
+    const file = join(harness.root, "dump.bak.gz");
+    await Bun.write(file, new Blob(["bak"]).stream().pipeThrough(new CompressionStream("gzip")));
+
+    const exit = await run(harness.deps, { action: "import", file, yes: true });
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(
+      harness
+        .execs()
+        .map(({ command }) => command.join(" "))
+        .join("\n"),
+    ).not.toContain("gzip");
+    expect(
+      harness
+        .execs()
+        .map(({ command }) => command.join(" "))
+        .join("\n"),
+    ).not.toContain("gunzip");
+    if (harness.transfers()[0]?.to._tag === "servicePath") {
+      expect(harness.transfers()[0]?.to.path).toBe("/var/opt/mssql/backup/sql-app.bak");
+    }
   });
 
   test("fails closed with available services when more than one SQL target exists", async () => {
@@ -515,9 +593,9 @@ describe("executeDbCommand", () => {
     expect(transfer?.from._tag).toBe("hostPath");
     expect(transfer?.to._tag).toBe("serviceCmd");
     if (transfer?.to._tag === "serviceCmd") {
-      expect(transfer.to.command).toEqual(
-        wrapImportCommand(["mysql", "-h", "127.0.0.1", "-u", "lando", "sql-app"], true),
-      );
+      expect(transfer.to.command).toEqual(loadCommand("mysql", { user: "lando", database: "sql-app" }));
+      expect(transfer.to.command.join(" ")).not.toContain("gunzip");
+      expect(transfer.to.command.join(" ")).not.toContain("zstd");
     }
     expect(transfer?.expectedDigest).toMatch(/^[a-f0-9]{64}$/u);
   });

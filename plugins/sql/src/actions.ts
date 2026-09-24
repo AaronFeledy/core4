@@ -17,6 +17,8 @@ import {
   type VolumeRef,
 } from "@lando/sdk/schema";
 
+import type { DumpCompression } from "./compression.ts";
+import { withHostDumpCompression } from "./compression.ts";
 import type { SqlCreds } from "./creds.ts";
 import {
   type SqlFamily,
@@ -28,7 +30,6 @@ import {
   mssqlRestoreCommand,
   resetCommand,
 } from "./families.ts";
-import { wrapExportCommand, wrapImportCommand } from "./gzip.ts";
 import type { SqlPlan, SqlPlanService } from "./views.ts";
 import { requireDatabaseMount } from "./volume-target.ts";
 
@@ -81,45 +82,48 @@ export const runExport = (
     readonly creds: SqlCreds;
     readonly env: Readonly<Record<string, string>>;
     readonly file: string;
-    readonly gzip: boolean;
+    readonly compression: DumpCompression;
   },
 ) => {
   const app = AppId.make(input.plan.id);
   const service = ServiceName.make(input.service);
-  const path = AbsolutePath.make(input.file);
-  if (input.family === "mssql") {
-    const bak = mssqlBackupServicePath(input.creds.database);
-    const backup = mssqlBackupCommand(input.creds.database);
-    return Effect.gen(function* () {
-      const prepare = mssqlPrepareBackupCommand();
-      yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
-      yield* requireExecOk(yield* exec(input.service, backup, input.env), input.service, backup);
-      if (input.gzip) {
-        const gzip = ["gzip", bak] as const;
-        yield* requireExecOk(yield* exec(input.service, gzip, input.env), input.service, gzip);
+  return withHostDumpCompression({
+    path: input.file,
+    compression: input.compression,
+    direction: "export",
+    transfer: (workingPath) => {
+      const path = AbsolutePath.make(workingPath);
+      if (input.family === "mssql") {
+        const bak = mssqlBackupServicePath(input.creds.database);
+        const backup = mssqlBackupCommand(input.creds.database);
+        return Effect.gen(function* () {
+          const prepare = mssqlPrepareBackupCommand();
+          yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
+          yield* requireExecOk(yield* exec(input.service, backup, input.env), input.service, backup);
+          return yield* mover.transfer({
+            from: {
+              _tag: "servicePath",
+              app,
+              service,
+              path: PortablePath.make(bak),
+            },
+            to: { _tag: "hostPath", path },
+            overwrite: true,
+          });
+        });
       }
-      return yield* mover.transfer({
+      return mover.transfer({
         from: {
-          _tag: "servicePath",
+          _tag: "serviceCmd",
           app,
           service,
-          path: PortablePath.make(input.gzip ? `${bak}.gz` : bak),
+          command: dumpCommand(input.family, input.creds),
+          env: input.env,
         },
         to: { _tag: "hostPath", path },
         overwrite: true,
       });
-    });
-  }
-  return mover.transfer({
-    from: {
-      _tag: "serviceCmd",
-      app,
-      service,
-      command: wrapExportCommand(dumpCommand(input.family, input.creds), input.gzip),
-      env: input.env,
     },
-    to: { _tag: "hostPath", path },
-    overwrite: true,
   });
 };
 
@@ -133,49 +137,53 @@ export const runImport = (
     readonly creds: SqlCreds;
     readonly env: Readonly<Record<string, string>>;
     readonly file: string;
-    readonly gzip: boolean;
+    readonly compression: DumpCompression;
     readonly expectedDigest?: string;
   },
 ) => {
   const app = AppId.make(input.plan.id);
   const service = ServiceName.make(input.service);
-  const path = AbsolutePath.make(input.file);
-  if (input.family === "mssql") {
-    const bak = mssqlBackupServicePath(input.creds.database);
-    return Effect.gen(function* () {
-      const prepare = mssqlPrepareBackupCommand();
-      yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
-      const transfer = yield* mover.transfer({
+  return withHostDumpCompression({
+    path: input.file,
+    compression: input.compression,
+    direction: "import",
+    ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
+    transfer: (workingPath, digest) => {
+      const path = AbsolutePath.make(workingPath);
+      if (input.family === "mssql") {
+        const bak = mssqlBackupServicePath(input.creds.database);
+        return Effect.gen(function* () {
+          const prepare = mssqlPrepareBackupCommand();
+          yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
+          const transfer = yield* mover.transfer({
+            from: { _tag: "hostPath", path, trusted: true },
+            to: {
+              _tag: "servicePath",
+              app,
+              service,
+              path: PortablePath.make(bak),
+            },
+            overwrite: true,
+            ...(digest === undefined ? {} : { expectedDigest: digest }),
+          });
+          const restore = mssqlRestoreCommand(input.creds.database);
+          yield* requireExecOk(yield* exec(input.service, restore, input.env), input.service, restore);
+          return transfer;
+        });
+      }
+      return mover.transfer({
         from: { _tag: "hostPath", path, trusted: true },
         to: {
-          _tag: "servicePath",
+          _tag: "serviceCmd",
           app,
           service,
-          path: PortablePath.make(input.gzip ? `${bak}.gz` : bak),
+          command: loadCommand(input.family, input.creds),
+          env: input.env,
         },
         overwrite: true,
-        ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
+        ...(digest === undefined ? {} : { expectedDigest: digest }),
       });
-      if (input.gzip) {
-        const gunzip = ["gunzip", "-f", `${bak}.gz`] as const;
-        yield* requireExecOk(yield* exec(input.service, gunzip, input.env), input.service, gunzip);
-      }
-      const restore = mssqlRestoreCommand(input.creds.database);
-      yield* requireExecOk(yield* exec(input.service, restore, input.env), input.service, restore);
-      return transfer;
-    });
-  }
-  return mover.transfer({
-    from: { _tag: "hostPath", path, trusted: true },
-    to: {
-      _tag: "serviceCmd",
-      app,
-      service,
-      command: wrapImportCommand(loadCommand(input.family, input.creds), input.gzip),
-      env: input.env,
     },
-    overwrite: true,
-    ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
   });
 };
 

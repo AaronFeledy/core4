@@ -8,10 +8,10 @@ import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import { hostFile, parseCount, secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
+import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
 import { countCommand } from "./families.ts";
-import { isGzipPath } from "./gzip.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
 import { runPhysicalOperation, withPhysicalVolumeLock } from "./recovery.ts";
@@ -79,7 +79,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         ? yield* ensureReadableDump(file, deps.plan.root)
         : undefined;
     const expectedDigest = dump?.digest;
-    const gzip = dump?.gzip ?? isGzipPath(file);
+    const compression = dump?.compression ?? compressionFromExportPath(file);
     const steps: DbCommandStep[] = [
       {
         id: action,
@@ -183,7 +183,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       creds,
       env,
       file,
-      gzip,
+      compression,
       ...(expectedDigest === undefined ? {} : { expectedDigest }),
     };
     let snapshotId: string | undefined;
