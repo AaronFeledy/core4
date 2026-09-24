@@ -258,6 +258,8 @@ export interface PreparedWindowsMutagenProcessClientOptions
   extends Omit<MutagenProcessClientOptions, "dockerCliPath" | "dockerHost" | "platform" | "verifyDockerCli"> {
   /** Provider preflight verifies the alias against its managed Podman binary. */
   readonly prepareDockerCli: () => Effect.Effect<string, unknown>;
+  /** Host detection is injectable for cross-platform transport tests. */
+  readonly hostPlatform?: string;
 }
 
 /**
@@ -268,20 +270,22 @@ export interface PreparedWindowsMutagenProcessClientOptions
 export const makePreparedWindowsMutagenProcessClient = (
   options: PreparedWindowsMutagenProcessClientOptions,
 ): Effect.Effect<MutagenProcessClient, FileSyncStartError> => {
-  const { prepareDockerCli, ...clientOptions } = options;
+  const { prepareDockerCli, hostPlatform = process.platform, ...clientOptions } = options;
   const prepare = () =>
-    prepareDockerCli().pipe(
-      Effect.flatMap((cliPath) =>
-        path.win32.isAbsolute(cliPath) && path.win32.basename(cliPath).toLowerCase() === "docker.exe"
-          ? Effect.succeed(cliPath)
-          : Effect.fail(startError("The provider did not prepare an absolute Windows docker.exe path.")),
-      ),
-      Effect.mapError((error) =>
-        error instanceof FileSyncStartError
-          ? error
-          : startError("Could not verify the managed Docker-compatible CLI for Mutagen."),
-      ),
-    );
+    hostPlatform !== "win32"
+      ? Effect.fail(startError("Windows Mutagen transport requires a Windows host."))
+      : prepareDockerCli().pipe(
+          Effect.flatMap((cliPath) =>
+            path.win32.isAbsolute(cliPath) && path.win32.basename(cliPath).toLowerCase() === "docker.exe"
+              ? Effect.succeed(cliPath)
+              : Effect.fail(startError("The provider did not prepare an absolute Windows docker.exe path.")),
+          ),
+          Effect.mapError((error) =>
+            error instanceof FileSyncStartError
+              ? error
+              : startError("Could not verify the managed Docker-compatible CLI for Mutagen."),
+          ),
+        );
 
   return prepare().pipe(
     Effect.map((dockerCliPath) =>
