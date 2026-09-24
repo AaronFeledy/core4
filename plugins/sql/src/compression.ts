@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, stat, unlink } from "node:fs/promises";
+import { mkdir, open, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -37,7 +37,6 @@ export const detectDumpCompression = (prefix: Uint8Array): DumpCompression => {
 };
 
 const appendBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
-  if (left.byteLength === 0) return right;
   const output = new Uint8Array(left.byteLength + right.byteLength);
   output.set(left);
   output.set(right, left.byteLength);
@@ -56,10 +55,29 @@ const streamThrough = (
     operation === "compress" ? new CompressionStream(compression) : new DecompressionStream(compression),
   );
 
-const hashFile = async (path: string): Promise<string> => {
+const persistWebStream = async (
+  source: ReadableStream<Uint8Array>,
+  destPath: string,
+): Promise<{ readonly digest: string; readonly sizeBytes: number }> => {
+  await mkdir(dirname(destPath), { recursive: true });
   const hash = new Bun.CryptoHasher("sha256");
-  for await (const chunk of Bun.file(path).stream()) hash.update(chunk);
-  return hash.digest("hex");
+  const handle = await open(destPath, "w");
+  const reader = source.getReader();
+  let sizeBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      hash.update(value);
+      await handle.write(value);
+      sizeBytes += value.byteLength;
+    }
+    await handle.sync().catch(() => undefined);
+  } finally {
+    reader.releaseLock();
+    await handle.close().catch(() => undefined);
+  }
+  return { digest: hash.digest("hex"), sizeBytes };
 };
 
 const dumpCompressionError = (
@@ -88,13 +106,8 @@ export const writeDumpTransform = (
   operation: "compress" | "decompress",
 ): Effect.Effect<{ readonly digest: string; readonly sizeBytes: number }, SqlDumpCompressionError> =>
   Effect.tryPromise({
-    try: async () => {
-      await mkdir(dirname(destPath), { recursive: true });
-      const body = streamThrough(Bun.file(sourcePath).stream(), compression, operation);
-      await Bun.write(destPath, body);
-      const info = await stat(destPath);
-      return { digest: await hashFile(destPath), sizeBytes: info.size };
-    },
+    try: async () =>
+      persistWebStream(streamThrough(Bun.file(sourcePath).stream(), compression, operation), destPath),
     catch: () =>
       dumpCompressionError(operation === "compress" ? destPath : sourcePath, compression, operation),
   });
@@ -112,16 +125,17 @@ export const withHostDumpCompression = <A, E, R>(input: {
   readonly expectedDigest?: string;
   readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<A, E, R>;
 }): Effect.Effect<A, E | SqlDumpCompressionError, R> => {
-  if (input.compression === "none") return input.transfer(input.path, input.expectedDigest);
+  const compression = input.compression;
+  if (compression === "none") return input.transfer(input.path, input.expectedDigest);
   return Effect.scoped(
     Effect.gen(function* () {
       const staged = yield* Effect.acquireRelease(acquireStagedDump(), releaseStagedDump);
       if (input.direction === "import") {
-        const decompressed = yield* writeDumpTransform(input.path, staged, input.compression, "decompress");
+        const decompressed = yield* writeDumpTransform(input.path, staged, compression, "decompress");
         return yield* input.transfer(staged, decompressed.digest);
       }
       const result = yield* input.transfer(staged);
-      yield* writeDumpTransform(staged, input.path, input.compression, "compress");
+      yield* writeDumpTransform(staged, input.path, compression, "compress");
       return result;
     }),
   );

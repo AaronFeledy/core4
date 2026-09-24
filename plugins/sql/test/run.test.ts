@@ -22,6 +22,15 @@ import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support
 
 const SECRET = "s3cret-pass";
 
+const writeCompressed = async (path: string, payload: string, compression: "gzip" | "zstd") => {
+  const bytes = Buffer.from(
+    await new Response(
+      new Blob([payload]).stream().pipeThrough(new CompressionStream(compression)),
+    ).arrayBuffer(),
+  );
+  writeFileSync(path, bytes);
+};
+
 afterEach(cleanupSqlTestDeps);
 
 const run = (
@@ -394,7 +403,7 @@ describe("executeDbCommand", () => {
   test("imports zstd from magic bytes without an in-service decompressor", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countStdout: "0" });
     const file = join(harness.root, "magic.sql");
-    await Bun.write(file, new Blob(["select 1;"]).stream().pipeThrough(new CompressionStream("zstd")));
+    await writeCompressed(file, "select 1;", "zstd");
 
     const exit = await run(harness.deps, { action: "import", file, yes: true });
 
@@ -443,7 +452,7 @@ describe("executeDbCommand", () => {
       countStdout: "0",
     });
     const file = join(harness.root, "dump.bak.gz");
-    await Bun.write(file, new Blob(["bak"]).stream().pipeThrough(new CompressionStream("gzip")));
+    await writeCompressed(file, "bak", "gzip");
 
     const exit = await run(harness.deps, { action: "import", file, yes: true });
 

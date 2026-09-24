@@ -53,7 +53,7 @@ export const ensureReadableDump = (
       // overwrite confirmation, instead of inside DataMover.
       await access(path, constants.R_OK);
       const hash = new Bun.CryptoHasher("sha256");
-      let prefix = new Uint8Array();
+      let prefix: Uint8Array = new Uint8Array();
       for await (const chunk of Bun.file(path).stream()) {
         prefix = collectDumpPrefix(chunk, prefix);
         hash.update(chunk);
