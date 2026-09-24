@@ -18,7 +18,7 @@ lando db:import dump.sql.gz --yes
 lando db:import dump.sql.zst --yes
 ```
 
-`.gz` and `.zst` compress and decompress on the host process. The default export name stays `<service>.sql.gz` when you omit a path. Import trusts magic bytes, so a gzip or zstd dump still decompresses if the suffix is missing. Credentials stay in the service environment, not on argv.
+`.gz` and `.zst` compress and decompress on the host process. The default export name stays `<service>.sql.gz` when you omit a path. Import trusts magic bytes, so a gzip or zstd dump still decompresses if the suffix is missing. Host compression stages the uncompressed dump in a temp file, so a huge dump pays disk twice. Credentials stay in the service environment, not on argv.
 
 ## Dump files
 
