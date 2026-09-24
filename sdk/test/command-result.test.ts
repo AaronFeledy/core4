@@ -109,6 +109,40 @@ describe("encodeCommandResult", () => {
     expect(JSON.stringify(frame)).not.toContain("redactionTokens");
   });
 
+  test("native exec's empty result schema keeps its output but drops redaction metadata", () => {
+    const secret = "native-exec-secret";
+    const options = {
+      command: "app:exec",
+      resultSchema: Schema.Struct({}),
+      outcome: {
+        _tag: "success" as const,
+        value: {
+          app: "drupal",
+          service: "appserver",
+          command: ["pwd"],
+          exitCode: 0,
+          stdout: `/app/${secret}\n`,
+          stderr: "",
+          redactionTokens: [secret],
+        },
+      },
+      redactor: createRedactor("secrets", { values: [secret] }),
+    };
+
+    const frame = decodeFrame(Effect.runSync(encodeStreamResultFrame(options)));
+    if (frame._tag !== "result") throw new Error("expected terminal result frame");
+    expect(frame.envelope.result).toEqual({
+      app: "drupal",
+      service: "appserver",
+      command: ["pwd"],
+      exitCode: 0,
+      stdout: "/app/[redacted]\n",
+      stderr: "",
+    });
+    expect(JSON.stringify(frame)).not.toContain(secret);
+    expect(JSON.stringify(frame)).not.toContain("redactionTokens");
+  });
+
   test("omits redaction metadata from permissive result schemas", () => {
     const result = { stdout: "ok", redactionTokens: ["private-token"] };
     const envelope = Effect.runSync(
