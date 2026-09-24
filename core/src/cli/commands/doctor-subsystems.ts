@@ -43,6 +43,7 @@ import {
   certsCheckContext,
   certsSubsystemId,
 } from "./doctor-certs-status";
+import { type HostDnsResolver, HostDnsResolverLive } from "./doctor-host-dns";
 import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
@@ -91,13 +92,14 @@ const UrlScannerDoctorLive = UrlScannerLive.pipe(
 );
 
 export const DefaultSubsystemDoctorLayer: Layer.Layer<
-  RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService
+  RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService | HostDnsResolver
 > = Layer.mergeAll(
   RouterServiceUnavailableLive,
   SshServiceUnavailableLive,
   HealthcheckRunnerDoctorLive,
   UrlScannerDoctorLive,
   HostProxyServiceDisabledLive,
+  HostDnsResolverLive,
 );
 
 export const subsystemDoctor = (
@@ -105,7 +107,7 @@ export const subsystemDoctor = (
 ): Effect.Effect<
   SubsystemDoctorResult,
   never,
-  RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService
+  RouterService | SshService | HealthcheckRunner | UrlScanner | HostProxyService | HostDnsResolver
 > =>
   Effect.gen(function* () {
     const fix = options.fix === true;
@@ -171,6 +173,9 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "mechanism",
   "baseDomain",
   "loopback",
+  "dnsHostname",
+  "dnsResolved",
+  "dnsAddresses",
   "failure",
   "message",
   "remediation",
