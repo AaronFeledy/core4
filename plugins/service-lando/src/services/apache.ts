@@ -117,6 +117,8 @@ const apacheStartCommand = (webroot: string, listenPort: number | undefined): Re
   const path = apacheDirectivePath(webroot);
   return [
     "httpd-foreground",
+    "-c",
+    "ServerName localhost",
     ...(listenPort === undefined ? [] : ["-c", `Listen ${String(listenPort)}`]),
     "-c",
     `PidFile "${PID_FILE}"`,

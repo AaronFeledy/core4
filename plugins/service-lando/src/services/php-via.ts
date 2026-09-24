@@ -194,8 +194,14 @@ export const apacheStartCommand = (
   ];
   const directives =
     listenPort === undefined
-      ? site
-      : [`Listen ${String(listenPort)}`, `<VirtualHost *:${String(listenPort)}>`, ...site, "</VirtualHost>"];
+      ? ["ServerName localhost", ...site]
+      : [
+          "ServerName localhost",
+          `Listen ${String(listenPort)}`,
+          `<VirtualHost *:${String(listenPort)}>`,
+          ...site,
+          "</VirtualHost>",
+        ];
   const command = ["apache2-foreground", ...directives.flatMap((directive) => ["-c", directive])];
   if (!mapWindowsWorker) return command;
   return [

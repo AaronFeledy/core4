@@ -383,6 +383,7 @@ describe("php serving modes (via:)", () => {
     // Then: the launcher listens there and serves the app from a virtual host
     // bound to the same value, still as one synthetic directive stream.
     expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).toEqual([
+      "ServerName localhost",
       "Listen 8080",
       "<VirtualHost *:8080>",
       'DocumentRoot "/app"',
@@ -410,6 +411,7 @@ describe("php serving modes (via:)", () => {
 
     // Then: byte-identical directives, and the image keeps its own listener.
     expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).toEqual([
+      "ServerName localhost",
       'DocumentRoot "/app"',
       '<Directory "/app">',
       "Options -Indexes +FollowSymLinks",
