@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import type { HostPlatform } from "@lando/sdk/schema";
+import { FileSyncEngine, type FileSyncEngineShape } from "@lando/sdk/services";
 import { resolveHostKey } from "@lando/sdk/tool-provisioning";
 
 import {
@@ -14,6 +15,8 @@ import {
   MUTAGEN_TOOL_MANIFEST,
   MUTAGEN_TOOL_VERSION,
   engine,
+  makeFakeMutagenClient,
+  makeFileSyncEngine,
   manifest,
   mutagenInstalledVersionPath,
   plugin,
@@ -39,19 +42,22 @@ const currentHostInstallPaths = (binDir: string): ReadonlyArray<string> => {
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
-const runFileSyncCheck = async (userDataRoot: string) => {
+const runFileSyncCheck = async (userDataRoot: string, selectedEngine?: FileSyncEngineShape) => {
   const check = plugin.doctorChecks?.find((candidate) => candidate.id === "file-sync");
   if (check === undefined) throw new Error("expected the file-sync doctor contribution");
 
+  const checkEffect = check.run({
+    providerId: "lando",
+    platform: currentPlatform(),
+    env: {},
+    userDataRoot,
+    binDir: join(userDataRoot, "bin"),
+    stateDir: undefined,
+  });
   const reports = await Effect.runPromise(
-    check.run({
-      providerId: "lando",
-      platform: currentPlatform(),
-      env: {},
-      userDataRoot,
-      binDir: join(userDataRoot, "bin"),
-      stateDir: undefined,
-    }),
+    selectedEngine === undefined
+      ? checkEffect
+      : checkEffect.pipe(Effect.provideService(FileSyncEngine, selectedEngine)),
   );
   const report = reports.find((candidate) => candidate.name === "file-sync");
   if (report === undefined) throw new Error("expected a file-sync doctor report");
@@ -83,6 +89,7 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
           engineId: "mutagen",
           mutagenVersion: "not-installed",
           expectedVersion: MUTAGEN_TOOL_VERSION,
+          clientStatus: "unavailable",
         },
         solutions: [
           {
@@ -116,6 +123,7 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
           engineId: "mutagen",
           mutagenVersion: "v0.0.0-stale",
           expectedVersion: MUTAGEN_TOOL_VERSION,
+          clientStatus: "unavailable",
         },
         solutions: [
           {
@@ -147,15 +155,35 @@ describe("@lando/file-sync-mutagen plugin descriptor", () => {
 
       expect(report).toEqual({
         name: "file-sync",
-        status: "pass",
-        severity: "info",
-        runtimeStatus: "installed",
-        runtime: { running: true, version: MUTAGEN_TOOL_VERSION },
+        status: "warn",
+        severity: "warn",
+        runtimeStatus: "installed-client-unavailable",
+        runtime: { running: false, version: MUTAGEN_TOOL_VERSION },
         context: {
           engineId: "mutagen",
           mutagenVersion: MUTAGEN_TOOL_VERSION,
           expectedVersion: MUTAGEN_TOOL_VERSION,
+          clientStatus: "unavailable",
         },
+        solutions: [
+          {
+            kind: "manual",
+            description:
+              "Continue with ordinary mounts; this build does not include a live Mutagen session client.",
+          },
+        ],
+      });
+
+      const working = await runFileSyncCheck(
+        dataRoot,
+        makeFileSyncEngine({ client: makeFakeMutagenClient() }),
+      );
+      expect(working).toMatchObject({
+        status: "pass",
+        severity: "info",
+        runtimeStatus: "installed",
+        runtime: { running: true, version: MUTAGEN_TOOL_VERSION },
+        context: { clientStatus: "available" },
         solutions: [],
       });
     } finally {

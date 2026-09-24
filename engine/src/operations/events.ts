@@ -1,9 +1,9 @@
 import { DateTime, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
-import { PostInitEvent, PreInitEvent } from "@lando/sdk/events";
+import { MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
+import type { AppLifecycleEventName, AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
@@ -182,6 +182,26 @@ export const runAppEvent = (
     }),
   );
 };
+
+export const runPostAppEvent = (
+  plan: AppPlan,
+  event: AppLifecycleEventName,
+  payload?: ExpressionContext["event"],
+) =>
+  runAppEvent(plan, event, payload).pipe(
+    Effect.catchAll((error) =>
+      EventService.pipe(
+        Effect.flatMap((events) =>
+          events.publish(
+            MessageWarnEvent.make({
+              body: [error.message, error.remediation].join(" "),
+              timestamp: DateTime.unsafeMake(new Date().toISOString()),
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
 
 export const runAppInitEvents = (plan: AppPlan) =>
   Effect.gen(function* () {

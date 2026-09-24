@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope, type Stream } from "effect";
 
 import type { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import type {
+  AppRef,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
   FileSyncSessionFilter,
@@ -18,13 +19,28 @@ export type FileSyncError = FileSyncStartError | FileSyncDriftError | FileSyncSt
  * implements.
  *
  * Engines are session-stateful: one session per accelerated `MountPlan`
- * per started app. `createSession` is `Scope`-acquired so app stop and
- * interruption both flow through the standard finalisation path.
+ * per started app. Ephemeral `createSession` acquisitions finalize with
+ * their scope. Engines with process-persistent sessions keep successful
+ * sessions across handle closure; startup failure compensates new sessions.
  */
 export interface FileSyncEngineShape {
   readonly id: string;
   readonly displayName: string;
   readonly capabilities: FileSyncEngineCapabilities;
+  /** Existing sessions survive process exit and must not be tied to an AppHandle scope. */
+  readonly sessionsPersistAcrossProcesses?: boolean;
+
+  /**
+   * Optional durable app lifecycle. Engines with process-persistent sessions
+   * use this to keep a drained app restartable and to retain disposal
+   * receipts until provider cleanup has succeeded.
+   */
+  readonly appLifecycle?: {
+    readonly invalidateDrain: (app: AppRef) => Effect.Effect<void, FileSyncStartError>;
+    readonly drain: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+    readonly dispose: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+    readonly completeDisposal: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+  };
 
   readonly isAvailable: Effect.Effect<boolean, FileSyncError>;
   readonly setup: (options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>;
@@ -34,6 +50,8 @@ export interface FileSyncEngineShape {
   ) => Effect.Effect<FileSyncSessionRef, FileSyncError, Scope.Scope>;
   readonly pauseSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
   readonly resumeSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+  /** Block until all pending changes reach the session target or fail. */
+  readonly flushSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
   readonly terminateSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
 
   readonly listSessions: (

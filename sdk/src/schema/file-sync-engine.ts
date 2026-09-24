@@ -112,6 +112,8 @@ export const FileSyncSessionInfo = Schema.Struct({
   app: AppRef,
   service: ServiceName,
   mountKey: Schema.String,
+  /** Full applied spec, used to verify session reuse before mounting synced bytes. */
+  spec: FileSyncSessionSpec,
   status: FileSyncSessionStatus,
   lastUpdatedAt: Schema.DateTimeUtc,
   /** Optional structured detail (drift count, last error message, etc.). */

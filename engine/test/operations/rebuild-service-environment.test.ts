@@ -23,7 +23,7 @@ test("scoped rebuild passes resolved service secrets only through transient prov
       list: Effect.succeed(["API_TOKEN"]),
     },
     onApply: (appliedPlan, options) => {
-      applied = { plan: appliedPlan, environment: options.serviceEnvironment };
+      applied = { plan: appliedPlan, environment: options?.serviceEnvironment };
     },
   });
 
