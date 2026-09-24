@@ -1,8 +1,8 @@
-import { Cause, type Context, Effect, Exit, Ref, Scope } from "effect";
+import { Cause, type Context, Effect, Exit, Option, Ref, Scope } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, FileSyncSessionRef, FileSyncSessionSpec } from "@lando/sdk/schema";
-import { FileSyncEngine, type FileSyncError } from "@lando/sdk/services";
+import { FileSyncEngine, type FileSyncEngineShape, type FileSyncError } from "@lando/sdk/services";
 
 import {
   type ProgressEmitter,
@@ -135,11 +135,13 @@ export const startFileSyncSessions = (
   events: ProgressEmitter,
   managed?: StartManagedScope,
   safeToRollbackTargets?: Ref.Ref<boolean>,
+  boundEngine?: FileSyncEngineShape,
 ) =>
   Effect.gen(function* () {
     if (plan.fileSync.length === 0) return;
     const plannedEngineIds = [...new Set(plan.fileSync.map((entry) => entry.engineId))];
-    const engineOption = yield* Effect.serviceOption(FileSyncEngine);
+    const engineOption =
+      boundEngine === undefined ? yield* Effect.serviceOption(FileSyncEngine) : Option.some(boundEngine);
     if (engineOption._tag === "None") {
       return yield* Effect.fail(
         new FileSyncStartError({

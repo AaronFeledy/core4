@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Fiber, Scope } from "effect";
 
@@ -18,6 +22,7 @@ import {
   PortablePath,
   ServiceName,
   type ServicePlan,
+  fileSyncVolumeName,
 } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
@@ -1133,6 +1138,271 @@ describe("pre-apply accelerated mount preparation", () => {
         ),
       );
     }
+  });
+
+  test("binds only the validated app target set before creating sessions", async () => {
+    const actions: string[] = [];
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      onPrepareFileSync: () => actions.push("prepare"),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        createSession: () => Effect.die(new Error("The shared engine must not create an app session.")),
+        bindPreparedTargets: (selectedPlan, targets) =>
+          Effect.sync(() => {
+            expect(actions).toEqual(["prepare"]);
+            actions.push("bind");
+            expect(selectedPlan.fileSync.map((entry) => entry.session)).toEqual(
+              targets.map((target) => target.session),
+            );
+            return {
+              ...TestFileSyncEngine,
+              id: "mutagen",
+              isAvailable: Effect.succeed(true),
+              listSessions: () => Effect.succeed([]),
+              createSession: (spec) =>
+                Effect.sync(() => {
+                  expect(targets.some((target) => target.session === spec)).toBe(true);
+                  actions.push("create");
+                  return FileSyncSessionRef.make(`scoped-${spec.mountKey}`);
+                }),
+              flushSession: () => Effect.sync(() => actions.push("flush")),
+            };
+          }),
+      },
+      onApply: () => actions.push("apply"),
+    });
+    await runStart(harness, acceleratedPlan);
+    expect(actions).toEqual(["prepare", "bind", "create", "flush", "create", "flush", "apply"]);
+  });
+
+  test("interruption during binding rolls back targets and clears the pending journal", async () => {
+    const actions: string[] = [];
+    let bindingStarted = (): void => undefined;
+    const entered = new Promise<void>((resolve) => {
+      bindingStarted = resolve;
+    });
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      onPrepareFileSync: () => actions.push("prepare"),
+      onFileSyncRollback: () => actions.push("rollback"),
+      onApply: () => actions.push("apply"),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        createSession: () => Effect.die(new Error("Interrupted binding reached session creation.")),
+        bindPreparedTargets: () =>
+          Effect.sync(() => {
+            actions.push("bind");
+            bindingStarted();
+          }).pipe(Effect.zipRight(Effect.never)),
+      },
+    });
+    const fiber = Effect.runFork(
+      startApp(
+        {},
+        {
+          plan: acceleratedPlan,
+          root: acceleratedPlan.root,
+          app: { kind: "user", id: acceleratedPlan.id, root: acceleratedPlan.root },
+        },
+      ).pipe(Effect.provide(harness.layer)),
+    );
+    await entered;
+    const exit = await Effect.runPromise(Fiber.interrupt(fiber));
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(actions).toEqual(["prepare", "bind", "rollback"]);
+    await Effect.runPromise(
+      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+        Effect.provide(harness.stateStore.layer),
+      ),
+    );
+  });
+
+  test("interruption during bound-engine availability rolls back only verified empty targets", async () => {
+    for (const ledgerReadable of [true, false]) {
+      const actions: string[] = [];
+      let checkingAvailability = (): void => undefined;
+      const entered = new Promise<void>((resolve) => {
+        checkingAvailability = resolve;
+      });
+      const harness = makeHarness({
+        plannedApp: acceleratedPlan,
+        onPrepareFileSync: () => actions.push("prepare"),
+        onFileSyncRollback: () => actions.push("rollback"),
+        onApply: () => actions.push("apply"),
+        fileSync: {
+          ...TestFileSyncEngine,
+          id: "mutagen",
+          isAvailable: Effect.succeed(true),
+          createSession: () => Effect.die(new Error("Shared engine used after binding.")),
+          bindPreparedTargets: () =>
+            Effect.sync(() => {
+              actions.push("bind");
+              return {
+                ...TestFileSyncEngine,
+                id: "mutagen",
+                isAvailable: Effect.sync(() => {
+                  actions.push("availability");
+                  checkingAvailability();
+                }).pipe(Effect.zipRight(Effect.never)),
+                listSessions: () =>
+                  ledgerReadable
+                    ? Effect.succeed([])
+                    : Effect.fail(
+                        new FileSyncStartError({
+                          engineId: "mutagen",
+                          message: "Durable session ownership could not be read.",
+                          remediation: "Inspect the retained ownership ledger before retrying.",
+                        }),
+                      ),
+                createSession: () => Effect.die(new Error("Availability interruption reached creation.")),
+              };
+            }),
+        },
+      });
+      const fiber = Effect.runFork(
+        startApp(
+          {},
+          {
+            plan: acceleratedPlan,
+            root: acceleratedPlan.root,
+            app: { kind: "user", id: acceleratedPlan.id, root: acceleratedPlan.root },
+          },
+        ).pipe(Effect.provide(harness.layer)),
+      );
+      await entered;
+      const exit = await Effect.runPromise(Fiber.interrupt(fiber));
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(actions).toEqual(
+        ledgerReadable
+          ? ["prepare", "bind", "availability", "rollback"]
+          : ["prepare", "bind", "availability"],
+      );
+      const journal = await Effect.runPromiseExit(
+        requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+          Effect.provide(harness.stateStore.layer),
+        ),
+      );
+      expect(Exit.isSuccess(journal)).toBe(ledgerReadable);
+    }
+  });
+
+  test("keeps simultaneous apps on separate bound engines", async () => {
+    const otherRootPath = mkdtempSync(join(tmpdir(), "lando-other-start-"));
+    const otherRoot = AbsolutePath.make(otherRootPath);
+    const otherId = AppId.make("other-app");
+    const otherAppMount = acceleratedService.appMount;
+    if (otherAppMount === undefined) throw new Error("Accelerated test service needs an app mount.");
+    const otherPlan: AppPlan = {
+      ...acceleratedPlan,
+      id: otherId,
+      name: "other-app",
+      slug: "other-app",
+      root: otherRoot,
+      services: {
+        [web.name]: {
+          ...acceleratedService,
+          appMount: { ...otherAppMount, source: otherRoot },
+        },
+      },
+      fileSync: acceleratedPlan.fileSync.map((entry) => ({
+        ...entry,
+        session: {
+          ...entry.session,
+          app: { kind: "user" as const, id: otherId, root: otherRoot },
+          source: entry.session.mountKey === "app-mount" ? otherRoot : entry.session.source,
+          target:
+            entry.session.target._tag === "volume"
+              ? {
+                  ...entry.session.target,
+                  name: fileSyncVolumeName(
+                    "other-app",
+                    String(entry.session.service),
+                    entry.session.mountKey,
+                  ),
+                }
+              : entry.session.target,
+        },
+      })),
+    };
+    const boundApps: string[] = [];
+    const createdApps: string[] = [];
+    const sharedEngine = {
+      ...TestFileSyncEngine,
+      id: "mutagen",
+      isAvailable: Effect.succeed(true),
+      createSession: () => Effect.die(new Error("Shared engine used for creation.")),
+      bindPreparedTargets: (
+        boundPlan: AppPlan,
+        targets: ReadonlyArray<import("@lando/sdk/schema").PreparedFileSyncTarget>,
+      ) =>
+        Effect.sync(() => {
+          boundApps.push(String(boundPlan.id));
+          return {
+            ...TestFileSyncEngine,
+            id: "mutagen",
+            isAvailable: Effect.succeed(true),
+            listSessions: () => Effect.succeed([]),
+            createSession: (spec: import("@lando/sdk/schema").FileSyncSessionSpec) =>
+              Effect.sync(() => {
+                expect(spec.app.id).toBe(boundPlan.id);
+                expect(targets.some((target) => target.session === spec)).toBe(true);
+                createdApps.push(String(spec.app.id));
+                return FileSyncSessionRef.make(`${boundPlan.id}-${spec.mountKey}`);
+              }),
+          };
+        }),
+    };
+    try {
+      await Promise.all([
+        runStart(makeHarness({ plannedApp: acceleratedPlan, fileSync: sharedEngine }), acceleratedPlan),
+        runStart(makeHarness({ plannedApp: otherPlan, fileSync: sharedEngine }), otherPlan),
+      ]);
+      expect(boundApps.sort()).toEqual([String(acceleratedPlan.id), String(otherId)].sort());
+      expect(createdApps.filter((id) => id === String(acceleratedPlan.id))).toHaveLength(2);
+      expect(createdApps.filter((id) => id === String(otherId))).toHaveLength(2);
+    } finally {
+      rmSync(otherRootPath, { recursive: true, force: true });
+    }
+  });
+
+  test("rolls back prepared targets if app binding fails before session creation", async () => {
+    const actions: string[] = [];
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      onPrepareFileSync: () => actions.push("prepare"),
+      onFileSyncRollback: () => actions.push("rollback"),
+      onApply: () => actions.push("apply"),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(true),
+        createSession: () => Effect.die(new Error("Binding failure reached the shared engine.")),
+        bindPreparedTargets: () =>
+          Effect.sync(() => actions.push("bind")).pipe(
+            Effect.zipRight(
+              Effect.fail(
+                new FileSyncStartError({
+                  engineId: "mutagen",
+                  message: "Could not bind verified endpoints.",
+                  remediation: "Retry after checking the provider endpoints.",
+                }),
+              ),
+            ),
+          ),
+      },
+    });
+    await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
+    expect(actions).toEqual(["prepare", "bind", "rollback"]);
+    await Effect.runPromise(
+      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+        Effect.provide(harness.stateStore.layer),
+      ),
+    );
   });
 
   test("retains the accelerated-start journal if rejected-target rollback fails", async () => {

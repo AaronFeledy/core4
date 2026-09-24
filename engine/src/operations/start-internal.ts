@@ -348,33 +348,67 @@ export const startAppForTargetUnlocked = (
                       if (pendingStart !== undefined) yield* pendingStart.clear;
                       return yield* Effect.failCause(coverage.cause);
                     }
-                    const safeToRollbackTargets = yield* Ref.make(false);
-                    sessionLease = yield* Effect.matchCauseEffect(
-                      startFileSyncSessions(plan, events, managed, safeToRollbackTargets),
-                      {
-                        onSuccess: Effect.succeed,
-                        onFailure: (syncCause) =>
-                          Ref.get(safeToRollbackTargets).pipe(
-                            Effect.flatMap((safe) =>
-                              safe
-                                ? Effect.exit(prepared.rollback).pipe(
-                                    Effect.flatMap((rollbackExit) => {
-                                      if (Exit.isFailure(rollbackExit)) {
-                                        return Effect.failCause(
-                                          Cause.sequential(syncCause, rollbackExit.cause),
-                                        );
-                                      }
-                                      return pendingStart === undefined
-                                        ? Effect.failCause(syncCause)
-                                        : pendingStart.clear.pipe(
-                                            Effect.zipRight(Effect.failCause(syncCause)),
-                                          );
-                                    }),
-                                  )
-                                : Effect.failCause(syncCause),
+                    sessionLease = yield* Effect.uninterruptibleMask((restore) =>
+                      Effect.gen(function* () {
+                        const selectedEngine = yield* Effect.serviceOption(FileSyncEngine);
+                        const bindPreparedTargets =
+                          selectedEngine._tag === "Some"
+                            ? selectedEngine.value.bindPreparedTargets
+                            : undefined;
+                        const bindingExit =
+                          bindPreparedTargets === undefined
+                            ? Exit.succeed(undefined)
+                            : yield* Effect.exit(restore(bindPreparedTargets(builtPlan, prepared.targets)));
+                        if (Exit.isFailure(bindingExit)) {
+                          const rollbackExit = yield* Effect.exit(prepared.rollback);
+                          if (Exit.isFailure(rollbackExit)) {
+                            return yield* Effect.failCause(
+                              Cause.sequential(bindingExit.cause, rollbackExit.cause),
+                            );
+                          }
+                          if (pendingStart !== undefined) yield* pendingStart.clear;
+                          return yield* Effect.failCause(bindingExit.cause);
+                        }
+
+                        const boundEngine = bindingExit.value;
+                        // No session mutation has occurred yet. The reconciler revokes
+                        // this permission before reusing or mutating a session.
+                        const safeToRollbackTargets = yield* Ref.make(true);
+                        const syncExit = yield* Effect.exit(
+                          restore(
+                            startFileSyncSessions(
+                              builtPlan,
+                              events,
+                              managed,
+                              safeToRollbackTargets,
+                              boundEngine,
                             ),
                           ),
-                      },
+                        );
+                        if (Exit.isSuccess(syncExit)) return syncExit.value;
+
+                        const safe = yield* Ref.get(safeToRollbackTargets);
+                        const app = builtPlan.fileSync[0]?.session.app;
+                        const engine =
+                          boundEngine ?? (selectedEngine._tag === "Some" ? selectedEngine.value : undefined);
+                        const noOwnedSessions =
+                          safe && app !== undefined && engine !== undefined
+                            ? yield* Effect.exit(engine.listSessions({ app })).pipe(
+                                Effect.map(
+                                  (listExit) => Exit.isSuccess(listExit) && listExit.value.length === 0,
+                                ),
+                              )
+                            : false;
+                        if (!noOwnedSessions) return yield* Effect.failCause(syncExit.cause);
+                        const rollbackExit = yield* Effect.exit(prepared.rollback);
+                        if (Exit.isFailure(rollbackExit)) {
+                          return yield* Effect.failCause(
+                            Cause.sequential(syncExit.cause, rollbackExit.cause),
+                          );
+                        }
+                        if (pendingStart !== undefined) yield* pendingStart.clear;
+                        return yield* Effect.failCause(syncExit.cause);
+                      }),
                     );
                   }
 
