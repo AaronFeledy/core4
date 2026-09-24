@@ -12,7 +12,7 @@ import type { AppliedFileSyncInspection } from "@lando/sdk/services";
 
 import { inspectAppliedPlan } from "./applied-state.ts";
 
-const verifiedSavedSessions = (plan: AppPlan): ReadonlyArray<FileSyncSessionSpec> | undefined => {
+export const verifiedFileSyncSessions = (plan: AppPlan): ReadonlyArray<FileSyncSessionSpec> | undefined => {
   const expected: Array<{
     service: string;
     mountKey: string;
@@ -121,7 +121,7 @@ export const inspectAppliedFileSync = (
     if (prior.status === "unreadable") return { status: "unknown" } as const;
     if (prior.status === "readable") {
       if (prior.plan.id !== plan.id || prior.plan.root !== plan.root) return { status: "unknown" } as const;
-      const sessions = verifiedSavedSessions(prior.plan);
+      const sessions = verifiedFileSyncSessions(prior.plan);
       if (sessions !== undefined) {
         const engineIds = [...new Set(prior.plan.fileSync.map((entry) => entry.engineId))];
         if (engineIds.length !== 1 || engineIds[0] === undefined) return { status: "unknown" } as const;
