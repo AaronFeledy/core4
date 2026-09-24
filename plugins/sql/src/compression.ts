@@ -122,11 +122,10 @@ export const withHostDumpCompression = <A, E, R>(input: {
   readonly path: string;
   readonly compression: DumpCompression;
   readonly direction: "export" | "import";
-  readonly expectedDigest?: string;
   readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<A, E, R>;
 }): Effect.Effect<A, E | SqlDumpCompressionError, R> => {
   const compression = input.compression;
-  if (compression === "none") return input.transfer(input.path, input.expectedDigest);
+  if (compression === "none") return input.transfer(input.path);
   return Effect.scoped(
     Effect.gen(function* () {
       const staged = yield* Effect.acquireRelease(acquireStagedDump(), releaseStagedDump);
