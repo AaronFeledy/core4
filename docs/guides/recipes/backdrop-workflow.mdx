@@ -33,46 +33,6 @@ For the MySQL answer path, use `lando mysql` instead of `lando mariadb` for data
 
 Init also injects `appserver.environment.BACKDROP_SETTINGS` with a JSON database blob. Remove that key after init and put credentials in `settings.php` instead. Bee and the Apache site both read `settings.php` cleanly that way.
 
-## Put Bee, mysqli, and a MySQL client on appserver
-
-Stock PHP images ship Composer and `pdo_mysql`. Backdrop day-to-day also wants the `mysqli` extension, Bee, and a `mysql` / `mysqldump` client Bee can call. Add them as root `build.artifact` steps on `appserver`, then rebuild so they land in the image.
-
-While you are editing `.lando.yml`, delete the whole `environment:` block under `appserver` (the one whose only key is `BACKDROP_SETTINGS`).
-
-```yaml
-services:
-  appserver:
-    build:
-      artifact:
-        - run: docker-php-ext-install mysqli
-          user: root
-        - run: apt-get update && apt-get install -y --no-install-recommends default-mysql-client curl ca-certificates unzip && rm -rf /var/lib/apt/lists/*
-          user: root
-        - run: ln -sf /usr/bin/mariadb /usr/local/bin/mysql && ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump
-          user: root
-        - run: curl -fsSL -o /usr/local/bin/bee https://github.com/backdrop-contrib/bee/releases/download/1.x-1.2.0/bee.phar && echo 9c7aaced21b0fe1e78bb34d8476e328b04da81beae4c422a065b483c1430937e\ \ /usr/local/bin/bee | sha256sum -c - && chmod 0755 /usr/local/bin/bee
-          user: root
-```
-
-This pins Bee 1.x-1.2.0 and checks its published SHA-256 digest before `chmod` can leave a bad binary on `PATH`. A mismatch fails the rebuild. Debian's `default-mysql-client` ships `mariadb` / `mariadb-dump`; the `ln` step gives Bee the `mysql` and `mysqldump` names it looks up.
-
-Refresh the plan and rebuild:
-
-```sh
-lando app:cache:refresh
-lando rebuild
-```
-
-`app:rebuild` has no `-y` flag. `lando restart` alone reuses the previous image. After rebuild, confirm the tools:
-
-```sh
-lando bee version
-# Yes, the binary is literally named bee. Lean into it.
-lando php -r 'echo extension_loaded("mysqli") ? "mysqli=yes\n" : "mysqli=no\n";'
-lando composer --version
-lando mariadb -e 'SELECT 1 AS ok;'
-```
-
 ## Init, start, and tear down
 
 <Guide>
@@ -116,6 +76,46 @@ lando mariadb -e 'SELECT 1 AS ok;'
     </Step>
   </Scenario>
 </Guide>
+
+## Put Bee, mysqli, and a MySQL client on appserver
+
+Stock PHP images ship Composer and `pdo_mysql`. Backdrop day-to-day also wants the `mysqli` extension, Bee, and a `mysql` / `mysqldump` client Bee can call. Add them as root `build.artifact` steps on `appserver`, then rebuild so they land in the image.
+
+While you are editing `.lando.yml`, delete the whole `environment:` block under `appserver` (the one whose only key is `BACKDROP_SETTINGS`).
+
+```yaml
+services:
+  appserver:
+    build:
+      artifact:
+        - run: docker-php-ext-install mysqli
+          user: root
+        - run: apt-get update && apt-get install -y --no-install-recommends default-mysql-client curl ca-certificates unzip && rm -rf /var/lib/apt/lists/*
+          user: root
+        - run: ln -sf /usr/bin/mariadb /usr/local/bin/mysql && ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump
+          user: root
+        - run: curl -fsSL -o /usr/local/bin/bee https://github.com/backdrop-contrib/bee/releases/download/1.x-1.2.0/bee.phar && echo 9c7aaced21b0fe1e78bb34d8476e328b04da81beae4c422a065b483c1430937e\ \ /usr/local/bin/bee | sha256sum -c - && chmod 0755 /usr/local/bin/bee
+          user: root
+```
+
+This pins Bee 1.x-1.2.0 and checks its published SHA-256 digest before `chmod` can leave a bad binary on `PATH`. A mismatch fails the rebuild. Debian's `default-mysql-client` ships `mariadb` / `mariadb-dump`; the `ln` step gives Bee the `mysql` and `mysqldump` names it looks up.
+
+Refresh the plan and rebuild:
+
+```sh
+lando app:cache:refresh
+lando rebuild
+```
+
+`app:rebuild` has no `-y` flag. `lando restart` alone reuses the previous image. After rebuild, confirm the tools:
+
+```sh
+lando bee version
+# Yes, the binary is literally named bee. Lean into it.
+lando php -r 'echo extension_loaded("mysqli") ? "mysqli=yes\n" : "mysqli=no\n";'
+lando composer --version
+lando mariadb -e 'SELECT 1 AS ok;'
+```
 
 ## Download and install Backdrop
 
