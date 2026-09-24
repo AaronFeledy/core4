@@ -8,6 +8,7 @@ import { makeLandoPaths } from "@lando/paths";
 
 import {
   defaultPosixShellProfilePath,
+  defaultShellenvShell,
   renderPosixShellenv,
   renderPowerShellShellenv,
   shellProfileInstallCommand,
@@ -78,6 +79,18 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
     }, 120_000);
   },
 );
+
+describe("shellenv default shell", () => {
+  test("uses PowerShell on native Windows and POSIX in a Windows POSIX shell", () => {
+    expect(defaultShellenvShell("win32", {})).toBe("powershell");
+    expect(defaultShellenvShell("win32", { SHELL: "/usr/bin/bash" })).toBe("posix");
+    expect(defaultShellenvShell("win32", { SHELL: "/usr/bin/fish" })).toBe("powershell");
+    expect(defaultShellenvShell("win32", { SHELL: "powershell.exe", MSYSTEM: "MINGW64" })).toBe("posix");
+    expect(defaultShellenvShell("win32", { SHELL: "C:\\Program Files\\Git\\bin\\bash.exe" })).toBe("posix");
+    expect(defaultShellenvShell("linux", {})).toBe("posix");
+    expect(defaultShellenvShell("darwin", {})).toBe("posix");
+  });
+});
 
 describe("shellenv snippet rendering", () => {
   for (const initial of ["/a:/b", "/a:DIR:/b", "/a:DIRx:/b"]) {

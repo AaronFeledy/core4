@@ -40,10 +40,22 @@ const infoStatusTone = (status: InfoServiceStatus): SummaryTone => {
   }
 };
 
-const logSourceText = (source: InfoLogSource): string => {
-  const availability =
-    source.reason === undefined ? source.availability : `${source.availability}: ${source.reason}`;
-  return `${source.id} ${source.path} (${source.strategy}, ${availability})`;
+const logSourceFields = (
+  sources: ReadonlyArray<InfoLogSource>,
+): ReadonlyArray<NonNullable<SummaryRow["fields"]>[number]> => {
+  if (sources.length === 0) return [];
+  const reasons = [
+    ...new Set(sources.flatMap((source) => (source.reason === undefined ? [] : [source.reason]))),
+  ];
+  const availability = (source: InfoLogSource): string =>
+    source.availability === "redirected-to-console" ? "console" : source.availability;
+  return [
+    {
+      label: "log sources",
+      value: sources.map((source) => `${source.id} [${availability(source)}]`).join(", "),
+    },
+    ...(reasons.length === 0 ? [] : [{ label: "log details", value: reasons.join(" ") }]),
+  ];
 };
 
 const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
@@ -65,12 +77,11 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
         label: "endpoints",
         value: service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", "),
       },
-      ...(service.logSources === undefined
-        ? []
-        : [{ label: "log sources", value: service.logSources.map(logSourceText).join(", ") }]),
+      ...(service.logSources === undefined ? [] : logSourceFields(service.logSources)),
       ...(service.creds === undefined ? [] : [{ label: "creds", value: credsText(service.creds) }]),
     ],
   }));
+  const hasLogSources = result.services.some((service) => (service.logSources?.length ?? 0) > 0);
   const agentEnvSection =
     result.agentEnv === undefined
       ? []
@@ -103,7 +114,11 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
       {
         title: "services",
         rows,
-        ...(rows.length === 0 ? { notes: ["No services are defined for this app."] } : {}),
+        ...(rows.length === 0
+          ? { notes: ["No services are defined for this app."] }
+          : hasLogSources
+            ? { notes: ["Run `lando info --format=json` for log paths and strategies."] }
+            : {}),
       },
       ...(hostProxy === undefined
         ? []
