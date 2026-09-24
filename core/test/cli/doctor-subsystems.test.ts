@@ -410,8 +410,34 @@ describe("meta:doctor subsystem checks", () => {
       // Then
       expect(proxy?.context.acquisitionMode).toBe("occupied-hop");
       expect(proxy?.status).toBe("warn");
-      expect(proxy?.solutions[0]?.description).toContain("port in use");
+      expect(proxy?.context.httpPort).toBe("8080");
+      expect(proxy?.context.httpsPort).toBe("8443");
+      expect(proxy?.solutions[0]?.description).toContain("8080");
+      expect(proxy?.solutions[0]?.description).toContain("8443");
+      expect(proxy?.solutions[0]?.description).toContain("lando info");
+      expect(proxy?.solutions[0]?.command).toBe("lando global:restart");
       expect(proxy?.solutions[0]?.description).not.toContain("38080");
+    } finally {
+      acquisition.cleanup();
+    }
+  });
+
+  test("uses restart advice when occupied-hop router is stopped", async () => {
+    const acquisition = writeAcquisitionState("occupied-hop");
+    const proxyService = { ...makeTestRouterService(), id: "traefik" };
+    const layer = Layer.mergeAll(
+      DefaultSubsystemDoctorLayer,
+      Layer.succeed(RouterService, proxyService),
+      acquisition.layer,
+      FileSystemLive,
+    );
+    try {
+      const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));
+      const proxy = result.checks.find((check) => check.name === "router");
+      expect(proxy?.status).toBe("warn");
+      expect(proxy?.context.ready).toBe("false");
+      expect(proxy?.solutions[0]?.command).toBe("lando global:restart");
+      expect(proxy?.solutions[0]?.description).toContain("any occupied preferred ports");
     } finally {
       acquisition.cleanup();
     }

@@ -164,6 +164,8 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "ready",
   "state",
   "acquisitionMode",
+  "httpPort",
+  "httpsPort",
   "certsReason",
   "certsCandidateIds",
   "certsPlugin",
