@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { renderPlainLine } from "@lando/sdk/renderer";
+import { renderJsonLine, renderPlainLine, renderVerboseLine } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 
 const logLine = (fields: Record<string, unknown>): LandoEvent =>
@@ -53,7 +53,7 @@ describe("plain task tree header", () => {
   });
 });
 
-describe("plain image pull progress", () => {
+describe("image pull progress presentation", () => {
   const pull = (stream: string, progress: Record<string, unknown> = {}): LandoEvent =>
     ({
       _tag: "image-pull-progress",
@@ -62,28 +62,42 @@ describe("plain image pull progress", () => {
       ...progress,
     }) as unknown as LandoEvent;
 
-  test("shows blob identity on one line when Podman includes a trailing newline", () => {
-    expect(renderPlainLine(pull("Copying blob sha256:abc123\n"))).toBe(
-      "↓ Pulling traefik:v3.3: Copying blob sha256:abc123",
-    );
+  test("omits routine per-blob and artifact frames from human output", () => {
+    for (const stream of [
+      "Copying blob sha256:abc123\n",
+      "Copying config sha256:ABC123",
+      "Starting to pull artifact",
+      "Pulling artifact",
+      "Artifact pulled successfully\n",
+      "Artifact already exists",
+    ]) {
+      expect(renderPlainLine(pull(stream))).toBeNull();
+      expect(renderPlainLine(pull(stream, { current: 1, total: 3 }))).toBeNull();
+    }
   });
 
-  test("omits repeated identity-free per-blob status lines", () => {
-    expect(renderPlainLine(pull("Starting to pull artifact"))).toBeNull();
-    expect(renderPlainLine(pull("Pulling artifact"))).toBeNull();
-    expect(renderPlainLine(pull("Artifact pulled successfully\n"))).toBeNull();
-    expect(renderPlainLine(pull("Artifact already exists"))).toBeNull();
-  });
-
-  test("keeps numeric progress and other pull stages visible", () => {
-    expect(renderPlainLine(pull("Pulling artifact", { current: 1, total: 3 }))).toBe(
-      "↓ Pulling traefik:v3.3: Pulling artifact (1/3)",
-    );
-    expect(renderPlainLine(pull("Starting to pull artifact", { current: 1, total: 3 }))).toBe(
-      "↓ Pulling traefik:v3.3: Starting to pull artifact (1/3)",
-    );
+  test("keeps unexpected status and failure details visible", () => {
     expect(renderPlainLine(pull("Writing manifest to image destination\n"))).toBe(
       "↓ Pulling traefik:v3.3: Writing manifest to image destination",
     );
+    expect(renderPlainLine(pull("Error copying blob sha256:abc123: disk full"))).toContain(
+      "Error copying blob sha256:abc123: disk full",
+    );
+    expect(renderPlainLine(pull("Copying blob sha256:abc123 failed"))).toContain("failed");
+  });
+
+  test("keeps the full routine event in JSON and verbose output", () => {
+    const event = pull("Copying blob sha256:abc123\n", { current: 1, total: 3 });
+    const json = renderJsonLine(event);
+    expect(json).not.toBeNull();
+    expect(JSON.parse(json ?? "").payload).toMatchObject({
+      reference: "traefik:v3.3",
+      stream: "Copying blob sha256:abc123\n",
+      current: 1,
+      total: 3,
+    });
+    const verbose = renderVerboseLine(event);
+    expect(verbose).toContain("Copying blob sha256:abc123\\n");
+    expect(verbose).toContain('"current":1');
   });
 });

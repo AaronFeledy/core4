@@ -105,12 +105,11 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
       const current = asNumber(event.current);
       const total = asNumber(event.total);
       if (
-        current === undefined &&
-        total === undefined &&
-        (stream === "Starting to pull artifact" ||
-          stream === "Pulling artifact" ||
-          stream === "Artifact pulled successfully" ||
-          stream === "Artifact already exists")
+        stream === "Starting to pull artifact" ||
+        stream === "Pulling artifact" ||
+        stream === "Artifact pulled successfully" ||
+        stream === "Artifact already exists" ||
+        /^Copying (?:blob|config) sha256:[0-9a-f]+$/iu.test(stream ?? "")
       )
         return null;
       const message = stream === undefined || stream.length === 0 ? "" : `: ${stream}`;
