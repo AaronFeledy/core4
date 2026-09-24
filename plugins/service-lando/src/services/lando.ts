@@ -43,20 +43,8 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
     });
   }
 
-  for (const endpoint of service.endpoints ?? publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
-    switch (endpoint.protocol) {
-      case "unix":
-        ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
-        break;
-      case "http":
-      case "https":
-      case "tcp":
-      case "udp":
-        ctx.addEndpoint(endpoint);
-        break;
-      default:
-        endpoint satisfies never;
-    }
+  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
+    ctx.addEndpoint(endpoint);
   }
 };
 
