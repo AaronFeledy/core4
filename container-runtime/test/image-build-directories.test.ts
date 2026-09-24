@@ -1,8 +1,14 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
 import { type ContainerBuildHttpRequest, buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import type { ServiceCaFileDescriptor } from "@lando/sdk/services";
 
 const providerId = ProviderId.make("docker");
 const serviceName = ServiceName.make("web");
@@ -12,7 +18,10 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const planFor = (directories: readonly string[]): AppPlan => ({
+const planFor = (
+  directories: readonly string[],
+  caFiles: readonly ServiceCaFileDescriptor[] = [],
+): AppPlan => ({
   id: AppId.make("shellless"),
   name: "shellless",
   slug: "shellless",
@@ -35,7 +44,7 @@ const planFor = (directories: readonly string[]): AppPlan => ({
       metadata,
       extensions: {
         "@lando/core/service-features": {
-          buildSteps: [{ phase: "build", command: { directories } }],
+          buildSteps: [{ phase: "build", command: { directories }, caFiles }],
         },
       },
     },
@@ -114,3 +123,43 @@ test.each(["relative", "/", "/etc/../tmp", "/etc/lando\nRUN evil"])(
     expect(requests).toBe(0);
   },
 );
+
+test("copies attached CA files when the owning build step creates directories", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-directory-ca-"));
+  try {
+    const content = "test-ca";
+    const path = join(root, "ca.pem");
+    await writeFile(path, content);
+    const plan = planFor(
+      ["/etc/lando/certs"],
+      [{ path, digest: createHash("sha256").update(content).digest("hex"), archiveName: "corp.crt" }],
+    );
+    const chunks: Uint8Array[] = [];
+    // When
+    await Effect.runPromise(
+      buildContainerArtifact(
+        { app: plan.id, service: serviceName, plan, buildKey: "directory-ca" },
+        {
+          providerId,
+          api: {
+            request: (request: ContainerBuildHttpRequest) =>
+              Effect.promise(async () => {
+                if (request.stdin !== undefined) {
+                  for await (const chunk of request.stdin) chunks.push(chunk);
+                }
+                return { status: 200, body: "" };
+              }),
+          },
+        },
+      ),
+    );
+    // Then
+    const archive = Buffer.concat(chunks).toString();
+    expect(archive).toContain("COPY .lando-ca/corp.crt /usr/local/share/ca-certificates/corp.crt");
+    expect(archive).toContain('COPY [".lando-empty/","/etc/lando/certs/"]');
+    expect(archive).not.toContain("RUN ");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

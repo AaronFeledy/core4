@@ -62,6 +62,7 @@ const dockerfileForDerivedBuild = (
     for (const step of input.steps) {
       if (typeof step.command === "object" && "directories" in step.command) {
         instructions.push(
+          ...copyInstructions(step),
           ...step.command.directories.map(
             (directory) => `COPY ${JSON.stringify([".lando-empty/", `${directory}/`])}`,
           ),
