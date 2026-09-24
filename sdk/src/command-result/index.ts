@@ -75,7 +75,20 @@ const taggedErrorJson = (
 
 const encodeResult = (schema: Schema.Schema.AnyNoContext, value: unknown) =>
   Effect.try({
-    try: () => Schema.encodeSync(schema)(value as never),
+    try: () => {
+      const encoded = Schema.encodeSync(schema)(value as never);
+      // Command implementations may carry this private field so the output
+      // boundary can redact their data. It is never part of a public result.
+      if (
+        encoded === null ||
+        typeof encoded !== "object" ||
+        Array.isArray(encoded) ||
+        !Object.hasOwn(encoded, "redactionTokens")
+      )
+        return encoded;
+      const { redactionTokens: _redactionTokens, ...result } = encoded as Record<string, unknown>;
+      return result;
+    },
     catch: (error) => error,
   });
 
