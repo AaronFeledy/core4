@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope, type Stream } from "effect";
 
 import type { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import type {
+  AppPlan,
   AppRef,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
@@ -10,6 +11,7 @@ import type {
   FileSyncSessionRef,
   FileSyncSessionSpec,
   FileSyncSetupOptions,
+  PreparedFileSyncTarget,
 } from "../schema/index.ts";
 
 export type FileSyncError = FileSyncStartError | FileSyncDriftError | FileSyncStopError;
@@ -41,6 +43,18 @@ export interface FileSyncEngineShape {
     readonly dispose: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
     readonly completeDisposal: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
   };
+
+  /**
+   * Optional app-scoped handoff after the provider's complete prepared target
+   * set has been validated. Binding may inspect the host but must not mutate
+   * external or durable resources; failure or interruption can only release
+   * provider-prepared targets. Return a separate engine without mutating this
+   * shared service; only the returned engine may create this app's sessions.
+   */
+  readonly bindPreparedTargets?: (
+    plan: AppPlan,
+    targets: ReadonlyArray<PreparedFileSyncTarget>,
+  ) => Effect.Effect<FileSyncEngineShape, FileSyncStartError>;
 
   readonly isAvailable: Effect.Effect<boolean, FileSyncError>;
   readonly setup: (options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>;
