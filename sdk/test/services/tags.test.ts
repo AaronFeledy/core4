@@ -213,6 +213,7 @@ describe("Effect service tags", () => {
     const processRunner: Context.Tag.Service<typeof ProcessRunner> = {
       run: (_options) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       stream: (_options) => Stream.empty,
+      streamWithExit: (_options) => Stream.empty,
     };
 
     const shellRunner: Context.Tag.Service<typeof ShellRunner> = {

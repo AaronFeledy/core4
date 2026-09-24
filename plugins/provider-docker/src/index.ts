@@ -33,6 +33,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { mergeAppliedPlan } from "@lando/container-runtime/plan";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
@@ -845,12 +846,32 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     );
   };
 
-  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
-    const persistedPlan = sanitizeAppliedPlan(plan);
-    plans.set(plan.id, persistedPlan);
-    return options.appliedPlanState === undefined
-      ? Effect.void
-      : persistAppliedPlan(options.appliedPlanState, persistedPlan).pipe(Effect.asVoid);
+  const rememberPlan = (plan: AppPlan, reconcile: boolean): Effect.Effect<void, ProviderUnavailableError> => {
+    const state = options.appliedPlanState;
+    const write = Effect.gen(function* () {
+      const previous = reconcile
+        ? undefined
+        : state === undefined
+          ? yield* resolvePlan({ app: plan.id })
+          : yield* loadAppliedPlan(state, plan.id);
+      const persistedPlan = sanitizeAppliedPlan(mergeAppliedPlan(previous, plan, reconcile));
+      if (state !== undefined) yield* persistAppliedPlan(state, persistedPlan);
+      plans.set(plan.id, persistedPlan);
+    });
+    return state === undefined
+      ? write
+      : state.withLock(`applied-plan-${plan.id}`, write).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof ProviderUnavailableError
+              ? cause
+              : new ProviderUnavailableError({
+                  providerId: PROVIDER_ID,
+                  operation: "applied-state.lock",
+                  message: "Could not lock Docker applied-plan state.",
+                  cause,
+                }),
+          ),
+        );
   };
 
   const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
@@ -931,7 +952,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
         ...resolvedOps,
         destroy: (target, destroyOptions) =>
           resolvePlan(target).pipe(

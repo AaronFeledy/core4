@@ -16,6 +16,16 @@ import { requiresLongMountSyntax } from "./mount-syntax.ts";
 
 export { composeConfigBindStrings };
 
+/** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
+export const mergeAppliedPlan = (
+  previous: AppPlan | undefined,
+  incoming: AppPlan,
+  reconcile: boolean,
+): AppPlan =>
+  previous === undefined || reconcile || previous.id !== incoming.id
+    ? incoming
+    : { ...incoming, services: { ...previous.services, ...incoming.services } };
+
 export class ContainerPlanError extends Error {
   readonly _tag = "ContainerPlanError";
   readonly details?: unknown;

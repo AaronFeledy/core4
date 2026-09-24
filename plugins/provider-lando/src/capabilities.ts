@@ -24,6 +24,15 @@ const bindMountPerformanceForPlatform = (
   return hostPlatformFamily(platform) === "linux" ? "native" : "slow";
 };
 
+const podmanInfoRootless = (info: unknown): boolean | undefined => {
+  if (typeof info !== "object" || info === null || !("host" in info)) return undefined;
+  const host = info.host;
+  if (typeof host !== "object" || host === null || !("security" in host)) return undefined;
+  const security = host.security;
+  if (typeof security !== "object" || security === null || !("rootless" in security)) return undefined;
+  return typeof security.rootless === "boolean" ? security.rootless : undefined;
+};
+
 export const decodeProviderCapabilities = (input: unknown) =>
   Schema.decodeUnknown(ProviderCapabilities)(input).pipe(
     Effect.mapError(
@@ -70,6 +79,7 @@ export const decodeProviderCapabilities = (input: unknown) =>
 export const providerLandoCapabilitiesForPlatform = (
   platform: HostPlatform,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
+  rootless = hostPlatformFamily(platform) !== "win32",
 ): ProviderCapabilities => {
   const family = hostPlatformFamily(platform);
   return buildProviderCapabilities({
@@ -83,7 +93,7 @@ export const providerLandoCapabilitiesForPlatform = (
     artifactImport: true,
     ephemeralMounts: true,
     tlsCertificates: "lando",
-    rootless: true,
+    rootless,
     composeSpec: "native",
     composeKnobs: { supported: podmanComposeKnobs() },
     composeServiceFields: { supported: ["labels", "configs"] },
@@ -119,6 +129,10 @@ export const introspectProviderCapabilities = (
     ),
     Effect.map((info) => {
       const containerArch = engineInfoArchitecture(info);
-      return providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTargets(containerArch));
+      return providerLandoCapabilitiesForPlatform(
+        platform,
+        hostProxyContainerTargets(containerArch),
+        podmanInfoRootless(info) ?? hostPlatformFamily(platform) !== "win32",
+      );
     }),
   );

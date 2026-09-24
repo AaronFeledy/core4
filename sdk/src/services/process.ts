@@ -20,6 +20,8 @@ export interface ProcessSpawnOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly stdin?: string | Uint8Array;
+  readonly stdinStream?: AsyncIterable<Uint8Array>;
+  readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
   /**
    * Linux cgroup path passed through to `Bun.spawn`. Ignored on non-Linux so
@@ -66,6 +68,8 @@ export interface ProcessStreamChunk {
   readonly chunk: Uint8Array;
 }
 
+export type ProcessStreamEvent = ProcessStreamChunk | { readonly exitCode: number };
+
 export class ProcessRunner extends Context.Tag("@lando/core/ProcessRunner")<
   ProcessRunner,
   {
@@ -75,6 +79,9 @@ export class ProcessRunner extends Context.Tag("@lando/core/ProcessRunner")<
     readonly stream: (
       options: ProcessSpawnOptions,
     ) => Stream.Stream<ProcessStreamChunk, ProcessExecError | ProcessTimeoutError>;
+    readonly streamWithExit: (
+      options: ProcessSpawnOptions,
+    ) => Stream.Stream<ProcessStreamEvent, ProcessExecError | ProcessTimeoutError>;
   }
 >() {}
 

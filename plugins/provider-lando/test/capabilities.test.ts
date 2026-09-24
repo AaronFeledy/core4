@@ -65,6 +65,19 @@ describe("provider-lando capabilities", () => {
     expect(windows.composeProjectFields).toEqual({ supported: ["configs"] });
   });
 
+  test("reports the rootful Windows default and the mode of an existing machine", async () => {
+    expect(mvpProviderCapabilities("win32").rootless).toBe(false);
+    expect(mvpProviderCapabilities("linux").rootless).toBe(true);
+    expect(mvpProviderCapabilities("darwin").rootless).toBe(true);
+
+    const rootlessWindows = await Effect.runPromise(
+      introspectProviderCapabilities(
+        { info: Effect.succeed({ host: { security: { rootless: true } } }), ping: Effect.void },
+        "win32",
+      ),
+    );
+    expect(rootlessWindows.rootless).toBe(true);
+  });
   test("keeps WSL identity while using Linux-family capabilities", async () => {
     // Given: a provider constructed with WSL identity.
     // When: the runtime provider is resolved.

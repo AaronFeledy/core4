@@ -2,7 +2,13 @@ import { type Context, DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
-import { type AppPlan, type AppRef, ProviderId, type ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type AppRef,
+  ProviderId,
+  type ServicePlan,
+  landoAppNetworkName,
+} from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
@@ -23,6 +29,9 @@ type BringDownError = ProviderUnavailableError | ProviderInternalError;
 const DESTROY_REMEDIATION =
   "Run `lando doctor` to inspect the runtime, then `lando destroy` to retry cleanup. Use `--volumes` to remove app-scoped volumes.";
 
+const GLOBAL_DESTROY_REMEDIATION =
+  "Run `lando global:status` to inspect global services, then retry `lando global:stop`. If cleanup is still needed, run `lando global:destroy`; `--purge` also removes global service data volumes.";
+
 interface StopResult {
   readonly changed: boolean;
 }
@@ -39,6 +48,7 @@ export interface BringDownOptions {
 interface BringDownDeps {
   readonly api: EngineHttpApi;
   readonly options: BringDownOptions;
+  readonly remediation: string;
 }
 
 const appRef = (plan: AppPlan): AppRef => ({
@@ -50,7 +60,7 @@ const appRef = (plan: AppPlan): AppRef => ({
 const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-const networkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const networkName = (plan: AppPlan) => landoAppNetworkName(plan);
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -68,12 +78,12 @@ const request = (
 ): Effect.Effect<EngineHttpResponse, BringDownError> =>
   deps.api.request === undefined ? Effect.fail(missingApi(deps.options.ctx)) : deps.api.request(input);
 
-const podmanFailure = (ctx: ProviderErrorContext, operation: string, message: string, details?: unknown) =>
+const podmanFailure = (deps: BringDownDeps, operation: string, message: string, details?: unknown) =>
   new ProviderUnavailableError({
-    providerId: ctx.providerId,
+    providerId: deps.options.ctx.providerId,
     operation,
     message: withApiReason(message, details),
-    remediation: DESTROY_REMEDIATION,
+    remediation: deps.remediation,
     ...(details === undefined ? {} : { details: redactDetails(details) }),
   });
 
@@ -90,7 +100,7 @@ const publish = (
               providerId: deps.options.ctx.providerId,
               operation: "bringDown.event",
               message: `Failed to publish lifecycle event: ${event._tag}`,
-              remediation: DESTROY_REMEDIATION,
+              remediation: deps.remediation,
               cause,
             }),
         ),
@@ -107,7 +117,7 @@ const stopContainer = (deps: BringDownDeps, name: string): Effect.Effect<boolean
       }
       return Effect.fail(
         podmanFailure(
-          deps.options.ctx,
+          deps,
           "bringDown.stop",
           `provider-${deps.options.ctx.providerId} container stop failed with HTTP ${response.status}.`,
           { name, body: response.body },
@@ -127,7 +137,7 @@ const removeContainer = (deps: BringDownDeps, name: string): Effect.Effect<boole
       }
       return Effect.fail(
         podmanFailure(
-          deps.options.ctx,
+          deps,
           "bringDown.remove",
           `provider-${deps.options.ctx.providerId} container remove failed with HTTP ${response.status}.`,
           { name, body: response.body },
@@ -148,7 +158,7 @@ const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolea
       }
       return Effect.fail(
         podmanFailure(
-          deps.options.ctx,
+          deps,
           "bringDown.network",
           `provider-${deps.options.ctx.providerId} network remove failed with HTTP ${response.status}.`,
           { name, body: response.body },
@@ -189,7 +199,7 @@ const removeVolume = (
     if (inspected.status !== 200) {
       return yield* Effect.fail(
         podmanFailure(
-          deps.options.ctx,
+          deps,
           "bringDown.volume.inspect",
           `provider-${deps.options.ctx.providerId} volume inspect failed with HTTP ${inspected.status}.`,
           { name, body: inspected.body },
@@ -209,7 +219,7 @@ const removeVolume = (
     if (response.status === 404) return false;
     return yield* Effect.fail(
       podmanFailure(
-        deps.options.ctx,
+        deps,
         "bringDown.volume",
         `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
         { name, body: response.body },
@@ -288,7 +298,11 @@ export const bringDown = (
     if (api.request === undefined) {
       return yield* Effect.fail(missingApi(options.ctx));
     }
-    const deps: BringDownDeps = { api, options };
+    const deps: BringDownDeps = {
+      api,
+      options,
+      remediation: plan.id === "global" ? GLOBAL_DESTROY_REMEDIATION : DESTROY_REMEDIATION,
+    };
 
     let changed = false;
     for (const service of Object.values(plan.services).reverse()) {
