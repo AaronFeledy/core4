@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+
+import { redactString } from "./redact.ts";
 
 export interface ContainerBuildHttpRequest {
   readonly method: "GET" | "POST";
@@ -122,7 +124,7 @@ const parseDigest = (body: string): string | undefined => {
 
 export const requestContainerBuild = (
   input: BuildRequestInput,
-): Effect.Effect<string | undefined, ProviderUnavailableError | ProviderInternalError> =>
+): Effect.Effect<string | undefined, ArtifactBuildError | ProviderUnavailableError | ProviderInternalError> =>
   input
     .request({
       method: "POST",
@@ -132,29 +134,34 @@ export const requestContainerBuild = (
     })
     .pipe(
       Effect.mapError((cause) => mapRequestError(input.options, input.secretValues, cause)),
-      Effect.flatMap((response) => {
-        if (response.status < 200 || response.status >= 300) {
-          return Effect.fail(
-            new ProviderUnavailableError({
-              providerId: input.options.providerId,
-              operation: "buildArtifact",
-              message: `Container image build failed with HTTP ${response.status}.`,
-              details: { status: response.status },
-            }),
-          );
-        }
-        const streamError = buildStreamError(response.body);
-        return streamError === undefined
-          ? Effect.succeed(parseDigest(response.body))
-          : Effect.fail(
+      Effect.flatMap(
+        (response): Effect.Effect<string | undefined, ProviderUnavailableError | ArtifactBuildError> => {
+          if (response.status < 200 || response.status >= 300) {
+            return Effect.fail(
               new ProviderUnavailableError({
                 providerId: input.options.providerId,
                 operation: "buildArtifact",
-                message: "Container image build stream reported an error.",
-                details: { message: redactSecrets(streamError, input.secretValues) },
+                message: `Container image build failed with HTTP ${response.status}.`,
+                details: { status: response.status },
               }),
             );
-      }),
+          }
+          const streamError = buildStreamError(response.body);
+          if (streamError === undefined) return Effect.succeed(parseDigest(response.body));
+          const diagnostic = redactString(redactSecrets(streamError, input.secretValues));
+          const boundedDiagnostic = diagnostic.length > 4096 ? `${diagnostic.slice(0, 4095)}…` : diagnostic;
+          const tag = redactString(redactSecrets(input.tag, input.secretValues)).slice(0, 256);
+          return Effect.fail(
+            new ArtifactBuildError({
+              providerId: input.options.providerId,
+              operation: "buildArtifact",
+              message: `Container image build failed: ${boundedDiagnostic}`,
+              details: { message: boundedDiagnostic, tag },
+              remediation: `Check the failing Containerfile step for image ${tag}, correct it, and rebuild.`,
+            }),
+          );
+        },
+      ),
       Effect.flatMap((digest) =>
         input.request({ method: "GET", path: `/images/${encodeURIComponent(input.tag)}/json` }).pipe(
           Effect.mapError((cause) => mapRequestError(input.options, input.secretValues, cause)),

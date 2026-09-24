@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { type ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
 
@@ -105,7 +105,7 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
 export const buildContainerArtifact = (
   input: ArtifactBuildSpec,
   options: ContainerBuildOptions,
-): Effect.Effect<ArtifactRef, ProviderUnavailableError | ProviderInternalError> =>
+): Effect.Effect<ArtifactRef, ArtifactBuildError | ProviderUnavailableError | ProviderInternalError> =>
   Effect.gen(function* () {
     const request = options.api.request;
     if (request === undefined) {
