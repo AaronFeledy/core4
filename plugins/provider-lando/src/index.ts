@@ -236,6 +236,7 @@ export {
 };
 export { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
 export { ensureRuntime } from "./ensure-runtime.ts";
+export { prepareWindowsDockerCli } from "./windows-docker-cli.ts";
 export type { EnsureRuntimeDeps } from "./ensure-runtime.ts";
 export {
   RuntimeLaunchError,
