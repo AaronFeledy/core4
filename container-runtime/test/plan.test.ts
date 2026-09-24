@@ -8,9 +8,10 @@ import {
   envArrayFromRecord,
   fingerprintInspectPublishPorts,
   fingerprintPlannedPublishPorts,
+  mergeAppliedPlan,
   mountSuffix,
 } from "@lando/container-runtime/plan";
-import { AbsolutePath, type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, PortablePath, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
 const plan = {
   id: "app-id",
@@ -140,6 +141,22 @@ describe("container plan helpers", () => {
     const hostConfig = containerHostConfigFragment(plan, withAliases);
     // Then
     expect(hostConfig.ExtraHosts).toEqual(expected);
+  });
+
+  test("retains prior services only for a non-reconciling partial apply", () => {
+    const oldService = { ...service, name: "database" } as ServicePlan;
+    const changedService = { ...service, environment: { UPDATED: "yes" } } as ServicePlan;
+    const previous = { ...plan, services: { database: oldService, web: service } } as AppPlan;
+    const incoming = { ...plan, services: { web: changedService } } as AppPlan;
+
+    expect(mergeAppliedPlan(previous, incoming, false).services).toEqual({
+      [ServiceName.make("database")]: oldService,
+      [ServiceName.make("web")]: changedService,
+    });
+    expect(mergeAppliedPlan(previous, incoming, true).services).toEqual({
+      [ServiceName.make("web")]: changedService,
+    });
+    expect(mergeAppliedPlan(undefined, incoming, false)).toBe(incoming);
   });
 
   test("converts env records and mount read-only suffixes", () => {

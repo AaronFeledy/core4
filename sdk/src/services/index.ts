@@ -20,6 +20,8 @@ import type {
   DoctorResourceNameQuery,
   GlobalConfig,
   HostPlatform,
+  HostProxyBridgeInput,
+  HostProxyBridgeResult,
   HttpClientCapabilities,
   HttpRequest,
   HttpResponse,
@@ -31,6 +33,7 @@ import type {
   ManagedFilePlan,
   ManagedFileResult,
   PluginManifest,
+  PortNumber,
   PortablePath,
   PromptAnswer,
   PromptBatchOptions,
@@ -55,6 +58,7 @@ import type {
   ServiceConfig,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
+  ServiceName,
   TunnelCapabilities,
   TunnelSession,
   TunnelSessionFilter,
@@ -158,12 +162,14 @@ import type {
   ProcessResult,
   ProcessSpawnOptions,
   ProcessStreamChunk,
+  ProcessStreamEvent,
   ShellCommandOptions,
   ShellInteractiveResult,
   ShellInteractiveSpec,
 } from "./process.ts";
 import type {
   AppSelector,
+  AppliedFileSyncInspection,
   AppliedTeardownEvidence,
   ApplyOptions,
   ApplyResult,
@@ -260,12 +266,37 @@ export interface RuntimeProviderShape {
     plan: ProviderSetupPlan,
     options: ProviderSetupOptions,
   ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  /** Ensure a selected provider runtime is reachable before host-dependent planning. */
+  readonly ensureReady?: Effect.Effect<void, ProviderError>;
   readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
   readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
+  /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
+  readonly occupiedPublishPorts?: (
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+
+  /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
+  readonly matchingPublishPorts?: (
+    containerId: string,
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+  /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
+  readonly openHostProxyBridge?: (
+    input: HostProxyBridgeInput,
+  ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
 
   readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
   readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
   readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+
+  /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
+  readonly inspectAppliedFileSync?: (
+    plan: AppPlan,
+  ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
+  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
+  readonly prepareFileSyncTargets?: (
+    plan: AppPlan,
+  ) => Effect.Effect<{ readonly rollback: Effect.Effect<void, ProviderError> }, ProviderError>;
 
   readonly apply: (
     plan: AppPlan,
@@ -298,6 +329,8 @@ export interface RuntimeProviderShape {
   readonly removeObservedService: (
     observed: ServiceRuntimeInfo,
   ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
+  /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
+  readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
   readonly execStream: (
@@ -382,11 +415,15 @@ export declare class GlobalAppService extends Context.Tag("@lando/core/GlobalApp
     readonly id: "global";
     readonly root: Effect.Effect<AbsolutePath, GlobalAppError>;
     readonly ensureRoot: Effect.Effect<void, GlobalAppError, Scope.Scope>;
+    /** Make the global service provider reachable before probing provider-host ports. */
+    readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError>;
     readonly paths: Effect.Effect<GlobalAppPaths, GlobalAppError>;
     readonly ensureUserLandofile: Effect.Effect<
       { readonly path: AbsolutePath; readonly created: boolean },
       GlobalAppError | GlobalLandofilePathConflictError
     >;
+    /** Restart an existing running global service so it reloads externally stored configuration. */
+    readonly restartRunningService?: (service: ServiceName) => Effect.Effect<boolean, GlobalAppError>;
     readonly ensureRunning: (services: ReadonlyArray<string>) => Effect.Effect<
       ReadonlyArray<{
         readonly name: string;
@@ -395,6 +432,15 @@ export declare class GlobalAppService extends Context.Tag("@lando/core/GlobalApp
       }>,
       GlobalAppError
     >;
+    /** Read-only provider-host TCP occupancy for published port candidates. */
+    readonly occupiedPublishPorts?: (
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError>;
+    /** Published TCP ports held by running Lando global services. */
+    readonly ownedPublishPorts?: (
+      service: ServiceName,
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError>;
     readonly regenerateDist: (input?: { readonly services?: Record<string, ServiceConfig> }) => Effect.Effect<
       GlobalDistResult,
       GlobalAppError | GlobalDistConflictError
@@ -660,6 +706,9 @@ export declare class ProcessRunner extends Context.Tag("@lando/core/ProcessRunne
     readonly stream: (
       options: ProcessSpawnOptions,
     ) => Stream.Stream<ProcessStreamChunk, ProcessExecError | ProcessTimeoutError>;
+    readonly streamWithExit: (
+      options: ProcessSpawnOptions,
+    ) => Stream.Stream<ProcessStreamEvent, ProcessExecError | ProcessTimeoutError>;
   }
 >() {}
 
@@ -774,6 +823,10 @@ export declare class RouterService extends Context.Tag("@lando/core/RouterServic
   {
     readonly id: string;
     readonly capabilities: ProxyCapabilities;
+    /** Resolve and persist route publication ports before starting required global services. */
+    readonly prepare?: (
+      config: ProxyConfig,
+    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
     readonly setup: (
       config: ProxyConfig,
       options?: { readonly autoApprove?: boolean },

@@ -1,11 +1,12 @@
-import { Effect, type Scope, Stream } from "effect";
+import { Clock, Duration, Effect, Ref, type Scope, Stream } from "effect";
 
 import {
   ProviderInternalError,
-  type ProviderUnavailableError,
+  ProviderUnavailableError,
   ServiceExecError,
   ServiceNotFoundError,
 } from "@lando/sdk/errors";
+import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecResult, ExecTarget, ProviderError } from "@lando/sdk/services";
 
@@ -28,6 +29,7 @@ interface ExecCreateResponse {
 
 interface ExecInspectResponse {
   readonly ExitCode?: number | null;
+  readonly Running?: boolean;
 }
 
 export interface ExecOptions {
@@ -68,6 +70,42 @@ const execFailure = (
     details: failure.details,
   });
 
+const execStartHttpStatus = (error: ExecError): number | undefined => {
+  if (!(error instanceof ProviderUnavailableError) && !(error instanceof ProviderInternalError)) {
+    return undefined;
+  }
+  const details = error.details;
+  if (typeof details !== "object" || details === null || !("status" in details)) return undefined;
+  const status = details.status;
+  return typeof status === "number" && Number.isInteger(status) && status >= 400 && status <= 599
+    ? status
+    : undefined;
+};
+
+const execStartFailure = (session: ExecSession, target: ExecTarget, error: ExecError): ExecError => {
+  const status = execStartHttpStatus(error);
+  if (status === undefined) return error;
+  const requestedUser = target.user;
+  return new ServiceExecError({
+    providerId: session.ctx.providerId,
+    operation: "exec",
+    service: session.service.name,
+    message:
+      requestedUser === undefined
+        ? `Container runtime rejected the exec request for service ${String(session.service.name)}.`
+        : `Container runtime rejected the exec request for service ${String(session.service.name)} using the requested user.`,
+    details: {
+      status,
+      ...(requestedUser === undefined ? {} : { requestedUser }),
+    },
+    remediation:
+      requestedUser === undefined
+        ? "Verify the command and service state, then retry."
+        : "Verify that the requested user exists in the service container, or retry without --user.",
+    cause: error,
+  });
+};
+
 const request = (
   session: ExecSession,
   input: EngineHttpRequest,
@@ -96,6 +134,7 @@ const parseJson = (
 const createExec = (
   session: ExecSession,
   plan: AppPlan,
+  target: ExecTarget,
   command: CommandSpec,
 ): Effect.Effect<string, ExecError> =>
   Effect.gen(function* () {
@@ -108,6 +147,7 @@ const createExec = (
         AttachStdin: command.stdin === "inherit" || command.stdinStream !== undefined,
         Cmd: command.command,
         Tty: command.tty === true,
+        ...(target.user === undefined ? {} : { User: target.user }),
         ...(command.cwd === undefined ? {} : { WorkingDir: command.cwd }),
         ...(command.env === undefined
           ? {}
@@ -140,7 +180,10 @@ const createExec = (
     return execId;
   });
 
-const inspectExec = (session: ExecSession, execId: string): Effect.Effect<number, ExecError> =>
+const inspectExecState = (
+  session: ExecSession,
+  execId: string,
+): Effect.Effect<number | undefined, ExecError> =>
   Effect.gen(function* () {
     const response = yield* request(session, {
       method: "GET",
@@ -156,6 +199,7 @@ const inspectExec = (session: ExecSession, execId: string): Effect.Effect<number
     }
 
     const decoded = (yield* parseJson(session.ctx, response, "exec.inspect")) as ExecInspectResponse;
+    if (decoded.Running === true) return undefined;
     const exitCode = decoded.ExitCode;
     if (typeof exitCode !== "number") {
       yield* Effect.fail(
@@ -168,6 +212,97 @@ const inspectExec = (session: ExecSession, execId: string): Effect.Effect<number
     }
 
     return exitCode;
+  });
+
+const inspectExec = (session: ExecSession, execId: string): Effect.Effect<number, ExecError> =>
+  inspectExecState(session, execId).pipe(
+    Effect.flatMap((exitCode) =>
+      exitCode === undefined
+        ? Effect.fail(
+            execFailure(session, {
+              message: "Podman exec stream ended while the command was still running.",
+              details: { execId },
+            }),
+          )
+        : Effect.succeed(exitCode),
+    ),
+  );
+
+type ExecPollOutcome = "running" | { readonly exitCode: number } | { readonly error: ExecError };
+
+const waitForExecCompletion = (
+  session: ExecSession,
+  execId: string,
+  responseStarted: Promise<void>,
+  completedExitCode: Ref.Ref<number | undefined>,
+  completionAbort: AbortController,
+  lastOutputAt: Ref.Ref<number>,
+): Effect.Effect<void, ExecError> =>
+  Effect.gen(function* () {
+    // A not-yet-started Podman exec also reports Running=false, ExitCode=0.
+    // Begin inspecting only after /start has returned its response headers.
+    yield* Effect.promise(() => responseStarted);
+    const last = yield* Ref.make<ExecPollOutcome>("running");
+    yield* runProbe(
+      {
+        id: "podman-exec-completion",
+        // Exec commands can run indefinitely. This is effectively unbounded
+        // while keeping the shared probe policy's finite attempt contract.
+        policy: { maxAttempts: Number.MAX_SAFE_INTEGER, delay: Duration.millis(100) },
+        classify: {
+          success: (value) => (value === "running" ? "yellow" : "green"),
+          failure: () => "green",
+        },
+      },
+      inspectExecState(session, execId).pipe(
+        Effect.map((exitCode): ExecPollOutcome => (exitCode === undefined ? "running" : { exitCode })),
+        Effect.catchAll((error) => Effect.succeed({ error } as const)),
+        Effect.tap((outcome) => Ref.set(last, outcome)),
+      ),
+    ).pipe(
+      Effect.mapError((cause) =>
+        execFailure(session, {
+          message: "Podman exec completion probe failed.",
+          details: { execId, cause },
+        }),
+      ),
+    );
+    const outcome = yield* Ref.get(last);
+    if (outcome === "running") {
+      return yield* Effect.fail(
+        execFailure(session, {
+          message: "Podman exec completion probe exhausted its attempts.",
+          details: { execId },
+        }),
+      );
+    }
+    if ("error" in outcome) return yield* Effect.fail(outcome.error);
+    yield* Ref.set(completedExitCode, outcome.exitCode);
+    // Podman can report the exit before its final attached output frame
+    // reaches the named pipe. Close only after the attached stream is idle.
+    yield* runProbe(
+      {
+        id: "podman-exec-output-drain",
+        policy: { maxAttempts: Number.MAX_SAFE_INTEGER, delay: Duration.millis(100) },
+        classify: {
+          success: (idle) => (idle ? "green" : "yellow"),
+          failure: () => "red",
+        },
+      },
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const last = yield* Ref.get(lastOutputAt);
+        return now - last >= 500;
+      }),
+    ).pipe(
+      Effect.mapError((cause) =>
+        execFailure(session, {
+          message: "Podman exec output drain probe failed.",
+          details: { execId, cause },
+        }),
+      ),
+    );
+    completionAbort.abort();
   });
 
 const resizeExec = (
@@ -226,17 +361,27 @@ export const execStream = (
     ...(target.user === undefined ? {} : { user: target.user }),
   };
 
-  return Stream.fromEffect(createExec(session, plan, command)).pipe(
+  return Stream.fromEffect(createExec(session, plan, target, command)).pipe(
     Stream.flatMap((execId) => {
       const decodeChunk = makeRuntimeAttachDecoder();
+      const completionAbort = new AbortController();
       const resizeEvents = command.terminalResize ?? Stream.empty;
+      let signalResponseStarted: () => void = () => undefined;
+      const responseStarted = new Promise<void>((resolve) => {
+        signalResponseStarted = resolve;
+      });
       const start = stream(session, {
         method: "POST",
         path: `/exec/${encodeURIComponent(execId)}/start`,
-        ...(command.signal === undefined ? {} : { signal: command.signal }),
+        signal:
+          command.signal === undefined
+            ? completionAbort.signal
+            : AbortSignal.any([command.signal, completionAbort.signal]),
         ...(command.stdinStream === undefined ? {} : { stdin: command.stdinStream }),
         body: { Detach: false, Tty: command.tty === true },
+        onResponseHead: signalResponseStarted,
       }).pipe(
+        Stream.mapError((error) => execStartFailure(session, target, error)),
         command.tty === true
           ? Stream.map((chunk): ExecChunk => ({ kind: "stdout", chunk }))
           : Stream.flatMap((chunk) =>
@@ -244,14 +389,12 @@ export const execStream = (
                 decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
               ),
             ),
-        Stream.concat(
-          Stream.fromEffect(inspectExec(session, execId).pipe(Effect.map((exitCode) => ({ exitCode })))),
-        ),
-        Stream.interruptWhen(interruptOnSignal(command.signal)),
       );
 
       return Stream.fromEffect(
         Effect.gen(function* () {
+          const completedExitCode = yield* Ref.make<number | undefined>(undefined);
+          const lastOutputAt = yield* Clock.currentTimeMillis.pipe(Effect.flatMap((now) => Ref.make(now)));
           if (command.terminalSize !== undefined) {
             // Podman requires the exec to be started before resize; a pre-start
             // resize must not fail the session.
@@ -261,8 +404,67 @@ export const execStream = (
             Stream.runForEach((size) => resizeExec(session, execId, size)),
             Effect.forkScoped,
           );
+          const attached =
+            session.api.execAttachNeedsInspectCompletion === true
+              ? start.pipe(
+                  Stream.tap(() =>
+                    Clock.currentTimeMillis.pipe(Effect.flatMap((now) => Ref.set(lastOutputAt, now))),
+                  ),
+                  Stream.interruptWhen(
+                    waitForExecCompletion(
+                      session,
+                      execId,
+                      responseStarted,
+                      completedExitCode,
+                      completionAbort,
+                      lastOutputAt,
+                    ),
+                  ),
+                  Stream.catchAll((error) =>
+                    Stream.fromEffect(Ref.get(completedExitCode)).pipe(
+                      Stream.flatMap((exitCode) =>
+                        exitCode !== undefined &&
+                        completionAbort.signal.aborted &&
+                        error instanceof ProviderUnavailableError &&
+                        error.cause instanceof DOMException &&
+                        error.cause.name === "AbortError"
+                          ? Stream.empty
+                          : Stream.fail(error),
+                      ),
+                    ),
+                  ),
+                )
+              : start;
+          return attached.pipe(
+            Stream.concat(
+              Stream.fromEffect(
+                Ref.get(completedExitCode).pipe(
+                  Effect.flatMap((code) =>
+                    code !== undefined
+                      ? Effect.succeed(code)
+                      : session.api.execAttachNeedsInspectCompletion === true
+                        ? waitForExecCompletion(
+                            session,
+                            execId,
+                            responseStarted,
+                            completedExitCode,
+                            completionAbort,
+                            lastOutputAt,
+                          ).pipe(
+                            Effect.zipRight(Ref.get(completedExitCode)),
+                            Effect.map((exitCode) => exitCode ?? 1),
+                          )
+                        : inspectExec(session, execId),
+                  ),
+                  Effect.map((exitCode) => ({ exitCode })),
+                ),
+              ),
+            ),
+            Stream.interruptWhen(interruptOnSignal(command.signal)),
+          );
         }),
-      ).pipe(Stream.flatMap(() => start));
+        // biome-ignore lint/correctness/noFlatMapIdentity: Effect Stream does not provide a flat combinator.
+      ).pipe(Stream.flatMap((startWithExit) => startWithExit));
     }),
   );
 };

@@ -16,7 +16,10 @@ const buildContainerDiedEventsRequest = (now: Date): EngineHttpRequest => {
   const until = Math.floor(now.getTime() / 1000);
   const since = until - eventWindowSeconds;
   const filters = encodeURIComponent(JSON.stringify({ type: ["container"], event: ["die"] }));
-  return { method: "GET", path: `/libpod/events?since=${since}&until=${until}&filters=${filters}` };
+  return {
+    method: "GET",
+    path: `/libpod/events?since=${since}&until=${until}&stream=false&filters=${filters}`,
+  };
 };
 
 const missingRequest = (ctx: ProviderErrorContext): ProviderInternalError =>

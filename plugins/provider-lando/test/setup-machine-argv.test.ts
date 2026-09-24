@@ -49,7 +49,16 @@ describe("provider-lando system machine runner argv", () => {
     test(`${platform} create imports the host native CA trust for the Lando-owned machine`, async () => {
       const { spawn, calls } = capturingSpawn();
       await Effect.runPromise(runnerFor(platform, spawn).create);
-      expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "lando"]]);
+      expect(calls).toEqual([
+        [
+          "podman",
+          "machine",
+          "init",
+          "--import-native-ca",
+          ...(platform === "win32" ? ["--rootful"] : []),
+          "lando",
+        ],
+      ]);
     });
 
     test(`${platform} syncTrust imports native CA trust for an existing Lando-owned machine`, async () => {
@@ -123,7 +132,7 @@ describe("provider-lando system machine runner argv", () => {
       }
     }
 
-    expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "lando"]]);
+    expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "--rootful", "lando"]]);
     expect(calls.some((argv) => argv.includes("hyperv-prep"))).toBe(false);
   });
 

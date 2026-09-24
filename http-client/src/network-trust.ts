@@ -131,24 +131,42 @@ export const resolveServiceNetworkInject = (
 export type SystemCaProvider = () => ReadonlyArray<string>;
 
 /**
- * Reads the runtime's effective default CA store once and caches it.
- * `tls.getCACertificates("default")` (Bun/Node 22.15+) reflects OS-store roots;
- * older runtimes fall back to the bundled Mozilla roots (`tls.rootCertificates`).
+ * Reads the runtime's default CA store once and caches it. On Windows, Bun's
+ * default store omits roots installed in the Windows certificate store (such as
+ * mkcert's local root), so include the system store explicitly.
  */
 export const defaultSystemCaPems: SystemCaProvider = (() => {
   let cached: ReadonlyArray<string> | undefined;
   return () => {
     if (cached !== undefined) return cached;
     const tlsWithDefault = tls as typeof tls & {
-      getCACertificates?: (type?: "default") => ReadonlyArray<string>;
+      getCACertificates?: (type?: "default" | "system") => ReadonlyArray<string>;
     };
-    cached =
+    const defaults =
       typeof tlsWithDefault.getCACertificates === "function"
         ? [...tlsWithDefault.getCACertificates("default")]
         : [...tls.rootCertificates];
+    cached =
+      process.platform === "win32" && typeof tlsWithDefault.getCACertificates === "function"
+        ? [...new Set([...defaults, ...tlsWithDefault.getCACertificates("system")])]
+        : defaults;
     return cached;
   };
 })();
+
+/** Bun needs Windows host roots passed as explicit TLS CAs, even for bare fetch. */
+export const withWindowsHostTrust = (
+  trust: ResolvedNetworkTrust | undefined,
+  hostCaPems: ReadonlyArray<string>,
+  platform: string = process.platform,
+): ResolvedNetworkTrust | undefined => {
+  if (platform !== "win32" || trust?.trustHost === false || hostCaPems.length === 0) return trust;
+  return {
+    proxy: trust?.proxy ?? { noProxy: [] },
+    caPems: [...hostCaPems, ...(trust?.caPems ?? [])],
+    trustHost: false,
+  };
+};
 
 /**
  * Core-private ambient context tag carrying an already-resolved network-trust

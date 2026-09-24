@@ -18,7 +18,7 @@ import {
   HOST_PROXY_CONTAINER_SOCKET,
   stripHostProxyRunLando,
 } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
+import { appliedPlanPath, loadAppliedPlan, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -216,7 +216,7 @@ const fakeServiceRunner = (
     }),
 });
 
-const makeFakePodmanState = () => {
+const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolean } = {}) => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const networks = new Set<string>();
@@ -305,6 +305,7 @@ const makeFakePodmanState = () => {
           };
         }
         if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {
+          if (options.failVolumeRemove?.() === true) return { status: 500, body: "volume busy" };
           const volume = decodeURIComponent(request.path.slice("/volumes/".length));
           const deleted = volumes.delete(volume);
           volumeLabels.delete(volume);
@@ -367,6 +368,83 @@ describe("provider-lando cross-process state", () => {
         .filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"))
         .map((call) => JSON.stringify(call.body));
       expect(createdBodies.join("\n")).toContain("LANDO_HOST_PROXY_TOKEN");
+    });
+  });
+
+  test("sequential non-reconciling global service applies retain both services in persisted state", async () => {
+    await withStateDir(async (stateDir) => {
+      const fake = makeFakePodmanState();
+      const provider = await runOnce(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
+              appliedPlanStateDir: stateDir,
+              platform: "linux",
+            }),
+          ),
+        ),
+      );
+      const first = { ...plan, services: { [database.name]: database } };
+      const second = { ...plan, services: { [web.name]: { ...web, dependsOn: [] } } };
+      await runOnce(provider.apply(first, { reconcile: false }).pipe(Effect.scoped));
+      await runOnce(provider.apply(second, { reconcile: false }).pipe(Effect.scoped));
+
+      const freshProvider = await runOnce(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
+              appliedPlanStateDir: stateDir,
+              platform: "linux",
+            }),
+          ),
+        ),
+      );
+      const services = await runOnce(freshProvider.list({ app: plan.id }));
+      expect(services.map((service) => String(service.service)).sort()).toEqual(["database", "web"]);
+
+      await runOnce(provider.apply(first, { reconcile: true }).pipe(Effect.scoped));
+      const replaced = await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id));
+      expect(Object.keys(replaced?.services ?? {})).toEqual(["database"]);
+    });
+  });
+
+  test("concurrent non-reconciling service applies retain both services", async () => {
+    await withStateDir(async (stateDir) => {
+      const fake = makeFakePodmanState();
+      const makeProvider = () =>
+        runOnce(
+          RuntimeProvider.pipe(
+            Effect.provide(
+              makeProviderLayer({
+                sanitizeAppliedPlan: stripHostProxyRunLando,
+                podmanApi: fake.api,
+                stateDir,
+                appliedPlanState: appliedPlanState(stateDir),
+                appliedPlanStateDir: stateDir,
+                platform: "linux",
+              }),
+            ),
+          ),
+        );
+      const [providerA, providerB] = await Promise.all([makeProvider(), makeProvider()]);
+      const first = { ...plan, services: { [database.name]: database } };
+      const second = { ...plan, services: { [web.name]: { ...web, dependsOn: [] } } };
+
+      await Promise.all([
+        runOnce(providerA.apply(first, { reconcile: false }).pipe(Effect.scoped)),
+        runOnce(providerB.apply(second, { reconcile: false }).pipe(Effect.scoped)),
+      ]);
+
+      const persisted = await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id));
+      expect(Object.keys(persisted?.services ?? {}).sort()).toEqual(["database", "web"]);
     });
   });
 
@@ -499,6 +577,49 @@ describe("provider-lando cross-process state", () => {
 
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(false);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(false);
+    });
+  });
+
+  test("failed volume teardown keeps the applied plan for a fresh-provider retry", async () => {
+    await withStateDir(async (stateDir) => {
+      let failVolumeRemove = true;
+      const fake = makeFakePodmanState({ failVolumeRemove: () => failVolumeRemove });
+      const makeProvider = () =>
+        runOnce(
+          RuntimeProvider.pipe(
+            Effect.provide(
+              makeProviderLayer({
+                sanitizeAppliedPlan: stripHostProxyRunLando,
+                podmanApi: fake.api,
+                stateDir,
+                appliedPlanState: appliedPlanState(stateDir),
+                platform: "linux",
+              }),
+            ),
+          ),
+        );
+      const providerA = await makeProvider();
+      await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
+
+      const failed = await runOnce(Effect.either(providerA.destroy({ app: plan.id }, { volumes: true })));
+      expect(failed._tag).toBe("Left");
+      expect(fake.existing.size).toBe(0);
+      expect(fake.volumes.has("crossprocessapp_database_data")).toBe(true);
+      expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);
+      expect((await runOnce(loadAppliedPlan(appliedPlanState(stateDir), plan.id)))?.stores).toEqual(
+        plan.stores,
+      );
+
+      failVolumeRemove = false;
+      const providerB = await makeProvider();
+      await runOnce(providerB.destroy({ app: plan.id }, { volumes: true }));
+      expect(fake.volumes.has("crossprocessapp_database_data")).toBe(false);
+      expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(false);
+      expect(
+        fake.calls.filter(
+          (call) => call.method === "DELETE" && call.path === "/volumes/crossprocessapp_database_data",
+        ),
+      ).toHaveLength(2);
     });
   });
 

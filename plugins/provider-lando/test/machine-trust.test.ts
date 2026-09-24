@@ -9,9 +9,23 @@ import {
 
 describe("provider-lando managed machine trust import argv", () => {
   test("init argv imports native CA before the machine name (Lando-owned create)", () => {
-    expect(buildManagedMachineInitArgs("lando")).toEqual(["machine", "init", "--import-native-ca", "lando"]);
+    expect(buildManagedMachineInitArgs("lando", "darwin")).toEqual([
+      "machine",
+      "init",
+      "--import-native-ca",
+      "lando",
+    ]);
   });
 
+  test("fresh Windows init selects the rootful guest socket", () => {
+    expect(buildManagedMachineInitArgs("lando", "win32")).toEqual([
+      "machine",
+      "init",
+      "--import-native-ca",
+      "--rootful",
+      "lando",
+    ]);
+  });
   test("set argv imports native CA for a managed machine (Lando-owned manage)", () => {
     expect(buildManagedMachineTrustSyncArgs("lando")).toEqual([
       "machine",
@@ -22,7 +36,10 @@ describe("provider-lando managed machine trust import argv", () => {
   });
 
   test("import flag is a bare boolean, never a path-valued flag", () => {
-    for (const args of [buildManagedMachineInitArgs("lando"), buildManagedMachineTrustSyncArgs("lando")]) {
+    for (const args of [
+      buildManagedMachineInitArgs("lando", "darwin"),
+      buildManagedMachineTrustSyncArgs("lando"),
+    ]) {
       const flag = args.find((token) => token.startsWith("--import-native-ca"));
       expect(flag).toBe("--import-native-ca");
       expect(args.some((token) => token.includes("--import-native-ca="))).toBe(false);
