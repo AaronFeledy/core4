@@ -265,6 +265,7 @@ export const listServicesWithPrune = (
             );
             return removedState || removedCache.length > 0;
           }),
+          { allowMissingRoot: true },
         ).pipe(
           Effect.provideService(PathsService, pruneServices.paths),
           Effect.provideService(PrivateFileAccessService, pruneServices.privateFileAccess),
