@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/services` exports `ServiceBuildDirectoryCommand`, an Effect Schema for nonempty lists of absolute image directories with portable path segments. `ServiceBuildStepIntent.command` accepts this shell-free artifact-build intent alongside existing command forms; providers create directories without executing image binaries or changing the image user.
+
 - `RouterService.setup(config, options?)` additively accepts an optional second argument with `autoApprove` for invocation-scoped consent. Setup passes it for `--yes` or `--no-interactive`; Traefik uses its existing socket-proxy approval gate. Consent is not a `ProxyConfig`, Landofile, or global configuration field and is not retained between calls. Omitting it preserves interactive consent and any injected router approval policy. This does not authorize or suppress operating-system password prompts.
 
 - `@lando/sdk/errors` adds `Lando3LandofileDetected` (`appRoot`, `sourceFile`, `message`, `remediation`) and `LandofileDialectMixError` (`appRoot`, `canonicalFile`, `conflictingLayer`, `message`, `remediation`). Both belong to `LandofileServiceError`, inherited user-load channels, and the explicit `StopAppError` and `LogsAppError` load subsets. The service mirror retains the named alias; `sdk-mvp-surface.json` pins the dialect tags separately. These errors register no JSON Schema. Planner-only channels remain unchanged. Config lint still returns load failures as violations; config view/get/validate and includes update propagate native-load errors, while raw edit/parse paths do not acquire dialect detection.
