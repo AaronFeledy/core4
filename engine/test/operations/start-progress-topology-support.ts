@@ -7,6 +7,7 @@ import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 import type { EventError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import {
+  AbsoluteContainerPath,
   AbsolutePath,
   AppId,
   type AppPlan,
@@ -128,6 +129,10 @@ export const makeHarness = (
     readonly onRemoveRoutes?: () => void;
     readonly afterApplyRoutes?: Effect.Effect<void>;
     readonly onPrepareFileSync?: (plan: AppPlan) => void;
+    readonly preparedFileSyncTargets?: (
+      plan: AppPlan,
+    ) => ReadonlyArray<import("@lando/sdk/schema").PreparedFileSyncTarget>;
+    readonly fileSyncRollbackEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly onBuildApp?: (plan: AppPlan) => void;
     readonly onFileSyncRollback?: () => void;
     readonly onPublish?: (event: LandoEvent) => Effect.Effect<void, EventError>;
@@ -181,9 +186,21 @@ export const makeHarness = (
             Effect.sync(() => {
               options.onPrepareFileSync?.(syncPlan);
               return {
+                targets:
+                  options.preparedFileSyncTargets?.(syncPlan) ??
+                  syncPlan.fileSync.map(({ session }, index) => ({
+                    session,
+                    endpoint: {
+                      _tag: "container" as const,
+                      containerId: `sync-helper-${index}`,
+                      path: AbsoluteContainerPath.make("/sync"),
+                      volumeName:
+                        session.target._tag === "volume" ? session.target.name : "unsupported-target",
+                    },
+                  })),
                 rollback: Effect.sync(() => {
                   options.onFileSyncRollback?.();
-                }),
+                }).pipe(Effect.zipRight(options.fileSyncRollbackEffect ?? Effect.void)),
               };
             }),
         }),

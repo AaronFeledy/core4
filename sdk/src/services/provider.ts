@@ -38,6 +38,7 @@ import type {
   NetworkConfig,
   PortNumber,
   PortablePath,
+  PreparedFileSyncTarget,
   ProviderCapabilities,
   ProviderId,
   ProviderSetupPlan,
@@ -322,9 +323,13 @@ export interface RuntimeProviderShape {
     plan: AppPlan,
   ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
   /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
-  readonly prepareFileSyncTargets?: (
-    plan: AppPlan,
-  ) => Effect.Effect<{ readonly rollback: Effect.Effect<void, ProviderError> }, ProviderError>;
+  readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
+    {
+      readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
+      readonly rollback: Effect.Effect<void, ProviderError>;
+    },
+    ProviderError
+  >;
 
   readonly apply: (
     plan: AppPlan,

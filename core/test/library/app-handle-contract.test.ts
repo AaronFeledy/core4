@@ -36,6 +36,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { ComposeKeyRejectedError, LandofileLoadOutsideRootError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
@@ -367,7 +368,8 @@ describe("@lando/core App-handle library contract", () => {
       const acceleratedProvider = {
         ...TestRuntimeProvider,
         inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
-        prepareFileSyncTargets: () => Effect.succeed({ rollback: Effect.void }),
+        prepareFileSyncTargets: (syncPlan: AppPlan) =>
+          Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
       };
       const activeSessions = await Effect.runPromise(
         Effect.scoped(
