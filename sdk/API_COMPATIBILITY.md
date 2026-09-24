@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ProviderError` includes the existing `ArtifactBuildError` tag so failed image-build steps are distinct from unavailable runtimes. Build diagnostics carry a bounded, redacted daemon message and image-specific remediation.
+
 - `@lando/sdk/services` exports `ServiceBuildDirectoryCommand`, an Effect Schema for nonempty lists of absolute image directories with portable path segments. `ServiceBuildStepIntent.command` accepts this shell-free artifact-build intent alongside existing command forms; providers create directories without executing image binaries or changing the image user.
 
 - `RouterService.setup(config, options?)` additively accepts an optional second argument with `autoApprove` for invocation-scoped consent. Setup passes it for `--yes` or `--no-interactive`; Traefik uses its existing socket-proxy approval gate. Consent is not a `ProxyConfig`, Landofile, or global configuration field and is not retained between calls. Omitting it preserves interactive consent and any injected router approval policy. This does not authorize or suppress operating-system password prompts.
