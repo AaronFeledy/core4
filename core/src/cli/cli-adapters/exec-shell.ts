@@ -11,6 +11,8 @@ import {
   rejectInvalidInvocation,
   runCompiledCommand,
 } from "../compiled-runtime";
+import { activeResultFormat } from "../compiled-session";
+import { attachExecHostIo, withInheritedStdinRawMode } from "../exec-host-io";
 
 interface ParsedExecArgv {
   readonly user?: string;
@@ -88,12 +90,21 @@ const parseExecArgv = (argv: ReadonlyArray<string>): ParsedExecArgv => {
 
 export const runExec = (argv: ReadonlyArray<string>): Promise<void> => {
   const parsed = parseExecArgv(argv);
+  const tty = activeResultFormat !== "json" && process.stdout.isTTY === true;
+  const interactive = activeResultFormat !== "json" && process.stdin.isTTY === true;
   return runCompiledCommand(
-    execApp({
-      command: parsed.command,
-      ...(parsed.user === undefined ? {} : { user: parsed.user }),
-      ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
-    }),
+    withInheritedStdinRawMode(
+      tty && interactive,
+      execApp(
+        attachExecHostIo({
+          command: parsed.command,
+          tty,
+          interactive,
+          ...(parsed.user === undefined ? {} : { user: parsed.user }),
+          ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
+        }),
+      ),
+    ),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderExecAppResult,
     { streamingMode: "live" },
@@ -192,14 +203,21 @@ export const runSsh = async (argv: ReadonlyArray<string>): Promise<void> => {
     return;
   }
   const command = parsed.command.length === 0 ? ["sh", "-l"] : parsed.command;
+  const interactive = process.stdin.isTTY === true;
+  const tty = process.stdout.isTTY === true && interactive;
   await runCompiledCommand(
-    execApp({
-      command,
-      interactive: true,
-      tty: true,
-      ...(parsed.service === undefined ? {} : { service: parsed.service }),
-      ...(parsed.user === undefined ? {} : { user: parsed.user }),
-    }),
+    withInheritedStdinRawMode(
+      tty,
+      execApp(
+        attachExecHostIo({
+          command,
+          interactive,
+          tty,
+          ...(parsed.service === undefined ? {} : { service: parsed.service }),
+          ...(parsed.user === undefined ? {} : { user: parsed.user }),
+        }),
+      ),
+    ),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderExecAppResult,
     { streamingMode: "live" },

@@ -195,13 +195,22 @@ const REDACTED_REMEDIATION_FALLBACK = (record: Record<string, unknown> | undefin
   return landofileNotFoundHint(record) ?? appIdReservedHint(record);
 };
 
-const extractCauseRecord = (
+const extractTaggedCauses = (
   record: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined => {
-  // Only tagged Lando errors are safe to surface: raw Error.cause values can
-  // carry OS paths with usernames (e.g. C:\Users\Alice\lando.exe).
-  const cause = record === undefined ? undefined : asTaggedRecord(record.cause);
-  return cause !== undefined && asString(cause._tag) !== undefined ? cause : undefined;
+): ReadonlyArray<Record<string, unknown>> => {
+  // Traverse only tagged Lando errors. Raw Error causes may contain unredacted
+  // host paths, and a bounded walk protects diagnostics from cyclic causes.
+  const causes: Array<Record<string, unknown>> = [];
+  const seen = new Set<object>();
+  let current = record;
+  for (let depth = 0; depth < 4 && current !== undefined; depth++) {
+    const cause = asTaggedRecord(current.cause);
+    if (cause === undefined || asString(cause._tag) === undefined || seen.has(cause)) break;
+    causes.push(cause);
+    seen.add(cause);
+    current = cause;
+  }
+  return causes;
 };
 
 const mergeExtraFields = (
@@ -225,33 +234,48 @@ export const buildBugReport = (input: {
   readonly context: BugReportContext;
 }): BugReportEnvelope => {
   const record = asTaggedRecord(input.error);
-  const causeRecord = extractCauseRecord(record);
+  const causes = extractTaggedCauses(record);
+  const deepestCause = causes.at(-1);
   const ctx = input.context;
   const cacheDir = ctx.cacheRoot ?? resolveUserCacheRoot();
   const wrapperBody = extractMessage(record, input.error);
-  const causeMessage = asString(causeRecord?.message);
-  const bodyRaw =
-    causeMessage !== undefined && causeMessage !== wrapperBody
-      ? `${wrapperBody}\n${causeMessage}`
-      : wrapperBody;
-  const remediationRaw = REDACTED_REMEDIATION_FALLBACK(record) ?? REDACTED_REMEDIATION_FALLBACK(causeRecord);
+  const messages = [wrapperBody, ...causes.map((cause) => asString(cause.message))].filter(
+    (message): message is string => message !== undefined,
+  );
+  const bodyRaw = [...new Set(messages)].join("\n");
+  const nestedRemediation = causes
+    .toReversed()
+    .map(REDACTED_REMEDIATION_FALLBACK)
+    .find((value) => value !== undefined);
+  const remediationParts = [REDACTED_REMEDIATION_FALLBACK(record), nestedRemediation].filter(
+    (value): value is string => value !== undefined,
+  );
+  const remediationRaw = [...new Set(remediationParts)].join(" ");
   const code = extractCode(record);
   const appId = ctx.appId ?? extractAppId(record);
-  const providerId = ctx.providerId ?? extractProviderId(record) ?? extractProviderId(causeRecord);
-  const causeTag = asString(causeRecord?._tag);
+  const providerId =
+    ctx.providerId ??
+    extractProviderId(record) ??
+    causes.map(extractProviderId).find((value) => value !== undefined);
+  const causeTag = asString(deepestCause?._tag);
+  const causeFields = causes
+    .toReversed()
+    .reduce<ReadonlyArray<readonly [string, string]>>(
+      (fields, cause) => mergeExtraFields(fields, extractExtraTagFields(cause)),
+      [],
+    );
   const extra = mergeExtraFields(
-    [...(causeTag === undefined ? [] : ([["cause", causeTag]] as const)), ...extractExtraTagFields(record)],
-    extractExtraTagFields(causeRecord),
+    [...(causeTag === undefined ? [] : ([["cause", causeTag]] as const)), ...causeFields],
+    extractExtraTagFields(record),
   ).map(([key, value]) => {
     const sanitized = key === "issues" ? value : redactString(value);
     return [key, sanitized] as readonly [string, string];
   });
-
   return {
     code,
     commandId: ctx.commandId,
     body: redactString(bodyRaw),
-    remediation: remediationRaw === undefined ? undefined : redactString(remediationRaw),
+    remediation: remediationRaw.length === 0 ? undefined : redactString(remediationRaw),
     appId,
     providerId,
     logsDir: logsDirFor(cacheDir),

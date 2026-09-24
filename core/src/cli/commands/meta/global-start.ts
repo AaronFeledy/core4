@@ -2,6 +2,8 @@ import { DateTime, Effect, Schema } from "effect";
 
 import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
+import { applyGlobalRoutesForSelectedServices } from "@lando/engine/operations/global-routes";
+
 import { MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import { resolveServiceEnvironmentSecrets } from "@lando/engine/services/secret-environment";
@@ -10,6 +12,13 @@ import type {
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
   PluginManifestError,
+  ProviderConfigError,
+  ProviderUnavailableError,
+  ProxyApplyError,
+  ProxySetupError,
+  RouterPortPinMismatch,
+  RouterPortsExhausted,
+  RouterWatcherError,
   SecretNotFoundError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
@@ -23,6 +32,8 @@ import {
   type FileSystem,
   type GlobalAppService,
   type PluginRegistry,
+  type ProviderError,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -68,6 +79,14 @@ export type GlobalStartError =
   | GlobalServiceCollisionError
   | PluginManifestError
   | SecretNotFoundError
+  | ProviderConfigError
+  | ProviderError
+  | ProviderUnavailableError
+  | ProxyApplyError
+  | ProxySetupError
+  | RouterPortPinMismatch
+  | RouterPortsExhausted
+  | RouterWatcherError
   | ToolingExecError;
 
 export type GlobalStartServices =
@@ -77,7 +96,8 @@ export type GlobalStartServices =
   | FileSystem
   | GlobalAppService
   | PluginRegistry
-  | RuntimeProviderRegistry;
+  | RuntimeProviderRegistry
+  | RouterService;
 
 const availableServiceList = (services: AppPlan["services"]): string =>
   Object.values(services)
@@ -183,12 +203,17 @@ export const globalStart = (
       }),
     );
 
+    const router = yield* RouterService;
+    const routeUrls = yield* applyGlobalRoutesForSelectedServices(router, loaded.plan, selectedNames);
     const servicesStarted = yield* Effect.forEach(services, (service) =>
       provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(
         Effect.map((runtime) => ({
           name: String(service.name),
           state: runtime.state ?? runtime.status,
-          endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+          endpoints: [
+            ...publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
+            ...(routeUrls.get(service.name) ?? []),
+          ],
         })),
       ),
     );

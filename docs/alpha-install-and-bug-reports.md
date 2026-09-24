@@ -37,6 +37,17 @@ grep ' lando-linux-x64$' SHA256SUMS | sha256sum -c
 
 Replace `lando-linux-x64` with the asset you downloaded. `SHA256SUMS` lists every platform; checking the whole file fails when the other binaries are not in this directory. The piped command must report `OK` for that file (for example `lando-linux-x64: OK`). If it does not, delete the binary and `SHA256SUMS`, then download them again from the same dev prerelease.
 
+On Windows, check the downloaded asset in PowerShell before renaming it:
+
+```powershell
+$asset = 'lando-windows-x64.exe'
+$expected = (Get-Content .\SHA256SUMS | Where-Object { $_ -match "\s$([regex]::Escape($asset))$" }).Split()[0]
+$actual = (Get-FileHash ".\$asset" -Algorithm SHA256).Hash
+if (-not $expected -or $actual -ne $expected) { throw "SHA-256 mismatch for $asset" }
+```
+
+Use `lando-windows-arm64.exe` for ARM64 Windows. The command exits with an error if the downloaded binary does not match its `SHA256SUMS` entry.
+
 4. On Unix, make it executable and test. On Windows, run the `.exe` instead of `chmod`.
 
 ```bash
@@ -50,7 +61,7 @@ Replace `lando-linux-x64` with your asset name. Windows:
 .\lando-windows-x64.exe --version
 ```
 
-Use `lando-windows-arm64.exe` on ARM64 Windows.
+Rename the verified Windows binary to `lando.exe` and put it on PATH before setup. See [Put lando on PATH and run setup](./guides/install/path-and-setup.mdx).
 
 Prefer the GitHub release. If no dev prerelease exists yet, download the `lando-<platform>` artifact from a successful main CI run (GitHub login required). Extract the zip and verify the binary yourself.
 
@@ -65,7 +76,7 @@ bun install
 bun run codegen
 bun run build
 # Use the source CLI directly:
-bun run core/src/cli/index.ts --version
+bun run core/bin/lando.ts --version
 ```
 
 ## Run lando setup

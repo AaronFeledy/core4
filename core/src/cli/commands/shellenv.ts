@@ -10,12 +10,29 @@ import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 
 export type ShellenvShell = "posix" | "powershell";
 
+export const defaultShellenvShell = (
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): ShellenvShell => {
+  if (platform !== "win32") return "posix";
+  if (/^(?:MINGW(?:32|64)|UCRT64|CLANG64|MSYS)$/u.test(env.MSYSTEM ?? "")) return "posix";
+  const shell = env.SHELL?.split(/[\\/]/u)
+    .at(-1)
+    ?.toLowerCase()
+    .replace(/\.exe$/u, "");
+  return shell === "sh" || shell === "bash" || shell === "zsh" ? "posix" : "powershell";
+};
+
 const posixQuote = (value: string): string => `'${value.replaceAll("'", `'"'"'`)}'`;
 
 const powerShellQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 
 export const normalizeShellenvShell = (value: string | undefined): ShellenvShell =>
-  value === "powershell" || value === "pwsh" ? "powershell" : "posix";
+  value === "powershell" || value === "pwsh"
+    ? "powershell"
+    : value === "posix"
+      ? "posix"
+      : defaultShellenvShell();
 
 // Cold-path counterpart of the engine schema/error; parity is pinned in shellenv.test.ts.
 export class ShellenvInstallRecordError extends Error {
@@ -141,7 +158,7 @@ export const renderPowerShellShellenv = (userDataRoot = resolveLandoRoots().user
 };
 
 export const renderShellenv = (
-  shell: ShellenvShell = "posix",
+  shell: ShellenvShell = defaultShellenvShell(),
   userDataRoot = resolveLandoRoots().userDataRoot,
 ): string =>
   shell === "powershell" ? renderPowerShellShellenv(userDataRoot) : renderPosixShellenv(userDataRoot);

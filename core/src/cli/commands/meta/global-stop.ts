@@ -1,13 +1,16 @@
 import { DateTime, Effect, Schema } from "effect";
 
+import type { EventError, ProxyError } from "@lando/sdk/errors";
+
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanner,
-  type BuildError,
   EventService,
   type FileSystem,
   type GlobalAppService,
+  type ProviderError,
+  RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -30,14 +33,15 @@ export const GlobalStopResultSchema = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String),
 });
 
-export type GlobalStopError = LoadGlobalPlanError | BuildError;
+export type GlobalStopError = LoadGlobalPlanError | EventError | ProviderError | ProxyError;
 
 export type GlobalStopServices =
   | AppPlanner
   | EventService
   | FileSystem
   | GlobalAppService
-  | RuntimeProviderRegistry;
+  | RuntimeProviderRegistry
+  | RouterService;
 
 export const renderGlobalStopResult = (result: GlobalStopResult): string => {
   if (!result.materialized) return "Global app is not installed; nothing to stop.";
@@ -70,6 +74,8 @@ export const globalStop = (): Effect.Effect<GlobalStopResult, GlobalStopError, G
       { app: loaded.plan.id, plan: loaded.plan },
       { volumes: false, removeState: false },
     );
+    const router = yield* RouterService;
+    yield* router.removeRoutes(loaded.plan.id);
 
     yield* events.publish(
       PostGlobalStopEvent.make({

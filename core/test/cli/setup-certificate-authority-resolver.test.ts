@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect } from "effect";
+import { type Context, Effect } from "effect";
 
 import { NoCertificateAuthorityError } from "@lando/sdk/errors";
+import { EventService } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
@@ -45,6 +46,40 @@ describe("CA setup resolver", () => {
     // Then
     expect(ca.calls.map(({ op }) => op)).toEqual(["setup"]);
     expect(steps.map(({ status }) => status)).toEqual(["satisfied"]);
+  });
+
+  test("announces a possible Windows trust prompt before the mkcert process starts", async () => {
+    const sequence: string[] = [];
+    const processRunner = {
+      run: () =>
+        Effect.sync(() => {
+          sequence.push("mkcert -install");
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }),
+    };
+    const ca = {
+      ...makeTestCertificateAuthority(),
+      setup: () => processRunner.run().pipe(Effect.asVoid),
+    };
+    const eventService = {
+      publish: (event: { readonly _tag: string; readonly body?: string }) =>
+        Effect.sync(() => {
+          sequence.push(`event: ${event.body ?? event._tag}`);
+        }),
+    } as unknown as Context.Tag.Service<typeof EventService>;
+    const { recorder } = makeRecorder();
+
+    await Effect.runPromise(
+      runCaSetupStep({}, {}, recorder, "lando", "win32").pipe(
+        Effect.provideService(CertificateAuthorityResolver, { resolve: Effect.succeed(ca) }),
+        Effect.provideService(EventService, eventService),
+      ),
+    );
+
+    expect(sequence).toHaveLength(2);
+    expect(sequence[0]).toContain("Windows may open a Security Warning");
+    expect(sequence[0]).toContain("--yes cannot answer Windows security prompts");
+    expect(sequence[1]).toBe("mkcert -install");
   });
 
   test("records tagged absence as unavailable without a defect", async () => {

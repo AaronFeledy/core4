@@ -14,6 +14,7 @@ import {
   isReservedNamespaceHead,
   notImplementedErrorForCommand,
   resolveBuiltInCommand,
+  suggestBuiltInCommandForSuffix,
 } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
 import { type HelpTopic, isHelpTopic, renderColdAllHelp, renderColdTopicHelp } from "./cold-path-output";
@@ -82,10 +83,10 @@ export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions =>
   scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));
 
-const failUnknownCommand = (token: string) =>
+const failUnknownCommand = (token: string, suggestCanonicalId = true) =>
   renderPreCommandFailure({
     commandId: "cli:unknown-command",
-    error: unknownCommandError(token),
+    error: unknownCommandError(token, suggestCanonicalId ? suggestBuiltInCommandForSuffix(token) : undefined),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
   });
@@ -353,7 +354,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       argv = [route.commandId, ...argvTail];
     } else if (route._tag === "alias-disabled") {
       setActiveCommandId("cli:unknown-command");
-      await failUnknownCommand(route.token);
+      await failUnknownCommand(route.token, false);
       return;
     } else if (toolingHelpRequested(route, argvTail)) {
       await dispatchHelpTarget(route.commandId);

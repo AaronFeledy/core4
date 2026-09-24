@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 import type { CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
+import { SqlConfirmRequiredError } from "../errors/sql.ts";
 
 import { emitYamlDocument } from "../yaml/document.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
@@ -53,12 +54,23 @@ const taggedErrorJson = (
   readonly _tag: string;
   readonly message: string;
   readonly remediation?: string;
+  readonly service?: string;
+  readonly steps?: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly target: string;
+    readonly destructive: boolean;
+  }>;
 } => {
   const record = asRecord(error);
   const tag = nonEmptyString(record?._tag) ?? nonEmptyString(record?.name) ?? "UnknownError";
   const message = nonEmptyString(record?.message) ?? String(error);
   const remediation = nonEmptyString(record?.remediation);
-  return remediation === undefined ? { _tag: tag, message } : { _tag: tag, message, remediation };
+  const base = remediation === undefined ? { _tag: tag, message } : { _tag: tag, message, remediation };
+  if (error instanceof SqlConfirmRequiredError) {
+    return { ...base, service: error.service, steps: error.steps };
+  }
+  return base;
 };
 
 const encodeResult = (schema: Schema.Schema.AnyNoContext, value: unknown) =>

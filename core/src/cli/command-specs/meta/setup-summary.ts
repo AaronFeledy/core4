@@ -10,11 +10,11 @@ import type { SummaryDocument, SummaryTone } from "@lando/renderer/summary";
 export const fileSyncStatusLine = (status: string): string => {
   switch (status) {
     case "deferred":
-      return "file-sync: deferred until first accelerated app:start";
+      return "file-sync: Mutagen download skipped (run lando setup to install later)";
     case "installed":
       return "file-sync: installed";
     case "unavailable":
-      return "file-sync: unavailable (userDataRoot is not configured)";
+      return "file-sync: unavailable (ordinary mounts remain available)";
     default:
       return "file-sync: already satisfied (native bind mounts)";
   }

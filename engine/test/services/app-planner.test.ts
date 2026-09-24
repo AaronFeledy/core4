@@ -629,7 +629,7 @@ describe("AppPlannerLive", () => {
         Schema.decodeUnknownSync(LandofileShape)({
           name: "php-logs-app",
           runtime: 4,
-          services: { appserver: { type: "php:8.2" } },
+          services: { appserver: { type: "php:8.2", via: "fpm" } },
         }),
       );
 
@@ -1203,7 +1203,7 @@ describe("AppPlannerLive", () => {
             id: "worker-file",
             path: "/var/log/worker.log",
             reason:
-              "Provider does not advertise serviceLogSources; use strategy: redirect or choose a provider with serviceLogSources.",
+              "This provider cannot follow log files. Set `strategy: redirect` on this source to view it with `lando logs`.",
           },
         ],
       });

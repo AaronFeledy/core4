@@ -18,6 +18,21 @@ test("pins both Windows machine API forwarding helpers beside Podman", async () 
   );
 });
 
+test("pins Windows x64 Podman remote with WSL port forwarding support", async () => {
+  const sources = await readRuntimeBundleSources();
+  expect(sources.runtimeVersion).toBe("0.1.6");
+  const podman = sources.bundles["win32-x64"]?.components.find((component) => component.name === "podman");
+  expect(podman !== undefined && "version" in podman ? podman.version : undefined).toBe("6.1.2");
+  expect(podman !== undefined && "url" in podman ? podman.url : undefined).toBe(
+    "https://github.com/podman-container-tools/podman/releases/download/v6.1.2/podman-remote-release-windows_amd64.zip",
+  );
+  expect(podman !== undefined && "sha256" in podman ? podman.sha256 : undefined).toBe(
+    "98c309e1cba4f36fc89a0819607de0696d52f0dcc0c5ef3a8d5cd87fdcf062ba",
+  );
+  expect(podman !== undefined && "member" in podman ? podman.member : undefined).toBe(
+    "podman-6.1.2/usr/bin/podman.exe",
+  );
+});
 test("pins Windows arm64 Podman remote plus machine helpers", async () => {
   const sources = await readRuntimeBundleSources();
   const components = sources.bundles["win32-arm64"]?.components ?? [];
@@ -28,13 +43,13 @@ test("pins Windows arm64 Podman remote plus machine helpers", async () => {
 
   const podman = components.find((component) => component.name === "podman");
   expect(podman !== undefined && "url" in podman ? podman.url : undefined).toBe(
-    "https://github.com/containers/podman/releases/download/v6.0.0/podman-remote-release-windows_arm64.zip",
+    "https://github.com/podman-container-tools/podman/releases/download/v6.1.2/podman-remote-release-windows_arm64.zip",
   );
   expect(podman !== undefined && "sha256" in podman ? podman.sha256 : undefined).toBe(
-    "68e222311e9e9a55afb76726aadb609797b840ac4d6a64b1b46bea98a6b11e89",
+    "9c652543765737d22692023e682b1dea0be72bc4dc93d1d3c940718c689360dd",
   );
   expect(podman !== undefined && "member" in podman ? podman.member : undefined).toBe(
-    "podman-6.0.0/usr/bin/podman.exe",
+    "podman-6.1.2/usr/bin/podman.exe",
   );
 
   const gvproxy = components.find((component) => component.name === "gvproxy");

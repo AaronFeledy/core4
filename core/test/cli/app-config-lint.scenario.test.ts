@@ -103,6 +103,15 @@ describe("renderConfigLintResult", () => {
 });
 
 describe("lando app:config:lint (source dispatch)", () => {
+  test("help --all names the typeable lint command and its canonical id", async () => {
+    await withTempCwd(async (dir) => {
+      const help = await runCli(["help", "--all"], dir);
+      expect(help.exitCode).toBe(0);
+      expect(help.stdout).toMatch(/^\s+config:lint\s+.*\(app:config:lint\)/mu);
+      expect(help.stdout).not.toMatch(/^\s+app:config:lint\s/mu);
+    });
+  });
+
   test("a clean Landofile exits 0 with a no-violations message", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "name: clean-app\nrecipe: lamp\n");

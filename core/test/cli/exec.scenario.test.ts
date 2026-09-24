@@ -22,6 +22,7 @@ import {
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import { makePlainRendererServiceLive } from "@lando/renderer/runtime";
+import { execSpec } from "../../src/cli/command-specs/app/exec";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");
@@ -117,6 +118,7 @@ interface ExecRecord {
   readonly env?: Readonly<Record<string, string>>;
   readonly tty?: boolean;
   readonly stdin?: "inherit" | "ignore";
+  readonly stdinStream?: AsyncIterable<Uint8Array>;
 }
 
 const makeProvider = (
@@ -156,6 +158,7 @@ const makeProvider = (
         ...(spec.env === undefined ? {} : { env: spec.env }),
         ...(spec.tty === undefined ? {} : { tty: spec.tty }),
         ...(spec.stdin === undefined ? {} : { stdin: spec.stdin }),
+        ...(spec.stdinStream === undefined ? {} : { stdinStream: spec.stdinStream }),
       };
       calls.push(record);
       const response = responses[i] ?? { exitCode: 0 };
@@ -175,6 +178,7 @@ const makeProvider = (
         ...(spec.env === undefined ? {} : { env: spec.env }),
         ...(spec.tty === undefined ? {} : { tty: spec.tty }),
         ...(spec.stdin === undefined ? {} : { stdin: spec.stdin }),
+        ...(spec.stdinStream === undefined ? {} : { stdinStream: spec.stdinStream }),
       };
       calls.push(record);
       const response = responses[i] ?? { exitCode: 0 };
@@ -365,6 +369,49 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(calls[0]?.command).toEqual(["ls"]);
   });
 
+  test("keeps nested text execution detached from host stdin and TTY", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const input = {
+      argv: ["true"],
+      parsedArgv: ["true"],
+      flags: { format: "text" },
+      args: {},
+    };
+
+    await Effect.runPromise(
+      execSpec
+        .run(input)
+        .pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+    );
+
+    expect(calls[0]?.stdin).toBeUndefined();
+    expect(calls[0]?.stdinStream).toBeUndefined();
+    expect(calls[0]?.tty).toBeUndefined();
+  });
+
+  test("direct CLI text execution attaches redirected host stdin", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const input = {
+      argv: ["true"],
+      parsedArgv: ["true"],
+      flags: { format: "text" },
+      args: {},
+      hostIo: "cli" as const,
+    };
+
+    await Effect.runPromise(
+      execSpec
+        .run(input)
+        .pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
+    );
+
+    expect(calls[0]?.stdin).toBe("inherit");
+    expect(calls[0]?.stdinStream).toBeDefined();
+    expect(calls[0]?.tty).toBeUndefined();
+  });
+
   test("honors explicit tty without attaching host stdin", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
@@ -432,7 +479,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(calls[0]?.env).not.toHaveProperty("COLORTERM");
   });
 
-  test("attaches stdin only when interactive and a stdin stream are provided", async () => {
+  test("attaches a provided stdin stream without requiring interactive TTY mode", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0 }]);
     const stdinStream = {
@@ -443,14 +490,15 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
       execApp({
         service: "appserver",
         command: ["htop"],
-        tty: true,
-        interactive: true,
+        tty: false,
+        interactive: false,
         stdinStream,
       }).pipe(Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider }))),
     );
 
-    expect(calls[0]?.tty).toBe(true);
+    expect(calls[0]?.tty).toBeUndefined();
     expect(calls[0]?.stdin).toBe("inherit");
+    expect(calls[0]?.stdinStream).toBe(stdinStream);
   });
 
   test("does not allocate a TTY when tty is false", async () => {

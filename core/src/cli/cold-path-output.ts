@@ -105,6 +105,7 @@ const toRow = (entry: ManifestCommand, aliasPolicy?: HelpAliasPolicy): ThisAppHe
   const name = typeableName({
     canonicalId: entry.spec.id,
     builtInAliases: entry.aliases,
+    implicitNamespaceStrip: false,
     ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
   });
   return {
