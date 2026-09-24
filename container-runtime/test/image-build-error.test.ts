@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { encodeCommandResult } from "@lando/sdk/command-result";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { requestContainerBuild } from "../src/image-build-http.ts";
 
@@ -71,4 +72,66 @@ test("redacts before bounding a long daemon diagnostic", async () => {
   expect(failure.message).not.toContain("sensitive-build");
   expect(failure.message.length).toBeLessThanOrEqual(4200);
   expect(failure.message).toEndWith("…");
+});
+
+test.each([
+  ["shared", "shared-private-suffix"],
+  ["shared", "shared/private-suffix"],
+  ["%", "shared/private-suffix"],
+])("masks complete overlapping build arguments beginning with %s", async (short, secret) => {
+  // Given
+  const request = () =>
+    Effect.succeed({
+      status: 200,
+      body: JSON.stringify({ error: `RUN echo ${secret} ${encodeURIComponent(secret)}: exit status 1` }),
+    });
+
+  // When
+  const failure = await Effect.runPromise(
+    Effect.flip(
+      requestContainerBuild({
+        request,
+        options: { providerId: "docker", api: { request } },
+        path: "/build",
+        tag: "lando-web",
+        stdin: (async function* () {})(),
+        secretValues: [short, secret],
+      }),
+    ),
+  );
+
+  // Then
+  expect(failure.message).toContain("exit status 1");
+  expect(failure.message).toContain("[redacted]");
+  expect(JSON.stringify(failure)).not.toContain("private-suffix");
+});
+
+test("preserves unavailable classification when the build socket is down", async () => {
+  // Given
+  const request = () =>
+    Effect.fail(
+      new ProviderUnavailableError({
+        providerId: "podman",
+        operation: "buildArtifact",
+        message: "Connection refused",
+      }),
+    );
+
+  // When
+  const failure = await Effect.runPromise(
+    Effect.flip(
+      requestContainerBuild({
+        request,
+        options: { providerId: "podman", api: { request } },
+        path: "/build",
+        tag: "lando-web",
+        stdin: (async function* () {})(),
+        secretValues: [],
+      }),
+    ),
+  );
+
+  // Then
+  expect(failure._tag).toBe("ProviderUnavailableError");
+  expect(failure.message).toBe("Connection refused");
 });

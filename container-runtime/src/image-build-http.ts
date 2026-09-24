@@ -1,8 +1,7 @@
 import { Effect } from "effect";
 
 import { ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-
-import { redactString } from "./redact.ts";
+import { createRedactor } from "@lando/sdk/secrets";
 
 export interface ContainerBuildHttpRequest {
   readonly method: "GET" | "POST";
@@ -43,10 +42,11 @@ const redactBuildQuery = (value: string): string =>
   value.replace(/(buildargs=)(?:[^&\s]+)/giu, "$1[redacted]");
 
 const redactSecrets = (value: string, secretValues: ReadonlyArray<string>): string =>
-  secretValues.reduce((redacted, secret) => {
-    if (secret.length === 0) return redacted;
-    return redacted.split(secret).join("[redacted]").split(encodeURIComponent(secret)).join("[redacted]");
-  }, redactBuildQuery(value));
+  redactBuildQuery(
+    createRedactor("secrets", {
+      authoritativeValues: secretValues.flatMap((secret) => [secret, encodeURIComponent(secret)]),
+    }).redactString(value),
+  );
 
 const sanitizeBuildErrorValue = (value: unknown, secretValues: ReadonlyArray<string>): unknown => {
   if (typeof value === "string") return redactSecrets(value, secretValues);
@@ -148,9 +148,9 @@ export const requestContainerBuild = (
           }
           const streamError = buildStreamError(response.body);
           if (streamError === undefined) return Effect.succeed(parseDigest(response.body));
-          const diagnostic = redactString(redactSecrets(streamError, input.secretValues));
+          const diagnostic = redactSecrets(streamError, input.secretValues);
           const boundedDiagnostic = diagnostic.length > 4096 ? `${diagnostic.slice(0, 4095)}…` : diagnostic;
-          const tag = redactString(redactSecrets(input.tag, input.secretValues)).slice(0, 256);
+          const tag = redactSecrets(input.tag, input.secretValues).slice(0, 256);
           return Effect.fail(
             new ArtifactBuildError({
               providerId: input.options.providerId,
