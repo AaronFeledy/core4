@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
-import { realpath } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
+import { dirname, relative, resolve } from "node:path";
 
 import { DateTime, Effect, FiberRef } from "effect";
 
@@ -11,6 +12,9 @@ import { EventService, PathsService } from "@lando/sdk/services";
 import { acquireAdvisoryLockAt, peekAdvisoryLockRecord } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { PinnedAppRoot, canonicalAppRoot } from "./app-root-identity.ts";
+
+export { canonicalAppRoot } from "./app-root-identity.ts";
 
 /**
  * Finite wait for another process that holds this app's mutate lock.
@@ -40,9 +44,6 @@ export const resolveAppLockTimeoutMs = (env: NodeJS.ProcessEnv = process.env): n
  */
 export const appMutationLockKey = (appId: string, canonicalRoot: string): string =>
   `app-${createHash("sha256").update(`${appId}\0${canonicalRoot}`).digest("hex")}`;
-
-export const canonicalAppRoot = (root: string): Effect.Effect<string> =>
-  Effect.promise(() => realpath(root).catch(() => root));
 
 const parseHolderEntries = (raw: string | undefined): ReadonlyArray<readonly [string, string]> => {
   if (raw === undefined || raw === "") return [];
@@ -144,11 +145,52 @@ export const appLockTarget = (app: {
   root: String(app.identity?.appRoot ?? app.root),
 });
 
-export const appMutationLockIdentity = (app: { readonly id: string; readonly root: string }): Effect.Effect<{
-  readonly key: string;
-  readonly canonicalRoot: string;
-}> =>
-  canonicalAppRoot(app.root).pipe(
+/** Resolve a deleted app root through its nearest existing parent for inventory pruning. */
+export const canonicalMissingAppRoot = (root: string): Effect.Effect<string, StateStoreError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const absolute = resolve(root);
+      let current = absolute;
+      while (true) {
+        try {
+          const canonicalParent = await realpath(current);
+          const suffix = relative(current, absolute);
+          return suffix === "" ? canonicalParent : resolve(canonicalParent, suffix);
+        } catch (cause) {
+          if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
+          try {
+            // A dangling symlink is not a missing directory. Its destination is unknown.
+            if ((await lstat(current)).isSymbolicLink()) throw cause;
+          } catch (statCause) {
+            if ((statCause as NodeJS.ErrnoException).code !== "ENOENT") throw statCause;
+          }
+          const parent = dirname(current);
+          if (parent === current) throw cause;
+          current = parent;
+        }
+      }
+    },
+    catch: (cause) =>
+      new StateStoreError({
+        reason: "path",
+        operation: "canonicalMissingAppRoot",
+        path: root,
+        cause,
+        remediation: "Check that the app root and its parent can be resolved, then retry.",
+      }),
+  });
+
+export const appMutationLockIdentity = (
+  app: { readonly id: string; readonly root: string },
+  allowMissingRoot = false,
+): Effect.Effect<
+  {
+    readonly key: string;
+    readonly canonicalRoot: string;
+  },
+  StateStoreError
+> =>
+  (allowMissingRoot ? canonicalMissingAppRoot(app.root) : canonicalAppRoot(app.root)).pipe(
     Effect.map((canonicalRoot) => ({
       canonicalRoot,
       key: appMutationLockKey(String(app.id), canonicalRoot),
@@ -169,14 +211,16 @@ export const appMutationLockIdentity = (app: { readonly id: string; readonly roo
 export const withAppMutationLock = <A, E, R>(
   app: { readonly id: string; readonly root: string },
   body: Effect.Effect<A, E, R>,
+  options: { readonly allowMissingRoot?: boolean } = {},
 ): Effect.Effect<A, E | AppLockTimeoutError | StateStoreError, R | PathsService | PrivateFileAccessService> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<R | PathsService | PrivateFileAccessService>();
     const paths = yield* PathsService;
     const privateFileAccess = yield* PrivateFileAccessService;
-    const { key } = yield* appMutationLockIdentity(app);
+    const { key, canonicalRoot } = yield* appMutationLockIdentity(app, options.allowMissingRoot === true);
     const held = yield* FiberRef.get(heldAppLockKeys);
     const provided = Effect.provide(body, context).pipe(
+      Effect.provideService(PinnedAppRoot, { requestedRoot: app.root, canonicalRoot }),
       Effect.locally(heldAppLockKeys, new Set([...held, key])),
     );
     if (held.has(key)) return yield* provided;
@@ -205,7 +249,24 @@ export const withAppMutationLock = <A, E, R>(
             : cause,
         ),
       ),
-      () => provided,
+      () =>
+        options.allowMissingRoot === true
+          ? appMutationLockIdentity(app, true).pipe(
+              Effect.flatMap(
+                (current): Effect.Effect<A, E | StateStoreError, never> =>
+                  current.key === key
+                    ? provided
+                    : Effect.fail(
+                        new StateStoreError({
+                          reason: "path",
+                          operation: "canonicalMissingAppRoot",
+                          path: app.root,
+                          remediation: "The app root parent changed while waiting for its lock; retry.",
+                        }),
+                      ),
+              ),
+            )
+          : provided,
       ({ lock, restore }) => Effect.sync(restore).pipe(Effect.zipRight(lock.release)),
     );
   });

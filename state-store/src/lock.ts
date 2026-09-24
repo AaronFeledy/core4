@@ -244,7 +244,12 @@ export const acquireAdvisoryLockAt = (
  */
 export const withAdvisoryLockUsing =
   (privateFileAccess: PrivateFileAccess, options: AdvisoryLockWaitOptions = {}) =>
-  <A, E>(file: string, operation: string, body: Effect.Effect<A, E>): Effect.Effect<A, E | StateStoreError> =>
+  <A, E>(
+    file: string,
+    operation: string,
+    body: Effect.Effect<A, E>,
+    callOptions: AdvisoryLockWaitOptions = {},
+  ): Effect.Effect<A, E | StateStoreError> =>
     canonicalLockTarget(file).pipe(
       Effect.flatMap((canonicalFile) => {
         const lockPath = `${canonicalFile}.lock`;
@@ -254,6 +259,7 @@ export const withAdvisoryLockUsing =
             operation,
             privateFileAccess,
             ...options,
+            ...callOptions,
           }),
           () => body,
           () => release(lockPath, token, privateFileAccess),

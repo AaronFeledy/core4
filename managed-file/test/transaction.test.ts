@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, type Scope } from "effect";
 
+import { observedStateMatches, sameState } from "../src/transaction-fs.ts";
 import { ManagedFileTransactionError } from "../src/transaction.ts";
 import { fixture as makeFixture } from "./transaction-fixture.ts";
 
@@ -38,6 +39,14 @@ const backupNames = async (dir: string): Promise<ReadonlyArray<string>> =>
   (await readdir(dir)).filter((name) => name.includes(".bak."));
 
 describe("managed-file transaction coordinator", () => {
+  test("checks content on Windows without trusting synthetic Unix modes", () => {
+    const recorded = { present: true as const, digest: digestOf("content"), mode: 0o600 };
+    const observed = { ...recorded, mode: 0o666 };
+    expect(sameState(observed, recorded)).toBe(false);
+    expect(observedStateMatches(observed, recorded)).toBe(process.platform === "win32");
+    expect(observedStateMatches({ ...observed, digest: digestOf("changed") }, recorded)).toBe(false);
+  });
+
   test("commits a mixed write set, keeps immutable backups, and clears the journal", async () => {
     // Given an app root with one existing file and one absent target
     const { appRoot, transactions } = await makeFixture();
