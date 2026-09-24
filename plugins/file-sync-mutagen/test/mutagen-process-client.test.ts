@@ -11,7 +11,12 @@ import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type FileSyncSessionSpec, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 
-import { hasDurableMutagenOwnership, makeMutagenProcessClient } from "../src/mutagen-process-client.ts";
+import {
+  WINDOWS_LANDO_DOCKER_HOST,
+  hasDurableMutagenOwnership,
+  makeMutagenProcessClient,
+  makePreparedWindowsMutagenProcessClient,
+} from "../src/mutagen-process-client.ts";
 
 const id = "sync_Abc123";
 const name = "cms-web-app-root";
@@ -681,5 +686,93 @@ describe("Mutagen process client", () => {
     expect(listed[0]?.status).toBe("errored");
     expect(listed[0]?.detail).toContain("Mutagen reported");
     expect(listed[0]?.detail).not.toContain("my-secret-token");
+  });
+});
+
+describe("prepared Windows Mutagen transport", () => {
+  const alias = "C:\\Lando\\runtime\\docker-compat\\docker.exe";
+  const makeOptions = (
+    prepareDockerCli: () => Effect.Effect<string, unknown>,
+    calls: Array<Readonly<Record<string, string>>>,
+  ) => ({
+    binDir: "C:\\Lando\\bin",
+    dataDir: "C:\\Lando\\mutagen-data",
+    stateStore: makePluginStateStore(
+      makeTestStateStore().service,
+      AbsolutePath.make("/tmp/mutagen-windows-transport-test"),
+      privateFileAccess,
+    ),
+    verifyInstalled: async () => true,
+    prepareDockerCli,
+    resolveTarget: () => Effect.succeed({ containerId: helper, path: "/lando-data" }),
+    runner: {
+      run: ({ env }: { env?: Readonly<Record<string, string>> }) =>
+        Effect.sync(() => {
+          calls.push(env ?? {});
+          return { exitCode: 0, stdout: "Mutagen version 0.18.1", stderr: "" };
+        }),
+    },
+  });
+
+  test("routes only the Mutagen child through the prepared alias and owned Podman pipe", async () => {
+    const calls: Array<Readonly<Record<string, string>>> = [];
+    const inheritedPath = process.env.PATH;
+    let preparations = 0;
+    const client = await Effect.runPromise(
+      makePreparedWindowsMutagenProcessClient(
+        makeOptions(
+          () =>
+            Effect.sync(() => {
+              preparations += 1;
+              return alias;
+            }),
+          calls,
+        ),
+      ),
+    );
+    expect(await Effect.runPromise(client.version)).toBe("0.18.1");
+    expect(await Effect.runPromise(client.version)).toBe("0.18.1");
+    expect(preparations).toBe(3);
+    expect(calls).toHaveLength(2);
+    for (const env of calls) {
+      expect(env.MUTAGEN_DOCKER_PATH).toBe("C:\\Lando\\runtime\\docker-compat");
+      expect(env.PATH?.split(";")[0]).toBe("C:\\Lando\\runtime\\docker-compat");
+      expect(env.DOCKER_HOST).toBe(WINDOWS_LANDO_DOCKER_HOST);
+      expect(env.DOCKER_CONTEXT).toBe("");
+      expect(env.MUTAGEN_DATA_DIRECTORY).toBe("C:\\Lando\\mutagen-data");
+    }
+    expect(process.env.PATH).toBe(inheritedPath);
+  });
+
+  test("fails before spawning when preparation is missing, redirected, or later changes", async () => {
+    const calls: Array<Readonly<Record<string, string>>> = [];
+    for (const badPath of ["docker.exe", "C:\\Lando\\runtime\\podman.exe"]) {
+      expect(
+        Exit.isFailure(
+          await Effect.runPromiseExit(
+            makePreparedWindowsMutagenProcessClient(makeOptions(() => Effect.succeed(badPath), calls)),
+          ),
+        ),
+      ).toBe(true);
+    }
+    expect(
+      Exit.isFailure(
+        await Effect.runPromiseExit(
+          makePreparedWindowsMutagenProcessClient(
+            makeOptions(() => Effect.fail(new Error("managed runtime missing")), calls),
+          ),
+        ),
+      ),
+    ).toBe(true);
+    expect(calls).toHaveLength(0);
+
+    let current = alias;
+    const client = await Effect.runPromise(
+      makePreparedWindowsMutagenProcessClient(makeOptions(() => Effect.succeed(current), calls)),
+    );
+    expect(await Effect.runPromise(client.version)).toBe("0.18.1");
+    current = "C:\\Other\\docker.exe";
+    expect(Exit.isFailure(await Effect.runPromiseExit(client.version))).toBe(true);
+    expect(calls).toHaveLength(1);
   });
 });
