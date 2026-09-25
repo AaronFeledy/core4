@@ -143,6 +143,20 @@ describe("startFailureRemediation", () => {
     expect(remediation).not.toMatch(/lando destroy/u);
   });
 
+  test("Windows proxy bind failure does not prescribe rootlessport termination", () => {
+    const remediation = startFailureRemediation(
+      "cannot bind tcp port 127.0.0.1:8080: address already in use",
+      undefined,
+      chosenPair,
+      "traefik",
+      "win32",
+    );
+    expect(remediation).toContain("managed Windows Podman machine");
+    expect(remediation).toContain("HTTP 8080, HTTPS 8443");
+    expect(remediation).toContain("lando global:stop");
+    expect(remediation).not.toContain("rootlessport");
+    expect(remediation).not.toContain("terminate");
+  });
   test("leftoverProxyPortRemediation names the persisted pair", () => {
     // Then
     const remediation = leftoverProxyPortRemediation(chosenPair);

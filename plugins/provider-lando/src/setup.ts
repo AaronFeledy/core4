@@ -14,7 +14,12 @@ import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { type HostPlatform, type HostPlatformFamily, hostPlatformFamily } from "@lando/sdk/schema";
+import {
+  type HostPlatform,
+  type HostPlatformFamily,
+  type PortNumber,
+  hostPlatformFamily,
+} from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
 import { type ProgressEmitter, type TaskTreeController, makeTaskTree } from "@lando/sdk/task-progress";
 
@@ -129,6 +134,8 @@ export class WindowsMachineOsUnsupportedError extends ProviderUnavailableError {
   }
 }
 
+import { windowsPublishClaims } from "./windows-publish-claims.ts";
+
 export interface PodmanCommandRunner {
   readonly version: Effect.Effect<string, ProviderUnavailableError>;
 }
@@ -137,8 +144,28 @@ export type PodmanMachineStatus = "missing" | "stopped" | "running";
 
 export interface PodmanMachineRunner {
   readonly inspect: Effect.Effect<PodmanMachineStatus, ProviderUnavailableError>;
+  readonly createdAt?: Effect.Effect<string, ProviderUnavailableError>;
   readonly create: Effect.Effect<void, ProviderUnavailableError>;
   readonly syncTrust?: Effect.Effect<void, ProviderUnavailableError>;
+  readonly activateApiSocket?: Effect.Effect<void, ProviderUnavailableError>;
+  readonly occupiedPublishPorts?: (
+    ports: ReadonlyArray<number>,
+  ) => Effect.Effect<ReadonlyArray<number>, ProviderUnavailableError>;
+  readonly matchingPublishPorts?: (
+    ports: ReadonlyArray<number>,
+    addresses: ReadonlyArray<string>,
+  ) => Effect.Effect<ReadonlyArray<number>, ProviderUnavailableError>;
+  readonly publishedRuleSnapshot?: Effect.Effect<
+    { readonly kernelBootId: string; readonly nftJson: string } | undefined,
+    ProviderUnavailableError
+  >;
+  readonly deletePublishedRule?: (
+    chain: string,
+    handle: number,
+  ) => Effect.Effect<void, ProviderUnavailableError>;
+  readonly hostPortOwners?: (
+    ports: ReadonlyArray<number>,
+  ) => Effect.Effect<ReadonlyMap<number, "free" | "wslrelay" | "foreign">, ProviderUnavailableError>;
   readonly start: Effect.Effect<void, ProviderUnavailableError>;
   readonly stop: Effect.Effect<void, ProviderUnavailableError>;
   readonly upgrade: Effect.Effect<void, ProviderUnavailableError>;
@@ -198,7 +225,11 @@ export interface SetupResult {
   readonly statePath?: string;
 }
 
-type RecordedMachineOwnership = { readonly name: "lando"; readonly createdByLando: boolean };
+type RecordedMachineOwnership = {
+  readonly name: "lando";
+  readonly createdByLando: boolean;
+  readonly createdAt?: string;
+};
 
 export const providerStatePath = (stateDir: string): string =>
   `${stateDir.replace(/\/+$/u, "")}/provider-lando/setup-state.json`;
@@ -254,22 +285,40 @@ const readExistingMachineOwnership = (
         ? (machine as { readonly createdByLando: unknown }).createdByLando
         : undefined;
     if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
-    const ownership: RecordedMachineOwnership = { name: "lando", createdByLando };
+    const createdAt = "createdAt" in machine ? machine.createdAt : undefined;
+    if (createdAt !== undefined && (typeof createdAt !== "string" || createdAt.length === 0))
+      return undefined;
+    const ownership: RecordedMachineOwnership = {
+      name: "lando",
+      createdByLando,
+      ...(createdAt === undefined ? {} : { createdAt }),
+    };
     return ownership;
   });
 
-const preserveRecordedMachineOwnership = (
-  stateDir: string,
-  current: RecordedMachineOwnership,
-  eventService?: ProgressEmitter,
+const verifyRecordedMachineOwnership = (
+  recorded: RecordedMachineOwnership | undefined,
+  machine: PodmanMachineRunner,
+): Effect.Effect<RecordedMachineOwnership | undefined, ProviderUnavailableError> =>
+  Effect.gen(function* () {
+    if (recorded?.createdByLando !== true || recorded.createdAt === undefined) return recorded;
+    if ((yield* machine.inspect) === "missing") return { name: "lando", createdByLando: false };
+    if (machine.createdAt === undefined) return { name: "lando", createdByLando: false };
+    const actual = yield* machine.createdAt;
+    return actual === recorded.createdAt ? recorded : { name: "lando" as const, createdByLando: false };
+  });
+
+const createdMachineOwnership = (
+  machine: PodmanMachineRunner,
 ): Effect.Effect<RecordedMachineOwnership, ProviderUnavailableError> =>
-  current.createdByLando
-    ? Effect.succeed(current)
-    : readExistingMachineOwnership(stateDir, eventService).pipe(
-        Effect.map((existing) =>
-          existing?.createdByLando === true ? { name: "lando", createdByLando: true } : current,
-        ),
-      );
+  Effect.gen(function* () {
+    const createdAt = machine.createdAt === undefined ? undefined : yield* machine.createdAt;
+    return {
+      name: "lando" as const,
+      createdByLando: true,
+      ...(createdAt === undefined ? {} : { createdAt }),
+    };
+  });
 
 const readText = (stream: ReadableStream<Uint8Array> | null) =>
   stream === null ? Promise.resolve("") : new Response(stream).text();
@@ -399,6 +448,51 @@ const runMachineCommand = (
     catch: (cause) => machineFailure(operation, cause, platform),
   });
 
+// WSL launches the guest's systemd in a separate PID and mount namespace. A
+// direct `wsl.exe --exec systemctl` cannot reach its bus, and `podman machine
+// ssh` inherits unrelated host SSH configuration. Select exactly one root
+// system manager inside this machine, then start its rootful API socket.
+const WINDOWS_WSL_PODMAN_SOCKET_ACTIVATION_SCRIPT = `
+outer_ns=$(readlink /proc/1/ns/pid)
+[ -n "$outer_ns" ] || { echo 'Host PID namespace not found' >&2; exit 1; }
+systemd_pid=
+for proc in /proc/[0-9]*; do
+  [ "$(cat "$proc/comm" 2>/dev/null)" = systemd ] || continue
+  [ "$(stat -c %u "$proc" 2>/dev/null)" = 0 ] || continue
+  guest_ns=$(readlink "$proc/ns/pid" 2>/dev/null)
+  [ -n "$guest_ns" ] && [ "$guest_ns" != "$outer_ns" ] || continue
+  [ "$(awk '/^NSpid:/ { print $NF }' "$proc/status" 2>/dev/null)" = 1 ] || continue
+  [ -z "$systemd_pid" ] || { echo 'Multiple guest systemd processes' >&2; exit 1; }
+  systemd_pid=\${proc##*/}
+done
+[ -n "$systemd_pid" ] || { echo 'Guest systemd process not found' >&2; exit 1; }
+exec nsenter --target "$systemd_pid" --mount --pid -- systemctl enable --now podman.socket
+`;
+
+const podmanMachineJson = (stdout: string, operation: string) =>
+  Effect.try({
+    try: (): unknown => JSON.parse(stdout),
+    catch: (cause) =>
+      new ProviderUnavailableError({
+        providerId: PROVIDER_ID,
+        operation,
+        message: "Podman returned invalid machine metadata.",
+        remediation:
+          "Check `podman machine info` and `podman machine inspect lando`, then rerun `lando setup`.",
+        cause,
+      }),
+  });
+
+const isWslMachineHost = (info: unknown): boolean => {
+  if (typeof info !== "object" || info === null || !("Host" in info)) return false;
+  const host = info.Host;
+  return typeof host === "object" && host !== null && "VMType" in host && host.VMType === "wsl";
+};
+
+const isRootfulMachine = (info: unknown): boolean => {
+  const machine = Array.isArray(info) ? info[0] : info;
+  return typeof machine === "object" && machine !== null && "Rootful" in machine && machine.Rootful === true;
+};
 export const makeSystemPodmanMachineRunner = (
   command: string,
   machineName: string,
@@ -406,7 +500,332 @@ export const makeSystemPodmanMachineRunner = (
   spawn: MachineSpawn = defaultMachineSpawn,
 ): PodmanMachineRunner => {
   const family = hostPlatformFamily(platform);
+  const activateApiSocket = Effect.gen(function* () {
+    const info = yield* runMachineCommand(
+      spawn,
+      command,
+      ["machine", "info", "--format", "json"],
+      "activateApiSocket",
+      platform,
+    ).pipe(Effect.flatMap((stdout) => podmanMachineJson(stdout, "activateApiSocket")));
+    if (!isWslMachineHost(info)) return;
+
+    const inspected = yield* runMachineCommand(
+      spawn,
+      command,
+      ["machine", "inspect", machineName],
+      "activateApiSocket",
+      platform,
+    ).pipe(Effect.flatMap((stdout) => podmanMachineJson(stdout, "activateApiSocket")));
+    if (!isRootfulMachine(inspected)) return;
+
+    yield* runMachineCommand(
+      spawn,
+      "wsl.exe",
+      [
+        "--distribution",
+        `podman-${machineName}`,
+        "--user",
+        "root",
+        "--exec",
+        "sh",
+        "-c",
+        WINDOWS_WSL_PODMAN_SOCKET_ACTIVATION_SCRIPT,
+      ],
+      "activateApiSocket",
+      platform,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderUnavailableError({
+            providerId: PROVIDER_ID,
+            operation: "setup",
+            message: "Could not activate the Lando Podman machine API socket.",
+            remediation:
+              "Check that the Lando-owned WSL Podman machine can start its systemd podman.socket, then rerun `lando setup`.",
+            cause,
+          }),
+      ),
+    );
+  });
+
+  const readPublishClaims = () =>
+    runMachineCommand(
+      spawn,
+      "wsl.exe",
+      ["--distribution", `podman-${machineName}`, "--user", "root", "--exec", "nft", "-j", "list", "ruleset"],
+      "occupiedPublishPorts",
+      platform,
+    ).pipe(
+      Effect.flatMap((raw) =>
+        Effect.try({
+          try: () => windowsPublishClaims(raw),
+          catch: (cause) =>
+            new ProviderUnavailableError({
+              providerId: PROVIDER_ID,
+              operation: "occupiedPublishPorts",
+              message: "Could not interpret the Lando Podman machine's published-port rules.",
+              remediation: "Check guest nftables rules and retry. Lando will not reuse ambiguous ports.",
+              cause,
+            }),
+        }),
+      ),
+    );
+
+  const occupiedPublishPorts = (ports: ReadonlyArray<PortNumber>) =>
+    Effect.gen(function* () {
+      if (ports.length === 0) return [];
+      const info = yield* runMachineCommand(
+        spawn,
+        command,
+        ["machine", "info", "--format", "json"],
+        "occupiedPublishPorts",
+        platform,
+      ).pipe(Effect.flatMap((stdout) => podmanMachineJson(stdout, "occupiedPublishPorts")));
+      if (!isWslMachineHost(info)) return [];
+      const inspected = yield* runMachineCommand(
+        spawn,
+        command,
+        ["machine", "inspect", machineName],
+        "occupiedPublishPorts",
+        platform,
+      ).pipe(Effect.flatMap((stdout) => podmanMachineJson(stdout, "occupiedPublishPorts")));
+      const machine = Array.isArray(inspected) ? inspected[0] : inspected;
+      const state =
+        typeof machine === "object" && machine !== null && "State" in machine ? machine.State : undefined;
+      if (typeof state !== "string" || !/running/i.test(state)) return [];
+      const sockets = yield* runMachineCommand(
+        spawn,
+        "wsl.exe",
+        ["--distribution", `podman-${machineName}`, "--user", "root", "--exec", "ss", "-H", "-ltn"],
+        "occupiedPublishPorts",
+        platform,
+      );
+      const claims = yield* readPublishClaims();
+      const candidates = new Set(ports);
+      const occupied = new Set<PortNumber>();
+      for (const line of sockets.split(/\r?\n/u)) {
+        const address = line.trim().split(/\s+/u)[3];
+        const port = Number(address?.slice((address?.lastIndexOf(":") ?? -1) + 1));
+        if (Number.isInteger(port) && candidates.has(port)) occupied.add(port);
+      }
+      for (const port of claims.keys()) if (candidates.has(port)) occupied.add(port);
+      return ports.filter((port) => occupied.has(port));
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ProviderUnavailableError({
+            providerId: PROVIDER_ID,
+            operation: "occupiedPublishPorts",
+            message: "Could not inspect published TCP ports in the Lando-owned Podman machine.",
+            remediation: "Check guest `ss` and `nft` commands, then retry.",
+            cause,
+          }),
+      ),
+    );
+
+  const matchingPublishPorts = (ports: ReadonlyArray<PortNumber>, addresses: ReadonlyArray<string>) =>
+    Effect.gen(function* () {
+      if (ports.length === 0 || addresses.length === 0) return [];
+      const info = yield* runMachineCommand(
+        spawn,
+        command,
+        ["machine", "info", "--format", "json"],
+        "matchingPublishPorts",
+        platform,
+      ).pipe(Effect.flatMap((stdout) => podmanMachineJson(stdout, "matchingPublishPorts")));
+      if (!isWslMachineHost(info)) return [];
+      const claims = yield* readPublishClaims();
+      const owned = new Set(addresses);
+      return ports.filter((port) => {
+        const targets = claims.get(port);
+        return targets !== undefined && targets.size > 0 && [...targets].every((target) => owned.has(target));
+      });
+    });
+  const hostPortOwners = (ports: ReadonlyArray<number>) =>
+    Effect.gen(function* () {
+      if (ports.some((port) => !Number.isInteger(port) || port < 1 || port > 65535)) {
+        return yield* Effect.fail(
+          machineFailure("hostPortOwners", new Error("Invalid host port."), platform),
+        );
+      }
+      if (ports.length === 0) return new Map<number, "free" | "wslrelay" | "foreign">();
+      const script = `$ErrorActionPreference='Stop'; $ports=@(${ports.join(",")});
+$expected=[IO.Path]::GetFullPath((Join-Path $env:ProgramFiles 'WSL/wslrelay.exe'));
+$allListeners=@(Get-NetTCPConnection -State Listen -ErrorAction Stop |
+  Where-Object { $_.LocalAddress -in @('127.0.0.1','0.0.0.0','::1','::') });
+$rows=@(foreach($port in $ports) {
+  $listeners=@($allListeners | Where-Object { $_.LocalPort -eq $port });
+  $owner='free';
+  if($listeners.Count -gt 0) {
+    $owner='wslrelay';
+    foreach($listener in $listeners) {
+      $proc=Get-CimInstance Win32_Process -Filter ("ProcessId = " + $listener.OwningProcess);
+      if($null -eq $proc -or [string]::IsNullOrWhiteSpace($proc.ExecutablePath) -or
+         !([string]::Equals([IO.Path]::GetFullPath($proc.ExecutablePath),$expected,
+          [StringComparison]::OrdinalIgnoreCase))) { $owner='foreign'; break }
+    }
+  }
+  @{ port=$port; owner=$owner }
+});
+ConvertTo-Json -InputObject $rows -Compress`;
+      const raw = yield* runMachineCommand(
+        spawn,
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", script],
+        "hostPortOwners",
+        platform,
+      );
+      return yield* Effect.try({
+        try: () => {
+          const rows: unknown = JSON.parse(raw);
+          if (!Array.isArray(rows) || rows.length !== ports.length)
+            throw new Error("Incomplete host port probe.");
+          const owners = new Map<number, "free" | "wslrelay" | "foreign">();
+          for (const row of rows) {
+            if (
+              typeof row !== "object" ||
+              row === null ||
+              !("port" in row) ||
+              !("owner" in row) ||
+              typeof row.port !== "number" ||
+              !ports.includes(row.port) ||
+              (row.owner !== "free" && row.owner !== "wslrelay" && row.owner !== "foreign") ||
+              owners.has(row.port)
+            )
+              throw new Error("Invalid host port owner result.");
+            owners.set(row.port, row.owner);
+          }
+          return owners;
+        },
+        catch: (cause) => machineFailure("hostPortOwners", cause, platform),
+      });
+    });
+  const publishedRuleSnapshot = Effect.gen(function* () {
+    const info = yield* runMachineCommand(
+      spawn,
+      command,
+      ["machine", "info", "--format", "json"],
+      "publishedRuleSnapshot",
+      platform,
+    ).pipe(Effect.flatMap((stdout) => podmanMachineJson(stdout, "publishedRuleSnapshot")));
+    if (!isWslMachineHost(info)) return undefined;
+    const [kernelBootId, nftJson] = yield* Effect.all([
+      runMachineCommand(
+        spawn,
+        "wsl.exe",
+        [
+          "--distribution",
+          `podman-${machineName}`,
+          "--user",
+          "root",
+          "--exec",
+          "cat",
+          "/proc/sys/kernel/random/boot_id",
+        ],
+        "publishedRuleSnapshot",
+        platform,
+      ),
+      runMachineCommand(
+        spawn,
+        "wsl.exe",
+        [
+          "--distribution",
+          `podman-${machineName}`,
+          "--user",
+          "root",
+          "--exec",
+          "nft",
+          "-j",
+          "list",
+          "ruleset",
+        ],
+        "publishedRuleSnapshot",
+        platform,
+      ),
+    ]);
+    const bootId = kernelBootId.trim();
+    if (!/^[a-f0-9-]{36}$/iu.test(bootId)) {
+      return yield* Effect.fail(
+        machineFailure(
+          "publishedRuleSnapshot",
+          new Error("Guest kernel boot identity is invalid."),
+          platform,
+        ),
+      );
+    }
+    return { kernelBootId: bootId, nftJson };
+  });
+
+  const deletePublishedRule = (chain: string, handle: number) =>
+    Effect.gen(function* () {
+      if (
+        !/^nv_[a-f0-9]{8}_[a-zA-Z0-9_-]+_dnat$/u.test(chain) ||
+        !Number.isSafeInteger(handle) ||
+        handle < 1
+      ) {
+        return yield* Effect.fail(
+          machineFailure("deletePublishedRule", new Error("Owned nft rule identity is invalid."), platform),
+        );
+      }
+      yield* runMachineCommand(
+        spawn,
+        "wsl.exe",
+        [
+          "--distribution",
+          `podman-${machineName}`,
+          "--user",
+          "root",
+          "--exec",
+          "nft",
+          "delete",
+          "rule",
+          "inet",
+          "netavark",
+          chain,
+          "handle",
+          String(handle),
+        ],
+        "deletePublishedRule",
+        platform,
+      );
+    });
   return {
+    ...(family === "win32"
+      ? {
+          activateApiSocket,
+          occupiedPublishPorts,
+          matchingPublishPorts,
+          publishedRuleSnapshot,
+          deletePublishedRule,
+          hostPortOwners,
+        }
+      : {}),
+    createdAt: runMachineCommand(
+      spawn,
+      command,
+      ["machine", "inspect", machineName],
+      "createdAt",
+      platform,
+    ).pipe(
+      Effect.flatMap((stdout) => podmanMachineJson(stdout, "createdAt")),
+      Effect.flatMap((value) => {
+        const machine = Array.isArray(value) ? value[0] : value;
+        const created =
+          typeof machine === "object" && machine !== null && "Created" in machine
+            ? machine.Created
+            : undefined;
+        return typeof created === "string" && created.length > 0
+          ? Effect.succeed(created)
+          : Effect.fail(
+              machineFailure(
+                "createdAt",
+                new Error("Podman machine creation identity is missing."),
+                platform,
+              ),
+            );
+      }),
+    ),
     inspect: runMachineCommand(spawn, command, ["machine", "inspect", machineName], "inspect", platform).pipe(
       Effect.flatMap((stdout) =>
         Effect.try({
@@ -444,7 +863,7 @@ export const makeSystemPodmanMachineRunner = (
     create: runMachineCommand(
       spawn,
       command,
-      buildManagedMachineInitArgs(machineName),
+      buildManagedMachineInitArgs(machineName, platform),
       "create",
       platform,
     ).pipe(Effect.asVoid),
@@ -485,7 +904,7 @@ export const makeSystemPodmanMachineRunner = (
   };
 };
 
-const MANAGED_MACHINE_NAME = "lando";
+export const MANAGED_MACHINE_NAME = "lando";
 
 const missingBundledMachineToolingError = (
   platform: HostPlatform,
@@ -589,18 +1008,13 @@ export const ensureMacOSPodmanMachine = (
       recordedOwnership === undefined
         ? resolveMachineTrustImport({ status })
         : resolveMachineTrustImport({ status, recordedOwnership });
-    if (trust.kind === "import" && trust.mode === "manage") {
-      const syncTrust = machine.syncTrust ?? Effect.void;
-      yield* syncTrust;
-      if (status === "running") {
-        yield* machine.stop;
-      }
-      yield* machine.start;
+    if (status === "running") {
       return { createdByLando: false };
     }
-    if (status === "stopped") {
-      yield* machine.start;
+    if (trust.kind === "import" && trust.mode === "manage") {
+      yield* machine.syncTrust ?? Effect.void;
     }
+    yield* machine.start;
     return { createdByLando: false };
   });
 
@@ -633,18 +1047,13 @@ export const ensureWindowsPodmanMachine = (
       recordedOwnership === undefined
         ? resolveMachineTrustImport({ status })
         : resolveMachineTrustImport({ status, recordedOwnership });
-    if (trust.kind === "import" && trust.mode === "manage") {
-      const syncTrust = machine.syncTrust ?? Effect.void;
-      yield* syncTrust;
-      if (status === "running") {
-        yield* machine.stop;
-      }
-      yield* machine.start;
+    if (status === "running") {
       return { createdByLando: false };
     }
-    if (status === "stopped") {
-      yield* machine.start;
+    if (trust.kind === "import" && trust.mode === "manage") {
+      yield* machine.syncTrust ?? Effect.void;
     }
+    yield* machine.start;
     return { createdByLando: false };
   });
 
@@ -709,7 +1118,7 @@ export const persistSetupState = (
     readonly runtimeBundleSha256?: string;
     readonly runtimeBinDir?: string;
     readonly socketPath?: string;
-    readonly machine?: { readonly name: "lando"; readonly createdByLando: boolean };
+    readonly machine?: RecordedMachineOwnership;
   },
   renameState: (from: string, to: string) => Promise<void> = rename,
 ) =>
@@ -767,7 +1176,8 @@ const buildSetupSteps = (
     steps.push({ taskId: "machine", label: "Ensure Podman machine" });
   if (probesSocket) steps.push({ taskId: "socket", label: "Probe Podman API" });
   if (managesRuntime) {
-    steps.push({ taskId: "prerequisites", label: "Provision and preflight runtime prerequisites" });
+    if (family === "linux")
+      steps.push({ taskId: "prerequisites", label: "Provision and preflight runtime prerequisites" });
     steps.push({ taskId: "launch", label: "Launch managed runtime" });
     steps.push({ taskId: "readiness", label: "Verify managed runtime readiness" });
     if (smoke) steps.push({ taskId: "smoke", label: "Verify managed runtime operations" });
@@ -916,43 +1326,84 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
       );
       const detectedPodmanVersion = parsePodmanVersion(podmanVersionOutput);
       const socketPath = options.socketPath;
-      const recordCreatedMachine =
-        options.stateDir === undefined
-          ? Effect.void
-          : persistSetupState(options.stateDir, {
-              podmanVersion: detectedPodmanVersion,
-              ...(bundle === undefined
-                ? {}
-                : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
-              ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
-              ...(socketPath === undefined ? {} : { socketPath }),
-              machine: { name: "lando", createdByLando: true },
-            }).pipe(Effect.asVoid);
+      const recordCreatedMachine = (runner: PodmanMachineRunner) =>
+        createdMachineOwnership(runner).pipe(
+          Effect.tap((ownership) =>
+            Effect.sync(() => {
+              machineOwnership = ownership;
+            }),
+          ),
+          Effect.flatMap((ownership) =>
+            options.stateDir === undefined
+              ? Effect.void
+              : persistSetupState(options.stateDir, {
+                  podmanVersion: detectedPodmanVersion,
+                  ...(bundle === undefined
+                    ? {}
+                    : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
+                  ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
+                  ...(socketPath === undefined ? {} : { socketPath }),
+                  machine: ownership,
+                }).pipe(Effect.asVoid),
+          ),
+        );
 
       if (family === "darwin" && machineStep !== undefined) {
-        const ensured = yield* withStep(
+        yield* withStep(
           tree,
           machineStep,
           resolveSetupMachineRunner("darwin", options).pipe(
             Effect.flatMap((runner) =>
-              ensureMacOSPodmanMachine(runner, existingMachineOwnership, recordCreatedMachine),
+              Effect.gen(function* () {
+                const ownership = yield* verifyRecordedMachineOwnership(existingMachineOwnership, runner);
+                const trusted =
+                  ownership?.createdByLando === true && ownership.createdAt !== undefined
+                    ? ownership
+                    : undefined;
+                const ensured = yield* ensureMacOSPodmanMachine(
+                  runner,
+                  trusted,
+                  recordCreatedMachine(runner),
+                );
+                if (!ensured.createdByLando) {
+                  machineOwnership = ownership ?? { name: "lando", createdByLando: false };
+                }
+              }),
             ),
           ),
         );
-        machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
       if (family === "win32" && machineStep !== undefined) {
-        const ensured = yield* withStep(
+        yield* withStep(
           tree,
           machineStep,
           resolveSetupMachineRunner("win32", options).pipe(
             Effect.flatMap((runner) =>
-              ensureWindowsPodmanMachine(runner, existingMachineOwnership, recordCreatedMachine),
+              Effect.gen(function* () {
+                const ownership = yield* verifyRecordedMachineOwnership(existingMachineOwnership, runner);
+                const trusted =
+                  ownership?.createdByLando === true && ownership.createdAt !== undefined
+                    ? ownership
+                    : undefined;
+                const ensured = yield* ensureWindowsPodmanMachine(
+                  runner,
+                  trusted,
+                  recordCreatedMachine(runner),
+                );
+                if (
+                  (ensured.createdByLando || trusted !== undefined) &&
+                  runner.activateApiSocket !== undefined
+                ) {
+                  yield* runner.activateApiSocket;
+                }
+                if (!ensured.createdByLando) {
+                  machineOwnership = ownership ?? { name: "lando", createdByLando: false };
+                }
+              }),
             ),
           ),
         );
-        machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
       const api =
@@ -993,10 +1444,6 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
       } else {
         yield* options.readinessCheck ?? Effect.void;
       }
-      const recordedMachineOwnership =
-        machineOwnership === undefined || options.stateDir === undefined
-          ? machineOwnership
-          : yield* preserveRecordedMachineOwnership(options.stateDir, machineOwnership, options.eventService);
       const statePath =
         stateStep === undefined || options.stateDir === undefined
           ? undefined
@@ -1010,7 +1457,7 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
                   : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
                 ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
                 ...(socketPath === undefined ? {} : { socketPath }),
-                ...(recordedMachineOwnership === undefined ? {} : { machine: recordedMachineOwnership }),
+                ...(machineOwnership === undefined ? {} : { machine: machineOwnership }),
               }),
             );
 

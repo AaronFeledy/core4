@@ -30,6 +30,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { mergeAppliedPlan } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
@@ -686,11 +687,34 @@ export const makeRuntimeProvider = (
     );
   };
 
-  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> =>
-    (options.appliedPlanState === undefined
-      ? Effect.void
-      : persistAppliedPlan(options.appliedPlanState, plan).pipe(Effect.asVoid)
-    ).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))));
+  const rememberPlan = (plan: AppPlan, reconcile: boolean): Effect.Effect<void, ProviderUnavailableError> => {
+    const state = options.appliedPlanState;
+    const write = Effect.gen(function* () {
+      const previous = reconcile
+        ? undefined
+        : state === undefined
+          ? yield* resolvePlan(plan.id)
+          : yield* loadAppliedPlan(state, plan.id);
+      const persistedPlan = mergeAppliedPlan(previous, plan, reconcile);
+      if (state !== undefined) yield* persistAppliedPlan(state, persistedPlan);
+      plans.set(plan.id, persistedPlan);
+    });
+    return state === undefined
+      ? write
+      : state.withLock(`applied-plan-${plan.id}`, write).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof ProviderUnavailableError
+              ? cause
+              : new ProviderUnavailableError({
+                  providerId: PODMAN_CTX.providerId,
+                  operation: "applied-state.lock",
+                  message: "Unable to lock provider-podman applied plan state.",
+                  remediation: "Retry after the concurrent app operation completes.",
+                  cause,
+                }),
+          ),
+        );
+  };
 
   const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> =>
     (options.appliedPlanState === undefined
@@ -776,7 +800,7 @@ export const makeRuntimeProvider = (
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
             const plan = target.plan ?? (yield* resolvePlan(target.app));

@@ -7,6 +7,12 @@ import {
 } from "./task-tree-frame.ts";
 
 export const PENDING_MARKER = "◌";
+/**
+ * Completed-with-warnings marker. ASCII on purpose: `⚠` measures one cell but
+ * most terminal fonts draw it with emoji presentation, so it overlaps the label
+ * and knocks the row out of line with `✓`/`✗`.
+ */
+export const WARNED_MARKER = "!";
 export const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 
 type BodyStyle = {
@@ -15,7 +21,7 @@ type BodyStyle = {
 };
 
 const DIM_DURATION: BodyStyle = { start: csi.dim, end: `${csi.dimReset}${csi.reset}` };
-const SETTLED_GLYPHS = ["✓", "✗", "–"] as const;
+const SETTLED_GLYPHS = ["✓", WARNED_MARKER, "✗", "–"] as const;
 const SPINNER_GLYPHS: ReadonlySet<string> = new Set(SPINNER_FRAMES);
 const RUNNING_GLYPHS: ReadonlySet<string> = new Set(["·", ...SPINNER_FRAMES]);
 
@@ -35,6 +41,7 @@ const selectBodyStyle = (line: string): BodyStyle | undefined => {
   if (line.includes("  skipped"))
     return { start: `${csi.dim}${csi.cyan}`, end: `${csi.dimReset}${csi.reset}` };
   if (line.includes("✓")) return { start: csi.green, end: csi.reset };
+  if (line.startsWith(`│ ${WARNED_MARKER} `)) return { start: csi.amber, end: csi.reset };
   if (line.includes(PENDING_MARKER)) return { start: csi.amber, end: csi.reset };
   if (line.startsWith("│   ")) return { start: csi.dim, end: `${csi.dimReset}${csi.reset}` };
   if (isRunningGlyphRow(line)) return { start: csi.cyan, end: csi.reset };

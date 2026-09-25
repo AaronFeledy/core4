@@ -53,7 +53,7 @@ describe("podman container died event collection", () => {
       expect(paths[0]).toContain("/libpod/events");
       expect(paths[0]).toContain("since=");
       expect(paths[0]).toContain("until=");
-      expect(paths[0]).not.toContain("stream=false");
+      expect(paths[0]).toContain("stream=false");
       expect(decodeURIComponent(paths[0] ?? "")).toContain("container");
       expect(decodeURIComponent(paths[0] ?? "")).toContain("die");
     });

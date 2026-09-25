@@ -62,6 +62,7 @@ test("bundled mkcert setup issues certs through the production app planner", asy
         return { exitCode: 0, stdout: "", stderr: "" };
       }),
     stream: () => Stream.empty,
+    streamWithExit: () => Stream.empty,
   } satisfies Context.Tag.Service<typeof ProcessRunner>;
 
   try {

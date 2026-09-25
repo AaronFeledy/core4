@@ -13,6 +13,8 @@ export interface DoctorOptions {
   /** Additionally lint the current app's Landofile against the canonical schema. */
   readonly app?: boolean | undefined;
   readonly deprecations?: boolean | undefined;
+  /** Render-only: list passing checks too instead of only degraded ones. */
+  readonly all?: boolean | undefined;
   readonly diedEventPayloads?: ReadonlyArray<unknown> | undefined;
   readonly format?: "text" | "json" | "yaml" | undefined;
   /** Cancels the run when aborted instead of letting the CLI SIGINT handler absorb it. */

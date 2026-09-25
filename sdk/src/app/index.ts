@@ -43,7 +43,10 @@ import type {
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
+  NoProviderInstalledError,
   NotImplementedError,
+  ProviderConfigError,
+  ProviderUnavailableError,
   ProxyApplyError,
   ProxyError,
   ProxySetupError,
@@ -259,6 +262,10 @@ export type StopAppError =
   | LandofileVersionConstraintError
   | LandoCommandError
   | AppLockTimeoutError
+  | NoProviderInstalledError
+  | ProviderConfigError
+  | ProviderError
+  | ProviderUnavailableError
   | StateStoreError
   | VolumeOperationError;
 

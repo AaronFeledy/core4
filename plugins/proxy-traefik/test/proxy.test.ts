@@ -37,6 +37,9 @@ const unusedRunner = {
   stream: () => {
     throw new Error("stream is unused");
   },
+  streamWithExit: () => {
+    throw new Error("streamWithExit is unused");
+  },
 };
 
 const unusedPrivilege = {

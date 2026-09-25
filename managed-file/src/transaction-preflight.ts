@@ -96,7 +96,11 @@ const classifyEntry = async (
   const path = await targetPath(root, entry.path);
   const current = (await snapshot(path)).state;
   await verifyBackup(root, entry, privateFileAccess);
-  if (sameState(current, entry.after)) {
+  const stageStillPresent =
+    entry.after.present &&
+    entry.stage !== undefined &&
+    (await statMaybe(await stagePath(root, entry))) !== null;
+  if (sameState(current, entry.after) && !stageStillPresent) {
     await requireApplied(root, entry, privateFileAccess);
     return "applied";
   }

@@ -728,6 +728,10 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       calls.processRunner.push(spawnOptions);
       return Stream.empty;
     },
+    streamWithExit: (spawnOptions) => {
+      calls.processRunner.push(spawnOptions);
+      return Stream.make({ exitCode: 0 });
+    },
   };
 
   const configService: Context.Tag.Service<typeof ConfigService> = {

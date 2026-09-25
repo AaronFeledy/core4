@@ -83,8 +83,11 @@ export const classifyPullFailureSignature = (message: string): PullFailureSignat
 
 export const buildImagePullRequest = (reference: string, dialect: PullDialect) => dialect.request(reference);
 
-const textOrUndefined = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
+const textOrUndefined = (value: unknown): string | undefined => {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  return text.length === 0 ? undefined : text;
+};
 
 const numberOrUndefined = (value: unknown): number | undefined =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;

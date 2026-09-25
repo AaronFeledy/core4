@@ -9,7 +9,6 @@ import {
   ServiceName,
   type ServicePlan,
   landoAppNetworkName,
-  landoNetworkNames,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
 } from "@lando/sdk/schema";
@@ -36,9 +35,10 @@ import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts"
 import { waitForExit } from "../wait-for-exit.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
+import { podmanNetworkNames } from "./networks.ts";
 
 const appNetworkName = landoAppNetworkName;
-const networkNames = landoNetworkNames;
+const networkNames = podmanNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 const sharedNetworkName = landoSharedNetworkName;
 
@@ -65,7 +65,47 @@ interface InspectResult {
   readonly exists: boolean;
   readonly running: boolean;
   readonly publishFingerprint: string;
+  readonly bindSources: ReadonlyMap<string, string> | undefined;
+  readonly networkNames: ReadonlySet<string> | undefined;
 }
+
+const inspectBindSources = (body: unknown): ReadonlyMap<string, string> | undefined => {
+  const sources = new Map<string, string>();
+  if (typeof body !== "object" || body === null) return undefined;
+  const mounts = Reflect.get(body, "Mounts");
+  if (!Array.isArray(mounts)) return undefined;
+  for (const mount of mounts) {
+    if (typeof mount !== "object" || mount === null || Reflect.get(mount, "Type") !== "bind") continue;
+    const target = Reflect.get(mount, "Destination");
+    const source = Reflect.get(mount, "Source");
+    if (typeof target === "string" && typeof source === "string") sources.set(target, source);
+  }
+  return sources;
+};
+
+const inspectNetworkNames = (body: unknown): ReadonlySet<string> | undefined => {
+  if (typeof body !== "object" || body === null) return undefined;
+  const settings = Reflect.get(body, "NetworkSettings");
+  if (typeof settings !== "object" || settings === null) return undefined;
+  const networks = Reflect.get(settings, "Networks");
+  if (typeof networks !== "object" || networks === null || Array.isArray(networks)) return undefined;
+  return new Set(Object.keys(networks));
+};
+
+const plannedNetworkMissing = (plan: AppPlan, inspected: InspectResult): boolean =>
+  inspected.networkNames !== undefined &&
+  networkNames(plan).some((name) => !inspected.networkNames?.has(name));
+
+const bindSourceChanged = (service: ServicePlan, inspected: InspectResult): boolean => {
+  const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
+  if (socketTarget === undefined) return false;
+  const plannedSocket = service.mounts.find(
+    (mount) => mount.type === "bind" && mount.realization === "passthrough" && mount.target === socketTarget,
+  );
+  return (
+    plannedSocket?.source !== undefined && inspected.bindSources?.get(socketTarget) !== plannedSocket.source
+  );
+};
 
 interface StartResult {
   readonly changed: boolean;
@@ -192,7 +232,13 @@ const inspectContainer = (
       path: `/containers/${encodeURIComponent(name)}/json`,
     });
     if (response.status === 404) {
-      return { exists: false, running: false, publishFingerprint: "" };
+      return {
+        exists: false,
+        running: false,
+        publishFingerprint: "",
+        bindSources: undefined,
+        networkNames: undefined,
+      };
     }
     if (response.status < 200 || response.status >= 300) {
       yield* Effect.fail(
@@ -213,12 +259,20 @@ const inspectContainer = (
     }
     const body = yield* parseJson(deps, response, "bringUp.inspect");
     if (typeof body !== "object" || body === null || !("State" in body)) {
-      return { exists: true, running: false, publishFingerprint: fingerprintInspectPublishPorts(body) };
+      return {
+        exists: true,
+        running: false,
+        publishFingerprint: fingerprintInspectPublishPorts(body),
+        bindSources: inspectBindSources(body),
+        networkNames: inspectNetworkNames(body),
+      };
     }
     return {
       exists: true,
       running: containerRunning(body),
       publishFingerprint: fingerprintInspectPublishPorts(body),
+      bindSources: inspectBindSources(body),
+      networkNames: inspectNetworkNames(body),
     };
   });
 
@@ -636,11 +690,19 @@ const startService = (
       (deps.options.reconcile === true ||
         (plannedFingerprint.length > 0 &&
           before.publishFingerprint.length > 0 &&
-          before.publishFingerprint !== plannedFingerprint))
+          before.publishFingerprint !== plannedFingerprint) ||
+        bindSourceChanged(service, before) ||
+        plannedNetworkMissing(plan, before))
     ) {
       yield* stopContainerSilent(deps, name);
       yield* removeContainer(deps, service, name);
-      before = { exists: false, running: false, publishFingerprint: "" };
+      before = {
+        exists: false,
+        running: false,
+        publishFingerprint: "",
+        bindSources: undefined,
+        networkNames: undefined,
+      };
     }
     recordTouched({
       name,

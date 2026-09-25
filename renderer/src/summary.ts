@@ -9,6 +9,7 @@
  */
 
 import {
+  REMEDY_ARROW,
   type SummaryTone,
   boxBody,
   boxBottom,
@@ -28,6 +29,7 @@ import {
 } from "./console-layout.ts";
 
 import { formatPreparedQuietSummary } from "./summary-quiet.ts";
+import { formatPreparedRailSummary } from "./summary-rail.ts";
 
 export type { SummaryTone };
 
@@ -50,6 +52,8 @@ export interface SummaryRow {
   readonly tone?: SummaryTone;
   readonly value?: string;
   readonly detail?: string;
+  /** Suggested fix, painted as a hanging `↳` line after fields and detail. */
+  readonly remedy?: string;
   readonly fields?: ReadonlyArray<SummaryField>;
   readonly href?: string;
   readonly muted?: boolean;
@@ -93,6 +97,7 @@ export const redactSummaryDocument = (
       ...(row.tone === undefined ? {} : { tone: row.tone }),
       ...(row.value === undefined ? {} : { value: redact(row.value) }),
       ...(row.detail === undefined ? {} : { detail: redact(row.detail) }),
+      ...(row.remedy === undefined ? {} : { remedy: redact(row.remedy) }),
       ...(row.href === undefined ? {} : { href: redact(row.href) }),
       ...(row.muted === undefined ? {} : { muted: row.muted }),
       ...(row.fields === undefined
@@ -171,6 +176,11 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
         }
       }
       if (row.detail !== undefined) pushBody(row.detail, 2, styleBoxBottom);
+      if (row.remedy !== undefined) {
+        const [first, ...rest] = wrapToWidth(row.remedy, Math.max(1, innerWidth - 2 - REMEDY_ARROW.length));
+        pushBody(`${REMEDY_ARROW}${first ?? ""}`, 2, styleBoxBottom);
+        for (const segment of rest) pushBody(segment, 2 + REMEDY_ARROW.length, styleBoxBottom);
+      }
     }
     if (section.notes !== undefined) {
       for (const note of section.notes) pushBody(`• ${note}`, 2, styleBoxBottom);
@@ -189,4 +199,10 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
 export const formatQuietSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
   const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
   return formatPreparedQuietSummary(prepared, options.columns);
+};
+
+/** Task-tree rail framing for a static report printed under a live tree. */
+export const formatRailSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
+  const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
+  return formatPreparedRailSummary(prepared, options.columns);
 };
