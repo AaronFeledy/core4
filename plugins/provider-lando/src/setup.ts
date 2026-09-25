@@ -285,8 +285,7 @@ const readExistingMachineOwnership = (
         ? (machine as { readonly createdByLando: unknown }).createdByLando
         : undefined;
     if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
-    const createdAt =
-      "createdAt" in machine ? (machine as { readonly createdAt: unknown }).createdAt : undefined;
+    const createdAt = "createdAt" in machine ? machine.createdAt : undefined;
     if (createdAt !== undefined && (typeof createdAt !== "string" || createdAt.length === 0))
       return undefined;
     const ownership: RecordedMachineOwnership = {
@@ -1366,9 +1365,9 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
                   trusted,
                   recordCreatedMachine(runner),
                 );
-                machineOwnership = ensured.createdByLando
-                  ? machineOwnership
-                  : (ownership ?? { name: "lando", createdByLando: false });
+                if (!ensured.createdByLando) {
+                  machineOwnership = ownership ?? { name: "lando", createdByLando: false };
+                }
               }),
             ),
           ),
@@ -1398,9 +1397,9 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
                 ) {
                   yield* runner.activateApiSocket;
                 }
-                machineOwnership = ensured.createdByLando
-                  ? machineOwnership
-                  : (ownership ?? { name: "lando", createdByLando: false });
+                if (!ensured.createdByLando) {
+                  machineOwnership = ownership ?? { name: "lando", createdByLando: false };
+                }
               }),
             ),
           ),

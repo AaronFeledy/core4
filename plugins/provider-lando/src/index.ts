@@ -945,8 +945,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
     const recoveryHostOwners = machineRunner?.hostPortOwners;
     const recoveryDeleteRule = machineRunner?.deletePublishedRule;
     const recoveryState = options.appliedPlanState;
-    const parseRecoveryJson = (body: string) =>
-      Effect.try({ try: () => JSON.parse(body) as unknown, catch: (cause) => cause });
     const publishedRecovery =
       shouldManageRuntime &&
       family === "win32" &&
@@ -977,7 +975,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                 });
                 if (containerResponse.status < 200 || containerResponse.status >= 300)
                   return yield* Effect.fail(new Error("Published container inspect failed."));
-                const container = yield* parseRecoveryJson(containerResponse.body);
+                const container = yield* Effect.try({
+                  try: (): unknown => JSON.parse(containerResponse.body),
+                  catch: (cause) => cause,
+                });
                 const networks = (container as { NetworkSettings?: { Networks?: Record<string, unknown> } })
                   .NetworkSettings?.Networks;
                 const [networkName] = networks === undefined ? [] : Object.keys(networks);
@@ -1046,7 +1047,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           const inspected = yield* runtimeInspect(
             physicalPlan,
             { app: physicalPlan.id, service: service.name },
-            { ...(podmanApi === undefined ? {} : { api: podmanApi }), ctx: LANDO_CTX },
+            { ...apiOptions, ctx: LANDO_CTX },
           );
           if (inspected.containerId === undefined) {
             return yield* Effect.fail(
