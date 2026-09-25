@@ -6,6 +6,7 @@ import {
   FileSyncStartError,
   GlobalAutoStartError,
   type LandofileLoadExpressionError,
+  type ProxyError,
 } from "@lando/sdk/errors";
 import {
   MessageWarnEvent,
@@ -328,13 +329,14 @@ export const startAppForTargetUnlocked = (
                     Effect.flatMap((safe) =>
                       safe
                         ? Effect.exit(prepared.rollback).pipe(
-                            Effect.flatMap((rollbackExit) =>
-                              Exit.isFailure(rollbackExit)
-                                ? Effect.failCause(Cause.sequential(syncCause, rollbackExit.cause))
-                                : pendingStart === undefined
-                                  ? Effect.failCause(syncCause)
-                                  : pendingStart.clear.pipe(Effect.zipRight(Effect.failCause(syncCause))),
-                            ),
+                            Effect.flatMap((rollbackExit) => {
+                              if (Exit.isFailure(rollbackExit)) {
+                                return Effect.failCause(Cause.sequential(syncCause, rollbackExit.cause));
+                              }
+                              return pendingStart === undefined
+                                ? Effect.failCause(syncCause)
+                                : pendingStart.clear.pipe(Effect.zipRight(Effect.failCause(syncCause)));
+                            }),
                           )
                         : Effect.failCause(syncCause),
                     ),
@@ -352,7 +354,7 @@ export const startAppForTargetUnlocked = (
           const removeRoutesAndTeardown =
             sessionLease === undefined
               ? removeRoutesAndDestroyApp(proxy, provider, plan)
-              : runAllAndMergeFailures<ProviderError | import("@lando/sdk/errors").ProxyError, never>([
+              : runAllAndMergeFailures<ProviderError | ProxyError, never>([
                   removeRoutesForFailure,
                   teardownForFailure,
                 ]);
@@ -469,10 +471,7 @@ export const startAppForTargetUnlocked = (
                 Effect.gen(function* () {
                   const needRoutes = (yield* Ref.get(routesAttempted)) && !(yield* Ref.get(routesRemoved));
                   const needWriters = (yield* Ref.get(applyStarted)) && !(yield* Ref.get(writersStopped));
-                  yield* runAllAndMergeFailures<
-                    ProviderError | import("@lando/sdk/errors").ProxyError,
-                    never
-                  >([
+                  yield* runAllAndMergeFailures<ProviderError | ProxyError, never>([
                     ...(needRoutes ? [removeRoutesForFailure] : []),
                     ...(needWriters ? [teardownForFailure] : []),
                   ]);
