@@ -27,12 +27,17 @@ const posixQuote = (value: string): string => `'${value.replaceAll("'", `'"'"'`)
 
 const powerShellQuote = (value: string): string => `'${value.replaceAll("'", "''")}'`;
 
-export const normalizeShellenvShell = (value: string | undefined): ShellenvShell =>
-  value === "powershell" || value === "pwsh"
-    ? "powershell"
-    : value === "posix"
-      ? "posix"
-      : defaultShellenvShell();
+export const normalizeShellenvShell = (value: string | undefined): ShellenvShell => {
+  switch (value) {
+    case "powershell":
+    case "pwsh":
+      return "powershell";
+    case "posix":
+      return "posix";
+    default:
+      return defaultShellenvShell();
+  }
+};
 
 // Cold-path counterpart of the engine schema/error; parity is pinned in shellenv.test.ts.
 export class ShellenvInstallRecordError extends Error {
