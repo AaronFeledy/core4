@@ -99,6 +99,7 @@
 - `RuntimeProviderShape.prepareFileSyncTargets(plan)` is an optional pre-apply hook for providers that can verify accelerated mount targets before app containers start. It returns a rollback action for resources created during preparation. Providers without the hook use ordinary bind mounts; the bundled managed provider does not yet expose this hook while durable session ownership and safe cleanup are being completed.
 
 - `RuntimeProviderShape.ensureReady` optionally starts and verifies a selected provider runtime after app planning and before host-dependent port selection. `GlobalAppService.ensureProviderReady` delegates to the selected managed provider; the Windows Traefik router uses it before guest-port probes so a stopped Podman machine is not mistaken for a free port. Providers without the hook retain their existing startup behavior.
+- `DEFAULT_ROUTER_HTTP_PORTS` and `DEFAULT_ROUTER_HTTPS_PORTS` expose one canonical router candidate order to engine configuration and the bundled Traefik implementation. Existing configured port preferences and fallbacks still override these defaults.
 
 - `RuntimeProviderShape.matchingPublishPorts(containerId, ports)` optionally validates that published ports route exclusively to the current provider container. Managed Windows Podman uses this read-only check before the global router reuses ports in a shared WSL network namespace. A stopped managed router may be matched only through its validated durable machine, container, relay-holder, and nftables ownership receipt so the existing pair can be restored safely; other providers retain their existing behavior.
 - `ProcessRunner.streamWithExit(options)` additively emits stdout and stderr chunks as they arrive, then the process exit code. Windows managed Podman uses it for stdin-fed exec commands so output is not buffered until exit.
@@ -771,6 +772,8 @@ It registers no JSON Schema.
 - `RENDERER_CAPABILITIES_VERBOSE_TTY`
 - `HOST_PROXY_REQUEST_TAGS`
 - `DEFAULT_KEYMAP_BINDINGS`
+- `DEFAULT_ROUTER_HTTP_PORTS`
+- `DEFAULT_ROUTER_HTTPS_PORTS`
 - `RENDERER_ACTION_SURFACE`
 - `RendererKeyChordPattern`
 - `decodeKeymapConfig`
