@@ -53,6 +53,8 @@ writes to the Windows bind mount faster.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling and database hosts, see [Run the Drupal CMS recipe](/guides/recipes/drupal-cms-workflow/).
+
 ## 1. scaffold
 
 ```bash
