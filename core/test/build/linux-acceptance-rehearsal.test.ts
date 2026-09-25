@@ -32,7 +32,7 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
   test("documents criteria 15-19 proof surfaces without running host-mutating release work", async () => {
     const guide = await readFile(guidePath, "utf8");
 
-    expect(guide).toContain("FileSyncEngine creates accelerated");
+    expect(guide).toContain("FileSyncEngine creates and flushes accelerated");
     expect(guide).toContain("repeat");
     expect(guide).toContain("app:start");
     expect(guide).toContain("reuse existing file-sync sessions");
