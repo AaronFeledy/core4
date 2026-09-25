@@ -331,7 +331,7 @@ export const openApp = (
         return yield* planner.plan(landofile, capabilities);
       }));
 
-    if (plan.routes.length === 0) return yield* openForPlan(plan, options);
+    if (plan.routes.length === 0 || !routerEnabled(plan)) return yield* openForPlan(plan, options);
     const router = yield* RouterService;
     const status = yield* router.status;
     return yield* openForPlan(plan, options, status.authorities);

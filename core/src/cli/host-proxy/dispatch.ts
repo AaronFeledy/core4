@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
+import { routerEnabled } from "@lando/engine/config/router-config";
 import type {
   HostProxyRunLandoExecutorInput,
   HostProxyRunLandoResult,
@@ -37,7 +38,8 @@ export const runOpenForHostProxy = (
         : yield* Effect.gen(function* () {
             const outcome = yield* Effect.exit(
               Effect.gen(function* () {
-                if (plan.routes.length === 0) return yield* openForPlan(plan, parsed.options);
+                if (plan.routes.length === 0 || !routerEnabled(plan))
+                  return yield* openForPlan(plan, parsed.options);
                 const router = yield* RouterService;
                 const status = yield* router.status;
                 return yield* openForPlan(plan, parsed.options, status.authorities);
