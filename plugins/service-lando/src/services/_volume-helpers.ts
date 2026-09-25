@@ -49,10 +49,13 @@ export const resolveBindSource = (source: string, appRoot: string): string => {
   if (DRIVE_LETTER_PREFIX.test(source)) return source;
   const expanded =
     source === "~" ? homedir() : source.startsWith("~/") ? homedir() + source.slice(1) : source;
+  // Absolute sources (including VM-side paths such as /var/run/docker.sock)
+  // pass through unchanged; only relative sources resolve against a Windows root.
+  if (isAbsolute(expanded) || win32.isAbsolute(expanded)) return expanded;
   if (DRIVE_LETTER_PREFIX.test(appRoot) || appRoot.startsWith("\\\\")) {
     return win32.resolve(appRoot, expanded);
   }
-  return isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
+  return resolvePath(appRoot, expanded);
 };
 
 export const parseServiceMount = (
