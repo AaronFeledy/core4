@@ -1690,5 +1690,11 @@
     "changeKind": "property-added",
     "path": "$.sizeBytes",
     "justification": "The unreleased snapshot reference now carries provider-observed artifact size for pre-mutation restore verification."
+  },
+  {
+    "surface": "schema:FileSyncSessionInfo",
+    "changeKind": "property-added",
+    "path": "$.spec",
+    "justification": "Lando v4 is unreleased. Requiring the applied full spec lets startup reject stale or mismatched sync sessions before exposing their volume contents; no persisted public session-info artifact needs an adapter."
   }
 ]
