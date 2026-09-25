@@ -43,6 +43,12 @@ import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
   hostProxyExtensionForCapabilities,
 } from "../subsystems/host-proxy/plan-extension.ts";
+import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
+import {
+  SSH_AGENT_PLAN_EXTENSION_KEY,
+  resolveSshAgentIntent,
+  sshAgentExtensionForIntent,
+} from "../subsystems/ssh/intent.ts";
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
 import { normalizeAuthoredRoutes, planServiceDrafts } from "./authored.ts";
@@ -52,6 +58,7 @@ import {
   assertComposePreservedPathsSupported,
   assertComposeProjectFieldsSupported,
   assertComposeServiceFieldsSupported,
+  missingCapability,
   providerSatisfiesCapability,
 } from "./compose-capabilities.ts";
 import { loadComposeConfigFiles } from "./config-files.ts";
@@ -106,6 +113,8 @@ export const planApp = (
       capabilities: providerCapabilities,
     });
     const appSlug = normalizeAppSlug(appName, appRoot);
+    const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
+    const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
     const appId = AppId.make(appSlug);
     const metadata: ServicePlan["metadata"] = {
       ...encodedMetadata,
@@ -230,9 +239,11 @@ export const planApp = (
               fileSystem,
             })
           : undefined;
-      const plannerSeededFeatures = [securityFeature, certsFeature].filter(
-        (feature): feature is NonNullable<typeof feature> => feature !== undefined,
-      );
+      const plannerSeededFeatures = [
+        securityFeature,
+        certsFeature,
+        { id: SSH_AGENT_FEATURE_ID, config: sshAgentExtension },
+      ].filter((feature): feature is NonNullable<typeof feature> => feature !== undefined);
       const featureRefs = [
         ...baseDefaultIds.map((id) => ({ id })),
         ...resolution.features.map((featureRef) => ({
@@ -242,6 +253,21 @@ export const planApp = (
       ].map(
         (featureRef) => plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef,
       );
+      if (
+        sshAgentIntent.mode === "host" &&
+        featureRefs.some((feature) => feature.id === SSH_AGENT_FEATURE_ID) &&
+        !providerSatisfiesCapability(providerCapabilities, "agentSocket")
+      ) {
+        yield* Effect.fail(
+          missingCapability(
+            provider,
+            name,
+            SSH_AGENT_FEATURE_ID,
+            "agentSocket",
+            "Select a provider that advertises agentSocket delivery or set sshAgent.sidecar to true to use best-effort sidecar forwarding.",
+          ),
+        );
+      }
       resolvedServices.push({
         routes,
         name,
@@ -260,12 +286,16 @@ export const planApp = (
     }
     const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
     const effectiveEvents = compileEffectiveEvents({ landofile });
+    const { sshAgent: _sshAgent, ...cacheLandofile } = landofile;
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
-      landofile: { ...landofile, provider },
+      landofile: { ...cacheLandofile, provider },
       providerCapabilities,
       pluginManifests: manifests,
-      config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, appDefaults),
+      config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
+        ...appDefaults,
+        sshAgentMode: sshAgentIntent.mode,
+      }),
       ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
       versionConstraints,
       serviceInputs: {
@@ -393,15 +423,13 @@ export const planApp = (
           stores: finalized.stores,
           fileSync: finalized.fileSync,
           metadata: encodedMetadata,
-          extensions:
-            hostProxyExtension === undefined && !hasComposeProjectExtension
+          extensions: {
+            [SSH_AGENT_PLAN_EXTENSION_KEY]: sshAgentExtension,
+            ...(hostProxyExtension === undefined
               ? {}
-              : {
-                  ...(hostProxyExtension === undefined
-                    ? {}
-                    : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
-                  ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
-                },
+              : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
+            ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
+          },
           ...(requiredGlobalServices.length === 0
             ? {}
             : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),

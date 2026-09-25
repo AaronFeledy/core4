@@ -18,6 +18,7 @@ export interface RedactionForProfileOptions {
 }
 
 export interface RedactionServiceShape {
+  readonly registerValues: (values: ReadonlyArray<string>) => Effect.Effect<void>;
   readonly forProfile: (
     profile: RedactionProfile,
     options?: RedactionForProfileOptions,
@@ -122,6 +123,40 @@ const makeRedactorOptions = (
   ...(options?.transcriptEnv === undefined ? {} : { env: options.transcriptEnv }),
 });
 
+const registeredValues = new Set<string>();
+
+export const registerRedactionValues = (values: ReadonlyArray<string>): Effect.Effect<void> =>
+  Effect.sync(() => {
+    for (const value of values) if (value.length > 0) registeredValues.add(value);
+  });
+
+const makeRegisteredRedactor = (
+  profile: RedactionProfile,
+  secretValues: ReadonlyArray<string>,
+  options: RedactionForProfileOptions | undefined,
+): Redactor => {
+  let version = registeredValues.size;
+  let redactor = createRedactor(
+    profile,
+    makeRedactorOptions([...secretValues, ...registeredValues], options),
+  );
+  const current = (): Redactor => {
+    if (version !== registeredValues.size) {
+      redactor = createRedactor(
+        profile,
+        makeRedactorOptions([...secretValues, ...registeredValues], options),
+      );
+      version = registeredValues.size;
+    }
+    return redactor;
+  };
+  return {
+    redactString: (value) => current().redactString(value),
+    redactStringBounded: (value, maxBytes) => current().redactStringBounded?.(value, maxBytes),
+    redactValue: (value) => current().redactValue(value),
+  };
+};
+
 /**
  * Fail-safe redactor for callers where `RedactionService` may be absent but a
  * payload must never be retained raw. Applies the same profile pattern classes
@@ -131,15 +166,16 @@ const makeRedactorOptions = (
 export const createStandaloneRedactor = (
   profile: RedactionProfile,
   options?: RedactionForProfileOptions,
-): Redactor => createRedactor(profile, makeRedactorOptions([], options));
+): Redactor => makeRegisteredRedactor(profile, [], options);
 
 export const makeRedactionService = (
   secretStore: Context.Tag.Service<typeof SecretStore>,
 ): RedactionServiceShape => ({
+  registerValues: registerRedactionValues,
   forProfile: (profile, options) =>
     Effect.gen(function* () {
       const secretValues = yield* collectSecretStoreValues(secretStore);
-      return createRedactor(profile, makeRedactorOptions(secretValues, options));
+      return makeRegisteredRedactor(profile, secretValues, options);
     }),
 });
 

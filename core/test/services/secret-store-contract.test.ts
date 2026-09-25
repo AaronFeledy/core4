@@ -13,6 +13,18 @@ const redactor = (values: ReadonlyArray<string>) => {
 };
 
 describe("SecretStore contract — built-in implementations", () => {
+  test("TestSecretStore supports scheme references and unavailable backends", async () => {
+    // Given
+    const key = "op://Vault/Item/field";
+    const handle = makeTestSecretStore({ schemes: ["op"], secrets: { [key]: "scheme-canary" } });
+    const unavailable = makeTestSecretStore({ unavailable: "locked" });
+    // When
+    const value = await Effect.runPromise(handle.service.get(key));
+    const failure = await Effect.runPromise(Effect.flip(unavailable.service.has("TOKEN")));
+    // Then
+    expect(value).toBe("scheme-canary");
+    expect(failure.reason).toBe("locked");
+  });
   test("the env-backed store passes the contract suite", async () => {
     const store = makeEnvSecretStore({ env: { LANDO_SECRET_TOKEN: "s3cr3t" } });
     const exit = await Effect.runPromiseExit(

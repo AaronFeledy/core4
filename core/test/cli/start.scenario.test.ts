@@ -66,7 +66,11 @@ import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/host-proxy/worker";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -332,6 +336,7 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   Layer.succeed(PluginRegistry, emptyPluginRegistry),
   Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
   Layer.succeed(RouterService, TestRouterService),
@@ -812,6 +817,7 @@ const makeAutoStartLayer = async (options: {
     Layer.succeed(PluginRegistry, pluginRegistry),
     Layer.succeed(RouterService, TestRouterService),
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (profile, redactionOptions) =>
         Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
     }),

@@ -46,7 +46,11 @@ import { ConfigServiceLive } from "@lando/engine/services/config";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 import "../../src/runtime/engine-composition.ts";
@@ -183,6 +187,7 @@ const requiredStartServicesLayer = (proxy: RouterServiceShape) =>
       loadAppFeature: () => Effect.die("not used"),
     }),
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
     Layer.succeed(RouterService, proxy),

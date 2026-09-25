@@ -6,7 +6,11 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema
 import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runAppEvent, runAppInitEvents } from "../../src/operations/events.ts";
 import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
@@ -48,6 +52,7 @@ const eventRuntime = (
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
     Layer.succeed(RuntimeProviderRegistry, {

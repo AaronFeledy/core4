@@ -6,7 +6,7 @@ import { ShellExecError } from "@lando/sdk/errors";
 import { type AppPlan, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 
 import {
   type OpenAppOptions,
@@ -66,6 +66,7 @@ const layers = (rec: ReturnType<typeof record>) =>
       query: () => Effect.die("nu") as never,
     }),
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: () => Effect.succeed({ redactString: (t: string) => `RED(${t})`, redactValue: (v) => v }),
     }),
   );

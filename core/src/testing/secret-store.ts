@@ -5,7 +5,11 @@
 
 import { Effect, Either, Layer } from "effect";
 
-import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
+import {
+  SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
+} from "@lando/sdk/errors";
 import { parseSecretReference } from "@lando/sdk/secrets";
 import { SecretStore, type SecretStoreShape } from "@lando/sdk/services";
 
@@ -13,6 +17,8 @@ import { SecretStore, type SecretStoreShape } from "@lando/sdk/services";
 export interface TestSecretStoreOptions {
   /** Stable store id. Defaults to `"test"`. */
   readonly id?: string;
+  readonly schemes?: ReadonlyArray<string>;
+  readonly unavailable?: SecretStoreUnavailableError["reason"];
   /** Seed secret ids to values. */
   readonly secrets?: Record<string, string>;
 }
@@ -40,21 +46,32 @@ export interface TestSecretStore {
 export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestSecretStore => {
   const secrets = new Map<string, string>(Object.entries(options.secrets ?? {}));
   const id = options.id ?? "test";
+  const unavailable =
+    options.unavailable === undefined
+      ? undefined
+      : new SecretStoreUnavailableError({
+          message: "The test secret store is unavailable.",
+          storeId: id,
+          reason: options.unavailable,
+          remediation: "Restore access to the test secret store.",
+        });
 
   const service: SecretStoreShape = {
     id,
+    schemes: options.schemes ?? [],
     get: (secret) => {
       const reference = parseSecretReference(secret);
       if (Either.isLeft(reference)) return Effect.fail(reference.left);
-      if (reference.right.scheme !== undefined) {
+      if (reference.right.scheme !== undefined && !options.schemes?.includes(reference.right.scheme)) {
         return Effect.fail(
           new SecretReferenceInvalidError({
-            message: "The test secret store only accepts bare secret ids.",
+            message: "The test secret store does not own this scheme.",
             reference: secret,
             remediation: "Use a bare secret id or route this reference to its scheme's secret store.",
           }),
         );
       }
+      if (unavailable !== undefined) return Effect.fail(unavailable);
       const value = secrets.get(secret);
       return value === undefined
         ? Effect.fail(
@@ -66,7 +83,8 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
           )
         : Effect.succeed(value);
     },
-    has: (secret) => Effect.sync(() => secrets.has(secret)),
+    has: (secret) =>
+      unavailable === undefined ? Effect.sync(() => secrets.has(secret)) : Effect.fail(unavailable),
     list: Effect.sync(() => [...secrets.keys()].sort()),
   };
 

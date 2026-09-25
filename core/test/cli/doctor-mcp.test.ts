@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import {
   DefaultMcpDoctorLayer,
@@ -18,6 +18,7 @@ const runWithDefault = (): Promise<McpDoctorResult> =>
   Effect.runPromise(mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)));
 
 const identityRedactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(identityRedactor),
 });
 

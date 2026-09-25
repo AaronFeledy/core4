@@ -19,7 +19,11 @@ import { ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { installEngineComposition } from "../../src/composition.ts";
 import { startHostProxyRunLandoSession } from "../../src/operations/start-host-proxy.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
@@ -110,6 +114,7 @@ const runtimeLayer = Layer.mergeAll(
   PrivateFileAccessLive,
   EventServiceLive,
   Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
   Layer.succeed(ShellRunner, {

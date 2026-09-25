@@ -32,6 +32,7 @@ export const makeEnvSecretStore = (
 
   return {
     id: "env",
+    schemes: [],
     get: (secret) => {
       const reference = parseSecretReference(secret);
       if (Either.isLeft(reference)) return Effect.fail(reference.left);
