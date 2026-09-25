@@ -13,13 +13,17 @@ export type UserAppDefaults = Pick<GlobalConfig, "appEnv" | "appLabels">;
 export const cacheInput = (
   routerEnabled: boolean,
   scanner: GlobalConfig["scanner"],
-  defaults: UserAppDefaults & { readonly sshAgentMode: SshAgentIntent["mode"] },
+  defaults: UserAppDefaults & {
+    readonly sshAgentMode: SshAgentIntent["mode"];
+    readonly gpgAgentForward?: boolean;
+  },
 ) => ({
   routerEnabled,
   scanner: scanner ?? null,
   appEnv: defaults.appEnv ?? null,
   appLabels: defaults.appLabels ?? null,
   sshAgentMode: defaults.sshAgentMode,
+  gpgAgentForward: defaults.gpgAgentForward ?? false,
 });
 
 const isPathWithin = (root: string, candidate: string): boolean => {

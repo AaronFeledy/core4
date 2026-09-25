@@ -376,6 +376,39 @@ describe("Podman publish-port recreate", () => {
     });
   }
 
+  test("recreates when a gpg relay directory source changes", async () => {
+    // Given
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      agentMount: { Type: "bind", Source: "/old", Destination: "/run/lando/gpg-agent" },
+    });
+    const base = planWithHostPort(18080);
+    const service = base.services[serviceName];
+    if (service === undefined) throw new Error("Test service is missing.");
+    const plan: AppPlan = {
+      ...base,
+      services: {
+        [serviceName]: {
+          ...service,
+          mounts: [
+            {
+              type: "bind",
+              source: "/new",
+              target: PortablePath.make("/run/lando/gpg-agent"),
+              readOnly: true,
+              realization: "passthrough",
+            },
+          ],
+        },
+      },
+    };
+    // When
+    const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
+    // Then
+    expect(result.changed).toBe(true);
+    expect(createCalls(fake.calls)).toHaveLength(1);
+  });
+
   test("does not compare unrelated bind sources without a host-proxy session", async () => {
     const fake = makeFakeApi({ deleteStatus: 204, existingBindSource: "/home/user/old/host-proxy.sock" });
     const base = planWithHostPort(18080);

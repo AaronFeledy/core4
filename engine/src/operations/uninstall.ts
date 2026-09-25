@@ -324,16 +324,21 @@ const defaultTeardownHostProxySessions = async (
   const paths = makeLandoPaths({ userDataRoot });
   if (!existsSync(paths.hostProxyRunRoot)) return;
   for (const entry of readdirSync(paths.hostProxyRunRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.endsWith("-ssh-agent")) continue;
+    const kind = entry.name.endsWith("-ssh-agent")
+      ? "ssh"
+      : entry.name.endsWith("-gpg-agent")
+        ? "gpg"
+        : undefined;
+    if (!entry.isDirectory() || kind === undefined) continue;
     const directory = join(paths.hostProxyRunRoot, entry.name);
     const text = tryReadText(join(directory, "worker.json"), defaultReadText);
     if (text === undefined) continue;
     const record = Schema.decodeUnknownOption(Schema.parseJson(AgentRelayWorkerRecord))(text);
-    if (Option.isNone(record) || record.value.kind !== "ssh") continue;
+    if (Option.isNone(record) || record.value.kind !== kind) continue;
     const app = { id: record.value.appId, root: record.value.appRoot };
-    if (paths.agentRelayRunDir("ssh", app.id, app.root) !== directory) continue;
+    if (paths.agentRelayRunDir(kind, app.id, app.root) !== directory) continue;
     await Effect.runPromise(
-      cleanupAgentRelayState(app, { userDataRoot }, "ssh").pipe(
+      cleanupAgentRelayState(app, { userDataRoot }, kind).pipe(
         Effect.provideService(PrivateFileAccessService, privateFileAccess),
       ),
     );

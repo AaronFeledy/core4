@@ -12,6 +12,7 @@ const EXPECTED_PRIORITIES: ReadonlyArray<readonly [string, number]> = [
   ["lando.certs", 1000],
   ["lando.security", 1100],
   ["lando.ssh-agent", 1200],
+  ["lando.gpg-agent", 1210],
   ["lando.host-proxy", 1250],
   ["lando.user", 2000],
 ];

@@ -16,12 +16,14 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Either, Option } from "effect";
 import { loadUserLandofile } from "../app-resolution";
+import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
 
 type Details = typeof SshAgentPostureDetails.Type;
 
 export interface SshAgentDoctorOptions {
-  readonly globalConfig?: Pick<GlobalConfig, "sshAgent"> | undefined;
+  readonly globalConfig?: Pick<GlobalConfig, "sshAgent" | "gpgAgent"> | undefined;
+  readonly gpgRunner?: Pick<ProcessRunner["Type"], "run">;
   readonly platform?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly discovery?: Partial<Pick<HostAgentDiscoveryOptions, "home" | "exists" | "runGpgconf">>;
@@ -134,6 +136,16 @@ export const sshAgentPostureCheck = (
     const recovery = intent.mode === "sidecar" ? "automatic" : "manual";
     const security =
       "Services on apps that opt in can request signatures from this agent; private keys stay on the host.";
+    const configuredGpg =
+      input.globalConfig === undefined && Option.isSome(config)
+        ? yield* config.value.get("gpgAgent").pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        : input.globalConfig?.gpgAgent;
+    const gpg = yield* gpgAgentPostureDetail({
+      landofile: landofile ?? {},
+      ...(configuredGpg === undefined ? {} : { globalGpg: configuredGpg }),
+      ...(input.gpgRunner === undefined ? {} : { runner: input.gpgRunner }),
+      ...(input.discovery?.exists === undefined ? {} : { exists: input.discovery.exists }),
+    });
     return {
       name: "ssh",
       status: ready ? "pass" : "warn",
@@ -152,7 +164,7 @@ export const sshAgentPostureCheck = (
         security,
         ...fixContext,
       },
-      details: { mode: intent.mode, upstream, delivery, security },
+      details: { mode: intent.mode, upstream, delivery, security, ...(gpg === undefined ? {} : { gpg }) },
       solutions: ready
         ? []
         : [

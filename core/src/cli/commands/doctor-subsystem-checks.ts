@@ -29,6 +29,17 @@ export const SshAgentPostureDetails = Schema.Struct({
   }),
   delivery: Schema.Union(AgentSocketDelivery, Schema.Literal("none")),
   security: Schema.String,
+  gpg: Schema.optional(
+    Schema.Struct({
+      forward: Schema.Literal(true),
+      upstream: Schema.Struct({
+        source: Schema.Literal("explicit", "gpgconf", "none"),
+        reachable: Schema.Boolean,
+      }),
+      keyringExported: Schema.Boolean,
+      security: Schema.String,
+    }),
+  ),
 });
 
 export interface DoctorSubsystemCheck {

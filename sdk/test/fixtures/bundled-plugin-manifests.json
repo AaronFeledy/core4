@@ -312,6 +312,7 @@
         "serviceFeatures": [
           "lando.boot",
           "lando.user-id",
+          "lando.gpg-agent",
           "lando.storage",
           "lando.env",
           "lando.app-mount",

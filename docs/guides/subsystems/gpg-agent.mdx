@@ -1,0 +1,123 @@
+---
+id: gpg-agent
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, gpg]
+---
+
+# Sign commits with your host gpg-agent
+
+Put this in the Landofile and restart the app:
+
+```yaml
+name: signed
+gpgAgent:
+  forward: true
+services:
+  app:
+    type: "node:22"
+    primary: true
+```
+
+```sh
+lando restart
+```
+
+The service can now ask your host `gpg-agent` to sign. Private keys stay on the host. The container talks to the agent's restricted extra socket, so it can sign and cannot export or import secret keys.
+
+Prereq: GnuPG on the host, with `gpg-agent` running. The service image has to ship `gpg` too. A stock `node:22` image does not.
+
+## Turn forwarding on
+
+`gpgAgent.forward` defaults to false. Set it per app, or in global config when every app on this machine should sign:
+
+```sh
+lando config set gpgAgent.forward true --type=boolean
+```
+
+Each field resolves Landofile, then global config, then the default. To pin the socket instead of letting Lando ask `gpgconf`:
+
+```yaml
+gpgAgent:
+  forward: true
+  socket: /run/user/1000/gnupg/S.gpg-agent.extra
+```
+
+That path is the restricted extra socket (`gpgconf --list-dirs agent-extra-socket`), not the full agent socket.
+
+## Tell git to sign
+
+Inside the service, point git at the key you already have on the host:
+
+```sh
+lando ssh -- git config --global user.signingkey YOUR_KEY
+lando ssh -- git config --global commit.gpgsign true
+lando ssh -- git commit -S -m "Sign this"
+```
+
+Replace `YOUR_KEY` with the fingerprint `gpg -K` prints on the host. Touch and pin prompts still happen there.
+
+## What the service sees
+
+Forwarding applies to every `type: lando` service in the app. There is no per-service switch.
+
+| Variable | Value |
+| --- | --- |
+| `GNUPGHOME` | `/run/lando/gnupg` |
+| `LANDO_GPG_AGENT_SOCKET` | `/run/lando/gpg-agent/S.gpg-agent` |
+| `LANDO_GPG_KEYRING` | `/run/lando/gpg-agent-keys` |
+
+On every start Lando exports only the public keyring and ownertrust. After the provider applies the plan, Lando runs an uncached command as each eligible service's resolved user to copy the public keyring, import ownertrust, and link `S.gpg-agent` into `GNUPGHOME`. The home is a tmpfs; preparation runs on every start, independent of the app build cache. The socket the service opens is a per-app relay, not your host socket.
+
+The relay uses the same delivery as SSH agent forwarding:
+
+| Host and provider | Delivery |
+| --- | --- |
+| Linux, managed `lando` provider (including WSL rootless) | Bind-mounted relay directory. |
+| Linux, Docker Engine or user-owned Podman | Same directory bind mount. |
+| macOS or Windows, managed `lando` provider or a user-owned Podman machine | SSH reverse forward into the machine, then a bind of the guest directory. |
+| macOS or Windows, Docker Desktop | Authenticated loopback relay into an app-private volume. |
+
+The default provider is `lando`. `lando setup --provider=docker` is the fallback when managed Podman cannot run, not the default.
+
+## When start fails
+
+Forwarding is opt-in, and it fails closed. If the agent or the provider bridge is missing, `lando start` stops. It does not boot the app with a dead socket.
+
+| Error | `reason` or `stage` | What to do |
+| --- | --- | --- |
+| `GpgAgentUnavailableError` | `gpg-missing` | Install GnuPG so `gpgconf` and `gpg` are on `PATH`. |
+| `GpgAgentUnavailableError` | `socket-missing` | Set `gpgAgent.socket`, or run `gpgconf --launch gpg-agent` and retry. |
+| `GpgAgentUnavailableError` | `host-agent-not-found` | `gpgconf` did not return an extra socket. Launch the agent or set `gpgAgent.socket`. |
+| `GpgAgentUnavailableError` | `capability-missing` | This provider has no `agentSocket` delivery. Switch provider or set `gpgAgent.forward` back to false. |
+| `GpgAgentUnavailableError` | `bridge-failed` | The provider bridge did not come up. Run `lando doctor`, then `lando restart`. |
+| `GpgAgentTransportError` | `broker` or `bridge` | The relay broke. Run `lando restart`. |
+| `GpgAgentTransportError` | `worker` | Check the relay and service home preparation. Install `gpg` in the service image and ensure the service user can write `GNUPGHOME`. |
+
+If service home preparation fails, start fails with `GpgAgentTransportError`. Install `gpg` in the service image, fix write permissions for the service user, then run `lando rebuild`.
+
+`lando stop` and `lando destroy` tear the relay down.
+
+## Check it with lando doctor
+
+```sh
+lando doctor
+```
+
+When forwarding is on, the ssh check includes a `gpg` detail: whether forwarding is enabled, which upstream was selected, whether that socket is reachable, and whether the public keyring exported. The security line is the same one SSH host mode uses: services that opt in can request signatures, and private keys stay on the host. Doctor does not print key material.
+
+## Next
+
+- [Use your host SSH agent](./ssh-host-agent.mdx) for the same relay with SSH keys
+- [SSH sidecar](./ssh-sidecar.mdx) for the default SSH agent
+
+<Guide>
+  <Scenario id="gpg-forward-lints" render>
+    <Step name="lint-forward">
+      <UseFixture name="forward" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>

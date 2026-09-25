@@ -79,7 +79,10 @@ const inspectBindSources = (body: unknown): ReadonlyMap<string, string> | undefi
     if (typeof mount !== "object" || mount === null) continue;
     const target = Reflect.get(mount, "Destination");
     const type = Reflect.get(mount, "Type");
-    if (target === AGENT_SOCKET_CONTAINER_DIR.ssh && typeof type === "string") {
+    if (
+      (target === AGENT_SOCKET_CONTAINER_DIR.ssh || target === AGENT_SOCKET_CONTAINER_DIR.gpg) &&
+      typeof type === "string"
+    ) {
       const source = Reflect.get(mount, type === "volume" ? "Name" : "Source");
       if (typeof source === "string") sources.set(target, `${type}:${source}`);
       continue;
@@ -105,9 +108,11 @@ const plannedNetworkMissing = (plan: AppPlan, inspected: InspectResult): boolean
   networkNames(plan).some((name) => !inspected.networkNames?.has(name));
 
 const bindSourceChanged = (service: ServicePlan, inspected: InspectResult): boolean => {
-  const agentMount = service.mounts.find((mount) => mount.target === AGENT_SOCKET_CONTAINER_DIR.ssh);
-  const agentSource = agentMount === undefined ? undefined : `${agentMount.type}:${agentMount.source}`;
-  if (agentSource !== inspected.bindSources?.get(AGENT_SOCKET_CONTAINER_DIR.ssh)) return true;
+  for (const target of Object.values(AGENT_SOCKET_CONTAINER_DIR)) {
+    const agentMount = service.mounts.find((mount) => mount.target === target);
+    const agentSource = agentMount === undefined ? undefined : `${agentMount.type}:${agentMount.source}`;
+    if (agentSource !== inspected.bindSources?.get(target)) return true;
+  }
   const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
   if (socketTarget === undefined) return false;
   const plannedSocket = service.mounts.find(

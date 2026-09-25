@@ -138,6 +138,35 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
     ),
   );
 
+test("seeds gpg forwarding only when enabled", async () => {
+  // Given
+  const caps: ProviderCapabilities = {
+    ...providerLandoCapabilities,
+    agentSocket: { delivery: "bind-directory" },
+  };
+  // When
+  const enabled = await plan({ ...landofileFixture, gpgAgent: { forward: true } }, caps);
+  const disabled = await plan({ ...landofileFixture, gpgAgent: { forward: false } }, caps);
+  // Then
+  expect(enabled.services[ServiceName.make("web")]?.extensions["@lando/core/gpg-agent"]).toEqual({
+    forward: true,
+  });
+  expect(disabled.services[ServiceName.make("web")]?.extensions["@lando/core/gpg-agent"]).toBeUndefined();
+});
+
+test("gpg opt-in fails planning without agentSocket", async () => {
+  // Given / When
+  const exit = await planExit({ ...landofileFixture, gpgAgent: { forward: true } });
+  // Then
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit))
+    expect(Option.getOrUndefined(Cause.failureOption(exit.cause))).toMatchObject({
+      _tag: "CapabilityError",
+      feature: "lando.gpg-agent",
+      capability: "agentSocket",
+    });
+});
+
 test("seeds lando.ssh-agent with the resolved mode and records it in the plan extension", async () => {
   // Given
   const landofile = { ...landofileFixture, sshAgent: { sidecar: false, socket: "/private/agent.sock" } };

@@ -39,6 +39,7 @@ import { validateServiceDependencies } from "../services/dependency-validation.t
 import { mergeLogSources } from "../services/log-sources.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "../services/network-inject.ts";
 import { resolveCertsFeature } from "../services/service-certs.ts";
+import { GPG_AGENT_PLAN_EXTENSION_KEY, resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
   hostProxyExtensionForCapabilities,
@@ -114,6 +115,7 @@ export const planApp = (
     });
     const appSlug = normalizeAppSlug(appName, appRoot);
     const sshAgentIntent = resolveSshAgentIntent({ landofile, globalConfig });
+    const gpgAgentIntent = resolveGpgAgentIntent({ landofile, globalConfig });
     const sshAgentExtension = sshAgentExtensionForIntent(sshAgentIntent);
     const appId = AppId.make(appSlug);
     const metadata: ServicePlan["metadata"] = {
@@ -245,6 +247,7 @@ export const planApp = (
         { id: SSH_AGENT_FEATURE_ID, config: sshAgentExtension },
       ].filter((feature): feature is NonNullable<typeof feature> => feature !== undefined);
       const featureRefs = [
+        ...(resolution.base === "lando" && gpgAgentIntent.forward ? [{ id: "lando.gpg-agent" }] : []),
         ...baseDefaultIds.map((id) => ({ id })),
         ...resolution.features.map((featureRef) => ({
           id: featureRef.id,
@@ -268,6 +271,21 @@ export const planApp = (
           ),
         );
       }
+      if (
+        gpgAgentIntent.forward &&
+        resolution.base === "lando" &&
+        providerSatisfiesCapability(providerCapabilities, "agentSocket") === false
+      ) {
+        yield* Effect.fail(
+          missingCapability(
+            provider,
+            name,
+            "lando.gpg-agent",
+            "agentSocket",
+            "Select a provider with agentSocket delivery or disable gpgAgent.forward.",
+          ),
+        );
+      }
       resolvedServices.push({
         routes,
         name,
@@ -286,7 +304,7 @@ export const planApp = (
     }
     const versionConstraints = getVersionConstraintEntries(landofile, landofilePath);
     const effectiveEvents = compileEffectiveEvents({ landofile });
-    const { sshAgent: _sshAgent, ...cacheLandofile } = landofile;
+    const { sshAgent: _sshAgent, gpgAgent: _gpgAgent, ...cacheLandofile } = landofile;
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...cacheLandofile, provider },
@@ -295,6 +313,7 @@ export const planApp = (
       config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
         ...appDefaults,
         sshAgentMode: sshAgentIntent.mode,
+        gpgAgentForward: gpgAgentIntent.forward,
       }),
       ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
       versionConstraints,
@@ -425,6 +444,7 @@ export const planApp = (
           metadata: encodedMetadata,
           extensions: {
             [SSH_AGENT_PLAN_EXTENSION_KEY]: sshAgentExtension,
+            [GPG_AGENT_PLAN_EXTENSION_KEY]: { forward: gpgAgentIntent.forward },
             ...(hostProxyExtension === undefined
               ? {}
               : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),

@@ -224,6 +224,7 @@ const destroyAppForTargetUncoordinated = (
               ),
             ),
             Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
+            Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
             Effect.ensuring(
               Effect.gen(function* () {
                 yield* tree.startTask("host-proxy");
