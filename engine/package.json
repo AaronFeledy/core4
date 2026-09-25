@@ -180,6 +180,7 @@
     "./subsystems/scanner/live": "./src/subsystems/scanner/live.ts",
     "./subsystems/ssh-agent/agent-probe": "./src/subsystems/ssh-agent/agent-probe.ts",
     "./subsystems/ssh-agent/cleanup": "./src/subsystems/ssh-agent/cleanup.ts",
+    "./subsystems/ssh-agent/detached-worker": "./src/subsystems/ssh-agent/detached-worker.ts",
     "./subsystems/ssh-agent/host-agent-discovery": "./src/subsystems/ssh-agent/host-agent-discovery.ts",
     "./subsystems/ssh-agent/index": "./src/subsystems/ssh-agent/index.ts",
     "./subsystems/ssh-agent/overlay": "./src/subsystems/ssh-agent/overlay.ts",

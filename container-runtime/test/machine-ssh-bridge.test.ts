@@ -70,6 +70,7 @@ const fixture = async (sshBinary: "ssh" | "ssh.exe" = "ssh", readyError?: Error)
 
 const input = {
   appId: AppId.make("my-app"),
+  appRoot: AbsolutePath.make("/apps/my-app"),
   sessionId: "first",
   kind: "ssh",
   socketName: "agent.sock",

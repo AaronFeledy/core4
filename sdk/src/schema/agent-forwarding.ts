@@ -61,6 +61,9 @@ export type AgentSocketUpstream = typeof AgentSocketUpstream.Type;
 
 export const AgentSocketBridgeInput = Schema.Struct({
   appId: AppId.annotations({ description: "App identity owning this agent socket bridge." }),
+  appRoot: AbsolutePath.annotations({
+    description: "Canonical app root used to derive ownership of provider bridge resources.",
+  }),
   sessionId: Schema.String.annotations({
     description: "Unique relay session identity used to isolate bridge resources.",
   }),

@@ -55,6 +55,10 @@ import {
 import { type InspectOptions, inspect as runtimeInspect } from "@lando/container-runtime/podman/inspect";
 import { type LogsOptions, logs as runtimeLogs } from "@lando/container-runtime/podman/logs";
 import {
+  type MachineSshBridgeHost,
+  makeMachineSshBridge,
+} from "@lando/container-runtime/podman/machine-ssh-bridge";
+import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
 } from "@lando/container-runtime/podman/version-floor";
@@ -483,6 +487,7 @@ const runtimeStatusMessage = (status: RuntimeServiceStatus): string => {
 };
 
 export interface ProviderLayerOptions {
+  readonly machineSshBridgeHost?: MachineSshBridgeHost;
   readonly podmanApi?: PodmanApiClient;
   readonly processRunner?: Context.Tag.Service<typeof ProcessRunner>;
   readonly podmanCommand?: PodmanCommandRunner;
@@ -1152,6 +1157,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
               stateDir,
               machineName: MANAGED_MACHINE_NAME,
             }),
+          }
+        : {}),
+      ...(shouldManageRuntime && family !== "linux" && stateDir !== undefined
+        ? {
+            openAgentSocketBridge: makeMachineSshBridge({
+              podmanBin,
+              stateDir,
+              machineName: MANAGED_MACHINE_NAME,
+              sshBinary: family === "win32" ? "ssh.exe" : "ssh",
+              providerId: "lando",
+              ...(options.machineSshBridgeHost === undefined ? {} : { host: options.machineSshBridgeHost }),
+            }).openAgentSocketBridge,
           }
         : {}),
       ...resolvedOps,

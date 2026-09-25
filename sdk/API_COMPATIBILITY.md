@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `AgentSocketBridgeInput` requires `appRoot: AbsolutePath`, the canonical app root that owns the bridge. Worker hosts pass it directly from the app reference. Providers derive volume ownership through the canonical container-runtime helper, without looking up a previously applied plan, so fresh starts carry the same ownership proof and selector as later starts. Bridge callers must supply this field.
 - `LandoPaths` requires `agentRelayRunDir(kind: "ssh" | "gpg", appId: string, appRoot: string): string`. The paths primitive derives an app- and kind-scoped directory under `userDataRoot/run`, using the same app-name sanitization and root fingerprint as the host-proxy directory. Custom `PathsService` implementations must supply this builder.
 - `SecretStoreShape` adds optional `schemes: ReadonlyArray<string>`. `SecretStore.get` now returns `SecretStoreError`: `SecretNotFoundError`, `SecretStoreUnavailableError`, or `SecretReferenceInvalidError`. `SecretStore.has` can fail with `SecretStoreUnavailableError`; backend failure must not become `false`. `list` remains total, and CLI-backed stores list references resolved in the current process. Consumers with narrower error channels must propagate or handle the new failures.
 - `ShellInteractiveSpec.resolveSecret` now returns `Effect<string, SecretStoreError>`. The services barrel re-exports this same contract; `ShellRunner.interactive` retains its existing signature and `ShellExecError` boundary.

@@ -101,6 +101,12 @@ const makeFakeApi = (input: {
   readonly existingBindSource?: string;
   readonly existingContainerName?: string;
   readonly existingNetworks?: ReadonlyArray<string>;
+  readonly agentMount?: {
+    readonly Type: string;
+    readonly Source: string;
+    readonly Name?: string;
+    readonly Destination: string;
+  };
 }) => {
   const calls: EngineHttpRequest[] = [];
   let exists = true;
@@ -128,7 +134,13 @@ const makeFakeApi = (input: {
             input.omitPortBindings === true
               ? inspectWithoutPortBindings(running)
               : inspectBody(hostPort, running, bindSource, input.existingNetworks);
-          return { status: 200, body };
+          return {
+            status: 200,
+            body:
+              input.agentMount === undefined
+                ? body
+                : JSON.stringify({ ...JSON.parse(body), Mounts: [input.agentMount] }),
+          };
         }
         if (request.method === "POST" && action === "stop") {
           running = false;
@@ -165,6 +177,46 @@ const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<Eng
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 describe("Podman publish-port recreate", () => {
+  test.each([
+    ["bind", "/old/agent", "bind", "/new/agent", true],
+    ["bind", "/same/agent", "bind", "/same/agent", false],
+    ["bind", "agent-volume", "volume", "agent-volume", true],
+    ["volume", "old-volume", "volume", "new-volume", true],
+    ["volume", "same-volume", "volume", "same-volume", false],
+    ["bind", "/old/agent", undefined, undefined, true],
+  ] as const)("SSH overlay recreation: %s %s to %s %s", async (oldType, oldSource, type, source, changed) => {
+    // Given
+    const target = PortablePath.make("/run/lando/ssh-agent");
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      agentMount: {
+        Type: oldType,
+        Source: oldType === "volume" ? `/var/lib/volumes/${oldSource}/_data` : oldSource,
+        ...(oldType === "volume" ? { Name: oldSource } : {}),
+        Destination: target,
+      },
+    });
+    const base = planWithHostPort(18080);
+    const service = base.services[serviceName];
+    if (service === undefined) throw new Error("Test service is missing.");
+    const plan = {
+      ...base,
+      services: {
+        [serviceName]: {
+          ...service,
+          mounts:
+            type === undefined
+              ? []
+              : [{ type, source, target, readOnly: true, realization: "passthrough" as const }],
+        },
+      },
+    };
+    // When
+    const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
+    // Then
+    expect(result.changed).toBe(changed);
+    expect(createCalls(fake.calls)).toHaveLength(changed ? 1 : 0);
+  });
   test("recreates an existing container that is missing the planned physical network", async () => {
     const fake = makeFakeApi({
       deleteStatus: 204,

@@ -44,6 +44,7 @@ import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect } from "@lando/container-runtime/podman/inspect";
 import { logs } from "@lando/container-runtime/podman/logs";
+import type { MachineSshBridgeHost } from "@lando/container-runtime/podman/machine-ssh-bridge";
 import {
   MINIMUM_PODMAN_VERSION,
   podmanVersionMeetsFloor,
@@ -89,6 +90,7 @@ import {
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
+import { resolvePodmanAgentBridge } from "./machine-bridge.ts";
 import { providerLandoSetupStatePath } from "./provider-lando-state.ts";
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
@@ -335,6 +337,9 @@ export const podmanCapabilitiesForPlatform = (
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.containers.internal"),
+    ...(hostPlatformFamily(platform) === "linux"
+      ? { agentSocket: { delivery: "bind-directory" as const } }
+      : {}),
   });
 
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
@@ -473,6 +478,7 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
   makeRuntimePodmanApiClient(socketPath, PODMAN_CTX);
 
 export interface ProviderLayerOptions {
+  readonly agentBridgeHost?: MachineSshBridgeHost;
   readonly podmanApi?: PodmanApiClient;
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly socketPath?: string;
@@ -750,9 +756,15 @@ export const makeRuntimeProvider = (
 
   return conflictCheck.pipe(
     Effect.flatMap(() => gatedRuntime),
+    Effect.flatMap((runtime) =>
+      resolvePodmanAgentBridge({ ...options, platform }).pipe(
+        Effect.map((agentBridge) => ({ ...runtime, agentBridge })),
+      ),
+    ),
     Effect.map(
       ({
         serverVersion,
+        agentBridge,
         capabilities: resolvedCapabilities,
         logFileHelperPayload,
       }): RuntimeProviderWithContainerEvents => ({
@@ -761,7 +773,11 @@ export const makeRuntimeProvider = (
         displayName: "Podman Runtime Provider (user-installed)",
         version: "0.0.0",
         platform,
-        capabilities: resolvedCapabilities,
+        capabilities: {
+          ...resolvedCapabilities,
+          ...(agentBridge === undefined ? {} : { agentSocket: { delivery: "guest-bridge" } }),
+        },
+        ...agentBridge,
         isAvailable: podmanApi.info.pipe(
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),

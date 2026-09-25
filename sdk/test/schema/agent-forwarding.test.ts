@@ -29,6 +29,7 @@ test("AgentSocketBridgeInput preserves app identity, kind and upstream", () => {
   // Given
   const input: Contracts.AgentSocketBridgeInput = {
     appId: Contracts.AppId.make("myapp"),
+    appRoot: Contracts.AbsolutePath.make("/apps/myapp"),
     sessionId: "session-123",
     kind: "ssh",
     upstream: { _tag: "loopback-tcp", port: 1234, token: "broker-token" },

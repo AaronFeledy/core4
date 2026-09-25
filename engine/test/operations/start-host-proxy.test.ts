@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Option } from "effect";
+import { makeLandoPaths } from "@lando/paths";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Scope } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import {
@@ -15,7 +16,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { ShellRunner } from "@lando/sdk/services";
+import { PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
@@ -25,7 +26,11 @@ import {
   registerRedactionValues,
 } from "@lando/redaction/service";
 import { installEngineComposition } from "../../src/composition.ts";
-import { startHostProxyRunLandoSession } from "../../src/operations/start-host-proxy.ts";
+import {
+  startHostProxyRunLandoSession,
+  withStartedHostProxy,
+} from "../../src/operations/start-host-proxy.ts";
+import { withStartedSshAgent } from "../../src/operations/start-ssh-agent.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import type { HostProxyShimTarget } from "../../src/subsystems/host-proxy/transport-shim.ts";
 
@@ -189,6 +194,50 @@ const expectPrepareSpy = (exit: Exit.Exit<unknown, unknown>, target: HostProxySh
 };
 
 describe("startHostProxyRunLandoSession prepare port", () => {
+  test("nested SSH session survives host-proxy use and closes with the managed scope", async () => {
+    // Given
+    const base = planFor(false);
+    const service = servicePlan(false);
+    const plan = {
+      ...base,
+      services: { [service.name]: { ...service, extensions: { "@lando/core/ssh-agent": { mode: "host" } } } },
+    };
+    const scope = await Effect.runPromise(Scope.make());
+    let closed = 0;
+    const capabilities = capabilitiesFor(X64_TARGET, "none");
+    // When
+    const result = await Effect.runPromise(
+      withStartedSshAgent(
+        plan,
+        app,
+        capabilities,
+        { mode: "host" },
+        {
+          managed: { scope },
+          startSession: () =>
+            Effect.succeed({
+              appId: app.id,
+              sessionId: "ssh",
+              kind: "ssh",
+              socketName: "agent.sock",
+              mount: { _tag: "volume", volume: "agent" },
+              closed: Promise.resolve(),
+              close: async () => {
+                closed++;
+              },
+            }),
+          use: (agentPlan) => withStartedHostProxy(agentPlan, app, capabilities, { use: Effect.succeed }),
+        },
+      ).pipe(
+        Effect.provide(runtimeLayer),
+        Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),
+      ),
+    );
+    await Effect.runPromise(Scope.close(scope, Exit.void));
+    // Then
+    expect(result.services[service.name]?.environment.SSH_AUTH_SOCK).toBe("/run/lando/ssh-agent/agent.sock");
+    expect(closed).toBe(1);
+  });
   test("invokes the composition preparer with linux-x64 before worker spawn", async () => {
     // Given
     const roots = await isolatedRoots();

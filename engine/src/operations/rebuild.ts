@@ -43,6 +43,8 @@ import { publishedEndpointUrl } from "./authority-url.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
+import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
+import { withStartedSshAgent } from "./start-ssh-agent.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
@@ -75,14 +77,20 @@ type RebuildAppServices =
 
 const rebuildSelectedServices = (
   plan: AppPlan,
-  recordedPlan: AppPlan,
-  signal: AbortSignal | undefined,
+  target: ResolvedAppTarget,
+  options: Pick<RebuildAppOptions, "signal"> & { readonly managed?: StartManagedScope },
 ): Effect.Effect<
   RebuildAppResult["servicesStarted"],
   RebuildAppError,
-  BuildOrchestrator | RouterService | RuntimeProviderRegistry
+  | BuildOrchestrator
+  | RouterService
+  | RuntimeProviderRegistry
+  | EventService
+  | PathsService
+  | PrivateFileAccessService
 > =>
   Effect.gen(function* () {
+    const { signal, managed } = options;
     const registry = yield* RuntimeProviderRegistry;
     const builds = yield* BuildOrchestrator;
     const proxy = yield* RouterService;
@@ -99,19 +107,25 @@ const rebuildSelectedServices = (
     );
     const builtPlan = yield* withBuildProvider(builds.build(plan), provider);
     const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-    yield* Effect.scoped(
-      provider
-        .apply(builtPlan, {
-          reconcile: true,
-          recordedPlan: {
-            ...recordedPlan,
-            services: { ...recordedPlan.services, ...builtPlan.services },
-          },
-          ...(signal === undefined ? {} : { signal }),
-          serviceEnvironment,
-        })
-        .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
-    );
+    const intent = yield* resolveStartSshAgentIntent({ ...target, plan: builtPlan });
+    yield* withStartedSshAgent(builtPlan, target.app, provider.capabilities, intent, {
+      platform: provider.platform,
+      ...(managed === undefined ? {} : { managed }),
+      use: (applyPlan) =>
+        Effect.scoped(
+          provider
+            .apply(applyPlan, {
+              reconcile: true,
+              recordedPlan: {
+                ...target.plan,
+                services: { ...target.plan.services, ...builtPlan.services },
+              },
+              ...(signal === undefined ? {} : { signal }),
+              serviceEnvironment,
+            })
+            .pipe(Effect.tap((result) => recordCreatedVolumes(provider, applyPlan, result))),
+        ),
+    });
     yield* withBuildProvider(
       builds.buildApp(builtPlan, { force: true, ...(signal === undefined ? {} : { signal }) }),
       provider,
@@ -188,7 +202,10 @@ export const rebuildApp = (
             const start = scoped
               ? {
                   app: plan.name,
-                  servicesStarted: yield* rebuildSelectedServices(selectedPlan, plan, options.signal),
+                  servicesStarted: yield* rebuildSelectedServices(selectedPlan, resolvedTarget, {
+                    ...options,
+                    ...(managed === undefined ? {} : { managed }),
+                  }),
                 }
               : yield* Effect.gen(function* () {
                   yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });

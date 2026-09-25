@@ -40,6 +40,20 @@ const podmanApiForArch = (arch: string) => ({
 });
 
 describe("provider-lando capabilities", () => {
+  test("advertises agentSocket bind-directory on linux and guest-bridge on darwin and win32", () => {
+    // Given: native and managed-machine host platforms.
+    const platforms = ["linux", "darwin", "win32", "wsl"] as const;
+    // When: their platform capabilities are built.
+    const sockets = platforms.map((platform) => mvpProviderCapabilities(platform).agentSocket);
+    // Then: WSL stays native and machine hosts require a guest bridge.
+    expect(sockets).toEqual([
+      { delivery: "bind-directory" },
+      { delivery: "guest-bridge" },
+      { delivery: "guest-bridge" },
+      { delivery: "bind-directory" },
+    ]);
+  });
+
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const linux = mvpProviderCapabilities("linux");
     const macos = mvpProviderCapabilities("darwin");

@@ -3,6 +3,7 @@ import { type Context, DateTime, Effect } from "effect";
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
 import {
+  AGENT_SOCKET_CONTAINER_DIR,
   type AppPlan,
   type AppRef,
   ProviderId,
@@ -75,8 +76,15 @@ const inspectBindSources = (body: unknown): ReadonlyMap<string, string> | undefi
   const mounts = Reflect.get(body, "Mounts");
   if (!Array.isArray(mounts)) return undefined;
   for (const mount of mounts) {
-    if (typeof mount !== "object" || mount === null || Reflect.get(mount, "Type") !== "bind") continue;
+    if (typeof mount !== "object" || mount === null) continue;
     const target = Reflect.get(mount, "Destination");
+    const type = Reflect.get(mount, "Type");
+    if (target === AGENT_SOCKET_CONTAINER_DIR.ssh && typeof type === "string") {
+      const source = Reflect.get(mount, type === "volume" ? "Name" : "Source");
+      if (typeof source === "string") sources.set(target, `${type}:${source}`);
+      continue;
+    }
+    if (type !== "bind") continue;
     const source = Reflect.get(mount, "Source");
     if (typeof target === "string" && typeof source === "string") sources.set(target, source);
   }
@@ -97,6 +105,9 @@ const plannedNetworkMissing = (plan: AppPlan, inspected: InspectResult): boolean
   networkNames(plan).some((name) => !inspected.networkNames?.has(name));
 
 const bindSourceChanged = (service: ServicePlan, inspected: InspectResult): boolean => {
+  const agentMount = service.mounts.find((mount) => mount.target === AGENT_SOCKET_CONTAINER_DIR.ssh);
+  const agentSource = agentMount === undefined ? undefined : `${agentMount.type}:${agentMount.source}`;
+  if (agentSource !== inspected.bindSources?.get(AGENT_SOCKET_CONTAINER_DIR.ssh)) return true;
   const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
   if (socketTarget === undefined) return false;
   const plannedSocket = service.mounts.find(

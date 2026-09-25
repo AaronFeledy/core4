@@ -33,6 +33,7 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
+import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { requireNoPendingAcceleratedStop } from "./accelerated-start-journal.ts";
 import { runAppEvent, runAppInitEvents, runPostAppEvent } from "./events.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
@@ -164,6 +165,7 @@ const stopAppWithResolvedPlan = (
       .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
       .pipe(
         Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
+        Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
       );
 
     if (
