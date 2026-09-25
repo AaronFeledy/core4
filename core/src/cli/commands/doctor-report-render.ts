@@ -258,14 +258,16 @@ export const countDoctorChecks = (
   const checks = allChecks(report);
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   const selfChecks = report.self?.checks ?? [];
-  const deprecationWarnings =
-    report.deprecations?.entries.filter((entry) => entry.severity === "warn").length ?? 0;
+  const deprecations = report.deprecations?.entries ?? [];
+  const deprecationWarnings = deprecations.filter((entry) => entry.severity === "warn").length;
+  const deprecationErrors = deprecations.filter((entry) => entry.severity === "error").length;
   return {
     checks: checks.length + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
     failed:
       checks.filter((check) => check.status === "fail").length +
       (appConfigInvalid ? 1 : 0) +
-      selfChecks.length,
+      selfChecks.length +
+      deprecationErrors,
     warned: checks.filter((check) => check.status === "warn").length + deprecationWarnings,
   };
 };
@@ -316,12 +318,10 @@ const doctorSubtitle = (report: DoctorReport): string => {
   return parts.join(" · ");
 };
 
-const doctorTone = (report: DoctorReport, counts: ReturnType<typeof countDoctorChecks>): SummaryTone => {
+/** Title tone from the same totals the tree summary and footer use, so all three agree. */
+const doctorTone = (counts: ReturnType<typeof countDoctorChecks>): SummaryTone => {
   if (counts.failed > 0) return "error";
   if (counts.warned > 0) return "warn";
-  const deprecationTones = report.deprecations?.entries.map((entry) => entry.severity) ?? [];
-  if (deprecationTones.includes("error")) return "error";
-  if (deprecationTones.includes("warn")) return "warn";
   return counts.checks === 0 ? "info" : "ok";
 };
 
@@ -344,7 +344,7 @@ export const buildDoctorReportSummary = (
   if (report.appConfig !== undefined) push(appConfigSection(report.appConfig, options));
   if (report.self !== undefined) push(selfSection(report.self));
   const counts = countDoctorChecks(report);
-  const tone = doctorTone(report, counts);
+  const tone = doctorTone(counts);
   const subtitle = doctorSubtitle(report);
   const steps = nextSteps(report);
   return {

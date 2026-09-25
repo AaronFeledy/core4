@@ -8,6 +8,8 @@ import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
 import { setupSpec } from "../../src/cli/command-specs/meta/setup.ts";
+import { doctorTreeSummary } from "../../src/cli/commands/doctor-progress.ts";
+import { countDoctorChecks } from "../../src/cli/commands/doctor-report-render.ts";
 import type { DoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { buildDoctorReportSummary, renderDoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { buildInfoSummary } from "../../src/cli/commands/info-render.ts";
@@ -383,8 +385,8 @@ describe("doctor summary", () => {
     expect(summary.nextSteps).toEqual(["lando restart", "lando setup"]);
   });
 
-  test("maps error deprecations to error-toned rows", () => {
-    const summary = buildDoctorReportSummary({
+  test("counts error deprecations as failures in the title, footer, and tree summary", () => {
+    const deprecated = {
       provider: { checks: [] },
       subsystems: { checks: [] },
       globalApp: { checks: [] },
@@ -402,8 +404,12 @@ describe("doctor summary", () => {
           },
         ],
       },
-    } as unknown as DoctorReport);
+    } as unknown as DoctorReport;
+    const summary = buildDoctorReportSummary(deprecated);
     expect(summary.sections.find((section) => section.title === "deprecations")?.rows[0]?.tone).toBe("error");
+    expect(summary.title).toBe("Problems found");
+    expect(summary.footer).toBe("0 checks · 1 failed");
+    expect(doctorTreeSummary(countDoctorChecks(deprecated))).toBe("doctor · 1 problem found");
   });
 
   test("counts warnings in the footer and keeps header tone aligned with rows", () => {
