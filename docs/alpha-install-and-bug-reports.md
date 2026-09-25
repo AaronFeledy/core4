@@ -61,7 +61,7 @@ Replace `lando-linux-x64` with your asset name. Windows:
 .\lando-windows-x64.exe --version
 ```
 
-Rename the verified Windows binary to `lando.exe` and put it on PATH before setup. See [Put lando on PATH and run setup](./guides/install/path-and-setup.mdx).
+Rename the verified Windows binary to `lando4.exe` and put it on PATH before setup. The `lando4` name keeps it separate from an existing Lando 3 install. See [Put lando4 on PATH and run setup](./guides/install/path-and-setup.mdx).
 
 Prefer the GitHub release. If no dev prerelease exists yet, download the `lando-<platform>` artifact from a successful main CI run (GitHub login required). Extract the zip and verify the binary yourself.
 
