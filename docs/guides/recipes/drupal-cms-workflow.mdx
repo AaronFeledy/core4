@@ -46,6 +46,7 @@ Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `m
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-install\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify file=".lando/php/drupal-cms.ini" expect={{ regex: "memory_limit\\s*=\\s*512M" }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
