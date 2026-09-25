@@ -270,21 +270,16 @@ export const wrapFieldToWidth = (
   const labels = wrapToWidth(label, Math.max(1, labelWidth));
   const lastLabel = labels[labels.length - 1] ?? "";
   const prefix = `${padEndToWidth(lastLabel, labelWidth)} : `;
-  if (
-    !/\s/u.test(value) &&
-    displayWidth(value) > width - displayWidth(prefix) &&
-    displayWidth(value) <= width
-  ) {
+  const prefixWidth = displayWidth(prefix);
+  if (!/\s/u.test(value) && displayWidth(value) > width - prefixWidth && displayWidth(value) <= width) {
     return [...labels.slice(0, -1), prefix.slice(0, -1), value];
   }
   // Each embedded line break starts a new physical row inside the frame.
-  const values = value
-    .split(/\r?\n/u)
-    .flatMap((part) => wrapFieldValueToWidth(part, width - displayWidth(prefix)));
+  const values = value.split(/\r?\n/u).flatMap((part) => wrapFieldValueToWidth(part, width - prefixWidth));
   return [
     ...labels.slice(0, -1),
     `${prefix}${values[0] ?? ""}`,
-    ...values.slice(1).map((line) => `${repeat(" ", displayWidth(prefix))}${line}`),
+    ...values.slice(1).map((line) => `${repeat(" ", prefixWidth)}${line}`),
   ];
 };
 

@@ -40,9 +40,7 @@ const infoStatusTone = (status: InfoServiceStatus): SummaryTone => {
   }
 };
 
-const logSourceFields = (
-  sources: ReadonlyArray<InfoLogSource>,
-): ReadonlyArray<NonNullable<SummaryRow["fields"]>[number]> => {
+const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<SummaryRow["fields"]> => {
   if (sources.length === 0) return [];
   const reasons = [
     ...new Set(sources.flatMap((source) => (source.reason === undefined ? [] : [source.reason]))),
