@@ -50,7 +50,7 @@ describe("Windows managed machine API socket activation", () => {
       "-c",
     ]);
     expect(calls[2]?.[8]).toContain("nsenter --target");
-    expect(calls[2]?.[8]).toContain("systemctl start podman.socket");
+    expect(calls[2]?.[8]).toContain("systemctl enable --now podman.socket");
   });
 
   test("does not use WSL for a Hyper-V machine", async () => {
