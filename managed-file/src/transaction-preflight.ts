@@ -2,14 +2,7 @@ import { lstat } from "node:fs/promises";
 import { relative } from "node:path";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { transactionError } from "./transaction-error.ts";
-import {
-  observedStateMatches,
-  sameState,
-  snapshot,
-  statMaybe,
-  targetPath,
-  verifyBackup,
-} from "./transaction-fs.ts";
+import { sameState, snapshot, statMaybe, targetPath, verifyBackup } from "./transaction-fs.ts";
 import type { Entry, Journal } from "./transaction-journal.ts";
 
 /**
@@ -107,16 +100,11 @@ const classifyEntry = async (
     entry.after.present &&
     entry.stage !== undefined &&
     (await statMaybe(await stagePath(root, entry))) !== null;
-  if (observedStateMatches(current, entry.after) && !stageStillPresent) {
+  if (sameState(current, entry.after) && !stageStillPresent) {
     await requireApplied(root, entry, privateFileAccess);
-    return process.platform === "win32" &&
-      current.present &&
-      entry.after.present &&
-      !sameState(current, entry.after)
-      ? "applied-needs-mode"
-      : "applied";
+    return "applied";
   }
-  if (observedStateMatches(current, entry.before)) {
+  if (sameState(current, entry.before)) {
     await requirePending(root, entry, privateFileAccess);
     return "pending";
   }
