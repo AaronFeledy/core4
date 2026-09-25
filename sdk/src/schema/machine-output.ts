@@ -31,6 +31,9 @@ const TaggedErrorJson = Schema.Struct({
       }),
     ),
   ),
+  reason: Schema.optional(Schema.String).annotations({
+    description: "Structured failure reason when supplied as a string by the source error.",
+  }),
 });
 
 /** JSON envelope for `--format json` (and the terminal `result` stream frame). `apiVersion` changes only on breaking envelope edits. */

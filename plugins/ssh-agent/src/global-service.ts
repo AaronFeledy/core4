@@ -4,13 +4,20 @@
  * Runs a real ssh-agent that forwards SSH keys from the host into app networks.
  * Apps opt in via `sshAgent: true`.
  */
+import { join } from "node:path";
+
 import { Effect, Schema } from "effect";
+
+import { makeLandoPaths } from "@lando/paths";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
+// Compose realizes authored bind mounts; the socket directory must be shared with the host so
+// the per-app agent relay can reach it.
 const sshAgentServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   api: 4,
-  type: "lando",
+  type: "compose",
+  appMount: false,
   image: "alpine:3.20",
   // The sidecar keeps no per-user state, so there is no home to persist.
   home: false,
@@ -33,13 +40,13 @@ const sshAgentServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   mounts: [
     {
       type: "bind",
-      source: "${LANDO_USER_DATA_ROOT}/ssh",
+      source: join(makeLandoPaths().roots.userDataRoot, "ssh"),
       target: "/ssh-auth",
       readOnly: false,
     },
     {
       type: "bind",
-      source: "${HOME}/.ssh",
+      source: "~/.ssh",
       target: "/root/.ssh",
       readOnly: true,
     },

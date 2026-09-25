@@ -1,5 +1,17 @@
 [
   {
+    "surface": "schema:StreamFrame",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Doctor subsystem checks add optional SSH-agent posture details. Their delivery field reuses AgentSocketDelivery, adding a local schema definition without changing existing required report fields. Reports without details remain valid; the reference-graph checker requires explicit review of the new definition."
+  },
+  {
     "surface": "schema:LandofileShape",
     "changeKind": "enum-changed",
     "path": "$.sshAgent.sidecar",

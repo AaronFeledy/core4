@@ -122,9 +122,9 @@ test("fails SshAgentUnavailableError capability-missing before provider apply", 
   expect(applied).toBe(false);
 });
 
-for (const [label, caps] of [
-  ["a provider lacking agentSocket", {}],
-  ["sidecar not running", capabilities],
+for (const [label, caps, reason] of [
+  ["a provider lacking agentSocket", {}, "capability-missing"],
+  ["sidecar not running", capabilities, "sidecar-not-running"],
 ] as const) {
   test(`sidecar mode with ${label} starts without the overlay and warns`, async () => {
     // Given
@@ -147,6 +147,7 @@ for (const [label, caps] of [
     // Then
     expect(result.services[ServiceName.make("web")]?.mounts).toEqual([]);
     expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(reason);
   });
 }
 

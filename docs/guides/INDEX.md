@@ -68,7 +68,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-03 | US-099 | exclude patterns (volume-shadow + Mutagen ignores) | `docs/guides/setup/file-sync-excludes.mdx` | Shipped |
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | PRD-04 | US-102 | CertificateAuthority via @lando/ca-mkcert | `docs/guides/subsystems/certificates-mkcert.mdx` | Shipped |
-| PRD-04 | US-103 | SshService sidecar (default) | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
+| PRD-04 | US-103 | SshService sidecar (default) plus host-agent forwarding opt-in | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
 | PRD-04 | US-104 | HealthcheckService (tcp/http/cmd probes) | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
 | PRD-04 | US-105 | ScannerService endpoint discovery + port-collision detection | `docs/guides/subsystems/scanner-service.mdx` | Shipped |
 | PRD-04 | US-106 | HostProxyService (`lndo.site`-style hostnames) | `docs/guides/subsystems/host-proxy.mdx` | Shipped |
@@ -275,3 +275,5 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
 | — | — | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |
 | — | — | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
+| — | — | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
+| — | — | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |

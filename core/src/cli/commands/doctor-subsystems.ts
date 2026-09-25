@@ -48,12 +48,12 @@ import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
+import { type SshAgentDoctorOptions, sshAgentPostureCheck } from "./doctor-ssh-agent";
 import {
   CERTS_SPEC,
   type DoctorSubsystemCheck,
   HEALTHCHECK_SPEC,
   SCANNER_SPEC,
-  SSH_SPEC,
   buildIdCheck,
 } from "./doctor-subsystem-checks";
 
@@ -77,6 +77,7 @@ export interface SubsystemDoctorOptions {
   readonly fix?: boolean;
   readonly certs?: CertsDoctorStatus;
   readonly networkTrust?: NetworkTrustDoctorStatus;
+  readonly sshAgent?: SshAgentDoctorOptions;
 }
 
 // Healthcheck/scanner doctor reads only the runner `id`, never invoking
@@ -125,7 +126,7 @@ export const subsystemDoctor = (
         context: { ...check.context, ...certsCheckContext(certs) },
       })),
     );
-    const sshCheck = yield* buildIdCheck(SSH_SPEC, ssh.id, fix, () => ssh.setup({ force: false }));
+    const sshCheck = yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix });
     const healthcheckCheck = yield* buildIdCheck(HEALTHCHECK_SPEC, healthcheck.id, fix);
     const scannerCheck = yield* buildIdCheck(SCANNER_SPEC, scanner.id, fix);
     const hostProxyCheck = yield* buildHostProxyCheck(hostProxy, fix);
@@ -205,6 +206,7 @@ const checkEventPayload = (check: DoctorSubsystemCheck): Record<string, unknown>
   severity: check.severity,
   recovery: check.recovery,
   context: orderContextKeys(check.context),
+  ...(check.details === undefined ? {} : { details: check.details }),
   solutions: check.solutions.map((solution) => ({
     kind: solution.kind,
     description: solution.description,

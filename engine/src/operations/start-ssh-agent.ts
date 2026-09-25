@@ -197,7 +197,7 @@ export const withStartedSshAgent = <A, E, R>(
               yield* events
                 .publish(
                   MessageWarnEvent.make({
-                    body: `SSH agent forwarding is unavailable (${error._tag}); starting without it. Run lando setup and lando doctor, then restart the app.`,
+                    body: `SSH agent forwarding is unavailable (${error._tag}: ${error._tag === "SshAgentUnavailableError" ? error.reason : error.stage}); starting without it. ${error.remediation}`,
                     timestamp: DateTime.unsafeMake(new Date().toISOString()),
                   }),
                 )

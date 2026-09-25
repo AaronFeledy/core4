@@ -1,0 +1,129 @@
+---
+id: ssh-host-agent
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, ssh, host-agent, 1password, yubikey]
+---
+
+# Use your host SSH agent inside services
+
+Put this in your Landofile and restart the app:
+
+```yaml
+name: myapp
+sshAgent:
+  sidecar: false
+services:
+  app:
+    type: "node:22"
+    primary: true
+```
+
+```sh
+lando restart
+lando ssh -- ssh-add -l
+```
+
+`ssh-add -l` inside the service now lists the keys your host agent holds. Private keys and hardware tokens never leave the host: the container asks, your agent signs. That is how 1Password's SSH agent, gpg-agent, yubikey-agent, and FIDO2 `sk` keys work with Lando. Touch and biometric prompts still happen on the host.
+
+Prereq: an agent already running on the host. If `ssh-add -l` on the host shows nothing, fix that first.
+
+## Pick the agent
+
+By default Lando looks for a host agent in this order and stops at the first one that accepts a connection:
+
+1. `sshAgent.socket`, if you set it
+2. `SSH_AUTH_SOCK` from your shell
+3. The 1Password agent: `~/.1password/agent.sock` on Linux, `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock` on macOS
+4. `gpgconf --list-dirs agent-ssh-socket` (gpg-agent with SSH support)
+5. `$XDG_RUNTIME_DIR/yubikey-agent/yubikey-agent.sock`
+6. The Windows OpenSSH agent pipe `\\.\pipe\openssh-ssh-agent`
+
+To skip discovery, name the socket:
+
+```yaml
+sshAgent:
+  sidecar: false
+  socket: /home/me/.1password/agent.sock
+```
+
+An explicit `socket` that does not exist or refuses connections fails the start. Discovery does not fall through past it.
+
+## Keep the shared Landofile unchanged
+
+`sshAgent` also lives in global config, so a team Landofile can stay on the sidecar default while your machine forwards its agent. Each field resolves Landofile, then global config, then default.
+
+```sh
+lando config set sshAgent.sidecar false --type=boolean
+lando config set sshAgent.socket /home/me/.1password/agent.sock
+lando config get sshAgent --format=json
+```
+
+The equivalent `config.yml` under your Lando config root:
+
+```yaml
+sshAgent:
+  sidecar: false
+  socket: /home/me/.1password/agent.sock
+```
+
+A Landofile that sets `sshAgent.sidecar: true` explicitly wins over the global opt-in for that app.
+
+## What the service sees
+
+Every `type: lando` service gets `SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock`, in both modes. There is no per-service opt-in and no per-service `sshAgent` key.
+
+The socket is not your host socket. A per-app relay owns an app-scoped directory that the provider makes visible to the service, and the relay streams raw agent bytes to the agent you picked. How the directory reaches the container depends on where the containers run:
+
+| Host and provider | Delivery |
+| --- | --- |
+| Linux, managed `lando` provider (including WSL rootless) | The relay directory is bind-mounted; the socket is created for your actual non-root service user. |
+| Linux, Docker Engine or user-owned Podman | Same directory bind mount. |
+| macOS or Windows, managed `lando` provider or a user-owned Podman machine | An SSH reverse forward into the Lando machine publishes a guest socket; the machine bind-mounts that directory. On Windows the relay reads the named pipe on the host. |
+| macOS or Windows, Docker Desktop | A small relay container bridges an authenticated host-loopback listener into an app-private volume shared with the service. |
+
+Providers only advertise the `agentSocket` capability when their delivery works on the current host, so an unsupported combination fails before planning rather than at apply time. Docker Desktop's built-in `/run/host-services/ssh-auth.sock` is not used; it only reaches Desktop's own agent.
+
+The relay is torn down on `lando stop` and `lando destroy`. Restart and rebuild pick it up again.
+
+## When it fails
+
+Host mode fails closed. If the agent cannot be reached, `lando start` stops with a tagged error instead of starting the app with a dead `SSH_AUTH_SOCK`.
+
+| Error | `reason` | What to do |
+| --- | --- | --- |
+| `SshAgentUnavailableError` | `host-agent-not-found` | No candidate accepted a connection. Start your agent, or set `sshAgent.socket` or `SSH_AUTH_SOCK`. |
+| `SshAgentUnavailableError` | `socket-missing` | The explicit `sshAgent.socket` is absent or refusing connections. Fix the path or drop it to use discovery. |
+| `SshAgentUnavailableError` | `capability-missing` | The selected provider has no `agentSocket` delivery on this host. The error names the provider and the alternatives; switch providers or return to sidecar mode. |
+| `SshAgentUnavailableError` | `bridge-failed` | The provider bridge did not come up. Run `lando doctor`, then `lando restart`. |
+| `SshAgentTransportError` | `stage: broker`, `worker`, or `bridge` | The relay broke after it was ready. Run `lando restart`; if it repeats, `lando doctor`. |
+
+Every error carries `remediation`. Machine consumers get the same fields in `--format=json` output.
+
+Sidecar mode (the default) behaves differently on purpose: a missing sidecar produces a warning and the app still starts. Only the mode you opted into blocks the start.
+
+## Check it with lando doctor
+
+```sh
+lando doctor
+```
+
+The `ssh` line reports the selected mode, whether the upstream agent is reachable, and whether the provider bridge is ready. In host mode it also states the security implication plainly: while the app runs, every service in it can ask your host agent for signatures. Doctor never prints agent contents, key material, or socket tokens, and it never claims a hardware key has been moved into a container. It has not.
+
+If you only want one app to use the host agent, keep the setting in that Landofile rather than global config.
+
+## Next
+
+- [SSH sidecar](./ssh-sidecar.mdx) for the default delivery path
+- [Open a shell in a service](../cli/ssh.mdx)
+
+<Guide>
+  <Scenario id="host-agent-landofile-lints" render>
+    <Step name="lint-host-mode">
+      <UseFixture name="host-agent-1password" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>

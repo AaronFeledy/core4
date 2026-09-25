@@ -189,6 +189,7 @@
     "./subsystems/ssh-agent/worker-protocol": "./src/subsystems/ssh-agent/worker-protocol.ts",
     "./subsystems/ssh-agent/worker-state": "./src/subsystems/ssh-agent/worker-state.ts",
     "./subsystems/ssh/api": "./src/subsystems/ssh/api.ts",
+    "./subsystems/ssh/intent": "./src/subsystems/ssh/intent.ts",
     "./subsystems/ssh/registry": "./src/subsystems/ssh/registry.ts",
     "./testing/downloader": "./src/testing/downloader.ts",
     "./testing/live-provider-socket": "./src/testing/live-provider-socket.ts",

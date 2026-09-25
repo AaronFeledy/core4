@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+// allow: SIZE_OK — Existing cross-subsystem recovery suite; keep its shared fixtures intact for this SSH-only change.
 import { Effect, Layer } from "effect";
 
 import { ProxySetupError } from "@lando/sdk/errors";
@@ -230,7 +231,7 @@ describe("doctor --fix recovery", () => {
     expect(proxy?.solutions).toEqual([]);
   });
 
-  test("--fix recovers a real SshService whose setup() succeeds", async () => {
+  test("--fix recovers a SshService when setup restores agent reachability", async () => {
     let setupCalls = 0;
     const recoverableSsh = Layer.succeed(SshService, {
       ...makeTestSshService(),
@@ -241,7 +242,18 @@ describe("doctor --fix recovery", () => {
         }),
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableSsh);
-    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    const result = await Effect.runPromise(
+      subsystemDoctor({
+        fix: true,
+        sshAgent: {
+          capabilities: { agentSocket: { delivery: "bind-directory" } },
+          probe: async () => {
+            if (setupCalls === 0) throw new Error("Agent is stopped.");
+            return { identities: 0 };
+          },
+        },
+      }).pipe(Effect.provide(layer)),
+    );
     const ssh = result.checks.find((c) => c.name === "ssh");
 
     expect(setupCalls).toBe(1);

@@ -8,9 +8,9 @@ tags: [beta, docs, subsystems, ssh, sidecar]
 
 # SSH sidecar
 
-This page is a contributor SDK dump for `SshService`. It stays off the user nav.
+This page is a contributor dump for `SshService` and the default SSH-agent delivery path. It stays off the user nav. To forward a 1Password, YubiKey, or gpg-agent instead, see [Use your host SSH agent](./ssh-host-agent.mdx).
 
-The only Landofile knob is top-level `sshAgent` with `sidecar: true`:
+The Landofile knob is top-level `sshAgent`. Leaving it out is the same as this:
 
 ```yaml
 name: myapp
@@ -18,9 +18,27 @@ sshAgent:
   sidecar: true
 ```
 
-`sidecar: false` is rejected. There is no per-service `sshAgent` key.
+`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. The managed `lando` provider hosts it even when the app itself runs on Docker or user-owned Podman. `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
 
 Lando starts the sidecar with the global app when a start needs it. You do not start an SSH agent by hand.
+
+## What lands in the container
+
+Every `type: lando` service gets the `lando.ssh-agent` feature (priority 1200) in both modes. It bind-mounts a relay directory and sets:
+
+```sh
+SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock
+```
+
+The mount is the directory, not the socket. A per-app relay owns that directory and streams raw agent bytes between `agent.sock` and the upstream (here, the sidecar socket under the user data root). Replacing the relay socket never recreates the container. The sidecar's own socket is never bound directly into a service.
+
+The planner records only the eligible services and the selected mode under the plan extension `@lando/core/ssh-agent` (`{ mode: "sidecar" | "host" }`). The relay directory and the `SSH_AUTH_SOCK` mount are a start-time overlay applied by start, restart, and rebuild; they never enter the plan cache. The relay is scope-owned: kept after a successful apply, closed on stop or destroy.
+
+## When the sidecar is missing
+
+Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, the sidecar is not installed or not running, or the relay fails to come up, `lando start` still succeeds. Lando publishes a warning naming the failure tag and starts the app without the overlay. `lando doctor` reports the `ssh` subsystem as degraded with `lando setup` or `lando doctor --fix` as remediation.
+
+Host mode does the opposite and fails closed. That difference is deliberate: nobody opts into the sidecar, so it must never block a start; everyone who opts into host forwarding wants to know when it is not working.
 
 This is not a user how-to. For a shell inside a service, see [Open a shell in a service](../cli/ssh.mdx).
 
@@ -29,6 +47,14 @@ This is not a user how-to. For a shell inside a service, see [Open a shell in a 
     <Step name="config-check">
       <Run command="lando config --format=json" />
       <Verify command="lando config --format=json" expect={{ stdout: { regex: "\"config\":\\s*\\{" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ssh-sidecar-landofile-lint" render={false} reason="Regression: an explicit sidecar: true Landofile passes lint and stays the default shape.">
+    <Step name="lint-explicit-sidecar">
+      <UseFixture name="sidecar-default" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
   </Scenario>
 </Guide>
