@@ -8,6 +8,7 @@ import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sd
 import {
   DOCTOR_TREE_ID,
   appConfigOutcome,
+  certsOutcome,
   checksOutcome,
   deprecationsOutcome,
   doctorSections,
@@ -81,6 +82,28 @@ describe("doctor progress outcomes", () => {
       summary: "mcp · 1 failure",
       failed: true,
       remediation: "lando setup",
+    });
+  });
+
+  test("flags an unselected certificate authority instead of passing it", () => {
+    expect(certsOutcome({ _tag: "selected", id: "mkcert" })).toEqual({
+      summary: "certificate-authority · mkcert",
+    });
+    for (const tag of ["unresolved", "unavailable", "ambiguous", "load-failed"]) {
+      expect(certsOutcome({ _tag: tag })).toEqual({
+        summary: `certificate-authority · ${tag}`,
+        warned: true,
+      });
+    }
+  });
+
+  test("flags deprecations only for warn and error severities", () => {
+    expect(deprecationsOutcome({ entries: [{ severity: "info" }, { severity: "info" }] } as never)).toEqual({
+      summary: "deprecations · 2 uses",
+    });
+    expect(deprecationsOutcome({ entries: [{ severity: "info" }, { severity: "warn" }] } as never)).toEqual({
+      summary: "deprecations · 1 warning",
+      warned: true,
     });
   });
 

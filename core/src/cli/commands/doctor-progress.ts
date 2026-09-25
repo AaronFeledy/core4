@@ -103,17 +103,21 @@ export const certsOutcome = (status: {
   readonly id?: string;
 }): DoctorSectionOutcome => {
   const label = doctorSectionLabel("certificate-authority");
+  // Any unselected CA degrades the `certs` subsystem check, which carries the
+  // pass/fail and remedy; this row only flags it so it never reads as clean.
   return status._tag === "selected" && status.id !== undefined
     ? { summary: `${label} · ${status.id}` }
-    : { summary: `${label} · ${status._tag}` };
+    : { summary: `${label} · ${status._tag}`, warned: true };
 };
 
 export const deprecationsOutcome = (report: DoctorDeprecationReport): DoctorSectionOutcome => {
   const label = doctorSectionLabel("deprecations");
   const errors = report.entries.filter((entry) => entry.severity === "error").length;
+  const warnings = report.entries.filter((entry) => entry.severity === "warn").length;
   if (errors > 0) return { summary: `${label} · ${plural(errors, "error")}`, failed: true };
-  if (report.entries.length > 0)
-    return { summary: `${label} · ${plural(report.entries.length, "use")}`, warned: true };
+  // Only `warn` entries flag the row, matching the totals; info-level uses are reported, not flagged.
+  if (warnings > 0) return { summary: `${label} · ${plural(warnings, "warning")}`, warned: true };
+  if (report.entries.length > 0) return { summary: `${label} · ${plural(report.entries.length, "use")}` };
   return { summary: `${label} · none` };
 };
 
