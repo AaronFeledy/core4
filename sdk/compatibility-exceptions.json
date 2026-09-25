@@ -3,7 +3,7 @@
     "surface": "schema:StreamFrame",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property."
+    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property. Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid."
   },
   {
     "surface": "command:meta:doctor",
@@ -1708,12 +1708,6 @@
     "changeKind": "property-added",
     "path": "$.sizeBytes",
     "justification": "The unreleased snapshot reference now carries provider-observed artifact size for pre-mutation restore verification."
-  },
-  {
-    "surface": "schema:StreamFrame",
-    "changeKind": "unsupported-construct",
-    "path": "$.anyOf",
-    "justification": "Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid."
   },
   {
     "surface": "schema:FileSyncSessionInfo",

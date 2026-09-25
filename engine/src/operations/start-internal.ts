@@ -68,9 +68,9 @@ import {
   type StartManagedScope,
   startFileSyncSessions,
 } from "./start-file-sync.ts";
-import { withStartedHostProxy } from "./start-host-proxy.ts";
 import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
 import { withStartedGpgAgent } from "./start-gpg-agent.ts";
+import { withStartedHostProxy } from "./start-host-proxy.ts";
 import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { withStartedSshAgent } from "./start-ssh-agent.ts";
 import type { StopAppPreflight } from "./stop-internal.ts";
