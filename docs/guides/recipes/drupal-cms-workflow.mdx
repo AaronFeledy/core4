@@ -27,7 +27,7 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, or `--answer=database=postgres:16` when you want those instead. PHP 8.6 is a valid `--answer=php=8.6`.
 
-Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `mysql:8.0`, use `lando mysql` instead of `lando mariadb`. For `postgres:16`, use a Postgres client instead of `lando mariadb`.
+Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `mysql:8.0`, use `lando mysql` instead of `lando mariadb`. For `postgres:16`, use `lando psql` instead of `lando mariadb`.
 
 ## Init, start, and tear down
 
