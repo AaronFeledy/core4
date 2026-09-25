@@ -161,10 +161,10 @@ describe("per-app mutation lock", () => {
     try {
       await symlink(isolated.appRoot, alias, "dir");
       const direct = await Effect.runPromise(
-        appMutationLockIdentity({ id: "stale", root: join(isolated.appRoot, "missing") }, true),
+        appMutationLockIdentity({ id: "stale", root: join(isolated.appRoot, "missing") }),
       );
       const throughAlias = await Effect.runPromise(
-        appMutationLockIdentity({ id: "stale", root: join(alias, "missing") }, true),
+        appMutationLockIdentity({ id: "stale", root: join(alias, "missing") }),
       );
       expect(throughAlias.key).toBe(direct.key);
       expect(throughAlias.canonicalRoot).toBe(direct.canonicalRoot);
@@ -217,14 +217,11 @@ describe("per-app mutation lock", () => {
         withAppMutationLock(
           app,
           Deferred.succeed(held, undefined).pipe(Effect.zipRight(Deferred.await(release))),
-          { allowMissingRoot: true },
         ).pipe(Effect.provide(isolated.layer)),
       );
       await Effect.runPromise(Deferred.await(held));
       const second = Effect.runFork(
-        withAppMutationLock(app, Effect.succeed("entered"), { allowMissingRoot: true }).pipe(
-          Effect.provide(isolated.layer),
-        ),
+        withAppMutationLock(app, Effect.succeed("entered")).pipe(Effect.provide(isolated.layer)),
       );
       for (let attempts = 0; attempts < 100 && isolated.events.length === 0; attempts++) {
         await Bun.sleep(10);

@@ -221,7 +221,6 @@ const destroyAppWithResolvedTarget = (
         body: () => destroyAppForTargetUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
       });
     }),
-    { allowMissingRoot: true },
   );
 
 export const destroyAppForTarget = (
