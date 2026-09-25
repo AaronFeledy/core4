@@ -2,6 +2,7 @@ import { ParseResult, Schema } from "effect";
 import type * as AST from "effect/SchemaAST";
 import validRange from "semver/ranges/valid.js";
 
+import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
 import { HealthcheckCanonicalBase, HealthcheckField } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
@@ -1382,10 +1383,7 @@ export const ComposeSecretConfig = Schema.Struct({
 });
 export type ComposeSecretConfig = typeof ComposeSecretConfig.Type;
 
-export const SshAgentConfig = Schema.Struct({
-  sidecar: Schema.optional(Schema.Literal(true)),
-});
-export type SshAgentConfig = typeof SshAgentConfig.Type;
+export { SshAgentConfig } from "./agent-forwarding.ts";
 
 export const COMPOSE_TOP_LEVEL_KEYS = [
   "name",
@@ -1479,7 +1477,12 @@ const LandofileShapeBase = Schema.Struct({
   configs: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeConfigConfig })),
   secrets: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeSecretConfig })),
   env_file: Schema.optional(TopLevelEnvFileInput),
-  sshAgent: Schema.optional(SshAgentConfig),
+  sshAgent: Schema.optional(SshAgentConfig).annotations({
+    description: "App SSH-agent forwarding policy, overriding global settings per field.",
+  }),
+  gpgAgent: Schema.optional(GpgAgentConfig).annotations({
+    description: "App GPG-agent forwarding policy, overriding global settings per field.",
+  }),
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfigDecode })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   router: Schema.optional(RouterConfig).annotations({

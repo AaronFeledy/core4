@@ -1,13 +1,13 @@
 import { Effect } from "effect";
 
 import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
-import { SecretNotFoundError } from "@lando/sdk/errors";
+import { SecretNotFoundError, type SecretStoreError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import { SecretStore, type ServiceEnvironmentOverrides } from "@lando/sdk/services";
 
 export const resolveServiceEnvironmentSecrets = (
   plan: AppPlan,
-): Effect.Effect<ServiceEnvironmentOverrides, SecretNotFoundError> =>
+): Effect.Effect<ServiceEnvironmentOverrides, SecretStoreError> =>
   Effect.gen(function* () {
     const storeOption = yield* Effect.serviceOption(SecretStore);
     const services = yield* Effect.forEach(Object.values(plan.services), (service) =>

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Either, Exit } from "effect";
 
-import { SecretNotFoundError } from "@lando/sdk/errors";
+import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import { SecretStore } from "@lando/sdk/services";
 
 import { makeEnvSecretStoreLive } from "../../src/services/secret-store";
@@ -32,10 +32,35 @@ describe("env-backed SecretStoreLive", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(SecretNotFoundError);
-        expect(failure.value.secret).toBe("ABSENT");
+        expect(failure.value._tag).toBe("SecretNotFoundError");
+        if (failure.value._tag === "SecretNotFoundError") {
+          expect(failure.value.secret).toBe("ABSENT");
+        }
       }
     }
   });
+
+  test.each(["", "..", " TOKEN", "bad/id", "op://Vault/Item/field"])(
+    "get rejects reference %j even when a matching env var exists",
+    async (reference) => {
+      // Given
+      const env = { [`LANDO_SECRET_${reference}`]: "must-not-resolve" };
+      // When
+      const result = await run(
+        Effect.flatMap(SecretStore, (store) => Effect.either(store.get(reference))),
+        env,
+      );
+      // Then
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) {
+        expect(result.left).toBeInstanceOf(SecretReferenceInvalidError);
+        expect(result.left._tag).toBe("SecretReferenceInvalidError");
+        if (result.left._tag === "SecretReferenceInvalidError") {
+          expect(result.left.reference).toBe(reference);
+        }
+      }
+    },
+  );
 
   test("has reflects presence of a prefixed env var", async () => {
     const present = await run(

@@ -1,5 +1,15 @@
 import { Either, JSONSchema, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
+import {
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
+  AgentSocketDelivery,
+  AgentSocketKind,
+  AgentSocketProviderCapabilities,
+  AgentSocketUpstream,
+  GpgAgentConfig,
+  SshAgentConfig,
+} from "./agent-forwarding.ts";
 
 import {
   AxisToken,
@@ -277,6 +287,7 @@ import {
   PluginSetupContribution,
   PluginSetupFlagContribution,
   RouterServiceContribution,
+  SecretStoreContribution,
 } from "./plugin.ts";
 import {
   AppId,
@@ -445,6 +456,15 @@ export type PublicSchemaReferencePage = {
 };
 
 const basePublicSchemaRegistry = {
+  SshAgentConfig,
+  GpgAgentConfig,
+  AgentSocketKind,
+  AgentSocketDelivery,
+  AgentSocketProviderCapabilities,
+  AgentSocketUpstream,
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
+  SecretStoreContribution,
   DeprecationNotice,
   DeprecationUse,
   LandofileExpressionParseError,
@@ -843,6 +863,15 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
 };
 
 const PUBLIC_SCHEMA_DESCRIPTIONS = {
+  SshAgentConfig: "SSH-agent mode and optional host socket override.",
+  GpgAgentConfig: "Opt-in GPG-agent forwarding and optional host extra socket override.",
+  AgentSocketKind: "Agent protocol carried by a scoped socket relay.",
+  AgentSocketDelivery: "Provider delivery mechanism for an app-owned agent socket.",
+  AgentSocketProviderCapabilities: "Provider-declared support for agent socket delivery.",
+  AgentSocketUpstream: "Unix or authenticated loopback TCP endpoint carrying agent bytes.",
+  AgentSocketBridgeInput: "App-owned relay session handed to a scoped provider bridge.",
+  AgentSocketBridgeResult: "Provider-visible directory or volume containing the requested agent socket.",
+  SecretStoreContribution: "Plugin secret store implementation and owned reference schemes.",
   RecipeSourceKind: "Origin class of a recipe producer, keeping bundled and local families distinct.",
   RecipeContentDigest: "SHA-256 over canonical recipe inputs, excluding the digest itself and history.",
   RecipeProducer: "Versioned identity of the recipe that produced generated authoring data.",

@@ -6,6 +6,8 @@ import type {
   GlobalServiceCollisionError,
   PluginManifestError,
   SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
   ToolingExecError,
 } from "@lando/sdk/errors";
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
@@ -61,6 +63,8 @@ export type EnsureGlobalServicesError =
   | GlobalServiceMissingError
   | PluginManifestError
   | SecretNotFoundError
+  | SecretStoreUnavailableError
+  | SecretReferenceInvalidError
   | ToolingExecError;
 
 export type EnsureGlobalServicesServices =

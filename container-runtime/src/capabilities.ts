@@ -2,6 +2,8 @@ import { Schema } from "effect";
 
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import {
+  type AgentSocketDelivery,
+  type AgentSocketProviderCapabilities,
   type HostPlatform,
   type ProviderCapabilities as ProviderCapabilitiesShape,
   hostPlatformFamily,
@@ -9,6 +11,10 @@ import {
 
 export type HostProxyCapabilities = NonNullable<ProviderCapabilitiesShape["hostProxy"]>;
 export type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
+
+export const agentSocketCapabilities = (
+  delivery: AgentSocketDelivery | undefined,
+): AgentSocketProviderCapabilities | undefined => (delivery === undefined ? undefined : { delivery });
 
 export const hostProxyContainerTargets = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
   if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
@@ -60,6 +66,7 @@ export interface ProviderCapabilityConstants {
   readonly composeServiceFields?: ProviderCapabilitiesShape["composeServiceFields"];
   readonly providerExtensions: ProviderCapabilitiesShape["providerExtensions"];
   readonly hostProxy?: ProviderCapabilitiesShape["hostProxy"];
+  readonly agentSocket?: AgentSocketProviderCapabilities;
 }
 
 export const buildProviderCapabilities = (
@@ -106,4 +113,5 @@ export const buildProviderCapabilities = (
       : { composePreservedPaths: constants.composePreservedPaths }),
     providerExtensions: constants.providerExtensions,
     ...(constants.hostProxy === undefined ? {} : { hostProxy: constants.hostProxy }),
+    ...(constants.agentSocket === undefined ? {} : { agentSocket: constants.agentSocket }),
   });

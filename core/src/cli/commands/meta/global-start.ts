@@ -20,6 +20,8 @@ import type {
   RouterPortsExhausted,
   RouterWatcherError,
   SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
@@ -87,6 +89,8 @@ export type GlobalStartError =
   | RouterPortPinMismatch
   | RouterPortsExhausted
   | RouterWatcherError
+  | SecretStoreUnavailableError
+  | SecretReferenceInvalidError
   | ToolingExecError;
 
 export type GlobalStartServices =

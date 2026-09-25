@@ -3,9 +3,10 @@
 // `Map` of secret ids to values so `runSecretStoreContractSuite` can run without
 // reading `process.env` or any external backend.
 
-import { Effect, Layer } from "effect";
+import { Effect, Either, Layer } from "effect";
 
-import { SecretNotFoundError } from "@lando/sdk/errors";
+import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
+import { parseSecretReference } from "@lando/sdk/secrets";
 import { SecretStore, type SecretStoreShape } from "@lando/sdk/services";
 
 /** Options for {@link makeTestSecretStore}. */
@@ -43,6 +44,17 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
   const service: SecretStoreShape = {
     id,
     get: (secret) => {
+      const reference = parseSecretReference(secret);
+      if (Either.isLeft(reference)) return Effect.fail(reference.left);
+      if (reference.right.scheme !== undefined) {
+        return Effect.fail(
+          new SecretReferenceInvalidError({
+            message: "The test secret store only accepts bare secret ids.",
+            reference: secret,
+            remediation: "Use a bare secret id or route this reference to its scheme's secret store.",
+          }),
+        );
+      }
       const value = secrets.get(secret);
       return value === undefined
         ? Effect.fail(

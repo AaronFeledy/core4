@@ -21,6 +21,7 @@ describe("SecretStore contract — built-in implementations", () => {
         store,
         known: { key: "TOKEN", value: "s3cr3t" },
         unknown: "ABSENT",
+        invalidReference: "bad/id",
         redactor,
       }),
     );
@@ -38,6 +39,7 @@ describe("SecretStore contract — built-in implementations", () => {
         store: handle.service,
         known: { key: "TOKEN", value: "s3cr3t" },
         unknown: "ABSENT",
+        invalidReference: "op://Vault/Item/field",
         redactor,
         cachedOfflineStore: { store: handle.service, key: "TOKEN", value: "s3cr3t" },
       }),
