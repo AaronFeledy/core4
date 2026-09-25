@@ -101,7 +101,6 @@ export const drupalCmsDecomposer = ((ports) => ({
                       readOnly: true,
                     },
                   ],
-
                   routes: primaryRoutes,
                 },
                 database,
