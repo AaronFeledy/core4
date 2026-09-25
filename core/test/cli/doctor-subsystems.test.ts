@@ -438,6 +438,7 @@ describe("meta:doctor subsystem checks", () => {
       expect(proxy?.context.ready).toBe("false");
       expect(proxy?.solutions[0]?.command).toBe("lando global:restart");
       expect(proxy?.solutions[0]?.description).toContain("any occupied preferred ports");
+      expect(proxy?.solutions[0]?.description).toContain("Lando last selected HTTP");
     } finally {
       acquisition.cleanup();
     }
