@@ -108,6 +108,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
         process.once("SIGINT", shutdown);
         void session.closed.then(resolveShutdown);
         yield* Effect.sync(() => {
+          const socketPath = bridge?.socketPath ?? session.socketPath;
           writeStdioLine(
             "stdout",
             JSON.stringify({
@@ -116,9 +117,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
               sessionId: session.sessionId,
               token: session.token,
               controlToken: session.controlToken,
-              ...((bridge?.socketPath ?? session.socketPath) === undefined
-                ? {}
-                : { socketPath: bridge?.socketPath ?? session.socketPath }),
+              ...(socketPath === undefined ? {} : { socketPath }),
               ...(session.url === undefined ? {} : { url: session.url }),
               ...(bridge !== undefined || session.containerUrl === undefined
                 ? {}

@@ -64,7 +64,6 @@ export const GlobalAppRuntimeLive = Layer.effect(
             provider.list({ app: AppId.make("global") }).pipe(
               Effect.flatMap((services) =>
                 Effect.gen(function* () {
-                  const candidates = new Set(ports);
                   const owned = new Set<number>();
                   for (const service of services) {
                     if (service.service !== serviceId) continue;
@@ -77,8 +76,7 @@ export const GlobalAppRuntimeLive = Layer.effect(
                       (service.endpoints ?? []).some(
                         (endpoint) =>
                           endpoint._tag === "published" &&
-                          (endpoint.materialization?.hostPort ?? endpoint.publication?.hostPort) === port &&
-                          candidates.has(port),
+                          (endpoint.materialization?.hostPort ?? endpoint.publication?.hostPort) === port,
                       ),
                     );
                     if (published.length === 0) continue;

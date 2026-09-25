@@ -447,8 +447,7 @@ export const makeTraefikRouterService = (
           const refreshAppCertificate =
             hostnames.join("\n") !== previousHostnames.join("\n") || !appCertificateCurrent;
           const refreshDefaultCertificate = !defaultCertificateCurrent;
-          const missingCertificate =
-            hostnames.length > 0 && (!appCertificateCurrent || !defaultCertificateCurrent);
+          const missingCertificate = !appCertificateCurrent || !defaultCertificateCurrent;
           if (hostnames.length === 0) yield* removeAppCertificates(dependencies, app);
           const tlsFiles =
             hostnames.length === 0
