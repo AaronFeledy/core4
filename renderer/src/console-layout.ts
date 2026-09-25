@@ -277,7 +277,10 @@ export const wrapFieldToWidth = (
   ) {
     return [...labels.slice(0, -1), prefix.slice(0, -1), value];
   }
-  const values = wrapFieldValueToWidth(value, width - displayWidth(prefix));
+  // Each embedded line break starts a new physical row inside the frame.
+  const values = value
+    .split(/\r?\n/u)
+    .flatMap((part) => wrapFieldValueToWidth(part, width - displayWidth(prefix)));
   return [
     ...labels.slice(0, -1),
     `${prefix}${values[0] ?? ""}`,

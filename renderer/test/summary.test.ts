@@ -412,3 +412,29 @@ test("keeps short field values beside their labels at narrow terminal widths", (
   expect(boxed.split("\n").some((line) => /^│\s+│$/u.test(line))).toBe(false);
   expect(quiet.split("\n").some((line) => line.length > 0 && line.trim().length === 0)).toBe(false);
 });
+
+test("keeps multiline field values inside the frame", () => {
+  const doc: SummaryDocument = {
+    title: "DOCTOR",
+    sections: [
+      {
+        title: "provider",
+        rows: [
+          {
+            label: "runtime",
+            fields: [{ label: "detail", value: "podman machine failed to start cleanly\nERROR: disk full" }],
+          },
+        ],
+      },
+    ],
+  };
+  for (const render of [formatSummary, formatQuietSummary]) {
+    const lines = stripAnsi(render(doc, { columns: 32 })).split("\n");
+    expect(lines.every((line) => !line.includes("\r") && displayWidth(line) <= 32)).toBe(true);
+    expect(lines.some((line) => line.includes("ERROR: disk full"))).toBe(true);
+  }
+  const boxed = stripAnsi(formatSummary(doc, { columns: 32 })).split("\n");
+  const errorLine = boxed.find((line) => line.includes("ERROR: disk full")) ?? "";
+  expect(errorLine.startsWith("│")).toBe(true);
+  expect(displayWidth(errorLine)).toBe(32);
+});
