@@ -108,7 +108,12 @@ const destroyAppForTargetUncoordinated = (
     const volumes = resolvedOptions.volumes ?? false;
     const appliedFileSync =
       provider.inspectAppliedFileSync === undefined
-        ? { status: plan.fileSync.length > 0 ? ("unknown" as const) : ("ordinary" as const) }
+        ? {
+            status:
+              plan.fileSync.length > 0 && provider.prepareFileSyncTargets !== undefined
+                ? ("unknown" as const)
+                : ("ordinary" as const),
+          }
         : yield* provider.inspectAppliedFileSync(plan);
     if (appliedFileSync.status === "unknown") {
       return yield* Effect.fail(
