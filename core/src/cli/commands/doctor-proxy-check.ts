@@ -23,8 +23,8 @@ type AcquisitionMode = (typeof ACQUISITION_MODES)[number];
 const LAST_FALLBACK_HTTP = 38080;
 const LAST_FALLBACK_HTTPS = 38443;
 
-const occupiedHopRemediation = ({ httpPort, httpsPort }: AcquisitionSnapshot): string =>
-  `A preferred router port is in use by another program. Lando is serving on HTTP :${httpPort} and HTTPS :${httpsPort}. Run lando info in the app to see its URL. To use the preferred ports, free any occupied preferred ports, then run lando global:restart.`;
+const occupiedHopRemediation = ({ httpPort, httpsPort }: AcquisitionSnapshot, running: boolean): string =>
+  `A preferred router port is in use by another program. Lando ${running ? "is serving on" : "last selected"} HTTP :${httpPort} and HTTPS :${httpsPort}. Run lando info in the app to see its URL. To use the preferred ports, free any occupied preferred ports, then run lando global:restart.`;
 
 interface AcquisitionSnapshot {
   readonly mode: AcquisitionMode;
@@ -87,7 +87,7 @@ const specForMode = (snapshot: AcquisitionSnapshot | undefined): SubsystemSpec =
       return {
         ...PROXY_SPEC,
         recovery: "manual",
-        manualRemediation: occupiedHopRemediation(snapshot),
+        manualRemediation: occupiedHopRemediation(snapshot, false),
         manualCommand: "lando global:restart",
       };
     case "direct":
@@ -106,7 +106,7 @@ const occupiedHopCheck = (
 ): DoctorSubsystemCheck => {
   const solution: DoctorSolution = {
     kind: "manual",
-    description: occupiedHopRemediation(snapshot),
+    description: occupiedHopRemediation(snapshot, true),
     command: "lando global:restart",
   };
   return {
