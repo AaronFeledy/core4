@@ -679,10 +679,10 @@ describe("lando info — resolved log sources", () => {
     );
     const svc = result.services.find((service) => service.service === "postgres");
     expect(svc?.logSources?.[0]?.availability).toBe("unavailable");
-    expect(svc?.logSources?.[0]?.reason).toContain("serviceLogSources");
+    expect(svc?.logSources?.[0]?.reason).toContain("`lando logs`");
     const rendered = renderInfoAppResult(result);
-    expect(rendered).toContain("serviceLogSources");
-    expect(buildInfoSummary(result).sections[0]?.rows[0]?.fields?.[3]?.value).toContain("serviceLogSources");
+    expect(rendered).toContain("`lando logs`");
+    expect(buildInfoSummary(result).sections[0]?.rows[0]?.fields?.[3]?.value).toContain("`lando logs`");
   });
 
   test("reports a redirect source as redirected-to-console", async () => {
