@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdtempSync, rmSync } from "node:fs";
+
 import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -28,11 +30,13 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/core/services";
-import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { makeTestStateStore } from "@lando/core/testing";
+
 import { makeLandoPaths } from "@lando/paths";
 const TestStateStoreLive = Layer.succeed(StateStore, makeTestStateStore().service);
 import type {
   AppSelector,
+  AppliedFileSyncInspection,
   DestroyOptions,
   FileSyncEngineShape,
   RuntimeProviderShape,
@@ -125,11 +129,14 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
 
 const web = servicePlan("web");
 const database = servicePlan("database");
+const testAppRoot = mkdtempSync(join(tmpdir(), "lando-stop-app-root-"));
+afterAll(() => rmSync(testAppRoot, { recursive: true, force: true }));
+
 const plan: AppPlan = {
   id: AppId.make("test-stop"),
   name: "test-stop",
   slug: "test-stop",
-  root: AbsolutePath.make("/tmp/test-stop"),
+  root: AbsolutePath.make(testAppRoot),
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
@@ -139,6 +146,16 @@ const plan: AppPlan = {
   metadata,
   extensions: {},
 };
+
+const testSessionSpec = (mountKey: string) => ({
+  app: { kind: "user" as const, id: plan.id, root: plan.root },
+  service: web.name,
+  mountKey,
+  source: plan.root,
+  target: { _tag: "volume" as const, name: `${plan.name}-web-${mountKey}`, path: PortablePath.make("/app") },
+  mode: "two-way-safe" as const,
+  excludes: [],
+});
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-stop-scenario-")));
@@ -168,13 +185,17 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
 
 const makeStopLayer = (
   plannedApp: AppPlan = plan,
-  options: { readonly pathsService?: ReturnType<typeof makeLandoPaths> } = {},
+  options: {
+    readonly pathsService?: ReturnType<typeof makeLandoPaths>;
+    readonly appliedFileSync?: AppliedFileSyncInspection;
+  } = {},
 ) => {
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const stopped = new Set<ServiceName>();
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
+  const appliedFileSync = options.appliedFileSync;
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -182,6 +203,9 @@ const makeStopLayer = (
     version: "0.0.0",
     platform: "linux",
     capabilities,
+    ...(appliedFileSync === undefined
+      ? {}
+      : { inspectAppliedFileSync: () => Effect.succeed(appliedFileSync) }),
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true }),
@@ -234,6 +258,7 @@ const makeStopLayer = (
     PrivateFileAccessLive,
     TestStateStoreLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+    makeTestStateStore().layer,
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
@@ -398,6 +423,7 @@ describe("lando stop", () => {
       isAvailable: Effect.succeed(false),
       setup: () => Effect.void,
       createSession: () => Effect.succeed(FileSyncSessionRef.make("session-fake")),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () =>
@@ -468,6 +494,7 @@ describe("lando stop", () => {
       TestStateStoreLive,
       PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -492,7 +519,7 @@ describe("lando stop", () => {
     expect(callLog).toContain("provider.destroy");
   });
 
-  test("continues provider cleanup when file-sync session listing fails", async () => {
+  test("surfaces file-sync session listing failure before stopping app writers", async () => {
     const callLog: string[] = [];
     const fakeEngine: FileSyncEngineShape = {
       id: "mutagen",
@@ -507,6 +534,7 @@ describe("lando stop", () => {
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       createSession: () => Effect.succeed(FileSyncSessionRef.make("session-fake")),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () =>
@@ -529,17 +557,23 @@ describe("lando stop", () => {
         ),
       streamEvents: () => Stream.empty,
     };
-    const harness = makeStopLayer();
+    const harness = makeStopLayer(plan, {
+      appliedFileSync: {
+        status: "accelerated",
+        engineId: "mutagen",
+        sessions: [testSessionSpec("app-mount")],
+      },
+    });
     const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
 
-    const result = await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));
+    const error = await Effect.runPromise(stopApp().pipe(Effect.provide(layer), Effect.flip));
 
-    expect(result.app).toBe("test-stop");
+    expect(error._tag).toBe("FileSyncStopError");
     expect(callLog).toEqual(["listSessions"]);
-    expect(harness.destroyCalls).toHaveLength(1);
+    expect(harness.destroyCalls).toHaveLength(0);
   });
 
-  test("continues provider cleanup when file-sync session termination fails", async () => {
+  test("surfaces file-sync termination failure after stopping app writers", async () => {
     const existingRefs: ReadonlyArray<FileSyncSessionRef> = [
       FileSyncSessionRef.make("session-web-app-mount"),
       FileSyncSessionRef.make("session-web-cache-mount"),
@@ -549,6 +583,7 @@ describe("lando stop", () => {
       app: { kind: "user", id: plan.id, root: plan.root },
       service: web.name,
       mountKey: index === 0 ? "app-mount" : "cache-mount",
+      spec: testSessionSpec(index === 0 ? "app-mount" : "cache-mount"),
       status: "running",
       lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
     }));
@@ -566,6 +601,7 @@ describe("lando stop", () => {
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       createSession: () => Effect.succeed(FileSyncSessionRef.make("session-fake")),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: (ref) =>
@@ -592,27 +628,30 @@ describe("lando stop", () => {
         }),
       streamEvents: () => Stream.empty,
     };
-    const harness = makeStopLayer();
+    const harness = makeStopLayer(plan, {
+      appliedFileSync: {
+        status: "accelerated",
+        engineId: "mutagen",
+        sessions: existing.map((session) => session.spec),
+      },
+    });
     const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
 
-    const result = await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));
+    const error = await Effect.runPromise(stopApp().pipe(Effect.provide(layer), Effect.flip));
 
-    expect(result.app).toBe("test-stop");
-    expect(callLog).toEqual([
-      "listSessions",
-      `terminate:${String(existingRefs[0])}`,
-      `terminate:${String(existingRefs[1])}`,
-    ]);
+    expect(error._tag).toBe("FileSyncStopError");
+    expect(callLog).toEqual(["listSessions", "listSessions", "terminate:session-web-app-mount"]);
     expect(harness.destroyCalls).toHaveLength(1);
   });
 
-  test("terminates active file-sync sessions before provider.destroy even when the current plan has none", async () => {
+  test("terminates active file-sync sessions after provider.destroy even when the current plan has none", async () => {
     const existingRef = "session-web-app-mount" as FileSyncSessionRef;
     const existing: FileSyncSessionInfo = {
       ref: existingRef,
       app: { kind: "user", id: plan.id, root: plan.root },
       service: web.name,
       mountKey: "app-mount",
+      spec: testSessionSpec("app-mount"),
       status: "running",
       lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
     };
@@ -630,6 +669,10 @@ describe("lando stop", () => {
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       createSession: () => Effect.succeed(existingRef),
+      flushSession: (ref) =>
+        Effect.sync(() => {
+          callLog.push(`flush:${String(ref)}`);
+        }),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: (ref) =>
@@ -650,6 +693,12 @@ describe("lando stop", () => {
       version: "0.0.0",
       platform: "linux",
       capabilities,
+      inspectAppliedFileSync: () =>
+        Effect.succeed({
+          status: "accelerated",
+          engineId: "mutagen",
+          sessions: [existing.spec],
+        }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -700,6 +749,7 @@ describe("lando stop", () => {
       TestStateStoreLive,
       PrivateFileAccessLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -721,10 +771,16 @@ describe("lando stop", () => {
     await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));
 
     const listIndex = callLog.indexOf("listSessions");
+    const flushIndex = callLog.indexOf(`flush:${String(existingRef)}`);
     const terminateIndex = callLog.indexOf(`terminate:${String(existingRef)}`);
     const destroyIndex = callLog.indexOf("provider.destroy");
     expect(listIndex).toBeGreaterThanOrEqual(0);
-    expect(terminateIndex).toBeGreaterThan(listIndex);
-    expect(destroyIndex).toBeGreaterThan(terminateIndex);
+    expect(flushIndex).toBeGreaterThan(listIndex);
+    expect(terminateIndex).toBeGreaterThan(flushIndex);
+    expect(destroyIndex).toBeGreaterThan(listIndex);
+    expect(destroyIndex).toBeLessThan(flushIndex);
+    expect(callLog.filter((entry) => entry === "listSessions")).toHaveLength(2);
+    expect(callLog.lastIndexOf("listSessions")).toBeGreaterThan(destroyIndex);
+    expect(callLog.lastIndexOf("listSessions")).toBeLessThan(flushIndex);
   });
 });

@@ -7,7 +7,13 @@ import { classifyManagedProviderMachine } from "@lando/engine/runtime/managed-pr
 import { Effect } from "effect";
 
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
-import { metaUninstallSpec } from "../../src/cli/command-specs/meta/uninstall.ts";
+import { metaUninstallSpec as declarativeUninstallSpec } from "../../src/cli/command-specs/meta/uninstall.ts";
+
+const metaUninstallSpec = {
+  ...declarativeUninstallSpec,
+  run: (input: Parameters<typeof declarativeUninstallSpec.run>[0]) =>
+    declarativeUninstallSpec.run(input).pipe(Effect.provide(PrivateFileAccessLive)),
+};
 import { formatUninstallResult } from "../../src/cli/commands/uninstall.ts";
 
 const seedSetupState = (userDataRoot: string, machine: unknown): void => {
@@ -35,23 +41,23 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
       const teardownRoots: string[] = [];
 
       const result = await Effect.runPromise(
-        metaUninstallSpec
-          .run({
-            flags: { yes: true, "keep-data": true },
-            _userDataRoot: userDataRoot,
-            _readManagedProviderMachine: (dataRoot: string) =>
-              classifyManagedProviderMachine(dataRoot, undefined, "win32"),
-            _userCacheRoot: userCacheRoot,
-            _cgroupsDelegatePath: join(root, "delegate.conf"),
-            _shellProfilePath: join(root, ".profile"),
-            _exists: () => false,
-            _remove: async () => {},
-            _teardownProviderMachines: async (rootPath: string) => {
-              teardownRoots.push(rootPath);
-              return { removed: true, name: "lando" };
-            },
-          })
-          .pipe(Effect.provide(PrivateFileAccessLive)),
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _listDiscoveredApps: async () => [],
+          _userDataRoot: userDataRoot,
+          _readManagedProviderMachine: (root: string) =>
+            classifyManagedProviderMachine(root, undefined, "win32"),
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _cgroupsDelegatePath: join(root, "delegate.conf"),
+          _shellProfilePath: join(root, ".profile"),
+          _exists: () => false,
+          _remove: async () => {},
+          _teardownProviderMachines: async (rootPath: string) => {
+            teardownRoots.push(rootPath);
+            return { removed: true, name: "lando" };
+          },
+        }),
       );
 
       const step = result.steps.find((s) => s.id === "managed-provider-machines");
@@ -72,23 +78,23 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
       let teardownCalled = false;
 
       const result = await Effect.runPromise(
-        metaUninstallSpec
-          .run({
-            flags: { yes: true, "keep-data": true },
-            _userDataRoot: userDataRoot,
-            _readManagedProviderMachine: (dataRoot: string) =>
-              classifyManagedProviderMachine(dataRoot, undefined, "win32"),
-            _userCacheRoot: userCacheRoot,
-            _cgroupsDelegatePath: join(root, "delegate.conf"),
-            _shellProfilePath: join(root, ".profile"),
-            _exists: () => false,
-            _remove: async () => {},
-            _teardownProviderMachines: async () => {
-              teardownCalled = true;
-              return { removed: false };
-            },
-          })
-          .pipe(Effect.provide(PrivateFileAccessLive)),
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _listDiscoveredApps: async () => [],
+          _userDataRoot: userDataRoot,
+          _readManagedProviderMachine: (root: string) =>
+            classifyManagedProviderMachine(root, undefined, "win32"),
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _cgroupsDelegatePath: join(root, "delegate.conf"),
+          _shellProfilePath: join(root, ".profile"),
+          _exists: () => false,
+          _remove: async () => {},
+          _teardownProviderMachines: async () => {
+            teardownCalled = true;
+            return { removed: false };
+          },
+        }),
       );
 
       expect(result.steps.find((s) => s.id === "managed-provider-machines")).toMatchObject({
@@ -112,22 +118,22 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
       });
 
       const result = await Effect.runPromise(
-        metaUninstallSpec
-          .run({
-            flags: { yes: true, "keep-data": true },
-            _userDataRoot: userDataRoot,
-            _readManagedProviderMachine: (dataRoot: string) =>
-              classifyManagedProviderMachine(dataRoot, undefined, "win32"),
-            _userCacheRoot: userCacheRoot,
-            _cgroupsDelegatePath: join(root, "delegate.conf"),
-            _shellProfilePath: join(root, ".profile"),
-            _exists: () => false,
-            _remove: async () => {},
-            _teardownProviderMachines: async () => {
-              throw new Error("Run 'podman machine rm --force lando' manually. (exit 1: boom)");
-            },
-          })
-          .pipe(Effect.provide(PrivateFileAccessLive)),
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _listDiscoveredApps: async () => [],
+          _userDataRoot: userDataRoot,
+          _readManagedProviderMachine: (root: string) =>
+            classifyManagedProviderMachine(root, undefined, "win32"),
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _cgroupsDelegatePath: join(root, "delegate.conf"),
+          _shellProfilePath: join(root, ".profile"),
+          _exists: () => false,
+          _remove: async () => {},
+          _teardownProviderMachines: async () => {
+            throw new Error("Run 'podman machine rm --force lando' manually. (exit 1: boom)");
+          },
+        }),
       );
 
       expect(result.failed).toBe(true);
