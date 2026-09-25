@@ -15,11 +15,11 @@ lando start
 lando info
 ```
 
-`--yes` uses PHP 8.3, MariaDB 11.4, Composer 2, and webroot `/app`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+`--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, and webroot `/app`. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
 
 ```sh
 lando init --recipe joomla --name=my-joomla-mysql --yes \
-  --answer=php=8.1 \
+  --answer=php=8.2 \
   --answer=database=mysql:8.0 \
   --answer=composer=2.7.7 \
   --answer=webroot=/app
@@ -51,11 +51,11 @@ lando init --recipe joomla --name=my-joomla-mysql --yes \
   <Scenario id="non-default-options" render>
     <Step name="init">
       <Variable name="appName" value="joomla-mysql" display="my-joomla-mysql" />
-      <Run command="lando init --recipe joomla --name={{appName}} --yes --answer=php=8.1 --answer=database=mysql:8.0 --answer=composer=2.7.7 --answer=webroot=/app" />
+      <Run command="lando init --recipe joomla --name={{appName}} --yes --answer=php=8.2 --answer=database=mysql:8.0 --answer=composer=2.7.7 --answer=webroot=/app" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.1\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.2\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"mysql:8\\.0\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app\"" } }} />

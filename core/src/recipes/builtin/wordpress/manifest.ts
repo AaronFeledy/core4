@@ -1,3 +1,4 @@
+import { phpPromptYaml } from "../php-stack.ts";
 import { wordpressSnapshotYaml } from "./snapshot.ts";
 
 export const WORDPRESS_RECIPE_ID = "wordpress";
@@ -21,15 +22,7 @@ prompts:
     validate:
       pattern: ^[a-z][a-z0-9-]*$
       message: App name must be lowercase kebab-case.
-  - name: php
-    type: select
-    message: PHP version
-    default: '8.3'
-    choices:
-      - value: '8.2'
-        label: PHP 8.2
-      - value: '8.3'
-        label: PHP 8.3
+${phpPromptYaml}
   - name: redis
     type: confirm
     message: Add a Redis cache service?

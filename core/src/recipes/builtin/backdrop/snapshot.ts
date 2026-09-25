@@ -1,14 +1,14 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
-import { PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { encodedStringNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { backdropSettings } from "./settings.ts";
 
 export const BACKDROP_RECIPE_VERSION = "0.1.0";
 export const BACKDROP_CONTENT_DIGEST =
-  "sha256:6a13349aa7e9426de32ff3dafea83d8137f9b8f31803d160af74607b3d7767f3";
+  "sha256:5beeb1c2fe00797b3e4bdc45e0db54b8b0588248a13085216d868ce734331845";
 
 export const backdropProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -19,7 +19,7 @@ export const backdropProducer: RecipeProducer = {
 };
 
 export const backdropDefaults = {
-  php: "8.3",
+  php: PHP_DEFAULT,
   database: "mariadb:11.4",
   composer: "2",
   webroot: "/app",

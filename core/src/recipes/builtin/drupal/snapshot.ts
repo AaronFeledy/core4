@@ -1,14 +1,14 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
-import { PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { encodedStringNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const DRUPAL_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CONTENT_DIGEST =
-  "sha256:b847329e140001dc24ec3c4bf8a4caf3a9c60f065524aa29ed741e29088252ac";
+  "sha256:867ec7d9424f22620050c6fa1e8804fe2d7cc25fbb72c02a7af3bef40d05c38b";
 
 export const drupalProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -20,7 +20,7 @@ export const drupalProducer: RecipeProducer = {
 
 export const drupalDefaults = {
   drupal: "11",
-  php: "8.3",
+  php: PHP_DEFAULT,
   webserver: "apache",
   database: "mariadb:11.4",
   composer: "2",

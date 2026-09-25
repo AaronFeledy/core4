@@ -1,14 +1,14 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
-import { PHP_VERSIONS } from "../php-stack.ts";
+import { PHP_DEFAULT, PHP_VERSIONS } from "../php-stack.ts";
 import { encodedStringNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND, drupalCmsInstallCommand } from "./commands.ts";
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:4e5ecb51c17423bef94c4699ecea07a572761fe0ec968d7b73fcd9d8a5e5d492";
+  "sha256:8583f732b32b005847299e06efc03fab26717d9489d489c0db671417d90e0e7f";
 
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -19,7 +19,7 @@ export const drupalCmsProducer: RecipeProducer = {
 };
 
 export const drupalCmsDefaults = {
-  php: "8.3",
+  php: PHP_DEFAULT,
   webserver: "apache",
   database: "mariadb:11.4",
   composer: "2",

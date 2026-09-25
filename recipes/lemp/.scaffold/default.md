@@ -8,6 +8,8 @@ lando start
 lando info
 ```
 
+`--yes` uses PHP 8.4. Pass `--answer` to change that. PHP 8.6 is a valid `--answer=php=8.6`.
+
 `lando start` prints the app URL. `lando info` repeats it.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.

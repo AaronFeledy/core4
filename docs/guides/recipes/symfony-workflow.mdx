@@ -13,15 +13,15 @@ cd symfony-demo
 lando start
 ```
 
-The named init creates `symfony-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, PostgreSQL 16, Composer 2, and webroot `/app/public`. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
+The named init creates `symfony-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.4, PostgreSQL 16, Composer 2, and webroot `/app/public`. Apache is up after start. Drop a Symfony app in so `bin/console` exists.
 
-Default PHP is 8.3, so `symfony new` / `symfony/skeleton` lands on Symfony 7.4.x. Symfony 8 needs PHP 8.4 or newer; set `--answer=php=8.4` (or newer) on init.
+Default PHP is 8.4, so `symfony new` / `symfony/skeleton` can install the current 8.x line. Pass `--answer=php=8.3` if you want the 7.4 LTS line.
 
 ## See what the recipe writes
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.3`, `framework: symfony`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
+| `appserver` | `php:8.4`, `framework: symfony`, webroot `/app/public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |
 | `database` | `type: postgres:16` |
 | `cache` | `type: redis` |
 | Tooling | `lando console` (`php bin/console`) and `lando composer` on `appserver` |
@@ -38,7 +38,7 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `-
     </Step>
     <Step name="confirm-defaults">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres:16\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"console\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />

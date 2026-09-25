@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   LARAVEL_DATABASES,
+  PHP_DEFAULT,
   PHP_VERSIONS,
   SYMFONY_DATABASES,
   WEBROOT_PATTERN,
@@ -16,15 +17,18 @@ import {
 describe("php-stack helper", () => {
   test("offers PHP 8.6 as a selectable recipe answer", () => {
     expect([...PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]);
+    expect(PHP_DEFAULT).toBe("8.4");
+    expect(phpPromptYaml).toContain("default: '8.4'");
+    expect(phpPromptYaml).toContain("value: '8.1'");
     expect(phpPromptYaml).toContain("value: '8.6'");
   });
 
   test("resolves lamp defaults from empty extras", () => {
     const resolved = resolvePhpStackAnswers(
       {},
-      { php: "8.3", database: "mariadb:11.4", webroot: "/app", composer: "2" },
+      { php: "8.4", database: "mariadb:11.4", webroot: "/app", composer: "2" },
     );
-    expect(resolved.php).toBe("8.3");
+    expect(resolved.php).toBe("8.4");
     expect(resolved.database).toBe("mariadb:11.4");
     expect(resolved.webroot).toBe("/app");
     expect(resolved.composer).toBe("2");
