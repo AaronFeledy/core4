@@ -48,7 +48,12 @@ export const certificatePairIsCurrent = (
     const validTo = Date.parse(certificate.validTo);
     if (!Number.isFinite(validFrom) || !Number.isFinite(validTo) || now < validFrom || now >= validTo)
       return false;
-    if (hostnames.some((hostname) => certificate.checkHost(hostname) === undefined)) return false;
+    // checkHost never matches a literal "*" label, so probe one concrete name
+    // that only a certificate covering the wildcard can satisfy.
+    const coverageName = (hostname: string) =>
+      hostname.startsWith("*.") ? `lando-wildcard-probe.${hostname.slice(2)}` : hostname;
+    if (hostnames.some((hostname) => certificate.checkHost(coverageName(hostname)) === undefined))
+      return false;
     const certificateKey = certificate.publicKey.export({ type: "spki", format: "der" });
     const privateKey = createPublicKey(privateKeyPem).export({ type: "spki", format: "der" });
     return Buffer.from(certificateKey).equals(Buffer.from(privateKey));
