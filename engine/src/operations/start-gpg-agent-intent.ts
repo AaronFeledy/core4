@@ -3,7 +3,7 @@ import { ConfigService, LandofileService } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 import { gpgAgentPlanExtension, resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
-import { gpgAgentEligibleServices } from "../subsystems/ssh-agent/overlay.ts";
+import { gpgAgentEligibleServices } from "../subsystems/gpg-agent/overlay.ts";
 
 export const resolveStartGpgAgentIntent = (target: ResolvedAppTarget) =>
   Effect.gen(function* () {

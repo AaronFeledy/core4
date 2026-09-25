@@ -16,8 +16,8 @@ import { Effect, Option, Ref, Scope } from "effect";
 import { discoverHostGpgAgent } from "../subsystems/gpg-agent/discovery.ts";
 import type { GpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { exportPublicKeyring } from "../subsystems/gpg-agent/keyring.ts";
+import { gpgAgentEligibleServices, withGpgAgentOverlay } from "../subsystems/gpg-agent/overlay.ts";
 import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
-import { gpgAgentEligibleServices, withGpgAgentOverlay } from "../subsystems/ssh-agent/overlay.ts";
 import type { AgentRelaySession } from "../subsystems/ssh-agent/session.ts";
 
 type Capabilities = Pick<ProviderCapabilities, "agentSocket">;

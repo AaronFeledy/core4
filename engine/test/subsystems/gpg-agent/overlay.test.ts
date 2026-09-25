@@ -4,8 +4,8 @@ import { plan } from "./fixture.ts";
 
 test("gpg overlay adds isolated home, public keyring and socket only to eligible services and strips cleanly", async () => {
   // Given
-  const { withGpgAgentOverlay, stripAgentSocketOverlay } = await import(
-    "../../../src/subsystems/ssh-agent/overlay.ts"
+  const { withGpgAgentOverlay, stripGpgAgentOverlay } = await import(
+    "../../../src/subsystems/gpg-agent/overlay.ts"
   );
   // When
   const result = withGpgAgentOverlay(
@@ -49,5 +49,5 @@ test("gpg overlay adds isolated home, public keyring and socket only to eligible
     },
   ]);
   expect(result.services[ServiceName.make("db")]).toBe(plan.services[ServiceName.make("db")]);
-  expect(stripAgentSocketOverlay(result, "gpg")).toEqual(plan);
+  expect(stripGpgAgentOverlay(result)).toEqual(plan);
 });
