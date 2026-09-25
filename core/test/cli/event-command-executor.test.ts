@@ -718,6 +718,7 @@ describe("EventCommandExecutorLive", () => {
     };
     const context = Context.add(harness.context, PluginContributionGraph, {
       plugins: [{ source: "explicit", manifest, entry: module, module }],
+      globalPlugins: [{ source: "explicit", manifest, entry: module, module }],
       certificateAuthorities: [],
       commands: [
         {

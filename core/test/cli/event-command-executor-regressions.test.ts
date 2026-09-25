@@ -62,6 +62,7 @@ const makeHarness = (): Harness => {
 const withPlugin = (context: Context.Context<unknown>, spec: ExecutableCommandSpec) =>
   Context.add(context, PluginContributionGraph, {
     plugins: [],
+    globalPlugins: [],
     certificateAuthorities: [],
     commands: [
       {
