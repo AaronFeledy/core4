@@ -26,6 +26,7 @@ const csi = {
   green: `${ESC}[32m`,
   amber: `${ESC}[33m`,
   red: `${ESC}[31m`,
+  defaultFg: `${ESC}[39m`,
 } as const;
 
 const hasC0OrDel = (value: string): boolean => {
@@ -223,6 +224,9 @@ const TONE_COLOR: Record<SummaryTone, string> = {
  */
 export const toneChip = (tone: SummaryTone): string => `[${TONE_CHIP_TEXT[tone]}]`;
 
+/** Prefix for a suggested-fix line under a summary row. */
+export const REMEDY_ARROW = "↳ ";
+
 /** Pad `text` to `width` columns (display-aware) for aligned label columns. */
 export const padEndToWidth = (text: string, width: number): string =>
   `${text}${repeat(" ", width - displayWidth(text))}`;
@@ -240,4 +244,51 @@ export const dimText = (text: string): string => `${csi.dim}${text}${csi.dimRese
 export const paintTone = (tone: SummaryTone, line: string): string => {
   const color = TONE_COLOR[tone];
   return color === csi.dim ? `${csi.dim}${line}${csi.dimReset}${csi.reset}` : `${color}${line}${csi.reset}`;
+};
+
+const TONE_GLYPH: Record<SummaryTone, string> = {
+  ok: "✓",
+  warn: "!",
+  error: "✗",
+  info: "·",
+  pending: "◌",
+  skipped: "–",
+};
+
+/**
+ * Single-cell status glyph matching the task-tree painter. Warn is ASCII `!`
+ * because `⚠` renders with emoji presentation in most terminal fonts and
+ * spills past its one measured cell.
+ */
+export const toneGlyph = (tone: SummaryTone): string => TONE_GLYPH[tone];
+
+/** Pink rail/frame chrome shared with the task tree (`╭─`, `│`, `├─`, `╰─`). */
+export const paintRail = (text: string): string => `${csi.pink}${text}${csi.reset}`;
+
+/** Bold text in the tone color, for a summary title. */
+export const paintToneBold = (tone: SummaryTone, text: string): string =>
+  `${csi.bold}${TONE_COLOR[tone]}${text}${csi.reset}`;
+
+/** Cyan text, the palette color for commands. */
+export const cyanText = (text: string): string => `${csi.cyan}${text}${csi.defaultFg}`;
+
+/**
+ * Paint backtick-quoted spans cyan across already-wrapped lines. A span that
+ * wraps stays painted on its continuation line; backticks stay visible so the
+ * text still reads as code without color.
+ */
+export const paintCodeSpans = (lines: ReadonlyArray<string>): ReadonlyArray<string> => {
+  let inCode = false;
+  return lines.map((line) => {
+    let out = inCode ? csi.cyan : "";
+    for (const ch of line) {
+      if (ch === "`") {
+        out += inCode ? `${ch}${csi.defaultFg}` : `${csi.cyan}${ch}`;
+        inCode = !inCode;
+      } else {
+        out += ch;
+      }
+    }
+    return inCode ? `${out}${csi.defaultFg}` : out;
+  });
 };

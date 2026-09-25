@@ -82,9 +82,12 @@ export const publishTaskDetail = (events: ProgressEmitter | undefined, args: Tas
     }),
   );
 
+export type TaskOutcome = "ok" | "warn";
+
 export interface TaskCompleteArgs {
   readonly taskId: string;
   readonly summary?: string;
+  readonly outcome?: TaskOutcome;
   readonly durationMs?: number;
 }
 
@@ -94,6 +97,7 @@ export const publishTaskComplete = (events: ProgressEmitter | undefined, args: T
     TaskCompleteEvent.make({
       taskId: args.taskId,
       ...(args.summary === undefined ? {} : { summary: args.summary }),
+      ...(args.outcome === undefined ? {} : { outcome: args.outcome }),
       ...(args.durationMs === undefined ? {} : { durationMs: args.durationMs }),
       timestamp: nowUtc(),
     }),

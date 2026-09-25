@@ -876,6 +876,11 @@ It registers no JSON Schema.
   supported only when `composeSpec` is `native` and the exact project field is declared. Top-level
   `x-*` is preserved inert and never capability-gated.
 - `CapabilityError.key` is a new additive optional field carrying the exact capability key that failed.
+- `TaskCompleteEvent.outcome` is a new additive optional `"ok" | "warn"` field. Absent means `ok`;
+  `warn` marks a task that finished with warnings the reader should look at (renderers paint it
+  as a warning instead of `✓`). `@lando/sdk/task-progress` additively exports `TaskOutcome`,
+  `TaskCompleteArgs.outcome`, and the controller method `warnTask`, which counts the child as
+  succeeded.
 - `ServiceConfig.restart`, `.cap_add`, `.cap_drop`, `.privileged`, `.devices`, `.ulimits`, `.sysctls`,
   `.tmpfs`, `.shm_size`, `.dns`, `.dns_search`, `.dns_opt`, `.extra_hosts`, `.init`, `.stop_signal`,
   `.stop_grace_period`, `.security_opt`, `.group_add`, `.read_only`, `.platform`, `.pull_policy`,

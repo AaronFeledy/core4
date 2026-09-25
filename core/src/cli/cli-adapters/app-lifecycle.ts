@@ -57,7 +57,12 @@ import {
 import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify";
 import { renderDestroyAppResult } from "../commands/destroy";
 import { resilientDoctorReport } from "../commands/doctor-bootstrap";
-import { type DoctorReport, renderDoctorReport, renderDoctorReportAsNdjson } from "../commands/doctor-report";
+import {
+  type DoctorRenderOptions,
+  type DoctorReport,
+  renderDoctorReport,
+  renderDoctorReportAsNdjson,
+} from "../commands/doctor-report";
 import { renderInfoAppResult } from "../commands/info-render";
 import { renderLogsAppResult } from "../commands/logs";
 import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open";
@@ -541,6 +546,7 @@ export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const fix = parseFixFlag(argv);
   const app = argv.some((arg) => arg === "--app");
   const deprecations = argv.some((arg) => arg === "--deprecations");
+  const all = argv.some((arg) => arg === "--all");
   const format = activeTextJsonYamlFormat();
   // Doctor uses its own runtime so bootstrap failures are reported, not fatal.
   // Native dispatch runs it at `none` and threads the process abort signal so
@@ -556,7 +562,7 @@ export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
         signal,
       }),
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "none", plugins: { policy: "discovery" } })),
-      renderCompiledDoctorReport,
+      (value, ctx) => renderCompiledDoctorReport(value, ctx, { all }),
       {
         suppressDeprecationDiagnostics: format === "json" || format === "yaml",
       },
@@ -564,7 +570,11 @@ export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-export const renderCompiledDoctorReport = (value: DoctorReport, ctx: RenderContext): string | undefined => {
+export const renderCompiledDoctorReport = (
+  value: DoctorReport,
+  ctx: RenderContext,
+  options: DoctorRenderOptions = {},
+): string | undefined => {
   if (ctx.format === "ndjson") return renderDoctorReportAsNdjson(value);
-  return renderDoctorReport(value, ctx);
+  return renderDoctorReport(value, ctx, options);
 };

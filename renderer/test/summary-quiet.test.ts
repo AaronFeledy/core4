@@ -235,3 +235,43 @@ describe("formatQuietSummary row style", () => {
     expect(painted).toContain(DIM);
   });
 });
+
+describe("formatQuietSummary remedy", () => {
+  const doc: SummaryDocument = {
+    title: "Needs attention",
+    sections: [
+      {
+        title: "provider",
+        rows: [
+          {
+            label: "ports",
+            tone: "warn",
+            fields: [{ label: "ports", value: "80,443" }],
+            remedy: "Stop the process holding the port, or change router.httpPort so Lando uses free ports.",
+          },
+        ],
+      },
+    ],
+  };
+
+  test("paints a remedy as an arrow line with a hanging indent on wrap", () => {
+    const visible = stripAnsi(formatQuietSummary(doc, { columns: 60 }));
+    expect(visible).toBe(
+      [
+        "Needs attention",
+        "",
+        "provider",
+        "  [WARN] ports",
+        "    ports : 80,443",
+        "    ↳ Stop the process holding the port, or change",
+        "      router.httpPort so Lando uses free ports.",
+      ].join("\n"),
+    );
+    for (const line of linesOf(visible)) expect(displayWidth(line)).toBeLessThanOrEqual(60);
+  });
+
+  test("redacts the remedy before paint", () => {
+    const redacted = redactSummaryDocument(doc, (text) => text.replace("router.httpPort", "[redacted]"));
+    expect(redacted.sections[0]?.rows[0]?.remedy).toContain("[redacted]");
+  });
+});
