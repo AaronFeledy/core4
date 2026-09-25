@@ -18,7 +18,13 @@ Run it after `lando setup`. The default provider is `lando` (managed Podman). Af
 
 ## Read the report
 
-Each check is `pass`, `warn`, or `fail`. Failed checks print remediation. Most point you at `lando setup`.
+Doctor runs one section at a time under the same live task list `lando start` paints: `✓` for a clean section, `!` when it passed with warnings, `✗` when a check failed or doctor could not run the section. Below that, the report lists only the checks that need you, each with a `↳` line saying what to do. Most point you at `lando setup`. The `Next` list at the bottom collects those commands.
+
+Passing checks stay out of the way. To see every check, including the ones that passed:
+
+```sh
+lando doctor --all
+```
 
 | Check | What to do |
 | --- | --- |

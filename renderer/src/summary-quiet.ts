@@ -8,6 +8,7 @@
  */
 
 import {
+  REMEDY_ARROW,
   dimText,
   displayWidth,
   hyperlink,
@@ -60,6 +61,14 @@ const pushWrapped = (
   }
 };
 
+/** `↳ fix` with a hanging indent so a wrapped remedy reads as one thought. */
+const pushRemedy = (lines: string[], remedy: string, width: number): void => {
+  const [first, ...rest] = wrapToWidth(remedy, Math.max(1, width - FIELD_INDENT - REMEDY_ARROW.length));
+  pushWrapped(lines, `${REMEDY_ARROW}${first ?? ""}`, FIELD_INDENT, width, undefined);
+  for (const segment of rest)
+    pushWrapped(lines, segment, FIELD_INDENT + REMEDY_ARROW.length, width, undefined);
+};
+
 const renderSection = (section: SummarySection, width: number): ReadonlyArray<string> => {
   const lines: string[] = [];
   pushWrapped(lines, section.title, 0, width, dimText);
@@ -81,6 +90,7 @@ const renderSection = (section: SummarySection, width: number): ReadonlyArray<st
       }
     }
     if (row.detail !== undefined) pushWrapped(lines, row.detail, FIELD_INDENT, width, undefined);
+    if (row.remedy !== undefined) pushRemedy(lines, row.remedy, width);
   }
   if (section.notes !== undefined) {
     for (const note of section.notes) pushWrapped(lines, note, BODY_INDENT, width, undefined);

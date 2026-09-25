@@ -268,3 +268,28 @@ describe("formatSummary row href and muted", () => {
     expect(body).toContain(`${ESC}]8;;https://example.com${ST}`);
   });
 });
+
+describe("formatSummary remedy", () => {
+  test("frames a remedy as a hanging arrow line inside the box", () => {
+    const out = stripAnsi(
+      formatSummary(
+        {
+          title: "DOCTOR",
+          sections: [
+            {
+              title: "provider",
+              rows: [
+                { label: "ports", tone: "warn", remedy: "Stop the process holding the port and retry." },
+              ],
+            },
+          ],
+        },
+        { columns: 40 },
+      ),
+    );
+    const lines = out.split("\n");
+    expect(lines).toContain("│   ↳ Stop the process holding the     │");
+    expect(lines).toContain("│     port and retry.                  │");
+    for (const line of lines) expect(displayWidth(line)).toBe(40);
+  });
+});
