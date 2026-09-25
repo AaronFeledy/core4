@@ -294,7 +294,7 @@ const ownedContainerId = (
     mount.Destination === TARGET_PATH &&
     mount.RW === true;
   return exact
-    ? Effect.succeed(id as string)
+    ? Effect.succeed(id)
     : Effect.fail(
         failure(
           "syncHelper.container",
