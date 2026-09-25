@@ -1,0 +1,135 @@
+---
+id: drupal-cms-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, drupal-cms, drupal, php, mariadb]
+---
+
+# Run the Drupal CMS recipe
+
+```sh
+lando init --recipe drupal-cms --name=drupal-cms-demo --yes
+cd drupal-cms-demo
+lando start
+```
+
+The named init creates `drupal-cms-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Apache and MariaDB are up after start. Scaffold the project, install Drupal CMS, then open the URL `lando info` prints.
+
+If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: drupal`, webroot `/app/web`, Composer `2`, Apache on port `80`, depends on `database` |
+| `database` | `type: mariadb:11.4` |
+| Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, or `--answer=database=postgres:16` when you want those instead. PHP 8.6 is a valid `--answer=php=8.6`.
+
+Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `postgres:16`, use a Postgres client instead of `lando mariadb`.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="drupal-cms-workflow" display="drupal-cms-demo" />
+      <Run command="lando init --recipe drupal-cms --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"drupal\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drush\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-install\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="nginx-postgres" render>
+    <Step name="init">
+      <Variable name="appName" value="drupal-cms-workflow-nginx" display="drupal-cms-nginx" />
+      <Run command="lando init --recipe drupal-cms --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=/app/web" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.5\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"nginx\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Scaffold and install Drupal CMS
+
+Init only writes the Landofile. Pull Drupal CMS 2 and project-local Drush into the app root, then install with the starter recipe:
+
+```sh
+lando drupal-cms-scaffold
+```
+
+That runs `composer create-project 'drupal/cms'` into a staging dir and promotes `composer.json`, `vendor/bin/drush`, and `web/` into the mount. Re-running it on an already scaffolded tree fails on purpose.
+
+Stock `lando drupal-cms-install` runs the same Drush install the recipe ships, but the image default `memory_limit` of 128M is not enough for `drupal_cms_starter`. Raise memory for that one command. Copy the database name from `lando info` under database creds into `--db-url` (host stays `database`):
+
+```sh
+lando exec appserver -- sh -lc \
+  'php -d memory_limit=512M vendor/bin/drush.php site:install recipes/drupal_cms_starter \
+  --db-url="mysql://lando:lando@database/DBNAME" -y'
+```
+
+Replace `DBNAME` with the name `lando info` prints. Drush prints the admin username and a one-time password when install finishes. Save that password.
+
+Then confirm the day-to-day tools:
+
+```sh
+lando drush --version
+lando drush status
+lando composer --version
+lando mariadb -e 'SELECT 1 AS ok;'
+# Yes, scaffold then install is a two-step tango. Composer is not optional here.
+```
+
+## Connect Drupal to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | From `lando info` database creds |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you do not need it for the site user.
+
+For Postgres answers, swap the install `--db-url` driver to `pgsql` and use the Postgres password the recipe derives for that app.
+
+## Destroy the app
+
+```sh
+lando destroy -y
+```
+
+That removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [Drupal CMS recipe](/recipes/drupal-cms/)
+- [Add PHP](../services/php.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
+- [Mount a custom php.ini](../services/php-customization.mdx)
