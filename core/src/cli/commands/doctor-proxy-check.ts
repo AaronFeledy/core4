@@ -135,7 +135,7 @@ export const buildProxyCheck = (
       ready: String(running),
       ...(state === undefined ? {} : { state }),
       ...(acquisitionMode === undefined ? {} : { acquisitionMode }),
-      ...(acquisitionMode === "occupied-hop" && snapshot !== undefined
+      ...(snapshot?.mode === "occupied-hop"
         ? { httpPort: String(snapshot.httpPort), httpsPort: String(snapshot.httpsPort) }
         : {}),
     };

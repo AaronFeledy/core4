@@ -11,8 +11,6 @@ import {
   passCheck,
 } from "./doctor-subsystem-checks";
 
-const dnsProbeHostname = (baseDomain: string): string => `lando-doctor-probe.${baseDomain}`;
-
 export const buildHostProxyCheck = (
   hostProxy: typeof HostProxyService.Service,
   fix: boolean,
@@ -37,7 +35,7 @@ export const buildHostProxyCheck = (
     }
 
     const resolver = yield* HostDnsResolver;
-    const hostname = dnsProbeHostname(status.right.baseDomain);
+    const hostname = `lando-doctor-probe.${status.right.baseDomain}`;
     const addressesRef = yield* Ref.make<ReadonlyArray<string>>([]);
     const resolved = yield* Effect.either(
       runProbe(
