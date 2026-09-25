@@ -13,7 +13,7 @@ cd drupal-cms-demo
 lando start
 ```
 
-The named init creates `drupal-cms-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Apache and MariaDB are up after start. Scaffold the project, install Drupal CMS, then open the URL `lando info` prints.
+The named init creates `drupal-cms-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS. Confirm with the tooling below; the URL `lando info` prints is not part of the verified path.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
@@ -25,9 +25,9 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, or `--answer=database=postgres:16` when you want those instead. PHP 8.6 is a valid `--answer=php=8.6`.
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, or `--answer=database=postgres:16` when you want those instead. PHP 8.6 is a valid `--answer=php=8.6`.
 
-Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `postgres:16`, use a Postgres client instead of `lando mariadb`.
+Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `mysql:8.0`, use `lando mysql` instead of `lando mariadb`. For `postgres:16`, use a Postgres client instead of `lando mariadb`.
 
 ## Init, start, and tear down
 
@@ -102,7 +102,6 @@ lando drush --version
 lando drush status
 lando composer --version
 lando mariadb -e 'SELECT 1 AS ok;'
-# Yes, scaffold then install is a two-step tango. Composer is not optional here.
 ```
 
 ## Connect Drupal to MariaDB
