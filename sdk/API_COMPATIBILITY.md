@@ -92,6 +92,22 @@
 
 - `ConfigTranslateSecretReference` is narrowed before first release to three mutually exclusive shapes: `secret-store` carries one canonical `${secret:...}` reference, `postInit.stdin` carries only its disposition, and `postInit.secretEnv` carries its disposition and environment variable name. Raw secret strings and generic reference payloads are not accepted. This contract applies to `ConfigTranslateRecipeRequestInput.secretAnswers` and `RecipeDecomposeInput.secrets`; init-only secret bytes remain outside translation and are delivered only to their declared post-init sink.
 
+- `RuntimeProviderShape.inspectAppliedFileSync(plan)` optionally reports whether the provider has a prior accelerated app mount, an ordinary applied plan, no applied state, or an unknown state. A proven accelerated result carries the saved engine ID and exact previously applied session specs; volume-only evidence stays unknown. Startup uses this read-only verdict before falling back from an accelerated plan to ordinary mounts; unknown or accelerated state stops startup so unflushed container writes cannot be hidden by a host bind.
+
+- `RuntimeProviderShape.quiesceForFileSync(target)` is an optional teardown hook that stops app writers while keeping accelerated mount volumes intact for a final synchronization flush. Destroy fails before volume removal if an active file sync session exists and the provider lacks the hook.
+
+- `RuntimeProviderShape.prepareFileSyncTargets(plan)` is an optional pre-apply hook for providers that can verify accelerated mount targets before app containers start. It returns a rollback action for resources created during preparation. Providers without the hook use ordinary bind mounts; the bundled managed provider does not yet expose this hook while durable session ownership and safe cleanup are being completed.
+
+- `RuntimeProviderShape.ensureReady` optionally starts and verifies a selected provider runtime after app planning and before host-dependent port selection. `GlobalAppService.ensureProviderReady` delegates to the selected managed provider; the Windows Traefik router uses it before guest-port probes so a stopped Podman machine is not mistaken for a free port. Providers without the hook retain their existing startup behavior.
+
+- `RuntimeProviderShape.matchingPublishPorts(containerId, ports)` optionally validates that published ports route exclusively to the current provider container. Managed Windows Podman uses this read-only check before the global router reuses ports in a shared WSL network namespace. A stopped managed router may be matched only through its validated durable machine, container, relay-holder, and nftables ownership receipt so the existing pair can be restored safely; other providers retain their existing behavior.
+- `ProcessRunner.streamWithExit(options)` additively emits stdout and stderr chunks as they arrive, then the process exit code. Windows managed Podman uses it for stdin-fed exec commands so output is not buffered until exit.
+- `ProcessSpawnOptions.stdinStream` and `signal` add streamed process input and cancellation to the existing argv-precise ProcessRunner; the run method drains stdout and stderr while it writes stdin.
+
+- `HostProxyBridgeInput` and `HostProxyBridgeResult` add schema-derived contracts for a provider-scoped loopback-to-guest bridge. `RuntimeProviderShape.openHostProxyBridge(input)` is optional and lets managed Windows Podman expose its authenticated host-proxy worker through a private guest Unix socket without changing other providers.
+- `GlobalAppService.restartRunningService(service)` additively restarts an existing running global service and reports whether one was restarted. The Traefik router uses it to load route file changes on Windows-backed mounts whose host writes do not notify Linux file watchers.
+
+- `RuntimeProviderShape.occupiedPublishPorts(ports)` additively exposes read-only provider-host TCP publication occupancy. `GlobalAppService.occupiedPublishPorts(ports)` delegates to the selected managed provider, while `GlobalAppService.ownedPublishPorts(service, ports)` identifies running global-service publications for stable router reuse. `RouterService.prepare(config)` additively lets app startup persist a port decision before required global services start. All inputs and results use the existing `PortNumber` and `ServiceName` schema-derived types; no new JSON Schema is registered.
 - `LandofileService.discover` additively exposes `ManagedFileTransactionError` without adding an Effect context requirement. The frozen service-surface fixture matches the expanded error union. `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` preserve the same failure through app operations; restart, rebuild, and destroy inherit it. The additive `ManagedFileTransactionGuard` service provides `ensureConsistent(appRoot)` and `pending(appRoot)` and is included in `LandoRuntimeServices`.
 
 - The `ConfigTranslator` contract was replaced pre-release: tagged document-set and recipe-request inputs produce set outputs with wire authoring fragments. Detection consumes core-read snapshots, encoding is optional, and all methods require `never` in their Effect context. No compatibility adapter preserves the former one-way contract.
@@ -500,6 +516,8 @@ It registers no JSON Schema.
 - `HostArchitecture`
 - `HostPlatformFamily`
 - `hostPlatformFamily`
+- `HostProxyBridgeInput`
+- `HostProxyBridgeResult`
 - `HostProxyContainerTarget`
 - `HostProxyErrorCode`
 - `HostProxyGatewayHostname`

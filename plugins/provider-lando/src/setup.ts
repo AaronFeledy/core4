@@ -467,7 +467,7 @@ for proc in /proc/[0-9]*; do
   systemd_pid=\${proc##*/}
 done
 [ -n "$systemd_pid" ] || { echo 'Guest systemd process not found' >&2; exit 1; }
-exec nsenter --target "$systemd_pid" --mount --pid -- systemctl start podman.socket
+exec nsenter --target "$systemd_pid" --mount --pid -- systemctl enable --now podman.socket
 `;
 
 const podmanMachineJson = (stdout: string, operation: string) =>

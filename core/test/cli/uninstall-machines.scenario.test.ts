@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { classifyManagedProviderMachine } from "@lando/engine/runtime/managed-provider-machine";
 import { Effect } from "effect";
 
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
@@ -26,7 +27,11 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
   test("owned machine recorded in real setup state is torn down and reported removed", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
-      seedSetupState(userDataRoot, { name: "lando", createdByLando: true });
+      seedSetupState(userDataRoot, {
+        name: "lando",
+        createdByLando: true,
+        createdAt: "2026-09-22T12:00:00Z",
+      });
       const teardownRoots: string[] = [];
 
       const result = await Effect.runPromise(
@@ -34,6 +39,8 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
           .run({
             flags: { yes: true, "keep-data": true },
             _userDataRoot: userDataRoot,
+            _readManagedProviderMachine: (dataRoot: string) =>
+              classifyManagedProviderMachine(dataRoot, undefined, "win32"),
             _userCacheRoot: userCacheRoot,
             _cgroupsDelegatePath: join(root, "delegate.conf"),
             _shellProfilePath: join(root, ".profile"),
@@ -69,6 +76,8 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
           .run({
             flags: { yes: true, "keep-data": true },
             _userDataRoot: userDataRoot,
+            _readManagedProviderMachine: (dataRoot: string) =>
+              classifyManagedProviderMachine(dataRoot, undefined, "win32"),
             _userCacheRoot: userCacheRoot,
             _cgroupsDelegatePath: join(root, "delegate.conf"),
             _shellProfilePath: join(root, ".profile"),
@@ -96,13 +105,19 @@ describe("lando uninstall provider-machine teardown (scenario)", () => {
   test("machine teardown failure is recorded in the resumable report", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
-      seedSetupState(userDataRoot, { name: "lando", createdByLando: true });
+      seedSetupState(userDataRoot, {
+        name: "lando",
+        createdByLando: true,
+        createdAt: "2026-09-22T12:00:00Z",
+      });
 
       const result = await Effect.runPromise(
         metaUninstallSpec
           .run({
             flags: { yes: true, "keep-data": true },
             _userDataRoot: userDataRoot,
+            _readManagedProviderMachine: (dataRoot: string) =>
+              classifyManagedProviderMachine(dataRoot, undefined, "win32"),
             _userCacheRoot: userCacheRoot,
             _cgroupsDelegatePath: join(root, "delegate.conf"),
             _shellProfilePath: join(root, ".profile"),
