@@ -102,7 +102,6 @@ export const tearDownOrphans = (input: {
             volumesRemoved = true;
           }
         }),
-        { allowMissingRoot: true },
       );
     }
     return {

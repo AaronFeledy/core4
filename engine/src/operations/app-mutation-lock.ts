@@ -12,7 +12,7 @@ import { EventService, PathsService } from "@lando/sdk/services";
 import { acquireAdvisoryLockAt, peekAdvisoryLockRecord } from "@lando/state-store/lock";
 import { resolveStatePath } from "@lando/state-store/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { PinnedAppRoot, canonicalAppRoot } from "./app-root-identity.ts";
+import { PinnedAppRoot } from "./app-root-identity.ts";
 
 export { canonicalAppRoot } from "./app-root-identity.ts";
 
@@ -180,17 +180,17 @@ export const canonicalMissingAppRoot = (root: string): Effect.Effect<string, Sta
       }),
   });
 
-export const appMutationLockIdentity = (
-  app: { readonly id: string; readonly root: string },
-  allowMissingRoot = true,
-): Effect.Effect<
+export const appMutationLockIdentity = (app: {
+  readonly id: string;
+  readonly root: string;
+}): Effect.Effect<
   {
     readonly key: string;
     readonly canonicalRoot: string;
   },
   StateStoreError
 > =>
-  (allowMissingRoot ? canonicalMissingAppRoot(app.root) : canonicalAppRoot(app.root)).pipe(
+  canonicalMissingAppRoot(app.root).pipe(
     Effect.map((canonicalRoot) => ({
       canonicalRoot,
       key: appMutationLockKey(String(app.id), canonicalRoot),
@@ -211,13 +211,12 @@ export const appMutationLockIdentity = (
 export const withAppMutationLock = <A, E, R>(
   app: { readonly id: string; readonly root: string },
   body: Effect.Effect<A, E, R>,
-  options: { readonly allowMissingRoot?: boolean } = {},
 ): Effect.Effect<A, E | AppLockTimeoutError | StateStoreError, R | PathsService | PrivateFileAccessService> =>
   Effect.gen(function* () {
     const context = yield* Effect.context<R | PathsService | PrivateFileAccessService>();
     const paths = yield* PathsService;
     const privateFileAccess = yield* PrivateFileAccessService;
-    const { key, canonicalRoot } = yield* appMutationLockIdentity(app, options.allowMissingRoot !== false);
+    const { key, canonicalRoot } = yield* appMutationLockIdentity(app);
     const held = yield* FiberRef.get(heldAppLockKeys);
     const provided = Effect.provide(body, context).pipe(
       Effect.provideService(PinnedAppRoot, { requestedRoot: app.root, canonicalRoot }),
@@ -250,23 +249,21 @@ export const withAppMutationLock = <A, E, R>(
         ),
       ),
       () =>
-        options.allowMissingRoot !== false
-          ? appMutationLockIdentity(app, true).pipe(
-              Effect.flatMap(
-                (current): Effect.Effect<A, E | StateStoreError, never> =>
-                  current.key === key
-                    ? provided
-                    : Effect.fail(
-                        new StateStoreError({
-                          reason: "path",
-                          operation: "canonicalMissingAppRoot",
-                          path: app.root,
-                          remediation: "The app root parent changed while waiting for its lock; retry.",
-                        }),
-                      ),
-              ),
-            )
-          : provided,
+        appMutationLockIdentity(app).pipe(
+          Effect.flatMap(
+            (current): Effect.Effect<A, E | StateStoreError, never> =>
+              current.key === key
+                ? provided
+                : Effect.fail(
+                    new StateStoreError({
+                      reason: "path",
+                      operation: "canonicalMissingAppRoot",
+                      path: app.root,
+                      remediation: "The app root parent changed while waiting for its lock; retry.",
+                    }),
+                  ),
+          ),
+        ),
       ({ lock, restore }) => Effect.sync(restore).pipe(Effect.zipRight(lock.release)),
     );
   });
