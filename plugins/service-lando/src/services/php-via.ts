@@ -66,6 +66,7 @@ export const phpLogSources = (via: PhpVia): ReadonlyArray<LogSource> => {
       return [];
   }
 };
+
 const VIA_REMEDIATION = "Set via: apache, via: fpm, or via: cli.";
 
 const isPhpVia = (value: string): value is PhpVia => (PHP_VIA_MODES as ReadonlyArray<string>).includes(value);
@@ -138,23 +139,10 @@ export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => (
 });
 
 /**
- * The launcher for an Apache-served PHP service whose author declared no
- * `command` or `entrypoint`.
- *
- * Every directive is handed to `apache2-foreground` as a repeated `-c`
- * argument instead of being written to a site file at startup. That script ends
- * in `exec apache2 -DFOREGROUND "$@"`, so the arguments reach httpd, which
- * reads them as consecutive lines of one synthetic configuration stream — a
- * `<Directory>` section spans the arguments exactly as it spanned the file's
- * lines. Emitting them directly is what removes the write: the command mutates
- * no filesystem path. For the default image user, a shell prelude maps the
- * www-data worker to the Windows project mount owner before it execs Apache.
- * An authored non-root service user runs the same directives directly.
- *
- * An authored `port:` moves the site into a virtual host bound to that port and
- * declares the matching listener, still in the same directive stream. The
- * default shape stays on the main server, so a service that authored no port
- * keeps the main-server listener.
+ * Shell prelude that, on a Windows host, re-maps `www-data` to the uid:gid
+ * owning the project mount so the PHP worker can write bind-mounted files.
+ * `preserveExplicitApacheIdentity` leaves an authored
+ * `APACHE_RUN_USER`/`APACHE_RUN_GROUP` alone.
  */
 export const windowsBindWorkerIdentity = (
   fallbackMount: string,
@@ -176,6 +164,25 @@ export const windowsBindWorkerIdentity = (
   "fi",
 ];
 
+/**
+ * The launcher for an Apache-served PHP service whose author declared no
+ * `command` or `entrypoint`.
+ *
+ * Every directive is handed to `apache2-foreground` as a repeated `-c`
+ * argument instead of being written to a site file at startup. That script ends
+ * in `exec apache2 -DFOREGROUND "$@"`, so the arguments reach httpd, which
+ * reads them as consecutive lines of one synthetic configuration stream — a
+ * `<Directory>` section spans the arguments exactly as it spanned the file's
+ * lines. Emitting them directly is what removes the write: the command mutates
+ * no filesystem path. For the default image user, a shell prelude maps the
+ * www-data worker to the Windows project mount owner before it execs Apache.
+ * An authored non-root service user runs the same directives directly.
+ *
+ * An authored `port:` moves the site into a virtual host bound to that port and
+ * declares the matching listener, still in the same directive stream. The
+ * default shape stays on the main server, so a service that authored no port
+ * keeps the main-server listener.
+ */
 export const apacheStartCommand = (
   webroot: string,
   allowOverride: boolean,
@@ -192,24 +199,20 @@ export const apacheStartCommand = (
     "</Directory>",
     ...apacheErrorPageDirectives(),
   ];
-  const directives =
-    listenPort === undefined
-      ? ["ServerName localhost", ...site]
-      : [
-          "ServerName localhost",
-          `Listen ${String(listenPort)}`,
-          `<VirtualHost *:${String(listenPort)}>`,
-          ...site,
-          "</VirtualHost>",
-        ];
-  const command = ["apache2-foreground", ...directives.flatMap((directive) => ["-c", directive])];
-  if (!mapWindowsWorker) return command;
+  const directives = [
+    "ServerName localhost",
+    ...(listenPort === undefined
+      ? site
+      : [`Listen ${String(listenPort)}`, `<VirtualHost *:${String(listenPort)}>`, ...site, "</VirtualHost>"]),
+  ];
+  const flags = directives.flatMap((directive) => ["-c", directive]);
+  if (!mapWindowsWorker) return ["apache2-foreground", ...flags];
   return [
     "sh",
     "-c",
     ["set -eu", ...windowsBindWorkerIdentity("/app", true), 'exec apache2-foreground "$@"'].join("\n"),
     "lando-apache",
-    ...command.slice(1),
+    ...flags,
   ];
 };
 

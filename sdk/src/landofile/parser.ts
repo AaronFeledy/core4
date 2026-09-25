@@ -763,9 +763,10 @@ const parseListItemMap = (
     const valueColumn = keyIndent + entry.rawKey.length + 2;
     const location = { line: keyLine, column: valueColumn };
     if (BLOCK_SCALAR_HEADER.test(rawValue.trim())) {
-      const header = lines.find((line) => line.line === keyLine);
+      // Both consumeKey call sites have already stepped index past the key's own line.
+      const headerIndex = index - 1;
+      const header = lines[headerIndex];
       if (header === undefined) throw parseError(filePath, `Malformed YAML at line ${keyLine}`, keyLine);
-      const headerIndex = lines.indexOf(header);
       const [value, nextIndex] = parseBlockScalar(
         lines,
         filePath,
