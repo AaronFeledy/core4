@@ -13,7 +13,7 @@ cd drupal-cms-demo
 lando start
 ```
 
-The named init creates `drupal-cms-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS. Confirm with the tooling below; the URL `lando info` prints is not part of the verified path.
+The named init creates `drupal-cms-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Init also writes `.lando/php/drupal-cms.ini` with `memory_limit = 512M` and mounts it for both Drush and web requests. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS. Confirm with the tooling below; the URL `lando info` prints is not part of the verified path.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
@@ -21,7 +21,7 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
 | Piece | What you get |
 | --- | --- |
-| `appserver` | `php:8.3`, `framework: drupal`, webroot `/app/web`, Composer `2`, Apache on port `80`, depends on `database` |
+| `appserver` | `php:8.3`, `framework: drupal`, webroot `/app/web`, Composer `2`, Apache on port `80`, depends on `database`, `.lando/php/drupal-cms.ini` at 512M |
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
@@ -77,23 +77,16 @@ Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `m
 
 ## Scaffold and install Drupal CMS
 
-Init only writes the Landofile. Pull Drupal CMS 2 and project-local Drush into the app root, then install with the starter recipe:
+Init only writes the Landofile and the PHP ini. Pull Drupal CMS 2 and project-local Drush into the app root, then install with the starter recipe:
 
 ```sh
 lando drupal-cms-scaffold
+lando drupal-cms-install
 ```
 
-That runs `composer create-project 'drupal/cms'` into a staging dir and promotes `composer.json`, `vendor/bin/drush`, and `web/` into the mount. Re-running it on an already scaffolded tree fails on purpose.
+Scaffold runs `composer create-project 'drupal/cms'` into a staging dir and promotes `composer.json`, `vendor/bin/drush`, and `web/` into the mount. It is resumable if a prior run was interrupted. Re-running it on an already complete tree fails on purpose.
 
-Stock `lando drupal-cms-install` runs the same Drush install the recipe ships, but the image default `memory_limit` of 128M is not enough for `drupal_cms_starter`. Raise memory for that one command. Copy the database name from `lando info` under database creds into `--db-url` (host stays `database`):
-
-```sh
-lando exec appserver -- sh -lc \
-  'php -d memory_limit=512M vendor/bin/drush.php site:install recipes/drupal_cms_starter \
-  --db-url="mysql://lando:lando@database/DBNAME" -y'
-```
-
-Replace `DBNAME` with the name `lando info` prints. Drush prints the admin username and a one-time password when install finishes. Save that password.
+`lando drupal-cms-install` runs project-local Drush with the recipe's wired database credentials. The 512M ini covers that install command and the web PHP process. Drush prints the admin username and a one-time password when install finishes. Save that password. `lando drush` uses the current app URL (including proxy port) for URI; set `DRUSH_OPTIONS_URI` or pass Drush `--uri` to override.
 
 Then confirm the day-to-day tools:
 
@@ -116,7 +109,7 @@ lando mariadb -e 'SELECT 1 AS ok;'
 
 Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you do not need it for the site user.
 
-For Postgres answers, swap the install `--db-url` driver to `pgsql` and use the Postgres password the recipe derives for that app.
+For Postgres answers, the install tooling uses a `pgsql` `--db-url` and the Postgres password the recipe derives for that app. Day-to-day SQL goes through `lando psql`.
 
 ## Destroy the app
 
