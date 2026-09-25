@@ -34,6 +34,7 @@ describe("certificatePairIsCurrent", () => {
   test("rejects hostnames the certificate does not cover", () => {
     expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*.other.lndo.site"], now)).toBe(false);
     expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["a.b.demo.lndo.site"], now)).toBe(false);
+    expect(certificatePairIsCurrent(certificatePem, privateKeyPem, ["*.lndo.site"], now)).toBe(false);
   });
 
   test("rejects an expired certificate", () => {

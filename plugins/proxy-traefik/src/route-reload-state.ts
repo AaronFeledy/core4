@@ -48,12 +48,19 @@ export const certificatePairIsCurrent = (
     const validTo = Date.parse(certificate.validTo);
     if (!Number.isFinite(validFrom) || !Number.isFinite(validTo) || now < validFrom || now >= validTo)
       return false;
-    // checkHost never matches a literal "*" label, so probe one concrete name
-    // that only a certificate covering the wildcard can satisfy.
-    const coverageName = (hostname: string) =>
-      hostname.startsWith("*.") ? `lando-wildcard-probe.${hostname.slice(2)}` : hostname;
-    if (hostnames.some((hostname) => certificate.checkHost(coverageName(hostname)) === undefined))
-      return false;
+    // checkHost never matches a literal "*" label, so a wildcard route is
+    // covered only by the same wildcard DNS entry in the certificate.
+    const dnsNames = new Set(
+      (certificate.subjectAltName ?? "")
+        .split(", ")
+        .filter((entry) => entry.startsWith("DNS:"))
+        .map((entry) => entry.slice("DNS:".length).toLowerCase()),
+    );
+    const covers = (hostname: string) =>
+      hostname.startsWith("*.")
+        ? dnsNames.has(hostname.toLowerCase())
+        : certificate.checkHost(hostname) !== undefined;
+    if (!hostnames.every(covers)) return false;
     const certificateKey = certificate.publicKey.export({ type: "spki", format: "der" });
     const privateKey = createPublicKey(privateKeyPem).export({ type: "spki", format: "der" });
     return Buffer.from(certificateKey).equals(Buffer.from(privateKey));
