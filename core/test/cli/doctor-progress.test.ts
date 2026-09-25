@@ -233,6 +233,28 @@ describe("doctor progress events", () => {
     });
   });
 
+  test("fails the provider task when a provider sub-probe could not run", async () => {
+    const recorder = recordingEvents();
+    await Effect.runPromise(
+      collectDoctorReport({
+        options: { env: {} },
+        provider: Effect.succeed({
+          checks: [],
+          selfChecks: [doctorSelfCheck({ section: "provider-status", reason: "timeout", message: "slow" })],
+        }),
+        deprecations: Effect.succeed({ entries: [] }),
+        certs: Effect.succeed({ _tag: "selected", id: "mkcert" }),
+      }).pipe(Effect.provide(Layer.merge(recorder.layer, configService))),
+    );
+    expect(recorder.events.filter((event) => event._tag === "task.fail")).toMatchObject([
+      { taskId: "provider", summary: "provider · timeout" },
+    ]);
+    expect(recorder.events[recorder.events.length - 1]).toMatchObject({
+      _tag: "task.tree.complete",
+      failed: 1,
+    });
+  });
+
   test("stays silent without an event service", async () => {
     const report = await Effect.runPromise(
       collectDoctorReport({

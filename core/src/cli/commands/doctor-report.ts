@@ -237,9 +237,14 @@ const collectWithTree = <R>(
         }),
       );
 
-    const provider = yield* section("provider", input.provider, EMPTY_CHECKS, (result) =>
-      checksOutcome("provider", result.checks),
-    );
+    // A provider sub-probe doctor could not run (e.g. a status timeout) fails
+    // the row the same way a whole-section self check does.
+    const provider = yield* section("provider", input.provider, EMPTY_CHECKS, (result) => {
+      const [self] = result.selfChecks ?? [];
+      return self === undefined
+        ? checksOutcome("provider", result.checks)
+        : selfCheckOutcome("provider", self);
+    });
     // Provider-section self checks are lifted here so the report has one home for them.
     selfChecks.push(...(provider.selfChecks ?? []));
     const certs = yield* section(

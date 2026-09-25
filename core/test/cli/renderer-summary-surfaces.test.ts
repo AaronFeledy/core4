@@ -410,6 +410,13 @@ describe("doctor summary", () => {
     expect(summary.title).toBe("Problems found");
     expect(summary.footer).toBe("0 checks · 1 failed");
     expect(doctorTreeSummary(countDoctorChecks(deprecated))).toBe("doctor · 1 problem found");
+    const withPassingCheck = {
+      ...deprecated,
+      provider: { checks: [check({})] },
+    } as unknown as DoctorReport;
+    expect(buildDoctorReportSummary(withPassingCheck).footer).toBe(
+      "1 checks · 1 failed · lando doctor --all lists every check",
+    );
   });
 
   test("counts warnings in the footer and keeps header tone aligned with rows", () => {

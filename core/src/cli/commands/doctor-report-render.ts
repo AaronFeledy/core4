@@ -254,7 +254,12 @@ const nextSteps = (report: DoctorReport): ReadonlyArray<string> => {
 /** Check, failure, and warning totals across every report section. */
 export const countDoctorChecks = (
   report: DoctorReport,
-): { readonly checks: number; readonly failed: number; readonly warned: number } => {
+): {
+  readonly checks: number;
+  readonly passed: number;
+  readonly failed: number;
+  readonly warned: number;
+} => {
   const checks = allChecks(report);
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   const selfChecks = report.self?.checks ?? [];
@@ -263,6 +268,8 @@ export const countDoctorChecks = (
   const deprecationErrors = deprecations.filter((entry) => entry.severity === "error").length;
   return {
     checks: checks.length + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
+    passed:
+      checks.filter((check) => check.status === "pass").length + (report.appConfig?.valid === true ? 1 : 0),
     failed:
       checks.filter((check) => check.status === "fail").length +
       (appConfigInvalid ? 1 : 0) +
@@ -274,10 +281,7 @@ export const countDoctorChecks = (
 
 const ALL_HINT = "lando doctor --all lists every check";
 
-const doctorFooter = (
-  counts: { readonly checks: number; readonly failed: number; readonly warned: number },
-  options: DoctorRenderOptions,
-): string => {
+const doctorFooter = (counts: ReturnType<typeof countDoctorChecks>, options: DoctorRenderOptions): string => {
   const warningLabel = counts.warned === 1 ? "warning" : "warnings";
   const totals =
     counts.failed === 0 && counts.warned === 0
@@ -285,8 +289,8 @@ const doctorFooter = (
       : counts.warned === 0
         ? `${counts.checks} checks · ${counts.failed} failed`
         : `${counts.checks} checks · ${counts.failed} failed · ${counts.warned} ${warningLabel}`;
-  const hidden = counts.checks - counts.failed - counts.warned;
-  return options.all === true || hidden <= 0 ? totals : `${totals} · ${ALL_HINT}`;
+  // Passing checks are exactly what the default view hides and `--all` reveals.
+  return options.all === true || counts.passed === 0 ? totals : `${totals} · ${ALL_HINT}`;
 };
 
 const doctorTitle = (tone: SummaryTone): string => {
