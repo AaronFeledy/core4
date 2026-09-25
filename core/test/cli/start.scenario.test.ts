@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -52,7 +53,9 @@ import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { NoopTransactionGuardLive } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
+import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
+import { makeTestStateStore } from "@lando/core/testing";
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
 import { attachEffectiveEvents, effectiveEventsForPlan } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
@@ -61,7 +64,7 @@ import { EventCommandExecutor } from "@lando/engine/services/event-command-execu
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
-import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/host-proxy/worker";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
@@ -166,11 +169,14 @@ const hostProxyEnabledWeb: ServicePlan = {
     "@lando/core/service-features": { featureIds: ["lando.host-proxy"] },
   },
 };
+const testAppRoot = mkdtempSync(join(tmpdir(), "lando-start-app-root-"));
+afterAll(() => rmSync(testAppRoot, { recursive: true, force: true }));
+
 const plan: AppPlan = {
   id: AppId.make("test-start"),
   name: "test-start",
   slug: "test-start",
-  root: AbsolutePath.make("/tmp/test-start"),
+  root: AbsolutePath.make(testAppRoot),
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
@@ -179,6 +185,37 @@ const plan: AppPlan = {
   fileSync: [],
   metadata,
   extensions: {},
+};
+
+const fileSyncWeb: ServicePlan = {
+  ...web,
+  appMount: {
+    source: plan.root,
+    target: PortablePath.make("/app"),
+    readOnly: false,
+    realization: "accelerated",
+    excludes: [],
+    includes: [],
+  },
+};
+
+const fileSyncWebWithExtra: ServicePlan = {
+  ...fileSyncWeb,
+  mounts: [
+    {
+      type: "tmpfs",
+      target: PortablePath.make("/tmp"),
+      readOnly: false,
+      realization: "passthrough",
+    },
+    {
+      type: "bind",
+      source: plan.root,
+      target: PortablePath.make("/cache"),
+      readOnly: false,
+      realization: "accelerated",
+    },
+  ],
 };
 
 const hostProxyArtifactRoots: string[] = [];
@@ -232,6 +269,11 @@ const withHostProxyArtifact = async <T>(
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
     if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
     else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+    await Effect.runPromise(
+      terminateOwnedHostProxyWorkersInRoot(join(root, "data"), {
+        privateFileAccess: ownerOnlyFileAccess,
+      }),
+    );
     await rm(root, { recursive: true, force: true });
   }
 };
@@ -470,6 +512,7 @@ const makeStartLayer = (
         events: effectiveEventsForPlan(plannedApp),
       }),
     }),
+    makeTestStateStore().layer,
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
@@ -742,6 +785,7 @@ const makeAutoStartLayer = async (options: {
         events: effectiveEventsForPlan(options.userPlan),
       }),
     }),
+    makeTestStateStore().layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, {
       plan: (landofile) =>
@@ -949,7 +993,7 @@ describe("lando start", () => {
     });
   });
 
-  test("a post-start event failure is fatal without destroying the app or removing routes", async () => {
+  test("a post-start event step failure warns without destroying the app or removing routes", async () => {
     // Given
     const failedPlan = {
       ...plan,
@@ -959,11 +1003,11 @@ describe("lando start", () => {
     const harness = makeStartLayer({ plannedApp: failedPlan });
 
     // When
-    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+    const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
     // Then
-    expect(failureOf(exit)).toMatchObject({ _tag: "LandofileEventStepFailedError", event: "post-start" });
-    expect(harness.events).not.toContain("message.warn");
+    expect(result.app).toBe(failedPlan.name);
+    expect(harness.events).toContain("message.warn");
     expect(harness.destroyCalls).toHaveLength(0);
     expect(harness.buildOrder).toContain("apply");
     expect(harness.buildOrder).toContain("proxy-apply");
@@ -1179,6 +1223,7 @@ describe("lando start", () => {
   });
 
   test("creates host-proxy session and applies shim/socket mounts before provider apply", async () => {
+    let workerPid: number | undefined;
     await withHostProxyArtifact(async ({ dataRoot }) => {
       const eligiblePlan = {
         ...plan,
@@ -1234,8 +1279,21 @@ describe("lando start", () => {
       expect(hostProxyStartAt).toBeGreaterThan(-1);
       expect(hostProxyCompleteAt).toBeGreaterThan(hostProxyStartAt);
       expect(applyStartAt).toBeGreaterThan(hostProxyCompleteAt);
-      await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
+      const runDir = makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root);
+      await stat(runDir);
+      const record: unknown = JSON.parse(await readFile(join(runDir, "worker.json"), "utf8"));
+      if (
+        typeof record !== "object" ||
+        record === null ||
+        !("pid" in record) ||
+        typeof record.pid !== "number"
+      )
+        throw new Error("Expected the detached worker's process identity.");
+      workerPid = record.pid;
     });
+    expect(workerPid).toBeDefined();
+    const pid = workerPid;
+    if (pid !== undefined) expect(() => process.kill(pid, 0)).toThrow();
   });
 
   test("creates host-proxy session under the resolved PathsService roots", async () => {
@@ -1283,6 +1341,11 @@ describe("lando start", () => {
       else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
       else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorkersInRoot(join(root, "service-data"), {
+          privateFileAccess: ownerOnlyFileAccess,
+        }),
+      );
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -1337,6 +1400,11 @@ describe("lando start", () => {
       else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
       else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorkersInRoot(join(root, "data"), {
+          privateFileAccess: ownerOnlyFileAccess,
+        }),
+      );
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -1865,7 +1933,7 @@ describe("lando start", () => {
     });
   });
 
-  test.skipIf(resolveLiveProviderSocket() === undefined)(
+  test.skipIf(resolveLiveProviderSocket()?.source !== "env")(
     "scaffolds an app and starts it against the live Podman socket",
     async () => {
       await withTempCwd(async (dir) => {
@@ -1883,9 +1951,10 @@ describe("lando start", () => {
     60_000,
   );
 
-  test("creates a file-sync session per FileSyncPlan entry after provider apply", async () => {
+  test("creates and flushes a file-sync session before provider apply", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
+      services: { ...plan.services, [web.name]: fileSyncWeb },
       fileSync: [
         {
           engineId: "mutagen",
@@ -1906,6 +1975,7 @@ describe("lando start", () => {
       ],
     };
     const createdSessions: Array<{ readonly mountKey: string; readonly index: number }> = [];
+    const order: string[] = [];
     let counter = 0;
     const fakeEngine: FileSyncEngineShape = {
       id: "mutagen",
@@ -1921,14 +1991,23 @@ describe("lando start", () => {
       setup: () => Effect.void,
       createSession: (spec: FileSyncSessionSpec) =>
         Effect.sync(() => {
+          order.push("create");
           counter += 1;
           createdSessions.push({ mountKey: spec.mountKey, index: counter });
           return `${spec.app.id}-${spec.service}-${spec.mountKey}` as unknown as FileSyncSessionRef;
         }),
+      flushSession: () =>
+        Effect.sync(() => {
+          order.push("flush");
+        }),
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () => Effect.void,
-      listSessions: () => Effect.succeed([]),
+      listSessions: () =>
+        Effect.sync(() => {
+          order.push("list");
+          return [];
+        }),
       streamEvents: () => Stream.empty,
     };
     const provider: RuntimeProviderShape = {
@@ -1938,6 +2017,12 @@ describe("lando start", () => {
       version: "0.0.0",
       platform: "linux",
       capabilities,
+      inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
+      prepareFileSyncTargets: () =>
+        Effect.sync(() => {
+          order.push("prepare");
+          return { rollback: Effect.void };
+        }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -1951,7 +2036,11 @@ describe("lando start", () => {
           new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
         ),
       removeArtifact: () => Effect.void,
-      apply: () => Effect.succeed({ changed: true }),
+      apply: () =>
+        Effect.sync(() => {
+          order.push("apply");
+          return { changed: true };
+        }),
       start: () => Effect.void,
       stop: () => Effect.void,
       restart: () => Effect.void,
@@ -1975,6 +2064,7 @@ describe("lando start", () => {
       PrivateFileAccessLive,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -1996,11 +2086,13 @@ describe("lando start", () => {
     await Effect.runPromise(startApp().pipe(Effect.provide(fullLayer)));
 
     expect(createdSessions).toEqual([{ mountKey: "app-mount", index: 1 }]);
+    expect(order).toEqual(["prepare", "list", "create", "flush", "apply"]);
   });
 
   test("reuses an existing file-sync session on repeat app:start", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
+      services: { ...plan.services, [web.name]: fileSyncWeb },
       fileSync: [
         {
           engineId: "mutagen",
@@ -2020,12 +2112,15 @@ describe("lando start", () => {
         },
       ],
     };
+    const existingSpec = planWithFileSync.fileSync[0]?.session;
+    if (existingSpec === undefined) throw new Error("Missing planned file-sync session");
     const existingRef = FileSyncSessionRef.make("session-web-app-mount");
     const existingSession: FileSyncSessionInfo = {
       ref: existingRef,
       app: { kind: "user", id: plan.id, root: plan.root },
       service: ServiceName.make("web"),
       mountKey: "app-mount",
+      spec: existingSpec,
       status: "paused",
       lastUpdatedAt: DateTime.unsafeMake("2026-06-17T12:00:00.000Z"),
     };
@@ -2047,6 +2142,7 @@ describe("lando start", () => {
           calls.push(`create:${spec.mountKey}`);
           return `${spec.app.id}-${spec.service}-${spec.mountKey}` as unknown as FileSyncSessionRef;
         }),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: (ref) =>
         Effect.sync(() => {
@@ -2067,6 +2163,8 @@ describe("lando start", () => {
       version: "0.0.0",
       platform: "linux",
       capabilities,
+      inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
+      prepareFileSyncTargets: () => Effect.succeed({ rollback: Effect.void }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2104,6 +2202,7 @@ describe("lando start", () => {
       PrivateFileAccessLive,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -2131,6 +2230,7 @@ describe("lando start", () => {
   test("runs file-sync setup before creating the first accelerated session on app:start", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
+      services: { ...plan.services, [web.name]: fileSyncWeb },
       fileSync: [
         {
           engineId: "mutagen",
@@ -2152,6 +2252,7 @@ describe("lando start", () => {
     };
     const calls: string[] = [];
     let setupComplete = false;
+    let availabilityChecks = 0;
     const fakeEngine: FileSyncEngineShape = {
       id: "mutagen",
       displayName: "Mutagen",
@@ -2164,7 +2265,7 @@ describe("lando start", () => {
       },
       isAvailable: Effect.sync(() => {
         calls.push("is-available");
-        return setupComplete;
+        return ++availabilityChecks === 1 || setupComplete;
       }),
       setup: () =>
         Effect.sync(() => {
@@ -2176,6 +2277,7 @@ describe("lando start", () => {
           calls.push(`create:${spec.mountKey}`);
           return `${spec.app.id}-${spec.service}-${spec.mountKey}` as unknown as FileSyncSessionRef;
         }),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () => Effect.void,
@@ -2189,6 +2291,8 @@ describe("lando start", () => {
       version: "0.0.0",
       platform: "linux",
       capabilities,
+      inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
+      prepareFileSyncTargets: () => Effect.succeed({ rollback: Effect.void }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2227,6 +2331,7 @@ describe("lando start", () => {
       PrivateFileAccessLive,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -2251,7 +2356,7 @@ describe("lando start", () => {
 
     await Effect.runPromise(startApp().pipe(Effect.provide(layer)));
 
-    expect(calls).toEqual(["is-available", "setup", "is-available", "create:app-mount"]);
+    expect(calls).toEqual(["is-available", "is-available", "setup", "is-available", "create:app-mount"]);
     expect(events.find((event) => event._tag === "task.detail")).toMatchObject({
       taskId: "start-file-sync-test-start:setup",
       stream: "stdout",
@@ -2259,9 +2364,10 @@ describe("lando start", () => {
     });
   });
 
-  test("skips file-sync session creation when the engine reports unavailable", async () => {
+  test("fails closed before provider apply when the file-sync adapter becomes unavailable", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
+      services: { ...plan.services, [web.name]: fileSyncWeb },
       fileSync: [
         {
           engineId: "mutagen",
@@ -2283,6 +2389,8 @@ describe("lando start", () => {
     };
     const createCalls: Array<string> = [];
     const destroyCalls: Array<string> = [];
+    const rollbackCalls: Array<string> = [];
+    let availabilityChecks = 0;
     const fakeEngine: FileSyncEngineShape = {
       id: "mutagen",
       displayName: "Mutagen",
@@ -2293,13 +2401,14 @@ describe("lando start", () => {
         conflictReporting: true,
         progressReporting: true,
       },
-      isAvailable: Effect.succeed(false),
+      isAvailable: Effect.sync(() => ++availabilityChecks === 1),
       setup: () => Effect.void,
       createSession: (spec: FileSyncSessionSpec) =>
         Effect.sync(() => {
           createCalls.push(spec.mountKey);
           return `${spec.app.id}-${spec.service}-${spec.mountKey}` as unknown as FileSyncSessionRef;
         }),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () => Effect.void,
@@ -2313,6 +2422,13 @@ describe("lando start", () => {
       version: "0.0.0",
       platform: "linux",
       capabilities,
+      inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
+      prepareFileSyncTargets: () =>
+        Effect.succeed({
+          rollback: Effect.sync(() => {
+            rollbackCalls.push("rollback");
+          }),
+        }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2355,6 +2471,7 @@ describe("lando start", () => {
       PrivateFileAccessLive,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -2374,16 +2491,19 @@ describe("lando start", () => {
       Layer.succeed(FileSyncEngine, fakeEngine),
     );
 
-    const result = await Effect.runPromise(startApp().pipe(Effect.provide(layer)));
+    await expect(Effect.runPromise(startApp().pipe(Effect.provide(layer)))).rejects.toThrow(
+      "live session adapter is unavailable",
+    );
 
     expect(createCalls).toEqual([]);
     expect(destroyCalls).toEqual([]);
-    expect(result.app).toBe("test-start");
+    expect(rollbackCalls).toEqual(["rollback"]);
   });
 
-  test("degrades without rollback when deferred file-sync setup fails on app:start", async () => {
+  test("rolls back prepared targets when deferred file-sync setup fails before apply", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
+      services: { ...plan.services, [web.name]: fileSyncWeb },
       fileSync: [
         {
           engineId: "mutagen",
@@ -2405,6 +2525,8 @@ describe("lando start", () => {
     };
     const createCalls: Array<string> = [];
     const destroyCalls: Array<string> = [];
+    const rollbackCalls: Array<string> = [];
+    let availabilityChecks = 0;
     const fakeEngine: FileSyncEngineShape = {
       id: "mutagen",
       displayName: "Mutagen",
@@ -2415,16 +2537,22 @@ describe("lando start", () => {
         conflictReporting: true,
         progressReporting: true,
       },
-      isAvailable: Effect.succeed(false),
+      isAvailable: Effect.sync(() => ++availabilityChecks === 1),
       setup: () =>
         Effect.fail(
-          new FileSyncStartError({ engineId: "mutagen", message: "download failed", remediation: "retry" }),
+          new FileSyncStartError({
+            engineId: "mutagen",
+            message: "download failed",
+            remediation: "retry",
+            cause: Object.assign(new Error("archive checksum mismatch"), { _tag: "ToolExtractError" }),
+          }),
         ),
       createSession: (spec: FileSyncSessionSpec) =>
         Effect.sync(() => {
           createCalls.push(spec.mountKey);
           return `${spec.app.id}-${spec.service}-${spec.mountKey}` as unknown as FileSyncSessionRef;
         }),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: () => Effect.void,
@@ -2438,6 +2566,13 @@ describe("lando start", () => {
       version: "0.0.0",
       platform: "linux",
       capabilities,
+      inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
+      prepareFileSyncTargets: () =>
+        Effect.succeed({
+          rollback: Effect.sync(() => {
+            rollbackCalls.push("rollback");
+          }),
+        }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2481,6 +2616,7 @@ describe("lando start", () => {
       PrivateFileAccessLive,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -2503,22 +2639,32 @@ describe("lando start", () => {
       Layer.succeed(FileSyncEngine, fakeEngine),
     );
 
-    const result = await Effect.runPromise(startApp().pipe(Effect.provide(layer)));
+    await expect(Effect.runPromise(startApp().pipe(Effect.provide(layer)))).rejects.toThrow(
+      "download failed",
+    );
 
     expect(createCalls).toEqual([]);
     expect(destroyCalls).toEqual([]);
-    expect(result.app).toBe("test-start");
+    expect(rollbackCalls).toEqual(["rollback"]);
     expect(events.find((event) => event._tag === "task.detail" && event.stream === "stderr")).toMatchObject({
       taskId: "start-file-sync-test-start:setup",
       stream: "stderr",
-      line: "Deferred file-sync setup failed; continuing without accelerated mounts.",
+      line: "FileSyncStartError: download failed. Cause: ToolExtractError: archive checksum mismatch. retry",
+    });
+    expect(
+      events.find(
+        (event) => event._tag === "task.fail" && event.taskId === "start-file-sync-test-start:setup",
+      ),
+    ).toMatchObject({
+      summary: "File-sync setup failed",
+      remediation: "retry",
     });
     expect(
       events.find(
         (event) => event._tag === "task.tree.complete" && event.parentId === "start-file-sync-test-start",
       ),
     ).toMatchObject({
-      summary: "test-start file-sync unavailable; continuing without accelerated mounts",
+      summary: "test-start file-sync failed",
       succeeded: 0,
       failed: 2,
     });
@@ -2535,7 +2681,14 @@ describe("lando start", () => {
     process.env.LANDO_USER_DATA_ROOT = join(root, "data");
     const planWithFileSync: AppPlan = {
       ...plan,
-      services: { ...plan.services, [web.name]: hostProxyEnabledWeb },
+      services: {
+        ...plan.services,
+        [web.name]: {
+          ...hostProxyEnabledWeb,
+          appMount: fileSyncWebWithExtra.appMount,
+          mounts: fileSyncWebWithExtra.mounts,
+        },
+      },
       fileSync: ["app-mount", "mount-1"].map((mountKey) => ({
         engineId: "mutagen",
         session: {
@@ -2574,6 +2727,7 @@ describe("lando start", () => {
           }
           return "session-web-app-mount" as unknown as FileSyncSessionRef;
         }),
+      flushSession: () => Effect.void,
       pauseSession: () => Effect.void,
       resumeSession: () => Effect.void,
       terminateSession: (ref) => Effect.sync(() => callLog.push(`terminate:${String(ref)}`)),
@@ -2587,6 +2741,13 @@ describe("lando start", () => {
       version: "0.0.0",
       platform: "linux",
       capabilities,
+      inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
+      prepareFileSyncTargets: () =>
+        Effect.succeed({
+          rollback: Effect.sync(() => {
+            callLog.push("rollback");
+          }),
+        }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2635,6 +2796,7 @@ describe("lando start", () => {
       PrivateFileAccessLive,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -2656,12 +2818,7 @@ describe("lando start", () => {
 
     try {
       await expect(startApp().pipe(Effect.provide(layer), Effect.runPromise)).rejects.toThrow("sync failed");
-      expect(callLog).toEqual([
-        "create:app-mount",
-        "create:mount-1",
-        "terminate:session-web-app-mount",
-        "destroy:false:false",
-      ]);
+      expect(callLog).toEqual(["create:app-mount", "create:mount-1", "terminate:session-web-app-mount"]);
       await expectMissingPath(
         makeLandoPaths({ userDataRoot: join(root, "data") }).hostProxyRunDir(plan.id, plan.root),
       );
@@ -2671,6 +2828,11 @@ describe("lando start", () => {
       else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousArtifact;
       if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
       else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      await Effect.runPromise(
+        terminateOwnedHostProxyWorkersInRoot(join(root, "data"), {
+          privateFileAccess: ownerOnlyFileAccess,
+        }),
+      );
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -2678,6 +2840,7 @@ describe("lando start", () => {
   test("pauses resumed file-sync sessions when a later session fails", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
+      services: { ...plan.services, [web.name]: fileSyncWebWithExtra },
       fileSync: ["app-mount", "mount-1"].map((mountKey) => ({
         engineId: "mutagen",
         session: {
@@ -2695,12 +2858,15 @@ describe("lando start", () => {
         },
       })),
     };
+    const existingSpec = planWithFileSync.fileSync[0]?.session;
+    if (existingSpec === undefined) throw new Error("Missing planned file-sync session");
     const existingRef = "session-web-app-mount" as unknown as FileSyncSessionRef;
     const existingSession: FileSyncSessionInfo = {
       ref: existingRef,
       app: { kind: "user", id: plan.id, root: plan.root },
       service: ServiceName.make("web"),
       mountKey: "app-mount",
+      spec: existingSpec,
       status: "paused",
       lastUpdatedAt: DateTime.unsafeMake("2026-06-17T12:00:00.000Z"),
     };
@@ -2723,6 +2889,7 @@ describe("lando start", () => {
             Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "sync failed" })),
           ),
         ),
+      flushSession: () => Effect.void,
       pauseSession: (ref) => Effect.sync(() => callLog.push(`pause:${String(ref)}`)),
       resumeSession: (ref) => Effect.sync(() => callLog.push(`resume:${String(ref)}`)),
       terminateSession: (ref) => Effect.sync(() => callLog.push(`terminate:${String(ref)}`)),
@@ -2740,6 +2907,13 @@ describe("lando start", () => {
       version: "0.0.0",
       platform: "linux",
       capabilities,
+      inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
+      prepareFileSyncTargets: () =>
+        Effect.succeed({
+          rollback: Effect.sync(() => {
+            callLog.push("rollback");
+          }),
+        }),
       isAvailable: Effect.succeed(true),
       setup: () => Effect.void,
       getStatus: Effect.succeed({ running: true }),
@@ -2782,6 +2956,7 @@ describe("lando start", () => {
       PrivateFileAccessLive,
       TestStateStoreLive,
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      makeTestStateStore().layer,
       Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
@@ -2808,7 +2983,6 @@ describe("lando start", () => {
       "list:mount-1",
       "create:mount-1",
       "pause:session-web-app-mount",
-      "destroy:false:false",
     ]);
   });
 });
