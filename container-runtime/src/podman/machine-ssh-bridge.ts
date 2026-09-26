@@ -13,18 +13,15 @@ import {
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Match, Option, Schema, type Scope } from "effect";
 
-export interface MachineSshBridgeProcess {
-  readonly waitReady: () => Promise<void>;
-  readonly close: () => Promise<void>;
-}
-export interface MachineSshBridgeHost {
-  readonly which: (name: string) => string | undefined;
-  readonly run: (
-    command: string,
-    args: ReadonlyArray<string>,
-  ) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>;
-  readonly start: (command: string, args: ReadonlyArray<string>) => MachineSshBridgeProcess;
-}
+import {
+  BridgeCommandError,
+  type MachineSshBridgeHost,
+  type MachineSshBridgeProcess,
+  defaultHost,
+} from "./machine-ssh-host.ts";
+
+export type { MachineSshBridgeHost, MachineSshBridgeProcess } from "./machine-ssh-host.ts";
+
 export interface MachineSshBridgeOptions {
   readonly podmanBin: string;
   readonly stateDir: string;
@@ -40,61 +37,10 @@ interface BridgeTarget {
   readonly socketName: string;
   readonly local: string;
 }
-class BridgeCommandError extends Error {}
 type BridgeEffect<Result> = Effect.Effect<Result, ProviderUnavailableError, Scope.Scope>;
 
 const fingerprint = (value: string, length: number): string =>
   createHash("sha256").update(value).digest("hex").slice(0, length);
-
-const defaultHost: Omit<MachineSshBridgeHost, "run"> = {
-  which: (name) => Bun.which(name) ?? undefined,
-  start: (command, args) => {
-    const child = Bun.spawn([command, ...args], {
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
-      windowsHide: true,
-    });
-    let stderr = "";
-    let closePromise: Promise<void> | undefined;
-    const drain = (async () => {
-      for await (const chunk of child.stderr)
-        stderr = (stderr + new TextDecoder().decode(chunk)).slice(-4096);
-    })();
-    return {
-      waitReady: async () => {
-        const reader = child.stdout.getReader();
-        const timeout = setTimeout(() => child.kill(), 15_000);
-        try {
-          let output = "";
-          while (output.length < 1024) {
-            const next = await reader.read();
-            if (next.done)
-              throw new BridgeCommandError(`SSH reverse forwarding exited before readiness: ${stderr}`);
-            output += new TextDecoder().decode(next.value);
-            if (output.includes("LANDO_BRIDGE_READY\n")) return;
-          }
-          throw new BridgeCommandError("SSH reverse forwarding did not report readiness.");
-        } finally {
-          clearTimeout(timeout);
-          reader.releaseLock();
-        }
-      },
-      close: () => {
-        closePromise ??= (async () => {
-          child.stdin.end();
-          const timeout = setTimeout(() => child.kill(), 3_000);
-          try {
-            await Promise.all([child.exited, drain]);
-          } finally {
-            clearTimeout(timeout);
-          }
-        })();
-        return closePromise;
-      },
-    };
-  },
-};
 
 const Machine = Schema.Struct({
   Name: Schema.String,
@@ -108,14 +54,16 @@ const Machine = Schema.Struct({
 });
 
 export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
-  const failure = (cause: unknown): ProviderUnavailableError =>
-    new ProviderUnavailableError({
-      providerId: options.providerId,
-      operation: "host-proxy-bridge",
-      message: "Could not connect the host socket to the Podman machine.",
-      remediation: `Ensure OpenSSH Client (${options.sshBinary}) is installed, run \`lando setup --provider=${options.providerId}\`, and start the app again.`,
-      cause,
-    });
+  const failure =
+    (operation: "host-proxy-bridge" | "agent-socket-bridge") =>
+    (cause: unknown): ProviderUnavailableError =>
+      new ProviderUnavailableError({
+        providerId: options.providerId,
+        operation,
+        message: "Could not connect the host socket to the Podman machine.",
+        remediation: `Ensure OpenSSH Client (${options.sshBinary}) is installed, run \`lando setup --provider=${options.providerId}\`, and start the app again.`,
+        cause,
+      });
   const acquire = async (target: BridgeTarget, host: MachineSshBridgeHost, signal: AbortSignal) => {
     signal.throwIfAborted();
     const ssh = host.which(options.sshBinary);
@@ -197,7 +145,7 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
     }
     return { dir: AbsolutePath.make(dir), socket: AbsolutePath.make(socket), release };
   };
-  const open = (target: () => BridgeTarget) =>
+  const open = (operation: "host-proxy-bridge" | "agent-socket-bridge", target: () => BridgeTarget) =>
     Effect.gen(function* () {
       const processRunner = yield* Effect.serviceOption(ProcessRunner);
       const host: MachineSshBridgeHost = options.host ?? {
@@ -209,13 +157,13 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
         },
       };
       return yield* Effect.acquireRelease(
-        Effect.tryPromise({ try: (signal) => acquire(target(), host, signal), catch: failure }),
-        ({ release }) => Effect.tryPromise({ try: release, catch: failure }).pipe(Effect.orDie),
+        Effect.tryPromise({ try: (signal) => acquire(target(), host, signal), catch: failure(operation) }),
+        ({ release }) => Effect.tryPromise({ try: release, catch: failure(operation) }).pipe(Effect.orDie),
       );
     });
   return {
     openHostProxyBridge: (input: HostProxyBridgeInput): BridgeEffect<HostProxyBridgeResult> =>
-      open(() => {
+      open("host-proxy-bridge", () => {
         const url = new URL(input.loopbackUrl);
         const port = Number(url.port);
         if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !Schema.is(PortNumber)(port))
@@ -229,7 +177,7 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
         };
       }).pipe(Effect.map(({ socket }) => ({ socketPath: socket }))),
     openAgentSocketBridge: (input: AgentSocketBridgeInput): BridgeEffect<AgentSocketBridgeResult> =>
-      open(() => {
+      open("agent-socket-bridge", () => {
         const local = Match.value(input.upstream).pipe(
           Match.tag("unix", ({ path }) => {
             if (!/^\/[^\r\n\0:]*$/u.test(path))

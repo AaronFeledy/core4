@@ -151,6 +151,7 @@ test("readiness failure closes SSH and reports the selected provider", async () 
   expect(Either.isLeft(result)).toBe(true);
   if (Either.isLeft(result)) {
     expect(result.left.providerId).toBe("podman");
+    expect(result.left.operation).toBe("agent-socket-bridge");
     expect(result.left.remediation).toContain("lando setup --provider=podman");
   }
   expect(f.events).toContain("close");
