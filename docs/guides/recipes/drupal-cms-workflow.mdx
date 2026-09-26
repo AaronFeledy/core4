@@ -176,7 +176,7 @@ lando exec appserver -- php -v
 <Guide>
   <Scenario id="reader-path" render>
     <Step name="scaffold">
-      <Variable name="appName" value="drupal-cms-workflow" display="drupal-cms-demo" />
+      <Variable name="appName" value="drupal-cms-demo" display="drupal-cms-demo" />
       <Run command="lando init --recipe drupal-cms --name={{appName}} --yes" />
     </Step>
     <Step name="confirm-defaults">
@@ -205,7 +205,7 @@ lando exec appserver -- php -v
 
   <Scenario id="nginx-postgres" render>
     <Step name="init">
-      <Variable name="appName" value="drupal-cms-workflow-nginx" display="drupal-cms-nginx" />
+      <Variable name="appName" value="drupal-cms-nginx" display="drupal-cms-nginx" />
       <Run command="lando init --recipe drupal-cms --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=/app/web" />
     </Step>
     <Step name="inspect">
