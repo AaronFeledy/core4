@@ -1,6 +1,6 @@
 # WordPress
 
-`lando init --recipe wordpress` scaffolds PHP, MariaDB, WP-CLI tooling, and Composer.
+`lando init --recipe wordpress` writes PHP, MariaDB, Composer, and a `lando wp` task. The stock PHP image has no `wp` binary or `mysqli` extension yet, so add both before you install WordPress.
 
 ```sh
 lando init --recipe wordpress --name=my-wordpress-app --yes
@@ -13,7 +13,7 @@ lando info
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
-For day-to-day tooling and database hosts, see [Run the WordPress recipe](/guides/recipes/wordpress-workflow/).
+For WP-CLI, `mysqli`, the install steps, and database hosts, see [Run the WordPress recipe](/guides/recipes/wordpress-workflow/).
 
 ## 1. scaffold
 
