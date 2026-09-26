@@ -1,0 +1,253 @@
+---
+id: wordpress-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, wordpress, php, mariadb]
+---
+
+# Run the WordPress recipe
+
+```sh
+lando init --recipe wordpress --name=wp-demo --yes
+cd wp-demo
+lando start
+```
+
+The named init creates `wp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3 and skips Redis. Apache and MariaDB are up after start, but the stock PHP image can't run WordPress yet: it has no `mysqli` extension and no `wp` binary. Add both, then install WordPress.
+
+If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `appserver` | `php:8.3`, `framework: wordpress`, Apache on port `80`, depends on `database` (and `cache` with Redis) |
+| `database` | `type: mariadb` (MariaDB 11.4) |
+| `cache` (optional) | `type: redis` with `--answer=redis=true` |
+| Tooling | `lando wp` and `lando composer` on `appserver`, `lando mariadb` from `database`, `lando redis-cli` when `cache` exists |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead.
+
+## Put WP-CLI and mysqli on appserver
+
+Stock PHP images ship Composer and `pdo_mysql`. WordPress also needs the `mysqli` extension and a `wp` binary on `appserver`. Add both as root `build.artifact` steps, plus one environment variable:
+
+```yaml
+services:
+  appserver:
+    environment:
+      WP_CLI_ALLOW_ROOT: "1"
+    build:
+      artifact:
+        - run: docker-php-ext-install mysqli
+          user: root
+        - run: >-
+            set -eu;
+            wp_cli="$(mktemp)";
+            trap 'rm -f "$wp_cli"' EXIT;
+            curl -fsSL -o "$wp_cli" https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli-2.12.0.phar;
+            echo "ce34ddd838f7351d6759068d09793f26755463b4a4610a5a5c0a97b68220d85c  $wp_cli" | sha256sum -c -;
+            install -m 0755 "$wp_cli" /usr/local/bin/wp
+          user: root
+```
+
+Keep the `>-` folded block. Build commands can't contain line breaks, and a `|` block keeps them. The second step pins WP-CLI 2.12.0 and checks its published SHA-256 digest before `install` can write the binary. A mismatch fails the rebuild without installing the downloaded file.
+
+Tooling runs as root, and WP-CLI refuses root by default. `WP_CLI_ALLOW_ROOT` tells it you meant it, so plain `lando wp` works after the rebuild.
+
+Rebuild so the steps land in the image:
+
+```sh
+lando rebuild
+```
+
+Then confirm the tools:
+
+```sh
+lando wp --info
+lando composer --version
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+## Download and install WordPress
+
+```sh
+lando wp core download
+lando wp config create --dbname=wp-demo --dbuser=lando --dbpass=lando --dbhost=database --skip-check
+```
+
+Lando's proxy ends HTTPS and forwards plain HTTP to Apache, so WordPress can't tell the request was secure. Open `wp-config.php` and add this above the `That's all, stop editing!` line:
+
+```php
+if ( ( $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '' ) === 'https' ) {
+    $_SERVER['HTTPS'] = 'on';
+}
+```
+
+Skip it and the HTTPS page requests its CSS and JS over `http://`, which the browser blocks.
+
+Leave `--admin_password` off. WP-CLI generates one and prints it once on an `Admin password:` line, so save it in your password manager.
+
+```sh
+lando wp core install \
+  --url='https://wp-demo.lndo.site' \
+  --title='WP Demo' \
+  --admin_user=admin \
+  --admin_email=admin@example.com \
+  --skip-email
+```
+
+Match `--url` to the HTTPS endpoint `lando info` prints (add the port when info shows one). Then:
+
+```sh
+lando wp core is-installed
+lando wp option get home
+lando mariadb -e 'SHOW TABLES;'
+```
+
+Open the HTTPS URL. A fresh install serves the site title you passed to `core install`.
+
+## Connect WordPress to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `wp-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Put host `database` in `wp-config.php` (or in `config create --dbhost`). Do not use `127.0.0.1` or `localhost`. Root password is generated. `lando info` redacts it, and the `database` container holds it as `MARIADB_ROOT_PASSWORD` when you need it.
+
+Add Redis at init with `--answer=redis=true`. That adds a `cache` service on `redis`. Wire an object cache plugin to host `cache` on port `6379` when you want it. Add `pecl install redis` and `docker-php-ext-enable redis` as another root artifact step if your object cache plugin needs the extension.
+
+## Import a database
+
+Import replaces what's in the app database, so snapshot it first:
+
+```sh
+lando db:snapshot --label before-import
+lando db:import prod.sql.gz --yes
+lando wp search-replace 'https://www.example.com' 'https://wp-demo.lndo.site' --all-tables --skip-columns=guid
+lando wp cache flush
+```
+
+`.gz` dumps gunzip on the way in, and `--yes` skips the confirmation prompt. To roll back, find the `before-import` snapshot's id in `lando db:snapshots` and pass it to `lando db:restore`. `lando db:export` writes `database.sql.gz` when you want a dump of your own.
+
+## Start from an existing site
+
+Run init in the directory that holds `wp-config.php`. The `.` writes `.lando.yml` there instead of a new directory:
+
+```sh
+lando init . --recipe wordpress --name=my-site --yes
+```
+
+Merge the `appserver` block from [Put WP-CLI and mysqli on appserver](#put-wp-cli-and-mysqli-on-appserver) into `.lando.yml`, and add the HTTPS snippet from [Download and install WordPress](#download-and-install-wordpress) to `wp-config.php`. Then start and point WordPress at MariaDB:
+
+```sh
+lando start
+lando wp config set DB_HOST database
+lando wp config set DB_NAME my-site
+lando wp config set DB_USER lando
+lando wp config set DB_PASSWORD lando
+```
+
+Bring your data over with [Import a database](#import-a-database), using `https://my-site.lndo.site` as the search-replace target.
+
+## Catch outgoing mail
+
+Add a Mailpit service to `.lando.yml`:
+
+```yaml
+services:
+  mail:
+    type: mailpit
+```
+
+Lando installs `msmtp` in `appserver` and points PHP's `sendmail_path` at it, so `wp_mail()` lands in Mailpit. Rebuild, send a test message, and get the inbox URL:
+
+```sh
+lando rebuild
+lando wp eval 'var_dump( wp_mail( "you@example.test", "Mailpit check", "Hello" ) );'
+lando info
+```
+
+Open the `mail` URL `lando info` prints.
+
+## Debug with Xdebug
+
+Add `xdebug: true` to `appserver`:
+
+```yaml
+services:
+  appserver:
+    xdebug: true
+```
+
+Rebuild so the extension lands in the image, then check it:
+
+```sh
+lando rebuild
+lando xdebug status
+```
+
+Have your IDE listen on port `9003` and map `/app` to the project root. `lando xdebug off` and `lando xdebug on` toggle it without another rebuild.
+
+## Check the config and tear down
+
+`lando app:config --format=json` prints the planned config without touching containers. Here's the whole loop, init to destroy:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="wp-demo" display="wp-demo" />
+      <Run command="lando init --recipe wordpress --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"wordpress\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"wp\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="redis-php82" render={false} reason="Regression: php=8.2 and redis=true answers plan">
+    <Step name="init">
+      <Variable name="appName" value="wp-redis" display="wp-redis" />
+      <Run command="lando init --recipe wordpress --name={{appName}} --yes --answer=php=8.2 --answer=redis=true" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.2\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+`lando destroy -y` removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [WordPress recipe](/recipes/wordpress/)
+- [Install an extra PHP extension](../services/php-customization.mdx)
+- [Run build steps as root or as your app user](../services/build-steps.mdx)
+- [Import and export app databases](../tooling/db-import-export.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
+- [Add phpMyAdmin](../services/phpmyadmin.mdx)
+- [Add Redis](../services/redis.mdx)
+- [Add Mailpit](../services/mailpit.mdx)
+- [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx)
