@@ -9,13 +9,14 @@ import type { AppLockTimeoutError, StateStoreError } from "@lando/sdk/errors";
 import type { AbsolutePath, AppPlan } from "@lando/sdk/schema";
 import {
   type AppliedOrphanGroup,
-  type PathsService,
+  PathsService,
   type ProviderError,
   type ProviderSelectionError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 
 export interface OrphanTeardownOptions {
@@ -77,12 +78,15 @@ export const tearDownOrphans = (input: {
 > =>
   Effect.gen(function* () {
     const registry = yield* RuntimeProviderRegistry;
+    const paths = yield* PathsService;
+    const relayRoots = { ...paths.roots, platform: paths.platform };
     const removeVolumes = input.options.volumes || input.options.purgeCaches;
     const volumeClasses = teardownVolumeClasses(input.options);
     const services: string[] = [];
     let volumesRemoved = false;
     for (const group of input.groups) {
       const plan = selectionPlan(group, input.root);
+      const ref = { id: group.appId, root: input.root };
       yield* withAppMutationLock(
         appLockTarget(plan),
         Effect.gen(function* () {
@@ -101,7 +105,10 @@ export const tearDownOrphans = (input: {
             yield* provider.removeVolume(volume.ref, generation);
             volumesRemoved = true;
           }
-        }),
+        }).pipe(
+          Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "ssh")),
+          Effect.ensuring(cleanupAgentRelayState(ref, relayRoots, "gpg")),
+        ),
       );
     }
     return {

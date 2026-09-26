@@ -13,6 +13,7 @@ type MapSlot =
   | "templateEngines"
   | "certificateAuthorities"
   | "routerServices"
+  | "secretStores"
   | "sshServices"
   | "globalServices"
   | "serviceTypes"
@@ -36,6 +37,7 @@ export interface PluginCapabilityIndex {
   readonly templateEngines: SlotMap<"templateEngines">;
   readonly certificateAuthorities: SlotMap<"certificateAuthorities">;
   readonly routerServices: SlotMap<"routerServices">;
+  readonly secretStores: SlotMap<"secretStores">;
   readonly sshServices: SlotMap<"sshServices">;
   readonly globalServices: SlotMap<"globalServices">;
   readonly serviceTypes: SlotMap<"serviceTypes">;
@@ -118,6 +120,12 @@ const descriptorMismatch = (module: LandoPluginModule): PluginDescriptorMismatch
       keysOf(module.configTranslators),
     ),
     validateDescriptorIds(module, "renderers", idsOf(contributes?.renderers), keysOf(module.renderers)),
+    validateDescriptorIds(
+      module,
+      "secretStores",
+      idsOf(contributes?.secretStores),
+      keysOf(module.secretStores),
+    ),
     validateDescriptorIds(
       module,
       "fileSyncEngines",
@@ -238,6 +246,7 @@ const computePluginCapabilityIndex = (
   const templateEngines = mutableMapFor<"templateEngines">();
   const certificateAuthorities = mutableMapFor<"certificateAuthorities">();
   const routerServices = mutableMapFor<"routerServices">();
+  const secretStores = mutableMapFor<"secretStores">();
   const sshServices = mutableMapFor<"sshServices">();
   const globalServices = mutableMapFor<"globalServices">();
   const serviceTypes = mutableMapFor<"serviceTypes">();
@@ -266,6 +275,7 @@ const computePluginCapabilityIndex = (
       add(templateEngines, module.templateEngines ?? [], "templateEngines"),
       add(certificateAuthorities, module.certificateAuthorities ?? [], "certificateAuthorities"),
       add(routerServices, module.routerServices ?? [], "routerServices"),
+      add(secretStores, module.secretStores ?? [], "secretStores"),
       add(sshServices, module.sshServices ?? [], "sshServices"),
       add(globalServices, module.globalServices ?? [], "globalServices"),
       add(serviceTypes, module.serviceTypes ?? [], "serviceTypes"),
@@ -299,6 +309,7 @@ const computePluginCapabilityIndex = (
     templateEngines,
     certificateAuthorities,
     routerServices,
+    secretStores,
     sshServices,
     globalServices,
     serviceTypes,

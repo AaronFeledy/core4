@@ -7,7 +7,7 @@ import { AbsolutePath, type AppPlan, type VolumeCreationFact } from "@lando/sdk/
 import { STORAGE_KIND_LABEL, STORAGE_SCOPE_LABEL } from "./volume-classes.ts";
 import { volumeOwnershipLabels } from "./volume-ownership.ts";
 
-const scratchVolumeLabels = (plan: AppPlan): Readonly<Record<string, string>> => {
+const scratchVolumeLabels = (plan: Pick<AppPlan, "id" | "extensions">): Readonly<Record<string, string>> => {
   const scratch = plan.extensions["@lando/core/scratch"];
   const scratchId = typeof scratch === "object" && scratch !== null ? Reflect.get(scratch, "id") : undefined;
   return scratchId === plan.id && typeof scratchId === "string"
@@ -16,7 +16,7 @@ const scratchVolumeLabels = (plan: AppPlan): Readonly<Record<string, string>> =>
 };
 
 export const volumeCreationLabels = (
-  plan: AppPlan,
+  plan: Pick<AppPlan, "id" | "provider" | "root" | "identity" | "extensions">,
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => ({
   "dev.lando.app": plan.id,

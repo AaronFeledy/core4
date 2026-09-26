@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+// allow: SIZE_OK — Existing cross-subsystem recovery suite; keep its shared fixtures intact for this SSH-only change.
 import { Effect, Layer } from "effect";
 
 import { ProxySetupError } from "@lando/sdk/errors";
@@ -17,6 +18,7 @@ import { RouterServiceUnavailableLive } from "@lando/engine/subsystems/proxy/api
 import { UrlScannerUnavailableLive } from "@lando/engine/subsystems/scanner/api";
 import { SshServiceUnavailableLive } from "@lando/engine/subsystems/ssh/api";
 import { inputDoctorOptions } from "../../src/cli/command-specs/meta/doctor.ts";
+import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import {
   DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
@@ -33,7 +35,12 @@ const DEGRADED_MANUAL_SUBSYSTEMS = ["certs", "host-proxy"] as const;
 const READY_MANUAL_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
 
 const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
-  Effect.runPromise(subsystemDoctor({ fix }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)));
+  Effect.runPromise(
+    subsystemDoctor({ fix }).pipe(
+      Effect.provide(Layer.succeed(HostDnsResolver, { lookup: () => Effect.succeed([]) })),
+      Effect.provide(DefaultSubsystemDoctorLayer),
+    ),
+  );
 
 const expectTaggedDiagnosticForFailure = (
   subsystem: string,
@@ -71,14 +78,14 @@ describe("subsystem failure-recovery classification", () => {
     }
   });
 
-  test("read-only mode keeps a manual `lando setup` solution for degraded stub-backed subsystems", async () => {
+  test("read-only mode gives manual remediation for degraded stub-backed subsystems", async () => {
     const result = await runDefault(false);
     for (const name of DEGRADED_MANUAL_SUBSYSTEMS) {
       const check = result.checks.find((c) => c.name === name);
       expect(check?.status).toBe("warn");
       const solution = check?.solutions[0];
       expect(solution?.kind).toBe("manual");
-      expect(solution?.command).toBe("lando setup");
+      expect(solution?.command).toBe(name === "host-proxy" ? undefined : "lando setup");
     }
   });
 
@@ -224,7 +231,7 @@ describe("doctor --fix recovery", () => {
     expect(proxy?.solutions).toEqual([]);
   });
 
-  test("--fix recovers a real SshService whose setup() succeeds", async () => {
+  test("--fix recovers a SshService when setup restores agent reachability", async () => {
     let setupCalls = 0;
     const recoverableSsh = Layer.succeed(SshService, {
       ...makeTestSshService(),
@@ -235,7 +242,18 @@ describe("doctor --fix recovery", () => {
         }),
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, recoverableSsh);
-    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    const result = await Effect.runPromise(
+      subsystemDoctor({
+        fix: true,
+        sshAgent: {
+          capabilities: { agentSocket: { delivery: "bind-directory" } },
+          probe: async () => {
+            if (setupCalls === 0) throw new Error("Agent is stopped.");
+            return { identities: 0 };
+          },
+        },
+      }).pipe(Effect.provide(layer)),
+    );
     const ssh = result.checks.find((c) => c.name === "ssh");
 
     expect(setupCalls).toBe(1);

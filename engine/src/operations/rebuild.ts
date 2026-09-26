@@ -29,7 +29,7 @@ import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, ServiceName } from "@lando/sdk/schema";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
-import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
+import { compensateFailure, compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
@@ -37,11 +37,18 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
+import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
+import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
+import { withStartedGpgAgent } from "./start-gpg-agent.ts";
+import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
+import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
+import { withStartedSshAgent } from "./start-ssh-agent.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
+import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
 export type RebuildAppError = SdkRebuildAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -72,21 +79,27 @@ type RebuildAppServices =
 
 const rebuildSelectedServices = (
   plan: AppPlan,
-  recordedPlan: AppPlan,
-  signal: AbortSignal | undefined,
+  target: ResolvedAppTarget,
+  options: Pick<RebuildAppOptions, "signal"> & { readonly managed?: StartManagedScope },
 ): Effect.Effect<
   RebuildAppResult["servicesStarted"],
   RebuildAppError,
-  BuildOrchestrator | RouterService | RuntimeProviderRegistry
+  | BuildOrchestrator
+  | RouterService
+  | RuntimeProviderRegistry
+  | EventService
+  | PathsService
+  | PrivateFileAccessService
 > =>
   Effect.gen(function* () {
+    const { signal, managed } = options;
     const registry = yield* RuntimeProviderRegistry;
     const builds = yield* BuildOrchestrator;
     const proxy = yield* RouterService;
     const provider = yield* registry.select(plan);
     const services = Object.values(plan.services);
 
-    yield* Effect.forEach(
+    const stopSelected = Effect.forEach(
       [...services].reverse(),
       (service) =>
         provider
@@ -94,21 +107,34 @@ const rebuildSelectedServices = (
           .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
       { discard: true },
     );
+    yield* stopSelected;
     const builtPlan = yield* withBuildProvider(builds.build(plan), provider);
     const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
-    yield* Effect.scoped(
-      provider
-        .apply(builtPlan, {
-          reconcile: true,
-          recordedPlan: {
-            ...recordedPlan,
-            services: { ...recordedPlan.services, ...builtPlan.services },
-          },
-          ...(signal === undefined ? {} : { signal }),
-          serviceEnvironment,
-        })
-        .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
-    );
+    const gpgIntent = yield* resolveStartGpgAgentIntent({ ...target, plan: builtPlan });
+    const intent = yield* resolveStartSshAgentIntent({ ...target, plan: builtPlan });
+    yield* withStartedGpgAgent(builtPlan, target.app, provider.capabilities, gpgIntent, {
+      exec: provider.exec,
+      ...(managed === undefined ? {} : { managed }),
+      use: (gpgPlan, prepareGpgHome) =>
+        withStartedSshAgent(gpgPlan, target.app, provider.capabilities, intent, {
+          platform: provider.platform,
+          ...(managed === undefined ? {} : { managed }),
+          use: (applyPlan) =>
+            Effect.scoped(
+              provider
+                .apply(applyPlan, {
+                  reconcile: true,
+                  recordedPlan: {
+                    ...target.plan,
+                    services: { ...target.plan.services, ...builtPlan.services },
+                  },
+                  ...(signal === undefined ? {} : { signal }),
+                  serviceEnvironment,
+                })
+                .pipe(Effect.tap((result) => recordCreatedVolumes(provider, applyPlan, result))),
+            ).pipe(Effect.zipRight(compensateFailure(prepareGpgHome, stopSelected))),
+        }),
+    });
     yield* withBuildProvider(
       builds.buildApp(builtPlan, { force: true, ...(signal === undefined ? {} : { signal }) }),
       provider,
@@ -155,7 +181,6 @@ export const rebuildApp = (
     const plan = resolvedTarget.plan;
     const selectedPlan = yield* selectRebuildPlan(plan, options.services);
     const scoped = options.services !== undefined && options.services.length > 0;
-    yield* runAppInitEvents(plan);
     const context = yield* Effect.context<RebuildAppServices>();
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
@@ -167,6 +192,11 @@ export const rebuildApp = (
         stateStore,
         body: () =>
           Effect.gen(function* () {
+            yield* requireNoPendingAcceleratedStart(resolvedTarget.app, plan);
+            const stopPreflight = yield* preflightStopApp(resolvedTarget);
+            yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
+            yield* ensureStartTransactionConsistent(resolvedTarget);
+            yield* runAppInitEvents(plan);
             const proxy = yield* RouterService;
             const events = yield* EventService;
             const ref: AppRef = resolvedTarget.app;
@@ -181,10 +211,13 @@ export const rebuildApp = (
             const start = scoped
               ? {
                   app: plan.name,
-                  servicesStarted: yield* rebuildSelectedServices(selectedPlan, plan, options.signal),
+                  servicesStarted: yield* rebuildSelectedServices(selectedPlan, resolvedTarget, {
+                    ...options,
+                    ...(managed === undefined ? {} : { managed }),
+                  }),
                 }
               : yield* Effect.gen(function* () {
-                  yield* stopAppWithPlan({}, resolvedTarget);
+                  yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
                   yield* managed?.onStopped ?? Effect.void;
                   return yield* compensateFailureUnless(
                     startApp(
@@ -194,7 +227,7 @@ export const rebuildApp = (
                       },
                       resolvedTarget,
                       managed,
-                      { forceAppBuild: true },
+                      { forceAppBuild: true, skipInitEvents: true, transactionPreflightDone: true },
                     ),
                     proxy.removeRoutes(plan.id),
                     isPostStartStepError,

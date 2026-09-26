@@ -114,6 +114,59 @@ describe("app:info summary", () => {
     expect(plain).toContain("[SKIP]");
   });
 
+  test("summarizes log-source availability without repeating provider details", () => {
+    const reason =
+      "This provider cannot follow log files. Set `strategy: redirect` on this source to view it with `lando logs`.";
+    const [database, cache] = result.services;
+    if (database === undefined || cache === undefined) throw new Error("info fixture services are missing");
+    const withLogs: InfoAppResult = {
+      ...result,
+      services: [
+        {
+          ...database,
+          logSources: [
+            {
+              id: "slow-query",
+              path: "/var/log/mysql/slow.log",
+              strategy: "follow",
+              availability: "unavailable",
+              reason,
+            },
+            {
+              id: "general-query",
+              path: "/var/log/mysql/general.log",
+              strategy: "follow",
+              availability: "unavailable",
+              reason,
+            },
+            {
+              id: "console-error",
+              path: "/var/log/mysql/error.log",
+              strategy: "redirect",
+              availability: "redirected-to-console",
+            },
+          ],
+        },
+        { ...cache, logSources: [] },
+      ],
+    };
+
+    const summary = buildInfoSummary(withLogs);
+    const plain = stripAnsi(formatSummary(summary, { columns: 100 }));
+    const detail = summary.sections[0]?.rows[0]?.fields?.find(
+      (field) => field.label === "log details",
+    )?.value;
+
+    expect(plain).toContain("slow-query [unavailable], general-query [unavailable], console-error [console]");
+    expect(detail?.split(reason)).toHaveLength(2);
+    expect(summary.sections[0]?.notes).toEqual([
+      "Run `lando info --format=json` for log paths and strategies.",
+    ]);
+    expect(summary.sections[0]?.rows[1]?.fields?.some((field) => field.label === "log sources")).toBe(false);
+    expect(plain).not.toContain("/var/log/mysql/slow.log");
+    expect(plain).not.toContain("(follow");
+  });
+
   test("stays framed at a small terminal width", () => {
     expectFramed(formatSummary(buildInfoSummary(result), { columns: 36 }), 36);
   });

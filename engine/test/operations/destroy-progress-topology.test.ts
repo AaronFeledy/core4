@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber, Stream } from "effect";
-
-import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { FileSyncSessionRef } from "@lando/sdk/schema";
-import { type FileSyncEngineShape, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
+import { FileSyncStopError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { type FileSyncSessionInfo, FileSyncSessionRef, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
+import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
+import { DateTime, Effect, Exit, Fiber, Stream } from "effect";
 
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -29,6 +29,7 @@ const availableFileSync = (): FileSyncEngineShape => ({
   isAvailable: Effect.succeed(true),
   setup: () => Effect.void,
   createSession: () => Effect.succeed(FileSyncSessionRef.make("session")),
+  flushSession: () => Effect.void,
   pauseSession: () => Effect.void,
   resumeSession: () => Effect.void,
   terminateSession: () => Effect.void,
@@ -36,6 +37,24 @@ const availableFileSync = (): FileSyncEngineShape => ({
   streamEvents: () => Stream.empty,
 });
 
+const app = { kind: "user" as const, id: plan.id, root: plan.root };
+const syncSession: FileSyncSessionInfo = {
+  ref: FileSyncSessionRef.make("destroy-web-app-mount"),
+  app,
+  service: ServiceName.make("web"),
+  mountKey: "app-mount",
+  spec: {
+    app,
+    service: ServiceName.make("web"),
+    mountKey: "app-mount",
+    source: plan.root,
+    target: { _tag: "volume", name: "destroy-web-app-mount", path: PortablePath.make("/app") },
+    mode: "two-way-safe",
+    excludes: [],
+  },
+  status: "running",
+  lastUpdatedAt: DateTime.unsafeMake("2026-09-23T00:00:00Z"),
+};
 describe("destroy progress topology", () => {
   test("publishes one destroy tree between pre-destroy and post-destroy", async () => {
     // Given: a resolved destroy target with proxy cleanup and no file-sync.
@@ -89,7 +108,12 @@ describe("destroy progress topology", () => {
 
   test("includes a completed file-sync child when the engine is available", async () => {
     // Given
-    const harness = makeHarness({ fileSync: availableFileSync() });
+    const harness = makeHarness({
+      fileSync: { ...availableFileSync(), listSessions: () => Effect.succeed([syncSession]) },
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [syncSession.spec],
+      quiesceEffect: Effect.void,
+    });
 
     // When
     await runDestroyTarget(harness);
@@ -101,6 +125,249 @@ describe("destroy progress topology", () => {
     expect(byTag(harness.events, "task.complete").map((event) => event.taskId)).toContain(fileSyncId);
   });
 
+  test("rejects unknown applied state before init hooks run", async () => {
+    const calls: string[] = [];
+    const harness = makeHarness({
+      appliedFileSyncState: "unknown",
+      destroyEffect: Effect.sync(() => {
+        calls.push("destroy");
+      }),
+    });
+    const exit = await Effect.runPromiseExit(
+      destroyAppForTarget({}, { plan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+    expect(byTag(harness.events, "pre-init")).toEqual([]);
+    expect(byTag(harness.events, "post-init")).toEqual([]);
+  });
+
+  test.each([false, true])(
+    "preserves durable sync ownership until provider cleanup is verified (volumes=%s)",
+    async (volumes) => {
+      const calls: string[] = [];
+      const engine: FileSyncEngineShape = {
+        ...availableFileSync(),
+        sessionsPersistAcrossProcesses: true,
+        appLifecycle: {
+          invalidateDrain: () => Effect.void,
+          drain: () =>
+            Effect.sync(() => {
+              calls.push("drain");
+            }),
+          dispose: () =>
+            Effect.sync(() => {
+              calls.push("dispose");
+            }),
+          completeDisposal: () =>
+            Effect.sync(() => {
+              calls.push("complete");
+            }),
+        },
+      };
+      const harness = makeHarness({
+        fileSync: engine,
+        appliedFileSyncState: "accelerated",
+        appliedFileSyncSessions: [syncSession.spec],
+        quiesceEffect: Effect.sync(() => {
+          calls.push("quiesce");
+        }),
+        destroyEffect: Effect.sync(() => {
+          calls.push("destroy");
+        }),
+      });
+      const exit = await Effect.runPromiseExit(
+        destroyAppForTarget({ volumes }, { plan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(calls).toEqual([]);
+      expect(byTag(harness.events, "pre-init")).toEqual([]);
+      expect(byTag(harness.events, "post-init")).toEqual([]);
+      expect(byTag(harness.events, "pre-destroy")).toEqual([]);
+    },
+  );
+
+  test("quiesces writers before flushing and destroying accelerated volumes", async () => {
+    const calls: string[] = [];
+    const engine = {
+      ...availableFileSync(),
+      listSessions: () => Effect.succeed([syncSession]),
+      flushSession: () =>
+        Effect.sync(() => {
+          calls.push("flush");
+        }),
+      terminateSession: () =>
+        Effect.sync(() => {
+          calls.push("terminate");
+        }),
+    };
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [syncSession.spec],
+      fileSync: engine,
+      quiesceEffect: Effect.sync(() => {
+        calls.push("quiesce");
+      }),
+      destroyEffect: Effect.sync(() => {
+        calls.push("destroy");
+      }),
+    });
+    await runDestroyTarget(harness, { volumes: true });
+    expect(calls).toEqual(["quiesce", "flush", "terminate", "destroy"]);
+  });
+
+  test("a failed final flush preserves accelerated volumes", async () => {
+    const calls: string[] = [];
+    const failure = new FileSyncStopError({
+      engineId: "mutagen",
+      sessionRef: String(syncSession.ref),
+      message: "flush failed",
+    });
+    const engine = {
+      ...availableFileSync(),
+      listSessions: () => Effect.succeed([syncSession]),
+      flushSession: () => Effect.fail(failure),
+      terminateSession: () =>
+        Effect.sync(() => {
+          calls.push("terminate");
+        }),
+    };
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [syncSession.spec],
+      fileSync: engine,
+      quiesceEffect: Effect.sync(() => {
+        calls.push("quiesce");
+      }),
+      destroyEffect: Effect.sync(() => {
+        calls.push("destroy");
+      }),
+    });
+    const exit = await Effect.runPromiseExit(
+      destroyAppForTarget({ volumes: true }, { plan, root: plan.root, app }).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual(["quiesce"]);
+  });
+
+  test("a file sync engine lost after quiescence preserves volumes", async () => {
+    const calls: string[] = [];
+    let readinessChecks = 0;
+    const engine = {
+      ...availableFileSync(),
+      isAvailable: Effect.sync(() => ++readinessChecks === 1),
+      listSessions: () => Effect.succeed([syncSession]),
+      flushSession: () =>
+        Effect.sync(() => {
+          calls.push("flush");
+        }),
+    };
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [syncSession.spec],
+      fileSync: engine,
+      quiesceEffect: Effect.sync(() => {
+        calls.push("quiesce");
+      }),
+      destroyEffect: Effect.sync(() => {
+        calls.push("destroy");
+      }),
+    });
+    const exit = await Effect.runPromiseExit(
+      destroyAppForTarget({ volumes: true }, { plan, root: plan.root, app }).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(readinessChecks).toBe(2);
+    expect(calls).toEqual(["quiesce"]);
+  });
+  test("destroys a previously ordinary app when the current plan proposes acceleration", async () => {
+    const calls: string[] = [];
+    const planned = { ...plan, fileSync: [{ engineId: "mutagen", session: syncSession.spec }] };
+    const harness = makeHarness({
+      appliedFileSyncState: "ordinary",
+      destroyEffect: Effect.sync(() => {
+        calls.push("destroy");
+      }),
+    });
+    const exit = await Effect.runPromiseExit(
+      destroyAppForTarget({ volumes: true }, { plan: planned, root: plan.root, app }).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(calls).toEqual(["destroy"]);
+  });
+
+  test("a planned accelerated mount without its session preserves volumes", async () => {
+    const calls: string[] = [];
+    const acceleratedPlan = { ...plan, fileSync: [{ engineId: "mutagen", session: syncSession.spec }] };
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [syncSession.spec],
+      fileSync: availableFileSync(),
+      quiesceEffect: Effect.sync(() => {
+        calls.push("quiesce");
+      }),
+      destroyEffect: Effect.sync(() => {
+        calls.push("destroy");
+      }),
+    });
+    const exit = await Effect.runPromiseExit(
+      destroyAppForTarget({ volumes: true }, { plan: acceleratedPlan, root: plan.root, app }).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+  });
+  test("a prior accelerated mount omitted from the current plan preserves volumes", async () => {
+    const calls: string[] = [];
+    const previousSecondMount = {
+      ...syncSession.spec,
+      mountKey: "mount-1",
+      target: { ...syncSession.spec.target, name: "destroy-web-mount-1" },
+    };
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [syncSession.spec, previousSecondMount],
+      fileSync: { ...availableFileSync(), listSessions: () => Effect.succeed([syncSession]) },
+      quiesceEffect: Effect.sync(() => {
+        calls.push("quiesce");
+      }),
+      destroyEffect: Effect.sync(() => {
+        calls.push("destroy");
+      }),
+    });
+    const exit = await Effect.runPromiseExit(
+      destroyAppForTarget({ volumes: true }, { plan, root: plan.root, app }).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+  });
+  test("active sync fails closed when provider cannot quiesce writers", async () => {
+    const calls: string[] = [];
+    const harness = makeHarness({
+      appliedFileSyncState: "accelerated",
+      appliedFileSyncSessions: [syncSession.spec],
+      fileSync: { ...availableFileSync(), listSessions: () => Effect.succeed([syncSession]) },
+      destroyEffect: Effect.sync(() => {
+        calls.push("destroy");
+      }),
+    });
+    const exit = await Effect.runPromiseExit(
+      destroyAppForTarget({ volumes: true }, { plan, root: plan.root, app }).pipe(
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls).toEqual([]);
+  });
   test("omits routes when proxy is missing and still warns", async () => {
     // Given
     const harness = makeHarness({ proxyAvailable: false });

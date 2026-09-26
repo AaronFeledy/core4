@@ -5,12 +5,26 @@ import type {
   ComposeKeyRejectedError,
   EventError,
   LandofileLoadExpressionError,
+  ProxyError,
   ShellExecError,
 } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, PublishedEndpoint, RoutePlan, ServicePlan } from "@lando/sdk/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import type {
+  AppPlan,
+  AppRef,
+  ProxyAuthority,
+  PublishedEndpoint,
+  RoutePlan,
+  ServicePlan,
+} from "@lando/sdk/schema";
+import {
+  AppPlanner,
+  EventService,
+  LandofileService,
+  RouterService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import type { ShellRunner } from "@lando/sdk/services";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
@@ -63,13 +77,21 @@ export const isOpenableScheme = (url: string): boolean => {
   }
 };
 
-export const buildOpenTarget = (route: RoutePlan): OpenTarget => {
+export const buildOpenTarget = (
+  route: RoutePlan,
+  authorities: ReadonlyArray<ProxyAuthority> = [],
+): OpenTarget => {
   const scheme = route.scheme === "http" ? "http" : "https";
+  const authority = authorities.find(
+    (candidate) => candidate.hostname === route.hostname && candidate.scheme === scheme,
+  );
+  const defaultPort = scheme === "http" ? 80 : 443;
+  const port = authority === undefined || authority.port === defaultPort ? "" : `:${authority.port}`;
   return {
     service: String(route.service),
     hostname: route.hostname,
     scheme,
-    url: `${scheme}://${route.hostname}${route.pathPrefix ?? ""}`,
+    url: `${scheme}://${route.hostname}${port}${route.pathPrefix ?? ""}`,
   };
 };
 
@@ -107,16 +129,18 @@ const preferHttpsTarget = (targets: ReadonlyArray<OpenTarget>): OpenTarget | und
 export const resolveOpenTargets = (
   plan: ResolvablePlan,
   selection: OpenTargetSelection,
+  authorities: ReadonlyArray<ProxyAuthority> = [],
 ): ReadonlyArray<OpenTarget> => {
   if (selection.route !== undefined) {
     const match = openableRoutes(plan).find((route) => route.hostname === selection.route);
-    return match === undefined ? [] : [buildOpenTarget(match)];
+    return match === undefined ? [] : [buildOpenTarget(match, authorities)];
   }
   if (selection.service !== undefined) {
     const serviceRoutes = routesForService(plan, selection.service);
-    if (selection.all === true && serviceRoutes.length > 0) return serviceRoutes.map(buildOpenTarget);
+    if (selection.all === true && serviceRoutes.length > 0)
+      return serviceRoutes.map((route) => buildOpenTarget(route, authorities));
     const chosen = preferHttps(serviceRoutes);
-    if (chosen !== undefined) return [buildOpenTarget(chosen)];
+    if (chosen !== undefined) return [buildOpenTarget(chosen, authorities)];
     const endpoints = endpointTargetsForService(plan, selection.service);
     if (selection.all === true) return endpoints;
     const endpoint = preferHttpsTarget(endpoints);
@@ -124,7 +148,7 @@ export const resolveOpenTargets = (
   }
   if (selection.all === true) {
     const routes = openableRoutes(plan);
-    if (routes.length > 0) return routes.map(buildOpenTarget);
+    if (routes.length > 0) return routes.map((route) => buildOpenTarget(route, authorities));
     return Object.values(plan.services).flatMap((service) =>
       endpointTargetsForService(plan, String(service.name)),
     );
@@ -132,7 +156,7 @@ export const resolveOpenTargets = (
   for (const service of Object.values(plan.services)) {
     const routes = routesForService(plan, String(service.name));
     const chosen = preferHttps(routes);
-    if (chosen !== undefined) return [buildOpenTarget(chosen)];
+    if (chosen !== undefined) return [buildOpenTarget(chosen, authorities)];
   }
   for (const service of Object.values(plan.services)) {
     const endpoint = preferHttpsTarget(endpointTargetsForService(plan, String(service.name)));
@@ -180,6 +204,7 @@ export type OpenAppError =
   | OpenTargetUnresolvedError
   | HostProxyOpenUrlSchemeError
   | ShellExecError
+  | ProxyError
   | EventError
   | LandofileLoadExpressionError;
 
@@ -192,9 +217,10 @@ const openNow = () => DateTime.unsafeMake(new Date().toISOString());
 export const openForPlan = (
   plan: AppPlan,
   options: OpenAppOptions = {},
+  authorities: ReadonlyArray<ProxyAuthority> = [],
 ): Effect.Effect<OpenAppResult, OpenAppError, ShellRunner | EventService | RedactionService> =>
   Effect.gen(function* () {
-    const targets = resolveOpenTargets(plan, options);
+    const targets = resolveOpenTargets(plan, options, authorities);
     if (targets.length === 0) {
       const knownServices = Object.values(plan.services).map((service) => String(service.name));
       const knownServicesText = knownServices.length === 0 ? "none" : knownServices.join(", ");
@@ -214,7 +240,7 @@ export const openForPlan = (
       }
       if (
         (options.service !== undefined || options.route !== undefined) &&
-        resolveOpenTargets(plan, { all: true }).length > 0
+        resolveOpenTargets(plan, { all: true }, authorities).length > 0
       ) {
         const selected =
           options.route !== undefined ? `--route ${options.route}` : `--service ${options.service ?? ""}`;
@@ -285,7 +311,8 @@ type OpenAppServices =
   | RuntimeProviderRegistry
   | ShellRunner
   | EventService
-  | RedactionService;
+  | RedactionService
+  | RouterService;
 
 export const openApp = (
   options: OpenAppOptions = {},
@@ -304,7 +331,10 @@ export const openApp = (
         return yield* planner.plan(landofile, capabilities);
       }));
 
-    return yield* openForPlan(plan, options);
+    if (plan.routes.length === 0 || !routerEnabled(plan)) return yield* openForPlan(plan, options);
+    const router = yield* RouterService;
+    const status = yield* router.status;
+    return yield* openForPlan(plan, options, status.authorities);
   });
 
 export const renderOpenAppResult = (result: OpenAppResult, _ctx?: RenderContext): string => {

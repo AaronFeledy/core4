@@ -99,6 +99,7 @@ const graphContextForPlugin = (plugin: ReturnType<typeof makeDbImportPlugin>): C
   if (load === undefined) throw new Error("Expected db:import command loader on fixture plugin.");
   return Context.add(Context.empty(), PluginContributionGraph, {
     plugins: [],
+    globalPlugins: [],
     certificateAuthorities: [],
     commands: [{ id: "db:import", pluginName: plugin.name, source: "explicit", load }],
     hostContext: Context.empty(),

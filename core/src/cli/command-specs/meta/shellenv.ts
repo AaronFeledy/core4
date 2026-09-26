@@ -1,7 +1,12 @@
 import { Effect, Schema } from "effect";
 import { Flags } from "../../spec/metadata";
 
-import { ShellenvInstallRecordError, normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
+import {
+  ShellenvInstallRecordError,
+  defaultShellenvShell,
+  normalizeShellenvShell,
+  renderShellenv,
+} from "../../commands/shellenv";
 import type { LandoCommandSpec } from "../../spec/command-base";
 
 /**
@@ -11,9 +16,9 @@ import type { LandoCommandSpec } from "../../spec/command-base";
  */
 
 export const shellenvShellFromInput = (input: unknown) => {
-  if (typeof input !== "object" || input === null || !("flags" in input)) return "posix";
+  if (typeof input !== "object" || input === null || !("flags" in input)) return defaultShellenvShell();
   const flags = (input as { readonly flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null || !("shell" in flags)) return "posix";
+  if (typeof flags !== "object" || flags === null || !("shell" in flags)) return defaultShellenvShell();
   const shell = (flags as { readonly shell?: unknown }).shell;
   return normalizeShellenvShell(typeof shell === "string" ? shell : undefined);
 };
@@ -27,7 +32,10 @@ export const shellenvSpec: LandoCommandSpec<string, ShellenvInstallRecordError, 
   topLevelAlias: true,
   bootstrap: "none",
   flags: {
-    shell: Flags.string({ options: ["posix", "powershell", "pwsh"], default: "posix" }),
+    shell: Flags.string({
+      options: ["posix", "powershell", "pwsh"],
+      description: "Defaults to PowerShell on Windows and POSIX on other platforms.",
+    }),
   },
   run: (input) =>
     Effect.try({

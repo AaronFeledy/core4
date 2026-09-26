@@ -1,0 +1,9 @@
+name: nginx-php
+runtime: 4
+services:
+  web:
+    type: nginx
+    backend: app
+  app:
+    type: "php:8.3"
+    via: fpm

@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 
 import type { BunPlugin } from "bun";
 
@@ -22,6 +24,28 @@ export interface CompiledBinaryOptions {
 }
 
 export type CompiledBinaryBuildRunner = (config: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
+export type HostProxyShimAssetBuilder = (stagingDir: string) => Promise<readonly [string, string]>;
+
+export const buildHostProxyShimAssets: HostProxyShimAssetBuilder = async (stagingDir) => {
+  const source = resolve(REPO_ROOT, "core/src/cli/host-proxy/shim-bin.ts");
+  const assets: string[] = [];
+  for (const arch of ["x64", "arm64"] as const) {
+    const outfile = resolve(stagingDir, `lando-host-proxy-linux-${arch}`);
+
+    const output = await Bun.build({
+      entrypoints: [source],
+      target: "bun",
+      compile: { target: `bun-linux-${arch}`, outfile },
+    });
+    if (!output.success) throw new CompiledBinaryBuildError(output.logs);
+    const bytes = await readFile(outfile);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const compressedAsset = resolve(stagingDir, `lando-host-proxy-linux-${arch}-${digest}.bin.gz`);
+    await writeFile(compressedAsset, gzipSync(bytes, { level: 9 }));
+    assets.push(compressedAsset);
+  }
+  return assets as unknown as readonly [string, string];
+};
 
 export class CompiledBinaryBuildError extends Error {
   override readonly name = "CompiledBinaryBuildError";
@@ -119,37 +143,39 @@ const emitMetafileMarkdown = async (options: CompiledBinaryOptions): Promise<voi
 export const buildCompiledBinary = async (
   options: CompiledBinaryOptions,
   build: CompiledBinaryBuildRunner = (config) => Bun.build(config),
+  prepareShimAssets: HostProxyShimAssetBuilder = buildHostProxyShimAssets,
 ): Promise<Bun.BuildOutput> => {
   const platform = platformFor(options.target ?? hostTarget());
-  const output = await build({
-    entrypoints: [resolve(REPO_ROOT, "core/bin/lando.ts")],
-    target: "bun",
-    format: "esm",
-    splitting: true,
-    // Bun 1.4 compiled binaries no longer auto-load tsconfig.json / package.json
-    // (CompileBuildOptions.autoloadTsconfig / autoloadPackageJson default false).
-    // Keep version and OpenTUI metadata on `define`; enable autoload only if
-    // relocated-binary smoke fails with a missing package/path diagnostic.
-    compile: { target: bunTargetFor(platform), outfile: options.outfile },
-    bytecode: compiledBinaryBytecode(platform.id),
-    minify: true,
-    sourcemap: "external",
-    define: {
-      __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(nativeRootFor(platform.id)),
-      __LANDO_CORE_VERSION__: JSON.stringify(
-        resolveCompiledBinaryVersion({
-          ...(options.version === undefined ? {} : { explicit: options.version }),
-          cwd: REPO_ROOT,
-        }),
-      ),
-    },
-    plugins: [createOpenTuiPruningPlugin(platform.id)],
+  const version = resolveCompiledBinaryVersion({
+    ...(options.version === undefined ? {} : { explicit: options.version }),
+    cwd: REPO_ROOT,
   });
-  if (!output.success) throw new CompiledBinaryBuildError(output.logs);
-  await emitMetafileMarkdown(options);
-  return output;
+  const stagingDir = await mkdtemp(resolve(tmpdir(), "lando-compile-shims-"));
+  try {
+    const shimAssets = await prepareShimAssets(stagingDir);
+    const output = await build({
+      entrypoints: [resolve(REPO_ROOT, "core/bin/lando.ts"), ...shimAssets],
+      target: "bun",
+      format: "esm",
+      splitting: true,
+      // Bun 1.4 compiled binaries no longer auto-load tsconfig.json / package.json.
+      compile: { target: bunTargetFor(platform), outfile: options.outfile },
+      bytecode: compiledBinaryBytecode(platform.id),
+      minify: true,
+      sourcemap: "external",
+      define: {
+        __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(nativeRootFor(platform.id)),
+        __LANDO_CORE_VERSION__: JSON.stringify(version),
+      },
+      plugins: [createOpenTuiPruningPlugin(platform.id)],
+    });
+    if (!output.success) throw new CompiledBinaryBuildError(output.logs);
+    await emitMetafileMarkdown(options);
+    return output;
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
 };
-
 export const parseCompiledBinaryArgs = (
   args: readonly string[],
   env: NodeJS.ProcessEnv = process.env,

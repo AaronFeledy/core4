@@ -106,7 +106,7 @@ const assignPath = (target: Record<string, unknown>, segments: readonly string[]
 
 export const listSelectableResultKeys = (schema: unknown): readonly string[] => {
   const fields = schemaFields(schema);
-  return fields === undefined ? [] : Object.keys(fields);
+  return fields === undefined ? [] : Object.keys(fields).filter((key) => key !== "redactionTokens");
 };
 
 export const projectEncodedResult = (encoded: unknown, keys: readonly string[]): Record<string, unknown> => {

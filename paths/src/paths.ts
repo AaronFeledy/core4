@@ -191,6 +191,8 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     hostProxyRunRoot: j(userDataRoot, "run"),
     hostProxyRunDir: (appId: string, appRoot: string) =>
       j(userDataRoot, "run", `${sanitizeAppName(appId)}-${appRootFingerprint(appRoot)}`),
+    agentRelayRunDir: (kind: "ssh" | "gpg", appId: string, appRoot: string) =>
+      j(userDataRoot, "run", `${sanitizeAppName(appId)}-${appRootFingerprint(appRoot)}-${kind}-agent`),
     providerSocketPath: j(userDataRoot, "runtime", "run", "podman.sock"),
     providerPidPath: j(userDataRoot, "runtime", "run", "podman.pid"),
     globalAppRoot: j(userDataRoot, "global"),

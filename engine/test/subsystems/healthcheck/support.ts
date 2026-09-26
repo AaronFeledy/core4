@@ -23,7 +23,11 @@ import type {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { RedactionService, type RedactionServiceShape } from "@lando/redaction/service";
+import {
+  RedactionService,
+  type RedactionServiceShape,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 
 export type HealthcheckExec = {
   readonly exec: (
@@ -151,6 +155,7 @@ const fakeRedactor: Redactor = { redactString: fakeRedactString, redactValue: fa
 
 const fakeRedactionService = {
   forProfile: () => Effect.succeed(fakeRedactor),
+  registerValues: registerRedactionValues,
 } satisfies RedactionServiceShape;
 
 export const withFakeRedaction = <A, E>(effect: Effect.Effect<A, E, never>): Effect.Effect<A, E, never> =>

@@ -8,6 +8,10 @@ import { AppId, PortNumber } from "./primitives.ts";
 // Proxy and routing schemas.
 // ============================================================================
 
+/** Shared host-router candidate order; engine config and Traefik use the same policy. */
+export const DEFAULT_ROUTER_HTTP_PORTS = [80, 8080, 8000, 8888, 8008, 18080, 28080, 38080] as const;
+export const DEFAULT_ROUTER_HTTPS_PORTS = [443, 8443, 4443, 4433, 4444, 444, 18443, 28443, 38443] as const;
+
 export const ProxyCapabilities = Schema.Struct({
   wildcardHostnames: Schema.propertySignature(Schema.Boolean).annotations({
     description: "Whether wildcard Host rules are supported.",

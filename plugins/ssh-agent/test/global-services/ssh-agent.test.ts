@@ -3,6 +3,10 @@ import { Effect, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
+import { join } from "node:path";
+
+import { makeLandoPaths } from "@lando/paths";
+
 import sshAgentGlobalService from "../../src/global-service.ts";
 
 const decodeConfig = async (): Promise<ServiceConfig> => {
@@ -17,7 +21,9 @@ describe("ssh-agent global service ServiceConfig", () => {
   test("default export is an Effect producing a valid ServiceConfig", async () => {
     const config = await decodeConfig();
     expect(config.api).toBe(4);
-    expect(config.type).toBe("lando");
+    // Compose services apply authored mounts; the socket directory must reach the host.
+    expect(config.type).toBe("compose");
+    expect(config.appMount).toBe(false);
   });
 
   test("uses Alpine Linux base image", async () => {
@@ -54,13 +60,13 @@ describe("ssh-agent global service ServiceConfig", () => {
     expect(config.mounts).toEqual([
       {
         type: "bind",
-        source: "${LANDO_USER_DATA_ROOT}/ssh",
+        source: join(makeLandoPaths().roots.userDataRoot, "ssh"),
         target: "/ssh-auth",
         readOnly: false,
       },
       {
         type: "bind",
-        source: "${HOME}/.ssh",
+        source: "~/.ssh",
         target: "/root/.ssh",
         readOnly: true,
       },

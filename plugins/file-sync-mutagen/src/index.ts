@@ -95,7 +95,7 @@ export interface MakeFileSyncEngineOptions {
 /**
  * Build the `FileSyncEngine` service. With no options it uses
  * `makeUnavailableMutagenClient()`, which fails closed with the standard
- * "run `lando setup`" remediation. Tests can pass a fake client (see
+ * unavailable-client remediation. Tests can pass a fake client (see
  * `makeFakeMutagenClient`) for deterministic in-memory coverage.
  */
 export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): FileSyncEngineShape => {
@@ -120,7 +120,9 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
       const name = mutagenSessionName(spec);
       yield* client.create({ name, spec });
 
-      yield* Effect.addFinalizer(() => client.terminate(name).pipe(Effect.catchAll(() => Effect.void)));
+      if (client.persistsAcrossProcesses !== true) {
+        yield* Effect.addFinalizer(() => client.terminate(name).pipe(Effect.orDie));
+      }
 
       return mutagenSessionRef(spec);
     });
@@ -129,6 +131,20 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
     id: ENGINE_ID,
     displayName: ENGINE_DISPLAY_NAME,
     capabilities: mutagenCapabilities,
+    sessionsPersistAcrossProcesses: client.persistsAcrossProcesses === true,
+    ...(client.invalidateAppDrain !== undefined &&
+    client.drainApp !== undefined &&
+    client.disposeApp !== undefined &&
+    client.completeAppDisposal !== undefined
+      ? {
+          appLifecycle: {
+            invalidateDrain: client.invalidateAppDrain,
+            drain: client.drainApp,
+            dispose: client.disposeApp,
+            completeDisposal: client.completeAppDisposal,
+          },
+        }
+      : {}),
 
     isAvailable: client.version.pipe(
       Effect.as(true),
@@ -138,6 +154,7 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
 
     createSession,
 
+    flushSession: (ref) => client.flush(ref as unknown as string),
     pauseSession: (ref) => client.pause(ref as unknown as string),
     resumeSession: (ref) =>
       client.resume(ref as unknown as string) as Effect.Effect<void, FileSyncError, never>,
@@ -193,31 +210,51 @@ export const fileSyncCheck: PluginDoctorCheckContribution = {
         binDir === undefined ? undefined : yield* Effect.promise(() => readInstalledMutagenStatus(binDir));
       const installedVersion = installStatus?.installedVersion;
       const isCurrent = installStatus?.isCurrent === true;
+      const selectedEngine = yield* Effect.serviceOption(FileSyncEngine);
+      const clientReady =
+        selectedEngine._tag === "Some" && selectedEngine.value.id === ENGINE_ID
+          ? yield* selectedEngine.value.isAvailable.pipe(Effect.catchAll(() => Effect.succeed(false)))
+          : false;
+      const ready = isCurrent && clientReady;
 
       return [
         {
           name: "file-sync",
-          status: isCurrent ? "pass" : "warn",
-          severity: isCurrent ? "info" : "warn",
-          runtimeStatus: installedVersion === undefined ? "not-installed" : "installed",
+          status: ready ? "pass" : "warn",
+          severity: ready ? "info" : "warn",
+          runtimeStatus:
+            installedVersion === undefined
+              ? "not-installed"
+              : isCurrent && !clientReady
+                ? "installed-client-unavailable"
+                : "installed",
           runtime: {
-            running: isCurrent,
+            running: ready,
             ...(installedVersion === undefined ? {} : { version: installedVersion }),
           },
           context: {
             engineId: ENGINE_ID,
             mutagenVersion: installedVersion ?? "not-installed",
             expectedVersion: MUTAGEN_TOOL_VERSION,
+            clientStatus: clientReady ? "available" : "unavailable",
           },
-          solutions: isCurrent
+          solutions: ready
             ? []
-            : [
-                {
-                  kind: "manual",
-                  description: "Run `lando setup` to download the Mutagen host CLI and agent binaries.",
-                  command: "lando setup",
-                },
-              ],
+            : isCurrent
+              ? [
+                  {
+                    kind: "manual",
+                    description:
+                      "Continue with ordinary mounts; this build does not include a live Mutagen session client.",
+                  },
+                ]
+              : [
+                  {
+                    kind: "manual",
+                    description: "Run `lando setup` to download the Mutagen host CLI and agent binaries.",
+                    command: "lando setup",
+                  },
+                ],
         },
       ] satisfies ReadonlyArray<PluginDoctorReport>;
     }),
@@ -276,3 +313,17 @@ export {
   provisionMutagen,
   readInstalledMutagenStatus,
 } from "./provision.ts";
+
+export {
+  type MutagenProcessClientOptions,
+  type PreparedWindowsMutagenProcessClientOptions,
+  WINDOWS_LANDO_DOCKER_HOST,
+  makeMutagenProcessClient,
+  makePreparedWindowsMutagenProcessClient,
+} from "./mutagen-process-client.ts";
+
+export {
+  type PreparedWindowsMutagenAppClientOptions,
+  type PreparedWindowsMutagenTargets,
+  makePreparedWindowsMutagenAppClient,
+} from "./windows-app-client.ts";

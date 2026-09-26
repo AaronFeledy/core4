@@ -118,7 +118,7 @@ The forms ship from the same source at the same version and MUST NOT drift.
 | Telemetry inventory and privacy | Finalize events, redaction, retention, and disablement controls. |
 | Renderer wiring at the CLI boundary | Route command output through `Renderer`, add renderer config, and enforce the output boundary; GA-blocking. |
 
-Resolved decisions remain: setup is explicit guided opt-in; direct host SSH-agent socket mounts are rejected; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher.
+Resolved decisions remain: setup is explicit guided opt-in; host SSH-agent forwarding is opt-in per app through a per-app relay, never a raw host socket bind into every service; the schema-backed Compose subset is authoritative; OCLIF is removed from shipping dispatch; plugin trust ships explicit non-expiring list/revoke grants; source and compiled modes share one native dispatcher.
 
 Deferred post-v4.0 capabilities MUST remain architecturally possible:
 

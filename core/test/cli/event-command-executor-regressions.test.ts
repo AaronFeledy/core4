@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { Context, Effect, Queue, Schema, Stream } from "effect";
 
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { EventService, type EventServiceShape, type LandoEvent, Renderer } from "@lando/sdk/services";
@@ -44,6 +48,7 @@ const makeHarness = (): Harness => {
     },
   } satisfies Context.Tag.Service<typeof Renderer>;
   const redaction = {
+    registerValues: registerRedactionValues,
     forProfile: (
       profile: "secrets" | "telemetry" | "transcript",
       options?: Parameters<typeof createStandaloneRedactor>[1],
@@ -62,6 +67,7 @@ const makeHarness = (): Harness => {
 const withPlugin = (context: Context.Context<unknown>, spec: ExecutableCommandSpec) =>
   Context.add(context, PluginContributionGraph, {
     plugins: [],
+    globalPlugins: [],
     certificateAuthorities: [],
     commands: [
       {

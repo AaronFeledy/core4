@@ -10,6 +10,8 @@ import type {
   ProxyError,
   RouterWatcherError,
   SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -70,7 +72,9 @@ export type GlobalRebuildError =
   | PluginManifestError
   | ProxyError
   | RouterWatcherError
-  | SecretNotFoundError;
+  | SecretNotFoundError
+  | SecretStoreUnavailableError
+  | SecretReferenceInvalidError;
 
 export type GlobalRebuildServices =
   | AppPlanner

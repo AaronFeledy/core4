@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const NODE_API_RECIPE_VERSION = "0.1.0";
 export const NODE_API_CONTENT_DIGEST =
-  "sha256:626bd72893e7a7a7497203b980754e9a4ba7d0dee5a3e1beb29ab6cf84cc1062";
+  "sha256:8f8d44bb5a545862ab890596e276df763554539f02259051853a3da3d7968227";
 
 export const nodeApiProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -30,6 +30,7 @@ const apiService = (hasDatabase: boolean): ExpressionNode => ({
   kind: "ObjectLiteral",
   entries: [
     { key: "type", value: { kind: "Literal", value: "node:{{ recipe.node }}" } },
+    { key: "primary", value: { kind: "Literal", value: true } },
     { key: "port", value: { kind: "Literal", value: 3000 } },
     {
       key: "environment",

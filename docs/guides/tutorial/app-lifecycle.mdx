@@ -55,7 +55,7 @@ lando info
 # The same data as machine-readable JSON
 lando info --json
 
-# Stream the combined logs of every service
+# Show a bounded snapshot of the combined logs from every service
 lando logs
 
 # Follow just the primary app service's logs in real time
@@ -104,7 +104,7 @@ lando restart
 
 # Recreate containers from the current Landofile. Use after changing
 # service types, images, or build steps
-lando rebuild -y
+lando rebuild
 ```
 
 ## Tear down

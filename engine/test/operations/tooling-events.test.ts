@@ -21,7 +21,11 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
 
@@ -101,6 +105,7 @@ const harness = (input: {
       : Layer.mergeAll(
           EventServiceLive,
           Layer.succeed(RedactionService, {
+            registerValues: registerRedactionValues,
             forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
           }),
         );

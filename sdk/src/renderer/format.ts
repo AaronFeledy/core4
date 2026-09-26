@@ -58,7 +58,7 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
     case "task.tree.start": {
       const label = asString(event.label) ?? "tasks";
       const children = Array.isArray(event.children) ? event.children : [];
-      return `▼ ${label} (${children.length} services)`;
+      return `▼ ${label} (${children.length} ${children.length === 1 ? "step" : "steps"})`;
     }
     case "task.start": {
       const taskId = asString(event.taskId) ?? "task";
@@ -101,10 +101,18 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
     }
     case "image-pull-progress": {
       const reference = asString(event.reference) ?? "image";
-      const stream = asString(event.stream);
+      const stream = asString(event.stream)?.trim();
       const current = asNumber(event.current);
       const total = asNumber(event.total);
-      const message = stream === undefined ? "" : `: ${stream}`;
+      if (
+        stream === "Starting to pull artifact" ||
+        stream === "Pulling artifact" ||
+        stream === "Artifact pulled successfully" ||
+        stream === "Artifact already exists" ||
+        /^Copying (?:blob|config) sha256:[0-9a-f]+$/iu.test(stream ?? "")
+      )
+        return null;
+      const message = stream === undefined || stream.length === 0 ? "" : `: ${stream}`;
       const progress = current === undefined ? "" : ` (${current}${total === undefined ? "" : `/${total}`})`;
       return `↓ Pulling ${reference}${message}${progress}`;
     }

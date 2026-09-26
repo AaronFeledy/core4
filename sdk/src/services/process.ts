@@ -3,7 +3,7 @@ import { Context, type Effect, type Stream } from "effect";
 import type {
   ProcessExecError,
   ProcessTimeoutError,
-  SecretNotFoundError,
+  SecretStoreError,
   ShellExecError,
 } from "../errors/index.ts";
 
@@ -56,7 +56,7 @@ export interface ShellInteractiveSpec {
   readonly historyFile?: string;
   readonly historyLimit?: number;
   readonly io?: ShellReplIO;
-  readonly resolveSecret: (id: string) => Effect.Effect<string, SecretNotFoundError>;
+  readonly resolveSecret: (id: string) => Effect.Effect<string, SecretStoreError>;
 }
 
 export interface ShellInteractiveResult {

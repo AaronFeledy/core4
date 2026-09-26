@@ -64,12 +64,14 @@ describe("jekyll decomposition", () => {
       services: {
         builder: {
           type: "ruby:3.3",
+          primary: true,
           framework: "none",
           command: "bundle exec jekyll serve --host 0.0.0.0 --port 4000",
           port: 4000,
         },
         web: {
           type: "static:nginx",
+          primary: false,
           appMount: { target: "/app" },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },

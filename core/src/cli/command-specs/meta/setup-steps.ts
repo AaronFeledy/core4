@@ -76,7 +76,7 @@ const recordDeferredFileSyncSetup = (userDataRoot: string): Effect.Effect<void, 
     await mkdir(join(userDataRoot, "setup"), { recursive: true });
     await writeFile(
       markerPath,
-      `${JSON.stringify({ status: "deferred", engineId: "mutagen", resumeCommand: "lando start" })}\n`,
+      `${JSON.stringify({ status: "deferred", engineId: "mutagen", resumeCommand: "lando setup" })}\n`,
       "utf-8",
     );
   }).pipe(Effect.catchAll(() => Effect.void));
@@ -152,8 +152,9 @@ export const runFileSyncSetupStep = (
       yield* recorder.record({
         id: "file-sync",
         status: "deferred",
-        evidence: "File-sync setup deferred until first accelerated app:start.",
-        remediation: "Run `lando start` to finish deferred file-sync setup for accelerated mounts.",
+        evidence: "Mutagen binary download skipped on this slow-mount host.",
+        remediation:
+          "Run `lando setup` without `--skip-file-sync` to install Mutagen binaries; ordinary mounts remain in use until a live session client ships.",
       });
     } else if (provider.capabilities.bindMountPerformance === "slow") {
       const recordInstalledFileSync = (evidence: string) =>
@@ -188,11 +189,31 @@ export const runFileSyncSetupStep = (
         yield* Effect.scoped(fileSync.value.setup({ force: false, network })).pipe(
           Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
           Effect.tapError((cause) => recorder.recordFailure("file-sync", cause)),
-          Effect.tap(() => recordInstalledFileSync("File-sync setup installed Mutagen acceleration.")),
         );
+        const liveClientAvailable = yield* fileSync.value.isAvailable.pipe(
+          Effect.catchAll(() => Effect.succeed(false)),
+        );
+        if (liveClientAvailable) {
+          yield* recordInstalledFileSync(
+            "File-sync setup installed Mutagen binaries and the live client is available.",
+          );
+        } else {
+          fileSyncStatus = "unavailable";
+          yield* recorder.record({
+            id: "file-sync",
+            status: "skipped",
+            evidence: "Mutagen binaries are installed, but this build has no live file-sync session client.",
+            remediation: "Continue with ordinary mounts; accelerated file sync is unavailable in this build.",
+          });
+        }
       } else {
         fileSyncStatus = "unavailable";
-        yield* recorder.recordUnavailable("file-sync", "File-sync engine");
+        yield* recorder.record({
+          id: "file-sync",
+          status: "skipped",
+          evidence: "No live file-sync engine is available; ordinary mounts remain available.",
+          remediation: "Continue with ordinary mounts; accelerated file sync is unavailable in this build.",
+        });
       }
     } else {
       yield* recorder.record({

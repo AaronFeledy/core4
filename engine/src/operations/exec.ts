@@ -166,8 +166,7 @@ const collectExecStream = (
 
 const inheritTty = (options: ExecAppRuntimeOptions): boolean => options.tty === true;
 
-const inheritStdin = (options: ExecAppRuntimeOptions): boolean =>
-  options.interactive === true && options.stdinStream !== undefined;
+const inheritStdin = (options: ExecAppRuntimeOptions): boolean => options.stdinStream !== undefined;
 
 export const execApp = (
   options: ExecAppRuntimeOptions,

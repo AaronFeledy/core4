@@ -42,7 +42,7 @@ All tests run under `bun test` unless a gate names another tool.
 | SDK compatibility/schema-snapshot artifact-set contract | The additive SDK inventory and every schema-backed surface match `sdk/API_COMPATIBILITY.md` and generated artifacts. |
 | Tooling engine contract | Engines execute dependency-ordered programs, cancel children, publish redacted events, honor up-to-date checks, and tag failures. |
 | Route filter contract | Filters are pure, deterministic, idempotent, provider-neutral, capability-truthful, and stably ordered. |
-| Secret store contract | Resolution is read-only, offline-safe when cached, tagged on failure, and registered with the canonical redactor. |
+| Secret store contract | Resolution is read-only and offline-safe when cached; `get` fails only with `SecretNotFoundError`, `SecretStoreUnavailableError { storeId, reason }`, or `SecretReferenceInvalidError`; `has` propagates `SecretStoreUnavailableError`; `list` never enumerates a backend; the harness asserts an invalid reference, an unavailable store with its declared reason, and that resolved values reach the canonical redactor before any event, result, or transcript. Invoked by the bundled `env` store and the bundled `1password` store with a fake `op` runner (§9.5.1). |
 | Config translator contract | Translators are explicit, pure, deterministic, fragment-only, schema-valid, and round-trip when encoding is supported. |
 | RecipeDecomposer contract | Option errors, recipe identity, fragment output, side-effect absence, port closure, and secret exclusion are enforced. |
 | Managed-file transaction recovery | Failure injection covers every journal state, concurrent edits, cancellation, orphan stages, and dry-run immutability. |

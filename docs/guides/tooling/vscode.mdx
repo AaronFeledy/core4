@@ -51,7 +51,7 @@ services:
     {
       "label": "lando: rebuild",
       "type": "shell",
-      "command": "lando rebuild -y",
+      "command": "lando rebuild",
       "problemMatcher": []
     },
     {
@@ -65,11 +65,11 @@ services:
 }
 ```
 
-Open the Command Palette, choose `Tasks: Run Task`, then pick the Lando task by its label. `lando rebuild -y` recreates containers from the current Landofile, so it discards changes that are not persisted in the Landofile or a mounted volume.
+Open the Command Palette, choose `Tasks: Run Task`, then pick the Lando task by its label. `lando rebuild` recreates containers from the current Landofile, so it discards changes that are not persisted in the Landofile or a mounted volume.
 
 ## Debug PHP and Node
 
-PHP debugging uses Xdebug. Set `xdebug: true` on the PHP service so Lando installs the extension and listens on port `9003`. See [Xdebug in PhpStorm](xdebug-phpstorm.mdx). A `launch.json` PHP debug config's `pathMappings` maps the in-container app path to your workspace folder. `app` is Lando's default in-container app mount; adjust the key if a service overrides its mount path.
+PHP debugging uses Xdebug. Set `xdebug: true` on the PHP service so Lando installs the extension and connects to an IDE listening on port `9003`. See [Xdebug in PhpStorm](xdebug-phpstorm.mdx). A `launch.json` PHP debug config's `pathMappings` maps the in-container app path to your workspace folder. `app` is Lando's default in-container app mount; adjust the key if a service overrides its mount path.
 
 For Node, start with `node --inspect=0.0.0.0:9229 server.js`, publish the debug port on the node service, and attach with `address: localhost`, `port: 9229`, `localRoot: ${workspaceFolder}`, `remoteRoot: /app`, and `restart: true`.
 
