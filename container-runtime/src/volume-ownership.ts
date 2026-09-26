@@ -55,12 +55,12 @@ export const VOLUME_SELECTOR_LABEL = "dev.lando.volume-selector";
  * identity the planner stamped; a plan that lost it is migrated from its root
  * through the same derivation.
  */
-export const planVolumeOwnership = (plan: AppPlan): AppIdentity =>
+export const planVolumeOwnership = (plan: Pick<AppPlan, "root" | "identity">): AppIdentity =>
   plan.identity ?? { appRoot: plan.root, ownerKey: appIdentityKey("owner", plan.root) };
 
 /** The ownership label pair for one store; neither label is ever written without the other. */
 export const volumeOwnershipLabels = (
-  plan: AppPlan,
+  plan: Pick<AppPlan, "id" | "provider" | "root" | "identity">,
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => {
   const ownership = planVolumeOwnership(plan);

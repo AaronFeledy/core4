@@ -15,6 +15,7 @@ import * as providerLando from "@lando/provider-lando";
 import * as providerPodman from "@lando/provider-podman";
 import * as proxyTraefik from "@lando/proxy-traefik";
 import * as rendererLando from "@lando/renderer-lando";
+import * as secretStoreOnePassword from "@lando/secret-store-1password";
 import * as serviceLando from "@lando/service-lando";
 import * as sqlPlugin from "@lando/sql";
 import * as sshAgent from "@lando/ssh-agent";
@@ -40,6 +41,7 @@ const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   caMkcert.plugin,
   proxyTraefik.plugin,
   sshAgent.plugin,
+  secretStoreOnePassword.plugin,
   templateHandlebars.plugin,
   templateMustache.plugin,
   sqlPlugin.plugin,
@@ -54,7 +56,7 @@ const rendererIndexPath = resolve(import.meta.dirname, "../../../plugins/rendere
 
 describe("bundled plugin descriptor tables", () => {
   test("exports every bundled plugin descriptor in ship-list order", async () => {
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(15);
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(16);
     expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );

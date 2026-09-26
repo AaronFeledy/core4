@@ -8,6 +8,7 @@ export * from "./download.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global.ts";
+export * from "./gpg.ts";
 export * from "./guide.ts";
 export * from "./healthcheck.ts";
 export * from "./http-client.ts";

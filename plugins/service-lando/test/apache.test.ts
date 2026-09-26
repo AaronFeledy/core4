@@ -142,6 +142,9 @@ describe("apache ServiceType", () => {
     // Then: the daemon is told to listen there, and the image's own listener is
     // deleted during the build so the service answers on one socket, not two.
     expect(apacheDirectives(plan.command)).toContain("Listen 8080");
+    expect(apacheDirectives(plan.command).indexOf("ServerName localhost")).toBeLessThan(
+      apacheDirectives(plan.command).indexOf("Listen 8080"),
+    );
     const step = buildStepsFor(plan).find(({ id }) => id === APACHE_LISTEN_BUILD_STEP_ID);
     expect(step?.user).toBe("root");
     const script = String((step?.command as ReadonlyArray<string> | undefined)?.[2] ?? "");
@@ -156,6 +159,8 @@ describe("apache ServiceType", () => {
     // Then: byte-identical argv, and the image is left alone.
     expect(plan.command).toEqual([
       "httpd-foreground",
+      "-c",
+      "ServerName localhost",
       "-c",
       'PidFile "/tmp/lando-httpd.pid"',
       "-c",

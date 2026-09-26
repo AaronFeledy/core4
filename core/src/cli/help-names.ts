@@ -43,7 +43,12 @@ export const typeableName = (input: TypeableNameInput): TypeableName => {
   };
 
   const typeable = (token: string): boolean =>
-    isNameToken(token) && !disabled.has(token) && !claimedByOther(token);
+    isNameToken(token) &&
+    !disabled.has(token) &&
+    !claimedByOther(token) &&
+    // The bare config command belongs to meta:config. Keep app:config's
+    // help on its canonical, typeable route unless a user remaps it explicitly.
+    !(canonicalId === "app:config" && token === "config" && customTarget(token) !== canonicalId);
 
   const customs = aliasesEnabled
     ? Object.entries(custom)

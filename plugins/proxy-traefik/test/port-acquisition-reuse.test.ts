@@ -62,6 +62,9 @@ const unusedRunner = {
   stream: () => {
     throw new Error("stream is unused");
   },
+  streamWithExit: () => {
+    throw new Error("streamWithExit is unused");
+  },
 };
 
 const unusedPrivilege = {
@@ -241,6 +244,17 @@ describe("persistPortAcquisition reuse", () => {
     expect(readJson(store.files).fingerprint).toEqual(defaultFingerprint);
   });
 
+  test("does not reuse persisted ports outside the current candidate lists", async () => {
+    const store = memoryFiles();
+    seedAcquisition(store.files, { httpPort: 9999, httpsPort: 9998 });
+    const deps = makeDeps(store, overrideFor({ httpFirstFree: 8080, httpsFirstFree: 8443 }));
+
+    const decision = await Effect.runPromise(persistPortAcquisition(deps));
+
+    expect(decision.httpPort).toBe(8080);
+    expect(decision.httpsPort).toBe(8443);
+  });
+
   test("Given persisted occupied-hop and owned binds, When reusing, Then occupancy warning is re-emitted", async () => {
     // Given: prior acquisition stored an occupancy notice; pair is still owned.
     const store = memoryFiles();
@@ -259,7 +273,7 @@ describe("persistPortAcquisition reuse", () => {
     expect(decision.httpsPort).toBe(8443);
     expect(decision.notices.length).toBeGreaterThan(0);
     expect(decision.notices.join(" ")).toContain("8080");
-    expect(decision.notices.join(" ")).toContain("lando global:restart");
+    expect(decision.notices.join(" ")).toContain("lando info");
   });
 
   test("Given a changed fingerprint, When persisting, Then acquisition rescans the new try list", async () => {
@@ -447,7 +461,7 @@ describe("ownership without HTTP GET", () => {
 });
 
 describe("fallback notice", () => {
-  test("Given occupied preferred and a chosen fallback, When persisting, Then the notice names occupied, chosen, holder, and lando global:restart", async () => {
+  test("Given occupied preferred and a chosen fallback, When persisting, Then the notice names occupied, chosen, holder, and lando info", async () => {
     // Given: 80/443 held by nginx; 8080/8443 are the first free binds.
     const store = memoryFiles();
     const classifyOverride = overrideFor({
@@ -466,13 +480,13 @@ describe("fallback notice", () => {
     expect(decision.notices[0]).toContain("80");
     expect(decision.notices[0]).toContain("8080");
     expect(decision.notices[0]).toContain("nginx");
-    expect(decision.notices[0]).toContain("sudo systemctl stop nginx");
-    expect(decision.notices[0]).toContain("lando global:restart");
+    expect(decision.notices[0]).toContain("alternate URL is available");
+    expect(decision.notices[0]).toContain("lando info");
     expect(decision.notices[1]).toContain("443");
     expect(decision.notices[1]).toContain("8443");
   });
 
-  test("Given occupied preferred, When setup runs, Then message.warn names occupied, chosen, holder, and lando global:restart", async () => {
+  test("Given occupied preferred, When setup runs, Then message.warn names occupied, chosen, holder, and lando info", async () => {
     // Given: 80/443 held by nginx; EventService captures acquisition-time warn.
     const store = memoryFiles();
     const classifyOverride = overrideFor({
@@ -503,7 +517,7 @@ describe("fallback notice", () => {
     expect(joined).toContain("80");
     expect(joined).toContain("8080");
     expect(joined).toContain("nginx");
-    expect(joined).toContain("lando global:restart");
+    expect(joined).toContain("lando info");
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
+import { DateTime, Duration, Effect, Stream } from "effect";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ServiceExecError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -10,7 +10,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import type { CommandSpec } from "@lando/sdk/services";
+import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
 import { exec } from "../src/podman/exec.ts";
@@ -87,18 +87,121 @@ const oneChunkStdin = async function* (): AsyncIterable<Uint8Array> {
   yield new Uint8Array([0x61]);
 };
 
-const runExec = (api: EngineHttpApi, command: CommandSpec, user?: string) =>
-  Effect.runPromise(
-    exec(plan, { app: appId, service: serviceName, ...(user === undefined ? {} : { user }) }, command, {
-      api,
-      ctx,
-    }),
-  );
+const runExec = (api: EngineHttpApi, command: CommandSpec, execTarget: ExecTarget = target) =>
+  Effect.runPromise(exec(plan, execTarget, command, { api, ctx }));
 
-const createBody = (calls: ReadonlyArray<EngineHttpRequest>): Record<string, unknown> | undefined => {
-  const body = calls.find((call) => call.method === "POST" && call.path === createPath)?.body;
-  return typeof body === "object" && body !== null ? (body as Record<string, unknown>) : undefined;
+const createBody = (calls: ReadonlyArray<EngineHttpRequest>) =>
+  calls.find((call) => call.method === "POST" && call.path === createPath)?.body;
+
+const attachFrame = (kind: 1 | 2, value: string): Uint8Array => {
+  const payload = new TextEncoder().encode(value);
+  const frame = new Uint8Array(8 + payload.length);
+  frame[0] = kind;
+  new DataView(frame.buffer).setUint32(4, payload.length);
+  frame.set(payload, 8);
+  return frame;
 };
+
+describe("podman exec user", () => {
+  test.each(["www-data", "1000:1000"])("forwards %s to the exec create request", async (user) => {
+    const fake = makeFakeApi();
+
+    await runExec(fake.api, { command: ["id"] }, { ...target, user });
+
+    expect(createBody(fake.calls)).toMatchObject({ User: user });
+  });
+
+  test("omits User when the target does not specify one", async () => {
+    const fake = makeFakeApi();
+
+    await runExec(fake.api, { command: ["id"] });
+
+    expect(createBody(fake.calls)).not.toHaveProperty("User");
+  });
+});
+
+describe("podman exec start errors", () => {
+  const apiFailingStartWith = (error: ProviderUnavailableError): EngineHttpApi => ({
+    request: (input) =>
+      input.method === "POST" && input.path === createPath
+        ? Effect.succeed({ status: 201, body: JSON.stringify({ Id: "exec-1" }) })
+        : Effect.succeed({ status: 500, body: "unexpected request" }),
+    stream: () => Stream.fail(error),
+  });
+
+  test("classifies an HTTP rejection for a requested user as an execution error", async () => {
+    const transportError = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "engine.stream",
+      message: "Container runtime stream request failed with HTTP 500.",
+      details: { method: "POST", path: "/exec/exec-1/start", status: 500 },
+      remediation: "Run lando doctor.",
+    });
+
+    const error = await Effect.runPromise(
+      exec(
+        plan,
+        { ...target, user: "missing-user" },
+        { command: ["id"] },
+        {
+          api: apiFailingStartWith(transportError),
+          ctx,
+        },
+      ).pipe(Effect.flip),
+    );
+
+    expect(error).toBeInstanceOf(ServiceExecError);
+    if (!(error instanceof ServiceExecError)) throw new Error("Expected ServiceExecError");
+    expect(error.service).toBe(serviceName);
+    expect(error.message).toContain("requested user");
+    expect(error.details).toEqual({ status: 500, requestedUser: "missing-user" });
+    expect(error.remediation).toContain("exists");
+    expect(error.remediation).toContain("--user");
+  });
+
+  test("classifies an HTTP rejection without a user as an execution error", async () => {
+    const transportError = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "engine.stream",
+      message: "Container runtime stream request failed with HTTP 409.",
+      details: { status: 409 },
+      remediation: "Run lando doctor.",
+    });
+
+    const error = await Effect.runPromise(
+      exec(plan, target, { command: ["id"] }, { api: apiFailingStartWith(transportError), ctx }).pipe(
+        Effect.flip,
+      ),
+    );
+
+    expect(error).toBeInstanceOf(ServiceExecError);
+    if (!(error instanceof ServiceExecError)) throw new Error("Expected ServiceExecError");
+    expect(error.details).toEqual({ status: 409 });
+  });
+
+  test("preserves a statusless transport availability error", async () => {
+    const transportError = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "engine.stream",
+      message: "Named pipe is unavailable.",
+      remediation: "Run lando setup.",
+    });
+
+    const error = await Effect.runPromise(
+      exec(
+        plan,
+        { ...target, user: "www-data" },
+        { command: ["id"] },
+        {
+          api: apiFailingStartWith(transportError),
+          ctx,
+        },
+      ).pipe(Effect.flip),
+    );
+
+    expect(error).toBe(transportError);
+  });
+});
 
 describe("podman exec AttachStdin", () => {
   test("sets AttachStdin true when only stdinStream is provided", async () => {
@@ -151,31 +254,121 @@ describe("podman exec error context", () => {
   });
 });
 
-describe("podman exec User", () => {
-  test("sets User on the exec-create body when the target has a user", async () => {
-    // Given
-    const fake = makeFakeApi();
+describe("podman exec completion", () => {
+  test("returns output and exit code when the attach pipe stays open after exit", async () => {
+    let inspections = 0;
+    const api: EngineHttpApi = {
+      execAttachNeedsInspectCompletion: true,
+      request: (input) =>
+        Effect.sync(() => {
+          if (input.path === createPath) return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
+          if (input.path === "/exec/exec-1/json") {
+            inspections += 1;
+            return {
+              status: 200,
+              body: JSON.stringify(
+                inspections === 1 ? { Running: true, ExitCode: null } : { Running: false, ExitCode: 37 },
+              ),
+            };
+          }
+          return { status: 500, body: "unexpected request" };
+        }),
+      stream: (input) =>
+        Stream.suspend(() => {
+          input.onResponseHead?.();
+          return Stream.fromIterable([attachFrame(1, "probe-out"), attachFrame(2, "probe-err")]).pipe(
+            Stream.concat(Stream.never),
+          );
+        }),
+    };
 
-    // When
-    await runExec(fake.api, { command: ["true"] }, "www-data");
+    const result = await runExec(api, { command: ["probe"] });
 
-    // Then
-    const body = createBody(fake.calls);
-    expect(body).toEqual(expect.objectContaining({ User: "www-data" }));
+    expect(result).toEqual({ stdout: "probe-out", stderr: "probe-err", exitCode: 37 });
+    expect(inspections).toBeGreaterThanOrEqual(2);
+  }, 5_000);
+});
+
+describe("podman exec stdin completion", () => {
+  test("waits for a still-running exec after stdin half-closes the attach stream", async () => {
+    let inspections = 0;
+    const api: EngineHttpApi = {
+      execAttachNeedsInspectCompletion: true,
+      request: (input) =>
+        Effect.sync(() => {
+          if (input.path === createPath) return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
+          if (input.path === "/exec/exec-1/json") {
+            inspections += 1;
+            return {
+              status: 200,
+              body: JSON.stringify(
+                inspections < 3 ? { Running: true, ExitCode: 0 } : { Running: false, ExitCode: 23 },
+              ),
+            };
+          }
+          return { status: 500, body: "unexpected request" };
+        }),
+      stream: (input) =>
+        Stream.suspend(() => {
+          input.onResponseHead?.();
+          return Stream.make(attachFrame(1, "stdin-consumed"));
+        }),
+    };
+
+    const result = await runExec(api, { command: ["cat"], stdinStream: oneChunkStdin() });
+
+    expect(result).toEqual({ stdout: "stdin-consumed", stderr: "", exitCode: 23 });
+    expect(inspections).toBeGreaterThanOrEqual(3);
+  }, 5_000);
+});
+
+describe("podman exec delayed output", () => {
+  const apiWithStream = (attached: Stream.Stream<Uint8Array, ProviderUnavailableError>): EngineHttpApi => ({
+    execAttachNeedsInspectCompletion: true,
+    request: (input) =>
+      Effect.sync(() => {
+        if (input.path === createPath) return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
+        if (input.path === "/exec/exec-1/json") {
+          return { status: 200, body: JSON.stringify({ Running: false, ExitCode: 19 }) };
+        }
+        return { status: 500, body: "unexpected request" };
+      }),
+    stream: (input) =>
+      Stream.suspend(() => {
+        input.onResponseHead?.();
+        return attached;
+      }),
   });
 
-  test("omits User from the exec-create body when the target has no user", async () => {
-    // Given
-    const fake = makeFakeApi();
+  test("retains a final frame arriving 250 ms after Podman reports exit", async () => {
+    const attached = Stream.make(attachFrame(1, "first")).pipe(
+      Stream.concat(
+        Stream.fromEffect(Effect.sleep(Duration.millis(250)).pipe(Effect.as(attachFrame(2, "last")))),
+      ),
+      Stream.concat(Stream.never),
+    );
 
-    // When
-    await runExec(fake.api, { command: ["true"] });
+    const result = await runExec(apiWithStream(attached), { command: ["probe"] });
 
-    // Then
-    const body = createBody(fake.calls);
-    expect(body).toBeDefined();
-    expect(typeof body).toBe("object");
-    expect(body).not.toBeNull();
-    expect("User" in (body ?? {})).toBe(false);
-  });
+    expect(result).toEqual({ stdout: "first", stderr: "last", exitCode: 19 });
+  }, 5_000);
+
+  test("propagates a real stream error after Podman reports exit", async () => {
+    const failure = new ProviderUnavailableError({
+      providerId: "podman",
+      operation: "exec",
+      message: "attach stream failed",
+    });
+    const attached = Stream.make(attachFrame(1, "first")).pipe(
+      Stream.concat(
+        Stream.fromEffect(Effect.sleep(Duration.millis(200))).pipe(
+          Stream.flatMap(() => Stream.fail(failure)),
+        ),
+      ),
+    );
+
+    await expect(runExec(apiWithStream(attached), { command: ["probe"] })).rejects.toMatchObject({
+      message: "attach stream failed",
+    });
+  }, 5_000);
 });

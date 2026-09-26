@@ -26,6 +26,7 @@ const csi = {
   green: `${ESC}[32m`,
   amber: `${ESC}[33m`,
   red: `${ESC}[31m`,
+  defaultFg: `${ESC}[39m`,
 } as const;
 
 const hasC0OrDel = (value: string): boolean => {
@@ -223,14 +224,68 @@ const TONE_COLOR: Record<SummaryTone, string> = {
  */
 export const toneChip = (tone: SummaryTone): string => `[${TONE_CHIP_TEXT[tone]}]`;
 
+/** Prefix for a suggested-fix line under a summary row. */
+export const REMEDY_ARROW = "↳ ";
+
 /** Pad `text` to `width` columns (display-aware) for aligned label columns. */
 export const padEndToWidth = (text: string, width: number): string =>
   `${text}${repeat(" ", width - displayWidth(text))}`;
 
+/**
+ * Wrap field values without changing their bytes. Prefer the last ordinary
+ * space that fits, leaving that space on the preceding line; oversized tokens
+ * are split at the width limit.
+ */
+const wrapFieldValueToWidth = (value: string, width: number): ReadonlyArray<string> => {
+  const budget = Math.max(1, width);
+  const lines: string[] = [];
+  let remaining = value;
+  while (displayWidth(remaining) > budget) {
+    let end = 0;
+    let used = 0;
+    let lastSpaceEnd = 0;
+    for (const ch of remaining) {
+      const charWidth = codePointWidth(ch.codePointAt(0) ?? 0);
+      if (used + charWidth > budget) break;
+      end += ch.length;
+      used += charWidth;
+      if (ch === " ") lastSpaceEnd = end;
+    }
+    const breakAt = lastSpaceEnd > 0 && /\S/u.test(remaining.slice(0, lastSpaceEnd)) ? lastSpaceEnd : end;
+    if (breakAt === 0) return [...lines, ...hardBreakToken(remaining, budget)];
+    lines.push(remaining.slice(0, breakAt));
+    remaining = remaining.slice(breakAt);
+  }
+  lines.push(remaining);
+  return lines;
+};
+
+/** Keep the field separator aligned while long labels and values wrap. */
+export const wrapFieldToWidth = (
+  label: string,
+  value: string,
+  labelWidth: number,
+  width: number,
+): ReadonlyArray<string> => {
+  const labels = wrapToWidth(label, Math.max(1, labelWidth));
+  const lastLabel = labels[labels.length - 1] ?? "";
+  const prefix = `${padEndToWidth(lastLabel, labelWidth)} : `;
+  const prefixWidth = displayWidth(prefix);
+  if (!/\s/u.test(value) && displayWidth(value) > width - prefixWidth && displayWidth(value) <= width) {
+    return [...labels.slice(0, -1), prefix.slice(0, -1), value];
+  }
+  // Each embedded line break starts a new physical row inside the frame.
+  const values = value.split(/\r?\n/u).flatMap((part) => wrapFieldValueToWidth(part, width - prefixWidth));
+  return [
+    ...labels.slice(0, -1),
+    `${prefix}${values[0] ?? ""}`,
+    ...values.slice(1).map((line) => `${repeat(" ", prefixWidth)}${line}`),
+  ];
+};
+
 /** ANSI accents for the framed surfaces, mirroring the task-tree cockpit palette. */
 export const styleBoxTop = (line: string): string => `${csi.bold}${csi.pink}${line}${csi.reset}`;
-export const styleBoxBottom = (line: string): string =>
-  `${csi.dim}${csi.cyan}${line}${csi.dimReset}${csi.reset}`;
+export const styleBoxBottom = (line: string): string => `${csi.cyan}${line}${csi.reset}`;
 export const styleBoxFooter = (line: string): string =>
   `${csi.dim}${csi.pink}${line}${csi.dimReset}${csi.reset}`;
 export const styleBoxSeparator = (line: string): string => `${csi.pink}${line}${csi.reset}`;
@@ -240,4 +295,51 @@ export const dimText = (text: string): string => `${csi.dim}${text}${csi.dimRese
 export const paintTone = (tone: SummaryTone, line: string): string => {
   const color = TONE_COLOR[tone];
   return color === csi.dim ? `${csi.dim}${line}${csi.dimReset}${csi.reset}` : `${color}${line}${csi.reset}`;
+};
+
+const TONE_GLYPH: Record<SummaryTone, string> = {
+  ok: "✓",
+  warn: "!",
+  error: "✗",
+  info: "·",
+  pending: "◌",
+  skipped: "–",
+};
+
+/**
+ * Single-cell status glyph matching the task-tree painter. Warn is ASCII `!`
+ * because `⚠` renders with emoji presentation in most terminal fonts and
+ * spills past its one measured cell.
+ */
+export const toneGlyph = (tone: SummaryTone): string => TONE_GLYPH[tone];
+
+/** Pink rail/frame chrome shared with the task tree (`╭─`, `│`, `├─`, `╰─`). */
+export const paintRail = (text: string): string => `${csi.pink}${text}${csi.reset}`;
+
+/** Bold text in the tone color, for a summary title. */
+export const paintToneBold = (tone: SummaryTone, text: string): string =>
+  `${csi.bold}${TONE_COLOR[tone]}${text}${csi.reset}`;
+
+/** Cyan text, the palette color for commands. */
+export const cyanText = (text: string): string => `${csi.cyan}${text}${csi.defaultFg}`;
+
+/**
+ * Paint backtick-quoted spans cyan across already-wrapped lines. A span that
+ * wraps stays painted on its continuation line; backticks stay visible so the
+ * text still reads as code without color.
+ */
+export const paintCodeSpans = (lines: ReadonlyArray<string>): ReadonlyArray<string> => {
+  let inCode = false;
+  return lines.map((line) => {
+    let out = inCode ? csi.cyan : "";
+    for (const ch of line) {
+      if (ch === "`") {
+        out += inCode ? `${ch}${csi.defaultFg}` : `${csi.cyan}${ch}`;
+        inCode = !inCode;
+      } else {
+        out += ch;
+      }
+    }
+    return inCode ? `${out}${csi.defaultFg}` : out;
+  });
 };

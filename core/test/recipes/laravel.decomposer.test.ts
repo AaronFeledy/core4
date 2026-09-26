@@ -34,6 +34,7 @@ const expected = {
   services: {
     appserver: {
       type: "php:{{ recipe.php }}",
+      primary: true,
       framework: "laravel",
       webroot: "{{ recipe.webroot }}",
       composer: "{{ recipe.composer }}",

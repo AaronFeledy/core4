@@ -29,7 +29,11 @@ import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
@@ -82,6 +86,7 @@ const makeHarness = (): Harness => {
     },
   } satisfies Context.Tag.Service<typeof Renderer>;
   const redaction = {
+    registerValues: registerRedactionValues,
     forProfile: (
       profile: "secrets" | "telemetry" | "transcript",
       options?: Parameters<typeof createStandaloneRedactor>[1],
@@ -718,6 +723,7 @@ describe("EventCommandExecutorLive", () => {
     };
     const context = Context.add(harness.context, PluginContributionGraph, {
       plugins: [{ source: "explicit", manifest, entry: module, module }],
+      globalPlugins: [{ source: "explicit", manifest, entry: module, module }],
       certificateAuthorities: [],
       commands: [
         {

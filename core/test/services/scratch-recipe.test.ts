@@ -26,7 +26,7 @@ import { FileSystemLive } from "@lando/engine/services/file-system";
 import { AppPlannerLive } from "@lando/engine/services/planner";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
@@ -66,6 +66,7 @@ const landofileServiceLive = makeEngineLandofileServiceLive(landofileRuntimeInpu
 
 const pluginRegistryLive = makePluginRegistryLive({}, BUNDLED_PLUGIN_MODULES);
 const redactionLive = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(createRedactor("secrets")),
 });
 

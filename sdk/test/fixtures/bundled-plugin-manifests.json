@@ -268,6 +268,30 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
+        "secretStores": [
+          {
+            "id": "1password",
+            "module": "./src/store.ts",
+            "schemes": ["op"]
+          }
+        ]
+      },
+      "description": "1Password CLI-backed secret store.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/secret-store-1password",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/secret-store-1password"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
         "appFeatures": [
           "service-lando.mailpit.wire",
           "service-lando.php.db-client",
@@ -288,12 +312,14 @@
         "serviceFeatures": [
           "lando.boot",
           "lando.user-id",
+          "lando.gpg-agent",
           "lando.storage",
           "lando.env",
           "lando.app-mount",
           "lando.healthcheck",
           "lando.certs",
           "lando.security",
+          "lando.ssh-agent",
           "lando.host-proxy",
           "lando.user",
           "service-lando.apache",

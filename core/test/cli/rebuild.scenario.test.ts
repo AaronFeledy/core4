@@ -1,4 +1,5 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -28,6 +29,7 @@ import {
 import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
+import { makeTestStateStore } from "@lando/core/testing";
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
 import { BuildOrchestratorLive } from "@lando/engine/services/build-orchestrator";
 import { ConfigServiceLive } from "@lando/engine/services/config";
@@ -35,7 +37,11 @@ import { FileSystemLive } from "@lando/engine/services/file-system";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
 const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
@@ -124,11 +130,14 @@ const servicePlan = (name: string): ServicePlan => ({
 });
 
 const web = servicePlan("web");
+const testAppRoot = mkdtempSync(join(tmpdir(), "lando-rebuild-app-root-"));
+afterAll(() => rmSync(testAppRoot, { recursive: true, force: true }));
+
 const plan: AppPlan = {
   id: AppId.make("test-rebuild"),
   name: "test-rebuild",
   slug: "test-rebuild",
-  root: AbsolutePath.make("/tmp/test-rebuild"),
+  root: AbsolutePath.make(testAppRoot),
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
@@ -223,6 +232,7 @@ const requiredStartServicesLayer = Layer.mergeAll(
     loadAppFeature: () => Effect.die("not used"),
   }),
   Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
   Layer.succeed(RouterService, TestRouterService),
@@ -282,6 +292,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
     PrivateFileAccessLive,
     StateStoreLive,
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-rebuild", services: {} }) }),
+    makeTestStateStore().layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(BuildOrchestrator, {

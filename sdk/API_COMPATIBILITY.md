@@ -4,6 +4,19 @@
 
 ## Compatibility notes
 
+- Command error envelopes add optional `reason: string`. Normal JSON/YAML output and terminal result stream frames preserve the source error's reason when it is a string, including an empty string; absent and non-string reasons remain omitted. Existing tag, message, remediation, and redaction behavior are unchanged.
+- `AgentSocketBridgeInput` requires `appRoot: AbsolutePath`, the canonical app root that owns the bridge. Worker hosts pass it directly from the app reference. Providers derive volume ownership through the canonical container-runtime helper, without looking up a previously applied plan, so fresh starts carry the same ownership proof and selector as later starts. Bridge callers must supply this field.
+- `LandoPaths` requires `agentRelayRunDir(kind: "ssh" | "gpg", appId: string, appRoot: string): string`. The paths primitive derives an app- and kind-scoped directory under `userDataRoot/run`, using the same app-name sanitization and root fingerprint as the host-proxy directory. Custom `PathsService` implementations must supply this builder.
+- `SecretStoreShape` adds optional `schemes: ReadonlyArray<string>`. `SecretStore.get` now returns `SecretStoreError`: `SecretNotFoundError`, `SecretStoreUnavailableError`, or `SecretReferenceInvalidError`. `SecretStore.has` can fail with `SecretStoreUnavailableError`; backend failure must not become `false`. `list` remains total, and CLI-backed stores list references resolved in the current process. Consumers with narrower error channels must propagate or handle the new failures.
+- `ShellInteractiveSpec.resolveSecret` now returns `Effect<string, SecretStoreError>`. The services barrel re-exports this same contract; `ShellRunner.interactive` retains its existing signature and `ShellExecError` boundary.
+- `@lando/sdk/errors` adds `SshAgentUnavailableError` (mode, reason, optional socketPath, remediation), `GpgAgentUnavailableError` (reason, optional socketPath, remediation), and `SshAgentTransportError` / `GpgAgentTransportError` (broker, worker, or bridge stage, remediation, optional cause). Secret stores add `SecretStoreUnavailableError` (storeId, locked/unauthenticated/denied/timeout/cli-missing reason, remediation), `SecretReferenceInvalidError` (reference, remediation), and the type-only `SecretStoreError` union. All six errors carry message and a machine tag. Like the existing SSH and secret errors, they register no public JSON Schema. `StartAppError` includes all six; restart and rebuild inherit them.
+- `GpgAgentUnavailableError.reason` adds the `unrestricted-socket` literal: the configured or discovered socket answered the Assuan `GETINFO restricted` probe as an ordinary gpg-agent socket rather than the restricted extra socket, so forwarding fails closed. Discovery also rejects symlinks and non-socket paths as `socket-missing`. Consumers matching on `reason` must handle the new literal.
+- `@lando/sdk/secrets` adds `parseSecretReference` and its schema-derived `ParsedSecretReference` type. The pure parser returns `Either<ParsedSecretReference, SecretReferenceInvalidError>` using Effect's success-first generic order. It preserves raw input and key, with an optional lowercase scheme. Bare ids use letters, digits, underscores, dots, and hyphens. Scheme paths contain two to four nonempty segments, allow ASCII spaces, and optionally end in one `?attr=value` query, including `?ssh-format=openssh`. Leading/trailing reference whitespace, parent segments, controls, and closing braces are rejected. Parsing uses Effect data types; redaction primitives remain independent of host IO.
+- `SshAgentConfig` accepts optional boolean sidecar and string socket fields; the prior true-only sidecar restriction is removed. `GpgAgentConfig` accepts optional forward and socket fields. `LandofileShape.sshAgent` / `gpgAgent`, `GlobalConfig.sshAgent` / `gpgAgent` / `defaultSecretStore`, and the corresponding `GlobalConfigView` fields carry these settings. Omitted SSH mode remains sidecar; GPG forwarding is opt-in.
+- Agent delivery adds `AgentSocketKind`, `AgentSocketDelivery`, `AgentSocketProviderCapabilities`, `AgentSocketUpstream`, `AgentSocketBridgeInput`, and `AgentSocketBridgeResult`. `ProviderCapabilities.agentSocket` is optional. `RuntimeProviderShape.openAgentSocketBridge` is optional and scope-owned, returns a provider-visible bind directory or volume, and preserves `ProviderError`. `AGENT_SOCKET_CONTAINER_DIR`, `SSH_AGENT_SOCKET_NAME`, and `GPG_AGENT_SOCKET_NAME` define the shared container locations and socket names.
+- `SecretStoreContribution` adds manifest id, module, schemes, and optional summary/deprecated fields. `PluginContribution.secretStores` and `LandoPluginModule.secretStores` publish secret-store contributions. The type-only `SecretStoreContributionLayer` provides `SecretStore`, may fail with `SecretStoreUnavailableError`, and requires `ProcessRunner`, `PathsService`, and `FileSystem`.
+- `SecretStoreContractHarness.invalidReference` is required and must fail with `SecretReferenceInvalidError`. Optional `unavailableStore` supplies a store and expected reason; both get and has must preserve `SecretStoreUnavailableError`. Optional backend-failure probes must fail with a member of `SecretStoreError`, not merely an arbitrary tagged object. Existing suite invocations must supply the invalid-reference fixture.
+
 - `ProviderError` includes the existing `ArtifactBuildError` tag so failed image-build steps are distinct from unavailable runtimes. Build diagnostics carry a bounded, redacted daemon message and image-specific remediation.
 
 - `@lando/sdk/services` exports `ServiceBuildDirectoryCommand`, an Effect Schema for nonempty lists of absolute image directories with portable path segments. `ServiceBuildStepIntent.command` accepts this shell-free artifact-build intent alongside existing command forms; providers create directories without executing image binaries or changing the image user.
@@ -92,6 +105,34 @@
 
 - `ConfigTranslateSecretReference` is narrowed before first release to three mutually exclusive shapes: `secret-store` carries one canonical `${secret:...}` reference, `postInit.stdin` carries only its disposition, and `postInit.secretEnv` carries its disposition and environment variable name. Raw secret strings and generic reference payloads are not accepted. This contract applies to `ConfigTranslateRecipeRequestInput.secretAnswers` and `RecipeDecomposeInput.secrets`; init-only secret bytes remain outside translation and are delivered only to their declared post-init sink.
 
+- `FileSyncEngineShape.appLifecycle` optionally groups durable app drain invalidation, drain, disposal, and disposal completion. Startup invalidates a prior drain before app writers run; stop drains only after provider writers stop. Durable destroy remains blocked until the provider can verify helper and volume cleanup without losing sync ownership. Engines without this port retain their existing per-session lifecycle.
+
+- `FileSyncEngineShape.bindPreparedTargets(plan, targets)` optionally returns an app-scoped engine after startup validates the provider's complete target set. The returned engine must now carry `boundApp: AppRef`, using the existing schema-derived identity. Startup checks kind, ID, and canonical root before any session mutation. A rejected binding uses the shared engine's fresh session inventory: only a proven-empty inventory permits target rollback and journal removal. The shared engine is not mutated. Engines without this hook keep their existing startup behavior. The declaration mirror and frozen service fixture now cover this contract.
+- `FileSyncEngineShape.sessionsPersistAcrossProcesses` tells startup whether existing sessions survive process exit. Managed app handles leave persistent running sessions in place when their scope closes; failed starts still terminate sessions they created. Engines that omit the property retain scope-bound cleanup.
+
+- StartAppError and StopAppError, including the inherited restart, rebuild, and destroy error unions, now include the existing tagged StateStoreError when a per-app lifecycle lock cannot be acquired. Callers receive its lock reason and retry remediation.
+
+- `RuntimeProviderShape.inspectAppliedFileSync(plan)` optionally reports whether the provider has a prior accelerated app mount, an ordinary applied plan, no applied state, or an unknown state. A proven accelerated result carries the saved engine ID and exact previously applied session specs; volume-only evidence stays unknown. Startup uses this read-only verdict before falling back from an accelerated plan to ordinary mounts; unknown or accelerated state stops startup so unflushed container writes cannot be hidden by a host bind.
+
+- `RuntimeProviderShape.quiesceForFileSync(target)` is an optional teardown hook that stops app writers while keeping accelerated mount volumes intact for a final synchronization flush. Destroy fails before volume removal if an active file sync session exists and the provider lacks the hook.
+
+- `RuntimeProviderShape.prepareFileSyncTargets(plan)` is an optional pre-apply hook for providers that can verify accelerated mount targets before app containers start. It returns exact, schema-derived container endpoints for every planned session plus a rollback action for resources created during preparation. Startup rejects incomplete, duplicate, or mismatched endpoints before creating a session. Providers without the hook use ordinary bind mounts; the bundled managed provider does not yet expose this hook while durable session ownership and safe cleanup are being completed.
+
+- `FileSyncSessionInfo.spec` is now required and retains the complete applied session spec so startup can verify reuse. `FileSyncEngineShape.flushSession(ref)` blocks until initial or resumed synchronization reaches the target; startup waits for it before reporting a mount ready. These replace unreleased incomplete readiness behavior without a compatibility path.
+
+- `RuntimeProviderShape.ensureReady` optionally starts and verifies a selected provider runtime after app planning and before host-dependent port selection. `GlobalAppService.ensureProviderReady` delegates to the selected managed provider; the Windows Traefik router uses it before guest-port probes so a stopped Podman machine is not mistaken for a free port. Providers without the hook retain their existing startup behavior.
+- `DEFAULT_ROUTER_HTTP_PORTS` and `DEFAULT_ROUTER_HTTPS_PORTS` expose one canonical router candidate order to engine configuration and the bundled Traefik implementation. Existing configured port preferences and fallbacks still override these defaults.
+
+- `RuntimeProviderShape.matchingPublishPorts(containerId, ports)` optionally validates that published ports route exclusively to the current provider container. Managed Windows Podman uses this read-only check before the global router reuses ports in a shared WSL network namespace. A stopped managed router may be matched only through its validated durable machine, container, relay-holder, and nftables ownership receipt so the existing pair can be restored safely; other providers retain their existing behavior.
+- `ProcessRunner.streamWithExit(options)` additively emits stdout and stderr chunks as they arrive, then the process exit code. Windows managed Podman uses it for stdin-fed exec commands so output is not buffered until exit.
+- `ProcessSpawnOptions.stdinStream` and `signal` add streamed process input and cancellation to the existing argv-precise ProcessRunner; the run method drains stdout and stderr while it writes stdin.
+
+- `HostProxyBridgeInput` and `HostProxyBridgeResult` add schema-derived contracts for a provider-scoped loopback-to-guest bridge. `RuntimeProviderShape.openHostProxyBridge(input)` is optional and lets managed Windows Podman expose its authenticated host-proxy worker through a private guest Unix socket without changing other providers.
+- `GlobalAppService.restartRunningService(service)` additively restarts an existing running global service and reports whether one was restarted. The Traefik router uses it to load route file changes on Windows-backed mounts whose host writes do not notify Linux file watchers.
+
+- `CommandResultEnvelope.error` additively includes optional `service` and structured `steps` for `SqlConfirmRequiredError`. The machine result encoder carries these confirmation details through canonical secret redaction so scripts can review the same destructive steps named by remediation.
+
+- `RuntimeProviderShape.occupiedPublishPorts(ports)` additively exposes read-only provider-host TCP publication occupancy. `GlobalAppService.occupiedPublishPorts(ports)` delegates to the selected managed provider, while `GlobalAppService.ownedPublishPorts(service, ports)` identifies running global-service publications for stable router reuse. `RouterService.prepare(config)` additively lets app startup persist a port decision before required global services start. All inputs and results use the existing `PortNumber` and `ServiceName` schema-derived types; no new JSON Schema is registered.
 - `LandofileService.discover` additively exposes `ManagedFileTransactionError` without adding an Effect context requirement. The frozen service-surface fixture matches the expanded error union. `StartAppError`, `StopAppError`, `InfoAppError`, `ExecAppError`, `LogsAppError`, and `ToolingError` preserve the same failure through app operations; restart, rebuild, and destroy inherit it. The additive `ManagedFileTransactionGuard` service provides `ensureConsistent(appRoot)` and `pending(appRoot)` and is included in `LandoRuntimeServices`.
 
 - The `ConfigTranslator` contract was replaced pre-release: tagged document-set and recipe-request inputs produce set outputs with wire authoring fragments. Detection consumes core-read snapshots, encoding is optional, and all methods require `never` in their Effect context. No compatibility adapter preserves the former one-way contract.
@@ -141,6 +182,7 @@
   failures. The start, stop, restart, rebuild, destroy, logs, pull, and push SDK error unions are not
   widened by this change.
 - `RouterServiceContributionLayer` additively requires the existing `CertificateAuthority` service so proxy plugins can terminate TLS with the selected active CA; core supplies a deferred resolver-backed implementation to selected proxy contributions.
+- The unreleased `LandoPluginModule.routerServices` map now stores `RouterServiceContribution` factories. Core calls each factory with the owning plugin scoped `LandoPluginContext`, allowing router implementations to use the supported plugin `stateStore` without depending on host internals. Static router layers have no compatibility path before the first public release.
 - `@lando/sdk/services` additively exports the runtime `ServiceCaFileDescriptor` Effect Schema and
   its inferred type. `ServiceBuildStepIntent` additively accepts optional `caFiles` so derived
   artifact builders can verify and pack host CA inputs without adding provider-specific intent.
@@ -281,6 +323,18 @@ unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
 ## Additive schema exports
+
+- `AGENT_SOCKET_CONTAINER_DIR`
+- `SSH_AGENT_SOCKET_NAME`
+- `GPG_AGENT_SOCKET_NAME`
+- `AgentSocketKind`
+- `AgentSocketDelivery`
+- `AgentSocketProviderCapabilities`
+- `AgentSocketUpstream`
+- `AgentSocketBridgeInput`
+- `AgentSocketBridgeResult`
+- `GpgAgentConfig`
+- `SecretStoreContribution`
 
 - `appIdentityKey`
 - `VolumeCreationFact`
@@ -486,6 +540,7 @@ It registers no JSON Schema.
 - `FileSyncSessionInfo`
 - `FileSyncSessionRef`
 - `FileSyncSessionSpec`
+- `PreparedFileSyncTarget`
 - `FileSyncSessionStatus`
 - `FileSyncSessionTarget`
 - `FileSyncSetupOptions`
@@ -500,6 +555,8 @@ It registers no JSON Schema.
 - `HostArchitecture`
 - `HostPlatformFamily`
 - `hostPlatformFamily`
+- `HostProxyBridgeInput`
+- `HostProxyBridgeResult`
 - `HostProxyContainerTarget`
 - `HostProxyErrorCode`
 - `HostProxyGatewayHostname`
@@ -753,6 +810,8 @@ It registers no JSON Schema.
 - `RENDERER_CAPABILITIES_VERBOSE_TTY`
 - `HOST_PROXY_REQUEST_TAGS`
 - `DEFAULT_KEYMAP_BINDINGS`
+- `DEFAULT_ROUTER_HTTP_PORTS`
+- `DEFAULT_ROUTER_HTTPS_PORTS`
 - `RENDERER_ACTION_SURFACE`
 - `RendererKeyChordPattern`
 - `decodeKeymapConfig`
@@ -876,6 +935,11 @@ It registers no JSON Schema.
   supported only when `composeSpec` is `native` and the exact project field is declared. Top-level
   `x-*` is preserved inert and never capability-gated.
 - `CapabilityError.key` is a new additive optional field carrying the exact capability key that failed.
+- `TaskCompleteEvent.outcome` is a new additive optional `"ok" | "warn"` field. Absent means `ok`;
+  `warn` marks a task that finished with warnings the reader should look at (renderers paint it
+  as a warning instead of `✓`). `@lando/sdk/task-progress` additively exports `TaskOutcome`,
+  `TaskCompleteArgs.outcome`, and the controller method `warnTask`, which counts the child as
+  succeeded.
 - `ServiceConfig.restart`, `.cap_add`, `.cap_drop`, `.privileged`, `.devices`, `.ulimits`, `.sysctls`,
   `.tmpfs`, `.shm_size`, `.dns`, `.dns_search`, `.dns_opt`, `.extra_hosts`, `.init`, `.stop_signal`,
   `.stop_grace_period`, `.security_opt`, `.group_add`, `.read_only`, `.platform`, `.pull_policy`,
@@ -899,6 +963,13 @@ It registers no JSON Schema.
 - `PreBootstrapToolingEvent`
 
 ## Additive Alpha errors
+
+- `SshAgentUnavailableError`
+- `SshAgentTransportError`
+- `GpgAgentUnavailableError`
+- `GpgAgentTransportError`
+- `SecretStoreUnavailableError`
+- `SecretReferenceInvalidError`
 
 - `Lando3UnsupportedRecipeError`
 - `RouteInputError`
@@ -1024,7 +1095,6 @@ It registers no JSON Schema.
 - `DeprecationService`
 - `Downloader`
 - `HttpClient`
-- `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`
 - `InteractionService`

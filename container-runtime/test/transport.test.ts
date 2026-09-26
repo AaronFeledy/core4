@@ -179,6 +179,62 @@ describe("socket HTTP transport", () => {
     expect(response).toEqual({ status: 200, body: "hello world" });
   });
 
+  test("returns a Content-Length response without waiting for named-pipe EOF", async () => {
+    const connection = new WaitingConnection([], "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+    const client = makeSocketHttpClient({ apiPrefix: "/v6.0.0", connect: async () => connection });
+    try {
+      const response = await Promise.race([
+        client.request({ method: "GET", path: "/libpod/_ping" }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("request waited for EOF")), 500)),
+      ]);
+      expect(response).toEqual({ status: 200, body: "{}" });
+      expect(connection.destroyed).toBe(true);
+    } finally {
+      connection.destroy();
+    }
+  });
+
+  test("returns a complete chunked response without waiting for named-pipe EOF", async () => {
+    const connection = new WaitingConnection(
+      [],
+      "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n",
+    );
+    const client = makeSocketHttpClient({ apiPrefix: "/v6.0.0", connect: async () => connection });
+    try {
+      const response = await Promise.race([
+        client.request({ method: "GET", path: "/libpod/info" }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("request waited for EOF")), 500)),
+      ]);
+      expect(response).toEqual({ status: 200, body: "{}" });
+      expect(connection.destroyed).toBe(true);
+    } finally {
+      connection.destroy();
+    }
+  });
+
+  for (const [method, status] of [
+    ["DELETE", 204],
+    ["GET", 304],
+    ["HEAD", 200],
+  ] as const) {
+    test(`returns a ${method} ${status} response without waiting for named-pipe EOF`, async () => {
+      const connection = new WaitingConnection([], `HTTP/1.1 ${status} OK\r\n\r\n`);
+      const client = makeSocketHttpClient({ apiPrefix: "/v6.0.0", connect: async () => connection });
+      try {
+        const response = await Promise.race([
+          client.request({ method, path: "/libpod/test" }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("request waited for EOF")), 500),
+          ),
+        ]);
+        expect(response).toEqual({ status, body: "" });
+        expect(connection.destroyed).toBe(true);
+      } finally {
+        connection.destroy();
+      }
+    });
+  }
+
   test("streams connection-close response bodies without content-length", async () => {
     const first = bytes("first");
     const second = bytes("second");
@@ -343,6 +399,17 @@ describe("socket HTTP transport", () => {
     expect(connection.writes.at(-1)).toBe("tarball");
   });
 
+  test("destroys a held request socket when aborted", async () => {
+    const connection = new WaitingConnection([]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v6.0.0", connect: async () => connection });
+    const controller = new AbortController();
+    const request = client.request({ method: "GET", path: "/libpod/info", signal: controller.signal });
+    await waitFor(() => connection.writes.length > 0);
+    controller.abort();
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(connection.destroyed).toBe(true);
+  });
+
   test("destroys hijacked socket streams when aborted", async () => {
     const connection = new WaitingConnection([]);
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
@@ -353,9 +420,30 @@ describe("socket HTTP transport", () => {
     );
     await sleep(1);
     controller.abort();
-    await streamed;
+    await expect(streamed).rejects.toMatchObject({ name: "AbortError" });
 
     expect(connection.destroyed).toBe(true);
+  });
+
+  test("reports AbortError when an aborted socket throws a generic close error", async () => {
+    class ClosingConnection extends WaitingConnection {
+      override async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
+        yield bytes("HTTP/1.1 200 OK\r\n\r\n");
+        while (!this.destroyed) await sleep(1);
+        throw new Error("socket closed");
+      }
+    }
+    const connection = new ClosingConnection();
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+    const controller = new AbortController();
+
+    const streamed = Array.fromAsync(
+      client.stream({ method: "POST", path: "/exec/abc/start", signal: controller.signal }),
+    );
+    await waitFor(() => connection.writes.length > 0);
+    controller.abort();
+
+    await expect(streamed).rejects.toMatchObject({ name: "AbortError" });
   });
 
   test("destroys the socket when aborted during an in-flight stdin stream", async () => {
@@ -377,7 +465,7 @@ describe("socket HTTP transport", () => {
     );
     await waitFor(() => connection.writes.at(-1) === "partial");
     controller.abort();
-    await streamed;
+    await expect(streamed).rejects.toMatchObject({ name: "AbortError" });
 
     expect(connection.destroyed).toBe(true);
   });
@@ -451,7 +539,7 @@ describe("socket HTTP transport", () => {
     ).rejects.toBe(typed);
   });
 
-  test("preserves cancellation instead of reclassifying its response error", async () => {
+  test("normalizes an aborted response read to one cancellation error", async () => {
     // Given: cancellation is active when the response iterator reports its terminal error.
     const cancelled = Object.assign(new Error("cancelled response read"), { code: "ECONNRESET" as const });
     const connection = new ResetAfterHeadersConnection(cancelled);
@@ -459,12 +547,12 @@ describe("socket HTTP transport", () => {
     controller.abort();
     const client = makeSocketHttpClient({ apiPrefix: "/v6.0.0", connect: async () => connection });
 
-    // When/Then: cancellation preserves the original error identity.
+    // When/Then: cancellation has a consistent AbortError even if the socket reports ECONNRESET.
     await expect(
       Array.fromAsync(
         client.stream({ method: "POST", path: "/libpod/images/pull", signal: controller.signal }),
       ),
-    ).rejects.toBe(cancelled);
+    ).rejects.toMatchObject({ name: "AbortError" });
   });
 
   test("never opens a socket when the buffered request body rejects", async () => {
@@ -534,6 +622,23 @@ describe("chunked body end-of-stream handling", () => {
 });
 
 describe("socket connection handshake", () => {
+  test("destroys the socket when aborted before connect", async () => {
+    class WaitingSocket extends EventEmitter implements ConnectableSocket {
+      destroyedByClient = false;
+
+      destroy(): this {
+        this.destroyedByClient = true;
+        return this;
+      }
+    }
+    const socket = new WaitingSocket();
+    const controller = new AbortController();
+    const connected = connectSocket(socket, controller.signal);
+    controller.abort();
+    await expect(connected).rejects.toMatchObject({ name: "AbortError" });
+    expect(socket.destroyedByClient).toBe(true);
+  });
+
   test("destroys the socket when the connection fails before connect", async () => {
     class FailingSocket extends EventEmitter implements ConnectableSocket {
       destroyedByClient = false;

@@ -199,7 +199,7 @@ describe("top-level lowering", () => {
   test.each([
     ["plugins", { "@lando/mailpit": "^1" }, "plugin"],
     ["pluginDirs", ["./plugins"], "plugin"],
-    ["keys", ["id_ed25519"], "SSH agent"],
+    ["keys", ["id_ed25519"], "SSH agent sidecar"],
   ])("drops top-level %s with manual remediation", (key, value, remediation) => {
     // Given / When
     const result = lowerTopLevel({ [key]: value }, ctx);

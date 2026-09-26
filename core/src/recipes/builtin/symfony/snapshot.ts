@@ -6,7 +6,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const SYMFONY_RECIPE_VERSION = "0.1.0";
 export const SYMFONY_CONTENT_DIGEST =
-  "sha256:f512693ecf82a9e305c65ae6e9bb92f2f6fcd12436297fd8e316a819f89d0b42";
+  "sha256:d4a8158703f560045773afc9f212b0d39a3ec2246bf79c72d598123193f42773";
 
 export const symfonyProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -71,6 +71,7 @@ export const symfonySnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+                    { key: "primary", value: { kind: "Literal", value: true } },
                     { key: "framework", value: { kind: "Literal", value: "symfony" } },
                     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
                     { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },

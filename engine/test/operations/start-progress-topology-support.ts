@@ -1,12 +1,13 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
-import type { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { EventError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import {
+  AbsoluteContainerPath,
   AbsolutePath,
   AppId,
   type AppPlan,
@@ -36,7 +37,11 @@ import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -89,11 +94,14 @@ export const web: ServicePlan = {
   extensions: {},
 };
 
+const testAppRoot = mkdtempSync(join(tmpdir(), "lando-test-start-"));
+process.once("exit", () => rmSync(testAppRoot, { recursive: true, force: true }));
+
 export const plan: AppPlan = {
   id: AppId.make("test-start"),
   name: "test-start",
   slug: "test-start",
-  root: AbsolutePath.make("/tmp/test-start"),
+  root: AbsolutePath.make(testAppRoot),
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
@@ -115,10 +123,25 @@ export const startOwnedParentIds = (events: ReadonlyArray<LandoEvent>): Readonly
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
+    readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly onRemoveRoutes?: () => void;
+    readonly afterApplyRoutes?: Effect.Effect<void>;
+    readonly onPrepareFileSync?: (plan: AppPlan) => void;
+    readonly preparedFileSyncTargets?: (
+      plan: AppPlan,
+    ) => ReadonlyArray<import("@lando/sdk/schema").PreparedFileSyncTarget>;
+    readonly fileSyncRollbackEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly onBuildApp?: (plan: AppPlan) => void;
+    readonly onFileSyncRollback?: () => void;
+    readonly onPublish?: (event: LandoEvent) => Effect.Effect<void, EventError>;
+    readonly providerCanPrepareFileSync?: boolean;
+    readonly providerCanInspectFileSync?: boolean;
+    readonly appliedFileSyncState?: "missing" | "ordinary" | "accelerated" | "unknown";
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly secretStore?: SecretStoreShape;
-    readonly onApply?: (plan: AppPlan, options: ApplyOptions) => void;
+    readonly onApply?: (plan: AppPlan, options?: ApplyOptions) => void;
     readonly listVolumes?: RuntimeProviderShape["listVolumes"];
     readonly locateVolume?: RuntimeProviderShape["locateVolume"];
     readonly onVolumeLock?: (key: string) => void;
@@ -126,17 +149,61 @@ export const makeHarness = (
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
-  const stateStore = makeTestStateStore();
+  const stateStore = options.stateStore ?? makeTestStateStore();
   const events: LandoEvent[] = [];
   let signalApplyTreeStart = (): void => undefined;
   const applyTreeStarted = new Promise<void>((resolve) => {
     signalApplyTreeStart = resolve;
   });
+  const appliedFileSyncState =
+    options.providerCanInspectFileSync === false
+      ? undefined
+      : (options.appliedFileSyncState ??
+        (options.providerCanPrepareFileSync === false ? undefined : "missing"));
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
     capabilities,
     isAvailable: Effect.succeed(true),
+    ...(appliedFileSyncState === undefined
+      ? {}
+      : {
+          inspectAppliedFileSync: () =>
+            Effect.succeed(
+              appliedFileSyncState === "accelerated"
+                ? {
+                    status: "accelerated" as const,
+                    engineId: plannedApp.fileSync[0]?.engineId ?? "mutagen",
+                    sessions: plannedApp.fileSync.map(({ session }) => session),
+                  }
+                : { status: appliedFileSyncState },
+            ),
+        }),
+    ...(options.providerCanPrepareFileSync === false
+      ? {}
+      : {
+          prepareFileSyncTargets: (syncPlan: AppPlan) =>
+            Effect.sync(() => {
+              options.onPrepareFileSync?.(syncPlan);
+              return {
+                targets:
+                  options.preparedFileSyncTargets?.(syncPlan) ??
+                  syncPlan.fileSync.map(({ session }, index) => ({
+                    session,
+                    endpoint: {
+                      _tag: "container" as const,
+                      containerId: `sync-helper-${index}`,
+                      path: AbsoluteContainerPath.make("/sync"),
+                      volumeName:
+                        session.target._tag === "volume" ? session.target.name : "unsupported-target",
+                    },
+                  })),
+                rollback: Effect.sync(() => {
+                  options.onFileSyncRollback?.();
+                }).pipe(Effect.zipRight(options.fileSyncRollbackEffect ?? Effect.void)),
+              };
+            }),
+        }),
     apply: (appliedPlan, applyOptions) =>
       Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
         Effect.zipRight(options.applyEffect ?? Effect.succeed({ changed: true })),
@@ -151,10 +218,10 @@ export const makeHarness = (
         endpoints: plannedApp.services[target.service]?.endpoints ?? [],
       }),
     destroy: (target, destroyOptions) =>
-      Effect.sync(() => {
-        options.onDestroy?.(target, destroyOptions);
-        return { kind: "destroyed" as const };
-      }),
+      Effect.sync(() => options.onDestroy?.(target, destroyOptions)).pipe(
+        Effect.zipRight(options.destroyEffect ?? Effect.void),
+        Effect.as({ kind: "destroyed" as const }),
+      ),
     listVolumes: options.listVolumes ?? TestRuntimeProvider.listVolumes,
     locateVolume:
       options.locateVolume ??
@@ -201,7 +268,7 @@ export const makeHarness = (
               if (event._tag === "task.tree.start" && event.parentId === applyTreeId(String(plannedApp.id))) {
                 signalApplyTreeStart();
               }
-            })
+            }).pipe(Effect.zipRight(options.onPublish?.(event) ?? Effect.void))
           : Effect.die(new TypeError(`Unexpected event in start progress topology test: ${event._tag}`)),
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
@@ -210,6 +277,7 @@ export const makeHarness = (
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (profile, redactionOptions) =>
         Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
     }),
@@ -223,13 +291,26 @@ export const makeHarness = (
     ConfigServiceLive,
     FileSystemLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-    Layer.succeed(RouterService, TestRouterService),
+    Layer.succeed(RouterService, {
+      ...TestRouterService,
+      applyRoutes: (routes, app) =>
+        TestRouterService.applyRoutes(routes, app).pipe(
+          Effect.tap(() => options.afterApplyRoutes ?? Effect.void),
+        ),
+      removeRoutes: (app) =>
+        Effect.sync(() => options.onRemoveRoutes?.()).pipe(
+          Effect.zipRight(TestRouterService.removeRoutes(app)),
+        ),
+    }),
     makeShellRunnerLive(() => {
       throw new TypeError("Interactive shell IO is not used by start progress topology tests.");
     }),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => Effect.succeed(appPlan),
-      buildApp: () => Effect.void,
+      buildApp: (appPlan) =>
+        Effect.sync(() => {
+          options.onBuildApp?.(appPlan);
+        }),
     }),
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),

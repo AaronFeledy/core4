@@ -57,7 +57,8 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
       description: "Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
     }),
     source: Flags.string({
-      description: "Restrict logs to a single declared source id (or `console` for the engine stream).",
+      description:
+        "Select a declared source id, or `console` for the container stream. Redirected sources share that stdout/stderr stream and cannot be isolated.",
     }),
     "no-viewer": Flags.boolean({
       description:

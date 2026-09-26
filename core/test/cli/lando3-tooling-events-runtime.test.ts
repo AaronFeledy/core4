@@ -4,7 +4,11 @@ import { attachEffectiveEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { configTranslators } from "@lando/lando3";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -134,6 +138,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
   const layer = Layer.mergeAll(
     EventServiceLive,
     Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
     }),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),

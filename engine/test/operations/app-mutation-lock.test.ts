@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,7 +15,9 @@ import {
   APP_LOCK_HOLDERS_ENV,
   APP_LOCK_TIMEOUT_ENV,
   APP_LOCK_WAIT_MESSAGE,
+  appMutationLockIdentity,
   appMutationLockKey,
+  canonicalAppRoot,
   canonicalAppRootSync,
   isSelfOrAncestorPid,
   resolveAppLockTimeoutMs,
@@ -120,6 +122,121 @@ describe("per-app mutation lock", () => {
     }
     for (const source of [start, stop, rebuild, restart, destroy]) {
       expect(source).toContain("withAppMutationLock");
+    }
+  });
+
+  test("pins the canonical root while a symlink is retargeted", async () => {
+    const isolated = await isolate();
+    const otherRoot = await mkdtemp(join(tmpdir(), "lando-app-root-other-"));
+    const alias = join(isolated.userDataRoot, "app-alias");
+    try {
+      await symlink(isolated.appRoot, alias, "dir");
+      const result = await Effect.runPromise(
+        withAppMutationLock(
+          { id: "pin-root", root: alias },
+          Effect.gen(function* () {
+            const before = yield* canonicalAppRoot(alias);
+            yield* Effect.promise(async () => {
+              await rm(alias);
+              await symlink(otherRoot, alias, "dir");
+            });
+            return { before, after: yield* canonicalAppRoot(alias) };
+          }),
+        ).pipe(Effect.provide(isolated.layer)),
+      );
+      expect(result).toEqual({
+        before: await realpath(isolated.appRoot),
+        after: await realpath(isolated.appRoot),
+      });
+    } finally {
+      await rm(isolated.userDataRoot, { recursive: true, force: true });
+      await rm(isolated.appRoot, { recursive: true, force: true });
+      await rm(otherRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("missing-root inventory lock shares the canonical key across a parent symlink", async () => {
+    const isolated = await isolate();
+    const alias = join(isolated.userDataRoot, "parent-alias");
+    try {
+      await symlink(isolated.appRoot, alias, "dir");
+      const direct = await Effect.runPromise(
+        appMutationLockIdentity({ id: "stale", root: join(isolated.appRoot, "missing") }),
+      );
+      const throughAlias = await Effect.runPromise(
+        appMutationLockIdentity({ id: "stale", root: join(alias, "missing") }),
+      );
+      expect(throughAlias.key).toBe(direct.key);
+      expect(throughAlias.canonicalRoot).toBe(direct.canonicalRoot);
+    } finally {
+      await rm(isolated.userDataRoot, { recursive: true, force: true });
+      await rm(isolated.appRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("lock keys accept missing roots but reject dangling symlinks", async () => {
+    const isolated = await isolate();
+    const missingRoot = join(isolated.appRoot, "missing");
+    const danglingRoot = join(isolated.userDataRoot, "dangling-root");
+    try {
+      const strict = await Effect.runPromiseExit(canonicalAppRoot(missingRoot));
+      expect(Exit.isFailure(strict)).toBe(true);
+
+      const identity = await Effect.runPromise(appMutationLockIdentity({ id: "missing", root: missingRoot }));
+      expect(identity.canonicalRoot).toBe(join(await realpath(isolated.appRoot), "missing"));
+      const entered = await Effect.runPromise(
+        withAppMutationLock({ id: "missing", root: missingRoot }, Effect.succeed(true)).pipe(
+          Effect.provide(isolated.layer),
+        ),
+      );
+      expect(entered).toBe(true);
+
+      await symlink(join(isolated.appRoot, "absent-target"), danglingRoot, "dir");
+      const dangling = await Effect.runPromiseExit(
+        withAppMutationLock({ id: "dangling", root: danglingRoot }, Effect.succeed(true)).pipe(
+          Effect.provide(isolated.layer),
+        ),
+      );
+      expect(Exit.isFailure(dangling)).toBe(true);
+    } finally {
+      await rm(isolated.userDataRoot, { recursive: true, force: true });
+      await rm(isolated.appRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("missing-root inventory lock rejects a retargeted parent before entering", async () => {
+    const isolated = await isolate();
+    const otherRoot = await mkdtemp(join(tmpdir(), "lando-app-root-other-"));
+    const alias = join(isolated.userDataRoot, "parent-alias");
+    const app = { id: "stale", root: join(alias, "missing") };
+    const held = await Deferred.make<void>().pipe(Effect.runPromise);
+    const release = await Deferred.make<void>().pipe(Effect.runPromise);
+    try {
+      await symlink(isolated.appRoot, alias, "dir");
+      const first = Effect.runFork(
+        withAppMutationLock(
+          app,
+          Deferred.succeed(held, undefined).pipe(Effect.zipRight(Deferred.await(release))),
+        ).pipe(Effect.provide(isolated.layer)),
+      );
+      await Effect.runPromise(Deferred.await(held));
+      const second = Effect.runFork(
+        withAppMutationLock(app, Effect.succeed("entered")).pipe(Effect.provide(isolated.layer)),
+      );
+      for (let attempts = 0; attempts < 100 && isolated.events.length === 0; attempts++) {
+        await Bun.sleep(10);
+      }
+      expect(isolated.events.length).toBeGreaterThan(0);
+      await rm(alias);
+      await symlink(otherRoot, alias, "dir");
+      await Effect.runPromise(Deferred.succeed(release, undefined));
+      await Effect.runPromise(Fiber.await(first));
+      const result = await Effect.runPromise(Fiber.await(second));
+      expect(Exit.isFailure(result)).toBe(true);
+    } finally {
+      await rm(isolated.userDataRoot, { recursive: true, force: true });
+      await rm(isolated.appRoot, { recursive: true, force: true });
+      await rm(otherRoot, { recursive: true, force: true });
     }
   });
 

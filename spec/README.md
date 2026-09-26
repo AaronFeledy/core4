@@ -126,7 +126,7 @@ If you are looking for a public surface or policy:
 | Plugin authoring commands | 10 | §9.10 |
 | Networking, routers, tunnels, and host ports | 11 | §10.1 + §10.2 |
 | Certificate authority, proxy trust, HTTP, and downloads | 11 | §10.3 |
-| SSH identity and sidecar agent | 11 | §10.4 |
+| SSH identity, sidecar and host agent forwarding, gpg agent | 11 | §10.4 |
 | Probe, healthcheck, and scanner contracts | 11 | §10.5 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
 | Setup and host integration | 11 | §10.8 |

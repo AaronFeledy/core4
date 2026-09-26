@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Effect, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { AbsolutePath, type VolumeIdentity } from "@lando/sdk/schema";
 import {
   DataMover,
@@ -52,6 +52,7 @@ test("the live shared port reads engine creation state and does not expose a cre
           query: () => Effect.succeed([]),
         }),
         Effect.provideService(RedactionService, {
+          registerValues: registerRedactionValues,
           forProfile: () =>
             Effect.succeed({ redactString: (text: string) => text, redactValue: (value: unknown) => value }),
         }),

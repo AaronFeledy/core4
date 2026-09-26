@@ -56,11 +56,11 @@ A Landofile can't reach into your host shell's environment with
 
 ## Apply a changed timezone
 
-After editing `environment:` in `.lando.yml`, run `lando rebuild -y` to
+After editing `environment:` in `.lando.yml`, run `lando rebuild` to
 recreate the container. A restart alone does not pick up a changed `TZ` value:
 
 ```sh
-lando rebuild -y
+lando rebuild
 ```
 
 </Guide>

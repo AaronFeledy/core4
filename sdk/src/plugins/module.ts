@@ -1,4 +1,5 @@
 import type { Effect, Layer } from "effect";
+import type { SecretStoreUnavailableError } from "../errors/secret.ts";
 
 import type {
   ProviderCapabilityError,
@@ -35,6 +36,7 @@ import type {
   ProcessRunner,
   RouterService,
   RuntimeProviderShape,
+  SecretStore,
   ServiceFeatureDefinition,
   ServiceType,
   SshService,
@@ -144,10 +146,18 @@ export type RouterServiceContributionLayer = Layer.Layer<
   ProxyError,
   CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
+export interface RouterServiceContribution {
+  readonly make: (ctx: LandoPluginContext) => RouterServiceContributionLayer;
+}
 export type SshServiceContributionLayer = Layer.Layer<
   SshService,
   SshError,
   FileSystem | GlobalAppService | PathsService
+>;
+export type SecretStoreContributionLayer = Layer.Layer<
+  SecretStore,
+  SecretStoreUnavailableError,
+  ProcessRunner | PathsService | FileSystem
 >;
 export type GlobalServiceContributionEffect = Effect.Effect<ServiceConfig, unknown, never>;
 export type LoggerContributionLayer = Layer.Layer<never, unknown, unknown>;
@@ -163,8 +173,9 @@ export interface LandoPluginModule {
   readonly fileSyncEngines?: ReadonlyMap<string, FileSyncEngineContribution>;
   readonly certificateAuthorities?: ReadonlyMap<string, CertificateAuthorityContributionLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
-  readonly routerServices?: ReadonlyMap<string, RouterServiceContributionLayer>;
+  readonly routerServices?: ReadonlyMap<string, RouterServiceContribution>;
   readonly sshServices?: ReadonlyMap<string, SshServiceContributionLayer>;
+  readonly secretStores?: ReadonlyMap<string, SecretStoreContributionLayer>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceContributionEffect>;
   readonly serviceTypes?: ReadonlyMap<string, ServiceType>;
   readonly serviceFeatures?: ReadonlyMap<string, ServiceFeatureDefinition>;
