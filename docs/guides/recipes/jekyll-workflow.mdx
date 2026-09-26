@@ -31,7 +31,7 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
 <Guide>
   <Scenario id="parked-first-start" render={false} reason="Test provider validates the parked first start without claiming live Jekyll output">
     <Step name="scaffold">
-      <Variable name="appName" value="jekyll-workflow" display="jekyll-demo" />
+      <Variable name="appName" value="jekyll-demo" display="jekyll-demo" />
       <Run command="lando init --recipe jekyll --name={{appName}} --yes" />
     </Step>
     <Step name="confirm-defaults">
@@ -82,7 +82,7 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
 
   <Scenario id="rejects-unknown-answer" render={false} reason="Regression for undeclared recipe option answers">
     <Step name="init-invalid">
-      <Variable name="appName" value="jekyll-workflow-bad" display="jekyll-bad" />
+      <Variable name="appName" value="jekyll-bad" display="jekyll-bad" />
       <Run command="lando init --recipe jekyll --name={{appName}} --yes --answer=ruby=3.2" expectExit={1} />
       <Verify errorTag="RecipeInitBlockedError" expect={{ regex: "blocked at translate" }} />
     </Step>

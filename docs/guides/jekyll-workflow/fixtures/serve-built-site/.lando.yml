@@ -1,4 +1,4 @@
-name: jekyll-workflow
+name: jekyll-demo
 runtime: 4
 recipe: jekyll
 services:
