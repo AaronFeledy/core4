@@ -1,0 +1,276 @@
+---
+id: fastapi-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, fastapi, python, postgres, redis]
+---
+
+# Run the FastAPI recipe
+
+```sh
+lando init --recipe fastapi --name=fastapi-demo --yes
+cd fastapi-demo
+lando start
+```
+
+`--yes` accepts every prompt default. The named init creates `fastapi-demo/` and writes only `.lando.yml` there. Change into that directory before app commands. Start brings up Python, Postgres, and Redis. `framework: fastapi` sets the port, not the process: `web` idles until you serve an app, so the URL answers only after uvicorn runs.
+
+If something else owns 80 or 443, Lando takes the next free port (usually `:8080` / `:8443`), and `lando info` shows it.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `web` | `python:3.12`, `framework: fastapi`, port `8000`, depends on `database` and `cache` |
+| `database` | `type: postgres` |
+| `cache` | `type: redis` |
+| Tooling | `lando uvicorn` and `lando pip` on `web`, plus `lando psql` (from `database`) and `lando redis-cli` (from `cache`) |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. The recipe declares no options. Pass an `--answer` anyway and init fails instead of quietly ignoring it.
+
+## Init, start, and tear down
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Run command="lando init --recipe fastapi --name=fastapi-demo --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"python:3\\.12\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"framework\":\\s*\"fastapi\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[^}]*\"type\":\\s*\"redis\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uvicorn\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="venv-and-env" render={false} reason="Validates the venv serve, retargeted tooling, pinned creds, and env snippets">
+    <Step name="pinned-config">
+      <UseFixture name="venv-and-env" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "exec /app/\\.venv/bin/uvicorn app\\.main:app --host 0\\.0\\.0\\.0 --port 8000 --reload" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"/app/\\.venv/bin/pip\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uvicorn\":\\s*\\{[^}]*\"cmds\":\\s*\\[\\s*\"/app/\\.venv/bin/uvicorn\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://[^@\"]*@database:5432/fastapi-demo\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"creds\":\\s*\\{[^}]*\"user\":\\s*\"lando\"[^}]*\"database\":\\s*\"fastapi-demo\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"REDIS_URL\":\\s*\"redis://cache:6379/0\"" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando info" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-unknown-answer" render={false} reason="Regression for undeclared recipe option answers">
+    <Step name="init-invalid">
+      <Run command="lando init --recipe fastapi --name=fastapi-bad --yes --answer=python=3.13" expectExit={1} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Scaffold FastAPI with pip
+
+Install into the running `web` service, then put a tiny app next to `.lando.yml`:
+
+```sh
+lando pip install 'fastapi>=0.115' 'uvicorn[standard]>=0.30' 'psycopg[binary]>=3' 'redis>=5'
+mkdir -p app
+```
+
+```python
+# app/main.py
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def root():
+    return {"hello": "lando"}
+```
+
+Pin what you installed for the next rebuild:
+
+```sh
+lando exec web -- pip freeze > requirements.txt
+```
+
+Then the day-to-day tools work:
+
+```sh
+lando pip --version
+lando uvicorn --version
+lando redis-cli ping
+lando psql -c 'SELECT 1'
+```
+
+`PONG` and a `1` row mean Redis and Postgres answer.
+
+## Serve it with uvicorn
+
+Bind every interface so the proxy can reach uvicorn (its default host is loopback only):
+
+```sh
+lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+It runs in the foreground, so use a second terminal for everything else. `--reload` restarts it on code edits. Open the URL from `lando info`. Expect JSON like `{"hello":"lando"}`.
+
+Lando reads `--log-level`, `--debug`, and `--verbose` itself, so pass uvicorn's log level through `lando exec`:
+
+```sh
+lando exec web -- uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug
+```
+
+## Serve from a venv on every start
+
+`lando pip` installs into the container filesystem, so `lando rebuild` drops those packages. Put a venv on the app mount instead:
+
+```sh
+lando exec web -- python -m venv /app/.venv
+lando exec web -- /app/.venv/bin/pip install -r requirements.txt
+```
+
+In `.lando.yml`, give `web` a `command` and point both tooling entries at the venv. The `sh -c` wrapper builds the venv when it's missing, so a fresh clone serves on first start:
+
+```yaml
+services:
+  web:
+    command:
+      - sh
+      - -c
+      - "[ -x /app/.venv/bin/uvicorn ] || { python -m venv /app/.venv && /app/.venv/bin/pip install -r requirements.txt; }; exec /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+tooling:
+  pip:
+    service: web
+    cmds:
+      - /app/.venv/bin/pip
+  uvicorn:
+    service: web
+    cmds:
+      - /app/.venv/bin/uvicorn
+```
+
+Add `.venv/` to `.gitignore`. Rebuild to pick up the new command:
+
+```sh
+lando rebuild
+lando info
+```
+
+`web` now owns port 8000, so skip the foreground `lando uvicorn`. Freeze from the venv from here on: `lando exec web -- /app/.venv/bin/pip freeze > requirements.txt`.
+
+## Connect FastAPI to Postgres and Redis
+
+| Setting | Postgres | Redis |
+| --- | --- | --- |
+| Host | `database` | `cache` |
+| Database | app name (here `fastapi-demo`) | n/a |
+| User | `lando` | n/a (no auth) |
+| Password | from `lando exec database -- printenv POSTGRES_PASSWORD` | n/a |
+| Port | `5432` | `6379` |
+
+Put host `database` in your SQLAlchemy / psycopg DSN, not `127.0.0.1` or `localhost`. `lando info` lists the user and database name and redacts the password; print it from the database service env when you need it in settings. Redis is host `cache` on `6379` with no password.
+
+## Hand FastAPI its settings with env vars
+
+Pin the Postgres password, keep the default user and database, and give `web` ready-made URLs:
+
+```yaml
+services:
+  database:
+    type: postgres
+    creds:
+      user: lando
+      password: local-dev-only
+      database: fastapi-demo
+  web:
+    environment:
+      DATABASE_URL: postgresql://lando:local-dev-only@database:5432/fastapi-demo
+      REDIS_URL: redis://cache:6379/0
+```
+
+Postgres keeps the password its volume started with, and yours started with a generated one. Set the new one inside Postgres, rebuild so every service sees it, then check what `web` got:
+
+```sh
+lando psql -c "ALTER USER lando PASSWORD 'local-dev-only'"
+lando rebuild
+lando exec web -- printenv DATABASE_URL REDIS_URL
+```
+
+psycopg takes `DATABASE_URL` as is. SQLAlchemy with psycopg 3 wants the `postgresql+psycopg://` scheme.
+
+Keep real secrets in a git-ignored `.env` and load it with `env_file: [.env]` under `web`. Create the file first: Lando fails fast, naming the path, when a declared file is missing.
+
+Lando also sets `LANDO_APP_NAME`, `LANDO_APP_ROOT`, and `LANDO_SERVICE_NAME` in `web`, and rejects an `environment` that overrides them. `lando exec web -- printenv` lists everything `web` sees.
+
+## Import, export, and snapshot the database
+
+The recipe has one SQL service, so `db:*` commands find `database` without `--service`. Importing into a non-empty database replaces its data and asks first; `--yes` skips the prompt:
+
+```sh
+lando db:export dump.sql.gz
+lando db:import dump.sql.gz --yes
+```
+
+Snapshots save the database volume to Lando's snapshot store. `lando db:snapshots` prints each snapshot's id and label, and restore takes the id. Restoring replaces the current data:
+
+```sh
+lando db:snapshot --label before-migrate
+lando db:snapshots
+lando db:restore <snapshot-id> --yes
+```
+
+`lando db:reset --yes` empties the database when you want a clean slate.
+
+## Run migrations
+
+Run your migration tool inside `web`. With Alembic:
+
+```sh
+lando pip install alembic
+lando exec web -- alembic init migrations
+```
+
+Set `sqlalchemy.url` in `alembic.ini` to `postgresql+psycopg://lando:local-dev-only@database:5432/fastapi-demo`. Snapshot, then migrate:
+
+```sh
+lando db:snapshot --label before-migrate
+lando exec web -- alembic upgrade head
+```
+
+On the venv, call `/app/.venv/bin/alembic` instead. A bad migration rolls back with `lando db:restore <snapshot-id> --yes`.
+
+## Follow logs and open a shell
+
+Once `web` serves from its `command`, uvicorn writes to the service logs. A foreground `lando uvicorn` prints to your terminal instead. Follow the logs, stop with Ctrl+C, then open a shell in `web`:
+
+```sh
+lando logs --service web --follow
+lando ssh --service web
+```
+
+## Destroy the app
+
+`lando destroy -y` removes containers and networks. Volumes, including the Postgres data, stay unless you pass `--volumes` or `--purge`.
+
+```sh
+lando destroy -y
+```
+
+## Next
+
+- [FastAPI recipe](/recipes/fastapi/)
+- [Add Python](../services/python.mdx)
+- [Import and export app databases](../tooling/db-import-export.mdx)
