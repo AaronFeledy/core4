@@ -17,6 +17,7 @@ const RECIPE_IDS = [
   "eleventy",
   "fastapi",
   "hugo",
+  "jekyll",
   "joomla",
   "lamp",
   "laravel",
@@ -141,6 +142,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/node-api-workflow");
     expect(slugs).toContain("guides/recipes/eleventy-workflow");
     expect(slugs).toContain("guides/recipes/hugo-workflow");
+    expect(slugs).toContain("guides/recipes/jekyll-workflow");
     expect(slugs).toContain("guides/recipes/wordpress-workflow");
     expect(slugs).toContain("guides/recipes/drupal-cms-workflow");
     expect(slugs).toContain("guides/recipes/authoring-runs-allowlist");
