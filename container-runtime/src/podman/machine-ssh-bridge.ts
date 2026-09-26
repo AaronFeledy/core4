@@ -140,7 +140,13 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
       await remote(`test -S ${socket} && chmod 666 -- ${socket}`);
       signal.throwIfAborted();
     } catch (cause) {
-      await release();
+      // Keep the forward failure as the primary cause even when cleanup fails too.
+      await release().catch((releaseCause: unknown) => {
+        throw new AggregateError(
+          [cause, releaseCause],
+          "SSH reverse forwarding failed and cleanup did not finish.",
+        );
+      });
       throw cause;
     }
     return { dir: AbsolutePath.make(dir), socket: AbsolutePath.make(socket), release };

@@ -12,7 +12,7 @@ afterEach(async () => {
   for (const dir of directories.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
-const fixture = async (sshBinary: "ssh" | "ssh.exe" = "ssh", readyError?: Error) => {
+const fixture = async (sshBinary: "ssh" | "ssh.exe" = "ssh", readyError?: Error, cleanupFails = false) => {
   const stateDir = await mkdtemp(join(tmpdir(), "lando-agent-bridge-"));
   directories.push(stateDir);
   const calls: Array<{ readonly command: string; readonly args: readonly string[] }> = [];
@@ -23,7 +23,7 @@ const fixture = async (sshBinary: "ssh" | "ssh.exe" = "ssh", readyError?: Error)
       calls.push({ command, args });
       events.push(args.at(-1) ?? "");
       return {
-        exitCode: 0,
+        exitCode: cleanupFails && (args.at(-1) ?? "").includes("rmdir --") ? 1 : 0,
         stderr: "",
         stdout:
           command === "podman"
@@ -156,4 +156,19 @@ test("readiness failure closes SSH and reports the selected provider", async () 
   }
   expect(f.events).toContain("close");
   expect(f.events.at(-1)).toContain("rmdir --");
+});
+
+test("a failed cleanup does not hide why the reverse forward failed", async () => {
+  // Given: SSH rejects the forward and the guest cleanup also fails.
+  const readyError = new Error("forward rejected");
+  const f = await fixture("ssh", readyError, true);
+  // When: the bridge is acquired.
+  const result = await Effect.runPromise(Effect.either(Effect.scoped(f.bridge.openAgentSocketBridge(input))));
+  // Then: the reported failure still carries the original readiness error first.
+  expect(Either.isLeft(result)).toBe(true);
+  if (Either.isLeft(result)) {
+    const cause = result.left.cause;
+    expect(cause).toBeInstanceOf(AggregateError);
+    if (cause instanceof AggregateError) expect(cause.errors[0]).toBe(readyError);
+  }
 });
