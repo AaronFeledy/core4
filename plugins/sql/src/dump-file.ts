@@ -5,6 +5,8 @@ import { Effect } from "effect";
 
 import { SqlDumpNotFoundError } from "@lando/sdk/errors";
 
+import { type DumpCompression, collectDumpPrefix, detectDumpCompression } from "./compression.ts";
+
 type DumpMiss = "missing" | "unreadable" | "directory";
 
 const nodeErrorCode = (cause: unknown): string | undefined =>
@@ -35,11 +37,8 @@ const dumpNotFound = (path: string, appRoot: string, kind: DumpMiss): SqlDumpNot
 
 export type ReadableDump = {
   readonly digest: string;
-  readonly gzip: boolean;
+  readonly compression: DumpCompression;
 };
-
-const isGzipMagic = (chunk: Uint8Array): boolean =>
-  chunk.length >= 2 && chunk[0] === 0x1f && chunk[1] === 0x8b;
 
 export const ensureReadableDump = (
   path: string,
@@ -54,16 +53,12 @@ export const ensureReadableDump = (
       // overwrite confirmation, instead of inside DataMover.
       await access(path, constants.R_OK);
       const hash = new Bun.CryptoHasher("sha256");
-      let gzip = false;
-      let sawPrefix = false;
+      let prefix: Uint8Array = new Uint8Array();
       for await (const chunk of Bun.file(path).stream()) {
-        if (!sawPrefix) {
-          gzip = isGzipMagic(chunk);
-          sawPrefix = true;
-        }
+        prefix = collectDumpPrefix(chunk, prefix);
         hash.update(chunk);
       }
-      return { digest: hash.digest("hex"), gzip };
+      return { digest: hash.digest("hex"), compression: detectDumpCompression(prefix) };
     },
     catch: (cause) =>
       cause instanceof SqlDumpNotFoundError ? cause : dumpNotFound(path, appRoot, dumpMissKind(cause)),

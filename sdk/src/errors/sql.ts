@@ -53,6 +53,17 @@ export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundErro
   remediation: Schema.String,
 }) {}
 
+export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressionError>()(
+  "SqlDumpCompressionError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    compression: Schema.Literal("gzip", "zstd"),
+    operation: Schema.Literal("compress", "decompress"),
+    remediation: Schema.String,
+  },
+) {}
+
 export class SqlRecoveryUnavailableError extends Schema.TaggedError<SqlRecoveryUnavailableError>()(
   "SqlRecoveryUnavailableError",
   {

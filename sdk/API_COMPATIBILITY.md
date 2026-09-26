@@ -159,6 +159,8 @@
 
 - `@lando/sdk/errors` additively exports `SqlServiceNotFoundError`, `SqlServiceAmbiguousError`, `SqlConfirmRequiredError`, `SqlCommandFailedError`, and `SqlDumpNotFoundError` (`message`, `path`, `appRoot`, `remediation`) for database helper target selection, confirmation, failed in-service dump/load/reset commands, and missing/unreadable import dump files.
 
+- `@lando/sdk/errors` additively exports `SqlDumpCompressionError` (`message`, `path`, `compression` `gzip`|`zstd`, `operation` `compress`|`decompress`, `remediation`) when host dump compression streams fail. Dump import/export use process-side `CompressionStream` / `DecompressionStream`, not in-service binaries and not snapshot archive format.
+
 - `ProcessSpawnOptions` additively gains optional `cgroup?: string`. `ProcessRunner.run` / `ProcessRunner.stream` pass it through to `Bun.spawn` on Linux and ignore it on other platforms.
 
 - `@lando/sdk/schema` additively exports `DotnetServiceConfig`, `MssqlServiceConfig`, `MysqlServiceConfig`, `PhpMyAdminServiceConfig`, `PhpServiceConfig`, and `ServiceCreds`. `ServiceConfig` additively accepts optional `composer` (`false` or a version string) for PHP Composer selection, optional `via` (`apache` | `fpm` | `cli`) for PHP serving mode, optional `xdebug` (`true` | `false` | mode string) for PHP Xdebug, and optional `db_client` (`"auto"` | `false` | `"<family>:<version>"`) for PHP database client selection. `ServiceConfig` additively accepts optional `hosts` and `creds`, while `ProviderCapabilities` additively accepts `architectureEmulation` and defaults omitted encoded input to `false`.
@@ -1081,6 +1083,7 @@ It registers no JSON Schema.
 - `McpTransportError`
 - `McpAllowlistConflictError`
 - `AppLockTimeoutError`
+- `SqlDumpCompressionError`
 
 ## Additive service tags
 
