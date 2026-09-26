@@ -18,6 +18,8 @@ const ReceiptSchema = Schema.Struct({
   helperNonce: Schema.String,
   containerId: Schema.NullOr(Schema.String),
   removing: Schema.optional(Schema.Boolean),
+  volumeSpecDigest: Schema.optional(Schema.String),
+  upgradingTo: Schema.optional(Schema.String),
 });
 type Receipt = typeof ReceiptSchema.Type;
 const nonce = (): string => randomBytes(32).toString("hex");
@@ -161,6 +163,11 @@ const validSpec = (spec: WindowsSyncHelperSpec): boolean =>
   [spec.appId, spec.appName, spec.service, spec.mountKey].every(
     (part) => part.length > 0 && !part.includes("/") && !part.includes("\0"),
   ) && /@sha256:[a-f0-9]{64}$/u.test(spec.image);
+
+const containerNameForDigest = (spec: WindowsSyncHelperSpec, digest: string): string => {
+  const safeApp = spec.appId.replace(/[^a-zA-Z0-9_.-]/gu, "-").slice(0, 32);
+  return `lando-sync-${safeApp}-${digest.slice(0, 16)}`;
+};
 
 const identity = (spec: WindowsSyncHelperSpec) => {
   const volumeName = fileSyncVolumeName(spec.appName, spec.service, spec.mountKey);
@@ -341,6 +348,93 @@ const loadReceipt = (stateStore: PluginStateStore, spec: WindowsSyncHelperSpec) 
 const collision = (kind: string) =>
   failure("syncHelper", `The ${kind} exists without a complete matching ownership receipt.`);
 
+const volumeSpecDigest = (receipt: Receipt): string => receipt.volumeSpecDigest ?? receipt.specDigest;
+
+/** Move a verified helper to a new immutable image while retaining its volume. */
+const upgradeHelper = (
+  api: Api,
+  stateStore: PluginStateStore,
+  spec: WindowsSyncHelperSpec,
+  receipt: Receipt,
+  volume: JsonRecord | undefined,
+  digest: string,
+  volumeName: string,
+) =>
+  Effect.gen(function* () {
+    if (
+      receipt.removing === true ||
+      receipt.volumeCreatedAt === null ||
+      (receipt.upgradingTo !== undefined && receipt.upgradingTo !== spec.image) ||
+      receipt.specDigest === digest
+    ) {
+      return yield* Effect.fail(collision("sync specification"));
+    }
+    if (volume === undefined) return yield* Effect.fail(collision("sync volume"));
+    yield* requireOwnedVolume(
+      volume,
+      volumeName,
+      labelsFor(spec, volumeSpecDigest(receipt), "volume", receipt.volumeNonce),
+      receipt.volumeCreatedAt,
+    );
+
+    const oldName = containerNameForDigest(spec, receipt.specDigest);
+    const oldContainer = yield* inspectContainer(api, oldName);
+    if (oldContainer === undefined && receipt.containerId !== null && receipt.upgradingTo === undefined) {
+      return yield* Effect.fail(collision("sync helper"));
+    }
+    if (oldContainer !== undefined) {
+      if (receipt.containerId === null) return yield* Effect.fail(collision("sync helper"));
+      const oldImage = record(oldContainer.Config)?.Image;
+      if (typeof oldImage !== "string" || !validSpec({ ...spec, image: oldImage })) {
+        return yield* Effect.fail(collision("sync helper"));
+      }
+      const oldSpec = { ...spec, image: oldImage };
+      if (identity(oldSpec).digest !== receipt.specDigest) {
+        return yield* Effect.fail(collision("sync helper"));
+      }
+      yield* ownedContainerId(
+        oldContainer,
+        oldName,
+        oldSpec,
+        volumeName,
+        labelsFor(spec, receipt.specDigest, "helper", receipt.helperNonce),
+        receipt.containerId,
+      );
+    }
+    const newName = containerNameForDigest(spec, digest);
+    if ((yield* inspectContainer(api, newName)) !== undefined) {
+      return yield* Effect.fail(collision("sync helper"));
+    }
+    if (receipt.upgradingTo === undefined) {
+      yield* saveReceipt(stateStore, spec, { ...receipt, upgradingTo: spec.image });
+    }
+    if (oldContainer !== undefined && receipt.containerId !== null) {
+      const removed = yield* request(api, {
+        method: "DELETE",
+        path: `/containers/${encodeURIComponent(receipt.containerId)}?force=true`,
+      });
+      if (removed.status !== 200 && removed.status !== 204 && removed.status !== 404) {
+        return yield* Effect.fail(
+          failure("syncHelper.container.remove", `Podman helper remove failed with HTTP ${removed.status}.`),
+        );
+      }
+      if ((yield* inspectContainer(api, oldName)) !== undefined) {
+        return yield* Effect.fail(collision("sync helper"));
+      }
+    }
+    const upgraded: Receipt = {
+      ...receipt,
+      specDigest: digest,
+      volumeSpecDigest: volumeSpecDigest(receipt),
+      helperNonce: nonce(),
+      containerId: null,
+      removing: false,
+      upgradingTo: undefined,
+    };
+    yield* saveReceipt(stateStore, spec, upgraded);
+    return upgraded;
+  });
+
 /** Prepare a persistent Docker-transport target inside the managed Podman machine. */
 export const ensureWindowsSyncHelper = (
   api: Api,
@@ -373,7 +467,9 @@ export const ensureWindowsSyncHelper = (
         };
         yield* saveReceipt(stateStore, spec, receipt);
       }
-      if (receipt.specDigest !== digest) return yield* Effect.fail(collision("sync specification"));
+      if (receipt.specDigest !== digest || receipt.upgradingTo !== undefined) {
+        receipt = yield* upgradeHelper(api, stateStore, spec, receipt, volume, digest, volumeName);
+      }
       if (receipt.removing === true) return yield* Effect.fail(collision("sync helper removal"));
       if (volume === undefined) {
         if (receipt.volumeCreatedAt !== null) return yield* Effect.fail(collision("sync volume"));
@@ -407,7 +503,7 @@ export const ensureWindowsSyncHelper = (
         yield* requireOwnedVolume(
           volume,
           volumeName,
-          labelsFor(spec, digest, "volume", receipt.volumeNonce),
+          labelsFor(spec, volumeSpecDigest(receipt), "volume", receipt.volumeNonce),
           receipt.volumeCreatedAt,
         );
       }
@@ -537,14 +633,18 @@ export const removeWindowsSyncHelper = (
           return yield* Effect.fail(collision("sync resources"));
         return false;
       }
-      if (receipt.specDigest !== digest || receipt.volumeCreatedAt === null) {
+      if (
+        receipt.specDigest !== digest ||
+        receipt.volumeCreatedAt === null ||
+        receipt.upgradingTo !== undefined
+      ) {
         return yield* Effect.fail(collision("sync volume"));
       }
       if (volume !== undefined) {
         yield* requireOwnedVolume(
           volume,
           volumeName,
-          labelsFor(spec, digest, "volume", receipt.volumeNonce),
+          labelsFor(spec, volumeSpecDigest(receipt), "volume", receipt.volumeNonce),
           receipt.volumeCreatedAt,
         );
       }
