@@ -15,7 +15,7 @@ lando start
 
 The named init creates `drupal-cms-demo/` and writes `.lando.yml` plus `.lando/php/drupal-cms.ini` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. The ini sets `memory_limit = 512M` and is mounted for both Drush and web requests. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS, then confirm with the tooling below.
 
-If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
+If something else owns 80 or 443, Lando falls back to the next free port, starting with `:8080` / `:8443`. `lando info` shows the URL it picked.
 
 ## See what the recipe writes
 
@@ -25,16 +25,158 @@ If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 | `database` | `type: mariadb:11.4` |
 | Tooling | `lando drush`, `lando composer`, `lando drupal-cms-scaffold`, and `lando drupal-cms-install` on `appserver`, plus `lando mariadb` from the database service |
 
-Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, or `--answer=database=postgres:16` when you want those instead. PHP 8.6 is a valid `--answer=php=8.6`.
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.5`, `--answer=webserver=nginx`, `--answer=database=mysql:8.0`, or `--answer=database=postgres:16` when you want those instead. `--answer=php=8.6` uses the PHP 8.6 release-candidate image; Xdebug isn't available there yet.
 
 Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `mysql:8.0`, use `lando mysql` instead of `lando mariadb`. For `postgres:16`, use `lando psql` instead of `lando mariadb`.
 
-## Init, start, and tear down
+## Scaffold and install Drupal CMS
+
+Init only writes the Landofile and the PHP ini. Pull Drupal CMS 2 and project-local Drush into the app root, then install with the starter recipe:
+
+```sh
+lando drupal-cms-scaffold
+lando drupal-cms-install
+```
+
+Scaffold runs `composer create-project 'drupal/cms'` into a staging dir, then moves the project into the app root without overwriting anything already there, and checks for `composer.json`, `vendor/bin/drush`, and `web/`. If a run is interrupted, running it again resumes. On a finished tree it fails on purpose.
+
+`lando drupal-cms-install` runs project-local Drush with the recipe's database credentials. The 512M ini covers that install command and the web PHP process. Drush prints the admin username and a generated password when install finishes.
+
+Then confirm the day-to-day tools:
+
+```sh
+lando drush --version
+lando drush status
+lando composer --version
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+Open the site with `lando open`, or print its URL with `lando open --print`.
+
+## Connect Drupal to the database
+
+`lando drupal-cms-install` writes these into `web/sites/default/settings.php`. Use the same values when you bring an existing project's settings. They cover MariaDB and `mysql:8.0` answers:
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | App name (here `drupal-cms-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you don't need it for the site user.
+
+For Postgres answers, host `database`, port `5432`, user `lando`, database the app name. The password is derived per app; `lando psql` opens a session without it.
+
+## Log in and clear caches with Drush
+
+```sh
+lando drush user:login --no-browser
+lando drush cache:rebuild
+lando drush updatedb -y
+lando drush config:export -y
+```
+
+`user:login` prints a one-time login link for the admin account. `lando drush` builds links from the current app URL, including a nondefault proxy port. To pin another URL, set `DRUSH_OPTIONS_URI` under `services.appserver.environment` and run `lando rebuild`, or pass Drush `--uri` on one command.
+
+Lando keeps `--format`, `--json`, `--debug`, and `--verbose` for itself when they come before `--`. Put `--` in front of Drush arguments that use them:
+
+```sh
+lando drush -- status --format=json
+```
+
+## Import, export, and snapshot the database
+
+`db:import` replaces the data in `database`. Lando snapshots the volume first, and import asks before it runs. `--yes` answers for you:
+
+```sh
+lando db:export dump.sql.gz
+lando db:import dump.sql.gz --yes
+lando drush cache:rebuild
+```
+
+A `.gz` name gzips on export and gunzips on import. The recipe has one database service, so you don't need `--service`.
+
+Take your own snapshot before a risky update, then roll back to it:
+
+```sh
+lando db:snapshot --label before-update
+lando db:snapshots
+lando db:restore <id> --yes
+```
+
+`db:restore` takes the id `lando db:snapshots` lists, not the label. Lando stops the database while it copies the volume, then starts it again.
+
+## Change PHP settings
+
+Edit `.lando/php/drupal-cms.ini`. It's mounted read-only into `appserver`, so a restart picks it up without a rebuild:
+
+```ini
+memory_limit = 1G
+upload_max_filesize = 64M
+post_max_size = 64M
+```
+
+```sh
+lando restart
+lando exec appserver -- php -r 'echo ini_get("memory_limit"), PHP_EOL;'
+```
+
+## Debug with Xdebug
+
+Add `xdebug: true` under `services.appserver` in `.lando.yml`, then rebuild:
+
+```yaml
+services:
+  appserver:
+    xdebug: true
+```
+
+```sh
+lando rebuild
+lando xdebug status
+```
+
+Xdebug connects to your IDE on port `9003`. Map `/app` in the container to your project root. `lando xdebug on` and `lando xdebug off` toggle it without another rebuild. PHP 8.6 has no Xdebug build yet, so `xdebug: true` fails to plan on an `--answer=php=8.6` app.
+
+## Capture outgoing mail
+
+Add a Mailpit service next to `appserver`, then rebuild and send a test message:
+
+```yaml
+services:
+  inbox:
+    type: mailpit
+```
+
+```sh
+lando rebuild
+lando exec appserver -- php -r 'mail("you@example.test", "Mailpit check", "Hello from Drupal CMS");'
+lando info
+```
+
+The rebuild installs `msmtp` in `appserver` and points PHP's `sendmail_path` at `inbox`, so mail Drupal sends through PHP lands there. Open the `inbox` URL that `lando info` prints.
+
+## Read logs and open a shell
+
+```sh
+lando logs -s appserver -f
+lando logs -s database --tail 50
+lando shell -s appserver
+lando exec appserver -- php -v
+```
+
+`lando shell -s appserver` opens a login shell in the container. `lando exec` runs one command and exits.
+
+## Check the recipe output
+
+`lando app:config --format=json` prints the resolved Landofile. These runs check the defaults, then the nginx plus Postgres answers:
 
 <Guide>
   <Scenario id="reader-path" render>
     <Step name="scaffold">
-      <Variable name="appName" value="drupal-cms-workflow" display="drupal-cms-demo" />
+      <Variable name="appName" value="drupal-cms-demo" display="drupal-cms-demo" />
       <Run command="lando init --recipe drupal-cms --name={{appName}} --yes" />
     </Step>
     <Step name="confirm-defaults">
@@ -63,7 +205,7 @@ Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `m
 
   <Scenario id="nginx-postgres" render>
     <Step name="init">
-      <Variable name="appName" value="drupal-cms-workflow-nginx" display="drupal-cms-nginx" />
+      <Variable name="appName" value="drupal-cms-nginx" display="drupal-cms-nginx" />
       <Run command="lando init --recipe drupal-cms --name={{appName}} --yes --answer=php=8.5 --answer=webserver=nginx --answer=database=postgres:16 --answer=composer=2 --answer=webroot=/app/web" />
     </Step>
     <Step name="inspect">
@@ -72,45 +214,10 @@ Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `m
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"nginx\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pgsql://lando:" } }} />
     </Step>
   </Scenario>
 </Guide>
-
-## Scaffold and install Drupal CMS
-
-Init only writes the Landofile and the PHP ini. Pull Drupal CMS 2 and project-local Drush into the app root, then install with the starter recipe:
-
-```sh
-lando drupal-cms-scaffold
-lando drupal-cms-install
-```
-
-Scaffold runs `composer create-project 'drupal/cms'` into a staging dir and promotes `composer.json`, `vendor/bin/drush`, and `web/` into the mount. It is resumable if a prior run was interrupted. Re-running it on an already complete tree fails on purpose.
-
-`lando drupal-cms-install` runs project-local Drush with the recipe's wired database credentials. The 512M ini covers that install command and the web PHP process. Drush prints the admin username and a one-time password when install finishes. Save that password. `lando drush` uses the current app URL (including proxy port) for URI; set `DRUSH_OPTIONS_URI` or pass Drush `--uri` to override.
-
-Then confirm the day-to-day tools:
-
-```sh
-lando drush --version
-lando drush status
-lando composer --version
-lando mariadb -e 'SELECT 1 AS ok;'
-```
-
-## Connect Drupal to MariaDB
-
-| Setting | Value |
-| --- | --- |
-| Host | `database` |
-| Database | From `lando info` database creds |
-| User | `lando` |
-| Password | `lando` |
-| Port | `3306` |
-
-Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; you do not need it for the site user.
-
-For Postgres answers, the install tooling uses a `pgsql` `--db-url` and the Postgres password the recipe derives for that app. Day-to-day SQL goes through `lando psql`.
 
 ## Destroy the app
 
@@ -123,6 +230,10 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 ## Next
 
 - [Drupal CMS recipe](/recipes/drupal-cms/)
+- [Change a Drupal stack after init](./drupal-stack-overrides.mdx)
+- [Import and export app databases](../tooling/db-import-export.mdx)
+- [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx)
+- [Add Mailpit](../services/mailpit.mdx)
+- [Mount a custom php.ini](../services/php-customization.mdx)
 - [Add PHP](../services/php.mdx)
 - [Add MariaDB](../services/mariadb.mdx)
-- [Mount a custom php.ini](../services/php-customization.mdx)
