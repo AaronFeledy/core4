@@ -31,6 +31,11 @@ describe("displayWidth", () => {
     expect(displayWidth("１２３")).toBe(6);
   });
 
+  test("counts emoji presentation characters as two columns", () => {
+    expect(displayWidth("✅")).toBe(2);
+    expect(displayWidth("✅ ready")).toBe(8);
+  });
+
   test("ignores ANSI escape sequences", () => {
     expect(displayWidth(`${ESC}[32mok${ESC}[0m`)).toBe(2);
   });

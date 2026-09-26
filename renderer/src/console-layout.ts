@@ -66,6 +66,8 @@ const isWideCodePoint = (cp: number): boolean =>
     (cp >= 0x1f300 && cp <= 0x1faff) || // symbols & emoji
     (cp >= 0x20000 && cp <= 0x3fffd)); // CJK Ext B+
 
+const isEmojiPresentation = (cp: number): boolean => /\p{Emoji_Presentation}/u.test(String.fromCodePoint(cp));
+
 /** Code points that occupy zero terminal columns (combining marks, ZWJ, variation selectors). */
 const isZeroWidthCodePoint = (cp: number): boolean =>
   cp === 0x200d ||
@@ -78,7 +80,7 @@ const isZeroWidthCodePoint = (cp: number): boolean =>
 
 const codePointWidth = (cp: number): number => {
   if (isZeroWidthCodePoint(cp)) return 0;
-  return isWideCodePoint(cp) ? 2 : 1;
+  return isWideCodePoint(cp) || isEmojiPresentation(cp) ? 2 : 1;
 };
 
 /** Visible terminal width of `text`, counting wide glyphs as 2 and ignoring ANSI. */

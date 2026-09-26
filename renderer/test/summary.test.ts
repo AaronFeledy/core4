@@ -4,6 +4,7 @@ import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import {
   type SummaryDocument,
   formatQuietSummary,
+  formatRailSummary,
   formatSummary,
   redactSummaryDocument,
 } from "@lando/renderer/summary";
@@ -411,6 +412,30 @@ test("keeps short field values beside their labels at narrow terminal widths", (
   expect(quiet.split("\n").some((line) => /host\s+: x/u.test(line))).toBe(true);
   expect(boxed.split("\n").some((line) => /^│\s+│$/u.test(line))).toBe(false);
   expect(quiet.split("\n").some((line) => line.length > 0 && line.trim().length === 0)).toBe(false);
+});
+
+test("summary formats honor terminal widths below 24 columns", () => {
+  const doc: SummaryDocument = {
+    title: "APP INFO",
+    sections: [
+      {
+        title: "services",
+        rows: [{ label: "appserver", fields: [{ label: "host", value: "localhost" }] }],
+      },
+    ],
+  };
+  const width = 10;
+  for (const output of [
+    formatSummary(doc, { columns: width }),
+    formatQuietSummary(doc, { columns: width }),
+    formatRailSummary(doc, { columns: width }),
+  ]) {
+    expect(
+      stripAnsi(output)
+        .split("\n")
+        .every((line) => displayWidth(line) <= width),
+    ).toBe(true);
+  }
 });
 
 test("keeps multiline field values inside the frame", () => {
