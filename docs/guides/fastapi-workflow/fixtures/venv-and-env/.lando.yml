@@ -1,0 +1,39 @@
+name: fastapi-demo
+runtime: 4
+services:
+  cache:
+    type: redis
+  database:
+    type: postgres
+    creds:
+      user: lando
+      password: local-dev-only
+      database: fastapi-demo
+  web:
+    type: python:3.12
+    port: 8000
+    framework: fastapi
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+    dependsOn:
+      - database
+      - cache
+    command:
+      - sh
+      - -c
+      - "[ -x /app/.venv/bin/uvicorn ] || { python -m venv /app/.venv && /app/.venv/bin/pip install -r requirements.txt; }; exec /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      DATABASE_URL: postgresql://lando:local-dev-only@database:5432/fastapi-demo
+      REDIS_URL: redis://cache:6379/0
+tooling:
+  pip:
+    service: web
+    description: Run pip inside the web service.
+    cmds:
+      - /app/.venv/bin/pip
+  uvicorn:
+    service: web
+    description: Run uvicorn inside the web service.
+    cmds:
+      - /app/.venv/bin/uvicorn

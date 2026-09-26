@@ -234,7 +234,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Rails recipe day-to-day workflow | `docs/guides/recipes/rails-workflow.mdx` | Shipped |
 | — | — | Astro recipe day-to-day workflow | `docs/guides/recipes/astro-workflow.mdx` | Shipped |
 | — | — | Django recipe day-to-day workflow | `docs/guides/recipes/django-workflow.mdx` | Shipped |
-| — | — | FastAPI recipe day-to-day workflow | `docs/guides/recipes/fastapi-workflow.mdx` | Shipped |
+| - | - | FastAPI recipe day-to-day workflow | `docs/guides/recipes/fastapi-workflow.mdx` | Shipped |
 | — | — | MEAN recipe day-to-day workflow | `docs/guides/recipes/mean-workflow.mdx` | Shipped |
 | — | — | Symfony recipe day-to-day workflow | `docs/guides/recipes/symfony-workflow.mdx` | Shipped |
 | — | — | Laravel recipe day-to-day workflow | `docs/guides/recipes/laravel-workflow.mdx` | Shipped |

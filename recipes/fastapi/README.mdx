@@ -36,8 +36,7 @@ For day-to-day tooling, Postgres/Redis hosts, and a restart-safe venv serve, see
 <Guide>
   <Scenario id="reader-path" render>
     <Step name="scaffold">
-      <Variable name="appName" value="fastapi" display="my-fastapi" />
-      <Run command="lando init --recipe fastapi --name={{appName}} --yes" />
+      <Run command="lando init --recipe fastapi --name=my-fastapi --yes" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
