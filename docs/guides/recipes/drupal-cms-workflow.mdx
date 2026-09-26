@@ -13,7 +13,7 @@ cd drupal-cms-demo
 lando start
 ```
 
-The named init creates `drupal-cms-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. Init also writes `.lando/php/drupal-cms.ini` with `memory_limit = 512M` and mounts it for both Drush and web requests. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS. Confirm with the tooling below; the URL `lando info` prints is not part of the verified path.
+The named init creates `drupal-cms-demo/` and writes `.lando.yml` plus `.lando/php/drupal-cms.ini` there. Change into it before app commands. `--yes` keeps PHP 8.3, Apache, MariaDB 11.4, Composer 2, and webroot `/app/web`. The ini sets `memory_limit = 512M` and is mounted for both Drush and web requests. Apache and MariaDB are up after start. Scaffold the project and install Drupal CMS, then confirm with the tooling below.
 
 If something else owns 80 or 443, `lando info` shows `:8080` / `:8443`.
 
@@ -46,7 +46,7 @@ Nginx answers add an `edge` service in front of `appserver` (`via: fpm`). For `m
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-scaffold\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"drupal-cms-install\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
-      <Verify file=".lando/php/drupal-cms.ini" expect={{ regex: "memory_limit\\s*=\\s*512M" }} />
+      <Verify file="{{appName}}/.lando/php/drupal-cms.ini" expect={{ regex: "memory_limit\\s*=\\s*512M" }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
