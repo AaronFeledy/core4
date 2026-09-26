@@ -359,32 +359,23 @@ export const startAppForTargetUnlocked = (
                           bindPreparedTargets === undefined
                             ? Exit.succeed(undefined)
                             : yield* Effect.exit(restore(bindPreparedTargets(builtPlan, prepared.targets)));
-                        if (Exit.isFailure(bindingExit)) {
-                          const rollbackExit = yield* Effect.exit(prepared.rollback);
-                          if (Exit.isFailure(rollbackExit)) {
-                            return yield* Effect.failCause(
-                              Cause.sequential(bindingExit.cause, rollbackExit.cause),
-                            );
-                          }
-                          if (pendingStart !== undefined) yield* pendingStart.clear;
-                          return yield* Effect.failCause(bindingExit.cause);
-                        }
-
-                        const boundEngine = bindingExit.value;
+                        const boundEngine = Exit.isSuccess(bindingExit) ? bindingExit.value : undefined;
                         // No session mutation has occurred yet. The reconciler revokes
                         // this permission before reusing or mutating a session.
                         const safeToRollbackTargets = yield* Ref.make(true);
-                        const syncExit = yield* Effect.exit(
-                          restore(
-                            startFileSyncSessions(
-                              builtPlan,
-                              events,
-                              managed,
-                              safeToRollbackTargets,
-                              boundEngine,
-                            ),
-                          ),
-                        );
+                        const syncExit = Exit.isFailure(bindingExit)
+                          ? Exit.failCause(bindingExit.cause)
+                          : yield* Effect.exit(
+                              restore(
+                                startFileSyncSessions(
+                                  builtPlan,
+                                  events,
+                                  managed,
+                                  safeToRollbackTargets,
+                                  boundEngine,
+                                ),
+                              ),
+                            );
                         if (Exit.isSuccess(syncExit)) return syncExit.value;
 
                         const safe = yield* Ref.get(safeToRollbackTargets);
@@ -400,22 +391,28 @@ export const startAppForTargetUnlocked = (
                                 restore(engine.listSessions({ app })).pipe(Effect.timeoutOption("3 seconds")),
                               ).pipe(
                                 Effect.flatMap(Fiber.await),
-                                Effect.map(
-                                  (inventoryExit) =>
-                                    Exit.isSuccess(inventoryExit) &&
+                                Effect.flatMap((inventoryExit) => {
+                                  if (Exit.isFailure(inventoryExit)) {
+                                    return Effect.failCause(
+                                      Cause.sequential(syncExit.cause, inventoryExit.cause),
+                                    );
+                                  }
+                                  return Effect.succeed(
                                     Option.isSome(inventoryExit.value) &&
-                                    inventoryExit.value.value.length === 0,
-                                ),
+                                      inventoryExit.value.value.length === 0,
+                                  );
+                                }),
                               )
                             : false;
                         if (!noOwnedSessions) return yield* Effect.failCause(syncExit.cause);
-                        const rollbackExit = yield* Effect.exit(prepared.rollback);
+                        const rollbackExit = yield* Effect.exit(
+                          prepared.rollback.pipe(Effect.zipRight(pendingStart?.clear ?? Effect.void)),
+                        );
                         if (Exit.isFailure(rollbackExit)) {
                           return yield* Effect.failCause(
                             Cause.sequential(syncExit.cause, rollbackExit.cause),
                           );
                         }
-                        if (pendingStart !== undefined) yield* pendingStart.clear;
                         return yield* Effect.failCause(syncExit.cause);
                       }),
                     );

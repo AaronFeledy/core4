@@ -1421,40 +1421,94 @@ describe("pre-apply accelerated mount preparation", () => {
     }
   });
 
-  test("rolls back prepared targets if app binding fails before session creation", async () => {
-    const actions: string[] = [];
-    const harness = makeHarness({
-      plannedApp: acceleratedPlan,
-      onPrepareFileSync: () => actions.push("prepare"),
-      onFileSyncRollback: () => actions.push("rollback"),
-      onApply: () => actions.push("apply"),
-      fileSync: {
-        ...TestFileSyncEngine,
-        id: "mutagen",
-        isAvailable: Effect.succeed(true),
-        createSession: () => Effect.die(new Error("Binding failure reached the shared engine.")),
-        bindPreparedTargets: () =>
-          Effect.sync(() => actions.push("bind")).pipe(
-            Effect.zipRight(
-              Effect.fail(
-                new FileSyncStartError({
-                  engineId: "mutagen",
-                  message: "Could not bind verified endpoints.",
-                  remediation: "Retry after checking the provider endpoints.",
-                }),
-              ),
+  test.each([
+    { inventory: "existing", interrupted: false },
+    { inventory: "error", interrupted: false },
+    { inventory: "timeout", interrupted: false },
+    { inventory: "empty", interrupted: false },
+    { inventory: "existing", interrupted: true },
+    { inventory: "error", interrupted: true },
+    { inventory: "timeout", interrupted: true },
+    { inventory: "empty", interrupted: true },
+  ] as const)(
+    "checks $inventory ownership when app binding fails (interrupted=$interrupted)",
+    async ({ inventory, interrupted }) => {
+      // Given prepared targets that may already have persistent session owners.
+      const actions: string[] = [];
+      const app = { kind: "user", id: plan.id, root: plan.root } as const;
+      const sessions: ReadonlyArray<FileSyncSessionInfo> = acceleratedPlan.fileSync.map((entry) => ({
+        ref: FileSyncSessionRef.make(`existing-${entry.session.mountKey}`),
+        app: entry.session.app,
+        service: entry.session.service,
+        mountKey: entry.session.mountKey,
+        spec: entry.session,
+        status: "paused",
+        lastUpdatedAt: DateTime.unsafeMake("2026-09-23T00:00:00Z"),
+      }));
+      const bindingError = new FileSyncStartError({
+        engineId: "mutagen",
+        message: "Could not bind verified endpoints.",
+        remediation: "Retry after checking the provider endpoints.",
+      });
+      const inventoryError = new FileSyncStartError({
+        engineId: "mutagen",
+        message: "Durable inventory is unreadable.",
+        remediation: "Repair the session ledger before retrying.",
+      });
+      const harness = makeHarness({
+        plannedApp: acceleratedPlan,
+        onPrepareFileSync: () => actions.push("prepare"),
+        onFileSyncRollback: () => actions.push("rollback"),
+        onApply: () => actions.push("apply"),
+        fileSync: {
+          ...TestFileSyncEngine,
+          id: "mutagen",
+          isAvailable: Effect.succeed(true),
+          sessionsPersistAcrossProcesses: true,
+          listSessions: (filter) =>
+            Effect.gen(function* () {
+              expect(filter).toEqual({ app });
+              actions.push("inventory");
+              switch (inventory) {
+                case "existing":
+                  return sessions;
+                case "error":
+                  return yield* Effect.fail(inventoryError);
+                case "timeout":
+                  return yield* Effect.never;
+                case "empty":
+                  return [];
+              }
+            }),
+          createSession: () => Effect.die(new Error("Binding failure reached the shared engine.")),
+          bindPreparedTargets: () =>
+            Effect.sync(() => actions.push("bind")).pipe(
+              Effect.zipRight(interrupted ? Effect.interrupt : Effect.fail(bindingError)),
             ),
-          ),
-      },
-    });
-    await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
-    expect(actions).toEqual(["prepare", "bind", "rollback"]);
-    await Effect.runPromise(
-      requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
-        Effect.provide(harness.stateStore.layer),
-      ),
-    );
-  });
+        },
+      });
+      // When binding fails or is interrupted before session reconciliation.
+      const exit = await Effect.runPromiseExit(
+        startApp({}, { plan: acceleratedPlan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+      );
+      // Then rollback requires a fresh, definitively empty app inventory.
+      expect(actions).toEqual(
+        inventory === "empty"
+          ? ["prepare", "bind", "inventory", "rollback"]
+          : ["prepare", "bind", "inventory"],
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        if (interrupted) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+        else expect(Array.from(Cause.failures(exit.cause))).toContain(bindingError);
+        if (inventory === "error") expect(Array.from(Cause.failures(exit.cause))).toContain(inventoryError);
+      }
+      const journal = await Effect.runPromiseExit(
+        requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
+      );
+      expect(Exit.isSuccess(journal)).toBe(inventory === "empty");
+    },
+  );
 
   test("retains the accelerated-start journal if rejected-target rollback fails", async () => {
     const actions: string[] = [];
