@@ -1,5 +1,9 @@
 export const COMMAND_TOPICS = {
   app: { description: "Operate on the current Lando app." },
+  "app:agent": { description: "Project-local agent skill packs for this app." },
+  "app:agent:skills": { description: "Install, update, or remove Lando agent skill files." },
+  agent: { description: "Project-local agent skill packs for this app." },
+  "agent:skills": { description: "Install, update, or remove Lando agent skill files." },
   "app:cache": { description: "App plan, tooling graph, and command index cache." },
   "app:config": { description: "Read/write the current app's Landofile." },
   "app:includes": { description: "Manage the app's includes lockfile." },

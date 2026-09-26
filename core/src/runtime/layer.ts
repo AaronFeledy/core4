@@ -74,6 +74,7 @@ import {
 import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
+import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
 import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -110,6 +111,7 @@ type MinimalRuntimeServices =
   | FileSystem
   | CacheService
   | ManagedFileService
+  | ManagedFileServiceFactory
   | ManagedFileTransactionGuard
   | InteractionService
   | PluginTrustStore

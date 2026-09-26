@@ -18,6 +18,7 @@ type InitCommandOptions = Omit<InitAppOptions, "privateFileAccess">;
 
 export interface InitFlags {
   readonly full: boolean;
+  readonly "agent-skills"?: boolean;
   readonly name?: string;
   readonly recipe?: string;
   readonly source?: string;
@@ -58,6 +59,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
   return {
     cwd,
     full: flags.full === true,
+    agentSkills: flags["agent-skills"] === true,
     answers,
     ...(flags.answers === undefined ? {} : { answersFile: flags.answers }),
     yes: flags.yes === true,
@@ -107,6 +109,10 @@ export const initSpec: LandoCommandSpec<never> = {
     }),
     recipe: Flags.string({ description: "Recipe to apply." }),
     full: Flags.boolean({ description: "Use full recipe defaults instead of prompts." }),
+    "agent-skills": Flags.boolean({
+      description: "Install the Lando agent skill pack into the new app (off by default).",
+      default: false,
+    }),
     yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
     "no-interactive": Flags.boolean({
       aliases: ["non-interactive"],
