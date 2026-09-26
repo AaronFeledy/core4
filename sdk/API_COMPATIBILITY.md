@@ -107,7 +107,7 @@
 
 - `FileSyncEngineShape.appLifecycle` optionally groups durable app drain invalidation, drain, disposal, and disposal completion. Startup invalidates a prior drain before app writers run; stop drains only after provider writers stop. Durable destroy remains blocked until the provider can verify helper and volume cleanup without losing sync ownership. Engines without this port retain their existing per-session lifecycle.
 
-- `FileSyncEngineShape.bindPreparedTargets(plan, targets)` optionally returns an app-scoped engine after startup validates the provider's complete target set. The shared engine is not mutated; binding failure rolls back prepared targets before any session is created. Engines without this hook keep their existing startup behavior.
+- `FileSyncEngineShape.bindPreparedTargets(plan, targets)` optionally returns an app-scoped engine after startup validates the provider's complete target set. The returned engine must now carry `boundApp: AppRef`, using the existing schema-derived identity. Startup checks kind, ID, and canonical root before any session mutation. A rejected binding uses the shared engine's fresh session inventory: only a proven-empty inventory permits target rollback and journal removal. The shared engine is not mutated. Engines without this hook keep their existing startup behavior. The declaration mirror and frozen service fixture now cover this contract.
 - `FileSyncEngineShape.sessionsPersistAcrossProcesses` tells startup whether existing sessions survive process exit. Managed app handles leave persistent running sessions in place when their scope closes; failed starts still terminate sessions they created. Engines that omit the property retain scope-bound cleanup.
 
 - StartAppError and StopAppError, including the inherited restart, rebuild, and destroy error unions, now include the existing tagged StateStoreError when a per-app lifecycle lock cannot be acquired. Callers receive its lock reason and retry remediation.
@@ -1095,7 +1095,6 @@ It registers no JSON Schema.
 - `DeprecationService`
 - `Downloader`
 - `HttpClient`
-- `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`
 - `InteractionService`

@@ -358,7 +358,25 @@ export const startAppForTargetUnlocked = (
                         const bindingExit =
                           bindPreparedTargets === undefined
                             ? Exit.succeed(undefined)
-                            : yield* Effect.exit(restore(bindPreparedTargets(builtPlan, prepared.targets)));
+                            : yield* Effect.exit(
+                                restore(bindPreparedTargets(builtPlan, prepared.targets)).pipe(
+                                  Effect.flatMap((engine) =>
+                                    engine.boundApp.kind === ref.kind &&
+                                    engine.boundApp.id === ref.id &&
+                                    engine.boundApp.root === (builtPlan.identity?.appRoot ?? builtPlan.root)
+                                      ? Effect.succeed(engine)
+                                      : Effect.fail(
+                                          new FileSyncStartError({
+                                            engineId: engine.id,
+                                            message:
+                                              "The file-sync engine returned a binding for another app.",
+                                            remediation:
+                                              "Fix the engine's app binding before retrying accelerated startup.",
+                                          }),
+                                        ),
+                                  ),
+                                ),
+                              );
                         const boundEngine = Exit.isSuccess(bindingExit) ? bindingExit.value : undefined;
                         // No session mutation has occurred yet. The reconciler revokes
                         // this permission before reusing or mutating a session.

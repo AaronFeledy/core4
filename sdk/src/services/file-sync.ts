@@ -50,11 +50,12 @@ export interface FileSyncEngineShape {
    * external or durable resources; failure or interruption can only release
    * provider-prepared targets. Return a separate engine without mutating this
    * shared service; only the returned engine may create this app's sessions.
+   * Its boundApp must identify the requested app, including its canonical root.
    */
   readonly bindPreparedTargets?: (
     plan: AppPlan,
     targets: ReadonlyArray<PreparedFileSyncTarget>,
-  ) => Effect.Effect<FileSyncEngineShape, FileSyncStartError>;
+  ) => Effect.Effect<FileSyncEngineShape & { readonly boundApp: AppRef }, FileSyncStartError>;
 
   readonly isAvailable: Effect.Effect<boolean, FileSyncError>;
   readonly setup: (options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>;

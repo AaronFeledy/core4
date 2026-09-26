@@ -18,6 +18,23 @@
     "getJsonSchema"
   ],
   "serviceTags": {
+    "FileSyncEngine": [
+      "readonly id: string",
+      "readonly displayName: string",
+      "readonly capabilities: FileSyncEngineCapabilities",
+      "readonly sessionsPersistAcrossProcesses?: boolean",
+      "readonly appLifecycle?: { readonly invalidateDrain: (app: AppRef) => Effect.Effect<void, FileSyncStartError>; readonly drain: (app: AppRef) => Effect.Effect<void, FileSyncStopError>; readonly dispose: (app: AppRef) => Effect.Effect<void, FileSyncStopError>; readonly completeDisposal: (app: AppRef) => Effect.Effect<void, FileSyncStopError>; }",
+      "readonly bindPreparedTargets?: (plan: AppPlan, targets: ReadonlyArray<PreparedFileSyncTarget>) => Effect.Effect<FileSyncEngineShape & { readonly boundApp: AppRef }, FileSyncStartError>",
+      "readonly isAvailable: Effect.Effect<boolean, FileSyncError>",
+      "readonly setup: (options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>",
+      "readonly createSession: (spec: FileSyncSessionSpec) => Effect.Effect<FileSyncSessionRef, FileSyncError, Scope.Scope>",
+      "readonly pauseSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>",
+      "readonly resumeSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>",
+      "readonly flushSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>",
+      "readonly terminateSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>",
+      "readonly listSessions: (filter: FileSyncSessionFilter) => Effect.Effect<ReadonlyArray<FileSyncSessionInfo>, FileSyncError>",
+      "readonly streamEvents: (ref: FileSyncSessionRef) => Stream.Stream<FileSyncEventChunk, FileSyncError>"
+    ],
     "RouterService": [
       "id: string",
       "capabilities: ProxyCapabilities",

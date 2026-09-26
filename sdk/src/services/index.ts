@@ -8,6 +8,7 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
+  AppRef,
   DataEndpoint,
   DatasetApplyOptions,
   DatasetApplyResult,
@@ -20,6 +21,13 @@ import type {
   DeprecationSurfaceKind,
   DeprecationUse,
   DoctorResourceNameQuery,
+  FileSyncEngineCapabilities,
+  FileSyncEventChunk,
+  FileSyncSessionFilter,
+  FileSyncSessionInfo,
+  FileSyncSessionRef,
+  FileSyncSessionSpec,
+  FileSyncSetupOptions,
   GlobalConfig,
   HostPlatform,
   HostProxyBridgeInput,
@@ -128,6 +136,7 @@ import type {
   ToolingExecError,
 } from "../errors/index.ts";
 
+import type { FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
 import type { ConfigTranslatorShape } from "./config-translator.ts";
@@ -141,7 +150,7 @@ import type {
   LandoEvent,
 } from "./events.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
-import type { FileSyncEngineShape } from "./file-sync.ts";
+import type { FileSyncEngineShape, FileSyncError } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
@@ -904,7 +913,35 @@ export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
 
 export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEngine")<
   FileSyncEngine,
-  FileSyncEngineShape
+  {
+    readonly id: string;
+    readonly displayName: string;
+    readonly capabilities: FileSyncEngineCapabilities;
+    readonly sessionsPersistAcrossProcesses?: boolean;
+    readonly appLifecycle?: {
+      readonly invalidateDrain: (app: AppRef) => Effect.Effect<void, FileSyncStartError>;
+      readonly drain: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+      readonly dispose: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+      readonly completeDisposal: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+    };
+    readonly bindPreparedTargets?: (
+      plan: AppPlan,
+      targets: ReadonlyArray<PreparedFileSyncTarget>,
+    ) => Effect.Effect<FileSyncEngineShape & { readonly boundApp: AppRef }, FileSyncStartError>;
+    readonly isAvailable: Effect.Effect<boolean, FileSyncError>;
+    readonly setup: (options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>;
+    readonly createSession: (
+      spec: FileSyncSessionSpec,
+    ) => Effect.Effect<FileSyncSessionRef, FileSyncError, Scope.Scope>;
+    readonly pauseSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+    readonly resumeSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+    readonly flushSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+    readonly terminateSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+    readonly listSessions: (
+      filter: FileSyncSessionFilter,
+    ) => Effect.Effect<ReadonlyArray<FileSyncSessionInfo>, FileSyncError>;
+    readonly streamEvents: (ref: FileSyncSessionRef) => Stream.Stream<FileSyncEventChunk, FileSyncError>;
+  }
 >() {}
 
 export declare class Downloader extends Context.Tag("@lando/core/Downloader")<
