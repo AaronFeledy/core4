@@ -313,7 +313,7 @@ export interface RuntimeProviderShape {
   readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
     {
       readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
-      readonly rollback: Effect.Effect<void, ProviderError>;
+      readonly rollback?: Effect.Effect<void, ProviderError>;
     },
     ProviderError
   >;

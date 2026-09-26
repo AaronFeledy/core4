@@ -1140,6 +1140,37 @@ describe("pre-apply accelerated mount preparation", () => {
     }
   });
 
+  test("retains the journal with remediation when prepared targets have no rollback", async () => {
+    const actions: string[] = [];
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      preparedFileSyncTargets: () => [],
+      providerHasFileSyncRollback: false,
+      onApply: () => actions.push("apply"),
+      fileSync: { ...TestFileSyncEngine, id: "mutagen", isAvailable: Effect.succeed(true) },
+    });
+    const app = { kind: "user" as const, id: plan.id, root: plan.root };
+    const exit = await Effect.runPromiseExit(
+      startApp({}, { plan: acceleratedPlan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Array.from(Cause.failures(exit.cause))).toContainEqual(
+        expect.objectContaining({
+          _tag: "FileSyncStartError",
+          message: expect.stringContaining("cannot roll back prepared accelerated sync targets"),
+          remediation: expect.stringContaining("accelerated-start journal"),
+        }),
+      );
+    }
+    expect(actions).toEqual([]);
+    const pending = await Effect.runPromiseExit(
+      requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
+    );
+    expect(Exit.isFailure(pending)).toBe(true);
+  });
+
   test("binds only the validated app target set before creating sessions", async () => {
     const actions: string[] = [];
     const harness = makeHarness({
@@ -1791,6 +1822,52 @@ describe("pre-apply accelerated mount preparation", () => {
     ]);
   });
 
+  test("provider apply failure preserves its cause when target rollback is unavailable", async () => {
+    const order: string[] = [];
+    const applyFailure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "apply",
+      message: "app container failed to start",
+    });
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      providerHasFileSyncRollback: false,
+      onApply: () => order.push("apply"),
+      onDestroy: () => order.push("destroy"),
+      applyEffect: Effect.fail(applyFailure),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        sessionsPersistAcrossProcesses: true,
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([]),
+        createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
+        terminateSession: (ref) => Effect.sync(() => order.push(`terminate:${ref}`)),
+      },
+    });
+    const app = { kind: "user" as const, id: plan.id, root: plan.root };
+    const exit = await Effect.runPromiseExit(
+      startApp({}, { plan: acceleratedPlan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failures = Array.from(Cause.failures(exit.cause));
+      expect(failures).toContain(applyFailure);
+      expect(failures).toContainEqual(
+        expect.objectContaining({
+          _tag: "FileSyncStartError",
+          message: expect.stringContaining("cannot roll back prepared accelerated sync targets"),
+        }),
+      );
+    }
+    expect(order).toEqual(["apply", "destroy", "terminate:sync-mount-0", "terminate:sync-app-mount"]);
+    const pending = await Effect.runPromiseExit(
+      requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
+    );
+    expect(Exit.isFailure(pending)).toBe(true);
+  });
+
   test("a post-apply start event failure reverses persistent sessions after writer teardown", async () => {
     const order: string[] = [];
     const harness = makeHarness({
@@ -2030,6 +2107,49 @@ describe("pre-apply accelerated mount preparation", () => {
     });
     await expect(runStart(harness, acceleratedPlan)).rejects.toThrow();
     expect(order).toEqual(["prepare", "flush", "terminate", "rollback"]);
+  });
+
+  test("failed initial flush retains prepared targets and journal without provider rollback", async () => {
+    const order: string[] = [];
+    const flushFailure = new FileSyncStartError({ engineId: "mutagen", message: "initial sync failed" });
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      providerHasFileSyncRollback: false,
+      onPrepareFileSync: () => order.push("prepare"),
+      onApply: () => order.push("apply"),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        sessionsPersistAcrossProcesses: true,
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([]),
+        createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
+        flushSession: () =>
+          Effect.sync(() => order.push("flush")).pipe(Effect.zipRight(Effect.fail(flushFailure))),
+        terminateSession: () => Effect.sync(() => order.push("terminate")),
+      },
+    });
+    const app = { kind: "user" as const, id: plan.id, root: plan.root };
+    const exit = await Effect.runPromiseExit(
+      startApp({}, { plan: acceleratedPlan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failures = Array.from(Cause.failures(exit.cause));
+      expect(failures).toContain(flushFailure);
+      expect(failures).toContainEqual(
+        expect.objectContaining({
+          _tag: "FileSyncStartError",
+          message: expect.stringContaining("cannot roll back prepared accelerated sync targets"),
+        }),
+      );
+    }
+    expect(order).toEqual(["prepare", "flush", "terminate"]);
+    const pending = await Effect.runPromiseExit(
+      requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.stateStore.layer)),
+    );
+    expect(Exit.isFailure(pending)).toBe(true);
   });
 
   test("a later unvisited existing session prevents target rollback after an earlier flush fails", async () => {

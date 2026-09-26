@@ -83,6 +83,14 @@ import {
 } from "./start-progress-phases.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
+
+const unavailableTargetRollback = (engineId: string) =>
+  new FileSyncStartError({
+    engineId,
+    message: "The provider cannot roll back prepared accelerated sync targets after startup failed.",
+    remediation:
+      "The accelerated-start journal and prepared targets were retained. Inspect provider resources and file-sync sessions before retrying or removing them.",
+  });
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
 export type { StartManagedScope } from "./start-file-sync.ts";
 export const StartedServiceResultSchema = Schema.Struct({
@@ -341,6 +349,14 @@ export const startAppForTargetUnlocked = (
                       verifyPreparedFileSyncTargets(builtPlan, prepared.targets),
                     );
                     if (Exit.isFailure(coverage)) {
+                      if (prepared.rollback === undefined) {
+                        return yield* Effect.failCause(
+                          Cause.sequential(
+                            coverage.cause,
+                            Cause.fail(unavailableTargetRollback(plan.fileSync[0]?.engineId ?? "unknown")),
+                          ),
+                        );
+                      }
                       const rollback = yield* Effect.exit(prepared.rollback);
                       if (Exit.isFailure(rollback)) {
                         return yield* Effect.failCause(Cause.sequential(coverage.cause, rollback.cause));
@@ -423,6 +439,14 @@ export const startAppForTargetUnlocked = (
                               )
                             : false;
                         if (!noOwnedSessions) return yield* Effect.failCause(syncExit.cause);
+                        if (prepared.rollback === undefined) {
+                          return yield* Effect.failCause(
+                            Cause.sequential(
+                              syncExit.cause,
+                              Cause.fail(unavailableTargetRollback(plan.fileSync[0]?.engineId ?? "unknown")),
+                            ),
+                          );
+                        }
                         const rollbackExit = yield* Effect.exit(
                           prepared.rollback.pipe(Effect.zipRight(pendingStart?.clear ?? Effect.void)),
                         );
@@ -575,8 +599,14 @@ export const startAppForTargetUnlocked = (
                             ...(needWriters ? [teardownForFailure] : []),
                           ]);
                           yield* sessionLease.rollback;
-                          if (sessionLease.rollbackTargets && preparedRollback !== undefined)
+                          if (sessionLease.rollbackTargets) {
+                            if (preparedRollback === undefined) {
+                              return yield* Effect.fail(
+                                unavailableTargetRollback(plan.fileSync[0]?.engineId ?? "unknown"),
+                              );
+                            }
                             yield* preparedRollback;
+                          }
                           yield* Ref.set(leaseCleanupDone, true);
                           if (sessionLease.rollbackTargets && pendingStart !== undefined)
                             yield* pendingStart.clear;
