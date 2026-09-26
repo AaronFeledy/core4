@@ -22,3 +22,23 @@ export {
   type ParseOptions,
 } from "./parser.ts";
 export type { ImportRefValue as ImportRef } from "../schema/landofile-reference.ts";
+export {
+  isLegacyTagged,
+  LEGACY_TAGGED,
+  type LegacyAliasNode,
+  type LegacyDocument,
+  type LegacyMappingEntry,
+  type LegacyMappingNode,
+  type LegacyNode,
+  type LegacyParseLimits,
+  type LegacyParseOptions,
+  type LegacyScalarNode,
+  type LegacyScalarStyle,
+  type LegacySequenceNode,
+  type LegacySourcePosition,
+  type LegacySourceSpan,
+  type LegacyTagged,
+  type LegacyTagOccurrence,
+  type LegacyTree,
+  parseLegacyLandofile,
+} from "./legacy/index.ts";

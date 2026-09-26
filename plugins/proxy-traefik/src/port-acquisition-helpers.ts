@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import { RouterPortPinMismatch } from "@lando/sdk/errors";
+import { ServiceName } from "@lando/sdk/schema";
 
 import { type OccupiedPortHolderFields, fieldsFromPortHolder } from "./occupied-port-warning.ts";
 import {
@@ -73,25 +74,75 @@ const overlayTryList = (
   return [nextPreferred, ...(fallbacks ?? defaults.slice(1))];
 };
 
+const WINDOWS_EXTRA_HTTP_PORTS = [48081, 58081, 48082, 58082] as const;
+const WINDOWS_EXTRA_HTTPS_PORTS = [48444, 58444, 48445, 58445] as const;
+
+const samePorts = (left: readonly number[], right: readonly number[]): boolean =>
+  left.length === right.length && left.every((port, index) => port === right[index]);
+
+const windowsTryList = (
+  fingerprint: readonly number[] | undefined,
+  preferred: number | undefined,
+  fallbacks: readonly number[] | undefined,
+  pin: number | undefined,
+  defaults: readonly number[],
+  extra: readonly number[],
+): readonly number[] => {
+  const routerList = overlayTryList(preferred, fallbacks, defaults);
+  const explicitlyConfigured = preferred !== undefined || fallbacks !== undefined;
+  const supplied = explicitlyConfigured ? routerList : (fingerprint ?? routerList);
+  return !explicitlyConfigured && pin === undefined && samePorts(supplied, defaults)
+    ? [...defaults, ...extra]
+    : supplied;
+};
+
 export const resolveTryLists = (dependencies: TraefikProxyDependencies): ResolvedTryLists => {
   const bindAddress =
     dependencies.fingerprint?.bindAddress ?? dependencies.router?.bindAddress ?? LOOPBACK_HOST;
-  const httpTryList =
-    dependencies.fingerprint?.http ??
-    overlayTryList(dependencies.router?.httpPort, dependencies.router?.httpFallbacks, DEFAULT_HTTP_TRY_LIST);
-  const httpsTryList =
-    dependencies.fingerprint?.https ??
-    overlayTryList(
-      dependencies.router?.httpsPort,
-      dependencies.router?.httpsFallbacks,
-      DEFAULT_HTTPS_TRY_LIST,
-    );
-  const fingerprint = dependencies.fingerprint ?? {
-    http: [...httpTryList],
-    https: [...httpsTryList],
+  if (dependencies.paths.platform !== "win32") {
+    const httpTryList =
+      dependencies.fingerprint?.http ??
+      overlayTryList(
+        dependencies.router?.httpPort,
+        dependencies.router?.httpFallbacks,
+        DEFAULT_HTTP_TRY_LIST,
+      );
+    const httpsTryList =
+      dependencies.fingerprint?.https ??
+      overlayTryList(
+        dependencies.router?.httpsPort,
+        dependencies.router?.httpsFallbacks,
+        DEFAULT_HTTPS_TRY_LIST,
+      );
+    const fingerprint = dependencies.fingerprint ?? {
+      http: [...httpTryList],
+      https: [...httpsTryList],
+      bindAddress,
+    };
+    return { httpTryList, httpsTryList, bindAddress, fingerprint };
+  }
+  const httpTryList = windowsTryList(
+    dependencies.fingerprint?.http,
+    dependencies.router?.httpPort,
+    dependencies.router?.httpFallbacks,
+    dependencies.routerPin?.httpPort,
+    DEFAULT_HTTP_TRY_LIST,
+    WINDOWS_EXTRA_HTTP_PORTS,
+  );
+  const httpsTryList = windowsTryList(
+    dependencies.fingerprint?.https,
+    dependencies.router?.httpsPort,
+    dependencies.router?.httpsFallbacks,
+    dependencies.routerPin?.httpsPort,
+    DEFAULT_HTTPS_TRY_LIST,
+    WINDOWS_EXTRA_HTTPS_PORTS,
+  );
+  return {
+    httpTryList,
+    httpsTryList,
     bindAddress,
+    fingerprint: { http: [...httpTryList], https: [...httpsTryList], bindAddress },
   };
-  return { httpTryList, httpsTryList, bindAddress, fingerprint };
 };
 
 export const classifyOrFail = (input: ClassifyAcquisitionInput) =>
@@ -160,16 +211,34 @@ export const probeCurrent = (
   }
   return Effect.gen(function* () {
     const probe = dependencies.probeBind ?? probeBind;
-    const httpBinds = yield* probeTryList(
-      lists.bindAddress,
-      uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
-      probe,
+    const httpBinds = {
+      ...(yield* probeTryList(
+        lists.bindAddress,
+        uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
+        probe,
+      )),
+    };
+    const httpsBinds = {
+      ...(yield* probeTryList(
+        lists.bindAddress,
+        uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
+        probe,
+      )),
+    };
+    const guestOccupied = new Set(
+      dependencies.paths.platform === "win32"
+        ? yield* dependencies.globalApp.occupiedPublishPorts?.(
+            uniquePorts(
+              uniquePorts(lists.httpTryList, DEFAULT_BACKEND_HTTP_TRY_LIST),
+              uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
+            ),
+          ) ?? Effect.succeed([])
+        : [],
     );
-    const httpsBinds = yield* probeTryList(
-      lists.bindAddress,
-      uniquePorts(lists.httpsTryList, DEFAULT_BACKEND_HTTPS_TRY_LIST),
-      probe,
-    );
+    for (const port of guestOccupied) {
+      if (httpBinds[port]?.kind === "success") httpBinds[port] = { kind: "EADDRINUSE", code: "EADDRINUSE" };
+      if (httpsBinds[port]?.kind === "success") httpsBinds[port] = { kind: "EADDRINUSE", code: "EADDRINUSE" };
+    }
     const preferredHttp = lists.httpTryList[0] ?? DESIRED_HTTP_PORT;
     const preferredHttps = lists.httpsTryList[0] ?? DESIRED_HTTPS_PORT;
     const httpBind = httpBinds[preferredHttp] ?? { kind: "other-error" as const };
@@ -234,7 +303,7 @@ export const stillOwnPersisted = (
   previous: PersistedPair,
   probed: ProbedAcquisition,
   bindAddress: string,
-): Effect.Effect<boolean> =>
+): Effect.Effect<boolean, unknown> =>
   Effect.gen(function* () {
     const override = dependencies.socketProxy?.classifyOverride;
     if (override !== undefined) {
@@ -242,6 +311,15 @@ export const stillOwnPersisted = (
         overrideOwned(override.http, probed.httpBinds[previous.httpPort]) &&
         overrideOwned(override.https, probed.httpsBinds[previous.httpsPort])
       );
+    }
+    if (dependencies.paths.platform === "win32" && dependencies.globalApp.ownedPublishPorts !== undefined) {
+      const owned = new Set(
+        yield* dependencies.globalApp.ownedPublishPorts(ServiceName.make("traefik"), [
+          previous.httpPort,
+          previous.httpsPort,
+        ]),
+      );
+      return owned.has(previous.httpPort) && owned.has(previous.httpsPort);
     }
     const probe = dependencies.probeBind ?? probeBind;
     const httpBind = yield* probe(bindAddress, previous.httpPort);

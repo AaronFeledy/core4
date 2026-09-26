@@ -32,9 +32,12 @@ import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { isPostStartStepError } from "../tooling/event-errors.ts";
+import { requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppEvent, runAppInitEvents } from "./events.ts";
+import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
+import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
 export type RestartAppError = SdkRestartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -82,7 +85,6 @@ export const restartApp = (
     const registry = yield* RuntimeProviderRegistry;
     const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
     const plan = mysqlResolvedTarget.plan;
-    yield* runAppInitEvents(plan);
     const context = yield* Effect.context<RestartAppServices>();
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
@@ -94,6 +96,11 @@ export const restartApp = (
         stateStore,
         body: () =>
           Effect.gen(function* () {
+            yield* requireNoPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
+            const stopPreflight = yield* preflightStopApp(mysqlResolvedTarget);
+            yield* preflightStartAppDrain(mysqlResolvedTarget, stopPreflight);
+            yield* ensureStartTransactionConsistent(mysqlResolvedTarget);
+            yield* runAppInitEvents(plan);
             const proxy = yield* RouterService;
             const events = yield* EventService;
             const preRestart = PreRestartEvent.make({
@@ -106,7 +113,7 @@ export const restartApp = (
             });
             yield* events.publish(preRestart);
             yield* runAppEvent(plan, "pre-restart", preRestart);
-            yield* stopAppWithPlan({}, mysqlResolvedTarget);
+            yield* stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true });
             yield* managed?.onStopped ?? Effect.void;
             const result = yield* compensateFailureUnless(
               startApp(
@@ -116,6 +123,7 @@ export const restartApp = (
                 },
                 mysqlResolvedTarget,
                 managed,
+                { skipInitEvents: true, transactionPreflightDone: true },
               ),
               proxy.removeRoutes(plan.id),
               isPostStartStepError,

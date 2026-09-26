@@ -34,8 +34,23 @@ const pathRuntime = (cmd: string, providerId: string): RuntimeProbe => ({
   argsPrefix: [],
 });
 
-const managedLandoRuntime = (userDataRoot: string): RuntimeProbe => {
+const managedLandoRuntime = (
+  userDataRoot: string,
+  platform: NodeJS.Platform = process.platform,
+): RuntimeProbe => {
   const paths = makeLandoPaths({ userDataRoot });
+  if (platform === "win32") {
+    return {
+      cmd: join(paths.runtimeBinDir, "podman.exe"),
+      providerId: "lando",
+      argsPrefix: ["--connection", "lando-root"],
+      env: {
+        CONTAINERS_CONF: join(paths.runtimeConfigDir, "containers.conf"),
+        CONTAINERS_REGISTRIES_CONF: join(paths.runtimeConfigDir, "registries.conf"),
+        XDG_CONFIG_HOME: paths.runtimeConfigDir,
+      },
+    };
+  }
   return {
     cmd: join(paths.runtimeBinDir, "podman"),
     providerId: "lando",
@@ -77,6 +92,76 @@ const LANDO_APP_LABELS = ["dev.lando.app", "com.lando.app"] as const;
 const RUNTIME_PROBE_TIMEOUT_MS = 2_000;
 const RUNTIME_QUERY_TIMEOUT_MS = 5_000;
 const RUNTIME_CLEANUP_TIMEOUT_MS = 60_000;
+const SYNC_KIND_LABEL = "dev.lando.sync.kind";
+
+const assertNoPersistedAcceleratedSync = async (userDataRoot: string): Promise<void> => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { AppPlan } = await import("@lando/sdk/schema");
+  const { Either, Schema } = await import("effect");
+  const plansDir = join(
+    makeLandoPaths({ userDataRoot }).pluginsDir,
+    "@lando",
+    "provider-lando",
+    "applied-plans",
+  );
+  let entries: ReadonlyArray<string>;
+  try {
+    entries = await readdir(plansDir);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw new Error(
+      "Cannot inspect saved Lando plans before purge; preserve the managed runtime and retry.",
+      { cause },
+    );
+  }
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue;
+    try {
+      const envelope: unknown = JSON.parse(await readFile(join(plansDir, entry), "utf8"));
+      if (typeof envelope !== "object" || envelope === null || Array.isArray(envelope))
+        throw new Error("invalid envelope");
+      const plan: unknown = Reflect.get(envelope, "data");
+      if (
+        Reflect.get(envelope, "version") !== 1 ||
+        typeof plan !== "object" ||
+        plan === null ||
+        Array.isArray(plan)
+      )
+        throw new Error("invalid plan");
+      const fileSync = Reflect.get(plan, "fileSync");
+      const services = Reflect.get(plan, "services");
+      const reservedGlobalWithoutSessions = Reflect.get(plan, "id") === "global" && fileSync === undefined;
+      if (
+        (!Array.isArray(fileSync) && !reservedGlobalWithoutSessions) ||
+        typeof services !== "object" ||
+        services === null ||
+        Array.isArray(services)
+      )
+        throw new Error("invalid sync fields");
+      if (!reservedGlobalWithoutSessions && Either.isLeft(Schema.decodeUnknownEither(AppPlan)(plan)))
+        throw new Error("invalid app plan");
+      if (Array.isArray(fileSync) && fileSync.length > 0) throw new Error("accelerated sync plan");
+      for (const service of Object.values(services)) {
+        if (typeof service !== "object" || service === null || Array.isArray(service))
+          throw new Error("invalid service");
+        const appMount = Reflect.get(service, "appMount");
+        const mounts = Reflect.get(service, "mounts");
+        if (reservedGlobalWithoutSessions && (mounts !== undefined || appMount !== undefined))
+          throw new Error("invalid reserved global plan");
+        if (
+          appMount?.realization === "accelerated" ||
+          (Array.isArray(mounts) && mounts.some((mount) => mount?.realization === "accelerated"))
+        )
+          throw new Error("accelerated sync mount");
+      }
+    } catch (cause) {
+      throw new Error(
+        `Cannot safely purge while saved plan ${entry} contains accelerated or unreadable sync state. Run lando stop to flush, then lando destroy --volumes to remove verified sync resources before retrying.`,
+        { cause },
+      );
+    }
+  }
+};
 
 const makeListDiscoveredApps =
   (): ((userDataRoot: string, userCacheRoot: string) => Promise<ReadonlyArray<DiscoveredApp>>) =>
@@ -192,32 +277,171 @@ const makeListDiscoveredApps =
     return apps;
   };
 
+const assertNoDurableMutagenSessions = async (userDataRoot: string): Promise<void> => {
+  const { readFile } = await import("node:fs/promises");
+  const ledgerPath = join(
+    makeLandoPaths({ userDataRoot }).pluginsDir,
+    "@lando",
+    "file-sync-mutagen",
+    "sessions",
+    "mutagen.json",
+  );
+  let content: string;
+  try {
+    content = await readFile(ledgerPath, "utf8");
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw new Error(
+      "Cannot inspect durable Mutagen session state before purge; preserve the managed runtime and retry.",
+      { cause },
+    );
+  }
+  try {
+    const envelope: unknown = JSON.parse(content);
+    if (
+      typeof envelope !== "object" ||
+      envelope === null ||
+      Array.isArray(envelope) ||
+      Reflect.get(envelope, "version") !== 1
+    )
+      throw new Error("invalid ledger envelope");
+    const data: unknown = Reflect.get(envelope, "data");
+    if (typeof data !== "object" || data === null || Array.isArray(data))
+      throw new Error("invalid ledger data");
+    const sessions: unknown = Reflect.get(data, "sessions");
+    if (!Array.isArray(sessions)) throw new Error("invalid sessions");
+    if (sessions.length > 0) throw new Error("durable sessions remain");
+  } catch (cause) {
+    throw new Error(
+      "Cannot safely purge while durable Mutagen session state is active or unreadable. Run lando stop to flush, then lando destroy --volumes before retrying.",
+      { cause },
+    );
+  }
+};
+
 // Sweeps every installed runtime rather than only the discovered apps:
 // leftover stopped containers, networks, and volumes must go too (#771).
-const makeCleanupDiscoveredApps =
-  (userDataRoot?: string): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>
+export const makeCleanupDiscoveredApps =
+  (
+    userDataRoot?: string,
+    execFileAsyncOverride?: (
+      file: string,
+      args: ReadonlyArray<string>,
+      options: { readonly timeout: number; readonly env?: NodeJS.ProcessEnv },
+    ) => Promise<{ readonly stdout: string }>,
+    platform: NodeJS.Platform = process.platform,
+  ): ((apps: ReadonlyArray<DiscoveredApp>) => Promise<void>) =>
   async (_apps: ReadonlyArray<DiscoveredApp>): Promise<void> => {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
-    const execFileAsync = promisify(execFile);
+    const execFileAsync = execFileAsyncOverride ?? promisify(execFile);
 
     const errors: string[] = [];
 
     const cleanupRuntimes: RuntimeProbe[] = CONTAINER_RUNTIMES.map((runtime) =>
       pathRuntime(runtime.cmd, runtime.providerId),
     );
-    const managed = managedLandoRuntime(userDataRoot ?? makeLandoPaths().roots.userDataRoot);
+    const dataRoot = userDataRoot ?? makeLandoPaths().roots.userDataRoot;
+    const managed = managedLandoRuntime(dataRoot, platform);
     if (!cleanupRuntimes.some((runtime) => runtime.cmd === managed.cmd)) {
       cleanupRuntimes.push(managed);
     }
+    const availableRuntimes: RuntimeProbe[] = [];
     for (const runtime of cleanupRuntimes) {
       try {
         await runRuntime(execFileAsync, runtime, ["--version"], RUNTIME_PROBE_TIMEOUT_MS);
+        availableRuntimes.push(runtime);
       } catch {
-        // Runtime not installed; nothing to sweep.
-        continue;
+        if (platform === "win32" && runtime.cmd === managed.cmd) {
+          const { access } = await import("node:fs/promises");
+          try {
+            await access(makeLandoPaths({ userDataRoot: dataRoot }).runtimeBinDir);
+          } catch (cause) {
+            if ((cause as NodeJS.ErrnoException).code === "ENOENT") {
+              const { classifyManagedProviderMachine } = await import(
+                "@lando/engine/runtime/managed-provider-machine"
+              );
+              const machine = classifyManagedProviderMachine(dataRoot, undefined, "win32");
+              if (machine.ownership === "absent") continue;
+              throw new Error(
+                "Cannot inspect the recorded Windows managed machine before purge because its Podman binary is missing; preserve the machine and state.",
+                { cause },
+              );
+            }
+            throw new Error(
+              "Cannot inspect the Windows managed runtime before purge; preserve its machine and state.",
+              { cause },
+            );
+          }
+          throw new Error(
+            "Cannot query the installed Windows managed Podman binary before purge; preserve its machine and state.",
+          );
+        }
+        // Runtime not installed; nothing to inspect or sweep.
       }
+    }
 
+    // Inspect all runtimes before sweeping any of them. A stopped helper and
+    // an orphaned sync volume can both hold the only copy of recent app data.
+    if (platform === "win32") {
+      await assertNoPersistedAcceleratedSync(dataRoot);
+      await assertNoDurableMutagenSessions(dataRoot);
+    }
+    for (const runtime of platform === "win32" ? availableRuntimes : []) {
+      try {
+        const [containers, volumes] = await Promise.all([
+          runRuntime(
+            execFileAsync,
+            runtime,
+            ["ps", "-a", "--filter", `label=${SYNC_KIND_LABEL}=helper`, "--format", "{{.ID}}"],
+            RUNTIME_QUERY_TIMEOUT_MS,
+          ),
+          runRuntime(
+            execFileAsync,
+            runtime,
+            ["volume", "ls", "--filter", `label=${SYNC_KIND_LABEL}=volume`, "--format", "{{.Name}}"],
+            RUNTIME_QUERY_TIMEOUT_MS,
+          ),
+        ]);
+        if (containers.stdout.trim() || volumes.stdout.trim())
+          throw new Error(
+            "accelerated sync helper or volume exists; run lando stop to flush, then lando destroy --volumes to remove verified sync resources before purging",
+          );
+        if (runtime.cmd === managed.cmd) {
+          const [allContainers, allVolumes] = await Promise.all([
+            runRuntime(
+              execFileAsync,
+              runtime,
+              ["ps", "-a", "--format", "{{.Names}}"],
+              RUNTIME_QUERY_TIMEOUT_MS,
+            ),
+            runRuntime(
+              execFileAsync,
+              runtime,
+              ["volume", "ls", "--format", "{{.Name}}"],
+              RUNTIME_QUERY_TIMEOUT_MS,
+            ),
+          ]);
+          const possibleHelper = allContainers.stdout
+            .split(/\r?\n/u)
+            .some((name) => /^lando-sync-.+-[a-f0-9]{16}$/u.test(name.trim()));
+          const possibleVolume = allVolumes.stdout
+            .split(/\r?\n/u)
+            .some((name) => /-(?:app-mount|mount-[0-9]+)$/u.test(name.trim()));
+          if (possibleHelper || possibleVolume)
+            throw new Error(
+              "possible unlabeled Lando sync helper or volume exists; inspect its data before purging",
+            );
+        }
+      } catch (cause) {
+        throw new Error(
+          `Cannot safely purge ${runtime.cmd}: ${cause instanceof Error ? cause.message : String(cause)}. Managed runtime, volumes, and state were preserved.`,
+          { cause },
+        );
+      }
+    }
+
+    for (const runtime of availableRuntimes) {
       // Stop and remove every Lando-labeled container, running or stopped.
       for (const label of LANDO_APP_LABELS) {
         try {
@@ -279,7 +503,6 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _userDataRoot?: unknown;
     readonly _userCacheRoot?: unknown;
     readonly _userConfRoot?: unknown;
-    readonly _execPath?: unknown;
     readonly _exists?: unknown;
     readonly _remove?: unknown;
     readonly _readManagedProviderMachine?: unknown;
@@ -321,7 +544,6 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._userConfRoot === "string" ? { userConfRoot: extra._userConfRoot } : {}),
-    ...(typeof extra._execPath === "string" ? { execPath: extra._execPath } : {}),
     ...(typeof extra._exists === "function" ? { exists: extra._exists as (path: string) => boolean } : {}),
     ...(typeof extra._remove === "function"
       ? { remove: extra._remove as (path: string) => Promise<void> }
@@ -392,11 +614,12 @@ export const metaUninstallSpec: LandoCommandSpec<UninstallResult, unknown, Priva
       default: false,
     }),
     "keep-data": Flags.boolean({
-      description: "Remove Lando-owned toolchain files while preserving app data and global state.",
+      description: "Remove the managed CLI while preserving app data, the managed VM, and runtime tools.",
       default: false,
     }),
     purge: Flags.boolean({
-      description: "Remove Lando-owned toolchain files and data roots after confirmation.",
+      description:
+        "Remove Lando-owned apps, the managed VM, runtime tools, and data roots after confirmation.",
       default: false,
     }),
   },

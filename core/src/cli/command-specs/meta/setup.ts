@@ -32,7 +32,7 @@ import { NetworkTrust } from "@lando/http-client/network-trust";
 import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { formatSummary } from "@lando/renderer/summary";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
-import { installShellProfileIntegration } from "../../commands/shellenv";
+import { ShellenvInstallRecordError, installShellProfileIntegration } from "../../commands/shellenv";
 import { isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
@@ -211,12 +211,25 @@ export const setupSpec: LandoCommandSpec<
       }
 
       if (
+        process.platform !== "win32" &&
         !inputBooleanFlag(input, "skip-shell-integration") &&
         !inputBooleanFlag(input, "no-interactive") &&
         privilege._tag === "Some" &&
         userDataRoot !== undefined
       ) {
-        const shellProfile = yield* installShellProfileIntegration(userDataRoot, privilege.value);
+        const shellProfile = yield* Effect.try({
+          try: () => installShellProfileIntegration(userDataRoot, privilege.value),
+          catch: (cause) => {
+            if (!(cause instanceof ShellenvInstallRecordError)) throw cause;
+            return new ShellProfileIntegrationError({
+              message: "Shell profile integration failed.",
+              stderr: cause.message,
+            });
+          },
+        }).pipe(
+          Effect.flatten,
+          Effect.tapError((cause) => recorder.recordFailure("shell", cause.stderr)),
+        );
         if (shellProfile.exitCode !== 0) {
           yield* recorder.recordFailure("shell", shellProfile.stderr);
           return yield* Effect.fail(
@@ -275,6 +288,11 @@ export const setupSpec: LandoCommandSpec<
     const providerId = String(result.providerId);
     const installDir = String(result.installDir);
     const notes = result.networkCaInjectionConfigured ? [caInjectionNote] : [];
+    if (process.platform === "win32") {
+      notes.push(
+        "To keep Lando on PATH in new PowerShell sessions, create `$PROFILE` if needed, then append the output of `lando shellenv --shell=powershell` to it. Keep any existing profile content.",
+      );
+    }
     if (isDecoratedContext(ctx))
       return formatSummary(
         buildSetupSummary({ providerId, installDir, fileSyncStatus: status, notes }),

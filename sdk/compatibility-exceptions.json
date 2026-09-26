@@ -1,5 +1,23 @@
 [
   {
+    "surface": "schema:StreamFrame",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Only the terminal result member's embedded error envelope gains optional reason: string. Existing frames remain valid, all discriminators and required fields are unchanged, and absent or non-string source reasons remain omitted. The conservative union checker cannot classify this additive nested property. Only the terminal result envelope adds optional SQL confirmation service and steps; existing frame variants and fields remain valid."
+  },
+  {
+    "surface": "command:meta:doctor",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Doctor subsystem checks add optional SSH-agent posture details. Their delivery field reuses AgentSocketDelivery, adding a local schema definition without changing existing required report fields. Reports without details remain valid; the reference-graph checker requires explicit review of the new definition."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "enum-changed",
+    "path": "$.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
     "surface": "command:meta:config",
     "changeKind": "ref-changed",
     "path": "$.config.$ref",
@@ -1690,5 +1708,95 @@
     "changeKind": "property-added",
     "path": "$.sizeBytes",
     "justification": "The unreleased snapshot reference now carries provider-observed artifact size for pre-mutation restore verification."
+  },
+  {
+    "surface": "schema:FileSyncSessionInfo",
+    "changeKind": "property-added",
+    "path": "$.spec",
+    "justification": "Lando v4 is unreleased. Requiring the applied full spec lets startup reject stale or mismatched sync sessions before exposing their volume contents; no persisted public session-info artifact needs an adapter."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "schema:ConfigTranslateEncodeInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ConfigTranslateEncodeInput.context.sshAgent.anyOf",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShape.sshAgent.anyOf",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "schema:LandofileAuthoringShapeWire",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.LandofileAuthoringShapeWire.sshAgent.anyOf",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "enum-changed",
+    "path": "$.landofile.sshAgent.sidecar",
+    "justification": "SshAgentConfig.sidecar intentionally widens from literal true to Boolean so false selects host-agent forwarding, and sshAgent gains an optional socket override. Omitted and true values remain accepted, with sidecar mode still the default."
   }
 ]

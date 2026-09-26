@@ -51,6 +51,7 @@ const makePluginSpec = (id = "db:import", namespace = "db"): ExecutableCommandSp
 const makeRuntimeContext = (id: string, load: ExecutableCommandLoader): Context.Context<never> =>
   Context.add(Context.empty(), PluginContributionGraph, {
     plugins: [],
+    globalPlugins: [],
     certificateAuthorities: [],
     commands: [{ id, pluginName: "example-plugin", source: "system", load }],
     hostContext: Context.empty(),

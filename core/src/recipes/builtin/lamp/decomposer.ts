@@ -48,6 +48,7 @@ export const lampDecomposer = ((ports) => ({
           services: {
             appserver: {
               type: "php:{{ recipe.php }}",
+              primary: true,
               framework: "none",
               webroot: "{{ recipe.webroot }}",
               composer: composerEnabled ? "{{ recipe.composer }}" : false,

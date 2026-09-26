@@ -7,7 +7,6 @@ import {
   type AppPlan,
   type ServicePlan,
   fileSyncVolumeName,
-  landoNetworkNames,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
   sameAppMountTarget,
@@ -20,6 +19,7 @@ import type { ProviderErrorContext } from "../engine-api.ts";
 import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
+import { podmanNetworkNames } from "./networks.ts";
 
 export interface EmitComposeOptions {
   readonly userDataRoot: string;
@@ -238,7 +238,7 @@ const removeEmpty = (service: ComposeService): ComposeService => ({
 });
 
 const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDocument => {
-  const networkNames = landoNetworkNames(plan);
+  const networkNames = podmanNetworkNames(plan);
   const sharedName = landoSharedNetworkName(plan);
   const services = Object.fromEntries(
     Object.entries(plan.services).map(([name, service]) => [

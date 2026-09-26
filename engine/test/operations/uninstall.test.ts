@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -33,6 +35,147 @@ import {
 
 const uninstall = (options: Parameters<typeof uninstallEffect>[0]) =>
   uninstallEffect(options).pipe(Effect.provide(PrivateFileAccessLive));
+
+describe("record-backed uninstall", () => {
+  for (const scenario of [
+    "owned",
+    "no-record",
+    "foreign-basename",
+    "digest-mismatch",
+    "missing",
+    "invalid",
+    "changed-before-remove",
+  ] as const) {
+    for (const purge of [false, true]) {
+      if (scenario === "changed-before-remove" && !purge) continue;
+      for (const dryRun of [false, true]) {
+        test(`${scenario} preserves foreign files when dryRun=${dryRun}, purge=${purge}`, async () => {
+          // Given: a real install record and a hostile neighboring Lando 3 installation.
+          const roots = makeUninstallRoots("lando-uninstall-record-");
+          const bin =
+            scenario === "no-record" ? join(roots.userDataRoot, "bin") : join(roots.root, "external");
+          mkdirSync(bin, { recursive: true });
+          const legacy = join(bin, "lando");
+          const state = join(roots.root, ".lando");
+          mkdirSync(state, { mode: 0o700 });
+          writeFileSync(join(state, "state"), "legacy state", { mode: 0o600 });
+          writeFileSync(legacy, "legacy executable", { mode: 0o755 });
+          const binary = scenario === "foreign-basename" ? legacy : join(bin, "lando4");
+          if (binary !== legacy) writeFileSync(binary, "v4 executable", { mode: 0o755 });
+          const bytes = readFileSync(binary);
+          const record = join(roots.userDataRoot, "install", "record.json");
+          mkdirSync(join(roots.userDataRoot, "install"), { recursive: true });
+          if (scenario !== "no-record")
+            writeFileSync(
+              record,
+              JSON.stringify({
+                version: 1,
+                data: {
+                  executable: {
+                    path: binary,
+                    sha256: createHash("sha256").update(bytes).digest("hex"),
+                    size: bytes.length,
+                    channel: "stable",
+                    platform: "linux-x64",
+                    releaseVersion: "4.2.0",
+                  },
+                  shellProfiles: [],
+                },
+              }),
+            );
+          if (scenario === "digest-mismatch") writeFileSync(binary, "v4 drifted!!!");
+          if (scenario === "missing") rmSync(binary);
+          if (scenario === "invalid") writeFileSync(record, "not json");
+          const before = existsSync(binary) ? readFileSync(binary) : undefined;
+          const removals: string[] = [];
+          if (scenario === "changed-before-remove")
+            mkdirSync(join(roots.userDataRoot, "runtime"), { recursive: true });
+          try {
+            // When: uninstall plans from the install record and has no running-executable target.
+            const result = await Effect.runPromise(
+              uninstall(
+                sandboxUninstallOptions(roots, {
+                  yes: true,
+                  dryRun,
+                  purge,
+                  listDiscoveredApps: async () => [],
+                  teardownRuntimeService: async () => {
+                    writeFileSync(binary, "v4 drifted!!!");
+                    return { terminated: true };
+                  },
+                  remove: async (path) => {
+                    removals.push(path);
+                    rmSync(path, { recursive: true, force: true });
+                  },
+                }),
+              ),
+            );
+            // Then: only proven ownership permits deletion; refusals retain repair evidence.
+            const step = result.steps.find((entry) => entry.id === "installed-binary");
+            const status =
+              scenario === "owned" || (scenario === "changed-before-remove" && dryRun)
+                ? "owned"
+                : scenario === "invalid"
+                  ? "manual"
+                  : scenario === "no-record" || scenario === "missing"
+                    ? "skipped"
+                    : "user-owned";
+            expect(step?.status).toBe(status);
+            expect(result.failed).toBe(false);
+            if (scenario === "foreign-basename" || scenario === "digest-mismatch")
+              expect(step?.detail).toContain(scenario);
+            expect(result.steps.at(-1)?.id).toBe("install-record");
+            if (dryRun) {
+              expect(removals).toEqual([]);
+              if (before !== undefined) expect(readFileSync(binary)).toEqual(before);
+            } else if (scenario === "owned" || scenario === "missing") {
+              expect(existsSync(binary)).toBe(false);
+              expect(existsSync(record)).toBe(false);
+              if (scenario === "owned")
+                expect(removals).toEqual(purge ? [binary, record, roots.userDataRoot] : [binary, record]);
+              removals.length = 0;
+              const repeated = await Effect.runPromise(
+                uninstall(
+                  sandboxUninstallOptions(roots, {
+                    yes: true,
+                    purge,
+                    listDiscoveredApps: async () => [],
+                    remove: async (path) => {
+                      removals.push(path);
+                      rmSync(path, { recursive: true, force: true });
+                    },
+                  }),
+                ),
+              );
+              expect(repeated.failed).toBe(false);
+              expect(repeated.steps.find((entry) => entry.id === "installed-binary")).toMatchObject({
+                status: "skipped",
+                outcome: "skipped",
+              });
+              expect(repeated.steps.find((entry) => entry.id === "install-record")).toMatchObject({
+                status: "skipped",
+                outcome: "skipped",
+              });
+              expect(removals).toEqual([]);
+            } else {
+              expect(removals).not.toContain(binary);
+              expect(existsSync(record)).toBe(scenario !== "no-record");
+              if (scenario !== "changed-before-remove" && before !== undefined)
+                expect(readFileSync(binary)).toEqual(before);
+            }
+            expect(readFileSync(legacy, "utf8")).toBe("legacy executable");
+            expect(statSync(legacy).mode & 0o777).toBe(0o755);
+            expect(statSync(state).mode & 0o777).toBe(0o700);
+            expect(readFileSync(join(state, "state"), "utf8")).toBe("legacy state");
+            expect(statSync(join(state, "state")).mode & 0o777).toBe(0o600);
+          } finally {
+            rmSync(roots.root, { recursive: true, force: true });
+          }
+        });
+      }
+    }
+  }
+});
 
 const restoreEnv = (key: string, value: string | undefined): void => {
   if (value === undefined) Reflect.deleteProperty(process.env, key);
@@ -171,7 +314,7 @@ describe("uninstall runtime overlay removal", () => {
         uninstall(
           sandboxUninstallOptions(roots, {
             yes: true,
-            keepData: true,
+            purge: true,
           }),
         ),
       );
@@ -204,7 +347,7 @@ describe("uninstall runtime overlay removal", () => {
         uninstall(
           sandboxUninstallOptions(roots, {
             yes: true,
-            keepData: true,
+            purge: true,
             remove: async () => {
               // Pretend success while leaving the runtime tree in place.
             },
@@ -401,6 +544,124 @@ describe("uninstall managed volume purge", () => {
   });
 });
 
+describe("uninstall keep-data ownership", () => {
+  test("preserves the owned machine, its setup state, runtime, and host-proxy sessions", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-keep-machine-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      const providerDir = join(roots.userDataRoot, "providers", "provider-lando");
+      const hostProxyDir = join(roots.userDataRoot, "run");
+      for (const path of [runtimeDir, providerDir, hostProxyDir]) mkdirSync(path, { recursive: true });
+      const setupState = join(providerDir, "setup-state.json");
+      writeFileSync(setupState, '{"machine":{"name":"lando","createdByLando":true}}');
+      const calls: string[] = [];
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            keepData: true,
+            readManagedProviderMachine: () => ({ ownership: "owned", name: "lando" }),
+            teardownProviderMachines: async () => {
+              calls.push("machine");
+              return { removed: true, name: "lando" };
+            },
+            teardownRuntimeService: async () => {
+              calls.push("runtime");
+              return { terminated: true };
+            },
+            teardownHostProxySessions: async () => {
+              calls.push("host-proxy");
+            },
+          }),
+        ),
+      );
+      expect(result.failed).toBe(false);
+      expect(calls).toEqual([]);
+      for (const id of [
+        "managed-provider-machines",
+        "runtime-service",
+        "managed-provider-runtime",
+        "host-proxy-sessions",
+      ]) {
+        expect(result.steps.find((step) => step.id === id)).toMatchObject({
+          status: "skipped",
+          outcome: "skipped",
+        });
+      }
+      expect(existsSync(setupState)).toBe(true);
+      expect(existsSync(runtimeDir)).toBe(true);
+      expect(existsSync(hostProxyDir)).toBe(true);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("uninstall machine and runtime ordering", () => {
+  test("removes the managed machine before runtime binaries", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-machine-order-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      mkdirSync(runtimeDir, { recursive: true });
+      const calls: string[] = [];
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            readManagedProviderMachine: () => ({ ownership: "owned", name: "lando" }),
+            teardownProviderMachines: async () => {
+              calls.push("machine");
+              expect(existsSync(runtimeDir)).toBe(true);
+              return { removed: true, name: "lando" };
+            },
+            teardownRuntimeService: async () => ({ terminated: false }),
+            terminateRuntimeBinProcesses: async () => {
+              calls.push("processes");
+            },
+            remove: async (path) => {
+              if (path === runtimeDir) calls.push("runtime");
+              await rm(path, { recursive: true, force: true });
+            },
+          }),
+        ),
+      );
+      expect(result.failed).toBe(false);
+      expect(calls).toEqual(["machine", "processes", "runtime"]);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps runtime binaries when machine teardown fails", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-machine-fail-");
+    try {
+      const runtimeDir = join(roots.userDataRoot, "runtime");
+      mkdirSync(runtimeDir, { recursive: true });
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            readManagedProviderMachine: () => ({ ownership: "owned", name: "lando" }),
+            teardownProviderMachines: async () => {
+              throw new Error("machine busy");
+            },
+          }),
+        ),
+      );
+      expect(result.failed).toBe(true);
+      expect(result.steps.find((step) => step.id === "managed-provider-machines")).toMatchObject({
+        outcome: "failed",
+        error: "machine busy",
+      });
+      expect(result.steps.some((step) => step.id === "runtime-service")).toBe(false);
+      expect(existsSync(runtimeDir)).toBe(true);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+});
 describe("uninstall managed provider runtime path", () => {
   test("targets providers/provider-lando and does not skip when providers/lando is absent", async () => {
     const roots = makeUninstallRoots("lando-uninstall-provider-path-");
@@ -413,7 +674,7 @@ describe("uninstall managed provider runtime path", () => {
         sandboxUninstallOptions(roots, {
           exists: (path: string) => path === bundle,
         }),
-        "keep-data",
+        "purge",
       );
 
       expect(plan.find((step) => step.id === "managed-provider-runtime")).toMatchObject({
@@ -432,6 +693,34 @@ describe("uninstall managed provider runtime path", () => {
   });
 });
 
+describe("platform-specific uninstall helpers", () => {
+  test.each(["win32", "darwin"] as const)("does not probe Linux helpers on %s", async (platform) => {
+    const roots = makeUninstallRoots("lando-uninstall-platform-helpers-");
+    try {
+      const linuxOnlyPath = join(roots.root, "linux-only-helper");
+      const options = sandboxUninstallOptions(roots, {
+        cgroupsDelegatePath: linuxOnlyPath,
+        socketProxyUnitPaths: [linuxOnlyPath],
+        socketProxyPolkitPath: linuxOnlyPath,
+        exists: (path) => {
+          if (path === linuxOnlyPath) throw new Error("Linux helper path was probed");
+          return existsSync(path);
+        },
+      });
+      const plan = await buildUninstallPlan(options, "keep-data", platform);
+      expect(plan.some((step) => step.id === "cgroups-delegate")).toBe(false);
+      expect(plan.some((step) => step.id === "socket-proxy-helper")).toBe(false);
+      if (platform === "win32") {
+        expect(plan.find((step) => step.id === "shell-entries")).toMatchObject({
+          target: "PowerShell profiles",
+          status: "manual",
+        });
+      }
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+});
 describe("uninstall cgroups delegation drop-in", () => {
   test("matching delegate.conf is owned and removed", async () => {
     const roots = makeUninstallRoots("lando-uninstall-delegate-match-");
@@ -652,6 +941,238 @@ describe("uninstall shellenv profile strip", () => {
     }
   });
 
+  test("purge strips readable profiles when another recorded profile is unreadable", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-shellenv-partial-");
+    const binary = join(roots.root, "external", "lando4");
+    const record = join(roots.userDataRoot, "install", "record.json");
+    const unreadable = join(roots.root, "unreadable.rc");
+    const block = [
+      LANDO_SHELLENV_BEGIN,
+      "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+      LANDO_SHELLENV_END,
+      "",
+    ].join("\n");
+    try {
+      mkdirSync(join(roots.root, "external"), { recursive: true });
+      mkdirSync(join(roots.userDataRoot, "install"), { recursive: true });
+      writeFileSync(binary, "v4 executable", { mode: 0o755 });
+      writeFileSync(roots.shellProfilePath, block);
+      writeFileSync(unreadable, block);
+      const bytes = readFileSync(binary);
+      writeFileSync(
+        record,
+        JSON.stringify({
+          version: 1,
+          data: {
+            executable: {
+              path: binary,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: bytes.length,
+              channel: "stable",
+              platform: "linux-x64",
+              releaseVersion: "4.2.0",
+            },
+            shellProfiles: [
+              { path: roots.shellProfilePath, blockSha256: "a".repeat(64) },
+              { path: unreadable, blockSha256: "b".repeat(64) },
+            ],
+          },
+        }),
+      );
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            listDiscoveredApps: async () => [],
+            readText: (path) => {
+              if (path === unreadable) throw new Error("denied");
+              return readFileSync(path, "utf8");
+            },
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(readFileSync(roots.shellProfilePath, "utf8")).not.toContain(LANDO_SHELLENV_BEGIN);
+      expect(readFileSync(unreadable, "utf8")).toContain(LANDO_SHELLENV_BEGIN);
+      expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
+        outcome: "manual",
+      });
+      expect(existsSync(record)).toBe(true);
+      expect(existsSync(binary)).toBe(false);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge removes the data root when the recorded binary lives in its bin directory", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-purge-bin-");
+    const binary = join(roots.userDataRoot, "bin", "lando4");
+    const record = join(roots.userDataRoot, "install", "record.json");
+    const sentinel = join(roots.userDataRoot, "bin", "lando4.bak");
+    const legacy = join(roots.root, "lando");
+    try {
+      mkdirSync(join(roots.userDataRoot, "bin"), { recursive: true });
+      mkdirSync(join(roots.userDataRoot, "install"), { recursive: true });
+      writeFileSync(binary, "v4 executable", { mode: 0o755 });
+      writeFileSync(sentinel, "previous binary");
+      writeFileSync(legacy, "legacy executable", { mode: 0o755 });
+      const bytes = readFileSync(binary);
+      writeFileSync(
+        record,
+        JSON.stringify({
+          version: 1,
+          data: {
+            executable: {
+              path: binary,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: bytes.length,
+              channel: "stable",
+              platform: "linux-x64",
+              releaseVersion: "4.2.0",
+            },
+            shellProfiles: [],
+          },
+        }),
+      );
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            listDiscoveredApps: async () => [],
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(existsSync(binary)).toBe(false);
+      expect(existsSync(record)).toBe(false);
+      expect(existsSync(roots.userDataRoot)).toBe(false);
+      expect(readFileSync(legacy, "utf8")).toBe("legacy executable");
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        outcome: "completed",
+      });
+      expect(result.steps.filter((step) => step.outcome === "completed").at(-1)?.id).toBe("install-record");
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge removes a setup data root that has no record and only managed bin tools", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-purge-setup-");
+    const bin = join(roots.userDataRoot, "bin");
+    const legacy = join(roots.root, "lando");
+    try {
+      mkdirSync(bin, { recursive: true });
+      writeFileSync(join(bin, "mkcert"), "mkcert", { mode: 0o755 });
+      writeFileSync(join(bin, "mkcert.sha256"), "abc");
+      writeFileSync(join(bin, ".mkcert.version"), "1.4.4");
+      writeFileSync(legacy, "legacy executable", { mode: 0o755 });
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            purge: true,
+            listDiscoveredApps: async () => [],
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(existsSync(roots.userDataRoot)).toBe(false);
+      expect(readFileSync(legacy, "utf8")).toBe("legacy executable");
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        outcome: "completed",
+      });
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
+  test("keep-data retires the install record while leaving the shellenv block", async () => {
+    const roots = makeUninstallRoots("lando-uninstall-shellenv-record-");
+    const binary = join(roots.root, "external", "lando4");
+    const record = join(roots.userDataRoot, "install", "record.json");
+    const block = [
+      "export USER_LINE=keep-me",
+      LANDO_SHELLENV_BEGIN,
+      "export LANDO_USER_DATA_ROOT='/tmp/lando'",
+      LANDO_SHELLENV_END,
+      "",
+    ].join("\n");
+    try {
+      mkdirSync(join(roots.root, "external"), { recursive: true });
+      mkdirSync(join(roots.userDataRoot, "install"), { recursive: true });
+      writeFileSync(binary, "v4 executable", { mode: 0o755 });
+      writeFileSync(roots.shellProfilePath, block);
+      const bytes = readFileSync(binary);
+      writeFileSync(
+        record,
+        JSON.stringify({
+          version: 1,
+          data: {
+            executable: {
+              path: binary,
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              size: bytes.length,
+              channel: "stable",
+              platform: "linux-x64",
+              releaseVersion: "4.2.0",
+            },
+            shellProfiles: [{ path: roots.shellProfilePath, blockSha256: "a".repeat(64) }],
+          },
+        }),
+      );
+
+      const result = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            keepData: true,
+          }),
+        ),
+      );
+
+      expect(result.failed).toBe(false);
+      expect(existsSync(binary)).toBe(false);
+      expect(existsSync(record)).toBe(false);
+      expect(readFileSync(roots.shellProfilePath, "utf8")).toBe(block);
+      expect(result.steps.find((step) => step.id === "shell-entries")).toMatchObject({
+        status: "manual",
+        outcome: "manual",
+      });
+      expect(result.steps.find((step) => step.id === "install-record")).toMatchObject({
+        outcome: "completed",
+      });
+
+      const repeated = await Effect.runPromise(
+        uninstall(
+          sandboxUninstallOptions(roots, {
+            yes: true,
+            keepData: true,
+          }),
+        ),
+      );
+      expect(repeated.failed).toBe(false);
+      expect(repeated.steps.find((step) => step.id === "installed-binary")).toMatchObject({
+        status: "skipped",
+        outcome: "skipped",
+      });
+      expect(repeated.steps.find((step) => step.id === "install-record")).toMatchObject({
+        status: "skipped",
+        outcome: "skipped",
+      });
+      expect(readFileSync(roots.shellProfilePath, "utf8")).toBe(block);
+    } finally {
+      rmSync(roots.root, { recursive: true, force: true });
+    }
+  });
+
   test("defaultPosixShellProfilePath prefers LANDO_SHELL_PROFILE when set", () => {
     expect(
       defaultPosixShellProfilePath({
@@ -696,7 +1217,7 @@ describe("uninstall shellenv profile strip", () => {
         uninstall({
           userDataRoot: roots.userDataRoot,
           userCacheRoot: roots.userCacheRoot,
-          execPath: roots.execPath,
+          userConfRoot: roots.userConfRoot,
           cgroupsDelegatePath: roots.cgroupsDelegatePath,
           socketProxyUnitPaths: [
             join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),
@@ -758,7 +1279,7 @@ describe("uninstall shellenv profile strip", () => {
         uninstall({
           userDataRoot: roots.userDataRoot,
           userCacheRoot: roots.userCacheRoot,
-          execPath: roots.execPath,
+          userConfRoot: roots.userConfRoot,
           cgroupsDelegatePath: roots.cgroupsDelegatePath,
           socketProxyUnitPaths: [
             join(roots.socketProxyUnitDir, "lando-proxy-http.socket"),

@@ -153,7 +153,7 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
   });
 
   test.skipIf(!isLinuxX64)(
-    "file-sync-mutagen host CLI + agent downloads route through Downloader",
+    "file-sync-mutagen host CLI, agent bundle, and agent downloads route through Downloader",
     async () => {
       await withTempDir(async (dir) => {
         const url = "https://mutagen.test/mutagen_linux_amd64_v0.18.1.tar.gz";
@@ -174,6 +174,7 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
         const artifacts = MUTAGEN_TOOL_MANIFEST.artifacts as Record<string, ToolArtifactEntry>;
         const keys = [
           "linux-x64/cli",
+          "linux-x64/agent-bundle",
           "linux-x64/agent/linux-amd64",
           "linux-x64/agent/linux-arm64",
           "linux-x64/agent/linux-armv7",
@@ -186,6 +187,14 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
           archive: "tar.gz",
           member: "mutagen",
           installName: "mutagen",
+        };
+        artifacts["linux-x64/agent-bundle"] = {
+          url,
+          sha256: archiveSha,
+          sizeBytes: archive.byteLength,
+          archive: "tar.gz",
+          member: "mutagen-agents.tar.gz",
+          installName: "mutagen-agents.tar.gz",
         };
         artifacts["linux-x64/agent/linux-amd64"] = {
           url,
@@ -246,6 +255,7 @@ describe("Downloader acceptance (linux-x64): runtime-bundle routes through Downl
 
           expect(streamCalls).toBe(1);
           expectBytes(await readFile(join(dir, "bin", "mutagen")), hostBin);
+          expectBytes(await readFile(join(dir, "bin", "mutagen-agents.tar.gz")), nestedAgents);
           expectBytes(await readFile(mutagenAgentInstallPath(join(dir, "bin"), "linux-amd64")), agentAmd64);
         } finally {
           for (const [key, entry] of originals) {

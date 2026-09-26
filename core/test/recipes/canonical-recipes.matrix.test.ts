@@ -60,6 +60,33 @@ const CANONICAL_ANSWERS: Readonly<Record<string, CanonicalAnswers>> = {
   mean: { name: "mean-canon", extras: { node: "22", redis: "true" } },
 };
 
+const EXPECTED_PRIMARY_SERVICE: Readonly<Record<string, string | undefined>> = {
+  "node-postgres": "web",
+  wordpress: "appserver",
+  laravel: "appserver",
+  symfony: "appserver",
+  lamp: "appserver",
+  lemp: "appserver",
+  "node-api": "api",
+  astro: "web",
+  sveltekit: "web",
+  nextjs: "web",
+  django: "web",
+  drupal: "appserver",
+  "drupal-cms": "appserver",
+  fastapi: "web",
+  rails: "web",
+  jekyll: "builder",
+  hugo: "builder",
+  eleventy: "builder",
+  empty: undefined,
+  "node-ts": "web",
+  toolbox: "toolbox",
+  backdrop: "appserver",
+  joomla: "appserver",
+  mean: "api",
+};
+
 const buildAnswers = (entry: CanonicalAnswers): Record<string, string> => ({
   name: entry.name,
   ...(entry.extras ?? {}),
@@ -160,6 +187,9 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
       (entry) => entry.id,
     );
     expect(missing).toEqual([]);
+    expect(Object.keys(EXPECTED_PRIMARY_SERVICE).sort()).toEqual(
+      BUNDLED_RECIPES.map((entry) => entry.id).sort(),
+    );
   });
 
   for (const recipe of BUNDLED_RECIPES) {
@@ -222,6 +252,12 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
             answersEntry.name,
           );
           expect(appPlan.services, `[${recipeId}] AppPlanner.plan returned no services record`).toBeDefined();
+          const primaries = Object.values(appPlan.services).filter((service) => service.primary);
+          const expectedPrimary = EXPECTED_PRIMARY_SERVICE[recipeId];
+          expect(
+            primaries.map((service) => String(service.name)),
+            `[${recipeId}] default exec target`,
+          ).toEqual(expectedPrimary === undefined ? [] : [expectedPrimary]);
         });
       });
     });

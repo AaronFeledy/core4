@@ -65,6 +65,7 @@ describe("backdrop decomposition", () => {
       services: {
         appserver: {
           type: "php:{{ recipe.php }}",
+          primary: true,
           framework: "backdrop",
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",

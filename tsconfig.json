@@ -84,6 +84,9 @@
       "path": "./plugins/lando4"
     },
     {
+      "path": "./plugins/lando3"
+    },
+    {
       "path": "./tsconfig.test.json"
     }
   ]

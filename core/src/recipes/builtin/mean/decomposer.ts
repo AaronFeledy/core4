@@ -48,6 +48,7 @@ export const meanDecomposer = ((ports) => ({
           services: {
             api: {
               type: "node:{{ recipe.node }}",
+              primary: true,
               port: 3000,
               environment: {
                 NODE_ENV: "development",

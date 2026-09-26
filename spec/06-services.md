@@ -140,7 +140,7 @@ Core publishes the reserved `LANDO`/`LANDO_*` catalog used by `appEnv` validatio
 
 Always when applicable: `LANDO`, `LANDO_DEBUG`, `LANDO_HOST_OS`, `LANDO_HOST_USER`, `LANDO_HOST_UID`, `LANDO_HOST_GID`, `LANDO_HOST_HOME`, `LANDO_APP_NAME`, `LANDO_APP_KIND`, `LANDO_APP_ROOT`, `LANDO_PROJECT`, `LANDO_PROJECT_MOUNT`, `LANDO_SERVICE_API`, `LANDO_SERVICE_NAME`, `LANDO_SERVICE_TYPE`, and `LANDO_DOMAIN`.
 
-Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`, `LANDO_CA_CERT`, `LANDO_CA_DIR`, `LANDO_CA_BUNDLE`, `LANDO_USER`, `LANDO_UID`, `LANDO_GID`, `SSH_AUTH_SOCK`, `LANDO_HOST_PROXY_SOCKET`, `LANDO_HOST_PROXY_TOKEN`, `LANDO_HOST_PROXY_DEPTH`, `LANDO_DB_USER`, `LANDO_DB_PASSWORD`, `LANDO_DB_NAME`, `LANDO_DB_ROOT_PASSWORD`, `LANDO_GLOBAL_<SERVICE>_HOST`, `LANDO_GLOBAL_<SERVICE>_PORT`, `LANDO_GLOBAL_<SERVICE>_<EP>_PORT`, `LANDO_GLOBAL_<SERVICE>_URL`, `LANDO_SCRATCH_ID`, `LANDO_SCRATCH_SOURCE_KIND`, and `LANDO_SCRATCH_ISOLATE`.
+Conditional keys are `LANDO_HOST_IP`, `LANDO_SERVICE_CERT`, `LANDO_SERVICE_KEY`, `LANDO_CA_CERT`, `LANDO_CA_DIR`, `LANDO_CA_BUNDLE`, `LANDO_USER`, `LANDO_UID`, `LANDO_GID`, `SSH_AUTH_SOCK`, `GNUPGHOME`, `LANDO_HOST_PROXY_SOCKET`, `LANDO_HOST_PROXY_TOKEN`, `LANDO_HOST_PROXY_DEPTH`, `LANDO_DB_USER`, `LANDO_DB_PASSWORD`, `LANDO_DB_NAME`, `LANDO_DB_ROOT_PASSWORD`, `LANDO_GLOBAL_<SERVICE>_HOST`, `LANDO_GLOBAL_<SERVICE>_PORT`, `LANDO_GLOBAL_<SERVICE>_<EP>_PORT`, `LANDO_GLOBAL_<SERVICE>_URL`, `LANDO_SCRATCH_ID`, `LANDO_SCRATCH_SOURCE_KIND`, and `LANDO_SCRATCH_ISOLATE`.
 
 `LANDO_GLOBAL_*` is projected only for global services required by activated `AppFeature`s (§20.6.3). Plugins MAY add typed projections through `AppFeature.apply()`.
 
@@ -221,6 +221,7 @@ Activated `requires.globalServices` are ensured during `pre-start` before user-a
 | `lando.certs` | 1000 |
 | `lando.security` | 1100 |
 | `lando.ssh-agent` | 1200 |
+| `lando.gpg-agent` | 1210 |
 | `lando.host-proxy` | 1250 |
 | `lando.bun-self` | 1260 |
 | `lando.git` | 1300 |
@@ -229,7 +230,7 @@ Activated `requires.globalServices` are ensured during `pre-start` before user-a
 | `lando.user-image` | 1900 |
 | `lando.user` | 2000 |
 
-`lando.host-proxy` provides container-to-host RPC and `LANDO_HOST_PROXY_*`. `lando.bun-self` installs container-side Bun under `/usr/local/lib/lando/bun`, sets `BUN_INSTALL_GLOBAL_DIR`, `LANDO_BUN_VERSION`, and `LANDO_BUN_PATH`, and rejects incompatible host-proxy Bun shims with `BunSelfFeatureConflictError`.
+`lando.ssh-agent` mounts the per-app agent relay directory at `/run/lando/ssh-agent` and sets `SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock` in both sidecar and host modes (§10.4). `lando.gpg-agent` is opt-in through `gpgAgent.forward`, mounts the gpg relay directory at `/run/lando/gpg-agent`, and sets `GNUPGHOME` to it (§10.4.1). `lando.host-proxy` provides container-to-host RPC and `LANDO_HOST_PROXY_*`. `lando.bun-self` installs container-side Bun under `/usr/local/lib/lando/bun`, sets `BUN_INSTALL_GLOBAL_DIR`, `LANDO_BUN_VERSION`, and `LANDO_BUN_PATH`, and rejects incompatible host-proxy Bun shims with `BunSelfFeatureConflictError`.
 
 ### 6.12 Canonical service-type catalog
 

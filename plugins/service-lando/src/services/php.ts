@@ -6,6 +6,7 @@ import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { parseServiceMount } from "./_volume-helpers.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
@@ -18,7 +19,6 @@ import {
 } from "./php-prerequisites.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
-  PHP_FPM_LOG_SOURCES,
   type PhpVia,
   apacheDefaultSiteRemovalBuildStep,
   apacheStartCommand,
@@ -28,6 +28,7 @@ import {
   phpEndpointProtocol,
   phpImageFor,
   phpListenPort,
+  phpLogSources,
   resolvePhpVia,
 } from "./php-via.ts";
 import {
@@ -111,13 +112,20 @@ const applyApacheShape = (
     ctx.addBuildStep(apacheDefaultSiteRemovalBuildStep());
     ctx.addBuildStep(landoErrorPagesBuildStep());
     if (listenPort !== undefined) ctx.addBuildStep(apacheListenBuildStep(DEBIAN_APACHE_PORTS_CONF_PATH));
-    ctx.setCommand(apacheStartCommand(webroot, allowOverride, listenPort));
+    ctx.setCommand(
+      apacheStartCommand(webroot, allowOverride, listenPort, ctx.normalizedConfig.user === undefined),
+    );
   }
 };
 
 const applyFpmShape = (ctx: ServiceFeatureContext): void => {
   if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
-    ctx.setCommand(fpmStartCommand(phpListenPort("fpm", authoredListenPort(ctx.normalizedConfig.port))));
+    ctx.setCommand(
+      fpmStartCommand(
+        phpListenPort("fpm", authoredListenPort(ctx.normalizedConfig.port)),
+        ctx.normalizedConfig.user === undefined,
+      ),
+    );
   }
 };
 
@@ -173,19 +181,30 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     }
   }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
-  ctx.setAppMount({
-    source: AbsolutePath.make(ctx.appRoot),
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-    excludes: [],
-    includes: [],
-  });
-  ctx.addMount({
-    type: "bind",
-    source: ctx.appRoot,
-    target: APP_MOUNT_TARGET,
-    readOnly: false,
-  });
+  const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
+  if (!authoredMounts.some((mount) => mount.target === APP_MOUNT_TARGET)) {
+    ctx.setAppMount({
+      source: AbsolutePath.make(ctx.appRoot),
+      target: APP_MOUNT_TARGET,
+      readOnly: false,
+      excludes: [],
+      includes: [],
+    });
+    ctx.addMount({
+      type: "bind",
+      source: ctx.appRoot,
+      target: APP_MOUNT_TARGET,
+      readOnly: false,
+    });
+  }
+  for (const mount of authoredMounts) {
+    ctx.addMount({
+      type: mount.type,
+      ...(mount.source === undefined ? {} : { source: mount.source }),
+      target: PortablePath.make(mount.target),
+      readOnly: mount.readOnly,
+    });
+  }
   applyServingMode(ctx, via, webroot, allowOverride, listenPort);
   if (via !== "cli") {
     addServicePortEndpoints(ctx, { port, protocol: phpEndpointProtocol(via) });
@@ -256,7 +275,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
             ...input.service,
             type: `php:${resolvedVersion}`,
           } satisfies ServiceConfig,
-          logSources: PHP_FPM_LOG_SOURCES,
+          logSources: phpLogSources(via),
           features: [
             { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot } },
             {

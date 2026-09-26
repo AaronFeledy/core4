@@ -33,6 +33,7 @@
     "./dependency-schedule": "./src/dependency-schedule.ts",
     "./service-start-schedule": "./src/service-start-schedule.ts",
     "./engine-api": "./src/engine-api.ts",
+    "./resource-names": "./src/resource-names.ts",
     "./redact": "./src/redact.ts",
     "./engine-errors": "./src/engine-errors.ts",
     "./dialect": "./src/dialect.ts",
@@ -49,6 +50,7 @@
     "./podman/inspect": "./src/podman/inspect.ts",
     "./podman/exec": "./src/podman/exec.ts",
     "./podman/logs": "./src/podman/logs.ts",
+    "./podman/machine-ssh-bridge": "./src/podman/machine-ssh-bridge.ts",
     "./podman/container-events": "./src/podman/container-events.ts",
     "./podman/health": "./src/podman/health.ts",
     "./podman/version-floor": "./src/podman/version-floor.ts"

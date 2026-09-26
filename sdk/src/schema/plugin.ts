@@ -168,6 +168,23 @@ export const SshServiceContribution = Schema.Struct({
 });
 export type SshServiceContribution = typeof SshServiceContribution.Type;
 
+export const SecretStoreContribution = Schema.Struct({
+  id: Schema.String.annotations({ description: "Unique SecretStore implementation id across plugins." }),
+  module: Schema.String.annotations({
+    description: "Contained plugin module exporting the SecretStore Layer.",
+  }),
+  schemes: Schema.Array(Schema.String).annotations({
+    description: "Secret-reference schemes owned by this store, without the :// separator.",
+  }),
+  summary: Schema.optional(Schema.String).annotations({
+    description: "One-line implementation description for listings and diagnostics.",
+  }),
+  deprecated: Schema.optional(DeprecationNotice).annotations({
+    description: "Optional lifecycle notice for this contribution.",
+  }),
+});
+export type SecretStoreContribution = typeof SecretStoreContribution.Type;
+
 /**
  * Plugins use `configTranslators:` to register `ConfigTranslator`
  * implementations. Translators are loaded only for an explicit conversion
@@ -214,6 +231,9 @@ export const PluginSetupContribution = Schema.Struct({
 export type PluginSetupContribution = typeof PluginSetupContribution.Type;
 
 export const PluginContribution = Schema.Struct({
+  secretStores: Schema.optional(Schema.Array(SecretStoreContribution)).annotations({
+    description: "SecretStore implementations and their owned reference schemes registered by this plugin.",
+  }),
   serviceTypes: Schema.optional(Schema.Array(ContributionRef)),
   serviceFeatures: Schema.optional(Schema.Array(ContributionRef)),
   appFeatures: Schema.optional(Schema.Array(ContributionRef)),

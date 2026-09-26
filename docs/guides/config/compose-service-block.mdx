@@ -31,6 +31,29 @@ services:
       - "internal.test:127.0.0.1"
 ```
 
+## Keep Lando features on a custom image
+
+Use `type: lando` instead when you want Lando's environment and app mount. Its
+directory scaffold works on shell-less images, including images built from
+`scratch`. Set `home: false` unless you declare the custom image's home path.
+
+```yaml
+services:
+  web:
+    type: lando
+    image: traefik/whoami:v1.10
+    home: false
+    ports:
+      - "8080:80"
+```
+
+Run `lando start`, then `lando info` to inspect the service. The image keeps its
+own entrypoint. Shell build hooks and CA trust-store installation still require
+the corresponding tools inside the image; leave them unconfigured for a
+shell-less image. If your host injects custom CAs, set
+`security.inheritNetworkCa: false` on that service. Use `type: compose` to skip
+the Lando feature stack entirely.
+
 <Guide>
   <Scenario id="paste-compose-service" layer="e2e" tags={["@smoke"]} render>
     <Step name="load-compose-service">

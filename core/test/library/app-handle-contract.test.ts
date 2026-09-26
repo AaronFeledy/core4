@@ -36,6 +36,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { ComposeKeyRejectedError, LandofileLoadOutsideRootError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
+import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
@@ -82,7 +83,19 @@ const planWithFileSync = (root: string): AppPlan => ({
   slug: "embedded-app",
   root: AbsolutePath.make(root),
   provider: ProviderId.make(TestRuntimeProvider.id),
-  services: { [cacheService.name]: cacheService },
+  services: {
+    [cacheService.name]: {
+      ...cacheService,
+      appMount: {
+        source: AbsolutePath.make(root),
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "accelerated",
+        excludes: [],
+        includes: [],
+      },
+    },
+  },
   routes: [],
   networks: [],
   stores: [],
@@ -128,6 +141,7 @@ const makeTrackingFileSyncEngine = (): {
         yield* Effect.addFinalizer(() => Effect.sync(() => sessions.delete(ref)));
         return ref;
       }),
+    flushSession: () => Effect.void,
     pauseSession: () => Effect.void,
     resumeSession: () => Effect.void,
     terminateSession: (ref) => Effect.sync(() => sessions.delete(ref)),
@@ -351,13 +365,25 @@ describe("@lando/core App-handle library contract", () => {
   test("runtime-scope close tears down App-handle start resources", async () => {
     await withTempApp(async (dir) => {
       const tracking = makeTrackingFileSyncEngine();
+      const acceleratedProvider = {
+        ...TestRuntimeProvider,
+        inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
+        prepareFileSyncTargets: (syncPlan: AppPlan) =>
+          Effect.succeed({ targets: preparedFileSyncTargets(syncPlan), rollback: Effect.void }),
+      };
       const activeSessions = await Effect.runPromise(
         Effect.scoped(
           openLandoRuntime({
             plugins: {
               policy: "bundled-only",
               layers: [
-                ...testProviderLayers,
+                Layer.succeed(RuntimeProvider, acceleratedProvider),
+                Layer.succeed(RuntimeProviderRegistry, {
+                  list: Effect.succeed([ProviderId.make(acceleratedProvider.id)]),
+                  capabilities: Effect.succeed(acceleratedProvider.capabilities),
+                  select: () => Effect.succeed(acceleratedProvider),
+                }),
+                Layer.succeed(RouterService, TestRouterService),
                 Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync(dir)) }),
                 Layer.succeed(FileSyncEngine, tracking.engine),
               ],

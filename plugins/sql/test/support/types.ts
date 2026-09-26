@@ -12,6 +12,7 @@ export type SqlTestOptions = {
   readonly countFailuresBeforeSuccess?: number;
   readonly execFails?: boolean;
   readonly restoreFails?: boolean;
+  readonly snapshotFails?: boolean;
   readonly startFails?: boolean;
   readonly initiallyRunning?: boolean;
   readonly runtimeExists?: boolean;

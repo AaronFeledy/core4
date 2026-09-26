@@ -1,6 +1,7 @@
 /** Self-update process contracts and binary staging primitives. */
 import { chmod, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname } from "node:path";
+import { dirname } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 
 import { Effect } from "effect";
 
@@ -17,7 +18,7 @@ export type UpdateExecve = (input: UpdateExecveInput) => Effect.Effect<void, unk
 export type UpdateRename = (from: string, to: string) => Promise<void>;
 
 export interface UpdateSelfUpdateOptions {
-  readonly executablePath?: string;
+  readonly installRecordFile?: string;
   readonly platform?: string;
   readonly arch?: string;
   readonly argv?: ReadonlyArray<string>;
@@ -46,11 +47,6 @@ const defaultExecve: UpdateExecve = (input) =>
     catch: (cause) => cause,
   });
 
-const isLikelyLandoExecutable = (path: string): boolean => basename(path).startsWith("lando");
-
-const defaultSelfUpdateExecutablePath = (): string | undefined =>
-  isLikelyLandoExecutable(process.execPath) ? process.execPath : undefined;
-
 export const posixPermissionRemediation = (executablePath: string): string =>
   `Lando will not run sudo automatically. Fix write permissions for ${dirname(executablePath)}, reinstall Lando into a user-writable directory, or download the matching Lando binary from GitHub Releases and run: sudo install -m 755 <downloaded-lando-binary> ${executablePath}`;
 
@@ -68,7 +64,7 @@ export const isPermissionCause = (cause: unknown): boolean => {
 };
 
 export interface ResolvedSelfUpdateOptions {
-  readonly executablePath: string;
+  readonly installRecordFile: string;
   readonly platform: string;
   readonly arch: string;
   readonly argv: ReadonlyArray<string>;
@@ -81,20 +77,18 @@ export interface ResolvedSelfUpdateOptions {
 export const resolveSelfUpdateOptions = (
   input: false | UpdateSelfUpdateOptions | undefined,
 ): ResolvedSelfUpdateOptions | undefined => {
-  if (input === false) return undefined;
-  const executablePath = input?.executablePath ?? defaultSelfUpdateExecutablePath();
-  if (executablePath === undefined) return undefined;
+  if (input === false || input === undefined) return undefined;
   return {
-    executablePath,
-    platform: input?.platform ?? process.platform,
-    arch: input?.arch ?? process.arch,
+    installRecordFile: input.installRecordFile ?? makeLandoPaths({}).installRecordFile,
+    platform: input.platform ?? process.platform,
+    arch: input.arch ?? process.arch,
     // Engine owns no process-entry facts (engine-closure): the CLI shell supplies
     // the invocation argv; absent that, re-exec falls back to the bare executable.
-    argv: input?.argv ?? [executablePath],
-    env: input?.env ?? process.env,
-    execve: input?.execve ?? defaultExecve,
-    rename: input?.rename ?? rename,
-    replaceWindows: input?.replaceWindows ?? defaultWindowsReplacement,
+    argv: input.argv ?? [],
+    env: input.env ?? process.env,
+    execve: input.execve ?? defaultExecve,
+    rename: input.rename ?? rename,
+    replaceWindows: input.replaceWindows ?? defaultWindowsReplacement,
   };
 };
 

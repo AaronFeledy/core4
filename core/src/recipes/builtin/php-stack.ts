@@ -109,7 +109,7 @@ type PhpAppserverLinesInput = {
 };
 
 export const renderPhpAppserverLines = (input: PhpAppserverLinesInput): ReadonlyArray<string> => {
-  const lines = ["  appserver:", `    type: php:${input.php}`];
+  const lines = ["  appserver:", `    type: php:${input.php}`, "    primary: true"];
   if (input.framework !== undefined) lines.push(`    framework: ${input.framework}`);
   if (input.webserver === "nginx") lines.push("    via: fpm");
   lines.push(`    webroot: ${input.webroot}`);

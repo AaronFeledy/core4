@@ -83,13 +83,20 @@ describe("uninstallRuntimeDirRemediation", () => {
     );
   });
 
-  test("uses sudo rm on non-linux even when managed podman exists", () => {
+  test("uses platform-specific remediation when managed podman exists", () => {
     // Given / When / Then — unshare is Linux-only; match defaultRemoveRuntimeDir
     expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", true, "/rt/bin/podman", "darwin")).toBe(
       "Run `sudo rm -rf /rt/storage/volumes/x` then rerun `lando uninstall --purge --yes`.",
     );
-    expect(uninstallRuntimeDirRemediation("/rt/storage/volumes/x", true, "/rt/bin/podman", "win32")).toBe(
-      "Run `sudo rm -rf /rt/storage/volumes/x` then rerun `lando uninstall --purge --yes`.",
+    expect(
+      uninstallRuntimeDirRemediation(
+        "C:/runtime/bin/win-sshproxy.exe",
+        true,
+        "C:/runtime/bin/podman.exe",
+        "win32",
+      ),
+    ).toBe(
+      "Close any Lando-managed process using this path, then run `Remove-Item -LiteralPath 'C:/runtime/bin/win-sshproxy.exe' -Recurse -Force` in PowerShell and rerun `lando uninstall --purge --yes`.",
     );
   });
 });

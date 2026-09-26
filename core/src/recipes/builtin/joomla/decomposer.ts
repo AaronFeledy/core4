@@ -48,6 +48,7 @@ export const joomlaDecomposer = ((ports) => ({
           services: {
             appserver: {
               type: "php:{{ recipe.php }}",
+              primary: true,
               framework: "joomla",
               webroot: "{{ recipe.webroot }}",
               composer: composerEnabled ? "{{ recipe.composer }}" : false,

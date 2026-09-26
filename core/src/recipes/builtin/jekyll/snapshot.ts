@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const JEKYLL_RECIPE_VERSION = "0.1.0";
 export const JEKYLL_CONTENT_DIGEST =
-  "sha256:87bf65df2b9440752e42d6610d6fa1bdb69e669efa389b5d70b1238139420e64";
+  "sha256:9d470a4c579e020b45abe1c8115fac24f98b883dceb6daf312b8964c98ce2ad6";
 
 export const jekyllProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -46,6 +46,7 @@ export const jekyllSnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "ruby:3.3" } },
+                    { key: "primary", value: { kind: "Literal", value: true } },
                     { key: "framework", value: { kind: "Literal", value: "none" } },
                     {
                       key: "command",
@@ -64,6 +65,7 @@ export const jekyllSnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "static:nginx" } },
+                    { key: "primary", value: { kind: "Literal", value: false } },
                     {
                       key: "appMount",
                       value: {

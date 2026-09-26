@@ -16,6 +16,7 @@ const fixtureFiles = [
   "package.json",
   "biome.json",
   "core/build.config.ts",
+  "core/src/recipes/lando3-ports.ts",
   "scripts/_codegen-output.ts",
   "scripts/build-bundled-plugins.ts",
 ] as const;

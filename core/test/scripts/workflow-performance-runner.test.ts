@@ -53,9 +53,9 @@ const setupStdout = (fileSyncStatus?: "deferred" | "installed" | "satisfied" | "
 
 describe("workflow performance runner", () => {
   test.each([
-    ["deferred", "file-sync: deferred until first accelerated app:start"],
+    ["deferred", "file-sync: Mutagen download skipped (run lando setup to install later)"],
     ["installed", "file-sync: installed"],
-    ["unavailable", "file-sync: unavailable (userDataRoot is not configured)"],
+    ["unavailable", "file-sync: unavailable (ordinary mounts remain available)"],
   ] as const)("skips lanes requiring native bind mounts when setup reports %s", async (status, readiness) => {
     // Given a successful setup with an unmet native-bind-mount requirement.
     const commands: WorkflowPerformanceCommand[] = [];

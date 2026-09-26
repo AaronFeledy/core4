@@ -8,6 +8,19 @@ const MAX_RESPONSE_BYTES = 4_096;
 // stays inside this window; emulated Windows PowerShell 5.1 does not.
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+const windowsPowerShellWorkerEnv = (
+  env: Readonly<Record<string, string | undefined>>,
+  systemRoot: string,
+): Readonly<Record<string, string | undefined>> => {
+  const childEnv = Object.fromEntries(
+    Object.entries(env).filter(([key]) => key.toLowerCase() !== "psmodulepath"),
+  );
+  // PowerShell 5.1 must load its own Security module. A parent pwsh session can
+  // prepend PowerShell 7 modules, whose TypeData breaks Set-Acl during autoload.
+  childEnv.PSModulePath = win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "Modules");
+  return childEnv;
+};
+
 const ACL_ASSERTIONS = `
 $actual = Get-Acl -LiteralPath $path
 $rules = @($actual.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
@@ -168,9 +181,10 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
   };
 
   const start = (): PrivateFileAccessProcess => {
+    const executable = options.powershellPath ?? win32.join(options.systemRoot, ...POWERSHELL_RELATIVE_PATH);
     const child = options.spawn(
       [
-        options.powershellPath ?? win32.join(options.systemRoot, ...POWERSHELL_RELATIVE_PATH),
+        executable,
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
@@ -179,7 +193,12 @@ export const makePrivateFileAccessWorker = (options: PrivateFileAccessWorkerOpti
         "-EncodedCommand",
         encodedCommand,
       ],
-      { env: options.env },
+      {
+        env:
+          win32.basename(executable).toLowerCase() === "powershell.exe"
+            ? windowsPowerShellWorkerEnv(options.env, options.systemRoot)
+            : options.env,
+      },
     );
     processHandle = child;
     reader = child.stdout.getReader();

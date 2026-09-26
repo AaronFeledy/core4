@@ -3,15 +3,18 @@ import { Context, Effect, Either, Layer, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
-import type { LandoPluginModule } from "@lando/sdk/plugins";
+import type { LandoPluginContext, LandoPluginModule } from "@lando/sdk/plugins";
 import { AppId, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 import {
   CertificateAuthority,
   ConfigService,
+  ManagedFileService,
   PathsService,
   RouterService,
   type RouterServiceShape,
+  StateStore,
 } from "@lando/sdk/services";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import {
   CertificateAuthorityResolver,
@@ -24,6 +27,8 @@ import {
   makeRouterServiceRegistry,
   makeRouterServiceRegistryLive,
 } from "@lando/engine/subsystems/proxy/registry";
+import { makeTestManagedFileStore } from "../../../src/testing/managed-file.ts";
+import { makeTestStateStore } from "../../../src/testing/state-store.ts";
 import { provideTestRuntime } from "../../../src/testing/test-runtime.ts";
 
 const service = (id: string): RouterServiceShape => ({
@@ -52,8 +57,21 @@ const configLayer = Layer.succeed(ConfigService, {
   get: (key) => Effect.succeed(config[key]),
 });
 const pathsLayer = Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} }));
+const managedFileLayer = Layer.succeed(
+  ManagedFileService,
+  Effect.runSync(makeTestManagedFileStore()).service,
+);
+const stateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
+const privateFileAccessLayer = Layer.succeed(PrivateFileAccessService, {
+  enforce: async () => undefined,
+  verify: async () => undefined,
+});
 
-const proxyModule = (id: string, layer: RouterServiceRegistration["layer"]): LandoPluginModule => ({
+const proxyModule = (
+  id: string,
+  layer: RouterServiceRegistration["layer"],
+  onContext?: (context: LandoPluginContext) => void,
+): LandoPluginModule => ({
   name: "@lando/proxy-test",
   manifest: Schema.decodeSync(PluginManifest)({
     name: "@lando/proxy-test",
@@ -61,14 +79,34 @@ const proxyModule = (id: string, layer: RouterServiceRegistration["layer"]): Lan
     api: 4,
     contributes: { routerServices: [{ id, module: "./proxy.ts" }] },
   }),
-  routerServices: new Map([[id, layer]]),
+  routerServices: new Map([
+    [
+      id,
+      {
+        make: (context) => {
+          onContext?.(context);
+          return layer;
+        },
+      },
+    ],
+  ]),
 });
 
 const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explicit: string) =>
   Effect.runPromise(
     Effect.flatMap(RouterServiceRegistry, (registry) => registry.select({ explicit })).pipe(
       Effect.provide(
-        makeRouterServiceRegistryLive(modules).pipe(Layer.provide(Layer.merge(configLayer, pathsLayer))),
+        makeRouterServiceRegistryLive(modules).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              configLayer,
+              pathsLayer,
+              managedFileLayer,
+              stateStoreLayer,
+              privateFileAccessLayer,
+            ),
+          ),
+        ),
       ),
       Effect.either,
     ),
@@ -100,12 +138,21 @@ describe("RouterService registry selection", () => {
   test("resolves an id from an injected plugin descriptor module", async () => {
     // Given
     const fakeLayer = Layer.succeed(RouterService, service("fake"));
+    let owningPluginId: string | undefined;
 
     // When
-    const result = await runInjectedSelection([proxyModule("fake", fakeLayer)], "fake");
+    const result = await runInjectedSelection(
+      [
+        proxyModule("fake", fakeLayer, (context) => {
+          owningPluginId = context.id;
+        }),
+      ],
+      "fake",
+    );
 
     // Then
     expect(Either.isRight(result)).toBe(true);
+    expect(owningPluginId).toBe("@lando/proxy-test");
     if (Either.isRight(result)) expect(result.right.layer).toBe(fakeLayer);
   });
 

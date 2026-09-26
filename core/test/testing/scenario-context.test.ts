@@ -355,6 +355,50 @@ describe("withScenarioContext", () => {
     });
   });
 
+  test("strips leading lando and lando4 executable tokens from runCli commands", async () => {
+    const seen: string[][] = [];
+
+    await Effect.runPromise(
+      withScenarioContext(
+        {
+          guideId: "node-postgres",
+          scenarioId: "parse-command-tokens",
+          runCli: async (command) => {
+            seen.push([...command]);
+            return {
+              command,
+              stdout: "",
+              stderr: "",
+              exitCode: 0,
+              events: [],
+            };
+          },
+        },
+        (context) =>
+          Effect.gen(function* () {
+            yield* context.runCli("lando4 start");
+            yield* context.runCli("lando start");
+            yield* context.runCli("lando4");
+            yield* context.runCli("landofile x");
+            yield* context.runCli("lando42 x");
+            yield* context.runCli(["lando4", "info"]);
+            yield* context.runCli("version");
+            return undefined;
+          }),
+      ),
+    );
+
+    expect(seen).toEqual([
+      ["start"],
+      ["start"],
+      [],
+      ["landofile", "x"],
+      ["lando42", "x"],
+      ["info"],
+      ["version"],
+    ]);
+  });
+
   test("preserves testDir when KEEP_SCENARIO_DIRS=1", async () => {
     const previous = process.env.KEEP_SCENARIO_DIRS;
     process.env.KEEP_SCENARIO_DIRS = "1";

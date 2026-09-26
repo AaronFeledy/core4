@@ -60,6 +60,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 | `listVolumes`, `removeVolume` | Enumerates and removes selected volumes. |
 | `copyToService`, `copyFromService` | Transfers bytes to or from a service. |
 | `exportArtifact`, `importArtifact` | Streams artifacts across the provider boundary. |
+| `openAgentSocketBridge` | Scoped; makes a host-side agent relay reachable to one app's services as a directory containing the named socket (§10.4). |
 
 `exec` MUST be a collector over `execStream`, not a second execution path. `execStream`, foreground `run`, data transfers, and other live operations are scope-bound. `logs` MUST always support the implicit console source when `serviceLogs` is declared; following declared file sources additionally requires `serviceLogSources` and follows §6.14.
 
@@ -101,10 +102,23 @@ Capabilities are schema-validated claims. Providers MUST report them truthfully,
 | `artifactExport`, `artifactImport` | Supports streaming artifacts out and in. |
 | `ephemeralMounts` | Ephemeral `run` honors declared mounts. |
 | `providerExtensions` | Extension namespaces the provider accepts. |
+| `agentSocket` | Agent-socket delivery for §10.4 SSH and gpg relays: `{ delivery: "bind-directory" \| "guest-bridge" \| "volume-relay" }`. Omitted means no delivery; §10.4 sidecar mode then warns and starts without the socket overlay, while host mode and gpg forwarding fail planning with `CapabilityError`. |
 
 Missing required capabilities fail before provider action with `CapabilityError` naming the provider, feature, service when applicable, and remediation. Published endpoints require `hostPortPublish`; internal endpoints do not. Providers return assigned host ports as materialization results and MUST NOT mutate desired publication state.
 
 `composeSpec: native` is necessary but not sufficient for preserved Compose semantics. `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` are fail-closed exact declarations; omission means no support, non-empty declarations below `native` are invalid, and support MUST NOT be inferred from a parent field or tier. Declaring a field claims complete realization of its accepted forms. Service and project `x-*` fields remain inert preserved metadata unless a specific namespace later gains an explicit capability or provider extension.
+
+#### 5.4.1 Agent-socket delivery (`agentSocket`, `openAgentSocketBridge`)
+
+`openAgentSocketBridge(input)` takes `AgentSocketBridgeInput` (`appId`, `sessionId`, `kind: "ssh" | "gpg"`, an `upstream` that is a host Unix socket path or an authenticated host-loopback TCP endpoint, and `socketName`) and returns `AgentSocketBridgeResult`: either `bind-directory` naming a host directory the provider can bind, or `volume` naming a provider volume; in both cases the directory contains `socketName` once the bridge is live. The result is Scope-owned. Closing the scope tears down any guest listener, relay process, or volume and MUST reap them on interrupt. The provider MUST declare `agentSocket` only when its bridge works on the current host, so capability failure happens before planning rather than at apply.
+
+| Host and provider | `delivery` | Realization |
+|---|---|---|
+| Linux native Podman or Docker Engine, including WSL rootless managed Podman | `bind-directory` | The app-owned relay directory is bind-mounted with `createHostPath: false`; the relay socket is created by the host worker and MUST be connectable by the actual non-root service user. |
+| Podman machine on macOS and Windows, managed or user-owned | `guest-bridge` | The provider opens an SSH reverse forward into the machine using its machine SSH metadata, publishing a guest Unix socket in a machine-side directory that the machine bind-mounts into the service. On Windows the host worker reads the named-pipe upstream and the reverse forward carries a loopback byte stream. Unix sockets are never placed on virtiofs or 9p shares. |
+| Docker Desktop on macOS and Windows | `volume-relay` | A provider-owned guest relay container connects to an authenticated host-loopback broker through the Desktop host gateway and publishes the socket in an app-private volume shared with the service. The Desktop `/run/host-services/ssh-auth.sock` socket MUST NOT be used; it only reaches Desktop's own launchd agent. |
+
+The relay carries raw agent bytes and is separate from the §10.10 host-proxy protocol. Failure policy follows §10.4: in sidecar mode an unsupported combination or a failed bridge publishes a warning, the app starts without the socket overlay, and `lando doctor` reports the ssh check degraded; in host mode (`sshAgent.sidecar: false`) and for gpg forwarding, a missing `agentSocket` capability is a planning-time `CapabilityError` naming the provider and the alternatives, start-time discovery and bridge failures are `SshAgentUnavailableError` or `GpgAgentUnavailableError`, and faults after readiness are the matching `*TransportError`. Relay sockets are `0666` inside a per-user `0700` run directory. The Windows `guest-bridge` loopback TCP broker carries no token: other local accounts on that Windows host can reach it while the app runs, which is a documented trust-boundary limitation.
 
 `bindMountPerformance: slow` causes the planner to use the active `FileSyncEngine` unless the user explicitly selects the documented passthrough escape hatch; `none` rejects bind mounts. `sharedCrossAppNetwork` gates global-service contributions. Data-plane declarations select native behavior, documented generic fallback, or typed failure.
 

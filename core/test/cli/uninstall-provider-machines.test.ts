@@ -29,7 +29,6 @@ describe("uninstall managed provider machines", () => {
       const plan = await buildUninstallPlan({
         userDataRoot,
         userCacheRoot,
-        execPath: join(root, "lando"),
         cgroupsDelegatePath: join(root, "delegate.conf"),
         shellProfilePath: join(root, ".profile"),
         exists: () => false,
@@ -45,6 +44,35 @@ describe("uninstall managed provider machines", () => {
     }
   });
 
+  test("Windows purge reports host-backed Podman network definitions for manual review", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const options = {
+        userDataRoot,
+        userCacheRoot,
+        execPath: join(root, "lando"),
+        exists: () => false,
+        readManagedProviderMachine: classifyingAs({
+          ownership: "owned" as const,
+          name: "lando",
+          createdAt: "2026-09-22T09:24:48.0410706-05:00",
+        }),
+      };
+      const purge = await buildUninstallPlan(options, "purge", "win32");
+      expect(purge.find((step) => step.id === "podman-network-definitions")).toMatchObject({
+        status: "manual",
+        destructive: false,
+      });
+      const keepData = await buildUninstallPlan(options, "keep-data", "win32");
+      expect(keepData.find((step) => step.id === "podman-network-definitions")).toMatchObject({
+        status: "skipped",
+      });
+      const linux = await buildUninstallPlan(options, "purge", "linux");
+      expect(linux.some((step) => step.id === "podman-network-definitions")).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
   test("owned machine is torn down and never removed as a filesystem path", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
@@ -54,10 +82,10 @@ describe("uninstall managed provider machines", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
+          listDiscoveredApps: async () => [],
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           cgroupsDelegatePath: join(root, "delegate.conf"),
           shellProfilePath: join(root, ".profile"),
           exists: () => false,
@@ -91,10 +119,10 @@ describe("uninstall managed provider machines", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
+          listDiscoveredApps: async () => [],
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           cgroupsDelegatePath: join(root, "delegate.conf"),
           shellProfilePath: join(root, ".profile"),
           exists: () => false,
@@ -125,9 +153,9 @@ describe("uninstall managed provider machines", () => {
         uninstall({
           yes: true,
           purge: true,
+          listDiscoveredApps: async () => [],
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           cgroupsDelegatePath: join(root, "delegate.conf"),
           shellProfilePath: join(root, ".profile"),
           exists: () => false,
@@ -137,7 +165,6 @@ describe("uninstall managed provider machines", () => {
             return { removed: false };
           },
           remove: async () => {},
-          listDiscoveredApps: async () => [], // No running apps
         }),
       );
 
@@ -158,7 +185,6 @@ describe("uninstall managed provider machines", () => {
         {
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           cgroupsDelegatePath: join(root, "delegate.conf"),
           shellProfilePath: join(root, ".profile"),
           exists: () => false,
@@ -181,10 +207,10 @@ describe("uninstall managed provider machines", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
+          listDiscoveredApps: async () => [],
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           cgroupsDelegatePath: join(root, "delegate.conf"),
           shellProfilePath: join(root, ".profile"),
           exists: () => false,
@@ -210,10 +236,10 @@ describe("uninstall managed provider machines", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
+          listDiscoveredApps: async () => [],
           userDataRoot,
           userCacheRoot,
-          execPath: join(root, "lando"),
           cgroupsDelegatePath: join(root, "delegate.conf"),
           shellProfilePath: join(root, ".profile"),
           exists: () => false,

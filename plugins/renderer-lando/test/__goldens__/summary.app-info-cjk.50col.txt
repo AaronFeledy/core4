@@ -5,6 +5,6 @@
 ⟨pink⟩│⟨reset⟩ ⟨green⟩[OK] キャッシュ-redis · running⟨reset⟩                ⟨pink⟩│⟨reset⟩
 ⟨pink⟩├─ urls ─────────────────────────────────────────┤⟨reset⟩
 ⟨pink⟩│⟨reset⟩ ⟨green⟩[OK] appserver · https://myapp.lando.site⟨reset⟩      ⟨pink⟩│⟨reset⟩
-⟨pink⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  internal :⟨dim-off⟩⟨reset⟩                                   ⟨pink⟩│⟨reset⟩
-⟨pink⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  http://appserver.myapp.internal:8080⟨dim-off⟩⟨reset⟩         ⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨cyan⟩  internal :⟨reset⟩                                   ⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨cyan⟩  http://appserver.myapp.internal:8080⟨reset⟩         ⟨pink⟩│⟨reset⟩
 ⟨pink⟩╰─⟨reset⟩⟨dim⟩⟨pink⟩ 3 services · 1 url ⟨dim-off⟩⟨reset⟩⟨pink⟩───────────────────────────╯⟨reset⟩

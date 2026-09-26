@@ -64,11 +64,13 @@ describe("eleventy decomposition", () => {
       services: {
         builder: {
           type: "node:lts",
+          primary: true,
           command: "npx @11ty/eleventy --serve --port 8080",
           port: 8080,
         },
         web: {
           type: "static:nginx",
+          primary: false,
           appMount: { target: "/app" },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },

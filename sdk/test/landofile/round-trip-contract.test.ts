@@ -51,6 +51,25 @@ describe("@lando/sdk/landofile — round-trip law over the supported domain", ()
     expect(parsed).toEqual({ a: "x\u0001y\bz\f//" });
   });
 
+  test("keys outside the plain YAML set round-trip through quoting", async () => {
+    const value = {
+      "a:b": 2,
+      "a/b": 3,
+      "@lando/foo": 4,
+      "": 5,
+      "<<": 6,
+      "0": 7,
+      on: 8,
+      'say"hi"': 9,
+    };
+    expect(await roundTrip(value)).toEqual(value);
+    expect(Bun.YAML.parse(emitLandofileYaml(value))).toEqual(value);
+  });
+
+  test.each(["web service", 'say "hi"', "tab\tkey"])("rejects whitespace-bearing key %j", (key) => {
+    expect(() => emitLandofileYaml({ [key]: 1 })).toThrow(LandofileEmitError);
+  });
+
   test("nested maps", async () => {
     const value = {
       name: "app",
@@ -130,13 +149,6 @@ describe("@lando/sdk/landofile — rejection set fails with LandofileEmitError a
     });
   };
 
-  expectRejected({ "web service": 1 }, "key-shape violation: space in key");
-  expectRejected({ "a:b": 1 }, "key-shape violation: colon in key");
-  expectRejected({ "a/b": 1 }, "key-shape violation: slash in key");
-  expectRejected({ "@lando/foo": 1 }, "key-shape violation: scoped-package key");
-  expectRejected({ "": 1 }, "key-shape violation: empty-string key");
-  expectRejected({ services: { "bad key": { type: "php" } } }, "key-shape violation: nested map key");
-  expectRejected({ includes: [{ "bad key": "x" }] }, "key-shape violation: list-item map key");
   expectRejected({ u: undefined }, "undefined value");
   expectRejected({ n: Number.POSITIVE_INFINITY }, "non-finite number: Infinity");
   expectRejected({ n: Number.NaN }, "non-finite number: NaN");
@@ -146,20 +158,20 @@ describe("@lando/sdk/landofile — rejection set fails with LandofileEmitError a
   test("a rejected emit produces no YAML output (throwing form never returns a string)", () => {
     let emitted: string | undefined;
     try {
-      emitted = emitLandofileYaml({ "bad key": 1 });
+      emitted = emitLandofileYaml({ bad: undefined });
     } catch {
       emitted = undefined;
     }
     expect(emitted).toBeUndefined();
   });
 
-  test("the emit error message carries the offending key path", () => {
+  test("the emit error message carries the offending value path", () => {
     try {
-      emitLandofileYaml({ services: { web: { "bad key": 1 } } });
+      emitLandofileYaml({ services: { web: { bad: undefined } } });
       throw new Error("expected throw");
     } catch (error) {
       expect(error).toBeInstanceOf(LandofileEmitError);
-      expect((error as LandofileEmitError).message).toContain("bad key");
+      expect((error as LandofileEmitError).message).toContain("services.web.bad");
     }
   });
 });

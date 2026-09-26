@@ -18,6 +18,11 @@ import {
   pluginDoctorReports,
   probeBudgetMs,
 } from "./doctor-plugin-checks";
+import {
+  makeDoctorExecutableLocator,
+  makeDoctorResourceInspector,
+  resolveDoctorAppIdentity,
+} from "./doctor-plugin-context";
 import { installedPluginMetadataSelfChecks } from "./doctor-plugin-metadata";
 import {
   type ProviderStatusShape,
@@ -109,10 +114,31 @@ export const doctor = (
       if (metadataOutcome.self !== undefined) selfChecks.push(metadataOutcome.self);
     }
     const platform = options.platform ?? paths.platform;
+    const appOutcome = yield* isolateDoctorSection({
+      section: "plugin-app-identity",
+      effect: resolveDoctorAppIdentity(),
+      fallback: undefined,
+      budgetMs: probeBudget,
+      redact,
+    });
+    if (appOutcome.self !== undefined) selfChecks.push(appOutcome.self);
+    const resources = makeDoctorResourceInspector({
+      provider: Effect.suspend(() => registry.select({ provider: resolution.providerId } as never)),
+      budgetMs: probeBudget,
+      redact,
+    });
+    const executables = makeDoctorExecutableLocator({
+      env: sourceEnv,
+      platform,
+      execPath: options.execPath ?? process.execPath,
+    });
     const { reports, selfChecks: pluginSelfChecks } = yield* pluginDoctorReports(
       modules,
       {
         providerId: String(resolution.providerId),
+        app: appOutcome.value,
+        resources,
+        executables,
         platform,
         stateDir: Either.isRight(stateDirEither) ? stateDirEither.right : undefined,
         env: options.env ?? process.env,
@@ -214,17 +240,22 @@ export const doctor = (
             ];
           })
         : [];
-    const oomChecks = collectOomDoctorChecks(
-      yield* containerDiedEventPayloadsFor(
+    const diedEventsOutcome = yield* isolateDoctorSection({
+      section: "container-died-events",
+      effect: containerDiedEventPayloadsFor(
         provider as ContainerDiedEventCapableProvider,
         options.diedEventPayloads,
       ),
-      {
-        provider,
-        providerKind: diagnosis.providerKind,
-        platform: options.platform ?? provider.platform,
-      },
-    );
+      fallback: [] as ReadonlyArray<unknown>,
+      budgetMs: probeBudget,
+      redact,
+    });
+    if (diedEventsOutcome.self !== undefined) selfChecks.push(diedEventsOutcome.self);
+    const oomChecks = collectOomDoctorChecks(diedEventsOutcome.value, {
+      provider,
+      providerKind: diagnosis.providerKind,
+      platform: options.platform ?? provider.platform,
+    });
     const hostProxyOutcome = yield* isolateDoctorSection({
       section: "host-proxy",
       effect: hostProxyTransportDoctorChecks({

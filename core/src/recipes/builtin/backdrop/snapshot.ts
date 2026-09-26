@@ -8,7 +8,7 @@ import { backdropSettings } from "./settings.ts";
 
 export const BACKDROP_RECIPE_VERSION = "0.1.0";
 export const BACKDROP_CONTENT_DIGEST =
-  "sha256:6a13349aa7e9426de32ff3dafea83d8137f9b8f31803d160af74607b3d7767f3";
+  "sha256:5be41ddab2982c8f4db02056a10936b7fe98b6807927b894314d7b23aad88652";
 
 export const backdropProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -75,6 +75,7 @@ export const backdropSnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+                    { key: "primary", value: { kind: "Literal", value: true } },
                     { key: "framework", value: { kind: "Literal", value: "backdrop" } },
                     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
                     {

@@ -48,6 +48,7 @@ const runtime = async (
   disable: ReadonlyArray<string> = [],
   config?: string,
   discovery: { readonly user: boolean; readonly app: boolean } = { user: false, app: false },
+  externalImports = false,
 ) => {
   const root = await mkdtemp(join(tmpdir(), "lando-subscriber-runtime-"));
   roots.push(root);
@@ -56,7 +57,7 @@ const runtime = async (
     await mkdir(join(root, "config"), { recursive: true });
     await writeFile(join(root, "config", "config.yml"), config);
   }
-  const makeLayer = () =>
+  const makeLayer = (cwd = root) =>
     makeCommandsBootstrapLayer({
       runtimeLayerFactory: { make: makeLandoRuntime },
       lifecycle: makeBootstrapLifecycleTracker(),
@@ -68,8 +69,8 @@ const runtime = async (
       pluginDiscovery: { bundled: true, system: false, ...discovery, disable },
       pluginLayers: [],
       pluginManifests: [],
-      externalImports: false,
-      cwd: root,
+      externalImports,
+      cwd,
       rootOverrides: {
         userDataRoot: absolute("data"),
         userConfRoot: absolute("config"),
@@ -80,7 +81,7 @@ const runtime = async (
   return {
     root,
     layer: selfContained(makeLayer()),
-    makeLayer: () => selfContained(makeLayer()),
+    makeLayer: (cwd?: string) => selfContained(makeLayer(cwd)),
   };
 };
 
@@ -333,10 +334,11 @@ describe("subscriber runtime integration", () => {
     const pluginName = "@example/shadowed-commands";
     const globalCommandId = "example:global-release";
     const appCommandId = "example:app-release";
-    const { layer, makeLayer, root } = await runtime(
+    const { makeLayer, root } = await runtime(
       [],
       `notify:\n  thresholdMs: 0\n  commands:\n    - ${globalCommandId}\n`,
       { user: true, app: true },
+      true,
     );
     const appRoot = join(root, "app");
     const markerPath = join(root, "effective-subscriber.txt");
@@ -386,14 +388,16 @@ describe("subscriber runtime integration", () => {
               }),
             );
             return manifests.find((manifest) => manifest.name === pluginName);
-          }).pipe(Effect.provide(layer)),
+          }).pipe(Effect.provide(makeLayer(appRoot))),
         );
         const markerValue = await readFile(markerPath, "utf8");
         await writeFile(
           join(root, "config", "config.yml"),
           `notify:\n  thresholdMs: 0\n  commands:\n    - ${appCommandId}\n`,
         );
-        const invalidExit = await Effect.runPromiseExit(EventService.pipe(Effect.provide(makeLayer())));
+        const invalidExit = await Effect.runPromiseExit(
+          EventService.pipe(Effect.provide(makeLayer(appRoot))),
+        );
         return { effectiveManifest, markerValue, invalidExit };
       } finally {
         process.chdir(previousCwd);

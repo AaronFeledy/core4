@@ -1,5 +1,15 @@
 import { Either, JSONSchema, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
+import {
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
+  AgentSocketDelivery,
+  AgentSocketKind,
+  AgentSocketProviderCapabilities,
+  AgentSocketUpstream,
+  GpgAgentConfig,
+  SshAgentConfig,
+} from "./agent-forwarding.ts";
 
 import {
   AxisToken,
@@ -197,6 +207,7 @@ import {
   FileSyncEventChunk,
   FileSyncSessionInfo,
   FileSyncSessionSpec,
+  PreparedFileSyncTarget,
 } from "./file-sync-engine.ts";
 import { HostTerminal } from "./host-terminal.ts";
 import {
@@ -277,6 +288,7 @@ import {
   PluginSetupContribution,
   PluginSetupFlagContribution,
   RouterServiceContribution,
+  SecretStoreContribution,
 } from "./plugin.ts";
 import {
   AppId,
@@ -445,6 +457,15 @@ export type PublicSchemaReferencePage = {
 };
 
 const basePublicSchemaRegistry = {
+  SshAgentConfig,
+  GpgAgentConfig,
+  AgentSocketKind,
+  AgentSocketDelivery,
+  AgentSocketProviderCapabilities,
+  AgentSocketUpstream,
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
+  SecretStoreContribution,
   DeprecationNotice,
   DeprecationUse,
   LandofileExpressionParseError,
@@ -641,6 +662,7 @@ const basePublicSchemaRegistry = {
   GlobalServiceContribution,
   FileSyncEngineCapabilities,
   FileSyncSessionSpec,
+  PreparedFileSyncTarget,
   FileSyncSessionInfo,
   FileSyncEventChunk,
   FileSyncPlan,
@@ -843,6 +865,15 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
 };
 
 const PUBLIC_SCHEMA_DESCRIPTIONS = {
+  SshAgentConfig: "SSH-agent mode and optional host socket override.",
+  GpgAgentConfig: "Opt-in GPG-agent forwarding and optional host extra socket override.",
+  AgentSocketKind: "Agent protocol carried by a scoped socket relay.",
+  AgentSocketDelivery: "Provider delivery mechanism for an app-owned agent socket.",
+  AgentSocketProviderCapabilities: "Provider-declared support for agent socket delivery.",
+  AgentSocketUpstream: "Unix or authenticated loopback TCP endpoint carrying agent bytes.",
+  AgentSocketBridgeInput: "App-owned relay session handed to a scoped provider bridge.",
+  AgentSocketBridgeResult: "Provider-visible directory or volume containing the requested agent socket.",
+  SecretStoreContribution: "Plugin secret store implementation and owned reference schemes.",
   RecipeSourceKind: "Origin class of a recipe producer, keeping bundled and local families distinct.",
   RecipeContentDigest: "SHA-256 over canonical recipe inputs, excluding the digest itself and history.",
   RecipeProducer: "Versioned identity of the recipe that produced generated authoring data.",
@@ -1079,6 +1110,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RouterServiceContribution: "Public Lando schema contract for Router Service Contribution.",
   FileSyncEngineCapabilities: "Public Lando schema contract for File Sync Engine Capabilities.",
   FileSyncSessionSpec: "Public Lando schema contract for File Sync Session Spec.",
+  PreparedFileSyncTarget: "Public Lando schema contract for a prepared file-sync target.",
   FileSyncSessionInfo: "Public Lando schema contract for File Sync Session Info.",
   FileSyncEventChunk: "Public Lando schema contract for File Sync Event Chunk.",
   FileSyncPlan: "Public Lando schema contract for File Sync Plan.",
@@ -1741,6 +1773,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "FileSyncSessionInfo.mountKey",
   "FileSyncSessionInfo.ref",
   "FileSyncSessionInfo.service",
+  "FileSyncSessionInfo.spec",
   "FileSyncSessionInfo.status",
   "FileSyncSessionSpec.app",
   "FileSyncSessionSpec.excludes",

@@ -6,6 +6,8 @@ import type {
   GlobalServiceCollisionError,
   PluginManifestError,
   SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
   ToolingExecError,
 } from "@lando/sdk/errors";
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
@@ -28,6 +30,7 @@ import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { publishedEndpointUrls } from "./authority-url.ts";
 
+import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { globalInstall } from "./global-install.ts";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
@@ -60,6 +63,8 @@ export type EnsureGlobalServicesError =
   | GlobalServiceMissingError
   | PluginManifestError
   | SecretNotFoundError
+  | SecretStoreUnavailableError
+  | SecretReferenceInvalidError
   | ToolingExecError;
 
 export type EnsureGlobalServicesServices =
@@ -154,13 +159,16 @@ export const ensureGlobalServicesRunning = (
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const builds = yield* BuildOrchestrator;
-    const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+    // Managed global service configuration is generated locally and has no sync session lifecycle.
+    const realizedPlan = withOrdinaryMounts(planToApply);
+    const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
     const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
 
     yield* Effect.scoped(
       provider
         .apply(builtPlan, {
           reconcile: false,
+          recordedPlan: { ...plan, services: { ...plan.services, ...builtPlan.services } },
           ...(options.signal === undefined ? {} : { signal: options.signal }),
           serviceEnvironment,
         })
@@ -168,7 +176,7 @@ export const ensureGlobalServicesRunning = (
     );
 
     const servicesStarted = yield* Effect.forEach(selected, (service) =>
-      provider.inspect({ app: plan.id, service: service.name, plan }).pipe(
+      provider.inspect({ app: plan.id, service: service.name, plan: realizedPlan }).pipe(
         Effect.map((runtime) => ({
           name: String(service.name),
           state: runtime.state ?? runtime.status,
@@ -181,7 +189,7 @@ export const ensureGlobalServicesRunning = (
       PostGlobalStartEvent.make({
         scope: "global",
         app: globalAppRef(plan),
-        plan,
+        plan: realizedPlan,
         cached: false,
         timestamp: now(),
       }),

@@ -68,7 +68,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-03 | US-099 | exclude patterns (volume-shadow + Mutagen ignores) | `docs/guides/setup/file-sync-excludes.mdx` | Shipped |
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | PRD-04 | US-102 | CertificateAuthority via @lando/ca-mkcert | `docs/guides/subsystems/certificates-mkcert.mdx` | Shipped |
-| PRD-04 | US-103 | SshService sidecar (default) | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
+| PRD-04 | US-103 | SshService sidecar (default) plus host-agent forwarding opt-in | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
 | PRD-04 | US-104 | HealthcheckService (tcp/http/cmd probes) | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
 | PRD-04 | US-105 | ScannerService endpoint discovery + port-collision detection | `docs/guides/subsystems/scanner-service.mdx` | Shipped |
 | PRD-04 | US-106 | HostProxyService (`lndo.site`-style hostnames) | `docs/guides/subsystems/host-proxy.mdx` | Shipped |
@@ -152,7 +152,6 @@ End-to-end tutorials that exercise several capabilities at once.
 | PRD | User Story | Feature | Guide Path | Status |
 |---|---|---|---|---|
 | — | — | everyday app lifecycle (start / inspect / exec / restart / destroy) | `docs/guides/tutorial/app-lifecycle.mdx` | Shipped |
-| — | — | start fresh when coming from Lando 3 | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
 | — | — | Node + Postgres app scaffolded from a recipe | `docs/guides/node-postgres.mdx` | Shipped |
 | — | — | port a Compose service block and remediate rejected keys | `docs/guides/config/compose-service-block.mdx` | Shipped |
 | — | — | share tooling fragments through `includes:` with `kind: tooling` | `docs/guides/tooling/tooling-includes.mdx` | Shipped |
@@ -189,6 +188,19 @@ outside `docs/guides/` so they are not gate-validated here.
 | `eleventy` | Eleventy (Node build service + nginx static frontend) | `recipes/eleventy/README.mdx` | Shipped |
 | `empty` | Blank Landofile starter with no services | `recipes/empty/README.mdx` | Shipped |
 | `toolbox` | Disposable CLI tool runner on a pinned Debian image | `recipes/toolbox/README.mdx` | Shipped |
+
+## Lando 3 compatibility
+
+Run Lando 4 as `lando4` beside Lando 3's `lando`, then convert an app explicitly when you're ready. Each row maps a LANDO3-COMPAT-01 story to the guide that exercises it. Supported conversions and intentional rejections are both covered; a rejection scenario proves the input is refused, not that it converts.
+
+| PRD | User Story | Feature | Guide Path | Status |
+|---|---|---|---|---|
+| LANDO3-COMPAT-01 | US-619B1 | `lando4` executable, installer, and shellenv coexistence with Lando 3 | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-619B3 | update and uninstall that touch only Lando 4 artifacts | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-621D | explicit layered Lando 3 conversion with immutable backups | `docs/guides/landofile/convert-from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-622A | read-only Lando 3 leftovers and PATH shadow doctor checks | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-622B | side-by-side coexistence matrix | `docs/guides/tutorial/from-lando-3.mdx` | Shipped |
+| LANDO3-COMPAT-01 | US-622B | supported and rejected conversion matrix | `docs/guides/landofile/convert-from-lando-3.mdx` | Shipped |
 
 ## Lando 3 parity (capability guides — no PRD mapping)
 
@@ -243,6 +255,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | Eleventy recipe day-to-day workflow | `docs/guides/recipes/eleventy-workflow.mdx` | Shipped |
 | — | — | Hugo recipe day-to-day workflow | `docs/guides/recipes/hugo-workflow.mdx` | Shipped |
 | — | — | WordPress recipe day-to-day workflow | `docs/guides/recipes/wordpress-workflow.mdx` | Shipped |
+| — | — | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
@@ -264,3 +277,6 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
 | — | — | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |
 | — | — | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
+| — | — | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
+| — | — | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
+| n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |

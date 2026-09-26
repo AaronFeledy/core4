@@ -485,7 +485,12 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
             return { executed: [] };
           }
           if (!postInitStarted) {
-            await Effect.runPromise(tree.completeTask("render", `Rendered ${filesToWrite.length} files`));
+            await Effect.runPromise(
+              tree.completeTask(
+                "render",
+                `Rendered ${filesToWrite.length} ${filesToWrite.length === 1 ? "file" : "files"}`,
+              ),
+            );
             await Effect.runPromise(tree.startTask("postinit"));
             postInitStarted = true;
           }
@@ -519,9 +524,19 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   }
 
   if (postInitStarted) {
-    await Effect.runPromise(tree.completeTask("postinit", `Ran ${postInit.executed.length} actions`));
+    await Effect.runPromise(
+      tree.completeTask(
+        "postinit",
+        `Ran ${postInit.executed.length} ${postInit.executed.length === 1 ? "action" : "actions"}`,
+      ),
+    );
   } else {
-    await Effect.runPromise(tree.completeTask("render", `Rendered ${filesToWrite.length} files`));
+    await Effect.runPromise(
+      tree.completeTask(
+        "render",
+        `Rendered ${filesToWrite.length} ${filesToWrite.length === 1 ? "file" : "files"}`,
+      ),
+    );
   }
 
   await Effect.runPromise(tree.close(`Initialized ${appName}`));

@@ -265,6 +265,18 @@ export const isBuiltInCommandImplemented = (commandId: string): boolean =>
 export const resolveBuiltInCommand = (token: string | undefined): BuiltInCommandEntry | undefined =>
   token === undefined ? undefined : builtInCommandIndex.byToken.get(token);
 
+export const suggestBuiltInCommandForSuffix = (token: string): string | undefined => {
+  let match: BuiltInCommandEntry | undefined;
+  for (const entry of builtInCommandEntries) {
+    const id = entry.spec.id;
+    const separator = id.indexOf(":");
+    if (separator < 0 || id.slice(separator + 1) !== token) continue;
+    if (match !== undefined) return undefined;
+    match = entry;
+  }
+  return match?.status.kind === "deferred" ? undefined : match?.spec.id;
+};
+
 export const isReservedNamespaceHead = (head: string | undefined): boolean =>
   head !== undefined && builtInCommandIndex.namespaceHeads.has(head);
 
