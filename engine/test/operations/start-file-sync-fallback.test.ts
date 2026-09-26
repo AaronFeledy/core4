@@ -1158,6 +1158,7 @@ describe("pre-apply accelerated mount preparation", () => {
               targets.map((target) => target.session),
             );
             return {
+              boundApp: { kind: "user" as const, id: selectedPlan.id, root: selectedPlan.root },
               ...TestFileSyncEngine,
               id: "mutagen",
               isAvailable: Effect.succeed(true),
@@ -1176,6 +1177,79 @@ describe("pre-apply accelerated mount preparation", () => {
     });
     await runStart(harness, acceleratedPlan);
     expect(actions).toEqual(["prepare", "bind", "create", "flush", "create", "flush", "apply"]);
+  });
+
+  test.each([
+    { field: "kind", app: { kind: "scratch" as const, id: plan.id, root: plan.root } },
+    { field: "id", app: { kind: "user" as const, id: "another-app", root: plan.root } },
+    { field: "root", app: { kind: "user" as const, id: plan.id, root: AbsolutePath.make("/another-app") } },
+  ])("rejects a bound engine with the wrong app $field before session mutation", async ({ app }) => {
+    for (const owned of [false, true]) {
+      // Given a same-ID engine bound to a different app and a fresh shared inventory.
+      const actions: string[] = [];
+      const requestedApp = { kind: "user", id: plan.id, root: plan.root } as const;
+      const harness = makeHarness({
+        plannedApp: acceleratedPlan,
+        onFileSyncRollback: () => actions.push("rollback"),
+        onApply: () => actions.push("apply"),
+        fileSync: {
+          ...TestFileSyncEngine,
+          id: "mutagen",
+          isAvailable: Effect.succeed(true),
+          listSessions: (filter) =>
+            Effect.sync(() => {
+              expect(filter).toEqual({ app: requestedApp });
+              actions.push("inventory");
+              return owned
+                ? acceleratedPlan.fileSync.map(({ session }) => ({
+                    ref: FileSyncSessionRef.make(session.mountKey),
+                    app: session.app,
+                    service: session.service,
+                    mountKey: session.mountKey,
+                    spec: session,
+                    status: "paused" as const,
+                    lastUpdatedAt: DateTime.unsafeMake("2026-09-23T00:00:00Z"),
+                  }))
+                : [];
+            }),
+          bindPreparedTargets: () =>
+            Effect.succeed({
+              ...TestFileSyncEngine,
+              id: "mutagen",
+              boundApp: app,
+              isAvailable: Effect.succeed(true),
+              listSessions: () =>
+                Effect.sync(() => {
+                  actions.push("wrong-inventory");
+                  return [];
+                }),
+              createSession: () =>
+                Effect.sync(() => {
+                  actions.push("create");
+                  return FileSyncSessionRef.make("wrong-app");
+                }),
+            }),
+        },
+      });
+      // When startup receives the wrong-app binding.
+      const exit = await Effect.runPromiseExit(
+        startApp({}, { plan: acceleratedPlan, root: plan.root, app: requestedApp }).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+      // Then only proven-empty targets roll back, without using the rejected engine.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(Array.from(Cause.failures(exit.cause))).toEqual([
+          expect.objectContaining({ _tag: "FileSyncStartError", engineId: "mutagen" }),
+        ]);
+      }
+      expect(actions).toEqual(owned ? ["inventory"] : ["inventory", "rollback"]);
+      const journal = await Effect.runPromiseExit(
+        requireNoPendingAcceleratedStart(requestedApp).pipe(Effect.provide(harness.stateStore.layer)),
+      );
+      expect(Exit.isSuccess(journal)).toBe(!owned);
+    }
   });
 
   test("interruption during binding rolls back targets and clears the pending journal", async () => {
@@ -1243,6 +1317,7 @@ describe("pre-apply accelerated mount preparation", () => {
             Effect.sync(() => {
               actions.push("bind");
               return {
+                boundApp: { kind: "user" as const, id: plan.id, root: plan.root },
                 ...TestFileSyncEngine,
                 id: "mutagen",
                 isAvailable: Effect.sync(() => {
@@ -1309,6 +1384,7 @@ describe("pre-apply accelerated mount preparation", () => {
         createSession: () => Effect.die(new Error("Interrupted availability reached creation.")),
         bindPreparedTargets: () =>
           Effect.succeed({
+            boundApp: { kind: "user" as const, id: plan.id, root: plan.root },
             ...TestFileSyncEngine,
             id: "mutagen",
             isAvailable: Effect.sync(() => {
@@ -1394,6 +1470,7 @@ describe("pre-apply accelerated mount preparation", () => {
         Effect.sync(() => {
           boundApps.push(String(boundPlan.id));
           return {
+            boundApp: { kind: "user" as const, id: boundPlan.id, root: boundPlan.root },
             ...TestFileSyncEngine,
             id: "mutagen",
             isAvailable: Effect.succeed(true),
