@@ -12,6 +12,7 @@ import {
   type GlobalAppPaths,
   GlobalAppService,
   type GlobalDistResult,
+  type LandofileService,
   PluginRegistry,
   type ProviderSelectionError,
   RuntimeProviderRegistry,
@@ -73,7 +74,7 @@ export const globalInstall = (
   | GlobalServiceCollisionError
   | PluginManifestError
   | ProviderSelectionError,
-  GlobalAppService | PluginRegistry | RuntimeProviderRegistry
+  GlobalAppService | LandofileService | PluginRegistry | RuntimeProviderRegistry
 > =>
   Effect.gen(function* () {
     if (options.plugin !== undefined && options.plugin !== "") {

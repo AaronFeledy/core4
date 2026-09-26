@@ -191,8 +191,8 @@ describe("@lando/core App-handle entry export", () => {
         ? shareStop.initializer.type?.getText(share)
         : undefined;
 
-    // Then: the bound path excludes dead planning services and the general export stays precise.
-    expect(boundStartServices?.type.getText(start)).toBe("Exclude<StartAppServices, LandofileService>");
+    // Then: the bound path keeps LandofileService for global-install authored SSH resolution.
+    expect(boundStartServices?.type.getText(start)).toBe("StartAppServices");
     expect(shareStopType).toContain("ShareStopCommandError");
     expect(shareStopType).not.toContain("ShareAppError");
   });

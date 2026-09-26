@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
 import { GlobalAppError } from "@lando/core/errors";
 import { AbsolutePath, LandofileShape, PluginManifest, ProviderId, ServiceName } from "@lando/core/schema";
-import { PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
+import { LandofileService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
@@ -41,6 +42,10 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 const parseGeneratedLandofile = (content: string) =>
   Effect.runPromise(parseLandofile({ file: ".lando.dist.yml", content, cwd: "/tmp" }));
 
+const silentLandofileService = Layer.succeed(LandofileService, {
+  discover: Effect.succeed({ name: "app" }),
+});
+
 const layerWithFakeGlobalService = (modulePath: string) => {
   const fakeManifest = Schema.decodeSync(PluginManifest)({
     name: "@lando/fake-global-service",
@@ -58,6 +63,7 @@ const layerWithFakeGlobalService = (modulePath: string) => {
 
   return Layer.mergeAll(
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    silentLandofileService,
     Layer.succeed(PluginRegistry, {
       list: Effect.succeed([fakeManifest]),
       load: () => Effect.succeed(fakeManifest),
@@ -171,6 +177,7 @@ describe("global:install command operation", () => {
         };
         const layer = Layer.mergeAll(
           GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+          silentLandofileService,
           Layer.succeed(PluginRegistry, {
             list: Effect.succeed([]),
             load: () => Effect.die("not needed"),
@@ -207,6 +214,7 @@ describe("global:install command operation", () => {
       };
       const layer = Layer.mergeAll(
         GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+        silentLandofileService,
         Layer.succeed(PluginRegistry, {
           list: Effect.succeed([]),
           load: () => Effect.die("not needed"),
@@ -234,5 +242,75 @@ describe("global:install command operation", () => {
       expect(dist).toContain("provider: lando");
       expect(dist).not.toContain("provider: docker");
     });
+  });
+
+  test("rematerializes ssh-agent from a cwd Landofile when env and config are unset", async () => {
+    const previous = {
+      upstream: process.env.LANDO_SSH_AGENT_UPSTREAM,
+      overlay: process.env.LANDO_CONFIG__ssh_agent__upstream,
+      sock: process.env.SSH_AUTH_SOCK,
+    };
+    Reflect.deleteProperty(process.env, "LANDO_SSH_AGENT_UPSTREAM");
+    Reflect.deleteProperty(process.env, "LANDO_CONFIG__ssh_agent__upstream");
+    Reflect.deleteProperty(process.env, "SSH_AUTH_SOCK");
+    try {
+      await withTempRoots(async () => {
+        const appRoot = await mkdtemp(join(tmpdir(), "lando-ssh-landofile-"));
+        const socketPath = join(appRoot, "agent.sock");
+        const server = createServer();
+        await new Promise<void>((resolve, reject) => {
+          server.once("error", reject);
+          server.listen(socketPath, () => resolve());
+        });
+        const previousCwd = process.cwd();
+        try {
+          await writeFile(
+            join(appRoot, ".lando.yml"),
+            [
+              "name: landofile-upstream",
+              "sshAgent:",
+              "  sidecar: true",
+              `  upstream: ${socketPath}`,
+              "",
+            ].join("\n"),
+          );
+          process.chdir(appRoot);
+          const install = () =>
+            Effect.runPromise(
+              globalInstall({}).pipe(
+                Effect.provide(makeLandoRuntime({ bootstrap: "global", plugins: { policy: "discovery" } })),
+              ),
+            );
+
+          const first = await install();
+          const upstreamDist = await readFile(first.dist.path, "utf8");
+          expect(upstreamDist).toContain("socat UNIX-LISTEN:/ssh-auth/ssh-agent.sock");
+          expect(upstreamDist).toContain(socketPath);
+
+          await writeFile(
+            join(appRoot, ".lando.yml"),
+            ["name: landofile-upstream", "sshAgent:", "  sidecar: true", "  upstream: host", ""].join("\n"),
+          );
+          const second = await install();
+          const fallbackDist = await readFile(second.dist.path, "utf8");
+          expect(fallbackDist).toContain("ssh-add");
+          expect(fallbackDist).not.toContain("socat");
+        } finally {
+          process.chdir(previousCwd);
+          await new Promise<void>((resolve) => {
+            server.close(() => resolve());
+          });
+          await rm(appRoot, { recursive: true, force: true });
+        }
+      });
+    } finally {
+      if (previous.upstream === undefined) Reflect.deleteProperty(process.env, "LANDO_SSH_AGENT_UPSTREAM");
+      else process.env.LANDO_SSH_AGENT_UPSTREAM = previous.upstream;
+      if (previous.overlay === undefined)
+        Reflect.deleteProperty(process.env, "LANDO_CONFIG__ssh_agent__upstream");
+      else process.env.LANDO_CONFIG__ssh_agent__upstream = previous.overlay;
+      if (previous.sock === undefined) Reflect.deleteProperty(process.env, "SSH_AUTH_SOCK");
+      else process.env.SSH_AUTH_SOCK = previous.sock;
+    }
   });
 });

@@ -113,7 +113,7 @@ type StartAppServices =
   | ShellRunner
   | StateStore;
 
-type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
+type BoundStartAppServices = StartAppServices;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 

@@ -20,6 +20,7 @@ import {
   EventService,
   type FileSystem,
   type GlobalAppService,
+  type LandofileService,
   type PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -73,6 +74,7 @@ export type EnsureGlobalServicesServices =
   | EventService
   | FileSystem
   | GlobalAppService
+  | LandofileService
   | PluginRegistry
   | RuntimeProviderRegistry;
 

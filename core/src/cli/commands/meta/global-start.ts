@@ -33,6 +33,7 @@ import {
   EventService,
   type FileSystem,
   type GlobalAppService,
+  type LandofileService,
   type PluginRegistry,
   type ProviderError,
   RouterService,
@@ -99,6 +100,7 @@ export type GlobalStartServices =
   | EventService
   | FileSystem
   | GlobalAppService
+  | LandofileService
   | PluginRegistry
   | RuntimeProviderRegistry
   | RouterService;
