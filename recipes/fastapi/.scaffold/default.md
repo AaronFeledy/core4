@@ -4,18 +4,19 @@
 
 ```sh
 lando init --recipe fastapi --name=my-fastapi --yes
+cd my-fastapi
 lando start
 lando info
 ```
 
-FastAPI declares no recipe options, so `--yes` gives you the whole stack and there is nothing to `--answer`. Pass one anyway and init fails instead of quietly ignoring it.
+The named init creates `my-fastapi/`. Change into it before app commands. FastAPI declares no recipe options, so `--yes` gives you the whole stack and there is nothing to `--answer`. Pass one anyway and init fails instead of quietly ignoring it.
 
 The scaffold writes only `.lando.yml`. It declares a `web` service on `python:3.12` with the `fastapi` framework on port 8000, a `database` service on `postgres`, and a `cache` service on `redis`. The `web` service waits on both.
 
 Two tooling commands ship with the Landofile, both running inside the `web` service:
 
 ```sh
-lando uvicorn app.main:app --reload
+lando uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 lando pip install -r requirements.txt
 ```
 
@@ -23,10 +24,12 @@ lando pip install -r requirements.txt
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling, Postgres/Redis hosts, and a restart-safe venv serve, see [Run the FastAPI recipe](/guides/recipes/fastapi-workflow/).
+
 ## 1. scaffold
 
 ```bash
-lando init --recipe fastapi --name=my-fastapi-stack --yes
+lando init --recipe fastapi --name=my-fastapi --yes
 ```
 
 ## 2. start
@@ -39,18 +42,6 @@ lando start
 
 ```bash
 lando info
-```
-
-## 4. init
-
-```bash
-lando init --recipe fastapi --name=my-fastapi-stack --yes
-```
-
-## 5. inspect
-
-```bash
-lando app:config --format=json
 ```
 
 ## Cleanup
