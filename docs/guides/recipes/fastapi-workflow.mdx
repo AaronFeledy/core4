@@ -162,7 +162,7 @@ tooling:
       - /app/.venv/bin/uvicorn
 ```
 
-Add `.venv/` to `.gitignore`. `lando restart` keeps the old container, so rebuild to pick up the new command:
+Add `.venv/` to `.gitignore`. Rebuild to pick up the new command:
 
 ```sh
 lando rebuild
@@ -229,7 +229,7 @@ Snapshots save the database volume to Lando's snapshot store. `lando db:snapshot
 ```sh
 lando db:snapshot --label before-migrate
 lando db:snapshots
-lando db:restore <snapshot-id>
+lando db:restore <snapshot-id> --yes
 ```
 
 `lando db:reset --yes` empties the database when you want a clean slate.
@@ -250,7 +250,7 @@ lando db:snapshot --label before-migrate
 lando exec web -- alembic upgrade head
 ```
 
-On the venv, call `/app/.venv/bin/alembic` instead. A bad migration rolls back with `lando db:restore <snapshot-id>`.
+On the venv, call `/app/.venv/bin/alembic` instead. A bad migration rolls back with `lando db:restore <snapshot-id> --yes`.
 
 ## Follow logs and open a shell
 
