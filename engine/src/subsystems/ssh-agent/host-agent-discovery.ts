@@ -110,6 +110,7 @@ const onePasswordPath = (options: HostAgentDiscoveryOptions): string | undefined
     case "darwin":
       return join(options.home, "Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock");
     case "linux":
+    case "wsl":
       return join(options.home, ".1password/agent.sock");
     default:
       return undefined;

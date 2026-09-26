@@ -20,7 +20,7 @@ const listen = async (path: string): Promise<{ readonly close: () => Promise<voi
 
 test("prefers explicit socket, then SSH_AUTH_SOCK, then 1Password path per platform", async () => {
   const { discoverHostSshAgent } = await import("../../../src/subsystems/ssh-agent/host-agent-discovery.ts");
-  for (const platform of ["linux", "darwin"] as const) {
+  for (const platform of ["linux", "wsl", "darwin"] as const) {
     // Given
     const options = {
       platform,
@@ -41,9 +41,9 @@ test("prefers explicit socket, then SSH_AUTH_SOCK, then 1Password path per platf
     expect(password.upstream).toMatchObject({
       source: "1password",
       path:
-        platform === "linux"
-          ? "/home/test/.1password/agent.sock"
-          : "/home/test/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock",
+        platform === "darwin"
+          ? "/home/test/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+          : "/home/test/.1password/agent.sock",
     });
   }
 });
