@@ -277,6 +277,10 @@ export const GlobalConfig = Schema.Struct({
   notify: Schema.optional(NotifyConfig).annotations({
     description: "Global desktop-notification policy (global notify).",
   }),
+  sshAgent: Schema.optional(SshAgentConfig).annotations({
+    description:
+      "Global SSH-agent sidecar policy. Opt-in upstream relays a host Unix agent socket into the sidecar; unset keeps file-load from ~/.ssh.",
+  }),
   events: Schema.optional(
     Schema.Struct({
       deliveryQueueCapacity: Schema.optional(

@@ -30,6 +30,7 @@ export const GlobalConfigView = Schema.typeSchema(
     "agentEnv",
     "notify",
     "events",
+    "sshAgent",
   ),
 ).annotations({
   identifier: "GlobalConfigView",

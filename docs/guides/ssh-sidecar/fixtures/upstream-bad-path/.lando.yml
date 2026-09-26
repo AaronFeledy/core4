@@ -1,0 +1,8 @@
+name: ssh-upstream-bad
+sshAgent:
+  sidecar: true
+  upstream: relative/agent.sock
+services:
+  web:
+    type: "node:22"
+    primary: true

@@ -258,6 +258,19 @@ const makeGlobalAppService = (
       const services = input?.services ?? {};
       for (const source of bindMountSources(services)) {
         const mountPath = isAbsolute(source) ? source : join(resolved.root, source);
+        const sourceExists = yield* fileSystem
+          .exists(mountPath)
+          .pipe(
+            Effect.mapError((cause) =>
+              globalAppError(
+                "regenerateDist",
+                `Unable to inspect the global service bind-mount source at ${mountPath}.`,
+                cause,
+              ),
+            ),
+          );
+        // Existing files and Unix sockets stay as-is; only missing directory sources are created.
+        if (sourceExists) continue;
         yield* fileSystem
           .mkdir(mountPath)
           .pipe(

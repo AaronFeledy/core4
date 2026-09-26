@@ -5,6 +5,7 @@ import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk
 
 import { bundledPluginModules } from "@lando/engine/composition";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
+import { envWithSshAgentUpstream } from "@lando/engine/subsystems/ssh/api";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { interruptOnAbort } from "./doctor-abort";
@@ -75,7 +76,10 @@ export const doctor = (
     const configService = yield* ConfigService;
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
-    const sourceEnv = { ...(options.env ?? process.env) };
+    const sshAgent = yield* configService
+      .get("sshAgent")
+      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const sourceEnv = envWithSshAgentUpstream(options.env ?? process.env, sshAgent);
     const redactionService = yield* Effect.serviceOption(RedactionService);
     const redactor = Option.isSome(redactionService)
       ? yield* redactionService.value.forProfile("secrets", { sourceEnv })

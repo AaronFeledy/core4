@@ -53,6 +53,8 @@ Failure policy follows consent. Sidecar mode is best-effort: a missing capabilit
 
 gpg-agent forwarding uses that same per-app relay and the agent's restricted extra socket (`gpgconf --list-dirs agent-extra-socket`). It is opt-in (`gpgAgent.forward: true`) and fails closed. Containers can request signatures, and they cannot export or import secret keys. Lando publishes only the public keyring and ownertrust into the service. After provider apply, an uncached exec prepares each eligible service's tmpfs `GNUPGHOME` as its resolved user on every start. This is runtime preparation, not an app build step; failures return `GpgAgentTransportError` and release the relay.
 
+Opt-in `sshAgent.upstream: "host"` or an absolute Unix socket path keeps that sidecar isolation: the sidecar relays the host agent, and apps still use the Lando socket from `getAgentSocket`. Unset upstream keeps file-load from `~/.ssh`. Windows upstream hard-fails. A missing host socket warns and falls back to file-load so apps do not go dark.
+
 ## Plugin trust model decision
 
 Beta 1 ships the plugin trust management surface now: `meta:plugin:trust list` prints the current trusted plugin names and trusted authoring roots, and `meta:plugin:trust revoke <name>` removes a persisted plugin-name trust entry. Trust grants are non-expiring Beta 1 state; users explicitly revoke plugin-name trust when it should no longer apply. Time-based expiry is rejected for Beta 1 because it would require migration, prompting, and renderer semantics without evidence that temporary trust solves the core postinstall risk.

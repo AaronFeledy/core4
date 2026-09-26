@@ -208,6 +208,43 @@ describe("GlobalAppServiceLive", () => {
     });
   });
 
+  test("regenerateDist leaves an existing Unix socket bind source in place", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const socketPath = join(dataRoot, "global", "ssh-upstream.sock");
+      await mkdir(join(dataRoot, "global"), { recursive: true });
+      const { createServer } = await import("node:net");
+      const server = createServer();
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(socketPath, () => resolve());
+      });
+      try {
+        await Effect.runPromise(
+          Effect.flatMap(GlobalAppService, (service) =>
+            service.regenerateDist({
+              services: {
+                "ssh-agent": {
+                  image: "alpine:3.20",
+                  mounts: [
+                    {
+                      type: "bind",
+                      source: socketPath,
+                      target: "/ssh-upstream/agent.sock",
+                      readOnly: false,
+                    },
+                  ],
+                },
+              },
+            }),
+          ).pipe(Effect.provide(globalAppLayer)),
+        );
+        expect((await stat(socketPath)).isSocket()).toBe(true);
+      } finally {
+        server.close();
+      }
+    });
+  });
+
   test("regenerateDist materializes bind-mount sources for string-form mounts", async () => {
     await withTempRoots(async (dataRoot) => {
       // Given a global service authoring a Traefik dynamic-config string-form mount

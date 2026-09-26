@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { AbsolutePath, AppId, PortNumber } from "./primitives.ts";
+import { SshAgentUpstream } from "./ssh-agent.ts";
 
 export const AGENT_SOCKET_CONTAINER_DIR = {
   ssh: "/run/lando/ssh-agent",
@@ -17,6 +18,10 @@ export const SshAgentConfig = Schema.Struct({
   }),
   socket: Schema.optional(Schema.String).annotations({
     description: "Explicit host SSH-agent socket path used instead of automatic discovery in host mode.",
+  }),
+  upstream: Schema.optional(SshAgentUpstream).annotations({
+    description:
+      'Sidecar-only. "host" relays the host CLI $SSH_AUTH_SOCK into the sidecar; an absolute Unix socket path relays that socket. Unset keeps file-load from ~/.ssh.',
   }),
 });
 export type SshAgentConfig = typeof SshAgentConfig.Type;
