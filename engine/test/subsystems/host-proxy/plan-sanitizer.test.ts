@@ -190,8 +190,8 @@ test("sanitizer strips gpg-agent overlay", async () => {
     },
     "/relay/gpg-keyring",
   );
-  expect(overlaid.services[service.name]?.environment.GNUPGHOME).toBe("/run/lando/gnupg");
-  expect(overlaid.services[service.name]?.mounts).toHaveLength(3);
+  expect(overlaid.services[service.name]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
+  expect(overlaid.services[service.name]?.mounts).toHaveLength(2);
   // When
   const result = await Effect.runPromise(
     Effect.gen(function* () {

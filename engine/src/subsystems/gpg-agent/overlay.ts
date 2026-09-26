@@ -13,7 +13,8 @@ import { GPG_AGENT_PLAN_EXTENSION_KEY } from "./intent.ts";
 const Intent = Schema.Struct({ forward: Schema.Literal(true) });
 const target = PortablePath.make(AGENT_SOCKET_CONTAINER_DIR.gpg);
 const keyringTarget = PortablePath.make("/run/lando/gpg-agent-keys");
-const homeTarget = PortablePath.make("/run/lando/gnupg");
+// A world-writable /tmp lets any service user create a private (0700) home; per-start preparation fills it.
+const homeTarget = PortablePath.make("/tmp/lando-gnupg");
 type OverlaySession = Pick<AgentRelaySession, "mount" | "kind" | "socketName">;
 
 export const serviceHasGpgAgentFeature = (service: ServicePlan): boolean =>
@@ -73,7 +74,7 @@ export const agentSocketOverlayFeature = (session: OverlaySession) => ({
 });
 
 const stripService = (service: ServicePlan): ServicePlan => {
-  const ownedTargets: ReadonlyArray<string> = [target, keyringTarget, homeTarget];
+  const ownedTargets: ReadonlyArray<string> = [target, keyringTarget];
   return {
     ...service,
     environment: Object.fromEntries(
@@ -116,7 +117,6 @@ export const withGpgAgentOverlay = (plan: AppPlan, session: OverlaySession, keyr
         createHostPath: false,
         realization: "passthrough",
       });
-      mounts.push({ type: "tmpfs", target: homeTarget, readOnly: false, realization: "passthrough" });
       return [service.name, { ...clean, environment, mounts }];
     }),
   ),

@@ -116,7 +116,7 @@ for (const prepareExit of [0, 1]) {
       );
       // Then
       expect(applied).toHaveLength(1);
-      expect(applied[0]?.services[web.name]?.environment.GNUPGHOME).toBe("/run/lando/gnupg");
+      expect(applied[0]?.services[web.name]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
       expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
         "/run/lando/ssh-agent/agent.sock",
       );

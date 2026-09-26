@@ -97,7 +97,7 @@ test("gpg overlays eligible services and closes the session on use failure", asy
           use: (overlaid) => {
             expect(overlaid.services[ServiceName.make("db")]).toBe(plan.services[ServiceName.make("db")]);
             expect(overlaid.services[ServiceName.make("web")]?.environment.GNUPGHOME).toBe(
-              "/run/lando/gnupg",
+              "/tmp/lando-gnupg",
             );
             return Effect.fail("apply failed");
           },

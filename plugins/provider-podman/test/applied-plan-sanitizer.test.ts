@@ -97,7 +97,7 @@ const overlaidPlan = (): AppPlan => {
             mounts.push(mount);
           },
         });
-        environment.GNUPGHOME = "/run/lando/gnupg";
+        environment.GNUPGHOME = "/tmp/lando-gnupg";
         environment.LANDO_GPG_AGENT_SOCKET = `${AGENT_SOCKET_CONTAINER_DIR.gpg}/${GPG_AGENT_SOCKET_NAME}`;
         environment.LANDO_GPG_KEYRING = "/run/lando/gpg-agent-keys";
         mounts.push({
@@ -179,6 +179,6 @@ test("an overlaid plan applied through provider-podman is persisted without the 
   const persisted = await Effect.runPromise(loadAppliedPlan(state, appId));
   expect(overlaid.services[serviceName]?.environment.SSH_AUTH_SOCK).toBe("/run/lando/ssh-agent/agent.sock");
   expect(overlaid.services[serviceName]?.environment.LANDO_HOST_PROXY_TOKEN).toBe("proxy-token");
-  expect(overlaid.services[serviceName]?.environment.GNUPGHOME).toBe("/run/lando/gnupg");
+  expect(overlaid.services[serviceName]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
   expect(persisted).toEqual(basePlan);
 });

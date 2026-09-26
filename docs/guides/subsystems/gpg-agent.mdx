@@ -64,11 +64,11 @@ Forwarding applies to every `type: lando` service in the app. There is no per-se
 
 | Variable | Value |
 | --- | --- |
-| `GNUPGHOME` | `/run/lando/gnupg` |
+| `GNUPGHOME` | `/tmp/lando-gnupg` |
 | `LANDO_GPG_AGENT_SOCKET` | `/run/lando/gpg-agent/S.gpg-agent` |
 | `LANDO_GPG_KEYRING` | `/run/lando/gpg-agent-keys` |
 
-On every start Lando exports only the public keyring and ownertrust. Right after the provider applies the plan, Lando runs an uncached command as each opted-in service's resolved user to copy the public keyring, import ownertrust, and link `S.gpg-agent` into `GNUPGHOME`. The home is a tmpfs; preparation runs on every start, independent of the app build cache, so a rebuilt image or a new key on the host shows up on the next `lando start`. That command needs `gpg` in the service image. If preparation fails in any service, the start fails and Lando tears the applied app back down. The socket the service opens is a per-app relay, not your host socket.
+On every start Lando exports only the public keyring and ownertrust. Right after the provider applies the plan, Lando runs an uncached command as each opted-in service's resolved user to copy the public keyring, import ownertrust, and link `S.gpg-agent` into `GNUPGHOME`. Preparation creates the home as the service user with mode `0700` and runs on every start, independent of the app build cache, so a rebuilt image or a new key on the host shows up on the next `lando start`. That command needs `gpg` in the service image. If preparation fails in any service, the start fails and Lando tears the applied app back down. The socket the service opens is a per-app relay, not your host socket.
 
 The relay uses the same delivery as SSH agent forwarding:
 

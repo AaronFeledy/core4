@@ -20,7 +20,7 @@ test("gpg overlay adds isolated home, public keyring and socket only to eligible
   // Then
   expect(result.services[ServiceName.make("web")]?.environment).toEqual({
     KEEP: "yes",
-    GNUPGHOME: "/run/lando/gnupg",
+    GNUPGHOME: "/tmp/lando-gnupg",
     LANDO_GPG_AGENT_SOCKET: "/run/lando/gpg-agent/S.gpg-agent",
     LANDO_GPG_KEYRING: "/run/lando/gpg-agent-keys",
   });
@@ -39,12 +39,6 @@ test("gpg overlay adds isolated home, public keyring and socket only to eligible
       target: PortablePath.make("/run/lando/gpg-agent-keys"),
       readOnly: true,
       createHostPath: false,
-      realization: "passthrough",
-    },
-    {
-      type: "tmpfs",
-      target: PortablePath.make("/run/lando/gnupg"),
-      readOnly: false,
       realization: "passthrough",
     },
   ]);
