@@ -38,7 +38,7 @@ Init also sets `appserver.environment.BACKDROP_SETTINGS`, a JSON copy of the dat
 <Guide>
   <Scenario id="reader-path" render>
     <Step name="scaffold">
-      <Variable name="appName" value="backdrop-workflow" display="backdrop-demo" />
+      <Variable name="appName" value="backdrop-demo" display="backdrop-demo" />
       <Run command="lando init --recipe backdrop --name={{appName}} --yes" />
     </Step>
     <Step name="confirm-defaults">
@@ -115,7 +115,7 @@ lando exec appserver -- mysqldump --version
 lando bee version
 ```
 
-`lando restart` keeps the old containers, so it won't pick these up. Step users and rebuild rules live in [Run build steps as root or as your app user](../services/build-steps.mdx).
+Step users and rebuild rules live in [Run build steps as root or as your app user](../services/build-steps.mdx).
 
 ## Download and install Backdrop
 
