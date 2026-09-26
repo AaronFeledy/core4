@@ -40,7 +40,7 @@ const providerWithComposeServiceFields = {
   },
 } satisfies typeof TestRuntimeProvider;
 
-const OPTIONAL_CAPABILITY_FIELDS = new Set(["composePreservedPaths", "composeProjectFields", "hostProxy"]);
+const OPTIONAL_CAPABILITY_FIELDS = new Set(["composePreservedPaths", "composeProjectFields", "hostProxy", "agentSocket"]);
 const doctorPathsLayer = Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} }));
 
 const decodeFrames = (ndjson: string) =>
