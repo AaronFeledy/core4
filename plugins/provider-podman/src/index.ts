@@ -82,6 +82,7 @@ import {
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 import {
+  AppPlanSanitizer,
   LogFileHelperAssets,
   PathsService,
   RuntimeProvider,
@@ -501,6 +502,7 @@ export interface ProviderLayerOptions {
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
 }
 
 const makeNoPlanError = (appId: AppId, operation: string) =>
@@ -568,7 +570,7 @@ const enforceServerVersionFloor = (
  * Podman host. Fails closed with `ProviderLandoConflictError` if
  * `@lando/provider-lando`'s persisted setup-state claims the same socket.
  */
-export const makeRuntimeProvider = (
+const assembleRuntimeProvider = (
   options: ProviderLayerOptions = {},
 ): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> => {
   const plans = new Map<string, AppPlan>();
@@ -701,7 +703,9 @@ export const makeRuntimeProvider = (
         : state === undefined
           ? yield* resolvePlan(plan.id)
           : yield* loadAppliedPlan(state, plan.id);
-      const persistedPlan = mergeAppliedPlan(previous, plan, reconcile);
+      const persistedPlan = (options.sanitizeAppliedPlan ?? ((value: AppPlan) => value))(
+        mergeAppliedPlan(previous, plan, reconcile),
+      );
       if (state !== undefined) yield* persistAppliedPlan(state, persistedPlan);
       plans.set(plan.id, persistedPlan);
     });
@@ -899,6 +903,17 @@ export const makeRuntimeProvider = (
   );
 };
 
+export const makeRuntimeProvider = (
+  options: ProviderLayerOptions = {},
+): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> =>
+  Effect.flatMap(Effect.serviceOption(AppPlanSanitizer), (found) =>
+    assembleRuntimeProvider(
+      options.sanitizeAppliedPlan !== undefined || found._tag === "None"
+        ? options
+        : { ...options, sanitizeAppliedPlan: found.value.sanitizeForPersistence },
+    ),
+  );
+
 export const makeProviderLayer = (options: ProviderLayerOptions = {}) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));
 
@@ -973,12 +988,14 @@ export const plugin = definePlugin({
           Effect.gen(function* () {
             const paths = yield* PathsService;
             const assets = yield* LogFileHelperAssets;
+            const appPlanSanitizer = yield* AppPlanSanitizer;
             const logFileHelperPayloads = yield* assets.payloads;
             return yield* makeRuntimeProvider({
               platform: paths.platform,
               stateDir: `${paths.roots.userDataRoot}/providers`,
               appliedPlanState: ctx.stateStore,
               logFileHelperPayloads,
+              sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
             });
           }),
       },

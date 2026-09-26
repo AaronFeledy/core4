@@ -301,7 +301,7 @@ export const startAppForTargetUnlocked = (
     return yield* withStartedGpgAgent(plan, ref, provider.capabilities, gpgIntent, {
       exec: provider.exec,
       ...(managed === undefined ? {} : { managed }),
-      use: (gpgPlan) =>
+      use: (gpgPlan, prepareGpgHome) =>
         withStartedSshAgent(gpgPlan, ref, provider.capabilities, sshAgentIntent, {
           platform: provider.platform,
           ...(managed === undefined ? {} : { managed }),
@@ -396,6 +396,7 @@ export const startAppForTargetUnlocked = (
                           })
                           .pipe(Effect.tap((result) => recordCreatedVolumes(provider, builtPlan, result))),
                       );
+                      yield* prepareGpgHome;
                       return yield* Effect.forEach(serviceList, (service) =>
                         provider.inspect({ app: plan.id, service: service.name }).pipe(
                           Effect.map((runtime) => {

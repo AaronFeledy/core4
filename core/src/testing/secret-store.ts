@@ -40,12 +40,13 @@ export interface TestSecretStore {
 /**
  * Build an in-memory `SecretStore` double. `get(id)` resolves a seeded value and
  * fails with {@link SecretNotFoundError} (carrying the requested id) when absent;
- * `has` and `list` are total, and `list` returns seeded ids sorted without ever
- * leaking values.
+ * `has` uses the same reference parsing as `get` and reports false for rejected
+ * ids. `list` returns seeded ids sorted without ever leaking values.
  */
 export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestSecretStore => {
   const secrets = new Map<string, string>(Object.entries(options.secrets ?? {}));
   const id = options.id ?? "test";
+  const schemes = options.schemes ?? [];
   const unavailable =
     options.unavailable === undefined
       ? undefined
@@ -56,21 +57,28 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
           remediation: "Restore access to the test secret store.",
         });
 
+  const ownedReference = (secret: string) => {
+    const reference = parseSecretReference(secret);
+    if (Either.isLeft(reference)) return reference;
+    const scheme = reference.right.scheme;
+    if (scheme !== undefined && !schemes.includes(scheme)) {
+      return Either.left(
+        new SecretReferenceInvalidError({
+          message: "The test secret store does not own this scheme.",
+          reference: secret,
+          remediation: "Use a bare secret id or route this reference to its scheme's secret store.",
+        }),
+      );
+    }
+    return reference;
+  };
+
   const service: SecretStoreShape = {
     id,
-    schemes: options.schemes ?? [],
+    schemes,
     get: (secret) => {
-      const reference = parseSecretReference(secret);
+      const reference = ownedReference(secret);
       if (Either.isLeft(reference)) return Effect.fail(reference.left);
-      if (reference.right.scheme !== undefined && !options.schemes?.includes(reference.right.scheme)) {
-        return Effect.fail(
-          new SecretReferenceInvalidError({
-            message: "The test secret store does not own this scheme.",
-            reference: secret,
-            remediation: "Use a bare secret id or route this reference to its scheme's secret store.",
-          }),
-        );
-      }
       if (unavailable !== undefined) return Effect.fail(unavailable);
       const value = secrets.get(secret);
       return value === undefined
@@ -83,8 +91,11 @@ export const makeTestSecretStore = (options: TestSecretStoreOptions = {}): TestS
           )
         : Effect.succeed(value);
     },
-    has: (secret) =>
-      unavailable === undefined ? Effect.sync(() => secrets.has(secret)) : Effect.fail(unavailable),
+    has: (secret) => {
+      if (Either.isLeft(ownedReference(secret))) return Effect.succeed(false);
+      if (unavailable !== undefined) return Effect.fail(unavailable);
+      return Effect.sync(() => secrets.has(secret));
+    },
     list: Effect.sync(() => [...secrets.keys()].sort()),
   };
 

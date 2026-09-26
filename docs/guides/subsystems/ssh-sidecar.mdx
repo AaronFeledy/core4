@@ -36,9 +36,15 @@ The planner records only the eligible services and the selected mode under the p
 
 ## When the sidecar is missing
 
-Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, the sidecar is not installed or not running, or the relay fails to come up, `lando start` still succeeds. Lando publishes a warning naming the failure tag and starts the app without the overlay. `lando doctor` reports the `ssh` subsystem as degraded with `lando setup` or `lando doctor --fix` as remediation.
+Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, the sidecar is not installed or not running, or the relay or bridge fails to come up, `lando start` still succeeds. Lando publishes a warning naming the reason and the remediation and starts the app without the `SSH_AUTH_SOCK` overlay. `lando doctor` reports the `ssh` check as degraded with `lando setup` or `lando doctor --fix` as remediation.
 
 Host mode does the opposite and fails closed. That difference is deliberate: nobody opts into the sidecar, so it must never block a start; everyone who opts into host forwarding wants to know when it is not working.
+
+## Security
+
+The sidecar is a Lando-managed `ssh-agent` container. At global-app start it runs `ssh-add` against a read-only bind of your `~/.ssh`, so every default key it can load without a passphrase ends up unencrypted in that agent's memory for as long as the global app runs. Passphrase-protected keys are skipped. Hardware-backed keys and 1Password keys never load here; they need [host mode](./ssh-host-agent.mdx), which keeps signing on the host.
+
+Any `type: lando` service in any running app can request signatures from the sidecar. The relay socket on the host is mode `0666` inside a per-user `0700` run directory, so other accounts on the machine cannot reach it. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token; another local account on that host could connect to it while an app runs.
 
 This is not a user how-to. For a shell inside a service, see [Open a shell in a service](../cli/ssh.mdx).
 

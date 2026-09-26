@@ -10,6 +10,7 @@ import {
 import {
   AGENT_RELAY_DIRECTORY_MODE,
   AGENT_RELAY_SOCKET_MODE,
+  ensureAgentRelayRunRoot,
   sshAgentSessionPaths,
 } from "@lando/engine/subsystems/ssh-agent/session";
 import {
@@ -24,18 +25,19 @@ import { detachStdioWrites, writeStdioLine } from "@lando/renderer/io";
 import { SshAgentTransportError } from "@lando/sdk/errors";
 import { AbsolutePath, AgentSocketUpstream, type AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { DateTime, Effect, type Layer, Match, Schema } from "effect";
+import { DateTime, Effect, type Layer, Match, Option, Schema } from "effect";
 
 export interface AgentRelayWorkerOptions {
   readonly platform?: string;
   readonly createRelay?: typeof createAgentRelay;
 }
 
-const workerError = (stage: "worker" | "broker" | "bridge") => (_cause: unknown) =>
+const workerError = (stage: "worker" | "broker" | "bridge") => (cause: unknown) =>
   new SshAgentTransportError({
     message: `Unable to start the agent relay ${stage}.`,
     stage,
     remediation: "Check the agent socket and provider bridge, then restart the app.",
+    ...(cause === undefined ? {} : { cause }),
   });
 
 export const scopedAgentRelayWorker = (input: AgentRelayWorkerInput, options: AgentRelayWorkerOptions = {}) =>
@@ -75,6 +77,7 @@ export const scopedAgentRelayWorker = (input: AgentRelayWorkerInput, options: Ag
     if (listen._tag === "unix") {
       yield* Effect.tryPromise({
         try: async () => {
+          await ensureAgentRelayRunRoot(paths.stateDir);
           await mkdir(paths.socketDir, { recursive: true, mode: AGENT_RELAY_DIRECTORY_MODE });
           await chmod(paths.stateDir, AGENT_RELAY_DIRECTORY_MODE);
           await chmod(paths.socketDir, AGENT_RELAY_DIRECTORY_MODE);
@@ -111,7 +114,13 @@ export const scopedAgentRelayWorker = (input: AgentRelayWorkerInput, options: Ag
       ),
       Match.whenOr("guest-bridge", "volume-relay", () =>
         Effect.gen(function* () {
-          const registry = yield* RuntimeProviderRegistry;
+          const registryOption = yield* Effect.serviceOption(RuntimeProviderRegistry);
+          if (Option.isNone(registryOption)) {
+            return yield* Effect.fail(
+              workerError("bridge")(new Error("No runtime provider registry is available.")),
+            );
+          }
+          const registry = registryOption.value;
           const plan: AppPlan = {
             ...input.plan,
             name: input.app.id,
@@ -164,22 +173,64 @@ export const scopedAgentRelayWorker = (input: AgentRelayWorkerInput, options: Ag
     });
   });
 
+const defaultAgentRelayRuntime = async (input: AgentRelayWorkerInput) => {
+  const { makeLandoRuntime } = await import("../../runtime/layer");
+  return makeLandoRuntime(
+    cliRuntimeOptions({
+      bootstrap: "provider",
+      cwd: input.app.root,
+      plugins: { policy: "discovery" },
+      logLevel: "none",
+      telemetry: false,
+      installSignalHandlers: false,
+      config: {
+        ...(input.paths.userConfRoot === undefined
+          ? {}
+          : { userConfRoot: AbsolutePath.make(input.paths.userConfRoot) }),
+        ...(input.paths.userDataRoot === undefined
+          ? {}
+          : { userDataRoot: AbsolutePath.make(input.paths.userDataRoot) }),
+        ...(input.paths.userCacheRoot === undefined
+          ? {}
+          : { userCacheRoot: AbsolutePath.make(input.paths.userCacheRoot) }),
+        ...(input.paths.systemPluginRoot === undefined
+          ? {}
+          : { systemPluginRoot: AbsolutePath.make(input.paths.systemPluginRoot) }),
+      },
+    }),
+  );
+};
+
 export const runAgentRelayWorkerProcess = async (
   options: AgentRelayWorkerOptions & {
     readonly runtime?: Layer.Layer<RuntimeProviderRegistry, unknown>;
+    readonly readInput?: () => Promise<string>;
+    readonly loadRuntime?: (
+      input: AgentRelayWorkerInput,
+    ) =>
+      | Layer.Layer<RuntimeProviderRegistry, unknown>
+      | Promise<Layer.Layer<RuntimeProviderRegistry, unknown>>;
+    readonly until?: Promise<void>;
   } = {},
 ): Promise<void> => {
   const shutdown = Promise.withResolvers<void>();
+  if (options.until !== undefined) void options.until.then(() => shutdown.resolve());
   const onSignal = () => shutdown.resolve();
   const signals: NodeJS.EventEmitter = process;
   signals.once("SIGTERM", onSignal);
   signals.once("SIGINT", onSignal);
   try {
+    const readInput = options.readInput ?? (() => Bun.stdin.text());
     const input = await Effect.runPromise(
-      Schema.decodeUnknown(Schema.parseJson(AgentRelayWorkerInput))(await Bun.stdin.text()).pipe(
+      Schema.decodeUnknown(Schema.parseJson(AgentRelayWorkerInput))(await readInput()).pipe(
         Effect.mapError(workerError("worker")),
       ),
     );
+    const runtime =
+      options.runtime ??
+      (input.delivery === "bind-directory"
+        ? undefined
+        : await (options.loadRuntime ?? defaultAgentRelayRuntime)(input));
     const run = Effect.scoped(
       Effect.gen(function* () {
         const ready = yield* scopedAgentRelayWorker(input, options);
@@ -190,40 +241,11 @@ export const runAgentRelayWorkerProcess = async (
         yield* Effect.promise(() => shutdown.promise);
       }),
     );
-    if (options.runtime !== undefined) {
-      await Effect.runPromise(
-        run.pipe(Effect.provide(options.runtime), Effect.raceFirst(Effect.promise(() => shutdown.promise))),
-      );
-    } else {
-      const { makeLandoRuntime } = await import("../../runtime/layer");
-      const runtime = makeLandoRuntime(
-        cliRuntimeOptions({
-          bootstrap: "provider",
-          cwd: input.app.root,
-          plugins: { policy: "discovery" },
-          logLevel: "none",
-          telemetry: false,
-          installSignalHandlers: false,
-          config: {
-            ...(input.paths.userConfRoot === undefined
-              ? {}
-              : { userConfRoot: AbsolutePath.make(input.paths.userConfRoot) }),
-            ...(input.paths.userDataRoot === undefined
-              ? {}
-              : { userDataRoot: AbsolutePath.make(input.paths.userDataRoot) }),
-            ...(input.paths.userCacheRoot === undefined
-              ? {}
-              : { userCacheRoot: AbsolutePath.make(input.paths.userCacheRoot) }),
-            ...(input.paths.systemPluginRoot === undefined
-              ? {}
-              : { systemPluginRoot: AbsolutePath.make(input.paths.systemPluginRoot) }),
-          },
-        }),
-      );
-      await Effect.runPromise(
-        run.pipe(Effect.provide(runtime), Effect.raceFirst(Effect.promise(() => shutdown.promise))),
-      );
-    }
+    await Effect.runPromise(
+      (runtime === undefined ? run : run.pipe(Effect.provide(runtime))).pipe(
+        Effect.raceFirst(Effect.promise(() => shutdown.promise)),
+      ),
+    );
   } finally {
     signals.removeListener("SIGTERM", onSignal);
     signals.removeListener("SIGINT", onSignal);

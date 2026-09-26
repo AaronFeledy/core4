@@ -48,6 +48,11 @@ const fakeApi = (failurePath?: string) => {
         if (request.path === "/containers/relay-id/exec") return { status: 201, body: '{"Id":"exec-id"}' };
         if (request.path === "/exec/exec-id/json")
           return { status: 200, body: '{"Running":false,"ExitCode":0}' };
+        if (request.method === "GET" && request.path.startsWith("/volumes/"))
+          return { status: 404, body: "" };
+        if (request.method === "GET" && /^\/containers\/[^/]+\/json$/u.test(request.path)) {
+          return { status: 404, body: "" };
+        }
         return { status: 204, body: "" };
       }),
   };
@@ -166,4 +171,110 @@ test("rejects missing canonical ownership context before creating resources", as
   // Then
   expect(result).toMatchObject({ _tag: "Left", left: { _tag: "ParseError" } });
   expect(fake.requests).toEqual([]);
+});
+
+const relayVolume = "lando-agent-ssh-test-app";
+const relayContainer = "lando-agent-relay-ssh-test-app";
+const ownedRelayLabels = {
+  ...volumeOwnershipLabels(plan, { name: relayVolume, scope: "app", kind: "data" }),
+  "dev.lando.app": "test-app",
+  "dev.lando.store": relayVolume,
+  "dev.lando.scope": "app",
+  "dev.lando.volume-instance": "previous-instance",
+  "dev.lando.agent-session": "previous-session",
+};
+
+const relayApi = (seed: "owned" | "foreign") => {
+  const requests: EngineHttpRequest[] = [];
+  let volume: "owned" | "foreign" | "absent" = seed;
+  let container: "owned" | "absent" = seed === "owned" ? "owned" : "absent";
+  const api: EngineApiClient = {
+    info: Effect.succeed({}),
+    request: (request) =>
+      Effect.sync(() => {
+        requests.push(request);
+        if (request.method === "GET" && request.path === `/volumes/${relayVolume}`) {
+          return volume === "absent"
+            ? { status: 404, body: "" }
+            : {
+                status: 200,
+                body: JSON.stringify({
+                  Name: relayVolume,
+                  Labels: volume === "owned" ? ownedRelayLabels : { "com.example.owner": "someone-else" },
+                }),
+              };
+        }
+        if (request.method === "GET" && request.path === `/containers/${relayContainer}/json`) {
+          return container === "absent"
+            ? { status: 404, body: "" }
+            : {
+                status: 200,
+                body: JSON.stringify({ Id: "stale-relay", Config: { Labels: ownedRelayLabels } }),
+              };
+        }
+        if (request.method === "DELETE" && request.path === `/containers/${relayContainer}?force=true`) {
+          container = "absent";
+          return { status: 204, body: "" };
+        }
+        if (request.method === "DELETE" && request.path === `/volumes/${relayVolume}`) {
+          volume = "absent";
+          return { status: 204, body: "" };
+        }
+        if (request.path === "/volumes/create") {
+          if (seed === "foreign") return { status: 201, body: JSON.stringify(request.body) };
+          if (volume !== "absent") {
+            return {
+              status: 201,
+              body: JSON.stringify({ Name: relayVolume, Labels: ownedRelayLabels }),
+            };
+          }
+          volume = "owned";
+          return { status: 201, body: JSON.stringify(request.body) };
+        }
+        if (request.path.startsWith("/containers/create")) return { status: 201, body: '{"Id":"relay-id"}' };
+        if (request.path === "/containers/relay-id/exec") return { status: 201, body: '{"Id":"exec-id"}' };
+        if (request.path === "/exec/exec-id/json")
+          return { status: 200, body: '{"Running":false,"ExitCode":0}' };
+        return { status: 204, body: "" };
+      }),
+  };
+  return { api, requests };
+};
+
+test("stale owned relay volume and container from a previous session are reclaimed and start succeeds", async () => {
+  // Given
+  const fake = relayApi("owned");
+
+  // When
+  const result = await Effect.runPromise(Effect.scoped(open(fake.api)));
+
+  // Then
+  expect(result).toEqual({ _tag: "volume", volume: relayVolume });
+  const createAt = fake.requests.findIndex((request) => request.path === "/volumes/create");
+  expect(createAt).toBeGreaterThan(0);
+  expect(fake.requests.slice(0, createAt).map(({ method, path }) => [method, path])).toEqual([
+    ["GET", `/volumes/${relayVolume}`],
+    ["GET", `/containers/${relayContainer}/json`],
+    ["DELETE", `/containers/${relayContainer}?force=true`],
+    ["DELETE", `/volumes/${relayVolume}`],
+  ]);
+});
+
+test("a foreign unowned volume with that name is not deleted and fails with remediation", async () => {
+  // Given
+  const fake = relayApi("foreign");
+
+  // When
+  const result = await Effect.runPromise(Effect.scoped(open(fake.api)).pipe(Effect.either));
+
+  // Then
+  expect(result._tag).toBe("Left");
+  if (result._tag !== "Left") return;
+  expect(result.left).toMatchObject({ _tag: "ProviderUnavailableError" });
+  expect(
+    "remediation" in result.left &&
+      typeof result.left.remediation === "string" &&
+      result.left.remediation.length > 0,
+  ).toBe(true);
+  expect(fake.requests.some((request) => request.method === "DELETE")).toBe(false);
 });

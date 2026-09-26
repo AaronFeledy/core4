@@ -10,14 +10,17 @@ import {
   GPG_AGENT_SOCKET_NAME,
   type ProviderCapabilities,
 } from "@lando/sdk/schema";
-import { FileSystem, PathsService, ProcessRunner, type RuntimeProviderShape } from "@lando/sdk/services";
+import { PathsService, ProcessRunner, type RuntimeProviderShape } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Option, Ref, Scope } from "effect";
-import { discoverHostGpgAgent } from "../subsystems/gpg-agent/discovery.ts";
+import { type GpgAgentDiscoveryOptions, discoverHostGpgAgent } from "../subsystems/gpg-agent/discovery.ts";
 import type { GpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { exportPublicKeyring } from "../subsystems/gpg-agent/keyring.ts";
 import { gpgAgentEligibleServices, withGpgAgentOverlay } from "../subsystems/gpg-agent/overlay.ts";
-import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-worker.ts";
+import {
+  type DetachedAgentRelayWorkerOptions,
+  startDetachedAgentRelayWorker,
+} from "../subsystems/ssh-agent/detached-worker.ts";
 import type { AgentRelaySession } from "../subsystems/ssh-agent/session.ts";
 
 type Capabilities = Pick<ProviderCapabilities, "agentSocket">;
@@ -34,6 +37,11 @@ const gpgTransportError = (cause: SshAgentTransportError) =>
 interface GpgAgentSession {
   readonly session: AgentRelaySession;
   readonly keyringDir: string;
+}
+
+export interface GpgAgentSessionOptions {
+  readonly spawnWorker?: DetachedAgentRelayWorkerOptions["spawnWorker"];
+  readonly discovery?: Pick<GpgAgentDiscoveryOptions, "inspectPath" | "probeRestricted">;
 }
 
 const missingGnuPg = () =>
@@ -60,6 +68,7 @@ export const startGpgAgentSession = (
   app: AppRef,
   capabilities: Capabilities,
   intent: GpgAgentIntent,
+  options: GpgAgentSessionOptions = {},
 ) =>
   Effect.gen(function* () {
     const delivery = yield* validateGpgAgentSocketCapability(capabilities);
@@ -67,15 +76,12 @@ export const startGpgAgentSession = (
     const runnerOption = yield* Effect.serviceOption(ProcessRunner);
     if (Option.isNone(runnerOption)) return yield* Effect.fail(missingGnuPg());
     const runner = runnerOption.value;
-    const fs = yield* Effect.serviceOption(FileSystem);
     const upstream = yield* discoverHostGpgAgent({
       runner,
       ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
-      exists: (path) =>
-        Option.isNone(fs) ? Promise.resolve(false) : Effect.runPromise(fs.value.exists(path)),
+      launch: true,
+      ...options.discovery,
     });
-    const keyringDir = join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring");
-    yield* exportPublicKeyring({ runner, destDir: keyringDir });
     const privateFileAccess = yield* PrivateFileAccessService;
     const session = yield* startDetachedAgentRelayWorker({
       app,
@@ -86,9 +92,48 @@ export const startGpgAgentSession = (
       socketName: GPG_AGENT_SOCKET_NAME,
       paths: { ...paths.roots, platform: paths.platform },
       privateFileAccess,
+      ...(options.spawnWorker === undefined ? {} : { spawnWorker: options.spawnWorker }),
     }).pipe(Effect.mapError(gpgTransportError));
+    // Starting the worker resets its state directory, so the keyring is published only once the worker owns it.
+    const keyringDir = join(paths.agentRelayRunDir("gpg", plan.id, plan.root), "keyring");
+    yield* exportPublicKeyring({ runner, destDir: keyringDir }).pipe(
+      Effect.onError(() => Effect.promise(() => session.close())),
+    );
     return { session, keyringDir } satisfies GpgAgentSession;
   });
+
+/** Seeds each opted-in service's GNUPGHOME from the mounted public keyring and links the relayed agent socket. */
+const prepareGpgHome = (plan: AppPlan, exec: RuntimeProviderShape["exec"]) =>
+  Effect.forEach(
+    gpgAgentEligibleServices(plan),
+    (service) => {
+      const failure = () =>
+        new GpgAgentTransportError({
+          message: `Unable to prepare the GPG home for service ${service.name}.`,
+          stage: "worker",
+          remediation:
+            "Install gpg in the service image, ensure the service user can write GNUPGHOME, and retry start.",
+        });
+      return exec(
+        {
+          app: plan.id,
+          service: service.name,
+          ...(service.user === undefined ? {} : { user: service.user }),
+        },
+        {
+          command: [
+            "sh",
+            "-c",
+            'set -e; command -v gpg >/dev/null 2>&1 || { echo "lando.gpg-agent needs gpg in the service image" >&2; exit 1; }; mkdir -p -m 700 "$GNUPGHOME"; cp "$LANDO_GPG_KEYRING/pubring.gpg" "$GNUPGHOME/pubring.gpg"; gpg --batch --import-ownertrust "$LANDO_GPG_KEYRING/otrust.txt"; ln -sf "$LANDO_GPG_AGENT_SOCKET" "$GNUPGHOME/S.gpg-agent"',
+          ],
+        },
+      ).pipe(
+        Effect.mapError(failure),
+        Effect.flatMap((result) => (result.exitCode === 0 ? Effect.void : Effect.fail(failure()))),
+      );
+    },
+    { discard: true },
+  );
 
 export const withStartedGpgAgent = <A, E, R>(
   plan: AppPlan,
@@ -98,7 +143,14 @@ export const withStartedGpgAgent = <A, E, R>(
   options: {
     readonly exec: RuntimeProviderShape["exec"];
     readonly managed?: { readonly scope: Scope.Scope };
-    readonly use: (plan: AppPlan) => Effect.Effect<A, E, R>;
+    /**
+     * `prepareGpgHome` must run right after the provider applies the overlaid plan, inside the
+     * caller's apply compensation, so a failed GNUPGHOME seed tears the started app down.
+     */
+    readonly use: (
+      plan: AppPlan,
+      prepareGpgHome: Effect.Effect<void, GpgAgentTransportError>,
+    ) => Effect.Effect<A, E, R>;
     readonly startSession?: () => Effect.Effect<GpgAgentSession, AgentError>;
   },
 ): Effect.Effect<A, E | AgentError, R | PathsService | PrivateFileAccessService> =>
@@ -109,61 +161,27 @@ export const withStartedGpgAgent = <A, E, R>(
       intent.forward === false ||
       gpgAgentEligibleServices(plan).length === 0
     ) {
-      return yield* options.use(plan);
+      return yield* options.use(plan, Effect.void);
     }
     const keep = yield* Ref.make(false);
     const acquire = options.startSession?.() ?? startGpgAgentSession(plan, app, capabilities, intent);
     return yield* Effect.acquireUseRelease(
       acquire,
       (agent) =>
-        options.use(withGpgAgentOverlay(plan, agent.session, agent.keyringDir)).pipe(
-          Effect.tap(() =>
-            Effect.forEach(
-              gpgAgentEligibleServices(plan),
-              (service) => {
-                const failure = () =>
-                  new GpgAgentTransportError({
-                    message: `Unable to prepare the GPG home for service ${service.name}.`,
-                    stage: "worker",
-                    remediation:
-                      "Install gpg in the service image, ensure the service user can write GNUPGHOME, and retry start.",
-                  });
-                return options
-                  .exec(
-                    {
-                      app: plan.id,
-                      service: service.name,
-                      ...(service.user === undefined ? {} : { user: service.user }),
-                    },
-                    {
-                      command: [
-                        "sh",
-                        "-c",
-                        'set -e; command -v gpg >/dev/null 2>&1 || { echo "lando.gpg-agent needs gpg in the service image" >&2; exit 1; }; mkdir -p -m 700 "$GNUPGHOME"; cp "$LANDO_GPG_KEYRING/pubring.gpg" "$GNUPGHOME/pubring.gpg"; gpg --batch --import-ownertrust "$LANDO_GPG_KEYRING/otrust.txt"; ln -sf "$LANDO_GPG_AGENT_SOCKET" "$GNUPGHOME/S.gpg-agent"',
-                      ],
-                    },
-                  )
-                  .pipe(
-                    Effect.mapError(failure),
-                    Effect.flatMap((result) =>
-                      result.exitCode === 0 ? Effect.void : Effect.fail(failure()),
-                    ),
+        options
+          .use(withGpgAgentOverlay(plan, agent.session, agent.keyringDir), prepareGpgHome(plan, options.exec))
+          .pipe(
+            Effect.tap(() =>
+              Effect.gen(function* () {
+                if (options.managed !== undefined) {
+                  yield* Effect.addFinalizer(() => Effect.promise(() => agent.session.close())).pipe(
+                    Effect.provideService(Scope.Scope, options.managed.scope),
                   );
-              },
-              { discard: true },
+                }
+                yield* Ref.set(keep, true);
+              }),
             ),
           ),
-          Effect.tap(() =>
-            Effect.gen(function* () {
-              if (options.managed !== undefined) {
-                yield* Effect.addFinalizer(() => Effect.promise(() => agent.session.close())).pipe(
-                  Effect.provideService(Scope.Scope, options.managed.scope),
-                );
-              }
-              yield* Ref.set(keep, true);
-            }),
-          ),
-        ),
       (agent) =>
         Ref.get(keep).pipe(
           Effect.flatMap((retained) =>

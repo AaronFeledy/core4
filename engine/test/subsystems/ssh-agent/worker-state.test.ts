@@ -204,3 +204,44 @@ test("removes stale worker state without signaling a dead process", async () => 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("writing a relay record keeps userDataRoot/run at mode 0700", async () => {
+  const { writeAgentRelayWorkerRecord } = await import("../../../src/subsystems/ssh-agent/worker-state.ts");
+  // Given a data root whose run directory is already traversable by other users.
+  const root = await mkdtemp(join(tmpdir(), "agent-run-mode-"));
+  const runRoot = join(root, "run");
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(runRoot, { mode: 0o755 });
+  await chmod(runRoot, 0o755);
+  const app = { id: "demo", root: AbsolutePath.make(root), kind: "user" as const };
+  const record = {
+    appId: app.id,
+    appRoot: app.root,
+    sessionId: "first",
+    kind: "ssh" as const,
+    socketName: "agent.sock",
+    protocolVersion: 1 as const,
+    controlToken: "token",
+    controlPort: 12345,
+    pid: 98765,
+    mount: { _tag: "bind-directory" as const, directory: AbsolutePath.make(join(root, "socket")) },
+  };
+  try {
+    // When the worker record is written.
+    await Effect.runPromise(
+      writeAgentRelayWorkerRecord(
+        app,
+        {
+          paths: { userDataRoot: root },
+          kind: "ssh",
+          privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
+        },
+        record,
+      ),
+    );
+    // Then other host users cannot traverse into the relay sockets.
+    expect((await stat(runRoot)).mode & 0o777).toBe(0o700);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

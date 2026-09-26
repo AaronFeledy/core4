@@ -9,7 +9,7 @@ import {
   type ProviderCapabilities,
   SSH_AGENT_SOCKET_NAME,
 } from "@lando/sdk/schema";
-import { EventService, FileSystem, PathsService, ProcessRunner, SshService } from "@lando/sdk/services";
+import { EventService, PathsService, SshService } from "@lando/sdk/services";
 import { makeTaskTree, runWithTaskTree } from "@lando/sdk/task-progress";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Option, Ref, Scope } from "effect";
@@ -31,7 +31,20 @@ import { startSshAgentTreeId } from "./start-progress.ts";
 
 type Capabilities = Pick<ProviderCapabilities, "agentSocket">;
 type AgentError = SshAgentUnavailableError | SshAgentTransportError;
-type DiscoveryOptions = Partial<Pick<HostAgentDiscoveryOptions, "env" | "home" | "exists" | "runGpgconf">>;
+type DiscoveryOptions = Partial<
+  Pick<
+    HostAgentDiscoveryOptions,
+    | "env"
+    | "home"
+    | "exists"
+    | "runGpgconf"
+    | "inspect"
+    | "probe"
+    | "gpgSocket"
+    | "probeTimeoutMs"
+    | "gpgTimeoutMs"
+  >
+>;
 type SessionOptions = DiscoveryOptions & { readonly platform?: HostPlatform };
 
 export const validateAgentSocketCapability = (capabilities: Capabilities, intent: SshAgentIntent) =>
@@ -75,40 +88,37 @@ export const resolveSshAgentUpstream = (
           return { _tag: "unix" as const, path: socket.socketPath };
         }
         case "host": {
-          const fs = yield* Effect.serviceOption(FileSystem);
-          const runner = yield* Effect.serviceOption(ProcessRunner);
-          return yield* discoverHostSshAgent({
+          const discovered = yield* discoverHostSshAgent({
             platform: input.platform ?? process.platform,
             env: input.env ?? process.env,
             home: input.home ?? homedir(),
             ...(input.intent.socket === undefined ? {} : { explicitSocket: input.intent.socket }),
-            exists:
-              input.exists ??
-              ((path) =>
-                Option.isSome(fs) ? Effect.runPromise(fs.value.exists(path)) : Promise.resolve(false)),
-            runGpgconf:
-              input.runGpgconf ??
-              (() =>
-                Option.isSome(runner)
-                  ? Effect.runPromise(
-                      runner.value
-                        .run({ cmd: "gpgconf", args: ["--list-dirs", "agent-ssh-socket"], timeoutMs: 5_000 })
-                        .pipe(
-                          Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : undefined)),
-                          Effect.catchAll(() => Effect.succeed(undefined)),
-                        ),
-                    )
-                  : Promise.resolve(undefined)),
+            ...(input.exists === undefined ? {} : { exists: input.exists }),
+            ...(input.runGpgconf === undefined ? {} : { runGpgconf: input.runGpgconf }),
+            ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+            ...(input.probe === undefined ? {} : { probe: input.probe }),
+            ...(input.gpgSocket === undefined ? {} : { gpgSocket: input.gpgSocket }),
+            ...(input.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: input.probeTimeoutMs }),
+            gpgTimeoutMs: input.gpgTimeoutMs ?? 5_000,
           });
+          return discovered.upstream;
         }
         default:
           return input.intent.mode satisfies never;
       }
     });
-    yield* Effect.tryPromise({
-      try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
-      catch: () => unavailable(input.intent.mode === "sidecar" ? "sidecar-not-running" : "socket-missing"),
-    });
+    switch (input.intent.mode) {
+      case "sidecar":
+        yield* Effect.tryPromise({
+          try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
+          catch: () => unavailable("sidecar-not-running"),
+        });
+        break;
+      case "host":
+        break;
+      default:
+        return input.intent.mode satisfies never;
+    }
     return upstream;
   });
 

@@ -273,4 +273,45 @@ describe("SSH agent doctor posture", () => {
     expect(encoded.subsystems.checks[0]?.details).toEqual(check.details);
     expect(JSON.parse(ndjson.split("\n")[0] ?? "{}").payload.details).toEqual(check.details);
   });
+
+  test("sidecar posture key identifies the managed agent", async () => {
+    // Given / When
+    const check = await Effect.runPromise(sshAgentPostureCheck(inputs()));
+    // Then
+    expect(check.details?.mode).toBe("sidecar");
+    expect(check.context.securityPosture).toBe("sidecar-managed-keys");
+  });
+
+  test("host posture key identifies host signatures", async () => {
+    // Given
+    const input = {
+      ...inputs(),
+      globalConfig: { sshAgent: { sidecar: false } },
+      discovery: { home: "/home/test", exists: async () => true },
+    };
+    // When
+    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    // Then
+    expect(check.details?.mode).toBe("host");
+    expect(check.context.securityPosture).toBe("host-signatures");
+  });
+
+  test("win32 guest-bridge posture key identifies the unauthenticated loopback relay", async () => {
+    // Given
+    const input = {
+      ...inputs(),
+      platform: "win32",
+      globalConfig: { sshAgent: { sidecar: false } },
+      capabilities: { agentSocket: { delivery: "guest-bridge" as const } },
+      discovery: { home: "/home/test", exists: async () => false },
+      probe: async () => {
+        throw new Error("offline");
+      },
+    };
+    // When
+    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    // Then
+    expect(check.details?.mode).toBe("host");
+    expect(check.context.securityPosture).toBe("host-win32-loopback");
+  });
 });

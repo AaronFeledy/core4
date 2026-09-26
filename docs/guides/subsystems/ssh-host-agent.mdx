@@ -31,7 +31,7 @@ Prereq: an agent already running on the host. If `ssh-add -l` on the host shows 
 
 ## Pick the agent
 
-By default Lando looks for a host agent in this order and stops at the first one that accepts a connection:
+By default Lando tries these candidates in order. The first one that accepts a connection and answers an SSH agent identities request wins:
 
 1. `sshAgent.socket`, if you set it
 2. `SSH_AUTH_SOCK` from your shell
@@ -48,7 +48,7 @@ sshAgent:
   socket: /home/me/.1password/agent.sock
 ```
 
-An explicit `socket` that does not exist or refuses connections fails the start. Discovery does not fall through past it.
+An explicit `socket` has to be a real socket. A missing path, a symlink, a regular file, or a socket that refuses connections fails the start. Discovery does not fall through past it.
 
 ## Keep the shared Landofile unchanged
 
@@ -83,7 +83,7 @@ The socket is not your host socket. A per-app relay owns an app-scoped directory
 | macOS or Windows, managed `lando` provider or a user-owned Podman machine | An SSH reverse forward into the Lando machine publishes a guest socket; the machine bind-mounts that directory. On Windows the relay reads the named pipe on the host. |
 | macOS or Windows, Docker Desktop | A small relay container bridges an authenticated host-loopback listener into an app-private volume shared with the service. |
 
-Providers only advertise the `agentSocket` capability when their delivery works on the current host, so an unsupported combination fails before planning rather than at apply time. Docker Desktop's built-in `/run/host-services/ssh-auth.sock` is not used; it only reaches Desktop's own agent.
+Providers only advertise the `agentSocket` capability when their delivery works on the current host. In host mode an unsupported combination fails at planning time with `CapabilityError`, not at apply time. Docker Desktop's built-in `/run/host-services/ssh-auth.sock` is not used; it only reaches Desktop's own agent.
 
 The relay is torn down on `lando stop` and `lando destroy`. Restart and rebuild pick it up again.
 
@@ -95,13 +95,21 @@ Host mode fails closed. If the agent cannot be reached, `lando start` stops with
 | --- | --- | --- |
 | `SshAgentUnavailableError` | `host-agent-not-found` | No candidate accepted a connection. Start your agent, or set `sshAgent.socket` or `SSH_AUTH_SOCK`. |
 | `SshAgentUnavailableError` | `socket-missing` | The explicit `sshAgent.socket` is absent or refusing connections. Fix the path or drop it to use discovery. |
-| `SshAgentUnavailableError` | `capability-missing` | The selected provider has no `agentSocket` delivery on this host. The error names the provider and the alternatives; switch providers or return to sidecar mode. |
+| `CapabilityError` | `agentSocket` | The selected provider has no `agentSocket` delivery on this host. The planner stops before anything runs and names the provider and the alternatives; switch providers or return to sidecar mode. |
 | `SshAgentUnavailableError` | `bridge-failed` | The provider bridge did not come up. Run `lando doctor`, then `lando restart`. |
 | `SshAgentTransportError` | `stage: broker`, `worker`, or `bridge` | The relay broke after it was ready. Run `lando restart`; if it repeats, `lando doctor`. |
 
 Every error carries `remediation`. Machine consumers get the same fields in `--format=json` output.
 
-Sidecar mode (the default) behaves differently on purpose: a missing sidecar produces a warning and the app still starts. Only the mode you opted into blocks the start.
+Sidecar mode (the default) behaves differently on purpose: a missing capability, a stopped sidecar, or a broken relay produces a warning that names the reason and the fix, the app starts without `SSH_AUTH_SOCK`, and `lando doctor` shows the `ssh` check as degraded. Only the mode you opted into blocks the start.
+
+## Security
+
+Host mode keeps your private keys and hardware tokens on the host. The trade is that while the app runs, every `type: lando` service in it can ask your host agent for a signature, the same way any process in your login session can. Confirmation prompts, touch, and biometrics still fire on the host, so an agent that asks before signing keeps asking.
+
+The relay socket the container reaches is Lando's, not your agent's. On the host it is created mode `0666` inside a run directory that only your user can enter (`0700`), so other accounts on the machine cannot open it. On Windows the bridge into the Podman machine goes through a loopback TCP broker that has no token: another local account on that Windows host could connect to it while the app runs. Stop the app when you are done, or stay on the sidecar on a shared Windows box.
+
+If you want a smaller blast radius, keep `sshAgent.sidecar: false` in one app's Landofile rather than global config.
 
 ## Check it with lando doctor
 

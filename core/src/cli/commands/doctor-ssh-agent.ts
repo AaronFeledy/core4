@@ -8,9 +8,8 @@ import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
   ConfigService,
-  FileSystem,
   LandofileService,
-  ProcessRunner,
+  type ProcessRunner,
   RuntimeProviderRegistry,
   type SshService,
 } from "@lando/sdk/services";
@@ -55,62 +54,52 @@ export const sshAgentPostureCheck = (
         ? yield* registry.value.capabilities.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
         : undefined);
     const delivery = capabilities?.agentSocket?.delivery ?? "none";
-    const fs = yield* Effect.serviceOption(FileSystem);
-    const runner = yield* Effect.serviceOption(ProcessRunner);
-    const readUpstream = Effect.gen(function* () {
+    const probeAgent = (upstream: Parameters<NonNullable<SshAgentDoctorOptions["probe"]>>[0]) =>
+      Effect.tryPromise({
+        try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
+        catch: (cause: unknown) => cause,
+      });
+    const inspect: Effect.Effect<Details["upstream"]> = Effect.gen(function* () {
       switch (intent.mode) {
         case "sidecar": {
           const socket = yield* input.sshService.getAgentSocket(AppId.make("global"));
-          return { source: "sidecar" as const, upstream: { _tag: "unix" as const, path: socket.socketPath } };
+          const upstream = { _tag: "unix" as const, path: socket.socketPath };
+          const probed = yield* Effect.either(probeAgent(upstream));
+          return {
+            source: "sidecar" as const,
+            reachable: probed._tag === "Right",
+            ...(probed._tag === "Right" ? { identities: probed.right.identities } : {}),
+          } satisfies Details["upstream"];
         }
         case "host": {
-          const upstream = yield* discoverHostSshAgent({
+          const discovered = yield* discoverHostSshAgent({
             platform: input.platform ?? process.platform,
             env: input.env ?? process.env,
             home: input.discovery?.home ?? homedir(),
             ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
-            exists:
-              input.discovery?.exists ??
-              ((path) =>
-                Option.isSome(fs) ? Effect.runPromise(fs.value.exists(path)) : Promise.resolve(false)),
-            runGpgconf:
-              input.discovery?.runGpgconf ??
-              (() =>
-                Option.isSome(runner)
-                  ? Effect.runPromise(
-                      runner.value
-                        .run({ cmd: "gpgconf", args: ["--list-dirs", "agent-ssh-socket"], timeoutMs: 1_000 })
-                        .pipe(
-                          Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : undefined)),
-                          Effect.catchAll(() => Effect.succeed(undefined)),
-                        ),
-                    )
-                  : Promise.resolve(undefined)),
+            ...(input.discovery?.exists === undefined ? {} : { exists: input.discovery.exists }),
+            ...(input.discovery?.runGpgconf === undefined ? {} : { runGpgconf: input.discovery.runGpgconf }),
+            gpgTimeoutMs: 1_000,
+            probeTimeoutMs: 1_000,
+            probe: probeAgent,
           });
-          return { source: upstream.source, upstream };
+          return {
+            source: discovered.upstream.source,
+            reachable: true,
+            identities: discovered.identities,
+          } satisfies Details["upstream"];
         }
         default:
           return intent.mode satisfies never;
       }
-    });
-    const inspect: Effect.Effect<Details["upstream"]> = Effect.gen(function* () {
-      const discovered = yield* Effect.either(readUpstream);
-      if (Either.isLeft(discovered))
-        return {
+    }).pipe(
+      Effect.catchAll(() =>
+        Effect.succeed({
           source: intent.mode === "sidecar" ? "sidecar" : "none",
           reachable: false,
-        } satisfies Details["upstream"];
-      const result = yield* Effect.either(
-        Effect.tryPromise(() =>
-          (input.probe ?? probeSshAgent)(discovered.right.upstream, { timeoutMs: 1_000 }),
-        ),
-      );
-      return {
-        source: discovered.right.source,
-        reachable: Either.isRight(result),
-        ...(Either.isRight(result) ? { identities: result.right.identities } : {}),
-      } satisfies Details["upstream"];
-    });
+        } satisfies Details["upstream"]),
+      ),
+    );
     let upstream = yield* inspect;
     const fixContext: Record<string, string> = {};
     if (input.fix && (!upstream.reachable || delivery === "none")) {
@@ -134,8 +123,24 @@ export const sshAgentPostureCheck = (
     }
     const ready = upstream.reachable && delivery !== "none";
     const recovery = intent.mode === "sidecar" ? "automatic" : "manual";
-    const security =
-      "Services on apps that opt in can request signatures from this agent; private keys stay on the host.";
+    const securityPosture: "sidecar-managed-keys" | "host-signatures" | "host-win32-loopback" =
+      intent.mode === "sidecar"
+        ? "sidecar-managed-keys"
+        : (input.platform ?? process.platform) === "win32" && delivery === "guest-bridge"
+          ? "host-win32-loopback"
+          : "host-signatures";
+    const security = ((): string => {
+      switch (securityPosture) {
+        case "sidecar-managed-keys":
+          return "The sidecar loads unencrypted keys from ~/.ssh into a Lando-managed agent that opted-in services can use.";
+        case "host-signatures":
+          return "Services that opt in can request signatures from your host agent and private keys stay on the host.";
+        case "host-win32-loopback":
+          return "Services that opt in can request signatures from your host agent and private keys stay on the host. The host relay listens on a loopback TCP port without a token, so any local account on that Windows host can use it while the app runs.";
+        default:
+          return securityPosture satisfies never;
+      }
+    })();
     const configuredGpg =
       input.globalConfig === undefined && Option.isSome(config)
         ? yield* config.value.get("gpgAgent").pipe(Effect.catchAll(() => Effect.succeed(undefined)))
@@ -161,6 +166,7 @@ export const sshAgentPostureCheck = (
         upstreamReachable: String(upstream.reachable),
         ...(upstream.identities === undefined ? {} : { identities: String(upstream.identities) }),
         delivery,
+        securityPosture,
         security,
         ...fixContext,
       },

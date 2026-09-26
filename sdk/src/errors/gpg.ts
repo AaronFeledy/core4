@@ -10,6 +10,7 @@ export class GpgAgentUnavailableError extends Schema.TaggedError<GpgAgentUnavail
       "capability-missing",
       "bridge-failed",
       "gpg-missing",
+      "unrestricted-socket",
     ),
     socketPath: Schema.optional(Schema.String),
     remediation: Schema.String,

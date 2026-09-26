@@ -1,11 +1,16 @@
-import { volumeCreationFact, volumeCreationLabels } from "@lando/container-runtime/data-plane";
+import {
+  VOLUME_OWNER_LABEL,
+  VOLUME_SELECTOR_LABEL,
+  volumeCreationFact,
+  volumeCreationLabels,
+} from "@lando/container-runtime/data-plane";
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import type { EngineApiClient, EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import { type AgentSocketBridgeInput, type AgentSocketBridgeResult, ProviderId } from "@lando/sdk/schema";
-import { Duration, Effect, Match, Schema, type Scope } from "effect";
+import { Duration, Effect, Match, Option, Schema, type Scope } from "effect";
 
 export const AGENT_RELAY_IMAGE =
   "alpine/socat@sha256:24220ef2c80a2a421ea08e4624488e985330c421b6aa3329bae14b0933a1d403";
@@ -22,6 +27,46 @@ const Identifier = Schema.parseJson(Schema.Struct({ Id: Schema.NonEmptyString })
 const ExecStatus = Schema.parseJson(
   Schema.Struct({ Running: Schema.Boolean, ExitCode: Schema.NullOr(Schema.Int) }),
 );
+
+const AGENT_SESSION_LABEL = "dev.lando.agent-session";
+const LabelRecord = Schema.NullOr(Schema.Record({ key: Schema.String, value: Schema.String }));
+const VolumeInspect = Schema.parseJson(Schema.Struct({ Labels: Schema.optional(LabelRecord) }));
+const ContainerInspect = Schema.parseJson(
+  Schema.Struct({
+    Config: Schema.optional(Schema.Struct({ Labels: Schema.optional(LabelRecord) })),
+  }),
+);
+type RelayPresence = "absent" | "owned" | "foreign";
+
+const ownedRelayLabels = (
+  labels: Readonly<Record<string, string>> | null | undefined,
+  expected: Readonly<Record<string, string>>,
+): boolean => {
+  if (labels === undefined || labels === null) return false;
+  const session = labels[AGENT_SESSION_LABEL];
+  const owner = expected[VOLUME_OWNER_LABEL];
+  const selector = expected[VOLUME_SELECTOR_LABEL];
+  return (
+    session !== undefined &&
+    session.length > 0 &&
+    owner !== undefined &&
+    selector !== undefined &&
+    labels[VOLUME_OWNER_LABEL] === owner &&
+    labels[VOLUME_SELECTOR_LABEL] === selector
+  );
+};
+
+const relayPresence = (
+  response: { readonly status: number; readonly body: string },
+  expected: Readonly<Record<string, string>>,
+  readLabels: (body: string) => Option.Option<Readonly<Record<string, string>> | null | undefined>,
+): RelayPresence | "unavailable" => {
+  if (response.status === 404) return "absent";
+  if (response.status !== 200) return "unavailable";
+  const labels = readLabels(response.body);
+  if (Option.isNone(labels)) return "foreign";
+  return ownedRelayLabels(labels.value, expected) ? "owned" : "foreign";
+};
 
 export const makeDockerDesktopAgentSocketBridge =
   (options: {
@@ -70,13 +115,49 @@ export const makeDockerDesktopAgentSocketBridge =
           ),
         );
       const volume = `lando-agent-${input.kind}-${input.appId}`;
+      const containerName = `lando-agent-relay-${input.kind}-${input.appId}`;
       const labels = {
         ...volumeCreationLabels(
           { id: input.appId, root: input.appRoot, provider: ProviderId.make("docker"), extensions: {} },
           { name: volume, scope: "app", kind: "data" },
         ),
-        "dev.lando.agent-session": input.sessionId,
+        [AGENT_SESSION_LABEL]: input.sessionId,
       };
+      const volumeLabels = (body: string) =>
+        Option.map(Schema.decodeUnknownOption(VolumeInspect)(body), (value) => value.Labels);
+      const containerLabels = (body: string) =>
+        Option.map(Schema.decodeUnknownOption(ContainerInspect)(body), (value) => value.Config?.Labels);
+      const requirePresence = (
+        response: { readonly status: number; readonly body: string },
+        readLabels: (body: string) => Option.Option<Readonly<Record<string, string>> | null | undefined>,
+      ) => {
+        const presence = relayPresence(response, labels, readLabels);
+        return presence === "unavailable"
+          ? Effect.fail(failure("Docker rejected an agent relay request."))
+          : Effect.succeed(presence);
+      };
+      const volumeState = yield* requirePresence(
+        yield* request({ method: "GET", path: `/volumes/${encodeURIComponent(volume)}` }),
+        volumeLabels,
+      );
+      const containerState = yield* requirePresence(
+        yield* request({ method: "GET", path: `/containers/${encodeURIComponent(containerName)}/json` }),
+        containerLabels,
+      );
+      if (volumeState === "foreign" || containerState === "foreign") {
+        return yield* Effect.fail(
+          failure("The agent relay volume already exists or ownership could not be proven."),
+        );
+      }
+      if (containerState === "owned") {
+        yield* checked({
+          method: "DELETE",
+          path: `/containers/${encodeURIComponent(containerName)}?force=true`,
+        });
+      }
+      if (volumeState === "owned") {
+        yield* checked({ method: "DELETE", path: `/volumes/${encodeURIComponent(volume)}` });
+      }
       const socket = `/run/lando/agent/${input.socketName}`;
       yield* Effect.acquireRelease(
         checked({ method: "POST", path: "/volumes/create", body: { Name: volume, Labels: labels } }).pipe(
@@ -93,7 +174,7 @@ export const makeDockerDesktopAgentSocketBridge =
       );
       const createRequest: EngineHttpRequest = {
         method: "POST",
-        path: `/containers/create?name=${encodeURIComponent(`lando-agent-relay-${input.kind}-${input.appId}`)}`,
+        path: `/containers/create?name=${encodeURIComponent(containerName)}`,
         body: {
           Image: options.relayImage,
           Entrypoint: ["socat"],

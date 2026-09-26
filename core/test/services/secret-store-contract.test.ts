@@ -61,4 +61,35 @@ describe("SecretStore contract — built-in implementations", () => {
     }
     expect(exit._tag).toBe("Success");
   });
+
+  test("TestSecretStore has follows the same reference parsing as get", async () => {
+    // Given
+    const unowned = "op://Vault/Item/field";
+    const malformed = "bad/id";
+    const handle = makeTestSecretStore({
+      secrets: { [unowned]: "scheme-value", [malformed]: "bad-value", TOKEN: "present" },
+    });
+    const unavailable = makeTestSecretStore({
+      unavailable: "locked",
+      secrets: { [malformed]: "bad-value", TOKEN: "present" },
+    });
+    const owned = makeTestSecretStore({
+      schemes: ["op"],
+      secrets: { [unowned]: "scheme-value" },
+    });
+    // When
+    const hasUnowned = await Effect.runPromise(handle.service.has(unowned));
+    const hasMalformed = await Effect.runPromise(handle.service.has(malformed));
+    const hasKnown = await Effect.runPromise(handle.service.has("TOKEN"));
+    const hasOwned = await Effect.runPromise(owned.service.has(unowned));
+    const hasUnavailableInvalid = await Effect.runPromise(unavailable.service.has(malformed));
+    const unavailableKnown = await Effect.runPromise(Effect.flip(unavailable.service.has("TOKEN")));
+    // Then: invalid refs are absence, not a backend failure; owned schemes still resolve.
+    expect(hasUnowned).toBe(false);
+    expect(hasMalformed).toBe(false);
+    expect(hasKnown).toBe(true);
+    expect(hasOwned).toBe(true);
+    expect(hasUnavailableInvalid).toBe(false);
+    expect(unavailableKnown.reason).toBe("locked");
+  });
 });

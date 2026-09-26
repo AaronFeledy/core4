@@ -124,29 +124,43 @@ const makeRedactorOptions = (
 });
 
 const registeredValues = new Set<string>();
+let registeredGeneration = 0;
+
+const addRegisteredValue = (value: string): void => {
+  if (!isUsableExactRedactionValue(value) || registeredValues.has(value)) return;
+  registeredValues.add(value);
+  registeredGeneration += 1;
+};
 
 export const registerRedactionValues = (values: ReadonlyArray<string>): Effect.Effect<void> =>
   Effect.sync(() => {
-    for (const value of values) if (value.length > 0) registeredValues.add(value);
+    for (const value of values) addRegisteredValue(value);
   });
+
+/** Clears process-lifetime registrations. Tests call this so cases do not leak values. */
+export const resetRegisteredRedactionValuesForTesting = (): void => {
+  if (registeredValues.size === 0) return;
+  registeredValues.clear();
+  registeredGeneration += 1;
+};
 
 const makeRegisteredRedactor = (
   profile: RedactionProfile,
   secretValues: ReadonlyArray<string>,
   options: RedactionForProfileOptions | undefined,
 ): Redactor => {
-  let version = registeredValues.size;
+  let generation = registeredGeneration;
   let redactor = createRedactor(
     profile,
     makeRedactorOptions([...secretValues, ...registeredValues], options),
   );
   const current = (): Redactor => {
-    if (version !== registeredValues.size) {
+    if (generation !== registeredGeneration) {
       redactor = createRedactor(
         profile,
         makeRedactorOptions([...secretValues, ...registeredValues], options),
       );
-      version = registeredValues.size;
+      generation = registeredGeneration;
     }
     return redactor;
   };

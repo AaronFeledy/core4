@@ -29,7 +29,7 @@ import { PostRebuildEvent, PreRebuildEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, ServiceName } from "@lando/sdk/schema";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type ResolvedAppTarget, loadUserLandofile, userAppRef } from "../landofile/app-resolution.ts";
-import { compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
+import { compensateFailure, compensateFailureUnless } from "../lifecycle/failure-compensation.ts";
 import { routeUrlsForPlan } from "../lifecycle/routes.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { recordCreatedVolumes } from "../lifecycle/volume-initialization.ts";
@@ -99,7 +99,7 @@ const rebuildSelectedServices = (
     const provider = yield* registry.select(plan);
     const services = Object.values(plan.services);
 
-    yield* Effect.forEach(
+    const stopSelected = Effect.forEach(
       [...services].reverse(),
       (service) =>
         provider
@@ -107,6 +107,7 @@ const rebuildSelectedServices = (
           .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
       { discard: true },
     );
+    yield* stopSelected;
     const builtPlan = yield* withBuildProvider(builds.build(plan), provider);
     const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
     const gpgIntent = yield* resolveStartGpgAgentIntent({ ...target, plan: builtPlan });
@@ -114,7 +115,7 @@ const rebuildSelectedServices = (
     yield* withStartedGpgAgent(builtPlan, target.app, provider.capabilities, gpgIntent, {
       exec: provider.exec,
       ...(managed === undefined ? {} : { managed }),
-      use: (gpgPlan) =>
+      use: (gpgPlan, prepareGpgHome) =>
         withStartedSshAgent(gpgPlan, target.app, provider.capabilities, intent, {
           platform: provider.platform,
           ...(managed === undefined ? {} : { managed }),
@@ -131,7 +132,7 @@ const rebuildSelectedServices = (
                   serviceEnvironment,
                 })
                 .pipe(Effect.tap((result) => recordCreatedVolumes(provider, applyPlan, result))),
-            ),
+            ).pipe(Effect.zipRight(compensateFailure(prepareGpgHome, stopSelected))),
         }),
     });
     yield* withBuildProvider(

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { runtimeProviderService } from "@lando/engine/runtime/bootstrap-layer-support";
 import type { AgentRelayOptions } from "@lando/engine/subsystems/ssh-agent/relay";
 import { sshAgentSessionPaths } from "@lando/engine/subsystems/ssh-agent/session";
@@ -12,8 +12,11 @@ import {
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath, type AgentSocketBridgeInput, type AppPlan } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect, Layer, Schema } from "effect";
-import { scopedAgentRelayWorker } from "../../../src/cli/agent-relay/worker-runtime";
+import { Cause, Effect, Layer, Schema } from "effect";
+import {
+  runAgentRelayWorkerProcess,
+  scopedAgentRelayWorker,
+} from "../../../src/cli/agent-relay/worker-runtime";
 
 describe("agent relay worker runtime", () => {
   for (const delivery of ["bind-directory", "guest-bridge", "volume-relay"] as const) {
@@ -105,6 +108,7 @@ describe("agent relay worker runtime", () => {
             expect(selected).toEqual([]);
             expect(calls).toEqual([]);
             expect((await stat(paths.socketDir)).mode & 0o777).toBe(0o711);
+            expect((await stat(dirname(paths.stateDir))).mode & 0o777).toBe(0o700);
           } else {
             expect(selected[0]).toMatchObject({ id: "test", provider: "docker" });
             expect(calls[0]).toMatchObject({
@@ -195,7 +199,119 @@ describe("agent relay worker runtime", () => {
       );
       // Then no ready value exists and both acquired resources are released.
       expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toMatchObject({
+            _tag: "SshAgentTransportError",
+            stage: "bridge",
+            cause: { _tag: "ProviderInternalError", message: "failed" },
+          });
+        }
+      }
       expect(closed).toEqual(["bridge", "relay"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("bind-directory worker never constructs a provider runtime and keeps run private", async () => {
+    // Given a loose run directory and a runtime factory that records construction.
+    const root = await mkdtemp(join(tmpdir(), "lando-agent-lazy-"));
+    const runRoot = join(root, "run");
+    await mkdir(runRoot, { mode: 0o755 });
+    await chmod(runRoot, 0o755);
+    const constructed: string[] = [];
+    const started = Promise.withResolvers<void>();
+    const until = Promise.withResolvers<void>();
+    const input = {
+      app: { kind: "user", id: "test", root },
+      plan: { id: "test", provider: "docker" },
+      kind: "ssh",
+      upstream: { _tag: "unix", path: join(root, "upstream.sock") },
+      delivery: "bind-directory",
+      socketName: "agent.sock",
+      paths: { userDataRoot: root },
+    };
+    try {
+      // When the worker process starts for bind-directory delivery.
+      const pending = runAgentRelayWorkerProcess({
+        readInput: async () => JSON.stringify(input),
+        until: until.promise,
+        loadRuntime: () => {
+          constructed.push("runtime");
+          return Layer.succeed(RuntimeProviderRegistry, {
+            list: Effect.succeed([]),
+            capabilities: Effect.succeed(runtimeProviderService.capabilities),
+            select: () => Effect.succeed(runtimeProviderService),
+          });
+        },
+        createRelay: async (options) => {
+          started.resolve();
+          return {
+            address:
+              options.listen._tag === "unix"
+                ? { _tag: "unix" as const, path: options.listen.path }
+                : { _tag: "loopback-tcp" as const, port: 1 },
+            activeConnections: () => 0,
+            close: async () => undefined,
+          };
+        },
+      });
+      await started.promise;
+      // Then no provider runtime is built, and the run parent is private while the socket dir stays traversable.
+      expect(constructed).toEqual([]);
+      expect((await stat(runRoot)).mode & 0o777).toBe(0o700);
+      const paths = sshAgentSessionPaths(
+        { id: "test", root: AbsolutePath.make(root) },
+        { userDataRoot: root },
+        "ssh",
+      );
+      expect((await stat(paths.socketDir)).mode & 0o777).toBe(0o711);
+      until.resolve();
+      await pending;
+    } finally {
+      until.resolve();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("guest-bridge worker constructs a provider runtime", async () => {
+    // Given a runtime factory that records construction.
+    const root = await mkdtemp(join(tmpdir(), "lando-agent-runtime-"));
+    const constructed: string[] = [];
+    const input = {
+      app: { kind: "user", id: "test", root },
+      plan: { id: "test", provider: "docker" },
+      kind: "ssh",
+      upstream: { _tag: "named-pipe", path: "\\\\.\\pipe\\agent" },
+      delivery: "guest-bridge",
+      socketName: "agent.sock",
+      paths: { userDataRoot: root },
+    };
+    try {
+      // When the worker process starts for guest-bridge delivery.
+      await runAgentRelayWorkerProcess({
+        platform: "linux",
+        readInput: async () => JSON.stringify(input),
+        until: Promise.resolve(),
+        loadRuntime: () => {
+          constructed.push("runtime");
+          return Layer.succeed(RuntimeProviderRegistry, {
+            list: Effect.succeed([]),
+            capabilities: Effect.succeed(runtimeProviderService.capabilities),
+            select: () => Effect.succeed(runtimeProviderService),
+          });
+        },
+        createRelay: async () => ({
+          address: { _tag: "unix" as const, path: join(root, "agent.sock") },
+          activeConnections: () => 0,
+          close: async () => undefined,
+        }),
+      }).catch(() => undefined);
+      // Then the provider runtime is constructed.
+      expect(constructed).toEqual(["runtime"]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

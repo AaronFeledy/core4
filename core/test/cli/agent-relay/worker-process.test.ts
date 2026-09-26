@@ -65,8 +65,8 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
       if (ready.mount._tag !== "bind-directory") throw new Error("Expected bind-directory mount");
       expect((await stat(join(ready.mount.directory, ready.socketName))).mode & 0o777).toBe(0o666);
       proc.kill(signal);
-      // Then shutdown completes successfully and the listener resources are gone.
-      expect(await proc.exited).toBe(0);
+      // Then the CLI exits with the conventional interrupt status and the listener resources are gone.
+      expect(await proc.exited).toBe(signal === "SIGTERM" ? 143 : 130);
       const controlClosed = await identifyAgentRelayWorker(ready).then(
         () => false,
         () => true,

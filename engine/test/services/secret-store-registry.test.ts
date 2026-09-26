@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { makeLandoPaths } from "@lando/paths";
+import { ConfigError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PathsService, SecretStore } from "@lando/sdk/services";
@@ -34,6 +35,7 @@ const run = async <A, E>(
   options: {
     readonly modules?: readonly LandoPluginModule[];
     readonly defaultSecretStore?: string;
+    readonly configError?: boolean;
   } = {},
 ) => {
   const { makeSecretStoreRegistryLive, RoutedSecretStoreLive } = await import(
@@ -48,7 +50,15 @@ const run = async <A, E>(
         makeSecretStoreRegistryLive(options.modules ?? [moduleFor("vault", ["op"])]),
         Layer.succeed(ConfigService, {
           load: Effect.succeed(config),
-          get: (key) => Effect.succeed(config[key]),
+          get: (key) =>
+            options.configError === true && key === "defaultSecretStore"
+              ? Effect.fail(
+                  new ConfigError({
+                    message: "Lando config could not be read.",
+                    path: "defaultSecretStore",
+                  }),
+                )
+              : Effect.succeed(config[key]),
         }),
         Layer.succeed(PathsService, makeLandoPaths()),
         FileSystemLive,
@@ -70,7 +80,7 @@ test("bare ids go to defaultSecretStore and fall back to env", async () => {
   // Given / When
   const value = await run(
     Effect.flatMap(SecretStore, (store) => store.get("TOKEN")),
-    { defaultSecretStore: "vault" },
+    { modules: [moduleFor("vault", [])], defaultSecretStore: "vault" },
   );
   const fallback = await run(
     Effect.flatMap(SecretStore, (store) => Effect.either(store.get("W1_A_ABSENT_TOKEN"))),
@@ -128,4 +138,47 @@ test("list returns the union of member lists", async () => {
   // Then
   expect(result).toContain("op://Vault/Item/field");
   expect(result).toContain("other://Vault/Item/field");
+});
+
+test("ConfigService failure reading defaultSecretStore is SecretReferenceInvalidError", async () => {
+  // Tag choice: SecretReferenceInvalidError. ConfigError is outside SecretStoreError;
+  // SecretNotFoundError would claim the secret is missing; SecretStoreUnavailableError's
+  // reason enum cannot name a Lando config read failure. Routed has() already collapses
+  // SecretReferenceInvalidError to false.
+  // Given / When
+  const result = await run(
+    Effect.flatMap(SecretStore, (store) => Effect.either(store.get("TOKEN"))),
+    { configError: true },
+  );
+  // Then
+  expect(Either.isLeft(result)).toBe(true);
+  if (Either.isLeft(result) && result.left._tag === "SecretReferenceInvalidError") {
+    expect(result.left).toBeInstanceOf(SecretReferenceInvalidError);
+    expect(result.left.message).toContain("defaultSecretStore");
+    expect(result.left.message).toContain("Lando config");
+    expect(result.left.remediation).toContain("defaultSecretStore");
+    expect(result.left.remediation).not.toContain("owning this scheme");
+    return;
+  }
+  expect.unreachable("expected a SecretReferenceInvalidError failure");
+});
+
+test("bare ids fail when defaultSecretStore only accepts scheme references", async () => {
+  // Given: 1password declares the op scheme and is selected for bare ids.
+  // When
+  const result = await run(
+    Effect.flatMap(SecretStore, (store) => Effect.either(store.get("TOKEN"))),
+    { modules: [moduleFor("1password", ["op"])], defaultSecretStore: "1password" },
+  );
+  // Then
+  expect(Either.isLeft(result)).toBe(true);
+  if (Either.isLeft(result) && result.left._tag === "SecretReferenceInvalidError") {
+    expect(result.left.message).toContain("1password");
+    expect(result.left.message).toContain("bare");
+    expect(result.left.remediation).toContain("defaultSecretStore");
+    expect(result.left.remediation).toContain("env");
+    expect(result.left.remediation).toContain("scheme");
+    return;
+  }
+  expect.unreachable("expected a SecretReferenceInvalidError failure");
 });

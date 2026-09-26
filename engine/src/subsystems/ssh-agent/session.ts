@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { chmod, mkdir } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { type RootOverrides, makeLandoPaths } from "@lando/paths";
 import {
   type AgentSocketBridgeResult,
@@ -35,3 +36,12 @@ export interface AgentRelaySession {
 
 export const AGENT_RELAY_DIRECTORY_MODE = 0o711;
 export const AGENT_RELAY_SOCKET_MODE = 0o666;
+
+export const AGENT_RELAY_RUN_ROOT_MODE = 0o700;
+
+/** Parent of per-app relay state dirs. Kept private so 0666 relay sockets are not reachable by other host users. */
+export const ensureAgentRelayRunRoot = async (stateDir: string): Promise<void> => {
+  const runRoot = dirname(stateDir);
+  await mkdir(runRoot, { recursive: true, mode: AGENT_RELAY_RUN_ROOT_MODE });
+  await chmod(runRoot, AGENT_RELAY_RUN_ROOT_MODE);
+};

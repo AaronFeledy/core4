@@ -75,6 +75,34 @@ describe("env-backed SecretStoreLive", () => {
     expect(absent).toBe(false);
   });
 
+  test("has is false for invalid and scheme-qualified ids that get rejects", async () => {
+    // Given: matching env vars exist for references get refuses.
+    const scheme = "op://Vault/Item/field";
+    const malformed = "bad/id";
+    const env = {
+      [`LANDO_SECRET_${scheme}`]: "present",
+      [`LANDO_SECRET_${malformed}`]: "present",
+      LANDO_SECRET_TOKEN: "present",
+    };
+    // When
+    const hasScheme = await run(
+      Effect.flatMap(SecretStore, (store) => store.has(scheme)),
+      env,
+    );
+    const hasMalformed = await run(
+      Effect.flatMap(SecretStore, (store) => store.has(malformed)),
+      env,
+    );
+    const hasToken = await run(
+      Effect.flatMap(SecretStore, (store) => store.has("TOKEN")),
+      env,
+    );
+    // Then
+    expect(hasScheme).toBe(false);
+    expect(hasMalformed).toBe(false);
+    expect(hasToken).toBe(true);
+  });
+
   test("list returns prefix-stripped ids, sorted, excluding non-prefixed vars", async () => {
     const ids = await run(
       Effect.flatMap(SecretStore, (store) => store.list),

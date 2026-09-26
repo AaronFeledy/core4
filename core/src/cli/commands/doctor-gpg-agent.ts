@@ -29,7 +29,7 @@ export const gpgAgentPostureDetail = (input: {
     const provided = input.runner;
     const service = provided === undefined ? yield* Effect.serviceOption(ProcessRunner) : Option.none();
     const runner = provided ?? (Option.isSome(service) ? service.value : undefined);
-    const exists = input.exists ?? (async () => false);
+    const exists = input.exists;
     const discovered =
       runner === undefined
         ? Either.left(undefined)
@@ -37,7 +37,11 @@ export const gpgAgentPostureDetail = (input: {
             discoverHostGpgAgent({
               runner,
               ...(intent.socket === undefined ? {} : { explicitSocket: intent.socket }),
-              exists,
+              // Doctor only observes: it must never start a gpg-agent on the host.
+              launch: false,
+              ...(exists === undefined
+                ? {}
+                : { inspectPath: async (path: string) => ((await exists(path)) ? "socket" : "missing") }),
             }),
           );
     const exported =

@@ -44,7 +44,7 @@ gpgAgent:
   socket: /run/user/1000/gnupg/S.gpg-agent.extra
 ```
 
-That path is the restricted extra socket (`gpgconf --list-dirs agent-extra-socket`), not the full agent socket.
+That path has to be the restricted extra socket (`gpgconf --list-dirs agent-extra-socket`), not the full agent socket. Lando asks the socket `GETINFO restricted` before it forwards anything; a socket that answers no fails the start with `GpgAgentUnavailableError` and reason `unrestricted-socket`. The restricted socket can sign and decrypt but cannot export, import, or delete secret keys, which is the whole point of forwarding it.
 
 ## Tell git to sign
 
@@ -68,7 +68,7 @@ Forwarding applies to every `type: lando` service in the app. There is no per-se
 | `LANDO_GPG_AGENT_SOCKET` | `/run/lando/gpg-agent/S.gpg-agent` |
 | `LANDO_GPG_KEYRING` | `/run/lando/gpg-agent-keys` |
 
-On every start Lando exports only the public keyring and ownertrust. After the provider applies the plan, Lando runs an uncached command as each eligible service's resolved user to copy the public keyring, import ownertrust, and link `S.gpg-agent` into `GNUPGHOME`. The home is a tmpfs; preparation runs on every start, independent of the app build cache. The socket the service opens is a per-app relay, not your host socket.
+On every start Lando exports only the public keyring and ownertrust. Right after the provider applies the plan, Lando runs an uncached command as each opted-in service's resolved user to copy the public keyring, import ownertrust, and link `S.gpg-agent` into `GNUPGHOME`. The home is a tmpfs; preparation runs on every start, independent of the app build cache, so a rebuilt image or a new key on the host shows up on the next `lando start`. That command needs `gpg` in the service image. If preparation fails in any service, the start fails and Lando tears the applied app back down. The socket the service opens is a per-app relay, not your host socket.
 
 The relay uses the same delivery as SSH agent forwarding:
 
@@ -83,19 +83,22 @@ The default provider is `lando`. `lando setup --provider=docker` is the fallback
 
 ## When start fails
 
-Forwarding is opt-in, and it fails closed. If the agent or the provider bridge is missing, `lando start` stops. It does not boot the app with a dead socket.
+Forwarding is opt-in, and it fails closed. A provider without `agentSocket` delivery stops the planner with `CapabilityError`. If the agent, the restricted socket, or the provider bridge is missing at start, `lando start` stops. It does not boot the app with a dead socket. Compare the SSH sidecar, which only warns.
 
 | Error | `reason` or `stage` | What to do |
 | --- | --- | --- |
 | `GpgAgentUnavailableError` | `gpg-missing` | Install GnuPG so `gpgconf` and `gpg` are on `PATH`. |
 | `GpgAgentUnavailableError` | `socket-missing` | Set `gpgAgent.socket`, or run `gpgconf --launch gpg-agent` and retry. |
 | `GpgAgentUnavailableError` | `host-agent-not-found` | `gpgconf` did not return an extra socket. Launch the agent or set `gpgAgent.socket`. |
-| `GpgAgentUnavailableError` | `capability-missing` | This provider has no `agentSocket` delivery. Switch provider or set `gpgAgent.forward` back to false. |
+| `GpgAgentUnavailableError` | `unrestricted-socket` | The explicit `gpgAgent.socket` is the full agent socket, not the restricted extra socket. Point it at `gpgconf --list-dirs agent-extra-socket`. |
+| `CapabilityError` | `agentSocket` | This provider has no `agentSocket` delivery. The planner stops before anything runs; switch provider or set `gpgAgent.forward` back to false. |
 | `GpgAgentUnavailableError` | `bridge-failed` | The provider bridge did not come up. Run `lando doctor`, then `lando restart`. |
 | `GpgAgentTransportError` | `broker` or `bridge` | The relay broke. Run `lando restart`. |
 | `GpgAgentTransportError` | `worker` | Check the relay and service home preparation. Install `gpg` in the service image and ensure the service user can write `GNUPGHOME`. |
 
-If service home preparation fails, start fails with `GpgAgentTransportError`. Install `gpg` in the service image, fix write permissions for the service user, then run `lando rebuild`.
+If `GNUPGHOME` preparation fails in a service, the start fails with `GpgAgentTransportError` and the applied app is torn down. Install `gpg` in the service image, fix write permissions for the service user, then run `lando rebuild`.
+
+The relay socket on the host is mode `0666` inside a per-user `0700` run directory. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token, so another local account on that host could reach it while the app runs. Private keys still never leave `gpg-agent`; the restricted socket only signs.
 
 `lando stop` and `lando destroy` tear the relay down.
 

@@ -10,7 +10,7 @@ import {
   withDetachedWorkerLock,
   writeDetachedWorkerRecord,
 } from "../detached-worker/state-file.ts";
-import { sshAgentSessionPaths } from "./session.ts";
+import { ensureAgentRelayRunRoot, sshAgentSessionPaths } from "./session.ts";
 import {
   type AgentRelayWorkerIdentity,
   AgentRelayWorkerRecord,
@@ -59,7 +59,15 @@ export const writeAgentRelayWorkerRecord = (
       directoryMode: 0o711,
     },
     record,
-  ).pipe(Effect.mapError(stateError));
+  ).pipe(
+    Effect.mapError(stateError),
+    Effect.zipRight(
+      Effect.tryPromise({
+        try: () => ensureAgentRelayRunRoot(sshAgentSessionPaths(app, options.paths, options.kind).stateDir),
+        catch: stateError,
+      }),
+    ),
+  );
 export const withAgentRelayWorkerLock = <A, E>(
   app: Pick<AppRef, "id" | "root">,
   options: AgentRelayWorkerStateOptions,
