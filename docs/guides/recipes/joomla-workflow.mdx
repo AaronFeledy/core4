@@ -68,7 +68,7 @@ lando php installation/joomla.php install \
 unset JOOMLA_ADMIN_PASSWORD
 ```
 
-Match `--db-name` to the app name (here `joomla-demo`). `--db-type=mysql` uses PDO, which the PHP image already has. If you want Joomla's MySQLi driver instead, add a root `build.artifact` step with `docker-php-ext-install mysqli` on `appserver`, then run `lando rebuild`. `lando restart` alone reuses the previous image.
+Match `--db-name` to the app name (here `joomla-demo`). `--db-type=mysql` uses PDO, which the PHP image already has. If you want Joomla's MySQLi driver instead, add a root `build.artifact` step with `docker-php-ext-install mysqli` on `appserver`, then run `lando rebuild`.
 
 The download and the installer ran as root. Give the web user only the directories Joomla writes to, so your editor keeps the code:
 
@@ -124,7 +124,7 @@ Take a snapshot before an extension install or a core update:
 ```sh
 lando db:snapshot --label before-update
 lando db:snapshots
-lando db:restore <snapshot-id>
+lando db:restore <snapshot-id> --yes
 ```
 
 `db:restore` wants the snapshot id that `lando db:snapshots` lists, not the label. It asks before it replaces data; `--yes` skips the prompt.
@@ -177,7 +177,7 @@ Lando points PHP's `mail()` on `appserver` at Mailpit, so Joomla's default PHP M
 <Guide>
   <Scenario id="reader-path" render>
     <Step name="scaffold">
-      <Variable name="appName" value="joomla-workflow" display="joomla-demo" />
+      <Variable name="appName" value="joomla-demo" display="joomla-demo" />
       <Run command="lando init --recipe joomla --name={{appName}} --yes" />
     </Step>
     <Step name="confirm-defaults">
