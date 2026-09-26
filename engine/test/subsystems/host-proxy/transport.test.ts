@@ -17,7 +17,11 @@ import {
 import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { resolveCompiledBinaryVersion } from "../../../../scripts/compiled-binary-version.ts";
 import type {
   HostProxyRunLandoExecutor,
@@ -76,6 +80,7 @@ const envelope: CommandResultEnvelope = {
 };
 
 const redactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
 });
 

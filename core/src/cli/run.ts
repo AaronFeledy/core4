@@ -10,6 +10,7 @@ import {
 
 import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
+import { AGENT_RELAY_WORKER_COMMAND } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import {
   isReservedNamespaceHead,
   notImplementedErrorForCommand,
@@ -199,6 +200,12 @@ const dispatchHelpTarget = async (token: string): Promise<void> => {
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
+  if (rawArgv[0] === AGENT_RELAY_WORKER_COMMAND) {
+    setActiveLogLevel("none");
+    const { runAgentRelayWorkerProcess } = await import("./agent-relay/worker-runtime");
+    await runAgentRelayWorkerProcess();
+    return;
+  }
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {
     setActiveLogLevel("none");
     await runHostProxyWorkerProcess();

@@ -22,6 +22,8 @@ import type {
 import type { EndpointInfo } from "../schema/endpoint.ts";
 import type {
   AbsolutePath,
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
   AppId,
   AppPlan,
   DataStoreMountPlan,
@@ -306,6 +308,10 @@ export interface RuntimeProviderShape {
   readonly openHostProxyBridge?: (
     input: HostProxyBridgeInput,
   ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+  /** Delivers the named agent socket through provider-owned resources released with the caller scope. */
+  readonly openAgentSocketBridge?: (
+    input: AgentSocketBridgeInput,
+  ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
   readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
   readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;

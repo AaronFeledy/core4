@@ -20,6 +20,7 @@ const fullBundledPluginNames = [
   "@lando/ca-mkcert",
   "@lando/proxy-traefik",
   "@lando/ssh-agent",
+  "@lando/secret-store-1password",
   "@lando/template-handlebars",
   "@lando/template-mustache",
   "@lando/sql",

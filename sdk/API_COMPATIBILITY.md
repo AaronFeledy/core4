@@ -4,6 +4,19 @@
 
 ## Compatibility notes
 
+- Command error envelopes add optional `reason: string`. Normal JSON/YAML output and terminal result stream frames preserve the source error's reason when it is a string, including an empty string; absent and non-string reasons remain omitted. Existing tag, message, remediation, and redaction behavior are unchanged.
+- `AgentSocketBridgeInput` requires `appRoot: AbsolutePath`, the canonical app root that owns the bridge. Worker hosts pass it directly from the app reference. Providers derive volume ownership through the canonical container-runtime helper, without looking up a previously applied plan, so fresh starts carry the same ownership proof and selector as later starts. Bridge callers must supply this field.
+- `LandoPaths` requires `agentRelayRunDir(kind: "ssh" | "gpg", appId: string, appRoot: string): string`. The paths primitive derives an app- and kind-scoped directory under `userDataRoot/run`, using the same app-name sanitization and root fingerprint as the host-proxy directory. Custom `PathsService` implementations must supply this builder.
+- `SecretStoreShape` adds optional `schemes: ReadonlyArray<string>`. `SecretStore.get` now returns `SecretStoreError`: `SecretNotFoundError`, `SecretStoreUnavailableError`, or `SecretReferenceInvalidError`. `SecretStore.has` can fail with `SecretStoreUnavailableError`; backend failure must not become `false`. `list` remains total, and CLI-backed stores list references resolved in the current process. Consumers with narrower error channels must propagate or handle the new failures.
+- `ShellInteractiveSpec.resolveSecret` now returns `Effect<string, SecretStoreError>`. The services barrel re-exports this same contract; `ShellRunner.interactive` retains its existing signature and `ShellExecError` boundary.
+- `@lando/sdk/errors` adds `SshAgentUnavailableError` (mode, reason, optional socketPath, remediation), `GpgAgentUnavailableError` (reason, optional socketPath, remediation), and `SshAgentTransportError` / `GpgAgentTransportError` (broker, worker, or bridge stage, remediation, optional cause). Secret stores add `SecretStoreUnavailableError` (storeId, locked/unauthenticated/denied/timeout/cli-missing reason, remediation), `SecretReferenceInvalidError` (reference, remediation), and the type-only `SecretStoreError` union. All six errors carry message and a machine tag. Like the existing SSH and secret errors, they register no public JSON Schema. `StartAppError` includes all six; restart and rebuild inherit them.
+- `GpgAgentUnavailableError.reason` adds the `unrestricted-socket` literal: the configured or discovered socket answered the Assuan `GETINFO restricted` probe as an ordinary gpg-agent socket rather than the restricted extra socket, so forwarding fails closed. Discovery also rejects symlinks and non-socket paths as `socket-missing`. Consumers matching on `reason` must handle the new literal.
+- `@lando/sdk/secrets` adds `parseSecretReference` and its schema-derived `ParsedSecretReference` type. The pure parser returns `Either<ParsedSecretReference, SecretReferenceInvalidError>` using Effect's success-first generic order. It preserves raw input and key, with an optional lowercase scheme. Bare ids use letters, digits, underscores, dots, and hyphens. Scheme paths contain two to four nonempty segments, allow ASCII spaces, and optionally end in one `?attr=value` query, including `?ssh-format=openssh`. Leading/trailing reference whitespace, parent segments, controls, and closing braces are rejected. Parsing uses Effect data types; redaction primitives remain independent of host IO.
+- `SshAgentConfig` accepts optional boolean sidecar and string socket fields; the prior true-only sidecar restriction is removed. `GpgAgentConfig` accepts optional forward and socket fields. `LandofileShape.sshAgent` / `gpgAgent`, `GlobalConfig.sshAgent` / `gpgAgent` / `defaultSecretStore`, and the corresponding `GlobalConfigView` fields carry these settings. Omitted SSH mode remains sidecar; GPG forwarding is opt-in.
+- Agent delivery adds `AgentSocketKind`, `AgentSocketDelivery`, `AgentSocketProviderCapabilities`, `AgentSocketUpstream`, `AgentSocketBridgeInput`, and `AgentSocketBridgeResult`. `ProviderCapabilities.agentSocket` is optional. `RuntimeProviderShape.openAgentSocketBridge` is optional and scope-owned, returns a provider-visible bind directory or volume, and preserves `ProviderError`. `AGENT_SOCKET_CONTAINER_DIR`, `SSH_AGENT_SOCKET_NAME`, and `GPG_AGENT_SOCKET_NAME` define the shared container locations and socket names.
+- `SecretStoreContribution` adds manifest id, module, schemes, and optional summary/deprecated fields. `PluginContribution.secretStores` and `LandoPluginModule.secretStores` publish secret-store contributions. The type-only `SecretStoreContributionLayer` provides `SecretStore`, may fail with `SecretStoreUnavailableError`, and requires `ProcessRunner`, `PathsService`, and `FileSystem`.
+- `SecretStoreContractHarness.invalidReference` is required and must fail with `SecretReferenceInvalidError`. Optional `unavailableStore` supplies a store and expected reason; both get and has must preserve `SecretStoreUnavailableError`. Optional backend-failure probes must fail with a member of `SecretStoreError`, not merely an arbitrary tagged object. Existing suite invocations must supply the invalid-reference fixture.
+
 - `ProviderError` includes the existing `ArtifactBuildError` tag so failed image-build steps are distinct from unavailable runtimes. Build diagnostics carry a bounded, redacted daemon message and image-specific remediation.
 
 - `@lando/sdk/services` exports `ServiceBuildDirectoryCommand`, an Effect Schema for nonempty lists of absolute image directories with portable path segments. `ServiceBuildStepIntent.command` accepts this shell-free artifact-build intent alongside existing command forms; providers create directories without executing image binaries or changing the image user.
@@ -309,6 +322,18 @@ unsupported values and cycles, and terminates each document with one newline.
 It registers no JSON Schema.
 
 ## Additive schema exports
+
+- `AGENT_SOCKET_CONTAINER_DIR`
+- `SSH_AGENT_SOCKET_NAME`
+- `GPG_AGENT_SOCKET_NAME`
+- `AgentSocketKind`
+- `AgentSocketDelivery`
+- `AgentSocketProviderCapabilities`
+- `AgentSocketUpstream`
+- `AgentSocketBridgeInput`
+- `AgentSocketBridgeResult`
+- `GpgAgentConfig`
+- `SecretStoreContribution`
 
 - `appIdentityKey`
 - `VolumeCreationFact`
@@ -936,6 +961,13 @@ It registers no JSON Schema.
 - `PreBootstrapToolingEvent`
 
 ## Additive Alpha errors
+
+- `SshAgentUnavailableError`
+- `SshAgentTransportError`
+- `GpgAgentUnavailableError`
+- `GpgAgentTransportError`
+- `SecretStoreUnavailableError`
+- `SecretReferenceInvalidError`
 
 - `Lando3UnsupportedRecipeError`
 - `RouteInputError`

@@ -11,7 +11,7 @@ import {
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService, McpServiceLive } from "@lando/mcp/service";
 import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { TestMcpCommandExecutor } from "./executor";
 
 const spec = (id: string, run: McpCommandSpec["run"] = () => Effect.void): McpCommandSpec => ({
@@ -22,6 +22,7 @@ const spec = (id: string, run: McpCommandSpec["run"] = () => Effect.void): McpCo
 });
 
 const redactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
 });
 

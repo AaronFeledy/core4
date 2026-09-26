@@ -61,12 +61,19 @@ const taggedErrorJson = (
     readonly target: string;
     readonly destructive: boolean;
   }>;
+  readonly reason?: string;
 } => {
   const record = asRecord(error);
   const tag = nonEmptyString(record?._tag) ?? nonEmptyString(record?.name) ?? "UnknownError";
   const message = nonEmptyString(record?.message) ?? String(error);
   const remediation = nonEmptyString(record?.remediation);
-  const base = remediation === undefined ? { _tag: tag, message } : { _tag: tag, message, remediation };
+  const reason = typeof record?.reason === "string" ? record.reason : undefined;
+  const base = {
+    _tag: tag,
+    message,
+    ...(remediation === undefined ? {} : { remediation }),
+    ...(reason === undefined ? {} : { reason }),
+  };
   if (error instanceof SqlConfirmRequiredError) {
     return { ...base, service: error.service, steps: error.steps };
   }

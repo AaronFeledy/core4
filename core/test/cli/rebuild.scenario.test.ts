@@ -37,7 +37,11 @@ import { FileSystemLive } from "@lando/engine/services/file-system";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeShellRunnerLive } from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  createStandaloneRedactor,
+  registerRedactionValues,
+} from "@lando/redaction/service";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { StateStoreLive as StateStoreUnprovided } from "@lando/state-store/service";
 const StateStoreLive = StateStoreUnprovided.pipe(Layer.provide(ProcessRunnerLive));
@@ -228,6 +232,7 @@ const requiredStartServicesLayer = Layer.mergeAll(
     loadAppFeature: () => Effect.die("not used"),
   }),
   Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
   Layer.succeed(RouterService, TestRouterService),

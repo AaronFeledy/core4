@@ -4,6 +4,8 @@ export type _ServiceTagCompatContext = typeof Context.Tag;
 
 import type {
   AbsolutePath,
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
   AppId,
   AppPlan,
   DataEndpoint,
@@ -117,7 +119,8 @@ import type {
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
-  SecretNotFoundError,
+  SecretStoreError,
+  SecretStoreUnavailableError,
   ServiceTypeCollisionError,
   ShellExecError,
   ToolingCompileError,
@@ -284,6 +287,9 @@ export interface RuntimeProviderShape {
   readonly openHostProxyBridge?: (
     input: HostProxyBridgeInput,
   ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+  readonly openAgentSocketBridge?: (
+    input: AgentSocketBridgeInput,
+  ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
   readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
   readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
@@ -884,8 +890,9 @@ export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
   SecretStore,
   {
     readonly id: string;
-    readonly get: (secret: string) => Effect.Effect<string, SecretNotFoundError>;
-    readonly has: (secret: string) => Effect.Effect<boolean>;
+    readonly schemes?: ReadonlyArray<string>;
+    readonly get: (secret: string) => Effect.Effect<string, SecretStoreError>;
+    readonly has: (secret: string) => Effect.Effect<boolean, SecretStoreUnavailableError>;
     readonly list: Effect.Effect<ReadonlyArray<string>>;
   }
 >() {}

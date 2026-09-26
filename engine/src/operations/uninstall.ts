@@ -20,6 +20,8 @@ import {
   classifyManagedProviderMachine,
   teardownManagedProviderMachine,
 } from "../runtime/managed-provider-machine";
+import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
+import { AgentRelayWorkerRecord } from "../subsystems/ssh-agent/worker-protocol.ts";
 import { defaultRemoveRuntimeDir, defaultTerminateRuntimeBinProcesses } from "./uninstall-runtime-dir";
 import {
   UninstallRuntimeDirError,
@@ -319,6 +321,28 @@ const defaultTeardownHostProxySessions = async (
   }
   const { terminateOwnedHostProxyWorkersInRoot } = await import("../subsystems/host-proxy/worker");
   await Effect.runPromise(terminateOwnedHostProxyWorkersInRoot(userDataRoot, { privateFileAccess }));
+  const paths = makeLandoPaths({ userDataRoot });
+  if (!existsSync(paths.hostProxyRunRoot)) return;
+  for (const entry of readdirSync(paths.hostProxyRunRoot, { withFileTypes: true })) {
+    const kind = entry.name.endsWith("-ssh-agent")
+      ? "ssh"
+      : entry.name.endsWith("-gpg-agent")
+        ? "gpg"
+        : undefined;
+    if (!entry.isDirectory() || kind === undefined) continue;
+    const directory = join(paths.hostProxyRunRoot, entry.name);
+    const text = tryReadText(join(directory, "worker.json"), defaultReadText);
+    if (text === undefined) continue;
+    const record = Schema.decodeUnknownOption(Schema.parseJson(AgentRelayWorkerRecord))(text);
+    if (Option.isNone(record) || record.value.kind !== kind) continue;
+    const app = { id: record.value.appId, root: record.value.appRoot };
+    if (paths.agentRelayRunDir(kind, app.id, app.root) !== directory) continue;
+    await Effect.runPromise(
+      cleanupAgentRelayState(app, { userDataRoot }, kind).pipe(
+        Effect.provideService(PrivateFileAccessService, privateFileAccess),
+      ),
+    );
+  }
 };
 
 const defaultTeardownRuntimeService = (

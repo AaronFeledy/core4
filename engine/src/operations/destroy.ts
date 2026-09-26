@@ -37,6 +37,7 @@ import {
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
+import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { requireNoPendingAcceleratedStop } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
@@ -222,6 +223,8 @@ const destroyAppForTargetUncoordinated = (
                 },
               ),
             ),
+            Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
+            Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
             Effect.ensuring(
               Effect.gen(function* () {
                 yield* tree.startTask("host-proxy");

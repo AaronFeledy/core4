@@ -133,7 +133,8 @@ US-584, US-586, US-587, US-588, and US-591 are routing, inventory, cache-identit
 
 ## Non-goals
 
-- Do not reopen hosters, SSH `sidecar: false`, staged recipes, image save/load, or the 4.1 deferred commands (`meta:events:follow`, `meta:plugin:login`, `meta:plugin:logout`).
+- Do not touch hosters, staged recipes, image save/load, or the 4.1 deferred commands (`meta:events:follow`, `meta:plugin:login`, `meta:plugin:logout`).
+- SSH `sidecar: false` and gpg forwarding are owned by the host-agent-forwarding wave (§10.4), not this PRD.
 - Do not change omitted-`creds:` defaults from `lando` / `lando` / appName to `{{ service.name }}`.
 - Do not fingerprint env/host/template-render inputs for any cache.
 - Do not attach `AppPlan` onto DataMover.

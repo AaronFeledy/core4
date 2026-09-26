@@ -167,6 +167,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: [...PLUGIN_TEST_TARGETS, "@lando/provider-docker", "@lando/provider-lando"],
   },
   "@lando/ssh-agent": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/secret-store-1password": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-handlebars": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/template-mustache": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
 };

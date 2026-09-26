@@ -109,6 +109,7 @@
       "occupiedPublishPorts?: (ports: ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>",
       "matchingPublishPorts?: (containerId: string, ports: ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>",
       "openHostProxyBridge?: (input: HostProxyBridgeInput) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>",
+      "openAgentSocketBridge?: (input: AgentSocketBridgeInput) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>",
       "listVolumes: (filter: VolumeFilter) => Effect.Effect<ReadonlyArray<VolumeInfo>, ProviderError>",
       "locateVolume: (ref: VolumeRef) => Effect.Effect<VolumeLocator, ProviderError>",
       "inspectResourceNames?: (query: DoctorResourceNameQuery) => Effect.Effect<ReadonlyArray<string>, ProviderError>",

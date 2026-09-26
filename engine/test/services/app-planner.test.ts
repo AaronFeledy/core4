@@ -138,6 +138,78 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
     ),
   );
 
+test("seeds gpg forwarding only when enabled", async () => {
+  // Given
+  const caps: ProviderCapabilities = {
+    ...providerLandoCapabilities,
+    agentSocket: { delivery: "bind-directory" },
+  };
+  // When
+  const enabled = await plan({ ...landofileFixture, gpgAgent: { forward: true } }, caps);
+  const disabled = await plan({ ...landofileFixture, gpgAgent: { forward: false } }, caps);
+  // Then
+  expect(enabled.services[ServiceName.make("web")]?.extensions["@lando/core/gpg-agent"]).toEqual({
+    forward: true,
+  });
+  expect(disabled.services[ServiceName.make("web")]?.extensions["@lando/core/gpg-agent"]).toBeUndefined();
+});
+
+test("gpg opt-in fails planning without agentSocket", async () => {
+  // Given / When
+  const exit = await planExit({ ...landofileFixture, gpgAgent: { forward: true } });
+  // Then
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit))
+    expect(Option.getOrUndefined(Cause.failureOption(exit.cause))).toMatchObject({
+      _tag: "CapabilityError",
+      feature: "lando.gpg-agent",
+      capability: "agentSocket",
+    });
+});
+
+test("seeds lando.ssh-agent with the resolved mode and records it in the plan extension", async () => {
+  // Given
+  const landofile = { ...landofileFixture, sshAgent: { sidecar: false, socket: "/private/agent.sock" } };
+  // When
+  const result = await plan(landofile, {
+    ...providerLandoCapabilities,
+    agentSocket: { delivery: "bind-directory" },
+  });
+  // Then
+  expect(result.extensions["@lando/core/ssh-agent"]).toEqual({ mode: "host" });
+  expect(result.services[ServiceName.make("web")]?.extensions["@lando/core/ssh-agent"]).toEqual({
+    mode: "host",
+  });
+  expect(JSON.stringify(result)).not.toContain("/private/agent.sock");
+  expect(result.services[ServiceName.make("web")]?.environment.SSH_AUTH_SOCK).toBeUndefined();
+});
+
+test("fails CapabilityError when host mode provider lacks agentSocket", async () => {
+  // Given / When
+  const exit = await planExit({ ...landofileFixture, sshAgent: { sidecar: false } });
+  // Then
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    expect(Option.getOrUndefined(Cause.failureOption(exit.cause))).toMatchObject({
+      _tag: "CapabilityError",
+      feature: "lando.ssh-agent",
+      capability: "agentSocket",
+      service: "web",
+      remediation: expect.stringContaining("sshAgent.sidecar"),
+    });
+  }
+});
+
+test("sidecar mode plans without agentSocket and retains intent", async () => {
+  // Given / When
+  const result = await plan(landofileFixture);
+  // Then
+  expect(result.extensions["@lando/core/ssh-agent"]).toEqual({ mode: "sidecar" });
+  expect(result.services[ServiceName.make("web")]?.extensions["@lando/core/ssh-agent"]).toEqual({
+    mode: "sidecar",
+  });
+});
+
 const planWithFileSystem = (landofile: LandofileShape) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
@@ -360,8 +432,8 @@ describe("AppPlannerLive", () => {
     });
   });
 
-  for (const setting of ["router", "scanner"] as const) {
-    test(`invalidates persisted plans when global ${setting} changes`, async () => {
+  for (const setting of ["router", "scanner", "sshAgent", "globalSocket", "landofileSocket"] as const) {
+    test(`uses only planning intent in the persisted cache key when ${setting} changes`, async () => {
       await withTempCwd(async (appRoot) => {
         // Given
         const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
@@ -385,16 +457,19 @@ describe("AppPlannerLive", () => {
             ),
           ),
         );
-        const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        let landofile = Schema.decodeUnknownSync(LandofileShape)({
           name: "global-plan-cache",
           runtime: 4,
           services: { web: { type: "nginx", home: false } },
         });
         const execute = () =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planner.plan(landofile, {
+                ...providerLandoCapabilities,
+                agentSocket: { delivery: "bind-directory" },
+              }),
+            ).pipe(Effect.provide(layer)),
           );
         try {
           await execute();
@@ -405,8 +480,18 @@ describe("AppPlannerLive", () => {
           );
           config = Schema.decodeUnknownSync(GlobalConfig)({
             telemetry: { enabled: false },
-            [setting]: setting === "router" ? { enabled: false } : { path: "/global-ready" },
+            ...(setting === "router"
+              ? { router: { enabled: false } }
+              : setting === "scanner"
+                ? { scanner: { path: "/global-ready" } }
+                : setting === "sshAgent"
+                  ? { sshAgent: { sidecar: false } }
+                  : setting === "globalSocket"
+                    ? { sshAgent: { socket: "/private/global.sock" } }
+                    : {}),
           });
+          if (setting === "landofileSocket")
+            landofile = { ...landofile, sshAgent: { socket: "/private/app.sock" } };
           // When
           const changed = await execute();
           const cached = await execute();
@@ -414,7 +499,16 @@ describe("AppPlannerLive", () => {
           const after = payloadSchema.pipe(Schema.decodeUnknownSync)(
             deserialize((await readFile(cachePath)).subarray(APP_PLAN_CACHE_HEADER_BYTES)),
           );
-          expect(after.key).not.toBe(before.key);
+          if (setting === "globalSocket" || setting === "landofileSocket") {
+            expect(after.key).toBe(before.key);
+            expect(JSON.stringify(changed)).not.toContain("/private/");
+          } else {
+            expect(after.key).not.toBe(before.key);
+          }
+          if (setting === "sshAgent") {
+            expect(changed.extensions["@lando/core/ssh-agent"]).toEqual({ mode: "host" });
+            expect(cached.extensions["@lando/core/ssh-agent"]).toEqual({ mode: "host" });
+          }
           expect(loads).toBe(3);
           expect(changed.router?.enabled).toBe(setting !== "router");
           expect(changed.services[ServiceName.make("web")]?.scanner?.path).toBe(

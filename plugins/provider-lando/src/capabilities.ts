@@ -1,5 +1,6 @@
 import {
   type HostProxyContainerTarget,
+  agentSocketCapabilities,
   buildProviderCapabilities,
   engineInfoArchitecture,
   hostProxyCapabilities,
@@ -14,9 +15,19 @@ import {
   ProviderInternalError,
   type ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { type HostPlatform, ProviderCapabilities, hostPlatformFamily } from "@lando/sdk/schema";
+import {
+  type AgentSocketDelivery,
+  type HostPlatform,
+  ProviderCapabilities,
+  hostPlatformFamily,
+} from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
+
+export const agentSocketDeliveryForPlatform = (
+  family: ReturnType<typeof hostPlatformFamily>,
+): AgentSocketDelivery =>
+  (({ linux: "bind-directory", darwin: "guest-bridge", win32: "guest-bridge" }) as const)[family];
 
 const bindMountPerformanceForPlatform = (
   platform: HostPlatform,
@@ -82,6 +93,7 @@ export const providerLandoCapabilitiesForPlatform = (
   rootless = hostPlatformFamily(platform) !== "win32",
 ): ProviderCapabilities => {
   const family = hostPlatformFamily(platform);
+  const agentSocket = agentSocketCapabilities(agentSocketDeliveryForPlatform(family));
   return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
@@ -100,6 +112,7 @@ export const providerLandoCapabilitiesForPlatform = (
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(family, containerTargets, "host.containers.internal"),
+    ...(agentSocket === undefined ? {} : { agentSocket }),
   });
 };
 

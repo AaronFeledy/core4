@@ -50,6 +50,7 @@
     "./podman/inspect": "./src/podman/inspect.ts",
     "./podman/exec": "./src/podman/exec.ts",
     "./podman/logs": "./src/podman/logs.ts",
+    "./podman/machine-ssh-bridge": "./src/podman/machine-ssh-bridge.ts",
     "./podman/container-events": "./src/podman/container-events.ts",
     "./podman/health": "./src/podman/health.ts",
     "./podman/version-floor": "./src/podman/version-floor.ts"

@@ -101,6 +101,7 @@ import {
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 
+import { AGENT_RELAY_IMAGE, makeDockerDesktopAgentSocketBridge } from "./agent-socket-relay.ts";
 import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 
@@ -393,6 +394,9 @@ export const dockerCapabilitiesForHost = (
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),
+    agentSocket: {
+      delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
+    },
   });
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
@@ -916,6 +920,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         version: "0.0.0",
         platform,
         capabilities: resolvedCapabilities,
+        ...(isVmMediatedDockerHost(platform, resolvedDockerHost)
+          ? {
+              openAgentSocketBridge: makeDockerDesktopAgentSocketBridge({
+                api: dockerApi,
+                hostGateway: "host.docker.internal",
+                relayImage: AGENT_RELAY_IMAGE,
+              }),
+            }
+          : {}),
         isAvailable: dockerApi.info.pipe(
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),

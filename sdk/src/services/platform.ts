@@ -13,7 +13,8 @@ import type {
   RouterPortsExhausted,
   RouterWatcherError,
   ScannerError,
-  SecretNotFoundError,
+  SecretStoreError,
+  SecretStoreUnavailableError,
   SshError,
 } from "../errors/index.ts";
 import type { ProbeOutcome } from "../probe/index.ts";
@@ -250,14 +251,17 @@ export class UpdateService extends Context.Tag("@lando/core/UpdateService")<
  *
  * Default: env-var store. Pluggable via the `secretStores:` contribution
  * surface (Vault, 1Password CLI, AWS SM, …). `get` fails with
- * `SecretNotFoundError` (carrying the secret id) when a secret is absent; `has`
- * and `list` are total. Resolved values MUST be redacted from log/event output
+ * `SecretNotFoundError` when absent, `SecretReferenceInvalidError` for invalid
+ * references, or `SecretStoreUnavailableError` for backend failures. `has`
+ * propagates unavailability rather than reporting absence. `list` is total;
+ * CLI stores list references resolved in this process. Values MUST be redacted from log/event output
  * (see `@lando/sdk/secrets`).
  */
 export interface SecretStoreShape {
   readonly id: string;
-  readonly get: (secret: string) => Effect.Effect<string, SecretNotFoundError>;
-  readonly has: (secret: string) => Effect.Effect<boolean>;
+  readonly schemes?: ReadonlyArray<string>;
+  readonly get: (secret: string) => Effect.Effect<string, SecretStoreError>;
+  readonly has: (secret: string) => Effect.Effect<boolean, SecretStoreUnavailableError>;
   readonly list: Effect.Effect<ReadonlyArray<string>>;
 }
 
