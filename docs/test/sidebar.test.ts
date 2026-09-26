@@ -15,6 +15,7 @@ const RECIPE_IDS = [
   "drupal",
   "drupal-cms",
   "eleventy",
+  "fastapi",
   "hugo",
   "joomla",
   "lamp",
@@ -131,6 +132,7 @@ describe("docs sidebar", () => {
     expect(slugs).toContain("guides/recipes/rails-workflow");
     expect(slugs).toContain("guides/recipes/astro-workflow");
     expect(slugs).toContain("guides/recipes/django-workflow");
+    expect(slugs).toContain("guides/recipes/fastapi-workflow");
     expect(slugs).toContain("guides/recipes/mean-workflow");
     expect(slugs).toContain("guides/recipes/symfony-workflow");
     expect(slugs).toContain("guides/recipes/laravel-workflow");
