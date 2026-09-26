@@ -137,6 +137,58 @@ describe("opt-in Windows Mutagen composition", () => {
     expect(prepared).toBe(false);
   });
 
+  test("rejects duplicate planned sessions and missing accelerated mounts before alias preparation", async () => {
+    for (const invalidPlan of [
+      { ...plan, fileSync: [plan.fileSync[0]!, plan.fileSync[0]!] },
+      {
+        ...plan,
+        services: {
+          [serviceName]: {
+            ...service,
+            mounts: [
+              {
+                type: "bind" as const,
+                source: root,
+                target: PortablePath.make("/other"),
+                readOnly: false,
+                realization: "accelerated" as const,
+                excludes: [],
+                includes: [],
+              },
+            ],
+          },
+        },
+      },
+    ]) {
+      let prepared = false;
+      const result = await Effect.runPromiseExit(
+        makePreparedWindowsMutagenAppClient({
+          plan: invalidPlan,
+          preparedTargets: {
+            targets: invalidPlan.fileSync.map(({ session }) => ({ session, endpoint })),
+          },
+          binDir: "C:\\Lando\\bin",
+          dataDir: "C:\\Lando\\mutagen-data",
+          stateStore: makePluginStateStore(
+            makeTestStateStore().service,
+            AbsolutePath.make("/tmp/windows-mutagen-composition-test"),
+            privateFileAccess,
+          ),
+          prepareDockerCli: () =>
+            Effect.sync(() => {
+              prepared = true;
+              return "C:\\Lando\\docker.exe";
+            }),
+          hostPlatform: "win32",
+          verifyInstalled: async () => true,
+          runner: { run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }) },
+        }),
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(prepared).toBe(false);
+    }
+  });
+
   const windowsTest = process.platform === "win32" ? test : test.skip;
   windowsTest("uses real verified alias and provider targets, then rejects alias tampering", async () => {
     const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-mutagen-runtime-"));

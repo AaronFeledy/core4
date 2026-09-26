@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { Effect } from "effect";
 
 import { FileSyncStartError } from "@lando/sdk/errors";
-import type { AppPlan, FileSyncSessionSpec } from "@lando/sdk/schema";
+import { type AppPlan, type FileSyncSessionSpec, sameAppMountTarget } from "@lando/sdk/schema";
 
 import {
   type MutagenProcessClient,
@@ -48,9 +48,26 @@ export const makePreparedWindowsMutagenAppClient = (
   const { plan, preparedTargets, ...clientOptions } = options;
   const planned = plan.fileSync;
   const targets = preparedTargets.targets;
+  const expectedMounts = new Set<string>();
+  for (const [serviceName, service] of Object.entries(plan.services)) {
+    if (service.appMount?.realization === "accelerated") expectedMounts.add(`${serviceName}/app-mount`);
+    for (const [index, mount] of service.mounts.entries()) {
+      if (
+        mount.type === "bind" &&
+        mount.realization === "accelerated" &&
+        !sameAppMountTarget(service.appMount, mount)
+      ) {
+        expectedMounts.add(`${serviceName}/mount-${index}`);
+      }
+    }
+  }
+  const plannedKeys = planned.map(({ session }) => `${session.service}/${session.mountKey}`);
   if (
     String(plan.provider) !== "lando" ||
     planned.length === 0 ||
+    expectedMounts.size !== planned.length ||
+    new Set(plannedKeys).size !== planned.length ||
+    plannedKeys.some((key) => !expectedMounts.has(key)) ||
     planned.length !== targets.length ||
     planned.some((entry) => entry.engineId !== "mutagen") ||
     targets.some(
