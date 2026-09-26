@@ -26,6 +26,7 @@ const FRIENDLY_ENV_OVERLAYS = [
   ["LANDO_ROUTER_HTTPS_FALLBACKS", ["router", "httpsFallbacks"]],
   ["LANDO_APP_ENV", ["appEnv"]],
   ["LANDO_APP_LABELS", ["appLabels"]],
+  ["LANDO_SSH_AGENT_UPSTREAM", ["sshAgent", "upstream"]],
 ] as const;
 
 // `default_provider_id` / `DEFAULT_PROVIDER_ID` -> camelCase key `defaultProviderId`.

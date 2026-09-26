@@ -1,21 +1,47 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Schema } from "effect";
-
-import { ServiceConfig } from "@lando/sdk/schema";
-
 import { join } from "node:path";
 
-import { makeLandoPaths } from "@lando/paths";
+import { Effect, Schema } from "effect";
 
+import { makeLandoPaths } from "@lando/paths";
+import { ServiceConfig } from "@lando/sdk/schema";
+
+import {
+  buildFileLoadSshAgentServiceConfig,
+  buildUpstreamSshAgentServiceConfig,
+  sshAgentServiceConfigFor,
+} from "../../src/global-service.ts";
 import sshAgentGlobalService from "../../src/global-service.ts";
+import { resolveSshAgentUpstream } from "../../src/upstream.ts";
 
 const decodeConfig = async (): Promise<ServiceConfig> => {
-  const value = await Effect.runPromise(sshAgentGlobalService);
-  return Schema.decodeUnknownSync(ServiceConfig)(value);
+  const previous = {
+    upstream: process.env.LANDO_SSH_AGENT_UPSTREAM,
+    overlay: process.env.LANDO_CONFIG__ssh_agent__upstream,
+  };
+  Reflect.deleteProperty(process.env, "LANDO_SSH_AGENT_UPSTREAM");
+  Reflect.deleteProperty(process.env, "LANDO_CONFIG__ssh_agent__upstream");
+  try {
+    const value = await Effect.runPromise(sshAgentGlobalService);
+    return Schema.decodeUnknownSync(ServiceConfig)(value);
+  } finally {
+    if (previous.upstream === undefined) Reflect.deleteProperty(process.env, "LANDO_SSH_AGENT_UPSTREAM");
+    else process.env.LANDO_SSH_AGENT_UPSTREAM = previous.upstream;
+    if (previous.overlay === undefined)
+      Reflect.deleteProperty(process.env, "LANDO_CONFIG__ssh_agent__upstream");
+    else process.env.LANDO_CONFIG__ssh_agent__upstream = previous.overlay;
+  }
 };
 
 const commandText = (config: ServiceConfig): string =>
   typeof config.command === "string" ? config.command : (config.command?.join("\n") ?? "");
+
+const socketMount = {
+  type: "bind" as const,
+  source: join(makeLandoPaths().roots.userDataRoot, "ssh"),
+  target: "/ssh-auth",
+  readOnly: false,
+};
 
 describe("ssh-agent global service ServiceConfig", () => {
   test("default export is an Effect producing a valid ServiceConfig", async () => {
@@ -34,36 +60,24 @@ describe("ssh-agent global service ServiceConfig", () => {
   test("installs openssh-client and runs real ssh-agent", async () => {
     const config = await decodeConfig();
     const text = commandText(config);
-    // Proves openssh-client is installed (not a no-op alpine sleep container)
     expect(text).toContain("apk add --no-cache openssh-client");
-    // Proves ssh-agent is actually started
     expect(text).toContain("eval $(ssh-agent -s -a /ssh-auth/ssh-agent.sock)");
-    // Proves socket permissions are set
     expect(text).toContain("chmod 777 /ssh-auth/ssh-agent.sock");
-    // Proves host keys are loaded
     expect(text).toContain("ssh-add");
   });
 
   test("does NOT run as a no-op sleep container", async () => {
     const config = await decodeConfig();
     const text = commandText(config);
-    // The old stub just ran "tail -f /dev/null" with no ssh-agent
-    // Prove we're not that stub by checking for actual ssh-agent work
     expect(text).toContain("ssh-agent");
     expect(text).toContain("openssh-client");
-    // The final tail keeps the container alive, but only after ssh-agent is running
     expect(text).toContain("tail -f /dev/null");
   });
 
   test("mounts host ssh directory and creates socket directory", async () => {
     const config = await decodeConfig();
     expect(config.mounts).toEqual([
-      {
-        type: "bind",
-        source: join(makeLandoPaths().roots.userDataRoot, "ssh"),
-        target: "/ssh-auth",
-        readOnly: false,
-      },
+      socketMount,
       {
         type: "bind",
         source: "~/.ssh",
@@ -90,9 +104,72 @@ describe("ssh-agent global service ServiceConfig", () => {
   test("loads host keys with ssh-add and handles passphrase-protected keys gracefully", async () => {
     const config = await decodeConfig();
     const text = commandText(config);
-    // ssh-add without args loads standard keys (id_rsa, id_dsa, id_ecdsa, id_ed25519)
     expect(text).toContain("ssh-add");
-    // Passphrase-protected keys are skipped gracefully (no stdin in container)
     expect(text).toContain("2>/dev/null || true");
+  });
+
+  test("factory file-load config matches default ssh-add behavior", () => {
+    const config = buildFileLoadSshAgentServiceConfig();
+    const text = commandText(config);
+    expect(config.type).toBe("compose");
+    expect(config.appMount).toBe(false);
+    expect(text).toContain("eval $(ssh-agent -s -a /ssh-auth/ssh-agent.sock)");
+    expect(text).toContain("ssh-add");
+    expect(text).toContain("2>/dev/null || true");
+    expect(config.mounts?.some((mount) => typeof mount !== "string" && mount.target === "/root/.ssh")).toBe(
+      true,
+    );
+  });
+
+  test("upstream config relays the host socket and keeps the Lando sidecar socket", () => {
+    const config = buildUpstreamSshAgentServiceConfig("/run/user/1000/ssh-agent.sock");
+    const text = commandText(config);
+    expect(config.type).toBe("compose");
+    expect(config.appMount).toBe(false);
+    expect(text).toContain("socat UNIX-LISTEN:/ssh-auth/ssh-agent.sock");
+    expect(text).toContain("UNIX-CONNECT:/ssh-upstream/agent.sock");
+    expect(text).not.toContain("ssh-add");
+    expect(config.environment).toEqual({ SSH_AUTH_SOCK: "/ssh-auth/ssh-agent.sock" });
+    expect(config.mounts).toEqual([
+      socketMount,
+      {
+        type: "bind",
+        source: "/run/user/1000/ssh-agent.sock",
+        target: "/ssh-upstream/agent.sock",
+        readOnly: false,
+      },
+    ]);
+  });
+
+  test("unsupported and invalid resolutions fail closed instead of baking file-load", () => {
+    expect(() =>
+      sshAgentServiceConfigFor(
+        resolveSshAgentUpstream({
+          upstream: "host",
+          platform: "win32",
+        }),
+      ),
+    ).toThrow("not supported on Windows");
+    expect(() =>
+      sshAgentServiceConfigFor(
+        resolveSshAgentUpstream({
+          upstream: "relative/agent.sock",
+          platform: "linux",
+        }),
+      ),
+    ).toThrow("absolute Unix socket path");
+  });
+
+  test("missing upstream socket keeps file-load command", () => {
+    const config = sshAgentServiceConfigFor(
+      resolveSshAgentUpstream({
+        upstream: "host",
+        platform: "linux",
+        isSocket: () => false,
+      }),
+    );
+    const text = commandText(config);
+    expect(text).toContain("ssh-add");
+    expect(text).not.toContain("socat");
   });
 });

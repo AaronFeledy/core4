@@ -10,6 +10,7 @@ import { type Effect, Schema } from "effect";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 
+import { sshAgentUpstreamDoctorCheck } from "./doctor.ts";
 import sshAgentGlobalService from "./global-service.ts";
 import { sshService } from "./ssh-service.ts";
 
@@ -55,4 +56,18 @@ export const plugin = definePlugin({
   layer: sshService,
   sshServices,
   globalServices,
+  doctorChecks: [sshAgentUpstreamDoctorCheck],
 });
+
+export { sshAgentUpstreamDoctorCheck } from "./doctor.ts";
+export {
+  buildFileLoadSshAgentServiceConfig,
+  buildUpstreamSshAgentServiceConfig,
+  sshAgentServiceConfigFor,
+} from "./global-service.ts";
+export { makeSshService } from "./ssh-service.ts";
+export {
+  resolveSshAgentUpstream,
+  SSH_AGENT_UPSTREAM_FALLBACK_WARNING,
+  SSH_AGENT_UPSTREAM_WINDOWS_MESSAGE,
+} from "./upstream.ts";

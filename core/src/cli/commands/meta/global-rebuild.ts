@@ -22,6 +22,7 @@ import {
   EventService,
   type FileSystem,
   type GlobalAppService,
+  type LandofileService,
   type PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
@@ -82,6 +83,7 @@ export type GlobalRebuildServices =
   | EventService
   | FileSystem
   | GlobalAppService
+  | LandofileService
   | PluginRegistry
   | RouterService
   | RuntimeProviderRegistry;

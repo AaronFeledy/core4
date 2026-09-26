@@ -8,6 +8,7 @@ import type {
   EventService,
   FileSystem,
   GlobalAppService,
+  LandofileService,
   PluginRegistry,
   ProcessRunner,
   Renderer,
@@ -207,6 +208,7 @@ export const globalRuntimeLayer = () =>
     cliRuntimeOptions({ bootstrap: "global", plugins: { policy: "discovery" } }),
   ) as Layer.Layer<
     | GlobalAppService
+    | LandofileService
     | PluginRegistry
     | RuntimeProviderRegistry
     | AppPlanner

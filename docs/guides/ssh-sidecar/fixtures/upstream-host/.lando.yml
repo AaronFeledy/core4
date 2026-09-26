@@ -1,0 +1,8 @@
+name: ssh-upstream-host
+sshAgent:
+  sidecar: true
+  upstream: host
+services:
+  web:
+    type: "node:22"
+    primary: true

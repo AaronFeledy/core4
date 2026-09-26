@@ -9,6 +9,7 @@ import {
   EventService,
   FileSystem,
   GlobalAppService,
+  LandofileService,
   PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -27,6 +28,7 @@ export const GlobalAppRuntimeLive = Layer.effect(
       Context.add(ConfigService, yield* ConfigService),
       Context.add(EventService, yield* EventService),
       Context.add(FileSystem, yield* FileSystem),
+      Context.add(LandofileService, yield* LandofileService),
       Context.add(PluginRegistry, yield* PluginRegistry),
       Context.add(RuntimeProviderRegistry, yield* RuntimeProviderRegistry),
     );

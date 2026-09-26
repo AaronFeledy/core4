@@ -1384,6 +1384,7 @@ export const ComposeSecretConfig = Schema.Struct({
 export type ComposeSecretConfig = typeof ComposeSecretConfig.Type;
 
 export { SshAgentConfig } from "./agent-forwarding.ts";
+export { SshAgentUpstream, isAbsoluteUnixSocketPath } from "./ssh-agent.ts";
 
 export const COMPOSE_TOP_LEVEL_KEYS = [
   "name",

@@ -16,7 +16,12 @@ import {
   type ServiceConfig,
   ServiceName,
 } from "@lando/core/schema";
-import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  GlobalAppService,
+  LandofileService,
+  PluginRegistry,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
 import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
@@ -28,6 +33,7 @@ const provider = { ...TestRuntimeProvider, id: "lando" };
 
 const globalAppLayer = Layer.mergeAll(
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+  Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "app" }) }),
   Layer.succeed(PluginRegistry, {
     list: Effect.succeed([]),
     load: () => Effect.die("not needed"),
@@ -71,7 +77,11 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-type GlobalAppHarnessServices = GlobalAppService | PluginRegistry | RuntimeProviderRegistry;
+type GlobalAppHarnessServices =
+  | GlobalAppService
+  | LandofileService
+  | PluginRegistry
+  | RuntimeProviderRegistry;
 
 const runWithGlobalApp = <A, E>(effect: Effect.Effect<A, E, GlobalAppHarnessServices>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(globalAppLayer)));

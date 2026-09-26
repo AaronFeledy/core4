@@ -193,7 +193,8 @@ export type AgentEnvConfig = typeof AgentEnvConfig.Type;
  */
 export const GlobalConfig = Schema.Struct({
   sshAgent: Schema.optional(SshAgentConfig).annotations({
-    description: "Global SSH-agent forwarding defaults, overridden by each app per field.",
+    description:
+      "Global SSH-agent forwarding defaults, overridden by each app per field. Sidecar-only upstream relays a host Unix agent socket into the sidecar; unset keeps file-load from ~/.ssh.",
   }),
   gpgAgent: Schema.optional(GpgAgentConfig).annotations({
     description: "Global GPG-agent forwarding defaults, overridden by each app per field.",

@@ -10,10 +10,11 @@ import {
   type DoctorExecutableLocation,
   type DoctorResourceInspection,
   DoctorResourceNameQuery,
+  type SshAgentConfig,
 } from "@lando/sdk/schema";
 import { LandofileService, type RuntimeProviderShape } from "@lando/sdk/services";
 import { StateStoreLive } from "@lando/state-store/service";
-import { Effect, Layer, Option, Schema } from "effect";
+import { type Context, Effect, Layer, Option, Schema } from "effect";
 import { loadUserLandofile } from "../app-resolution.ts";
 import { describeDoctorCause, redactDoctorMessage } from "./doctor-self.ts";
 
@@ -21,17 +22,29 @@ const DoctorLandofileLive = LandofileServiceLive.pipe(
   Layer.provide(Layer.merge(StateStoreLive, ManagedFileTransactionGuardLive)),
 );
 
-export const resolveDoctorAppIdentity = (): Effect.Effect<DoctorAppIdentity | undefined> =>
+const resolveDoctorLandofileService = (): Effect.Effect<Context.Tag.Service<typeof LandofileService>> =>
   Effect.gen(function* () {
     const available = yield* Effect.serviceOption(LandofileService);
-    const service = Option.isSome(available)
+    return Option.isSome(available)
       ? available.value
       : yield* LandofileService.pipe(Effect.provide(DoctorLandofileLive));
+  });
+
+export const resolveDoctorAppIdentity = (): Effect.Effect<DoctorAppIdentity | undefined> =>
+  Effect.gen(function* () {
+    const service = yield* resolveDoctorLandofileService();
     const landofile = yield* loadUserLandofile(service);
     const root = getLandofileAppRoot(landofile);
     if (root === undefined || landofile.name === undefined) return undefined;
     const canonicalRoot = yield* Effect.tryPromise(() => realpath(root));
     return { name: landofile.name, root: canonicalRoot };
+  }).pipe(Effect.catchAllCause(() => Effect.succeed(undefined)));
+
+export const peekDoctorLandofileSshAgent = (): Effect.Effect<SshAgentConfig | undefined> =>
+  Effect.gen(function* () {
+    const service = yield* resolveDoctorLandofileService();
+    const landofile = yield* loadUserLandofile(service);
+    return landofile.sshAgent;
   }).pipe(Effect.catchAllCause(() => Effect.succeed(undefined)));
 
 export const makeDoctorResourceInspector = (options: {

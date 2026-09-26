@@ -18,6 +18,7 @@ import {
   ToolingTaskShape,
   ToolingVar,
   getJsonSchema,
+  isAbsoluteUnixSocketPath,
 } from "@lando/sdk/schema";
 
 const SUPPORTED_TOOLING_FIELDS = [
@@ -296,6 +297,42 @@ describe("LandofileShape — schema gate", () => {
     const result = Schema.decodeUnknownSync(LandofileShape)(input, { onExcessProperty: "error" });
     // Then
     expect(result.sshAgent).toEqual(input.sshAgent);
+  });
+
+  test("strict decoding accepts opt-in SSH-agent upstream host and absolute socket paths", () => {
+    const host = Schema.decodeUnknownEither(LandofileShape)(
+      { name: "myapp", sshAgent: { sidecar: true, upstream: "host" } },
+      { onExcessProperty: "error" },
+    );
+    const socket = Schema.decodeUnknownEither(LandofileShape)(
+      { name: "myapp", sshAgent: { sidecar: true, upstream: "/run/user/1000/ssh-agent.sock" } },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isRight(host)).toBe(true);
+    expect(Either.isRight(socket)).toBe(true);
+    if (Either.isRight(host)) expect(host.right.sshAgent?.upstream).toBe("host");
+    if (Either.isRight(socket)) expect(socket.right.sshAgent?.upstream).toBe("/run/user/1000/ssh-agent.sock");
+  });
+
+  test("strict decoding rejects a relative SSH-agent upstream path", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      { name: "myapp", sshAgent: { sidecar: true, upstream: "relative/agent.sock" } },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      expect(issues.some((row) => row.path.join(".").startsWith("sshAgent.upstream"))).toBe(true);
+    }
+  });
+
+  test("isAbsoluteUnixSocketPath accepts only Unix socket path spellings", () => {
+    expect(isAbsoluteUnixSocketPath("/run/user/1000/ssh-agent.sock")).toBe(true);
+    expect(isAbsoluteUnixSocketPath("relative/agent.sock")).toBe(false);
+    expect(isAbsoluteUnixSocketPath("\\\\.\\pipe\\openssh-ssh-agent")).toBe(false);
+    expect(isAbsoluteUnixSocketPath("C:/Users/me/.ssh/agent.sock")).toBe(false);
   });
 
   test("strict decoding accepts gpgAgent.forward", () => {
@@ -617,6 +654,13 @@ describe("GlobalConfig (MVP)", () => {
   test("defaultProviderId accepts an explicit null (opt-out signal)", () => {
     const decoded = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: null });
     expect(decoded.defaultProviderId).toBeNull();
+  });
+
+  test("decodes opt-in sshAgent.upstream on global config", () => {
+    const decoded = Schema.decodeUnknownSync(GlobalConfig)({
+      sshAgent: { sidecar: true, upstream: "host" },
+    });
+    expect(decoded.sshAgent?.upstream).toBe("host");
   });
 });
 

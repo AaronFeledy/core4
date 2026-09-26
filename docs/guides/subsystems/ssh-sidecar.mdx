@@ -8,7 +8,7 @@ tags: [beta, docs, subsystems, ssh, sidecar]
 
 # SSH sidecar
 
-This page is a contributor dump for `SshService` and the default SSH-agent delivery path. It stays off the user nav. To forward a 1Password, YubiKey, or gpg-agent instead, see [Use your host SSH agent](./ssh-host-agent.mdx).
+This page is a contributor dump for `SshService` and the default SSH-agent delivery path. It stays off the user nav. To forward a host agent instead, see [Use your host SSH agent](./ssh-host-agent.mdx).
 
 The Landofile knob is top-level `sshAgent`. Leaving it out is the same as this:
 
@@ -18,7 +18,7 @@ sshAgent:
   sidecar: true
 ```
 
-`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. The managed `lando` provider hosts it even when the app itself runs on Docker or user-owned Podman. `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key.
+`sidecar: true` selects the Lando-managed `ssh-agent` global service. It runs `ssh-agent` and loads your `~/.ssh` keys through `ssh-add` when the global app starts. The managed `lando` provider hosts it even when the app itself runs on Docker or user-owned Podman. `sidecar: false` switches the app to host mode; that page is linked above. There is no per-service `sshAgent` key. Optional `upstream` only applies to sidecar mode.
 
 Lando starts the sidecar with the global app when a start needs it. You do not start an SSH agent by hand.
 
@@ -34,6 +34,35 @@ The mount is the directory, not the socket. A per-app relay owns that directory 
 
 The planner records only the eligible services and the selected mode under the plan extension `@lando/core/ssh-agent` (`{ mode: "sidecar" | "host" }`). The relay directory and the `SSH_AUTH_SOCK` mount are a start-time overlay applied by start, restart, and rebuild; they never enter the plan cache. The relay is scope-owned: kept after a successful apply, closed on stop or destroy.
 
+## Load host keys
+
+Unset `upstream` is the default sidecar source. The sidecar file-loads default keys from the host `~/.ssh` directory (`id_rsa`, `id_ed25519`, and the other `ssh-add` defaults). Passphrase-protected keys are skipped.
+
+## Relay a host agent into the sidecar
+
+Set `upstream: host` when sidecar mode should relay a host SSH agent, a hardware key, or an agent-forwarded session (`ssh -A`). The host CLI `$SSH_AUTH_SOCK` is the source. Apps still use the sidecar socket through the per-app relay.
+
+```yaml
+name: myapp
+sshAgent:
+  sidecar: true
+  upstream: host
+```
+
+The same knob lives on global config (`sshAgent.upstream`) and `LANDO_SSH_AGENT_UPSTREAM`. Authored resolution is env, then global config, then the cwd Landofile. An absolute Unix socket path is also valid:
+
+```yaml
+sshAgent:
+  sidecar: true
+  upstream: /run/user/1000/ssh-agent.sock
+```
+
+If the upstream socket is missing or is not a Unix socket, Lando warns and rematerializes the sidecar to file-load from `~/.ssh` (`lando setup`, `lando start`, and `lando global:install` all rematerialize). Apps still get a working sidecar socket. Agent-only keys, hardware keys, and passphrase-protected keys that file `ssh-add` skips still will not work in that fallback.
+
+Windows rejects sidecar upstream. Unset `sshAgent.upstream` and keep file-load, or run Lando on macOS, Linux, or WSL.
+
+To keep signing on the host instead of loading keys into the sidecar, use [host mode](./ssh-host-agent.mdx).
+
 ## When the sidecar is missing
 
 Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, the sidecar is not installed or not running, or the relay or bridge fails to come up, `lando start` still succeeds. Lando publishes a warning naming the reason and the remediation and starts the app without the `SSH_AUTH_SOCK` overlay. `lando doctor` reports the `ssh` check as degraded with `lando setup` or `lando doctor --fix` as remediation.
@@ -42,7 +71,7 @@ Host mode does the opposite and fails closed. That difference is deliberate: nob
 
 ## Security
 
-The sidecar is a Lando-managed `ssh-agent` container. At global-app start it runs `ssh-add` against a read-only bind of your `~/.ssh`, so every default key it can load without a passphrase ends up unencrypted in that agent's memory for as long as the global app runs. Passphrase-protected keys are skipped. Hardware-backed keys and 1Password keys never load here; they need [host mode](./ssh-host-agent.mdx), which keeps signing on the host.
+The sidecar is a Lando-managed `ssh-agent` container. At global-app start it runs `ssh-add` against a read-only bind of your `~/.ssh`, so every default key it can load without a passphrase ends up unencrypted in that agent's memory for as long as the global app runs. Passphrase-protected keys are skipped. Hardware-backed keys never load here; they need [host mode](./ssh-host-agent.mdx), which keeps signing on the host.
 
 Any `type: lando` service in any running app can request signatures from the sidecar. The relay socket on the host is mode `0666` inside a per-user `0700` run directory, so other accounts on the machine cannot reach it. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token; another local account on that host could connect to it while an app runs.
 
@@ -61,6 +90,23 @@ This is not a user how-to. For a shell inside a service, see [Open a shell in a 
       <UseFixture name="sidecar-default" />
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ssh-sidecar-upstream-host" render={false} reason="Accepts opt-in upstream host on a Landofile without starting a sidecar.">
+    <Step name="lint-upstream-host">
+      <UseFixture name="upstream-host" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ssh-sidecar-upstream-rejects-relative-path" render={false} reason="Relative upstream paths fail Landofile validation.">
+    <Step name="lint-bad-upstream">
+      <UseFixture name="upstream-bad-path" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "sshAgent.upstream" } }} />
     </Step>
   </Scenario>
 </Guide>

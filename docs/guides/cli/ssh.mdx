@@ -35,7 +35,17 @@ lando ssh -- ls -la
 
 By default the bundled SSH-agent sidecar loads keys from the host `~/.ssh` directory (`id_rsa`, `id_ed25519`, and the other `ssh-add` defaults). Passphrase-protected keys are skipped. Every service sees the agent at `SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock`.
 
-To use your own agent instead (1Password, YubiKey, gpg-agent), set `sshAgent.sidecar: false` in the Landofile or global config. The host agent is forwarded through a per-app relay and signs on the host. See [Use your host SSH agent](../subsystems/ssh-host-agent.mdx).
+To load keys from a host SSH agent into that sidecar, set `sshAgent.upstream: host` on the Landofile, global config, or `LANDO_SSH_AGENT_UPSTREAM`. Env wins, then global config, then the cwd Landofile. The sidecar relays the host CLI `$SSH_AUTH_SOCK`. Apps still use the sidecar socket. If that socket is missing, Lando warns and rematerializes the sidecar to file-load. Agent-only and passphrase-protected keys still will not work in that fallback.
+
+```yaml
+sshAgent:
+  sidecar: true
+  upstream: host
+```
+
+Windows does not support sidecar upstream. Unset it and keep file-load, or run Lando on macOS, Linux, or WSL.
+
+To use your own agent instead, set `sshAgent.sidecar: false` in the Landofile or global config. The host agent is forwarded through a per-app relay and signs on the host. See [Use your host SSH agent](../subsystems/ssh-host-agent.mdx).
 
 `lando ssh --sidecar` and `lando ssh --subsystem` are not supported.
 

@@ -25,6 +25,7 @@ import {
   type FileSystem,
   type GlobalAppService,
   type LandoEvent,
+  LandofileService,
   PluginRegistry,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -64,6 +65,7 @@ interface Harness {
     | EventService
     | FileSystem
     | GlobalAppService
+    | LandofileService
     | PluginRegistry
     | RuntimeProviderRegistry
   >;
@@ -193,6 +195,7 @@ const makeHarness = async (
     CacheServiceLive,
     FileSystemLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "app" }) }),
     Layer.succeed(EventService, {
       publish: (event) =>
         Effect.sync(() => {

@@ -7,12 +7,26 @@ import {
   type GlobalServiceCollisionError,
   type PluginManifestError,
 } from "@lando/sdk/errors";
-import type { GlobalAppPaths, GlobalDistResult, ProviderSelectionError } from "@lando/sdk/services";
-import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  ConfigService,
+  type GlobalAppPaths,
+  GlobalAppService,
+  type GlobalDistResult,
+  type LandofileService,
+  PluginRegistry,
+  type ProviderSelectionError,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { bundledFirstGlobalServiceLoader } from "../services/bundled-global-service-loader.ts";
 import { materializeGlobalServices } from "../services/global-services.ts";
+import { peekLandofileSshAgent } from "../subsystems/ssh/landofile-upstream.ts";
+import {
+  applySshAgentUpstreamToProcessEnv,
+  resolveAuthoredSshAgentUpstream,
+  sshAgentUpstreamInstallRefusal,
+} from "../subsystems/ssh/upstream-env.ts";
 
 export interface GlobalInstallOptions {
   readonly plugin?: string;
@@ -60,7 +74,7 @@ export const globalInstall = (
   | GlobalServiceCollisionError
   | PluginManifestError
   | ProviderSelectionError,
-  GlobalAppService | PluginRegistry | RuntimeProviderRegistry
+  GlobalAppService | LandofileService | PluginRegistry | RuntimeProviderRegistry
 > =>
   Effect.gen(function* () {
     if (options.plugin !== undefined && options.plugin !== "") {
@@ -70,6 +84,30 @@ export const globalInstall = (
     const globalApp = yield* GlobalAppService;
     const pluginRegistry = yield* PluginRegistry;
     const registry = yield* RuntimeProviderRegistry;
+    const config = yield* Effect.serviceOption(ConfigService);
+    const sshAgent =
+      config._tag === "Some"
+        ? yield* config.value.get("sshAgent").pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+        : undefined;
+    const landofileSshAgent = yield* peekLandofileSshAgent();
+    const authored = resolveAuthoredSshAgentUpstream({
+      env: process.env,
+      config: sshAgent,
+      landofile: landofileSshAgent,
+    });
+    const refusal = sshAgentUpstreamInstallRefusal(authored, process.platform);
+    if (refusal !== undefined) {
+      return yield* Effect.fail(
+        new GlobalAppError({
+          message: `${refusal.message} ${refusal.remediation}`,
+          operation: "install",
+          remediation: refusal.remediation,
+        }),
+      );
+    }
+    const restoreUpstreamEnv = applySshAgentUpstreamToProcessEnv(
+      authored === undefined ? undefined : { upstream: authored },
+    );
     const manifests = yield* pluginRegistry.list;
     const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const services = yield* materializeGlobalServices({
@@ -77,7 +115,7 @@ export const globalInstall = (
       providerCapabilities: provider.capabilities,
       providerId: provider.id,
       loadServiceConfig: bundledFirstGlobalServiceLoader.load,
-    });
+    }).pipe(Effect.ensuring(Effect.sync(restoreUpstreamEnv)));
 
     yield* Effect.scoped(globalApp.ensureRoot);
     const user = yield* globalApp.ensureUserLandofile;
