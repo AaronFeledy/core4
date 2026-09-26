@@ -22,6 +22,7 @@ import {
 import {
   makeDoctorExecutableLocator,
   makeDoctorResourceInspector,
+  peekDoctorLandofileSshAgent,
   resolveDoctorAppIdentity,
 } from "./doctor-plugin-context";
 import { installedPluginMetadataSelfChecks } from "./doctor-plugin-metadata";
@@ -79,7 +80,11 @@ export const doctor = (
     const sshAgent = yield* configService
       .get("sshAgent")
       .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-    const sourceEnv = envWithSshAgentUpstream(options.env ?? process.env, sshAgent);
+    const landofileSshAgent = yield* peekDoctorLandofileSshAgent();
+    const sourceEnv = envWithSshAgentUpstream(
+      envWithSshAgentUpstream(options.env ?? process.env, sshAgent),
+      landofileSshAgent,
+    );
     const redactionService = yield* Effect.serviceOption(RedactionService);
     const redactor = Option.isSome(redactionService)
       ? yield* redactionService.value.forProfile("secrets", { sourceEnv })

@@ -20,7 +20,12 @@ import {
 import { MANAGED_PROVIDER_SELECT_PLAN } from "../providers/managed.ts";
 import { bundledFirstGlobalServiceLoader } from "../services/bundled-global-service-loader.ts";
 import { materializeGlobalServices } from "../services/global-services.ts";
-import { applySshAgentUpstreamToProcessEnv } from "../subsystems/ssh/upstream-env.ts";
+import { peekLandofileSshAgent } from "../subsystems/ssh/landofile-upstream.ts";
+import {
+  applySshAgentUpstreamToProcessEnv,
+  resolveAuthoredSshAgentUpstream,
+  sshAgentUpstreamInstallRefusal,
+} from "../subsystems/ssh/upstream-env.ts";
 
 export interface GlobalInstallOptions {
   readonly plugin?: string;
@@ -83,7 +88,25 @@ export const globalInstall = (
       config._tag === "Some"
         ? yield* config.value.get("sshAgent").pipe(Effect.catchAll(() => Effect.succeed(undefined)))
         : undefined;
-    const restoreUpstreamEnv = applySshAgentUpstreamToProcessEnv(sshAgent);
+    const landofileSshAgent = yield* peekLandofileSshAgent();
+    const authored = resolveAuthoredSshAgentUpstream({
+      env: process.env,
+      config: sshAgent,
+      landofile: landofileSshAgent,
+    });
+    const refusal = sshAgentUpstreamInstallRefusal(authored, process.platform);
+    if (refusal !== undefined) {
+      return yield* Effect.fail(
+        new GlobalAppError({
+          message: `${refusal.message} ${refusal.remediation}`,
+          operation: "install",
+          remediation: refusal.remediation,
+        }),
+      );
+    }
+    const restoreUpstreamEnv = applySshAgentUpstreamToProcessEnv(
+      authored === undefined ? undefined : { upstream: authored },
+    );
     const manifests = yield* pluginRegistry.list;
     const provider = yield* registry.select(MANAGED_PROVIDER_SELECT_PLAN);
     const services = yield* materializeGlobalServices({

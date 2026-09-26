@@ -141,6 +141,25 @@ describe("ssh-agent global service ServiceConfig", () => {
     ]);
   });
 
+  test("unsupported and invalid resolutions fail closed instead of baking file-load", () => {
+    expect(() =>
+      sshAgentServiceConfigFor(
+        resolveSshAgentUpstream({
+          upstream: "host",
+          platform: "win32",
+        }),
+      ),
+    ).toThrow("not supported on Windows");
+    expect(() =>
+      sshAgentServiceConfigFor(
+        resolveSshAgentUpstream({
+          upstream: "relative/agent.sock",
+          platform: "linux",
+        }),
+      ),
+    ).toThrow("absolute Unix socket path");
+  });
+
   test("missing upstream socket keeps file-load command", () => {
     const config = sshAgentServiceConfigFor(
       resolveSshAgentUpstream({

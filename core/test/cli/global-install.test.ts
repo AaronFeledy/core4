@@ -159,6 +159,43 @@ describe("global:install command operation", () => {
     });
   });
 
+  test("fails closed on an invalid authored sshAgent.upstream before baking file-load", async () => {
+    const previous = process.env.LANDO_SSH_AGENT_UPSTREAM;
+    process.env.LANDO_SSH_AGENT_UPSTREAM = "relative/agent.sock";
+    try {
+      await withTempRoots(async () => {
+        const provider = {
+          ...TestRuntimeProvider,
+          id: "lando",
+          capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
+        };
+        const layer = Layer.mergeAll(
+          GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+          Layer.succeed(PluginRegistry, {
+            list: Effect.succeed([]),
+            load: () => Effect.die("not needed"),
+            loadServiceType: () => Effect.die("not needed"),
+            loadServiceFeature: () => Effect.die("not needed"),
+            loadAppFeature: () => Effect.die("not needed"),
+          }),
+          Layer.succeed(RuntimeProviderRegistry, {
+            list: Effect.succeed([ProviderId.make(provider.id)]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(provider),
+          }),
+        );
+        const exit = await Effect.runPromiseExit(globalInstall({}).pipe(Effect.provide(layer)));
+        expect(Exit.isFailure(exit)).toBe(true);
+        const dumped = JSON.stringify(exit);
+        expect(dumped).toContain("absolute Unix socket path");
+        expect(dumped).toContain("GlobalAppError");
+      });
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_SSH_AGENT_UPSTREAM");
+      else process.env.LANDO_SSH_AGENT_UPSTREAM = previous;
+    }
+  });
+
   test("selects the Lando-managed provider even when leftover config would pick docker", async () => {
     await withTempRoots(async (dataRoot) => {
       const selected: Array<string | undefined> = [];

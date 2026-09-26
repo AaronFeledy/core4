@@ -87,10 +87,14 @@ export const buildUpstreamSshAgentServiceConfig = (hostSocketPath: string): Serv
     },
   ]);
 
-export const sshAgentServiceConfigFor = (resolution: SshAgentUpstreamResolution): ServiceConfig =>
-  resolution.kind === "upstream"
+export const sshAgentServiceConfigFor = (resolution: SshAgentUpstreamResolution): ServiceConfig => {
+  if (resolution.kind === "unsupported" || resolution.kind === "invalid") {
+    throw new Error(resolution.message);
+  }
+  return resolution.kind === "upstream"
     ? buildUpstreamSshAgentServiceConfig(resolution.socketPath)
     : buildFileLoadSshAgentServiceConfig();
+};
 
 export const resolveHostSshAgentInput = (
   env: Readonly<Record<string, string | undefined>> = process.env,

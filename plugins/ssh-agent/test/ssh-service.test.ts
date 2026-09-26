@@ -7,10 +7,10 @@ import { type Context, Effect, Exit, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId } from "@lando/sdk/schema";
-import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import { EventService, GlobalAppService, LandofileService, PathsService, SshService } from "@lando/sdk/services";
 
 import { makeSshService, sshService } from "../src/ssh-service.ts";
-import { SSH_AGENT_UPSTREAM_WINDOWS_MESSAGE } from "../src/upstream.ts";
+import { SSH_AGENT_UPSTREAM_FALLBACK_WARNING, SSH_AGENT_UPSTREAM_WINDOWS_MESSAGE } from "../src/upstream.ts";
 
 const stubGlobalApp = {
   id: "global" as const,
@@ -54,11 +54,29 @@ const globalApp = (calls: string[]) =>
       }),
   }) as unknown as Context.Tag.Service<typeof GlobalAppService>;
 
-const provideSsh = (host: Parameters<typeof makeSshService>[0], calls: string[] = []) =>
-  makeSshService(host).pipe(
+const landofileService = (upstream: string) =>
+  ({
+    discover: Effect.succeed({ name: "myapp", sshAgent: { sidecar: true, upstream } }),
+  }) as unknown as Context.Tag.Service<typeof LandofileService>;
+
+const provideSsh = (
+  host: Parameters<typeof makeSshService>[0],
+  calls: string[] = [],
+  extras: {
+    readonly events?: Context.Tag.Service<typeof EventService>;
+    readonly landofile?: Context.Tag.Service<typeof LandofileService>;
+  } = {},
+) => {
+  const base = makeSshService(host).pipe(
     Layer.provide(Layer.succeed(PathsService, paths)),
     Layer.provide(Layer.succeed(GlobalAppService, globalApp(calls))),
   );
+  const extrasLayers = [
+    extras.events === undefined ? undefined : Layer.succeed(EventService, extras.events),
+    extras.landofile === undefined ? undefined : Layer.succeed(LandofileService, extras.landofile),
+  ].filter((layer): layer is Layer.Layer<EventService | LandofileService> => layer !== undefined);
+  return extrasLayers.length === 0 ? base : Layer.mergeAll(base, ...extrasLayers);
+};
 
 describe("ssh-agent SshService Live", () => {
   test("setup creates userDataRoot/ssh as mode 0700", async () => {
@@ -157,6 +175,13 @@ describe("ssh-agent SshService Live", () => {
 
   test("missing upstream socket still starts the sidecar", async () => {
     const calls: string[] = [];
+    const published: Array<{ readonly _tag: string; readonly body?: string }> = [];
+    const events = {
+      publish: (event: { readonly _tag: string; readonly body?: string }) =>
+        Effect.sync(() => {
+          published.push(event);
+        }),
+    } as unknown as Context.Tag.Service<typeof EventService>;
     await Effect.runPromise(
       Effect.flatMap(SshService, (ssh) => ssh.setup({ force: false })).pipe(
         Effect.provide(
@@ -167,10 +192,28 @@ describe("ssh-agent SshService Live", () => {
               isSocket: () => false,
             },
             calls,
+            { events },
           ),
         ),
       ),
     );
     expect(calls).toEqual(["ssh-agent"]);
+    expect(
+      published.some(
+        (event) => event._tag === "message.warn" && event.body === SSH_AGENT_UPSTREAM_FALLBACK_WARNING,
+      ),
+    ).toBe(true);
+  });
+
+  test("Landofile sshAgent.upstream is authored when env and config are unset", async () => {
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(SshService, (ssh) => ssh.setup({ force: false })).pipe(
+        Effect.provide(
+          provideSsh({ platform: "win32", env: {} }, [], { landofile: landofileService("host") }),
+        ),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(JSON.stringify(exit)).toContain(SSH_AGENT_UPSTREAM_WINDOWS_MESSAGE);
   });
 });

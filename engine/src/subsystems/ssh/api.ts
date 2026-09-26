@@ -6,7 +6,8 @@ import { SshError } from "@lando/sdk/errors";
 import { SshService } from "@lando/sdk/services";
 
 export { SshService };
-export { envWithSshAgentUpstream } from "./upstream-env.ts";
+export { peekLandofileSshAgent } from "./landofile-upstream.ts";
+export { envWithSshAgentUpstream, resolveAuthoredSshAgentUpstream } from "./upstream-env.ts";
 
 const SSH_UNAVAILABLE_ID = "unavailable" as const;
 const SSH_UNAVAILABLE_MESSAGE =

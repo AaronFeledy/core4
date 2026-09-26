@@ -7,7 +7,7 @@ export const LANDO_SSH_AGENT_UPSTREAM_OVERLAY_ENV = "LANDO_CONFIG__ssh_agent__up
 export const HOST_SSH_AUTH_SOCK_ENV = "SSH_AUTH_SOCK" as const;
 
 export const SSH_AGENT_UPSTREAM_FALLBACK_WARNING =
-  "SSH agent upstream is set, but the host agent socket is missing or is not a Unix socket. The sidecar fell back to loading default keys from ~/.ssh. Keys that live only in an SSH agent, hardware keys, agent-forwarded keys, and passphrase-protected keys that file ssh-add skips will not work. Start a host agent, set SSH_AUTH_SOCK, or point sshAgent.upstream at an absolute Unix socket path, then rerun `lando setup` or `lando global:install`.";
+  "SSH agent upstream is set, but the host agent socket is missing or is not a Unix socket. Setup rematerializes the sidecar to file-load from ~/.ssh. Keys that live only in an SSH agent, hardware keys, agent-forwarded keys, and passphrase-protected keys that file ssh-add skips will not work. Start a host agent, set SSH_AUTH_SOCK, or point sshAgent.upstream at an absolute Unix socket path, then rerun `lando setup` or `lando global:install`.";
 
 export const SSH_AGENT_UPSTREAM_WINDOWS_MESSAGE =
   "SSH agent upstream is not supported on Windows because it needs a Unix socket.";

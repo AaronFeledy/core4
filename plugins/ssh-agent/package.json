@@ -6,6 +6,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@lando/landofile": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "^3.12.5"

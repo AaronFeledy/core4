@@ -5,10 +5,18 @@ import { chmod, mkdir, stat } from "node:fs/promises";
 
 import { DateTime, Effect, Layer } from "effect";
 
+import { makeUserAppResolution } from "@lando/landofile/app-resolution";
 import { SshError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { SshAgentConfig } from "@lando/sdk/schema";
-import { ConfigService, EventService, GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import {
+  ConfigService,
+  EventService,
+  GlobalAppService,
+  LandofileService,
+  PathsService,
+  SshService,
+} from "@lando/sdk/services";
 
 import {
   type SshAgentUpstreamResolution,
@@ -73,8 +81,21 @@ export type SshServiceHost = {
 
 const resolveAuthoredUpstream = (
   config: SshAgentConfig | undefined,
+  landofile: SshAgentConfig | undefined,
   env: Readonly<Record<string, string | undefined>>,
-): string | undefined => config?.upstream ?? authoredUpstreamFromEnv(env);
+): string | undefined => authoredUpstreamFromEnv(env) ?? config?.upstream ?? landofile?.upstream;
+
+const peekLandofileSshAgent = Effect.gen(function* () {
+  const service = yield* Effect.serviceOption(LandofileService);
+  if (service._tag === "None") return undefined;
+  const resolution = makeUserAppResolution({
+    assertVersionConstraint: () => Effect.void,
+  });
+  const landofile = yield* resolution
+    .loadUserLandofile(service.value)
+    .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  return landofile?.sshAgent;
+});
 
 export const makeSshService = (host: SshServiceHost = {}) =>
   Layer.effect(
@@ -94,8 +115,9 @@ export const makeSshService = (host: SshServiceHost = {}) =>
               config._tag === "Some"
                 ? yield* config.value.get("sshAgent").pipe(Effect.catchAll(() => Effect.succeed(undefined)))
                 : undefined;
+            const landofileSshAgent = yield* peekLandofileSshAgent;
             const resolution = resolveSshAgentUpstream({
-              upstream: resolveAuthoredUpstream(sshAgent, env),
+              upstream: resolveAuthoredUpstream(sshAgent, landofileSshAgent, env),
               sshAuthSock: env.SSH_AUTH_SOCK,
               platform,
               ...(host.isSocket === undefined ? {} : { isSocket: host.isSocket }),
@@ -121,6 +143,7 @@ export const makeSshService = (host: SshServiceHost = {}) =>
               try: () => ensurePrivateSshDirectory(sshDir),
               catch: (cause: unknown) => cause,
             });
+            // ensureRunning rematerializes the global dist (globalInstall) then starts the sidecar.
             yield* globalApp.ensureRunning([SSH_GLOBAL_SERVICE_NAME]);
           }).pipe(Effect.mapError((cause) => (cause instanceof SshError ? cause : setupError(cause)))),
         getAgentSocket: (appId) =>

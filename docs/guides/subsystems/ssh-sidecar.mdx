@@ -49,7 +49,7 @@ sshAgent:
   upstream: host
 ```
 
-The same knob lives on global config (`sshAgent.upstream`) and `LANDO_SSH_AGENT_UPSTREAM`. An absolute Unix socket path is also valid:
+The same knob lives on global config (`sshAgent.upstream`) and `LANDO_SSH_AGENT_UPSTREAM`. Authored resolution is env, then global config, then the cwd Landofile. An absolute Unix socket path is also valid:
 
 ```yaml
 sshAgent:
@@ -57,7 +57,7 @@ sshAgent:
   upstream: /run/user/1000/ssh-agent.sock
 ```
 
-If the upstream socket is missing or is not a Unix socket, Lando warns and falls back to file-load from `~/.ssh`. Apps still get a working sidecar socket. Agent-only keys, hardware keys, and passphrase-protected keys that file `ssh-add` skips still will not work in that fallback.
+If the upstream socket is missing or is not a Unix socket, Lando warns and rematerializes the sidecar to file-load from `~/.ssh` (`lando setup`, `lando start`, and `lando global:install` all rematerialize). Apps still get a working sidecar socket. Agent-only keys, hardware keys, and passphrase-protected keys that file `ssh-add` skips still will not work in that fallback.
 
 Windows rejects sidecar upstream. Unset `sshAgent.upstream` and keep file-load, or run Lando on macOS, Linux, or WSL.
 
