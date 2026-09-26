@@ -12,9 +12,9 @@ lando init --recipe jekyll --name=jekyll-demo --yes
 cd jekyll-demo
 ```
 
-`--yes` skips prompts. Jekyll declares no recipe options, so the only prompt is the app name. Before the first start, park `builder` on `sleep infinity` and add a build step that installs compile tooling. That keeps the service up while you install gems, and it gives Bundler the headers native gems need.
+`--yes` skips prompts. Jekyll declares no recipe options, so the only prompt is the app name. Before the first start, park `builder` on `sleep infinity` and add a build step that installs compile tooling. `lando bundle` and `lando jekyll` run inside the running `builder` container, so it has to stay up while you install gems. The build step gives Bundler the headers native gems need.
 
-Stock start runs `bundle exec jekyll serve` on `builder`. Install Jekyll into the app before you expect that server to stay up. The steps below are the day-to-day install path.
+The stock `builder` command is `bundle exec jekyll serve`. Until the app has a Gemfile and gems, that command exits and `builder` stops with it. Park `builder` first, then install.
 
 ## See what the recipe writes
 
@@ -26,7 +26,7 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
 | `web` | `static:nginx` with the app mounted at `/app` and one route on both schemes |
 | Tooling | `lando jekyll` (`bundle exec jekyll`) and `lando bundle` on `builder` |
 
-`builder` is the day-to-day browse target while Jekyll serves. `web` is the nginx sidecar on the app hostname. Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
+`builder` is the day-to-day browse target while Jekyll serves. `web` is nginx on the app hostname; it serves the app root until you set `root: _site` (see below). Its route answers on HTTP and HTTPS.
 
 <Guide>
   <Scenario id="parked-first-start" render={false} reason="Test provider validates the parked first start without claiming live Jekyll output">
@@ -62,10 +62,29 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
     </Step>
   </Scenario>
 
+  <Scenario id="serve-built-site" render={false} reason="Test provider validates the web root and production tooling without claiming live nginx output">
+    <Step name="configure">
+      <UseFixture name="serve-built-site" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"root\":\\s*\"_site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"build-prod\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"JEKYLL_ENV\":\\s*\"production\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
   <Scenario id="rejects-unknown-answer" render={false} reason="Regression for undeclared recipe option answers">
     <Step name="init-invalid">
       <Variable name="appName" value="jekyll-workflow-bad" display="jekyll-bad" />
       <Run command="lando init --recipe jekyll --name={{appName}} --yes --answer=ruby=3.2" expectExit={1} />
+      <Verify errorTag="RecipeInitBlockedError" expect={{ regex: "blocked at translate" }} />
     </Step>
   </Scenario>
 </Guide>
@@ -86,7 +105,7 @@ services:
     type: ruby:3.3
 ```
 
-Then start. First start runs that apt step on `builder`.
+Then start. The first start builds that apt step into the `builder` image.
 
 ```sh
 lando start
@@ -102,18 +121,20 @@ lando bundle install
 lando jekyll --version
 ```
 
-`lando jekyll --version` prints something like `jekyll 4.4.1`. The patch may float; check the printed version rather than hardcoding it.
+`lando jekyll --version` prints the installed Jekyll version.
 
 ## Scaffold the site
 
 `.lando.yml` already lives in the app root, so tell Jekyll to write into this directory while `builder` is still parked:
 
 ```sh
-lando jekyll new . --force
+lando jekyll new . --force --skip-bundle
 lando bundle install
 ```
 
-`jekyll new` rewrites the Gemfile (Minima theme, `jekyll-feed`, and friends). Run `lando bundle install` again so those gems land before you build or serve.
+`jekyll new` rewrites the Gemfile (Minima theme, `jekyll-feed`, and friends). `--skip-bundle` stops it from running Bundler on its own, so `lando bundle install` is what lands those gems before you build or serve.
+
+Bundler installs gems into `vendor/bundle/` in your app (the service sets `BUNDLE_PATH`). Keep it out of git; the `.gitignore` that `jekyll new` writes already lists `vendor`. `lando destroy` leaves `vendor/bundle/` in place.
 
 Confirm a one-off build:
 
@@ -141,13 +162,100 @@ services:
 
 ```sh
 lando restart
+lando info
 ```
 
-Run `lando info` and open the `builder` URL it prints. If host ports 80 or 443 are already taken, the URL may use a fallback port such as `:8443`.
-
-Day to day, leave the recipe command on `bundle exec jekyll serve --host 0.0.0.0 --port 4000` and open the **builder** URL `lando info` prints (for example `https://builder.jekyll-demo.lndo.site` or the same host with a fallback port such as `:8443`). Live reload rides with that serve.
+Day to day, leave the recipe command on `bundle exec jekyll serve --host 0.0.0.0 --port 4000` and open the **builder** URL `lando info` prints (for example `https://builder.jekyll-demo.lndo.site` or the same host with a fallback port such as `:8443`). The server rebuilds on save. Refresh the browser to see changes.
 
 Need a one-off rebuild while the development server keeps running? Use `lando jekyll build`.
+
+## Serve the built site on the app hostname
+
+`web` serves the app root, which holds your source files, not the built site. Point it at `_site` instead. Add `root` to `web` in `.lando.yml` and keep the `appMount` and `routes` that init wrote:
+
+```yaml
+services:
+  web:
+    type: static:nginx
+    root: _site
+```
+
+```sh
+lando restart
+lando info
+```
+
+Open the `web` URL `lando info` prints (`jekyll-demo.lndo.site`, on HTTP or HTTPS). nginx serves the files in `_site` the way a plain web server would. While `builder` runs `jekyll serve`, `_site` holds the development build, and the server rewrites it on every save. Keep using the `builder` URL while you edit; it's Jekyll's own server.
+
+## Build for production
+
+Add a `build-prod` task under `tooling:` in `.lando.yml`, next to `jekyll` and `bundle`:
+
+```yaml
+tooling:
+  build-prod:
+    service: builder
+    description: Build the site with JEKYLL_ENV=production.
+    cmds:
+      - bundle exec jekyll build
+    env:
+      JEKYLL_ENV: production
+```
+
+Lando caches the app's command list, so refresh it before you call the new task (see [Refresh a stale app cache](../cli/cache-refresh.mdx)):
+
+```sh
+lando app:cache:refresh
+lando build-prod
+```
+
+`JEKYLL_ENV=production` sets `jekyll.environment`, which themes check for production-only output such as analytics. The `web` URL serves that build until `jekyll serve` rebuilds `_site` on your next save.
+
+## Preview drafts
+
+Posts in `_drafts/` stay out of the site until you ask for them. Build once with drafts:
+
+```sh
+lando jekyll build --drafts
+```
+
+To keep drafts on the development server, add `--drafts` to the `builder` command and restart:
+
+```yaml
+services:
+  builder:
+    command: "bundle exec jekyll serve --host 0.0.0.0 --port 4000 --drafts"
+```
+
+```sh
+lando restart
+```
+
+Reload the `builder` URL. Drafts show up in the post list.
+
+## Add or update gems
+
+Add a plugin to the Gemfile's `jekyll_plugins` group, which Jekyll loads at boot, then restart so the server picks it up:
+
+```sh
+lando bundle add jekyll-sitemap --group jekyll_plugins
+lando restart
+```
+
+Check for `_site/sitemap.xml` once the server is back. To move existing gems forward within the Gemfile's version constraints:
+
+```sh
+lando bundle update
+lando restart
+```
+
+Gems with native extensions compile against the `build-essential` step from the park section, so keep that step in `.lando.yml`.
+
+## Restart or rebuild
+
+`lando restart` stops the app and starts it again from the current `.lando.yml`, so `command:`, `root:`, and other config edits land. It also covers the apt line: change a `build.artifact` step and the next start builds a fresh `builder` image before it starts the container.
+
+`lando rebuild` runs the same stop and start, and it also reruns every `build.app` step, even unchanged ones. The Jekyll recipe has no `build.app` steps, so `lando restart` covers every edit on this page. `lando rebuild` doesn't prompt, so it takes no `-y`.
 
 ## Destroy without surprises
 
