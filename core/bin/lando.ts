@@ -106,8 +106,8 @@ const main = async (): Promise<void> => {
     ((argv.length === 1 && (argv[0] === "meta:shellenv" || (argv[0] === "shellenv" && !appAliasContext))) ||
       (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv"))
   ) {
-    const { renderShellenv } = await import("../src/cli/commands/shellenv");
-    await writeLine("stdout", renderShellenv("posix"));
+    const { defaultShellenvShell, renderShellenv } = await import("../src/cli/commands/shellenv");
+    await writeLine("stdout", renderShellenv(defaultShellenvShell()));
     return;
   }
 
@@ -142,12 +142,33 @@ const main = async (): Promise<void> => {
     return;
   }
 
-  const { runCli } = await import("@lando/core/cli");
-
-  await runCli({
-    argv,
-    rootUrl: import.meta.url,
-  });
+  // Bun's compiled Windows entry can exit while CLI work waits on a promise
+  // with no refed native handle. Keep dispatch alive until it fully settles.
+  const keepAlive = setInterval(() => undefined, 60_000);
+  let interruptedCode: 130 | 143 | undefined;
+  const interrupt = (code: 130 | 143) => {
+    if (interruptedCode !== undefined) return;
+    interruptedCode = code;
+    process.exitCode = code;
+    clearInterval(keepAlive);
+  };
+  const onSigint = () => interrupt(130);
+  const onSigterm = () => interrupt(143);
+  (process as NodeJS.EventEmitter).once("SIGINT", onSigint);
+  (process as NodeJS.EventEmitter).once("SIGTERM", onSigterm);
+  try {
+    const { runCli } = await import("@lando/core/cli");
+    if (interruptedCode !== undefined) return;
+    await runCli({
+      argv,
+      rootUrl: import.meta.url,
+    });
+  } finally {
+    clearInterval(keepAlive);
+    (process as NodeJS.EventEmitter).off("SIGINT", onSigint);
+    (process as NodeJS.EventEmitter).off("SIGTERM", onSigterm);
+    if (interruptedCode !== undefined) process.exitCode = interruptedCode;
+  }
 };
 
 main().catch(async (error: unknown) => {

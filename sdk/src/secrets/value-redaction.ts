@@ -35,7 +35,14 @@ export const redactValueWith = (
       const output: Record<string, unknown> = Object.create(null);
       for (const key of keys) {
         if (isSecretKey(key)) {
-          output[key] = REDACTED;
+          // A boolean describes whether a capability exists; it cannot carry
+          // credential material. Keep its type in structured command output.
+          try {
+            const field = Reflect.get(current, key);
+            output[key] = typeof field === "boolean" ? field : REDACTED;
+          } catch {
+            output[key] = REDACTED;
+          }
           continue;
         }
         try {

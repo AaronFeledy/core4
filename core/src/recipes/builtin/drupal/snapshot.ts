@@ -1,6 +1,7 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
 import { PHP_VERSIONS } from "../php-stack.ts";
 import { encodedStringNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
@@ -8,7 +9,7 @@ import { drupalScaffoldCommand } from "./scaffold-command.ts";
 
 export const DRUPAL_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CONTENT_DIGEST =
-  "sha256:b847329e140001dc24ec3c4bf8a4caf3a9c60f065524aa29ed741e29088252ac";
+  "sha256:8c698a38641faf90dd8534df68244895639571c4b4e5379d2aefa5f173531553";
 
 export const drupalProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -64,6 +65,7 @@ const apacheAppserver = (): ExpressionNode => ({
   kind: "ObjectLiteral",
   entries: [
     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+    { key: "primary", value: { kind: "Literal", value: true } },
     { key: "framework", value: { kind: "Literal", value: "drupal" } },
     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
     { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
@@ -78,6 +80,7 @@ const fpmAppserver = (): ExpressionNode => ({
   kind: "ObjectLiteral",
   entries: [
     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+    { key: "primary", value: { kind: "Literal", value: true } },
     { key: "framework", value: { kind: "Literal", value: "drupal" } },
     { key: "via", value: { kind: "Literal", value: "fpm" } },
     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
@@ -96,12 +99,18 @@ const edgeService = (): ExpressionNode => ({
   ],
 });
 
-const tool = (description: string, command: string): ExpressionNode => ({
+const tool = (description: string, command: string, encoded = false): ExpressionNode => ({
   kind: "ObjectLiteral",
   entries: [
     { key: "service", value: { kind: "Literal", value: "appserver" } },
     { key: "description", value: { kind: "Literal", value: description } },
-    { key: "cmds", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: command }] } },
+    {
+      key: "cmds",
+      value: {
+        kind: "ArrayLiteral",
+        elements: [encoded ? encodedStringNode(command) : { kind: "Literal", value: command }],
+      },
+    },
   ],
 });
 
@@ -148,7 +157,10 @@ export const drupalSnapshot: RecipeSnapshot = {
           value: {
             kind: "ObjectLiteral",
             entries: [
-              { key: "drush", value: tool("Run Drush inside the appserver service.", "vendor/bin/drush") },
+              {
+                key: "drush",
+                value: tool("Run Drush inside the appserver service.", DRUSH_TOOLING_COMMAND, true),
+              },
               { key: "composer", value: tool("Run Composer inside the appserver service.", "composer") },
               {
                 key: "drupal-scaffold",

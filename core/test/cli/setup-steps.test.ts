@@ -88,7 +88,7 @@ describe("file-sync setup step", () => {
     );
 
     expect(status).toBe("unavailable");
-    expect(steps.map((step) => step.status)).toEqual(["unavailable"]);
+    expect(steps.map((step) => step.status)).toEqual(["skipped"]);
   });
 
   test("returns deferred and records the bundled engine id when setup is skipped", async () => {
@@ -107,7 +107,7 @@ describe("file-sync setup step", () => {
       const marker: unknown = JSON.parse(await readFile(setupDeferredFileSyncPath(userDataRoot), "utf-8"));
 
       expect(status).toBe("deferred");
-      expect(marker).toEqual({ status: "deferred", engineId: "mutagen", resumeCommand: "lando start" });
+      expect(marker).toEqual({ status: "deferred", engineId: "mutagen", resumeCommand: "lando setup" });
       expect(steps.map((step) => step.status)).toEqual(["deferred"]);
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });

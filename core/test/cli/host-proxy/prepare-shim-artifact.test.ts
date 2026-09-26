@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { Effect } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
@@ -193,31 +195,53 @@ describe("prepareHostProxyShimArtifact", () => {
     expect(calls).toHaveLength(1);
   });
 
-  test("fails tagged without spawn when compiled sidecar is missing", async () => {
-    // Given
+  test("extracts a relocated standalone shim from the embedded asset into a verified cache", async () => {
+    const cacheRoot = await tempRoot();
     const calls: SpawnCall[] = [];
-    const expectedSidecar = join("/opt/lando", "host-proxy/linux-x64/lando-shim");
+    const digest = createHash("sha256").update("fixture-shim").digest("hex");
+    const embeddedFiles = [
+      new File([gzipSync("fixture-shim")], `lando-host-proxy-linux-x64-${digest}.bin-testhash.gz`),
+    ];
+    const input = {
+      target: X64_TARGET,
+      execPath: COMPILED_EXEC,
+      env: {},
+      cacheRoot,
+      embeddedFiles,
+      spawn: recordingSpawn({ calls }),
+    };
 
-    // When
+    const prepared = await Effect.runPromise(prepareHostProxyShimArtifact(input));
+    expect(prepared).toStartWith(cacheRoot);
+    expect(prepared).toEndWith("lando-shim");
+    expect(await readFile(prepared, "utf8")).toBe("fixture-shim");
+    if (process.platform !== "win32") expect((await stat(prepared)).mode & 0o111).toBe(0o111);
+    expect(calls).toHaveLength(0);
+
+    await writeFile(prepared, "corrupted");
+    const repaired = await Effect.runPromise(prepareHostProxyShimArtifact(input));
+    expect(repaired).toBe(prepared);
+    expect(await readFile(repaired, "utf8")).toBe("fixture-shim");
+  });
+
+  test("fails tagged when a compiled executable lacks the embedded shim", async () => {
+    const calls: SpawnCall[] = [];
     const error = await Effect.runPromise(
       Effect.flip(
         prepareHostProxyShimArtifact({
           target: X64_TARGET,
           execPath: COMPILED_EXEC,
           env: {},
+          embeddedFiles: [],
+          cacheRoot: await tempRoot(),
           spawn: recordingSpawn({ calls }),
         }),
       ),
     );
-
-    // Then
     expect(error).toBeInstanceOf(HostProxyTransportUnavailableError);
-    if (!(error instanceof HostProxyTransportUnavailableError)) return;
-    expect(error._tag).toBe("HostProxyTransportUnavailableError");
-    expect(error.socketPath).toBe(expectedSidecar);
+    expect(error.message).toContain("embedded host-proxy shim asset");
     expect(calls).toHaveLength(0);
   });
-
   test("returns the env override path without spawn when the file is missing", async () => {
     // Given
     const calls: SpawnCall[] = [];

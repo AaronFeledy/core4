@@ -82,7 +82,11 @@ const fileMatchesRecordedFingerprint = async (path: string): Promise<boolean> =>
 };
 
 const expectedInstallPaths = (binDir: string, hostKey: string): ReadonlyArray<string> => {
-  const keys = [`${hostKey}/cli`, ...AGENT_GUESTS.map((guest) => `${hostKey}/agent/${guest}`)];
+  const keys = [
+    `${hostKey}/cli`,
+    `${hostKey}/agent-bundle`,
+    ...AGENT_GUESTS.map((guest) => `${hostKey}/agent/${guest}`),
+  ];
   const installNames = keys.map((key) => MUTAGEN_TOOL_MANIFEST.artifacts[key]?.installName);
   if (installNames.some((installName) => installName === undefined)) return [];
   return installNames.map((installName) => join(binDir, installName as string));
@@ -130,6 +134,7 @@ export const provisionMutagen = (
     };
 
     yield* provisionTool({ ...common, key: `${hostKey}/cli` });
+    yield* provisionTool({ ...common, key: `${hostKey}/agent-bundle` });
     for (const guest of AGENT_GUESTS) {
       yield* provisionTool({ ...common, key: `${hostKey}/agent/${guest}` });
     }

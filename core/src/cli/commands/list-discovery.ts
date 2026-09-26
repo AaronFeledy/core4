@@ -262,7 +262,7 @@ export const appsFromContainerList = (
   options: { readonly globalAppRoot?: string; readonly includeScratch?: boolean } = {},
 ): AppsListEntry[] => {
   if (!Array.isArray(body)) return [];
-  const grouped = new Map<string, { services: Set<string>; providerId: string }>();
+  const grouped = new Map<string, { services: Set<string>; providerId: string; scratch: boolean }>();
   for (const container of body) {
     if (!isRecord(container)) continue;
     if (typeof container.State === "string" && container.State !== "running") continue;
@@ -273,10 +273,12 @@ export const appsFromContainerList = (
     const existing = grouped.get(appId) ?? {
       services: new Set<string>(),
       providerId: labels[PROVIDER_LABEL] ?? "lando",
+      scratch: false,
     };
     const service = labels[SERVICE_LABEL];
     if (service !== undefined && service !== "") existing.services.add(service);
     if (labels[PROVIDER_LABEL] !== undefined) existing.providerId = labels[PROVIDER_LABEL];
+    existing.scratch ||= labels[SCRATCH_LABEL] === "TRUE";
     grouped.set(appId, existing);
   }
   return [...grouped.entries()].map(([appId, info]) => ({
@@ -285,6 +287,7 @@ export const appsFromContainerList = (
     providerId: info.providerId,
     appRoot: appId === GLOBAL_APP_ID ? (options.globalAppRoot ?? "") : "",
     services: [...info.services].sort((left, right) => left.localeCompare(right)),
+    ...(info.scratch ? { scratch: true } : {}),
   }));
 };
 

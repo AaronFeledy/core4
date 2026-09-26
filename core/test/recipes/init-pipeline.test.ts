@@ -381,6 +381,7 @@ test("stdin is bound through the action runner, never answers, env, or argv", as
           return { exitCode: 0, stdout: "", stderr: "" };
         }),
       stream: () => Stream.empty,
+      streamWithExit: () => Stream.empty,
     }),
   );
   await Effect.runPromise(program);

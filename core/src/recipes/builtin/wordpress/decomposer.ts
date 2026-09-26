@@ -48,6 +48,7 @@ export const wordpressDecomposer: RecipeDecomposerFactory = (ports) => ({
           services: {
             appserver: {
               type: "php:{{ recipe.php }}",
+              primary: true,
               framework: "wordpress",
               port: 80,
               dependsOn: input.options.redis ? ["database", "cache"] : ["database"],

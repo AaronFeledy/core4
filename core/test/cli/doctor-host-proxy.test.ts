@@ -889,6 +889,130 @@ describe("meta:doctor host-proxy transport reachability", () => {
     expect(commands).toEqual([["/usr/local/bin/lando", "open", "--print"]]);
   });
 
+  test("probes a bridged guest Unix socket through the container instead of the host filesystem", async () => {
+    const root = await tempRoot();
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
+    const controlToken = "control-token";
+    const server = createServer((request, response) => {
+      if (request.headers["x-lando-host-proxy-control"] !== controlToken) {
+        response.writeHead(401).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          appId: app.id,
+          sessionId: "doctor-session",
+          transport: "tcp-host-gateway",
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          pid: process.pid,
+        }),
+      );
+    });
+    servers.push(server);
+    await listenTcp(server);
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected TCP test address.");
+    const guestSocket = "/home/user/.local/share/lando/host-proxy/session/host-proxy.sock";
+    await Effect.runPromise(
+      writeWorkerRecord(
+        app,
+        { userDataRoot: root },
+        {
+          appId: app.id,
+          appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
+          transport: "unix-socket",
+          url: `http://127.0.0.1:${address.port}`,
+          socketPath: guestSocket,
+          probeServices: ["appserver"],
+          shimPath: join(root, "lando"),
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          startedAt: "2026-07-15T00:00:00.000Z",
+          pid: process.pid,
+          controlToken,
+        },
+        ownerOnlyFileAccess,
+      ),
+    );
+    const commands: unknown[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      exec: (
+        _target: Parameters<typeof TestRuntimeProvider.exec>[0],
+        command: Parameters<typeof TestRuntimeProvider.exec>[1],
+      ) => {
+        commands.push(command);
+        return Effect.succeed({
+          exitCode: 1,
+          stdout: JSON.stringify({
+            apiVersion: "v4",
+            command: "app:open",
+            ok: false,
+            error: { _tag: "LandoCommandError", message: "No routes matched." },
+            warnings: [],
+            deprecations: [],
+          }),
+          stderr: "No routes matched.",
+        });
+      },
+    };
+
+    const result = await runDoctor(root, provider);
+
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "pass",
+      context: { transport: "unix-socket", endpoint: guestSocket, reachability: "reachable" },
+      solutions: [],
+    });
+    expect(commands).toEqual([
+      {
+        command: ["/usr/local/bin/lando", "open", "--print"],
+        env: { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
+        stdin: "ignore",
+        tty: false,
+      },
+    ]);
+  });
+
+  test("warns when a bridged worker record has no guest socket path", async () => {
+    const root = await tempRoot();
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
+    await Effect.runPromise(
+      writeWorkerRecord(
+        app,
+        { userDataRoot: root },
+        {
+          appId: app.id,
+          appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
+          transport: "unix-socket",
+          url: "http://127.0.0.1:1",
+          probeServices: ["appserver"],
+          shimPath: join(root, "lando"),
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          startedAt: "2026-07-15T00:00:00.000Z",
+          pid: process.pid,
+          controlToken: "control-token",
+        },
+        ownerOnlyFileAccess,
+      ),
+    );
+
+    const result = await runDoctor(root, TestRuntimeProvider);
+
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "warn",
+      context: {
+        transport: "unix-socket",
+        endpoint: "missing",
+        reachability: "unreachable",
+        failure: "guest-socket-missing",
+      },
+      solutions: [{ command: "lando restart" }],
+    });
+  });
+
   test("does not execute a worker persisted for another provider", async () => {
     // Given
     const root = await tempRoot();

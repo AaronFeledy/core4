@@ -15,7 +15,6 @@ import {
   OWNER_ONLY_FILE_ACL_BODY,
   OWNER_ONLY_FILE_ACL_WORKER_SCRIPT,
   VERIFY_OWNER_ONLY_FILE_ACL_BODY,
-  privateFileAclExecutable,
 } from "../../src/private-file-worker.ts";
 import { nativeProcessRunner } from "../private-file-access.ts";
 import { makeRecordingWorkerSpawn } from "../private-file-worker.ts";
@@ -57,6 +56,40 @@ describe("owner-only private file access", () => {
     expect(OWNER_ONLY_FILE_ACL_WORKER_SCRIPT).toContain("WindowsIdentity]::GetCurrent()");
   });
 
+  test("isolates Windows PowerShell 5.1 from parent PowerShell 7 modules", async () => {
+    // Given a mixed-case inherited module path that puts PowerShell 7 first
+    const worker = makeRecordingWorkerSpawn();
+    let childEnv: Readonly<Record<string, string | undefined>> | undefined;
+    const env = {
+      SystemRoot: "D:\\Windows",
+      pSmOdUlEpAtH:
+        "D:\\Program Files\\PowerShell\\7\\Modules;D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules",
+      LANDO_TEST_MARKER: "retained",
+    };
+
+    // When the Windows PowerShell 5.1 ACL worker starts
+    await runWithAccess(
+      {
+        platform: "win32",
+        arch: "x64",
+        env,
+        spawn: (command, options) => {
+          childEnv = options.env;
+          return worker.spawn(command, options);
+        },
+      },
+      (access) => access.enforce("D:\\tmp\\private.json"),
+    );
+
+    // Then only the worker's built-in module path is used, without changing the parent
+    expect(childEnv).toEqual({
+      SystemRoot: "D:\\Windows",
+      LANDO_TEST_MARKER: "retained",
+      PSModulePath: "D:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules",
+    });
+    expect(env.pSmOdUlEpAtH).toContain("PowerShell\\7\\Modules");
+  });
+
   test("starts native pwsh for Windows ARM ACL work", async () => {
     // Given a Windows ARM host with Program Files
     const path = "D:\\tmp\\private.json";
@@ -76,6 +109,31 @@ describe("owner-only private file access", () => {
     // Then the worker is native pwsh, not emulated Windows PowerShell 5.1
     expect(worker.commands[0]?.[0]).toBe(win32.join("D:\\Program Files", "PowerShell", "7", "pwsh.exe"));
     expect(worker.requests).toEqual([{ id: "1", operation: "enforce", path }]);
+  });
+
+  test("keeps the parent module path for native Windows ARM pwsh", async () => {
+    const worker = makeRecordingWorkerSpawn();
+    let childEnv: Readonly<Record<string, string | undefined>> | undefined;
+    const env = {
+      SystemRoot: "D:\\Windows",
+      ProgramFiles: "D:\\Program Files",
+      pSmOdUlEpAtH: "D:\\Program Files\\PowerShell\\7\\Modules",
+    };
+
+    await runWithAccess(
+      {
+        platform: "win32",
+        arch: "arm64",
+        env,
+        spawn: (command, options) => {
+          childEnv = options.env;
+          return worker.spawn(command, options);
+        },
+      },
+      (access) => access.enforce("D:\\tmp\\private.json"),
+    );
+
+    expect(childEnv).toBe(env);
   });
 
   test("fails closed on Windows ARM when Program Files is unavailable", async () => {
@@ -288,32 +346,10 @@ describe("owner-only private file access", () => {
           expect(await Bun.file(path).text()).toBe("private payload");
           const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
           if (systemRoot === undefined) throw new Error("native Windows system root is unavailable");
-          const executable = privateFileAclExecutable({
-            systemRoot,
-            env: process.env,
-            arch: process.arch,
-            platform: process.platform,
-          });
-          if (executable === undefined) throw new Error("native PowerShell is unavailable");
-          const script = `
-$ErrorActionPreference = 'Stop'
-$path = [Environment]::GetEnvironmentVariable('LANDO_PRIVATE_FILE_PATH', 'Process')
-$acl = Get-Acl -LiteralPath $path
-$everyone = New-Object Security.Principal.SecurityIdentifier('S-1-1-0')
-$rule = New-Object Security.AccessControl.FileSystemAccessRule($everyone, [Security.AccessControl.FileSystemRights]::Read, [Security.AccessControl.AccessControlType]::Allow)
-$acl.AddAccessRule($rule)
-Set-Acl -LiteralPath $path -AclObject $acl
-`.trim();
           const tamper = await Effect.runPromise(
             nativeProcessRunner.run({
-              cmd: executable,
-              args: [
-                "-NoProfile",
-                "-NonInteractive",
-                "-EncodedCommand",
-                Buffer.from(script, "utf16le").toString("base64"),
-              ],
-              env: { LANDO_PRIVATE_FILE_PATH: path },
+              cmd: win32.join(systemRoot, "System32", "icacls.exe"),
+              args: [path, "/grant", "*S-1-1-0:R"],
             }),
           );
           expect(tamper.exitCode).toBe(0);

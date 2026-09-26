@@ -33,6 +33,7 @@ import { resolveAgentEnvForwardAllowlist } from "@lando/engine/config/agent-env-
 import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
+import { cancellableTerminalStdin } from "./terminal-stdin";
 
 export interface ShellAppOptions {
   readonly host?: boolean;
@@ -71,7 +72,7 @@ export interface ShellIO {
 const processShellIO: ShellIO = {
   writeStdout: () => {},
   writeStderr: () => {},
-  stdin: process.stdin as AsyncIterable<Uint8Array>,
+  stdin: cancellableTerminalStdin(process.stdin),
   stdinIsTTY: () => process.stdin.isTTY === true,
   stdinIsRaw: () => process.stdin.isRaw === true,
   stdinIsPaused: () => process.stdin.isPaused(),
@@ -124,7 +125,7 @@ const HOST_FLAG_DEPRECATION_ID = "app:shell --host";
 const shellRequiresTtyError = (): ShellRequiresTtyError =>
   new ShellRequiresTtyError({
     message: "lando shell requires an interactive terminal (TTY).",
-    remediation: "Run a command non-interactively with `app:exec --interactive --tty -- <command>`.",
+    remediation: "Run a command non-interactively with `lando exec <service> -- <command>`.",
   });
 
 const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, DeprecatedSurfaceError> => {

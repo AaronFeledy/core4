@@ -73,7 +73,7 @@ The manifest is an Effect Schema validated before module import.
 | `provides.healthcheckRunners` | Healthcheck executors. |
 | `provides.urlScanners` | URL readiness scanners. |
 | `provides.pluginSources` | Plugin distribution adapters. |
-| `provides.secretStores` | Secret resolution stores. |
+| `provides.secretStores` | Secret resolution stores with owned reference schemes (§9.5.1). |
 | `provides.configTranslators` | Explicit authoring-fragment translators (§7.4.1). |
 | `provides.templateEngines` | Whole-file template engines (§7.3.2). |
 | `provides.doctorChecks` | Isolated diagnostic checks. |
@@ -82,7 +82,7 @@ The manifest is an Effect Schema validated before module import.
 | `requires` | Core version, service, and capability requirements. |
 | `conflicts` | Incompatible plugins. |
 
-Contribution entries use schema-defined identity plus a contained `module` path where code is required. They MAY carry `deprecated`; loading registers notices and use emits `deprecation-used` under §18. Entry-specific fields include provider `defaultFor`; service-type `base`, `extends`, `schema`, `creds`, `artifacts`, `tooling`, and `features`; global-service `enabledByDefault`, `requires`, `conflicts`, `summary`, and `commands`; command `id`, `namespace`, `aliases`, and `topLevelAlias`; panel `id`, `slot`, and `watch`; translator `inputKinds`, `detects`, and `optionsSchema`; template `extensions` and `capabilities`; doctor-check `summary` and `tags`; and subscriber `id`, `selectors`, `priority`, `abortOnError`, and `configKey`.
+Contribution entries use schema-defined identity plus a contained `module` path where code is required. They MAY carry `deprecated`; loading registers notices and use emits `deprecation-used` under §18. Entry-specific fields include provider `defaultFor`; service-type `base`, `extends`, `schema`, `creds`, `artifacts`, `tooling`, and `features`; global-service `enabledByDefault`, `requires`, `conflicts`, `summary`, and `commands`; command `id`, `namespace`, `aliases`, and `topLevelAlias`; panel `id`, `slot`, and `watch`; translator `inputKinds`, `detects`, and `optionsSchema`; template `extensions` and `capabilities`; doctor-check `summary` and `tags`; secret-store `schemes`; and subscriber `id`, `selectors`, `priority`, `abortOnError`, and `configKey`.
 
 Command ids MUST be canonical and namespaced. `namespace` MUST equal the id prefix and be `app`, `apps`, `meta`, or the plugin’s `cspace`. Plugins MUST NOT contribute under `plugin:` or reserved `meta:plugin:*`/`meta:global:*` namespaces. Namespaced aliases use `aliases`; bare aliases require `topLevelAlias` and follow §8.1.2 collision rules.
 
@@ -106,7 +106,7 @@ Command ids MUST be canonical and namespaced. `namespace` MUST equal the id pref
 | `interactionServices` | Interaction service | Implements prompt transport and redaction guarantees. |
 | `routeFilters`, `healthcheckRunners`, `urlScanners` | Runtime subsystems | Implements the corresponding published contract. |
 | `pluginSources` | Plugin install | Resolves a distribution source. |
-| `secretStores` | Config and tooling | Resolves secret references. |
+| `secretStores` | Routed `SecretStore` registry | Resolves the `${secret:...}` references whose scheme it owns, or bare ids when selected as default (§9.5.1). |
 | `configTranslators` | Explicit conversion APIs | Produces authoring fragments, never runtime plans. |
 | `templateEngines` | Template rendering | Renders whole files under §7.3 purity rules. |
 | `doctorChecks` | `DoctorService` | Produces isolated diagnostics and remediation. |
@@ -125,7 +125,29 @@ Contribution invariants:
 - Global services MUST declare identity, module, default enablement, required capabilities, and conflicts. They MUST be pure service-config Effects, MUST NOT consume the active provider or perform network/process IO, and MUST reference a published service type. Listed commands MUST also exist in the same plugin’s `provides.commands`. Capability, collision, conflict, unknown-type, and command-reference failures remain tagged under §20. Plugins SHOULD pair global services with activating app features.
 - Doctor checks MUST use bounded `DoctorCheckContext`, MUST NOT import container-runtime internals, MUST provide remediation or sufficient explanation, MUST redact secrets, and MUST fail in isolation rather than taking down the doctor run. Automatic fixes run only with explicit `--fix` (§10.9).
 - Interaction services MUST truthfully declare prompt capabilities, preserve answer precedence and secret redaction, fail unsupported prompts with `InteractionUnavailableError`, never block on stdin in non-interactive mode, and pass the §13.1 interaction contract suite. `stdio` is reserved by core.
+- Secret stores MUST declare `id`, `module`, and `schemes`, MUST NOT log, persist, or embed secret values, MUST fail with the §9.5.1 error trio and nothing broader, and MUST pass the §13.1 secret-store contract suite. Reference validation runs in the store before any backend call.
 - Tunnel services MUST truthfully declare capabilities, accept app-local targets, keep arbitrary host-port forwarding behind an advanced option, route egress through `HttpClient`, provision connectors through `Downloader`, bind foreground processes to `Scope`, persist detached sessions in `StateStore`, use §10.5.1 probing, redact URLs, tokens, codes, and paths, and pass the §13.1 tunnel contract suite. v4.0 has no core default tunnel service.
+
+#### 9.5.1 SecretStore contribution
+
+A plugin contributes stores under manifest `contributes.secretStores[]`, each entry `{ id, module, schemes }` plus optional `summary` and `deprecated`. `schemes` is the list of `${secret:<scheme>://...}` prefixes the store owns; it MAY be empty for stores that only serve bare ids. The module exports `secretStores`, a map from `id` to a lazily loaded `SecretStore` Layer that MAY require `ProcessRunner`, `PathsService`, and `FileSystem`. A manifest id the module does not export is `PluginManifestError`.
+
+The engine composes every installed store, including the built-in `env` store, into one routed `SecretStore` (§4.3). Schemes are unique across installed plugins; a duplicate is a bootstrap error naming both plugins, never a precedence winner. The router parses each reference with the §7.3.1 grammar, sends scheme references to the owning store, sends bare ids to `defaultSecretStore` (default `env`), and fails unknown schemes or an uninstalled default with `SecretReferenceInvalidError`.
+
+The store contract is `id`, `schemes`, `get`, `has`, and `list`:
+
+- `get` fails with `SecretNotFoundError`, `SecretStoreUnavailableError { storeId, reason }` with `reason` one of `locked`, `unauthenticated`, `denied`, `timeout`, or `cli-missing`, or `SecretReferenceInvalidError { reference }`. The union is exported as `SecretStoreError`; every failure carries remediation.
+- `has` is fallible: a store that cannot reach its backend fails with `SecretStoreUnavailableError` rather than answering `false`.
+- `list` returns ids only. A CLI-backed store returns only the references it resolved in the current process; it MUST NOT enumerate the backend.
+- Values are never logged, never written to `StateStore`, caches, journals, transcripts, or telemetry, and never embedded in errors. Any in-process cache is process-lifetime only.
+- Resolved values are registered with the canonical redactor (§3.7) before the resolving operation emits any event, result, transcript, or failure; consumers that resolve secrets (`resolveServiceEnvironmentSecrets`, `ShellInteractiveSpec.resolveSecret`, start, rebuild, scratch, and global flows) propagate `SecretStoreError` untouched through their tagged result channels.
+
+Bundled stores:
+
+| Store id | Schemes | Contract |
+|---|---|---|
+| `env` | none | Default store. Resolves bare ids from the Lando process environment; `list` returns the ids present. |
+| `1password` | `op` | Plugin `@lando/secret-store-1password`. `get` validates the reference locally, requires scheme `op`, then runs `op read --no-newline <ref>` through `ProcessRunner` under a bounded, cancellable timeout long enough for a biometric or desktop-app prompt. Successful references are cached in process only, never persisted. Failures are classified from exit status and stderr into the error trio (`not signed in` is `unauthenticated`, lock prompts are `locked`, permission text is `denied`, deadline is `timeout`, missing binary is `cli-missing`, missing item is `SecretNotFoundError`); errors never include stdout or raw stderr. Non-interactive hosts authenticate through `OP_SERVICE_ACCOUNT_TOKEN` or `OP_CONNECT_*`, which pass through untouched and are redacted. |
 
 ### 9.6 Plugin install and update
 

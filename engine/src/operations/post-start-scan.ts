@@ -27,10 +27,12 @@ export const startupScanUrls = (
     const name = ServiceName.make(service.name);
     const scan = plan.services[name]?.scanner;
     const path = scan?.path ?? "/";
-    return service.endpoints.map((base) => ({
-      service: name,
-      url: appendScanPath(base, path),
-    }));
+    return service.endpoints
+      .filter((base) => !new URL(base).hostname.includes("*"))
+      .map((base) => ({
+        service: name,
+        url: appendScanPath(base, path),
+      }));
   });
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());

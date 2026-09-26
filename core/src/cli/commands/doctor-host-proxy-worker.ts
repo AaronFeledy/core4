@@ -102,7 +102,19 @@ export const diagnoseHostProxyWorker = (
       );
     }
 
-    if (record.transport === "unix-socket") {
+    // A Windows bridge advertises a guest Unix socket but controls the worker
+    // through its host loopback URL. The guest path must be probed in a service,
+    // never stat'ed on the Windows host.
+    const bridgedGuestSocket = record.transport === "unix-socket" && record.url !== undefined;
+    if (bridgedGuestSocket && record.socketPath === undefined) {
+      return baseCheck(
+        doctor,
+        { ...context, reachability: "unreachable", failure: "guest-socket-missing" },
+        "warn",
+        [HOST_PROXY_REMEDIATION],
+      );
+    }
+    if (record.transport === "unix-socket" && !bridgedGuestSocket) {
       const controlProbe = yield* probeWorker(record);
       const socketMetadata =
         record.socketPath === undefined ? undefined : yield* fileSystem.socketMetadata(record.socketPath);
@@ -123,9 +135,16 @@ export const diagnoseHostProxyWorker = (
       );
     }
 
+    const containerTarget = bridgedGuestSocket
+      ? record.socketPath === undefined
+        ? undefined
+        : { kind: "unix-socket" as const }
+      : containerUrl === undefined
+        ? undefined
+        : { kind: "tcp-host-gateway" as const, containerUrl };
     if (
       currentRecord?.providerId === undefined ||
-      containerUrl === undefined ||
+      containerTarget === undefined ||
       rawProbeServices === undefined
     ) {
       return baseCheck(
@@ -133,9 +152,9 @@ export const diagnoseHostProxyWorker = (
         {
           ...context,
           reachability: "not-probed",
-          ...(doctor.provider.tcpHostGateway === undefined
-            ? {}
-            : { containerGateway: doctor.provider.tcpHostGateway }),
+          ...(!bridgedGuestSocket && doctor.provider.tcpHostGateway !== undefined
+            ? { containerGateway: doctor.provider.tcpHostGateway }
+            : {}),
           reason: "pre-upgrade-record",
         },
         "pass",
@@ -145,6 +164,7 @@ export const diagnoseHostProxyWorker = (
 
     const controlProbe = yield* probeWorker(record);
     const gateway = doctor.provider.tcpHostGateway;
+    const gatewayContext = bridgedGuestSocket || gateway === undefined ? {} : { containerGateway: gateway };
     if (controlProbe !== "live") {
       return baseCheck(
         doctor,
@@ -153,7 +173,7 @@ export const diagnoseHostProxyWorker = (
         [HOST_PROXY_REMEDIATION],
       );
     }
-    if (gateway === undefined) {
+    if (!bridgedGuestSocket && gateway === undefined) {
       return baseCheck(
         doctor,
         { ...context, reachability: "unreachable", failure: "container-gateway-unavailable" },
@@ -161,13 +181,17 @@ export const diagnoseHostProxyWorker = (
         [HOST_PROXY_REMEDIATION],
       );
     }
-    if (!containerGatewayMatches(containerUrl, gateway)) {
+    if (
+      containerTarget.kind === "tcp-host-gateway" &&
+      gateway !== undefined &&
+      !containerGatewayMatches(containerTarget.containerUrl, gateway)
+    ) {
       return baseCheck(
         doctor,
         {
           ...context,
           reachability: "unreachable",
-          containerGateway: gateway,
+          ...gatewayContext,
           failure: "container-gateway-mismatch",
         },
         "warn",
@@ -178,25 +202,20 @@ export const diagnoseHostProxyWorker = (
     const containerProbe = yield* probeHostProxyContainer({
       providerExec: doctor.provider.exec,
       appId: record.appId,
-      containerUrl,
+      target: containerTarget,
       probeServices: rawProbeServices,
       maxProbeServices: options.maxProbeServices,
     });
     switch (containerProbe) {
       case "reachable":
-        return baseCheck(
-          doctor,
-          { ...context, reachability: "reachable", containerGateway: gateway },
-          "pass",
-          [],
-        );
+        return baseCheck(doctor, { ...context, reachability: "reachable", ...gatewayContext }, "pass", []);
       case "cap-exhausted":
         return baseCheck(
           doctor,
           {
             ...context,
             reachability: "not-probed",
-            containerGateway: gateway,
+            ...gatewayContext,
             reason: "probe-service-cap-exhausted",
           },
           "pass",
@@ -208,7 +227,7 @@ export const diagnoseHostProxyWorker = (
           {
             ...context,
             reachability: "unreachable",
-            containerGateway: gateway,
+            ...gatewayContext,
             failure: "container-probe-failed",
           },
           "warn",
@@ -220,7 +239,7 @@ export const diagnoseHostProxyWorker = (
           {
             ...context,
             reachability: "not-probed",
-            containerGateway: gateway,
+            ...gatewayContext,
             reason: "probe-services-inconclusive",
           },
           "pass",

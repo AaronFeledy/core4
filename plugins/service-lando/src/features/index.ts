@@ -35,9 +35,11 @@ import { landoAppMountFeature } from "./app-mount.ts";
 import { landoBootFeature } from "./boot.ts";
 import { landoCertsFeature } from "./certs.ts";
 import { landoEnvFeature } from "./env.ts";
+import { landoGpgAgentFeature } from "./gpg-agent.ts";
 import { landoHealthcheckFeature } from "./healthcheck.ts";
 import { landoHostProxyFeature } from "./host-proxy.ts";
 import { landoSecurityFeature } from "./security.ts";
+import { landoSshAgentFeature } from "./ssh-agent.ts";
 import { landoStorageFeature } from "./storage.ts";
 import { landoUserIdFeature } from "./user-id.ts";
 import { landoUserFeature } from "./user.ts";
@@ -47,9 +49,11 @@ export {
   landoBootFeature,
   landoCertsFeature,
   landoEnvFeature,
+  landoGpgAgentFeature,
   landoHealthcheckFeature,
   landoHostProxyFeature,
   landoSecurityFeature,
+  landoSshAgentFeature,
   landoStorageFeature,
   landoUserFeature,
   landoUserIdFeature,
@@ -58,12 +62,14 @@ export {
 const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   landoBootFeature,
   landoUserIdFeature,
+  landoGpgAgentFeature,
   landoStorageFeature,
   landoEnvFeature,
   landoAppMountFeature,
   landoHealthcheckFeature,
   landoCertsFeature,
   landoSecurityFeature,
+  landoSshAgentFeature,
   landoHostProxyFeature,
   landoUserFeature,
   apacheServiceFeature,

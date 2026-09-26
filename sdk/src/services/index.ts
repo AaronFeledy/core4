@@ -4,8 +4,11 @@ export type _ServiceTagCompatContext = typeof Context.Tag;
 
 import type {
   AbsolutePath,
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
   AppId,
   AppPlan,
+  AppRef,
   DataEndpoint,
   DatasetApplyOptions,
   DatasetApplyResult,
@@ -18,8 +21,17 @@ import type {
   DeprecationSurfaceKind,
   DeprecationUse,
   DoctorResourceNameQuery,
+  FileSyncEngineCapabilities,
+  FileSyncEventChunk,
+  FileSyncSessionFilter,
+  FileSyncSessionInfo,
+  FileSyncSessionRef,
+  FileSyncSessionSpec,
+  FileSyncSetupOptions,
   GlobalConfig,
   HostPlatform,
+  HostProxyBridgeInput,
+  HostProxyBridgeResult,
   HttpClientCapabilities,
   HttpRequest,
   HttpResponse,
@@ -31,7 +43,9 @@ import type {
   ManagedFilePlan,
   ManagedFileResult,
   PluginManifest,
+  PortNumber,
   PortablePath,
+  PreparedFileSyncTarget,
   PromptAnswer,
   PromptBatchOptions,
   PromptSpec,
@@ -55,6 +69,7 @@ import type {
   ServiceConfig,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
+  ServiceName,
   TunnelCapabilities,
   TunnelSession,
   TunnelSessionFilter,
@@ -113,13 +128,15 @@ import type {
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
-  SecretNotFoundError,
+  SecretStoreError,
+  SecretStoreUnavailableError,
   ServiceTypeCollisionError,
   ShellExecError,
   ToolingCompileError,
   ToolingExecError,
 } from "../errors/index.ts";
 
+import type { FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
 import type { ConfigTranslatorShape } from "./config-translator.ts";
@@ -133,7 +150,7 @@ import type {
   LandoEvent,
 } from "./events.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
-import type { FileSyncEngineShape } from "./file-sync.ts";
+import type { FileSyncEngineShape, FileSyncError } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
 import type { GlobalAppPaths, GlobalDistResult } from "./global-app.ts";
 import type { ConfirmSpec, InteractionError, PromptAnswers, SecretSpec, SelectSpec } from "./interaction.ts";
@@ -158,12 +175,14 @@ import type {
   ProcessResult,
   ProcessSpawnOptions,
   ProcessStreamChunk,
+  ProcessStreamEvent,
   ShellCommandOptions,
   ShellInteractiveResult,
   ShellInteractiveSpec,
 } from "./process.ts";
 import type {
   AppSelector,
+  AppliedFileSyncInspection,
   AppliedTeardownEvidence,
   ApplyOptions,
   ApplyResult,
@@ -260,12 +279,44 @@ export interface RuntimeProviderShape {
     plan: ProviderSetupPlan,
     options: ProviderSetupOptions,
   ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  /** Ensure a selected provider runtime is reachable before host-dependent planning. */
+  readonly ensureReady?: Effect.Effect<void, ProviderError>;
   readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
   readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
+  /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
+  readonly occupiedPublishPorts?: (
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+
+  /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
+  readonly matchingPublishPorts?: (
+    containerId: string,
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+  /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
+  readonly openHostProxyBridge?: (
+    input: HostProxyBridgeInput,
+  ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+  readonly openAgentSocketBridge?: (
+    input: AgentSocketBridgeInput,
+  ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
   readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
   readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
   readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+
+  /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
+  readonly inspectAppliedFileSync?: (
+    plan: AppPlan,
+  ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
+  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
+  readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
+    {
+      readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
+      readonly rollback: Effect.Effect<void, ProviderError>;
+    },
+    ProviderError
+  >;
 
   readonly apply: (
     plan: AppPlan,
@@ -298,6 +349,8 @@ export interface RuntimeProviderShape {
   readonly removeObservedService: (
     observed: ServiceRuntimeInfo,
   ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
+  /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
+  readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
   readonly execStream: (
@@ -382,11 +435,15 @@ export declare class GlobalAppService extends Context.Tag("@lando/core/GlobalApp
     readonly id: "global";
     readonly root: Effect.Effect<AbsolutePath, GlobalAppError>;
     readonly ensureRoot: Effect.Effect<void, GlobalAppError, Scope.Scope>;
+    /** Make the global service provider reachable before probing provider-host ports. */
+    readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError>;
     readonly paths: Effect.Effect<GlobalAppPaths, GlobalAppError>;
     readonly ensureUserLandofile: Effect.Effect<
       { readonly path: AbsolutePath; readonly created: boolean },
       GlobalAppError | GlobalLandofilePathConflictError
     >;
+    /** Restart an existing running global service so it reloads externally stored configuration. */
+    readonly restartRunningService?: (service: ServiceName) => Effect.Effect<boolean, GlobalAppError>;
     readonly ensureRunning: (services: ReadonlyArray<string>) => Effect.Effect<
       ReadonlyArray<{
         readonly name: string;
@@ -395,6 +452,15 @@ export declare class GlobalAppService extends Context.Tag("@lando/core/GlobalApp
       }>,
       GlobalAppError
     >;
+    /** Read-only provider-host TCP occupancy for published port candidates. */
+    readonly occupiedPublishPorts?: (
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError>;
+    /** Published TCP ports held by running Lando global services. */
+    readonly ownedPublishPorts?: (
+      service: ServiceName,
+      ports: ReadonlyArray<PortNumber>,
+    ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError>;
     readonly regenerateDist: (input?: { readonly services?: Record<string, ServiceConfig> }) => Effect.Effect<
       GlobalDistResult,
       GlobalAppError | GlobalDistConflictError
@@ -660,6 +726,9 @@ export declare class ProcessRunner extends Context.Tag("@lando/core/ProcessRunne
     readonly stream: (
       options: ProcessSpawnOptions,
     ) => Stream.Stream<ProcessStreamChunk, ProcessExecError | ProcessTimeoutError>;
+    readonly streamWithExit: (
+      options: ProcessSpawnOptions,
+    ) => Stream.Stream<ProcessStreamEvent, ProcessExecError | ProcessTimeoutError>;
   }
 >() {}
 
@@ -774,8 +843,13 @@ export declare class RouterService extends Context.Tag("@lando/core/RouterServic
   {
     readonly id: string;
     readonly capabilities: ProxyCapabilities;
+    /** Resolve and persist route publication ports before starting required global services. */
+    readonly prepare?: (
+      config: ProxyConfig,
+    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
     readonly setup: (
       config: ProxyConfig,
+      options?: { readonly autoApprove?: boolean },
     ) => Effect.Effect<
       void,
       ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
@@ -830,15 +904,44 @@ export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
   SecretStore,
   {
     readonly id: string;
-    readonly get: (secret: string) => Effect.Effect<string, SecretNotFoundError>;
-    readonly has: (secret: string) => Effect.Effect<boolean>;
+    readonly schemes?: ReadonlyArray<string>;
+    readonly get: (secret: string) => Effect.Effect<string, SecretStoreError>;
+    readonly has: (secret: string) => Effect.Effect<boolean, SecretStoreUnavailableError>;
     readonly list: Effect.Effect<ReadonlyArray<string>>;
   }
 >() {}
 
 export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEngine")<
   FileSyncEngine,
-  FileSyncEngineShape
+  {
+    readonly id: string;
+    readonly displayName: string;
+    readonly capabilities: FileSyncEngineCapabilities;
+    readonly sessionsPersistAcrossProcesses?: boolean;
+    readonly appLifecycle?: {
+      readonly invalidateDrain: (app: AppRef) => Effect.Effect<void, FileSyncStartError>;
+      readonly drain: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+      readonly dispose: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+      readonly completeDisposal: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+    };
+    readonly bindPreparedTargets?: (
+      plan: AppPlan,
+      targets: ReadonlyArray<PreparedFileSyncTarget>,
+    ) => Effect.Effect<FileSyncEngineShape & { readonly boundApp: AppRef }, FileSyncStartError>;
+    readonly isAvailable: Effect.Effect<boolean, FileSyncError>;
+    readonly setup: (options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>;
+    readonly createSession: (
+      spec: FileSyncSessionSpec,
+    ) => Effect.Effect<FileSyncSessionRef, FileSyncError, Scope.Scope>;
+    readonly pauseSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+    readonly resumeSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+    readonly flushSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+    readonly terminateSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
+    readonly listSessions: (
+      filter: FileSyncSessionFilter,
+    ) => Effect.Effect<ReadonlyArray<FileSyncSessionInfo>, FileSyncError>;
+    readonly streamEvents: (ref: FileSyncSessionRef) => Stream.Stream<FileSyncEventChunk, FileSyncError>;
+  }
 >() {}
 
 export declare class Downloader extends Context.Tag("@lando/core/Downloader")<

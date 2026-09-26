@@ -1,17 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ProcessRunner } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
-import { ProcessRunnerLive, resolveProcessCgroup } from "../../src/services/process-runner";
+import { ProcessRunnerLive, awaitSinkResult, resolveProcessCgroup } from "../../src/services/process-runner";
 
 const redactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
 });
 
@@ -85,6 +87,18 @@ describe("ProcessRunnerLive", () => {
       }
     }, 4000);
   }
+  test("observes a late sink failure after exit without waiting for a stuck sink", async () => {
+    const lateFailure = new Promise<number>((_, reject) => {
+      setTimeout(() => reject(new Error("late sink failure")), 1);
+    });
+    await expect(awaitSinkResult(lateFailure, Promise.resolve(0))).rejects.toThrow("late sink failure");
+    await Promise.race([
+      awaitSinkResult(new Promise<number>(() => undefined), Promise.resolve(0)),
+      Bun.sleep(250).then(() => {
+        throw new Error("ProcessRunner waited for a stuck sink after child exit.");
+      }),
+    ]);
+  });
 
   test("runs a command and captures stdout", async () => {
     const result = await runProcess({ cmd: "echo", args: ["hello"] });
@@ -110,6 +124,228 @@ describe("ProcessRunnerLive", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
+  });
+
+  test("streams stdin to EOF while draining stdout and stderr and preserving exit code", async () => {
+    const payload = new Uint8Array(269_754);
+    for (let index = 0; index < payload.length; index += 1) payload[index] = 65 + (index % 26);
+    const expected = createHash("sha256").update(payload).digest("hex");
+    async function* stdinStream() {
+      for (let offset = 0; offset < payload.length; offset += 8192) {
+        yield payload.subarray(offset, offset + 8192);
+      }
+    }
+
+    const result = await runProcess({
+      cmd: process.execPath,
+      args: [
+        "-e",
+        'const { createHash } = await import("node:crypto"); const bytes = new Uint8Array(await Bun.stdin.arrayBuffer()); process.stdout.write(createHash("sha256").update(bytes).digest("hex")); process.stderr.write(String(bytes.length)); process.exitCode = 37;',
+      ],
+      stdinStream: stdinStream(),
+    });
+
+    expect(result).toEqual({ exitCode: 37, stdout: expected, stderr: "269754" });
+  });
+
+  test("stream drains output after streamed stdin reaches EOF", async () => {
+    async function* stdinStream() {
+      yield new TextEncoder().encode("streamed-input");
+    }
+    const chunks = await Effect.runPromise(
+      Effect.flatMap(ProcessRunner, (runner) =>
+        runner
+          .stream({
+            cmd: process.execPath,
+            args: [
+              "-e",
+              'const text = await Bun.stdin.text(); process.stdout.write(text); process.stderr.write("done");',
+            ],
+            stdinStream: stdinStream(),
+          })
+          .pipe(Stream.runCollect),
+      ).pipe(Effect.provide(ProcessRunnerLive)),
+    );
+
+    expect([...chunks].map((chunk) => [chunk.kind, new TextDecoder().decode(chunk.chunk)])).toEqual([
+      ["stdout", "streamed-input"],
+      ["stderr", "done"],
+    ]);
+  });
+
+  test("streamWithExit emits output before the final nonzero exit code", async () => {
+    async function* stdinStream() {
+      yield new TextEncoder().encode("duplex");
+    }
+    const events = await Effect.runPromise(
+      Effect.flatMap(ProcessRunner, (runner) =>
+        runner
+          .streamWithExit({
+            cmd: process.execPath,
+            args: [
+              "-e",
+              'const text = await Bun.stdin.text(); process.stdout.write(text); process.stderr.write("done"); process.exitCode = 37;',
+            ],
+            stdinStream: stdinStream(),
+          })
+          .pipe(Stream.runCollect),
+      ).pipe(Effect.provide(ProcessRunnerLive)),
+    );
+
+    expect(
+      [...events].map((event) =>
+        "exitCode" in event ? event.exitCode : [event.kind, new TextDecoder().decode(event.chunk)],
+      ),
+    ).toEqual([["stdout", "duplex"], ["stderr", "done"], 37]);
+  });
+
+  test("run and stream finish when a child exits before its stdin source closes", async () => {
+    async function* stalledStdin() {
+      yield new TextEncoder().encode("first");
+      await new Promise<void>(() => undefined);
+    }
+    const command = {
+      cmd: process.execPath,
+      args: ["-e", 'process.stdout.write("done");'],
+    };
+    const run = runProcess({ ...command, stdinStream: stalledStdin() });
+    const streamed = Effect.runPromise(
+      Effect.flatMap(ProcessRunner, (runner) =>
+        runner.streamWithExit({ ...command, stdinStream: stalledStdin() }).pipe(Stream.runCollect),
+      ).pipe(Effect.provide(ProcessRunnerLive)),
+    );
+    const [result, events] = await Promise.race([
+      Promise.all([run, streamed]),
+      Bun.sleep(2_000).then(() => {
+        throw new Error("ProcessRunner waited for stdin after the child exited.");
+      }),
+    ]);
+    expect(result).toEqual({ exitCode: 0, stdout: "done", stderr: "" });
+    expect([...events].at(-1)).toEqual({ exitCode: 0 });
+  });
+
+  test("run and streamWithExit deliver direct stdin to EOF", async () => {
+    const command = {
+      cmd: process.execPath,
+      args: ["-e", "process.stdout.write(await Bun.stdin.text());"],
+      stdin: "direct-input",
+    };
+    const result = await runProcess(command);
+    const events = await Effect.runPromise(
+      Effect.flatMap(ProcessRunner, (runner) => runner.streamWithExit(command).pipe(Stream.runCollect)).pipe(
+        Effect.provide(ProcessRunnerLive),
+      ),
+    );
+    expect(result).toEqual({ exitCode: 0, stdout: "direct-input", stderr: "" });
+    expect(
+      [...events].map((event) =>
+        "exitCode" in event ? event.exitCode : new TextDecoder().decode(event.chunk),
+      ),
+    ).toEqual(["direct-input", 0]);
+  });
+
+  test("run and streamWithExit return an early exit with large direct stdin", async () => {
+    const stdin = new Uint8Array(4 * 1024 * 1024);
+    const command = {
+      cmd: process.execPath,
+      args: ["-e", 'process.stdout.write("done"); process.exitCode = 37;'],
+      stdin,
+    };
+    const result = await runProcess(command);
+    const events = await Effect.runPromise(
+      Effect.flatMap(ProcessRunner, (runner) => runner.streamWithExit(command).pipe(Stream.runCollect)).pipe(
+        Effect.provide(ProcessRunnerLive),
+      ),
+    );
+    expect(result).toEqual({ exitCode: 37, stdout: "done", stderr: "" });
+    expect([...events].at(-1)).toEqual({ exitCode: 37 });
+  });
+
+  test("direct stdin still reports EPIPE while the child remains alive", async () => {
+    const command = {
+      cmd: process.execPath,
+      args: ["-e", 'require("node:fs").closeSync(0); await Bun.sleep(1000);'],
+      stdin: new Uint8Array(4 * 1024 * 1024),
+    };
+    await expect(runProcess(command)).rejects.toThrow("EPIPE");
+    await expect(
+      Effect.runPromise(
+        Effect.flatMap(ProcessRunner, (runner) =>
+          runner.streamWithExit(command).pipe(Stream.runCollect),
+        ).pipe(Effect.provide(ProcessRunnerLive)),
+      ),
+    ).rejects.toThrow("EPIPE");
+  });
+
+  test("preserves stdin producer failures while the child is running", async () => {
+    async function* failingStdin(): AsyncGenerator<Uint8Array> {
+      yield new Uint8Array(0);
+      throw new Error("stdin producer failed");
+    }
+    const command = { cmd: process.execPath, args: ["-e", "await Bun.sleep(500);"] };
+    await expect(runProcess({ ...command, stdinStream: failingStdin() })).rejects.toThrow(
+      "stdin producer failed",
+    );
+    await expect(
+      Effect.runPromise(
+        Effect.flatMap(ProcessRunner, (runner) =>
+          runner.streamWithExit({ ...command, stdinStream: failingStdin() }).pipe(Stream.runCollect),
+        ).pipe(Effect.provide(ProcessRunnerLive)),
+      ),
+    ).rejects.toThrow("stdin producer failed");
+  });
+
+  test("preserves stdin pipe failures while the child remains alive", async () => {
+    async function* stdinStream() {
+      yield new Uint8Array(1024 * 1024);
+    }
+    const command = {
+      cmd: process.execPath,
+      args: ["-e", 'require("node:fs").closeSync(0); await Bun.sleep(1000);'],
+    };
+    await expect(runProcess({ ...command, stdinStream: stdinStream() })).rejects.toThrow("EPIPE");
+    await expect(
+      Effect.runPromise(
+        Effect.flatMap(ProcessRunner, (runner) =>
+          runner.streamWithExit({ ...command, stdinStream: stdinStream() }).pipe(Stream.runCollect),
+        ).pipe(Effect.provide(ProcessRunnerLive)),
+      ),
+    ).rejects.toThrow("EPIPE");
+  });
+
+  test("streamWithExit applies output backpressure when the consumer pauses", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "lando-process-backpressure-"));
+    const marker = join(directory, "finished");
+    let checked = false;
+    try {
+      await Effect.runPromise(
+        Effect.flatMap(ProcessRunner, (runner) =>
+          runner
+            .streamWithExit({
+              cmd: process.execPath,
+              args: [
+                "-e",
+                'const fs = require("node:fs"); const chunk = Buffer.alloc(65536, 65); for (let i = 0; i < 128; i++) fs.writeSync(1, chunk); fs.writeFileSync(process.argv[1], "done");',
+                marker,
+              ],
+            })
+            .pipe(
+              Stream.runForEach((event) => {
+                if ("exitCode" in event || checked) return Effect.void;
+                checked = true;
+                return Effect.promise(async () => {
+                  await Bun.sleep(200);
+                  expect(await Bun.file(marker).exists()).toBe(false);
+                });
+              }),
+            ),
+        ).pipe(Effect.provide(ProcessRunnerLive)),
+      );
+      expect(checked).toBe(true);
+      expect(await Bun.file(marker).exists()).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   test("fails with ProcessExecError when executable is missing", async () => {

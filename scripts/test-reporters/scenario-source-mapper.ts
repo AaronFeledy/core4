@@ -8,6 +8,7 @@ const STACK_FRAME_RE = /^(?<indent>\s+at\s+)(?<target>.+?\.ts):(?<line>\d+):(?<c
 interface RewriteOptions {
   readonly repoRoot?: string;
   readonly disabled?: boolean;
+  readonly generatedRoot?: string;
 }
 
 interface SourceHeaders {
@@ -138,7 +139,7 @@ const annotationTitleForHeaders = (headers: SourceHeaders): string => {
 const annotationLine = (annotation: FailureAnnotation): string =>
   `::error file=${escapeAnnotationProperty(annotation.sourcePath)},line=${escapeAnnotationProperty(String(annotation.sourceLine))},title=${escapeAnnotationProperty(annotation.title)}::${escapeAnnotationMessage(annotation.message)}`;
 
-const mapStackLine = (line: string, repoRoot: string): MappedFrame | null => {
+const mapStackLine = (line: string, repoRoot: string, generatedRoot?: string): MappedFrame | null => {
   const match = line.match(STACK_FRAME_RE);
   const target = match?.groups?.target;
   const rawLine = match?.groups?.line;
@@ -148,7 +149,12 @@ const mapStackLine = (line: string, repoRoot: string): MappedFrame | null => {
     return null;
 
   const filePath = resolveFramePath(target, repoRoot);
-  if (!normalizePath(filePath).includes(GENERATED_GUIDE_SEGMENT)) return null;
+  const normalizedFilePath = normalizePath(filePath);
+  const isGeneratedGuide =
+    generatedRoot === undefined
+      ? normalizedFilePath.includes(GENERATED_GUIDE_SEGMENT)
+      : normalizedFilePath.startsWith([normalizePath(resolve(generatedRoot)), ""].join("/"));
+  if (!isGeneratedGuide) return null;
 
   const generatedLine = Number.parseInt(rawLine, 10);
   const headers = sourceHeadersForFrame(filePath, generatedLine);
@@ -220,7 +226,7 @@ export const rewriteScenarioSourceMappedOutput = (output: string, options: Rewri
   const lines = output.split("\n");
   const mapped = new Map<number, MappedFrame>();
   for (const [index, line] of lines.entries()) {
-    const frame = mapStackLine(line, repoRoot);
+    const frame = mapStackLine(line, repoRoot, options.generatedRoot);
     if (frame !== null) mapped.set(index, frame);
   }
   if (mapped.size === 0) return output;

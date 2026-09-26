@@ -10,6 +10,7 @@ import {
   stripAnsi,
   toneChip,
   truncateToWidth,
+  wrapFieldToWidth,
   wrapToWidth,
 } from "@lando/renderer/console-layout";
 
@@ -74,6 +75,47 @@ describe("wrapToWidth", () => {
     const rows = wrapToWidth("/very/long/unbreakable/path/segment", 10);
     for (const row of rows) expect(displayWidth(row)).toBeLessThanOrEqual(10);
   });
+});
+
+test("wrapFieldToWidth moves a fitting path or URL below its separator", () => {
+  const path = "/home/u/.local/share/lando/providers/provider-lando";
+  const url = "http://appserver.myapp.internal:8080";
+  expect(wrapFieldToWidth("target", path, 6, 54)).toEqual(["target :", path]);
+  expect(wrapFieldToWidth("internal", url, 8, 44)).toEqual(["internal :", url]);
+  expect(displayWidth(path)).toBeLessThanOrEqual(54);
+  expect(displayWidth(url)).toBeLessThanOrEqual(44);
+});
+
+test("wrapFieldToWidth preserves spaces in a wrapped Windows path", () => {
+  const value = "C:\\Program Files\\Lando\\logs\\my app server.log";
+  const lines = wrapFieldToWidth("logFile", value, 7, 18);
+  const prefixWidth = lines[0]?.indexOf(" : ") ?? -1;
+  expect(prefixWidth).toBe(7);
+  const valueStart = prefixWidth + 3;
+  const reconstructed = [
+    lines[0]?.slice(valueStart) ?? "",
+    ...lines.slice(1).map((line) => line.slice(valueStart)),
+  ].join("");
+  expect(reconstructed).toBe(value);
+  expect(lines.length).toBeGreaterThan(1);
+  expect(lines.every((line) => displayWidth(line) <= 18)).toBe(true);
+});
+
+test("wrapFieldToWidth prefers spaces for log details and endpoint lists at 80 columns", () => {
+  const logDetails = "probe: GET http://127.0.0.1:8000/health returned 302; strategy: redirect after startup";
+  const endpoints = "http://127.0.0.1:49152/windows-cms http://127.0.0.1:49153/windows-cms";
+  for (const value of [logDetails, endpoints]) {
+    const lines = wrapFieldToWidth("logDetails", value, 12, 74);
+    const valueStart = 15;
+    const chunks = [
+      lines[0]?.slice(valueStart) ?? "",
+      ...lines.slice(1).map((line) => line.slice(valueStart)),
+    ];
+    expect(chunks.join("")).toBe(value);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.slice(0, -1).every((chunk) => chunk.endsWith(" "))).toBe(true);
+    expect(lines.every((line) => displayWidth(line) <= 74)).toBe(true);
+  }
 });
 
 describe("box helpers", () => {

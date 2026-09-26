@@ -106,27 +106,27 @@ const tryListInput = (fields: {
 
 describe("classifyAcquisition", () => {
   test("Given 80,8080,8000 occupied, When 8888 TCP-binds, Then HTTP try order reaches 8888 before 38080", () => {
-    // Given: HTTP try list 80,8080,8000,8888,8008,38080 with first free at 8888.
+    // Given: HTTP try list 80,8080,8000,8888,8008,18080,28080,38080 with first free at 8888.
     const input = tryListInput({ httpFirstFree: 8888, httpsFirstFree: 443 });
 
     // When: classification runs.
     const decision = classifyAcquisition(input);
 
     // Then: 8888 wins; 38080 is last-resort, not the hop target.
-    expect(input.httpTryList).toEqual([80, 8080, 8000, 8888, 8008]);
+    expect(input.httpTryList).toEqual([80, 8080, 8000, 8888, 8008, 18080, 28080, 38080]);
     expect(decision.httpPort).toBe(8888);
     expect(decision.httpPort).not.toBe(TRAEFIK_HTTP_PORT);
   });
 
   test("Given 443,8443 occupied, When 4443 TCP-binds, Then HTTPS try order reaches 4443 before 38443", () => {
-    // Given: HTTPS try list 443,8443,4443,4433,4444,444,38443 with first free at 4443.
+    // Given: HTTPS try list 443,8443,4443,4433,4444,444,18443,28443,38443 with first free at 4443.
     const input = tryListInput({ httpFirstFree: 80, httpsFirstFree: 4443 });
 
     // When: classification runs.
     const decision = classifyAcquisition(input);
 
     // Then: 4443 wins; 38443 is last-resort, not the hop target.
-    expect(input.httpsTryList).toEqual([443, 8443, 4443, 4433, 4444, 444]);
+    expect(input.httpsTryList).toEqual([443, 8443, 4443, 4433, 4444, 444, 18443, 28443, 38443]);
     expect(decision.httpsPort).toBe(4443);
     expect(decision.httpsPort).not.toBe(TRAEFIK_HTTPS_PORT);
   });

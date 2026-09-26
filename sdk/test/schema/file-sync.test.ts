@@ -187,6 +187,15 @@ describe("FileSyncSessionInfo", () => {
       app: APP_REF,
       service: "web",
       mountKey: "app-root",
+      spec: {
+        app: APP_REF,
+        service: "web",
+        mountKey: "app-root",
+        source: "/srv/apps/myapp",
+        target: { _tag: "volume", name: "lando-sync-myapp-web-abcd", path: "/app" },
+        mode: "two-way-safe",
+        excludes: ["node_modules"],
+      },
       status: "paused",
       lastUpdatedAt: "2026-05-28T18:51:00Z",
     });
@@ -196,6 +205,7 @@ describe("FileSyncSessionInfo", () => {
       expect(decoded.right.status).toBe("paused");
       expect(decoded.right.ref).toBe(FileSyncSessionRef.make("myapp-web-app-root"));
       expect(decoded.right.service).toBe(ServiceName.make("web"));
+      expect(decoded.right.spec.source).toBe(FileSyncSessionSpec.fields.source.make("/srv/apps/myapp"));
     }
   });
 

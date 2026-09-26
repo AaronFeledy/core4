@@ -42,5 +42,5 @@ export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   },
   streaming: StreamFrame,
   run: (input) => Effect.zipRight(refreshAppCache(), rebuildApp(rebuildOptionsFromInput(input))),
-  render: (result) => renderRebuildAppResult(result as RebuildAppResult),
+  render: (result, _input, ctx) => renderRebuildAppResult(result as RebuildAppResult, ctx),
 };

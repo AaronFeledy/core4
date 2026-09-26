@@ -24,6 +24,7 @@ What is already in the working tree:
 - MVP walking skeleton: Effect runtime, SDK contracts, `lando start` on Linux.
 - Catalog and runtime breadth: common service types, recipes, tooling, global app, scratch apps, providers, Mutagen, proxy, CA, doctor, setup, uninstall.
 - Governance and agent-native surfaces: schemas, telemetry, machine output, MCP, `lando open`, Landofile version constraint, `lando run`, architecture-simplicity, Lando 3 parity.
+- Host identity: host SSH-agent forwarding (`sshAgent.sidecar: false`), gpg-agent forwarding, and pluggable secret stores (bundled `env` and `1password`) ship together on the §10.4 relay and §4.2 `SecretStore` contracts (§10.4, §9).
 
 The old ladder (MVP, four Alphas, a contract-completion Beta, then a hardening Beta) is retired. Do not schedule new 4.0 work as a later Alpha.
 

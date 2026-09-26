@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "./scaffold.ts";
 
 export const MEAN_RECIPE_VERSION = "0.1.0";
-export const MEAN_CONTENT_DIGEST = "sha256:cac690f4c0552c0d605f52f4b0cf43fc630c6c3d1ea1280711374508223b0798";
+export const MEAN_CONTENT_DIGEST = "sha256:c848948037d130c7abefe3d50bce55206d98261ab63cedcabb65383d526f022f";
 
 export const meanProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -50,6 +50,7 @@ const services = (redis: boolean): ExpressionNode => ({
         kind: "ObjectLiteral",
         entries: [
           { key: "type", value: { kind: "Literal", value: "node:{{ recipe.node }}" } },
+          { key: "primary", value: { kind: "Literal", value: true } },
           { key: "port", value: { kind: "Literal", value: 3000 } },
           {
             key: "environment",

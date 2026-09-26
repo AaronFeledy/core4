@@ -10,30 +10,34 @@ tags: [beta, docs, setup, uninstall]
 
 Preview the plan first. `lando uninstall --dry-run` prints owned, user-owned, skipped, and manual-remediation targets without changing the system.
 
-Without `--yes`, Lando refuses destructive execution and tells you to rerun after review. `--yes` is required before any Lando-owned toolchain or data target is removed.
+Without `--yes`, Lando refuses destructive execution and tells you to rerun after review. `--yes` is required before any Lando-owned binary or data target is removed.
 
 ## Keep data vs purge
 
 ```sh
-# Removes Lando-owned toolchain targets while preserving user data roots,
-# app data, global app state, and app-affecting caches
+# Removes the managed CLI while preserving app data, the managed VM,
+# runtime services, file-sync tools, global state, and caches
 lando uninstall --yes --keep-data
 
-# Opts into deliberate removal of Lando-owned data and cache roots
+# Removes Lando-owned apps, the managed VM, runtime tools, and data roots
 lando uninstall --yes --purge
 ```
 
-With `--purge`, Lando cleans up its container-runtime leftovers before it deletes anything on disk:
+`--keep-data` leaves running apps and their managed VM in place. It also retains the provider setup state, runtime service, host-proxy sessions, and Mutagen tools so those apps can keep using them. The managed CLI binary is removed; keep the retained runtime files until you no longer need the app data.
+
+With `--purge`, Lando cleans up the container-runtime resources it can identify before it deletes anything on disk:
 
 - Stops and removes Lando-labeled containers (`dev.lando.app`, plus `com.lando.app` for Lando 3 leftovers) in Docker and Podman
 - Prunes unused Lando networks (`dev.lando.network=true`)
 - Prunes unused Lando volumes (`dev.lando.volume=true`)
 
-When that cleanup succeeds, `--purge` then removes:
+When that cleanup succeeds, `--purge` removes the Lando-owned managed VM, runtime service, provider bundle, and file-sync tools. It then removes:
 
 - User data root (`~/.local/share/lando` or `$LANDO_USER_DATA_ROOT`)
 - User cache root (`~/.cache/lando` or `$LANDO_USER_CACHE_ROOT`)
 - User config root (`~/.config/lando` or `$LANDO_USER_CONF_ROOT`)
+
+On Windows, Podman keeps network definitions in the Windows host config outside its managed VM. Removing the VM does not remove those definitions. Current definitions have no Lando ownership label, so the purge plan reports them for manual review. Check `$env:APPDATA\containers\networks` after purge, and leave any entry whose ownership you cannot verify. Lando does not delete those files.
 
 **If Lando cannot query a container runtime** (neither Docker nor Podman is available, or a query fails) `--purge` fails closed: it exits non-zero and deletes no data. Uninstall never orphans running containers by deleting state while they are still up.
 

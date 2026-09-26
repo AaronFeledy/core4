@@ -1,4 +1,5 @@
-import { Data, Effect, Either } from "effect";
+import { AgentSocketDelivery } from "@lando/sdk/schema";
+import { Data, Effect, Either, Schema } from "effect";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
@@ -10,6 +11,37 @@ import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
  */
 export type SubsystemRecovery = "automatic" | "manual";
 
+export const SshAgentPostureDetails = Schema.Struct({
+  mode: Schema.Literal("sidecar", "host"),
+  upstream: Schema.Struct({
+    source: Schema.Literal(
+      "sidecar",
+      "explicit",
+      "env",
+      "1password",
+      "gpg",
+      "yubikey-agent",
+      "windows-openssh",
+      "none",
+    ),
+    reachable: Schema.Boolean,
+    identities: Schema.optional(Schema.NonNegativeInt),
+  }),
+  delivery: Schema.Union(AgentSocketDelivery, Schema.Literal("none")),
+  security: Schema.String,
+  gpg: Schema.optional(
+    Schema.Struct({
+      forward: Schema.Literal(true),
+      upstream: Schema.Struct({
+        source: Schema.Literal("explicit", "gpgconf", "none"),
+        reachable: Schema.Boolean,
+      }),
+      keyringExported: Schema.Boolean,
+      security: Schema.String,
+    }),
+  ),
+});
+
 export interface DoctorSubsystemCheck {
   readonly name: string;
   readonly status: DoctorStatus;
@@ -17,6 +49,7 @@ export interface DoctorSubsystemCheck {
   readonly recovery: SubsystemRecovery;
   readonly context: Readonly<Record<string, string>>;
   readonly solutions: ReadonlyArray<DoctorSolution>;
+  readonly details?: typeof SshAgentPostureDetails.Type;
 }
 
 /**
@@ -91,9 +124,9 @@ export const SSH_SPEC: SubsystemSpec = {
   name: "ssh",
   recovery: "automatic",
   automaticRemediation:
-    "The SSH agent sidecar is not running. Run `lando doctor --fix` to re-provision SSH agent forwarding.",
+    "SSH agent forwarding is degraded. In sidecar mode, run `lando doctor --fix` or `lando setup`. In host mode, start your agent and set sshAgent.socket or SSH_AUTH_SOCK.",
   manualRemediation:
-    "The SSH agent sidecar is not running. Run `lando setup` to provision SSH agent forwarding.",
+    "SSH agent forwarding is degraded. Run `lando setup` for sidecar mode, or start your host agent and set sshAgent.socket or SSH_AUTH_SOCK for host mode.",
 };
 
 export const HEALTHCHECK_SPEC: SubsystemSpec = {
@@ -114,7 +147,7 @@ export const HOST_PROXY_SPEC: SubsystemSpec = {
   name: "host-proxy",
   recovery: "manual",
   manualRemediation:
-    "Host-proxy DNS is not active, but `lando start` still tries to spawn a detached host-proxy worker. Run `lando setup` to configure host DNS. A skipped or inactive host-proxy check is not a healthy start path; start can still fail with HostProxyTransportUnavailableError.",
+    "Host DNS integration is inactive. If .lndo.site routes do not resolve to 127.0.0.1, run `lando setup` to configure hostname resolution. Container-to-host callbacks are checked separately under host-proxy-transport.",
 };
 
 const SUBSYSTEM_SPECS: ReadonlyArray<SubsystemSpec> = [

@@ -1,0 +1,7 @@
+name: host-agent-1password
+sshAgent:
+  sidecar: false
+services:
+  app:
+    type: "node:22"
+    primary: true

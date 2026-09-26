@@ -8,12 +8,13 @@
  */
 
 import {
+  REMEDY_ARROW,
   dimText,
   displayWidth,
   hyperlink,
-  padEndToWidth,
   paintTone,
   toneChip,
+  wrapFieldToWidth,
   wrapToWidth,
 } from "./console-layout.ts";
 import type { SummaryDocument, SummaryRow, SummarySection } from "./summary.ts";
@@ -60,27 +61,38 @@ const pushWrapped = (
   }
 };
 
+/** `↳ fix` with a hanging indent so a wrapped remedy reads as one thought. */
+const pushRemedy = (lines: string[], remedy: string, width: number): void => {
+  const [first, ...rest] = wrapToWidth(remedy, Math.max(1, width - FIELD_INDENT - REMEDY_ARROW.length));
+  pushWrapped(lines, `${REMEDY_ARROW}${first ?? ""}`, FIELD_INDENT, width, undefined);
+  for (const segment of rest)
+    pushWrapped(lines, segment, FIELD_INDENT + REMEDY_ARROW.length, width, undefined);
+};
+
 const renderSection = (section: SummarySection, width: number): ReadonlyArray<string> => {
   const lines: string[] = [];
   pushWrapped(lines, section.title, 0, width, dimText);
   if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0)) {
     pushWrapped(lines, "(none)", BODY_INDENT, width, undefined);
   }
+  const labelWidth = Math.min(
+    Math.max(
+      0,
+      ...section.rows.flatMap((row) => row.fields?.map((field) => displayWidth(field.label)) ?? []),
+    ),
+    Math.max(1, width - FIELD_INDENT - 3 - 8),
+  );
   for (const row of section.rows) {
     pushWrapped(lines, quietRowHead(row), BODY_INDENT, width, composeQuietRowStyle(row));
     if (row.fields !== undefined && row.fields.length > 0) {
-      const labelWidth = Math.max(...row.fields.map((field) => displayWidth(field.label)));
       for (const field of row.fields) {
-        pushWrapped(
-          lines,
-          `${padEndToWidth(field.label, labelWidth)} : ${field.value}`,
-          FIELD_INDENT,
-          width,
-          undefined,
-        );
+        for (const segment of wrapFieldToWidth(field.label, field.value, labelWidth, width - FIELD_INDENT)) {
+          lines.push(`${" ".repeat(FIELD_INDENT)}${segment}`);
+        }
       }
     }
     if (row.detail !== undefined) pushWrapped(lines, row.detail, FIELD_INDENT, width, undefined);
+    if (row.remedy !== undefined) pushRemedy(lines, row.remedy, width);
   }
   if (section.notes !== undefined) {
     for (const note of section.notes) pushWrapped(lines, note, BODY_INDENT, width, undefined);

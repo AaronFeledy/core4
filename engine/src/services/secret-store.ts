@@ -1,6 +1,7 @@
-import { type Context, Effect, Layer } from "effect";
+import { type Context, Effect, Either, Layer } from "effect";
 
-import { SecretNotFoundError } from "@lando/sdk/errors";
+import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
+import { parseSecretReference } from "@lando/sdk/secrets";
 import { SecretStore } from "@lando/sdk/services";
 
 /** Default env-var prefix the built-in `SecretStore` reads `${secret:…}` ids from. */
@@ -13,12 +14,28 @@ export interface EnvSecretStoreOptions {
   readonly env?: Record<string, string | undefined>;
 }
 
+const bareEnvReference = (secret: string): Either.Either<string, SecretReferenceInvalidError> => {
+  const reference = parseSecretReference(secret);
+  if (Either.isLeft(reference)) return Either.left(reference.left);
+  if (reference.right.scheme !== undefined) {
+    return Either.left(
+      new SecretReferenceInvalidError({
+        message: "The environment secret store only accepts bare secret ids.",
+        reference: secret,
+        remediation: "Use a bare secret id or route this reference to its scheme's secret store.",
+      }),
+    );
+  }
+  return Either.right(secret);
+};
+
 /**
  * Build the env-backed `SecretStore` implementation. `${secret:ID}` resolves the
  * env var `${prefix}${ID}` (default prefix `LANDO_SECRET_`). A missing secret
  * fails with {@link SecretNotFoundError} carrying the requested id. `list`
  * enumerates only prefixed ids (prefix stripped, sorted) so it never leaks
- * unrelated environment variables or any secret value.
+ * unrelated environment variables or any secret value. `has` uses the same
+ * reference parsing as `get` and reports false for ids `get` rejects.
  */
 export const makeEnvSecretStore = (
   options: EnvSecretStoreOptions = {},
@@ -31,7 +48,10 @@ export const makeEnvSecretStore = (
 
   return {
     id: "env",
+    schemes: [],
     get: (secret) => {
+      const reference = bareEnvReference(secret);
+      if (Either.isLeft(reference)) return Effect.fail(reference.left);
       const value = readValue(secret);
       return value === undefined
         ? Effect.fail(
@@ -43,7 +63,8 @@ export const makeEnvSecretStore = (
           )
         : Effect.succeed(value);
     },
-    has: (secret) => Effect.sync(() => readValue(secret) !== undefined),
+    has: (secret) =>
+      Effect.sync(() => Either.isRight(bareEnvReference(secret)) && readValue(secret) !== undefined),
     list: Effect.sync(() =>
       Object.keys(env)
         .filter((key) => key.startsWith(prefix) && env[key] !== undefined)

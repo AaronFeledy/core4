@@ -170,6 +170,7 @@ export const renderCommandHelp = (entry: CommandHelpEntry, options?: CommandHelp
       ...(entry.spec.aliases === undefined ? {} : { aliases: entry.spec.aliases }),
     }),
     options?.aliasPolicy,
+    false,
   );
   const usage = renderCommandUsage(names.primary, entry.spec);
   const flagLines = renderCommandHelpFlags(entry.spec).map((line) =>

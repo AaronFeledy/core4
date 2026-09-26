@@ -728,6 +728,10 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       calls.processRunner.push(spawnOptions);
       return Stream.empty;
     },
+    streamWithExit: (spawnOptions) => {
+      calls.processRunner.push(spawnOptions);
+      return Stream.make({ exitCode: 0 });
+    },
   };
 
   const configService: Context.Tag.Service<typeof ConfigService> = {
@@ -933,6 +937,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           app: spec.app,
           service: spec.service,
           mountKey: spec.mountKey,
+          spec,
           status: "running",
           lastUpdatedAt: fixedDateTime,
         });
@@ -948,6 +953,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         const current = fileSyncSessions.get(ref);
         if (current !== undefined) fileSyncSessions.set(ref, { ...current, status: "running" });
       }),
+    flushSession: () => Effect.void,
     terminateSession: (ref) =>
       Effect.sync(() => {
         fileSyncSessions.delete(ref);

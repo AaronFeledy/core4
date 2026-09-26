@@ -689,6 +689,18 @@ const createTestOnlyFakeRunCli =
     Effect.tryPromise(async () => {
       const args = appendInitAnswers(parseCommand(command), options?.answers);
       if (isVersionCommand(args)) return versionResult(args, events);
+      if (args[0] === "poweroff" || args[0] === "apps:poweroff") {
+        const started = events.some((event) => event._tag === "post-start");
+        const poweredOff = events.some((event) => event._tag === "post-global-stop");
+        if (started && !poweredOff) events.push({ _tag: "post-global-stop" } as LandoEvent);
+        return {
+          command: args,
+          stdout: started && !poweredOff ? "Powered off: test app\n" : "No Lando apps to power off.\n",
+          stderr: "",
+          exitCode: 0,
+          events: [...events],
+        };
+      }
 
       const scenarioLayerResult = await runScenarioLayerCommand(args, getWorkingDirectory(), events);
       if (scenarioLayerResult !== undefined) return scenarioLayerResult;

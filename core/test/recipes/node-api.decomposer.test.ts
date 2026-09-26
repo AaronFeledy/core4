@@ -63,6 +63,7 @@ describe("node-api decomposition", () => {
       services: {
         api: {
           type: "node:{{ recipe.node }}",
+          primary: true,
           port: 3000,
           environment: { API_FRAMEWORK: "{{ recipe.framework }}" },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
@@ -127,7 +128,7 @@ describe("node-api decomposition", () => {
     expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(NODE_API_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(nodeApiSnapshot);
     expect(nodeApiSnapshot.identity.contentDigest).toBe(
-      "sha256:626bd72893e7a7a7497203b980754e9a4ba7d0dee5a3e1beb29ab6cf84cc1062",
+      "sha256:8f8d44bb5a545862ab890596e276df763554539f02259051853a3da3d7968227",
     );
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

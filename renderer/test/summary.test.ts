@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
-import { type SummaryDocument, formatSummary, redactSummaryDocument } from "@lando/renderer/summary";
+import {
+  type SummaryDocument,
+  formatQuietSummary,
+  formatSummary,
+  redactSummaryDocument,
+} from "@lando/renderer/summary";
 
 const ESC = String.fromCharCode(27);
 const BOLD = `${ESC}[1m`;
@@ -267,4 +272,169 @@ describe("formatSummary row href and muted", () => {
     expect(body).toContain(GREEN);
     expect(body).toContain(`${ESC}]8;;https://example.com${ST}`);
   });
+});
+
+describe("formatSummary remedy", () => {
+  test("frames a remedy as a hanging arrow line inside the box", () => {
+    const out = stripAnsi(
+      formatSummary(
+        {
+          title: "DOCTOR",
+          sections: [
+            {
+              title: "provider",
+              rows: [
+                { label: "ports", tone: "warn", remedy: "Stop the process holding the port and retry." },
+              ],
+            },
+          ],
+        },
+        { columns: 40 },
+      ),
+    );
+    const lines = out.split("\n");
+    expect(lines).toContain("│   ↳ Stop the process holding the     │");
+    expect(lines).toContain("│     port and retry.                  │");
+    for (const line of lines) expect(displayWidth(line)).toBe(40);
+  });
+});
+
+test("aligns field separators across rows in both summary layouts", () => {
+  const doc: SummaryDocument = {
+    title: "APP INFO",
+    sections: [
+      {
+        title: "services",
+        rows: [
+          { label: "appserver", fields: [{ label: "endpoints", value: "https://example.test" }] },
+          { label: "database", fields: [{ label: "rootPassword", value: "[redacted]" }] },
+        ],
+      },
+    ],
+  };
+  for (const render of [formatSummary, formatQuietSummary]) {
+    const lines = stripAnsi(render(doc, { columns: 100 })).split("\n");
+    const fields = lines.filter((line) => line.includes("endpoints") || line.includes("rootPassword"));
+    expect(fields).toHaveLength(2);
+    expect(fields[0]?.indexOf(" : ")).toBe(fields[1]?.indexOf(" : "));
+  }
+});
+
+test("aligns separators and retains long field values when they wrap", () => {
+  const url = "http://127.0.0.1:49281/very/long/appserver/debug/endpoint";
+  const logFile = "C:\\Program Files\\Lando\\logs\\my app server.log";
+  const doc: SummaryDocument = {
+    title: "APP INFO",
+    sections: [
+      {
+        title: "services",
+        rows: [
+          { label: "appserver", fields: [{ label: "url", value: url }] },
+          { label: "database", fields: [{ label: "rootPassword", value: logFile }] },
+        ],
+      },
+    ],
+  };
+
+  for (const columns of [44, 24]) {
+    for (const render of [formatSummary, formatQuietSummary]) {
+      const visible = stripAnsi(render(doc, { columns }));
+      const lines = visible.split("\n");
+      const separators = lines.filter((line) => line.includes(" : "));
+      expect(separators).toHaveLength(2);
+      expect(separators[0]?.indexOf(" : ")).toBe(separators[1]?.indexOf(" : "));
+      expect(lines.every((line) => displayWidth(line) <= columns)).toBe(true);
+      const compact = visible.replace(/[│\s]/gu, "");
+      expect(compact).toContain(url);
+    }
+  }
+});
+
+test("keeps words together in 80-column log details and endpoint lists", () => {
+  const doc: SummaryDocument = {
+    title: "APP INFO",
+    sections: [
+      {
+        title: "services",
+        rows: [
+          {
+            label: "appserver",
+            fields: [
+              {
+                label: "endpoints",
+                value: "http://127.0.0.1:49152/windows-cms http://127.0.0.1:49153/windows-cms",
+              },
+            ],
+          },
+          {
+            label: "database",
+            fields: [
+              {
+                label: "logDetails",
+                value:
+                  "probe: GET http://127.0.0.1:8000/health returned 302; strategy: redirect after startup",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  for (const render of [formatSummary, formatQuietSummary]) {
+    const lines = stripAnsi(render(doc, { columns: 80 })).split("\n");
+    const separators = lines.filter((line) => line.includes(" : "));
+    expect(separators).toHaveLength(2);
+    expect(separators[0]?.indexOf(" : ")).toBe(separators[1]?.indexOf(" : "));
+    expect(lines.filter((line) => line.includes("windows-cms"))).toHaveLength(2);
+    expect(lines.some((line) => line.includes("redirect"))).toBe(true);
+    expect(lines.every((line) => displayWidth(line) <= 80)).toBe(true);
+  }
+});
+
+test("keeps short field values beside their labels at narrow terminal widths", () => {
+  const doc: SummaryDocument = {
+    title: "APP INFO",
+    sections: [
+      {
+        title: "services",
+        rows: [
+          { label: "appserver", fields: [{ label: "host", value: "x" }] },
+          { label: "database", fields: [{ label: "very-long-diagnostic-field-name", value: "y" }] },
+        ],
+      },
+    ],
+  };
+  const boxed = stripAnsi(formatSummary(doc, { columns: 24 }));
+  const quiet = stripAnsi(formatQuietSummary(doc, { columns: 24 }));
+  expect(boxed.split("\n").some((line) => /host\s+: x/u.test(line))).toBe(true);
+  expect(quiet.split("\n").some((line) => /host\s+: x/u.test(line))).toBe(true);
+  expect(boxed.split("\n").some((line) => /^│\s+│$/u.test(line))).toBe(false);
+  expect(quiet.split("\n").some((line) => line.length > 0 && line.trim().length === 0)).toBe(false);
+});
+
+test("keeps multiline field values inside the frame", () => {
+  const doc: SummaryDocument = {
+    title: "DOCTOR",
+    sections: [
+      {
+        title: "provider",
+        rows: [
+          {
+            label: "runtime",
+            fields: [{ label: "detail", value: "podman machine failed to start cleanly\nERROR: disk full" }],
+          },
+        ],
+      },
+    ],
+  };
+  for (const render of [formatSummary, formatQuietSummary]) {
+    const lines = stripAnsi(render(doc, { columns: 32 })).split("\n");
+    expect(lines.every((line) => !line.includes("\r") && displayWidth(line) <= 32)).toBe(true);
+    expect(lines.some((line) => line.includes("ERROR: disk full"))).toBe(true);
+  }
+  const boxed = stripAnsi(formatSummary(doc, { columns: 32 })).split("\n");
+  const errorLine = boxed.find((line) => line.includes("ERROR: disk full")) ?? "";
+  expect(errorLine.startsWith("│")).toBe(true);
+  expect(displayWidth(errorLine)).toBe(32);
 });

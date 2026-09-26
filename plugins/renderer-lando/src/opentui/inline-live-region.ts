@@ -10,23 +10,27 @@ const ESC = String.fromCharCode(27);
 
 const bodyOf = (lines: ReadonlyArray<string>): string => {
   if (lines.length === 0) return "";
-  return `${lines.map((line) => stripNonSgrControls(line)).join("\n")}\n`;
+  // VT line feed preserves the current column. Explicit CR keeps ConPTY and
+  // raw-mode terminals aligned even when output translation is disabled.
+  return `${lines.map((line) => stripNonSgrControls(line)).join("\r\n")}\r\n`;
 };
 
 const rowsFor = (text: string): ReadonlyArray<string> =>
-  (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
+  (text.endsWith("\n") ? text.slice(0, -1) : text)
+    .split("\n")
+    .map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
 
 export const createInlineLiveRegionPainter = (write: (text: string) => void): InlineLiveRegionPainter => {
   let paintedRows = 0;
   return {
     paint: (lines) => {
       const body = bodyOf(lines);
-      write(paintedRows === 0 ? body : `${ESC}[${paintedRows}A${ESC}[J${body}`);
+      write(paintedRows === 0 ? body : `\r${ESC}[${paintedRows}A${ESC}[J${body}`);
       paintedRows = lines.length;
     },
     commitAbove: (text) => {
       if (paintedRows > 0) {
-        write(`${ESC}[${paintedRows}A${ESC}[J`);
+        write(`\r${ESC}[${paintedRows}A${ESC}[J`);
         paintedRows = 0;
       }
       const inPlace = isInPlaceTerminalUpdate(text);
@@ -38,8 +42,9 @@ export const createInlineLiveRegionPainter = (write: (text: string) => void): In
         return;
       }
       const lines = rowsFor(stripped);
-      if (lines.length === 1 && lines[0] === "") return;
-      write(`${lines.join("\n")}\n`);
+      // A newline-only chunk terminates an in-place child progress line. Do not
+      // drop it before the live footer is painted again.
+      write(`${lines.join("\r\n")}\r\n`);
     },
     release: () => {
       paintedRows = 0;

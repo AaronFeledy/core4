@@ -94,7 +94,7 @@ const runAppsPoweroff = async (argv: ReadonlyArray<string>): Promise<void> => {
   const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(
     poweroff({ keepGlobal, keepScratch, yes }),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } })),
     renderPoweroffResult,
   );
 };

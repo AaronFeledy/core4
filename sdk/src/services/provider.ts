@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope, type Stream } from "effect";
 
 import type {
   AppResolveError,
+  ArtifactBuildError,
   ArtifactTransferError,
   NoProviderInstalledError,
   ProviderCapabilityError,
@@ -21,16 +22,23 @@ import type {
 import type { EndpointInfo } from "../schema/endpoint.ts";
 import type {
   AbsolutePath,
+  AgentSocketBridgeInput,
+  AgentSocketBridgeResult,
   AppId,
   AppPlan,
   DataStoreMountPlan,
   DoctorResourceNameQuery,
+  FileSyncSessionSpec,
   HostPlatform,
+  HostProxyBridgeInput,
+  HostProxyBridgeResult,
   LogSource,
   LogSourceId,
   MountPlan,
   NetworkConfig,
+  PortNumber,
   PortablePath,
+  PreparedFileSyncTarget,
   ProviderCapabilities,
   ProviderId,
   ProviderSetupPlan,
@@ -49,6 +57,7 @@ import type {
 import type { PrivilegeService } from "./process.ts";
 
 export type ProviderError =
+  | ArtifactBuildError
   | ProviderCapabilityError
   | ProviderConfigError
   | ProviderInternalError
@@ -259,6 +268,13 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
   }
 >() {}
 
+export type AppliedFileSyncInspection =
+  | { readonly status: "missing" | "ordinary" | "unknown" }
+  | {
+      readonly status: "accelerated";
+      readonly engineId: string;
+      readonly sessions: ReadonlyArray<FileSyncSessionSpec>;
+    };
 export interface RuntimeProviderShape {
   readonly id: string;
   readonly displayName: string;
@@ -275,12 +291,45 @@ export interface RuntimeProviderShape {
     plan: ProviderSetupPlan,
     options: ProviderSetupOptions,
   ) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  /** Ensure a selected provider runtime is reachable before host-dependent planning. */
+  readonly ensureReady?: Effect.Effect<void, ProviderError>;
   readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
   readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
+  /** Published TCP ports already bound inside the provider host. This probe is read-only and never starts a runtime. */
+  readonly occupiedPublishPorts?: (
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+
+  /** Published ports whose guest DNAT claims all target this running container. Optional on split-host providers. */
+  readonly matchingPublishPorts?: (
+    containerId: string,
+    ports: ReadonlyArray<PortNumber>,
+  ) => Effect.Effect<ReadonlyArray<PortNumber>, ProviderError>;
+  /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
+  readonly openHostProxyBridge?: (
+    input: HostProxyBridgeInput,
+  ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+  /** Delivers the named agent socket through provider-owned resources released with the caller scope. */
+  readonly openAgentSocketBridge?: (
+    input: AgentSocketBridgeInput,
+  ) => Effect.Effect<AgentSocketBridgeResult, ProviderError, Scope.Scope>;
 
   readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
   readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
   readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
+
+  /** Read prior accelerated mount ownership before a planned fallback can change app mounts. */
+  readonly inspectAppliedFileSync?: (
+    plan: AppPlan,
+  ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
+  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
+  readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
+    {
+      readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
+      readonly rollback: Effect.Effect<void, ProviderError>;
+    },
+    ProviderError
+  >;
 
   readonly apply: (
     plan: AppPlan,
@@ -313,6 +362,8 @@ export interface RuntimeProviderShape {
   readonly removeObservedService: (
     observed: ServiceRuntimeInfo,
   ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
+  /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
+  readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
   readonly execStream: (

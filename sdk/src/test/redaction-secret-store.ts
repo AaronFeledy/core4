@@ -1,6 +1,10 @@
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Either, Exit, Option } from "effect";
 
-import { SecretNotFoundError } from "../errors/index.ts";
+import {
+  SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
+} from "../errors/index.ts";
 import type {
   CreateRedactorOptions,
   RedactionProfile,
@@ -274,6 +278,11 @@ export interface SecretStoreContractHarness {
   readonly known: { readonly key: string; readonly value: string };
   /** A secret id guaranteed to be absent. */
   readonly unknown: string;
+  readonly invalidReference: string;
+  readonly unavailableStore?: {
+    readonly store: SecretStoreShape;
+    readonly reason: SecretStoreUnavailableError["reason"];
+  };
   /**
    * Optional: build a value redactor seeded from the resolved secret so the
    * suite can prove resolved values never survive in rendered output.
@@ -335,7 +344,9 @@ export const runSecretStoreContractSuite = (
       { first, second },
     );
 
-    const hasKnown = yield* store.has(harness.known.key);
+    const hasKnown = yield* store
+      .has(harness.known.key)
+      .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(known) resolves`, cause)));
     yield* requireSecretStoreContract(hasKnown === true, `${label}: has(known) is true`, hasKnown);
 
     const listed = yield* store.list;
@@ -373,8 +384,34 @@ export const runSecretStoreContractSuite = (
         );
       }
     }
-    const hasUnknown = yield* store.has(harness.unknown);
+    const hasUnknown = yield* store
+      .has(harness.unknown)
+      .pipe(Effect.mapError((cause) => secretStoreContractFailure(`${label}: has(unknown) resolves`, cause)));
     yield* requireSecretStoreContract(hasUnknown === false, `${label}: has(unknown) is false`, hasUnknown);
+
+    const invalid = yield* Effect.either(store.get(harness.invalidReference));
+    yield* requireSecretStoreContract(
+      Either.isLeft(invalid) &&
+        invalid.left instanceof SecretReferenceInvalidError &&
+        invalid.left.reference === harness.invalidReference,
+      `${label}: get(invalidReference) fails with SecretReferenceInvalidError carrying the reference`,
+    );
+
+    if (harness.unavailableStore) {
+      const { store: unavailable, reason } = harness.unavailableStore;
+      for (const result of [
+        yield* Effect.either(Effect.asVoid(unavailable.get(harness.known.key))),
+        yield* Effect.either(Effect.asVoid(unavailable.has(harness.known.key))),
+      ]) {
+        yield* requireSecretStoreContract(
+          Either.isLeft(result) &&
+            result.left instanceof SecretStoreUnavailableError &&
+            result.left.reason === reason &&
+            result.left.storeId === unavailable.id,
+          `${label}: unavailable get/has preserves SecretStoreUnavailableError with store id and reason`,
+        );
+      }
+    }
 
     // --- optional: resolved values register with the canonical redactor ---
     if (harness.redactor) {
@@ -398,8 +435,11 @@ export const runSecretStoreContractSuite = (
       if (Exit.isFailure(failExit)) {
         const failure = Cause.failureOption(failExit.cause);
         yield* requireSecretStoreContract(
-          Option.isSome(failure) && typeof (failure.value as { _tag?: unknown })._tag === "string",
-          `${label}: backend/auth failure is a tagged error (carries _tag)`,
+          Option.isSome(failure) &&
+            (failure.value instanceof SecretNotFoundError ||
+              failure.value instanceof SecretStoreUnavailableError ||
+              failure.value instanceof SecretReferenceInvalidError),
+          `${label}: backend/auth failure is a SecretStoreError member`,
           failExit.cause,
         );
       }

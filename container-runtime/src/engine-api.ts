@@ -18,6 +18,8 @@ export interface EngineHttpRequest {
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
+  /** Called after successful stream response headers arrive, before body bytes are emitted. */
+  readonly onResponseHead?: () => void;
 }
 
 export interface EngineHttpResponse {
@@ -26,6 +28,8 @@ export interface EngineHttpResponse {
 }
 
 export interface EngineHttpApi {
+  /** Named-pipe exec attach can stay open after Podman reports command exit. */
+  readonly execAttachNeedsInspectCompletion?: boolean;
   readonly request?: (
     request: EngineHttpRequest,
   ) => Effect.Effect<EngineHttpResponse, ProviderUnavailableError | ProviderInternalError>;

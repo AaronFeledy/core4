@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { toSqlPlan } from "../src/views.ts";
+import { toSqlLandofile, toSqlPlan } from "../src/views.ts";
 
 describe("toSqlPlan", () => {
   test("preserves storage destinations when projecting a service", () => {
@@ -49,5 +49,20 @@ describe("toSqlPlan", () => {
     });
 
     expect(Reflect.has(plan.services.database ?? {}, "version")).toBe(false);
+  });
+});
+
+test("toSqlLandofile retains authored password environment for redaction provenance", () => {
+  const landofile = toSqlLandofile({
+    services: {
+      database: {
+        type: "mysql",
+        environment: { MYSQL_PASSWORD: "lando", MYSQL_DATABASE: "app" },
+      },
+    },
+  });
+  expect(landofile.services?.database?.environment).toEqual({
+    MYSQL_PASSWORD: "lando",
+    MYSQL_DATABASE: "app",
   });
 });

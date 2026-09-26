@@ -6,9 +6,16 @@
  * matching `--skip-*` flag. They are pulled out of the command orchestration so
  * each service concern reads as one unit.
  */
-import { type Context, Effect } from "effect";
+import { type Context, DateTime, Effect } from "effect";
 
-import { CertificateAuthority, type PrivilegeService, RouterService, SshService } from "@lando/sdk/services";
+import { MessageInfoEvent } from "@lando/sdk/events";
+import {
+  CertificateAuthority,
+  EventService,
+  type PrivilegeService,
+  RouterService,
+  SshService,
+} from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { resolveRouterConfigForApp } from "@lando/engine/config/router-config";
@@ -45,6 +52,7 @@ export const runCaSetupStep = (
   privilegeOptions: SetupPrivilegeOptions,
   recorder: SetupReadinessRecorder,
   selectedProviderId = "lando",
+  platform: NodeJS.Platform = process.platform,
 ) =>
   Effect.gen(function* () {
     const skipTrustInstall = inputBooleanFlag(input, "skip-install-ca");
@@ -91,6 +99,19 @@ export const runCaSetupStep = (
           ? authority.value
           : undefined;
     if (ca !== undefined) {
+      if (platform === "win32" && !skipTrustInstall) {
+        const events = yield* Effect.serviceOption(EventService);
+        if (events._tag === "Some") {
+          yield* events.value
+            .publish(
+              MessageInfoEvent.make({
+                body: "Installing local certificate trust. Windows may open a Security Warning; approve it to continue. --yes cannot answer Windows security prompts.",
+                timestamp: DateTime.unsafeMake(Date.now()),
+              }),
+            )
+            .pipe(Effect.ignore);
+        }
+      }
       yield* ca
         .setup({
           force: false,
@@ -124,7 +145,8 @@ export const runProxySetupStep = (
     if (proxy._tag === "Some") {
       const defaultDomain = yield* resolveProxyDefaultDomain;
       const { router, routerPin } = yield* resolveRouterConfigForApp();
-      yield* Effect.scoped(proxy.value.setup({ defaultDomain, router, routerPin })).pipe(
+      const autoApprove = inputBooleanFlag(input, "yes") || inputBooleanFlag(input, "no-interactive");
+      yield* Effect.scoped(proxy.value.setup({ defaultDomain, router, routerPin }, { autoApprove })).pipe(
         Effect.tapError((cause) => recorder.recordFailure("proxy", cause)),
       );
       yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Router setup completed." });

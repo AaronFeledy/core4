@@ -224,7 +224,9 @@ describe("provider-lando exec", () => {
     );
 
     expect(Array.from(chunks)).toEqual([]);
-    expect(fake.calls.find((call) => call.path === "/exec/exec-1/start")?.signal).toBe(controller.signal);
+    const attachSignal = fake.calls.find((call) => call.path === "/exec/exec-1/start")?.signal;
+    expect(attachSignal).toBeInstanceOf(AbortSignal);
+    expect(attachSignal?.aborted).toBe(true);
   });
 
   test("resolves nonzero exit as an exit code without stderr", async () => {

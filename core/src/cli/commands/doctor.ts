@@ -240,17 +240,22 @@ export const doctor = (
             ];
           })
         : [];
-    const oomChecks = collectOomDoctorChecks(
-      yield* containerDiedEventPayloadsFor(
+    const diedEventsOutcome = yield* isolateDoctorSection({
+      section: "container-died-events",
+      effect: containerDiedEventPayloadsFor(
         provider as ContainerDiedEventCapableProvider,
         options.diedEventPayloads,
       ),
-      {
-        provider,
-        providerKind: diagnosis.providerKind,
-        platform: options.platform ?? provider.platform,
-      },
-    );
+      fallback: [] as ReadonlyArray<unknown>,
+      budgetMs: probeBudget,
+      redact,
+    });
+    if (diedEventsOutcome.self !== undefined) selfChecks.push(diedEventsOutcome.self);
+    const oomChecks = collectOomDoctorChecks(diedEventsOutcome.value, {
+      provider,
+      providerKind: diagnosis.providerKind,
+      platform: options.platform ?? provider.platform,
+    });
     const hostProxyOutcome = yield* isolateDoctorSection({
       section: "host-proxy",
       effect: hostProxyTransportDoctorChecks({

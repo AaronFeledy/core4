@@ -41,6 +41,7 @@ interface PluginRegistryInput {
   readonly bundledPlugins: ReadonlyArray<DiscoveredPlugin>;
   readonly capabilities: PluginCapabilityIndex;
   readonly staticPlugins?: ReadonlyArray<DiscoveredPlugin>;
+  readonly staticGlobalPlugins?: ReadonlyArray<DiscoveredPlugin>;
 }
 
 const makePluginRegistry = (
@@ -52,7 +53,7 @@ const makePluginRegistry = (
   const disabled = new Set(discovery.disable ?? []);
   const staticPlugins = input.staticPlugins;
   const discoverGlobalPlugins = Effect.gen(function* () {
-    if (staticPlugins !== undefined) return staticPlugins.filter((plugin) => plugin.source !== "app");
+    if (input.staticGlobalPlugins !== undefined) return input.staticGlobalPlugins;
     const userDataRoot =
       configService === undefined
         ? resolveUserDataRoot()
@@ -206,6 +207,7 @@ export const makePluginRegistryLive = (
           bundledPlugins: systemPluginsFromModules(enabledModules),
           capabilities,
           ...(staticPlugins === undefined ? {} : { staticPlugins }),
+          ...(graph._tag === "Some" ? { staticGlobalPlugins: graph.value.globalPlugins } : {}),
         },
       );
       return Context.make(PluginRegistry, services.registry).pipe(
