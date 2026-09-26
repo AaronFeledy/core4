@@ -34,7 +34,7 @@ export const SETUP_BUILTIN_FLAGS = {
   "skip-install-ca": Flags.boolean({ default: false }),
   "skip-shell-integration": Flags.boolean({ default: false }),
   "skip-file-sync": Flags.boolean({
-    description: "Skip Mutagen binary download; deferred to first accelerated app:start.",
+    description: "Skip Mutagen binary download during setup on a slow-mount host.",
     default: false,
   }),
   "host-proxy": Flags.string({

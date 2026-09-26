@@ -56,6 +56,7 @@ describe("FileSyncEngine contract", () => {
     expect(typeof engine.createSession).toBe("function");
     expect(typeof engine.pauseSession).toBe("function");
     expect(typeof engine.resumeSession).toBe("function");
+    expect(typeof engine.flushSession).toBe("function");
     expect(typeof engine.terminateSession).toBe("function");
     expect(typeof engine.listSessions).toBe("function");
     expect(typeof engine.streamEvents).toBe("function");
@@ -68,6 +69,7 @@ describe("FileSyncEngine contract", () => {
     expect(Effect.isEffect(TestFileSyncEngine.createSession(spec))).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.pauseSession(FileSyncSessionRef.make("x")))).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.resumeSession(FileSyncSessionRef.make("x")))).toBe(true);
+    expect(Effect.isEffect(TestFileSyncEngine.flushSession(FileSyncSessionRef.make("x")))).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.terminateSession(FileSyncSessionRef.make("x")))).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.listSessions({}))).toBe(true);
     expect(Stream.StreamTypeId in Object(TestFileSyncEngine.streamEvents(FileSyncSessionRef.make("x")))).toBe(
@@ -85,6 +87,8 @@ describe("FileSyncEngine contract", () => {
           const ref = yield* engine.createSession(spec);
           let listing = yield* engine.listSessions({});
           expect(listing.find((s) => s.ref === ref)?.status).toBe("running");
+          expect(listing.find((s) => s.ref === ref)?.spec).toEqual(spec);
+          yield* engine.flushSession(ref);
 
           yield* engine.pauseSession(ref);
           listing = yield* engine.listSessions({});

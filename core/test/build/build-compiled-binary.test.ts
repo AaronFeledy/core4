@@ -15,6 +15,10 @@ import {
 import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/catalog.generated.ts";
 
 const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
+const fixtureShimAssets = async (): Promise<readonly [string, string]> => [
+  "/fixture/lando-host-proxy-linux-x64.bin.gz",
+  "/fixture/lando-host-proxy-linux-arm64.bin.gz",
+];
 
 describe("compiled bytecode target policy", () => {
   test.each(releaseTargets)("preserves native bytecode for %s", (target) => {
@@ -97,6 +101,7 @@ describe("compiled binary OpenTUI native pruning", () => {
     await buildCompiledBinary(
       { target: "linux-x64", outfile: "./dist/lando-linux-x64", version: "4.0.0-beta.1" },
       runner,
+      fixtureShimAssets,
     );
 
     // Then: compile, bytecode, minification, sourcemap, define, and exactly one pruning plugin are preserved.
@@ -132,7 +137,11 @@ describe("compiled binary OpenTUI native pruning", () => {
     });
 
     // When: the failed output is returned through the compiled-binary build boundary.
-    const build = buildCompiledBinary({ target: "linux-x64", outfile: "./dist/lando-linux-x64" }, runner);
+    const build = buildCompiledBinary(
+      { target: "linux-x64", outfile: "./dist/lando-linux-x64" },
+      runner,
+      fixtureShimAssets,
+    );
 
     // Then: callers receive a typed failure that preserves Bun's diagnostics.
     await expect(build).rejects.toBeInstanceOf(CompiledBinaryBuildError);
@@ -153,6 +162,7 @@ describe("compiled binary OpenTUI native pruning", () => {
         received = config;
         return { success: true, logs: [], outputs: [] };
       },
+      fixtureShimAssets,
     );
     // Then: only bytecode is disabled; ESM splitting and native pruning remain.
     expect(received).toMatchObject({
@@ -197,7 +207,11 @@ describe("compiled binary OpenTUI native pruning", () => {
     };
 
     // When: a binary is built without an explicit --version.
-    await buildCompiledBinary({ target: "linux-x64", outfile: "./dist/lando-linux-x64" }, runner);
+    await buildCompiledBinary(
+      { target: "linux-x64", outfile: "./dist/lando-linux-x64" },
+      runner,
+      fixtureShimAssets,
+    );
 
     // Then: the compile-time token is always a real prerelease, never the working-tree pin.
     const stamped = received?.define?.__LANDO_CORE_VERSION__;
@@ -214,6 +228,7 @@ describe("compiled binary OpenTUI native pruning", () => {
       buildCompiledBinary(
         { target: "linux-x64", outfile: "./dist/lando-linux-x64", version: "0.0.0" },
         runner,
+        fixtureShimAssets,
       ),
     ).rejects.toBeInstanceOf(CompiledBinaryVersionError);
   });

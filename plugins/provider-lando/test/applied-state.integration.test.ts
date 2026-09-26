@@ -18,6 +18,7 @@ import {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -29,6 +30,8 @@ import {
 } from "@lando/sdk/schema";
 import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/service";
 const makeStateStore = () => makeStateStoreUsing({ privateFileAccess: ownerOnlyFileAccess });
+import { inspectAppliedFileSync } from "../src/applied-file-sync.ts";
+import { inspectAppliedPlan } from "../src/applied-state.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -159,6 +162,147 @@ describe("provider-lando applied state persistence", () => {
     });
   });
 
+  test("strict inspection separates missing, readable, and damaged applied receipts", async () => {
+    await withStateDir(async (stateDir) => {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({ status: "missing" });
+      await Effect.runPromise(persistAppliedPlan(state, plan));
+      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toMatchObject({
+        status: "readable",
+        plan: { id: plan.id },
+      });
+      const path = appliedPlanPath(stateDir, plan.id);
+      await writeFile(path, "not valid json");
+      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({ status: "unreadable" });
+      await writeFile(path, JSON.stringify({ version: 99, data: {} }));
+      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({ status: "unreadable" });
+      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({ status: "unreadable" });
+    });
+  });
+  test("file-sync fallback inspection checks applied state and owned Podman volumes", async () => {
+    await withStateDir(async (stateDir) => {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const volumes = (entries: ReadonlyArray<unknown>) => ({
+        request: () => Effect.succeed({ status: 200, body: JSON.stringify({ Volumes: entries }) }),
+      });
+      const emptyApi = volumes([]);
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, emptyApi, plan))).toEqual({
+        status: "missing",
+      });
+      expect(
+        await Effect.runPromise(
+          inspectAppliedFileSync(state, volumes([{ Name: "applied-state-database-data", Labels: {} }]), plan),
+        ),
+      ).toEqual({ status: "missing" });
+      expect(
+        await Effect.runPromise(
+          inspectAppliedFileSync(state, volumes([{ Name: "applied-state-old-app-mount", Labels: {} }]), plan),
+        ),
+      ).toEqual({ status: "unknown" });
+      const ownedVolume = {
+        Name: "applied-state-web-app-mount",
+        Labels: {
+          "dev.lando.app": String(plan.id),
+          "dev.lando.sync.kind": "volume",
+        },
+      };
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, volumes([ownedVolume]), plan))).toEqual({
+        status: "unknown",
+      });
+      await Effect.runPromise(persistAppliedPlan(state, plan));
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, emptyApi, plan))).toEqual({
+        status: "ordinary",
+      });
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, volumes([ownedVolume]), plan))).toEqual({
+        status: "unknown",
+      });
+      const expectedNameWithoutOwner = { Name: "applied-state-web-app-mount", Labels: {} };
+      expect(
+        await Effect.runPromise(inspectAppliedFileSync(state, volumes([expectedNameWithoutOwner]), plan)),
+      ).toEqual({ status: "unknown" });
+      await writeFile(appliedPlanPath(stateDir, plan.id), "not valid json");
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, emptyApi, plan))).toEqual({
+        status: "unknown",
+      });
+    });
+  });
+  test("file-sync inspection fails closed on foreign names, API errors, and malformed responses", async () => {
+    await withStateDir(async (stateDir) => {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const planned: AppPlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: {
+            ...web,
+            appMount: {
+              source: plan.root,
+              target: PortablePath.make("/app"),
+              readOnly: false,
+              realization: "accelerated",
+              excludes: [],
+              includes: [],
+            },
+          },
+        },
+        fileSync: [
+          {
+            engineId: "mutagen",
+            session: {
+              app: { kind: "user", id: plan.id, root: plan.root },
+              service: web.name,
+              mountKey: "app-mount",
+              source: plan.root,
+              target: {
+                _tag: "volume",
+                name: "applied-state-web-app-mount",
+                path: PortablePath.make("/app"),
+              },
+              mode: "two-way-safe",
+              excludes: [],
+            },
+          },
+        ],
+      };
+      const foreign = { Name: "applied-state-web-app-mount", Labels: { "dev.lando.app": "other" } };
+      const foreignApi = {
+        request: () => Effect.succeed({ status: 200, body: JSON.stringify({ Volumes: [foreign] }) }),
+      };
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, foreignApi, planned))).toEqual({
+        status: "unknown",
+      });
+      const failedApi = {
+        request: () =>
+          Effect.fail(
+            new ProviderUnavailableError({
+              providerId: "lando",
+              operation: "listVolumes",
+              message: "offline",
+            }),
+          ),
+      };
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, failedApi, planned))).toEqual({
+        status: "unknown",
+      });
+      const malformedApi = { request: () => Effect.succeed({ status: 200, body: "{}" }) };
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, malformedApi, planned))).toEqual({
+        status: "unknown",
+      });
+      await Effect.runPromise(persistAppliedPlan(state, planned));
+      const emptyApi = {
+        request: () => Effect.succeed({ status: 200, body: JSON.stringify({ Volumes: [] }) }),
+      };
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, emptyApi, plan))).toMatchObject({
+        status: "accelerated",
+        engineId: planned.fileSync[0]?.engineId,
+        sessions: [planned.fileSync[0]?.session],
+      });
+      await Effect.runPromise(persistAppliedPlan(state, { ...planned, fileSync: [] }));
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, emptyApi, plan))).toEqual({
+        status: "unknown",
+      });
+    });
+  });
   test("loadAppliedPlan returns undefined when the file is missing", async () => {
     await withStateDir(async (stateDir) => {
       const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));

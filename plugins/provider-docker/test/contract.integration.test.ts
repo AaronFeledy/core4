@@ -1307,8 +1307,8 @@ describe("provider-docker RuntimeProvider contract", () => {
     );
 
     expect(Array.from(chunks)).toEqual([]);
-    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start")?.signal).toBe(
-      controller.signal,
+    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start")?.signal?.aborted).toBe(
+      true,
     );
   });
 

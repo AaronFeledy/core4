@@ -253,6 +253,14 @@
         "@lando/renderer": "workspace:*",
       },
     },
+    "plugins/secret-store-1password": {
+      "name": "@lando/secret-store-1password",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
     "plugins/service-lando": {
       "name": "@lando/service-lando",
       "version": "0.0.0",
@@ -282,6 +290,7 @@
       "name": "@lando/ssh-agent",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "^3.12.5",
       },
@@ -636,6 +645,8 @@
     "@lando/renderer-lando": ["@lando/renderer-lando@workspace:plugins/renderer-lando"],
 
     "@lando/sdk": ["@lando/sdk@workspace:sdk"],
+
+    "@lando/secret-store-1password": ["@lando/secret-store-1password@workspace:plugins/secret-store-1password"],
 
     "@lando/service-lando": ["@lando/service-lando@workspace:plugins/service-lando"],
 

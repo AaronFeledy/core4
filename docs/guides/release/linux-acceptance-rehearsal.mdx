@@ -32,7 +32,7 @@ and update spot checks that prove criteria 1-9 pass on the reference
 
 ## Criteria 15-17 — runtime, bytecode, and AOT layers
 
-- **Criterion 15** — FileSyncEngine creates accelerated app:start sessions for planned bind mounts after provider apply, and repeat app:start invocations reuse existing file-sync sessions instead of re-creating them (`core/test/cli/start.scenario.test.ts`).
+- **Criterion 15** — FileSyncEngine creates and flushes accelerated app:start sessions for planned bind mounts before provider apply, and repeat app:start invocations reuse existing file-sync sessions instead of re-creating them (`core/test/cli/start.scenario.test.ts`).
 - **Criterion 16** — the canonical release and CI wrapper builds the
   compiled binary with Bun bytecode enabled:
 

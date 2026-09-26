@@ -1,5 +1,4 @@
-import { mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { Effect, Either, Schema } from "effect";
 
@@ -7,9 +6,12 @@ import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
-import { writeFileAtomicScoped } from "@lando/state-store/atomic";
-import { withAdvisoryLockUsing } from "@lando/state-store/lock";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import {
+  readDetachedWorkerRecord,
+  withDetachedWorkerLock,
+  writeDetachedWorkerRecord,
+} from "../detached-worker/state-file.ts";
 import { hostProxyRunLandoStateDir } from "./transport-session.ts";
 import { HostProxyWorkerRecord, LegacyHostProxyWorkerRecord } from "./worker-records.ts";
 
@@ -54,39 +56,23 @@ export const readWorkerRecordStateAt = (path: string): Effect.Effect<HostProxyWo
   });
 
 export const readWorkerRecord = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides) =>
-  Effect.tryPromise({
-    try: async () => {
-      const file = Bun.file(workerStatePath(app, paths));
-      if (!(await file.exists())) return undefined;
-      return Schema.decodeUnknownSync(HostProxyWorkerRecord)(await file.json());
-    },
-    catch: (cause) =>
+  readDetachedWorkerRecord(workerStatePath(app, paths), HostProxyWorkerRecord).pipe(
+    Effect.mapError((cause) =>
       stateError("Failed to read host-proxy worker state.", workerStatePath(app, paths), cause),
-  });
+    ),
+  );
 
 export const readWorkerRecordAt = (path: string): Effect.Effect<HostProxyWorkerRecord | undefined, never> =>
-  Effect.promise(async () => {
-    try {
-      const file = Bun.file(path);
-      if (!(await file.exists())) return undefined;
-      return Schema.decodeUnknownSync(HostProxyWorkerRecord)(await file.json());
-    } catch {
-      return undefined;
-    }
-  });
+  readDetachedWorkerRecord(path, HostProxyWorkerRecord).pipe(
+    Effect.catchAll(() => Effect.succeed(undefined)),
+  );
 
 export const readLegacyWorkerRecordAt = (
   path: string,
 ): Effect.Effect<LegacyHostProxyWorkerRecord | undefined, never> =>
-  Effect.promise(async () => {
-    try {
-      const file = Bun.file(path);
-      if (!(await file.exists())) return undefined;
-      return Schema.decodeUnknownSync(LegacyHostProxyWorkerRecord)(await file.json());
-    } catch {
-      return undefined;
-    }
-  });
+  readDetachedWorkerRecord(path, LegacyHostProxyWorkerRecord).pipe(
+    Effect.catchAll(() => Effect.succeed(undefined)),
+  );
 
 export const writeWorkerRecord = (
   app: AppRef,
@@ -95,20 +81,8 @@ export const writeWorkerRecord = (
   privateFileAccess: PrivateFileAccess,
 ) => {
   const path = workerStatePath(app, paths);
-  return Effect.tryPromise({
-    try: () => mkdir(dirname(path), { recursive: true, mode: 0o700 }).then(() => undefined),
-    catch: (cause) => stateError("Failed to create host-proxy worker state directory.", path, cause),
-  }).pipe(
-    Effect.zipRight(
-      writeFileAtomicScoped(
-        path,
-        `${JSON.stringify(Schema.encodeUnknownSync(HostProxyWorkerRecord)(record), null, 2)}\n`,
-        {
-          mode: 0o600,
-          privateFileAccess: privateFileAccess.enforce,
-        },
-      ).pipe(Effect.mapError((cause) => stateError("Failed to write host-proxy worker state.", path, cause))),
-    ),
+  return writeDetachedWorkerRecord({ path, schema: HostProxyWorkerRecord, privateFileAccess }, record).pipe(
+    Effect.mapError((cause) => stateError("Failed to write host-proxy worker state.", path, cause)),
   );
 };
 
@@ -117,4 +91,8 @@ export const withWorkerRecordLock = <A, E>(
   paths: RootOverrides | undefined,
   body: Effect.Effect<A, E>,
   privateFileAccess: PrivateFileAccess,
-) => withAdvisoryLockUsing(privateFileAccess)(workerStatePath(app, paths), "host-proxy-worker", body);
+) =>
+  withDetachedWorkerLock(
+    { path: workerStatePath(app, paths), label: "host-proxy-worker", privateFileAccess },
+    body,
+  );

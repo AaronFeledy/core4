@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
+import { routerEnabled } from "@lando/engine/config/router-config";
 import type {
   HostProxyRunLandoExecutorInput,
   HostProxyRunLandoResult,
@@ -7,7 +8,7 @@ import type {
 import { RedactionService } from "@lando/redaction/service";
 import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
-import type { EventService, ShellRunner } from "@lando/sdk/services";
+import { type EventService, RouterService, type ShellRunner } from "@lando/sdk/services";
 
 import { buildCommandResultEnvelope } from "@lando/sdk/command-result";
 import { OpenAppResultSchema, openForPlan } from "../commands/open";
@@ -22,7 +23,11 @@ const redactCommandEnvelope = (
 export const runOpenForHostProxy = (
   plan: AppPlan,
   input: HostProxyRunLandoExecutorInput,
-): Effect.Effect<HostProxyRunLandoResult, never, ShellRunner | EventService | RedactionService> =>
+): Effect.Effect<
+  HostProxyRunLandoResult,
+  never,
+  ShellRunner | EventService | RedactionService | RouterService
+> =>
   Effect.gen(function* () {
     const redaction = yield* RedactionService;
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
@@ -31,7 +36,15 @@ export const runOpenForHostProxy = (
       parsed._tag === "failure"
         ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: parsed.error.exitCode ?? 2 }
         : yield* Effect.gen(function* () {
-            const outcome = yield* Effect.exit(openForPlan(plan, parsed.options));
+            const outcome = yield* Effect.exit(
+              Effect.gen(function* () {
+                if (plan.routes.length === 0 || !routerEnabled(plan))
+                  return yield* openForPlan(plan, parsed.options);
+                const router = yield* RouterService;
+                const status = yield* router.status;
+                return yield* openForPlan(plan, parsed.options, status.authorities);
+              }),
+            );
             if (Exit.isSuccess(outcome)) {
               return { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 };
             }

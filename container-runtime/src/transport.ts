@@ -10,6 +10,8 @@ export interface SocketHttpRequest {
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Bytes>;
+  /** Called after successful stream response headers arrive, before body bytes are emitted. */
+  readonly onResponseHead?: () => void;
 }
 
 export interface SocketHttpResponse {
@@ -61,25 +63,40 @@ export interface ConnectableSocket {
   destroy(): unknown;
 }
 
-export const connectSocket = async (socket: ConnectableSocket): Promise<void> => {
+export const connectSocket = async (socket: ConnectableSocket, signal?: AbortSignal): Promise<void> => {
   await new Promise<void>((resolve, reject) => {
-    const onConnect = () => {
+    const cleanup = () => {
+      socket.off("connect", onConnect);
       socket.off("error", onError);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onConnect = () => {
+      cleanup();
       resolve();
     };
     const onError = (cause: Error) => {
-      socket.off("connect", onConnect);
+      cleanup();
       socket.destroy();
       reject(cause);
     };
+    const onAbort = () => {
+      cleanup();
+      socket.destroy();
+      reject(new DOMException("Socket connection aborted.", "AbortError"));
+    };
 
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
     socket.once("connect", onConnect);
     socket.once("error", onError);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 };
 
 export interface SocketHttpClientOptions {
-  readonly connect: () => Promise<SocketHttpConnection>;
+  readonly connect: (signal?: AbortSignal) => Promise<SocketHttpConnection>;
   readonly apiPrefix: string;
   readonly hostHeader?: string;
   readonly defaultHeaders?: Readonly<Record<string, string>>;
@@ -309,7 +326,7 @@ const connect = async (
   request: SocketHttpRequest,
 ): Promise<SocketHttpConnection> => {
   try {
-    return await options.connect();
+    return await options.connect(request.signal);
   } catch (cause) {
     throw fail(
       "connect",
@@ -352,26 +369,84 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
   const operation = options.operation ?? "container-transport";
 
   const request = async (input: SocketHttpRequest): Promise<SocketHttpResponse> => {
-    // Collect the request body before opening a socket so a rejecting or interrupted
-    // stdin never leaves a connected socket behind.
+    // Buffer stdin before connecting so a failed upload leaves no socket behind.
     const stdinPayload = input.stdin === undefined ? undefined : await collectBytes(input.stdin);
+    if (input.signal?.aborted) throw new DOMException("Socket request aborted.", "AbortError");
     const connection = await connect(options, input);
+    const abort = () => connection.destroy();
+    input.signal?.addEventListener("abort", abort, { once: true });
     try {
+      if (input.signal?.aborted) throw new DOMException("Socket request aborted.", "AbortError");
       writeRequest(connection, input, options, stdinPayload);
-      const responseBytes = await collectBytes(readResponse(connection, operation, input));
-      const parsed = parseHttpHead(responseBytes, operation);
-      const bodyBytes =
-        parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked"
-          ? await collectBytes(
-              decodeChunkedBody(
-                (async function* () {
-                  yield parsed.bodyStart;
-                })(),
-              ),
-            )
-          : parsed.bodyStart;
-      return { status: parsed.status, body: textDecoder.decode(bodyBytes) };
+      let headBuffer: Bytes = new Uint8Array(0);
+      let parsed: ParsedHttpHead | undefined;
+      let contentLength: number | undefined;
+      let chunked = false;
+      let bodyBuffer: Bytes = new Uint8Array(0);
+      const bodyChunks: Bytes[] = [];
+      let receivedBodyBytes = 0;
+
+      for await (const chunk of connection) {
+        let next = chunk;
+        if (parsed === undefined) {
+          headBuffer = concatBytes([headBuffer, chunk]);
+          if (indexOfBytes(headBuffer, headerSeparator) === -1) continue;
+          parsed = parseHttpHead(headBuffer, operation);
+          if (
+            input.method.toUpperCase() === "HEAD" ||
+            parsed.status === 204 ||
+            parsed.status === 205 ||
+            parsed.status === 304
+          ) {
+            return { status: parsed.status, body: "" };
+          }
+          next = parsed.bodyStart;
+          chunked = parsed.headers.get("transfer-encoding")?.toLowerCase().includes("chunked") ?? false;
+          const lengthHeader = parsed.headers.get("content-length");
+          if (lengthHeader !== undefined) {
+            contentLength = Number(lengthHeader);
+            if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+              throw fail(
+                "parse",
+                operation,
+                "Container runtime response has invalid Content-Length.",
+                lengthHeader,
+              );
+            }
+          }
+        }
+        if (chunked) {
+          bodyBuffer = concatBytes([bodyBuffer, next]);
+          const decoded = decodeChunkedBuffer(bodyBuffer);
+          bodyChunks.push(...decoded.chunks);
+          bodyBuffer = decoded.remainder;
+          if (decoded.complete)
+            return { status: parsed.status, body: textDecoder.decode(concatBytes(bodyChunks)) };
+        } else {
+          bodyChunks.push(next);
+          receivedBodyBytes += next.length;
+          if (contentLength !== undefined && receivedBodyBytes >= contentLength) {
+            const body = concatBytes(bodyChunks);
+            return { status: parsed.status, body: textDecoder.decode(body.slice(0, contentLength)) };
+          }
+        }
+      }
+      if (input.signal?.aborted) throw new DOMException("Socket request aborted.", "AbortError");
+      if (parsed === undefined) {
+        throw fail("parse", operation, "Container runtime response ended before HTTP headers.");
+      }
+      if (chunked && bodyBuffer.length > 0) bodyChunks.push(...flushChunkedBufferAtEnd(bodyBuffer));
+      const body = concatBytes(bodyChunks);
+      if (contentLength !== undefined && body.length < contentLength) {
+        throw fail(
+          "parse",
+          operation,
+          "Container runtime response ended before Content-Length bytes arrived.",
+        );
+      }
+      return { status: parsed.status, body: textDecoder.decode(body) };
     } finally {
+      input.signal?.removeEventListener("abort", abort);
       connection.destroy();
     }
   };
@@ -455,6 +530,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
               { method: input.method, path: input.path, status: parsed.status },
             );
           }
+          input.onResponseHead?.();
           flushStdin();
           chunkedBody = parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked";
           if (chunkedBody) {
@@ -490,6 +566,12 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
       if (chunkedBody && bodyBuffer.length > 0) {
         for (const bodyChunk of flushChunkedBufferAtEnd(bodyBuffer)) yield bodyChunk;
       }
+      if (input.signal?.aborted) throw new DOMException("Socket stream aborted.", "AbortError");
+    } catch (cause) {
+      // Socket implementations vary: abort may end iteration, throw a generic
+      // close error, or throw AbortError. Give callers one cancellation signal.
+      if (input.signal?.aborted) throw new DOMException("Socket stream aborted.", "AbortError");
+      throw cause;
     } finally {
       input.signal?.removeEventListener("abort", abort);
       stopStdinPump?.();

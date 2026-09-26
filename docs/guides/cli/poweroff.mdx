@@ -12,7 +12,8 @@ tags: [beta, docs, cli, lifecycle]
 one.
 
 Warning: this command reaches beyond the current app. Run it only when you
-mean to stop everything.
+mean to stop everything. It removes scratch apps and their disposable data
+unless you pass `--keep-scratch`.
 
 <Guide>
   <Scenario id="stop-every-app" render>
@@ -40,9 +41,15 @@ Skip the shared global app with `--keep-global`, so host-wide services such
 as the proxy keep running. Skip scratch apps with `--keep-scratch`, so
 disposable throwaway apps stay up while every other app stops.
 
-`-y`/`--yes` skips the confirmation prompt. Required for non-interactive
-and scripted invocations.
+Poweroff does not prompt for confirmation. `-y`/`--yes` is accepted, but is
+not required for scripts.
+
+User apps stop first, followed by scratch cleanup, then the global app.
+Lando stops the managed runtime service only after all targeted apps stop.
+If an app cannot stop, the command fails with that app's id and remediation
+instead of reporting it as powered off. The runtime stays available so you
+can resolve the failure and retry.
 
 `lando poweroff` is a top-level alias for `lando apps:poweroff`. Both
-invoke the same command. It bootstraps minimally, so it works from any
-directory; you don't need to be inside an app root to run it.
+invoke the same command. It works from any directory; you don't need to be
+inside an app root to run it.

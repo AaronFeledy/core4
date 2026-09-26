@@ -54,6 +54,7 @@ export interface LandoPaths {
   readonly runtimeConfigDir: string;
   readonly hostProxyRunRoot: string;
   readonly hostProxyRunDir: (appId: string, appRoot: string) => string;
+  readonly agentRelayRunDir: (kind: "ssh" | "gpg", appId: string, appRoot: string) => string;
   readonly providerSocketPath: string;
   readonly providerPidPath: string;
   readonly globalAppRoot: string;

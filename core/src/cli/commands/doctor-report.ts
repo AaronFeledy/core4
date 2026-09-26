@@ -19,6 +19,8 @@ import {
 } from "@lando/sdk/services";
 
 import { appConfigLint } from "@lando/engine/operations/app-config-lint";
+import type { TaskTreeController } from "@lando/sdk/task-progress";
+
 import { CORE_VERSION } from "@lando/engine/version";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -28,7 +30,20 @@ import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } fr
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
+import {
+  type DoctorSectionId,
+  type DoctorSectionOutcome,
+  appConfigOutcome,
+  certsOutcome,
+  checksOutcome,
+  deprecationsOutcome,
+  doctorTreeSummary,
+  makeDoctorTree,
+  selfCheckOutcome,
+  settleDoctorSection,
+} from "./doctor-progress";
 import type { DoctorDeprecationEntry, DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
+import { countDoctorChecks } from "./doctor-report-render";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
 import {
   DefaultSubsystemDoctorLayer,
@@ -45,6 +60,7 @@ export type {
 } from "./doctor-report-contract";
 export { DoctorReportSchema } from "./doctor-report-contract";
 export {
+  type DoctorRenderOptions,
   buildDoctorReportSummary,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
@@ -177,6 +193,19 @@ export interface CollectDoctorReportInput<R> {
 export const collectDoctorReport = <R>(
   input: CollectDoctorReportInput<R>,
 ): Effect.Effect<DoctorReport, never, R | ConfigService> =>
+  makeDoctorTree(input.options).pipe(
+    Effect.flatMap((tree) =>
+      collectWithTree(input, tree).pipe(
+        Effect.onInterrupt(() => tree.settleInterrupt("doctor · interrupted")),
+      ),
+    ),
+    (effect) => interruptOnAbort(effect, input.options.signal),
+  );
+
+const collectWithTree = <R>(
+  input: CollectDoctorReportInput<R>,
+  tree: TaskTreeController,
+): Effect.Effect<DoctorReport, never, R | ConfigService> =>
   Effect.gen(function* () {
     const options = input.options;
     const sourceEnv = { ...(options.env ?? process.env) };
@@ -187,31 +216,48 @@ export const collectDoctorReport = <R>(
     const redact = (value: string): string => redactor.redactString(value);
     const budgetMs = doctorSectionBudgetMs(sourceEnv);
     const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
+    yield* tree.start;
 
+    // Each section is one task in the live tree: it spins while the section
+    // probes and settles as ✓ or ✗ from the section value, or as ✗ from the
+    // self check when doctor itself could not run the section.
     const section = <A, E, SR>(
-      name: string,
+      name: DoctorSectionId,
       effect: Effect.Effect<A, E, SR>,
       fallback: A,
+      outcome: (value: A) => DoctorSectionOutcome,
     ): Effect.Effect<A, never, SR> =>
-      isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact }).pipe(
-        Effect.map((outcome) => {
-          if (outcome.self !== undefined) selfChecks.push(outcome.self);
-          return outcome.value;
+      tree.startTask(name).pipe(
+        Effect.zipRight(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
+        Effect.flatMap((isolated) => {
+          if (isolated.self !== undefined) selfChecks.push(isolated.self);
+          const settled =
+            isolated.self === undefined ? outcome(isolated.value) : selfCheckOutcome(name, isolated.self);
+          return settleDoctorSection(tree, name, settled).pipe(Effect.as(isolated.value));
         }),
       );
 
-    const provider = yield* section("provider", input.provider, EMPTY_CHECKS);
+    // A provider sub-probe doctor could not run (e.g. a status timeout) fails
+    // the row the same way a whole-section self check does.
+    const provider = yield* section("provider", input.provider, EMPTY_CHECKS, (result) => {
+      const [self] = result.selfChecks ?? [];
+      return self === undefined
+        ? checksOutcome("provider", result.checks)
+        : selfCheckOutcome("provider", self);
+    });
     // Provider-section self checks are lifted here so the report has one home for them.
     selfChecks.push(...(provider.selfChecks ?? []));
     const certs = yield* section(
       "certificate-authority",
       input.certs ?? certsDoctorStatus(redact),
       UNRESOLVED_CERTS_STATUS,
+      certsOutcome,
     );
     const networkTrust = yield* section<NetworkTrustDoctorStatus | undefined, unknown, ConfigService>(
       "network-trust",
       networkTrustDoctorStatus(sourceEnv),
       undefined,
+      (status) => checksOutcome("network-trust", status === undefined ? [] : [status]),
     );
     const subsystemOptions: SubsystemDoctorOptions = {
       fix: options.fix === true,
@@ -224,26 +270,38 @@ export const collectDoctorReport = <R>(
         ? input.subsystems(subsystemOptions)
         : subsystemDoctor(subsystemOptions).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
       EMPTY_CHECKS,
+      (result) => checksOutcome("subsystems", result.checks),
     );
     const globalApp = yield* section(
       "global-app",
       globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer)),
       EMPTY_CHECKS,
+      (result) => checksOutcome("global-app", result.checks),
     );
-    const mcp = yield* section("mcp", mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)), EMPTY_CHECKS);
+    const mcp = yield* section(
+      "mcp",
+      mcpDoctor().pipe(Effect.provide(DefaultMcpDoctorLayer)),
+      EMPTY_CHECKS,
+      (result) => checksOutcome("mcp", result.checks),
+    );
     const appVersionConstraints =
       options.app === true
-        ? yield* section("app-version-constraints", appVersionConstraintsForReport(), EMPTY_CHECKS)
+        ? yield* section(
+            "app-version-constraints",
+            appVersionConstraintsForReport(),
+            EMPTY_CHECKS,
+            (result) => checksOutcome("app-version-constraints", result?.checks ?? []),
+          )
         : undefined;
     const deprecations =
       options.deprecations === true
-        ? yield* section("deprecations", input.deprecations, { entries: [] })
+        ? yield* section("deprecations", input.deprecations, { entries: [] }, deprecationsOutcome)
         : undefined;
     const appConfig =
       options.app === true && input.appConfig !== undefined
-        ? yield* section("app-config", input.appConfig, undefined)
+        ? yield* section("app-config", input.appConfig, undefined, appConfigOutcome)
         : undefined;
-    return {
+    const report: DoctorReport = {
       version: CORE_VERSION,
       provider: { checks: provider.checks },
       subsystems,
@@ -254,7 +312,9 @@ export const collectDoctorReport = <R>(
       ...(appConfig === undefined ? {} : { appConfig }),
       ...(selfChecks.length === 0 ? {} : { self: { checks: selfChecks } }),
     };
-  }).pipe((effect) => interruptOnAbort(effect, input.options.signal));
+    yield* tree.close(doctorTreeSummary(countDoctorChecks(report)));
+    return report;
+  });
 
 /**
  * Build the combined report against an already-provided runtime.

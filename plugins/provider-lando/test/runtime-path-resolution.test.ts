@@ -141,6 +141,62 @@ describe("provider-lando runtime path resolution", () => {
     }
   });
 
+  test("win32 managed setup skips Linux rootless probes", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "lando-runtime-setup-win32-"));
+    let rootlessProbeCount = 0;
+    const machineCalls: string[] = [];
+    let machineStatus: "missing" | "running" = "missing";
+    const machine = {
+      inspect: Effect.sync(() => {
+        machineCalls.push("inspect");
+        return machineStatus;
+      }),
+      create: Effect.sync(() => machineCalls.push("create")).pipe(Effect.asVoid),
+      start: Effect.sync(() => {
+        machineCalls.push("start");
+        machineStatus = "running";
+      }),
+      stop: Effect.void,
+      upgrade: Effect.void,
+      teardown: Effect.void,
+    };
+    try {
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
+          platform: "win32",
+          podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }), ping: Effect.void },
+          podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
+          podmanMachine: machine,
+          providerSocketPath: join(tempDir, "runtime", "run", "podman.sock"),
+          providerPidPath: join(tempDir, "runtime", "run", "podman.pid"),
+          runtimeBinDir: join(tempDir, "runtime", "bin"),
+          runtimeStorageDir: join(tempDir, "runtime", "storage"),
+          runtimeRunDir: join(tempDir, "runtime", "run"),
+          runtimeConfigDir: join(tempDir, "runtime", "config"),
+          rootlessProbes: {
+            probe: () => {
+              rootlessProbeCount++;
+              return {
+                subidConfigured: false,
+                subidRangeSufficient: false,
+                subidRangesDisjoint: false,
+                hasUidmapTools: false,
+                cgroupsV2Delegated: false,
+                hasXdgRuntimeDir: false,
+              };
+            },
+          },
+        }),
+      );
+      const plan = await Effect.runPromise(provider.planSetup({ force: false }));
+      await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
+      expect(machineCalls).toEqual(["inspect", "create", "start", "inspect"]);
+      expect(rootlessProbeCount).toBe(0);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
   test("darwin managed runtime fails without bundled machine tooling instead of falling back to system Podman", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "lando-runtime-paths-darwin-missing-"));
     try {

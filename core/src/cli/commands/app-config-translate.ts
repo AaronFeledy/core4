@@ -1,4 +1,5 @@
 import { dirname } from "node:path";
+import type { TransactionOptions } from "@lando/managed-file/transaction";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 
 import { Effect, Option } from "effect";
@@ -14,7 +15,7 @@ import {
   type PluginDescriptorMismatchError,
   type PluginLoadError,
 } from "@lando/sdk/errors";
-import { type ConfigTranslateDocument, ConfigTranslateSourceId, type PortablePath } from "@lando/sdk/schema";
+import { ConfigTranslateSourceId } from "@lando/sdk/schema";
 import { ConfigTranslatorRegistry, type ConfigTranslatorShape } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 
@@ -27,20 +28,20 @@ import { findLandofilePath } from "@lando/landofile/discovery";
 
 import {
   buildDocumentSetShape,
-  layerForSourcePath,
   lowerV4LayerFragments,
   orderSourcePaths,
 } from "./app-config-translate-document-set.ts";
 import { encodeTranslateOutputs } from "./app-config-translate-encode.ts";
+import { validateTranslatedIncludeTargets } from "./app-config-translate-includes.ts";
 import type { AppConfigTranslateResult } from "./app-config-translate-output.ts";
 import { renderTranslateTargets } from "./app-config-translate-output.ts";
+import { readTranslateDocuments } from "./app-config-translate-read.ts";
+export { CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES } from "./app-config-translate-read.ts";
 import { selectTranslator } from "./app-config-translate-selection.ts";
 import {
   discoverSourceFiles,
-  mediaTypeForSourcePath,
   parseSourceFilePath,
   rejectUndiscoveredSources,
-  resolveContainedSourcePath,
 } from "./app-config-translate-sources.ts";
 import { writeTranslateTargets } from "./app-config-translate-write.ts";
 export {
@@ -64,6 +65,7 @@ export interface AppConfigTranslateOptions {
    */
   readonly translators?: ReadonlyArray<ConfigTranslatorShape>;
   readonly privateFileAccess?: PrivateFileAccess;
+  readonly transactionCheckpoint?: TransactionOptions["checkpoint"];
 }
 
 export type AppConfigTranslateError =
@@ -88,60 +90,6 @@ const registeredTranslators: Effect.Effect<
 > = Effect.serviceOption(ConfigTranslatorRegistry).pipe(
   Effect.flatMap((registry) => (Option.isSome(registry) ? registry.value.list : Effect.succeed([]))),
 );
-
-export const CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES = 1_048_576;
-
-const readTranslateDocuments = (
-  appRoot: string,
-  files: ReadonlyArray<PortablePath>,
-  explicit: ReadonlyArray<PortablePath>,
-): Effect.Effect<ReadonlyArray<ConfigTranslateDocument>, ConfigTranslateError> =>
-  Effect.gen(function* () {
-    const documents: ConfigTranslateDocument[] = [];
-    for (const path of files) {
-      const contained = resolveContainedSourcePath(appRoot, path);
-      const resolved = explicit.includes(path)
-        ? yield* contained
-        : yield* contained.pipe(
-            Effect.match({
-              onFailure: () => undefined,
-              onSuccess: (value) => value,
-            }),
-          );
-      if (resolved === undefined) continue;
-      const bytes = yield* Effect.tryPromise({
-        try: () =>
-          Bun.file(resolved)
-            .slice(0, CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES + 1)
-            .bytes(),
-        catch: (cause) =>
-          new ConfigTranslateError({
-            message: `Could not read translation source ${path}.`,
-            cause,
-            remediation: "Check that the source file exists and is readable.",
-          }),
-      });
-      if (bytes.byteLength > CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES) {
-        if (explicit.includes(path))
-          return yield* Effect.fail(
-            new ConfigTranslateError({
-              message: `Translation source ${path} exceeds ${CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES} bytes.`,
-              remediation: "Reduce the source file to at most 1 MiB before passing --file.",
-            }),
-          );
-        continue;
-      }
-      documents.push({
-        sourceId: ConfigTranslateSourceId.make(path),
-        layerId: layerForSourcePath(path),
-        path,
-        mediaType: mediaTypeForSourcePath(path),
-        contentDigest: `sha256:${new Bun.CryptoHasher("sha256").update(bytes).digest("hex")}`,
-        bytes,
-      });
-    }
-    return documents;
-  });
 
 export const appConfigTranslate = (
   options: AppConfigTranslateOptions = {},
@@ -252,16 +200,16 @@ export const appConfigTranslate = (
     const redactor = Option.isSome(service)
       ? yield* service.value.forProfile("secrets")
       : createStandaloneRedactor("secrets");
-    const diagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)].map(
-      (diagnostic) => ({
-        ...diagnostic,
-        message: redactor.redactString(diagnostic.message),
-        ...(diagnostic.remediation === undefined
-          ? {}
-          : { remediation: redactor.redactString(diagnostic.remediation) }),
-      }),
-    );
-    const targets = diagnostics.some((diagnostic) => diagnostic.kind === "unsupported")
+    const encodingDiagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)];
+    const includeDiagnostics = yield* validateTranslatedIncludeTargets(appRoot, outputs);
+    const diagnostics = [...encodingDiagnostics, ...includeDiagnostics].map((diagnostic) => ({
+      ...diagnostic,
+      message: redactor.redactString(diagnostic.message),
+      ...(diagnostic.remediation === undefined
+        ? {}
+        : { remediation: redactor.redactString(diagnostic.remediation) }),
+    }));
+    const targets = encodingDiagnostics.some((diagnostic) => diagnostic.kind === "unsupported")
       ? []
       : encoded.map((result) => result.target);
     const canonicalYaml = renderTranslateTargets(targets);
@@ -292,5 +240,6 @@ export const appConfigTranslate = (
       shape,
       documents,
       privateFileAccess: options.privateFileAccess,
+      transactionCheckpoint: options.transactionCheckpoint,
     });
   });

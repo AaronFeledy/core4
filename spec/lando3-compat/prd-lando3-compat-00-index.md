@@ -13,6 +13,7 @@ Priorities continue the global sequence in the two prerequisite PRDs. Every impl
 | 39 | US-621C3 | tooling, tags, and events | US-613, US-614, US-621C1 |
 | 40 | US-621C5 | routes, home, router, and scanner | US-615, US-617A, US-617B, US-621C1 |
 | 41 | US-621C8 | remaining dispositions | US-618D1, US-618D3, US-621C1, US-621C3, US-621C5 |
+| 42 | US-621C9 | runtime-bundle Ubuntu apt snapshot pin (CI infrastructure; ties US-621D at 42, no dependencies) | |
 | 42 | US-621D | safe write, loader safety, and conversion guide | US-608D, US-609C, US-621A, US-621C1, US-621C3, US-621C5, US-621C8, US-619B3 |
 | 43 | US-622A | doctor ports and checks | US-620B, US-621D |
 | 44 | US-622B | closure | US-611B, US-622A |

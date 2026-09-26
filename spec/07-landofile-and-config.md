@@ -28,7 +28,7 @@ Each merge layer accepts exactly one form:
 
 Both forms at one layer fail with `LandofileFormConflictError`. Layers MAY mix forms after each decodes to the same `Landofile` shape.
 
-`defineLandofile` is an identity typing helper exported by `@lando/core/schema` and `@lando/sdk`; runtime decoding still uses the canonical schema. A TypeScript default export MUST be a `Landofile` or a function from `LandofileContext` to `Landofile`, `Promise<Landofile>`, or `Effect.Effect<Landofile, LandofileError>`. `LandofileContext` exposes `cwd`, `env`, host facts, layer, merge accumulator, and deferred `secrets`; `secrets.read` resolves through `SecretStore` and preserves §3.7 redaction.
+`defineLandofile` is an identity typing helper exported by `@lando/core/schema` and `@lando/sdk`; runtime decoding still uses the canonical schema. A TypeScript default export MUST be a `Landofile` or a function from `LandofileContext` to `Landofile`, `Promise<Landofile>`, or `Effect.Effect<Landofile, LandofileError>`. `LandofileContext` exposes `cwd`, `env`, host facts, layer, merge accumulator, and deferred `secrets`; `secrets.read` accepts the §7.3.1 reference grammar, resolves through the routed `SecretStore`, and preserves §3.7 redaction.
 
 TypeScript modules MUST be pure at top level. Top-level I/O, await, or terminal output fails with `LandofileTopLevelSideEffectError`; function evaluation is bounded. YAML `${VAR}` substitution is not applied to TypeScript output, but emitted `{{ … }}` expressions resolve normally. `includes:` works in either direction. `lando app config edit` MUST refuse TypeScript Landofiles in v4.0, while resolved views work for both forms. Recipes MUST emit YAML.
 
@@ -100,7 +100,7 @@ Expressions parse to an AST and record their minimum bootstrap level:
 
 `ConfigService.resolve` resolves at the consumer's current level or returns opaque `DeferredExpression`; consumers MUST NOT escalate bootstrap level. Cross-service cycles, forbidden global-service access, unknown paths, type mismatch, and invalid indexing fail with `ConfigExpressionError` or `ConfigExpressionScopeNotPermittedError` at the consuming level.
 
-Expressions and templates MUST NOT execute shell commands, perform network I/O, or mutate state. `${secret:KEY}` resolves through `SecretStore`; values MUST be redacted and MUST NOT enter caches decrypted. Recipe secret answers MUST resolve to a secret-store reference or exactly one init-only sink, `postInit.stdin` or `postInit.secretEnv.<name>`, and raw bytes MUST NOT enter templates, argv, files, provenance, diagnostics, journals, transcripts, renderer events, or telemetry (§3.7, §8.8).
+Expressions and templates MUST NOT execute shell commands, perform network I/O, or mutate state. `${secret:<reference>}` resolves through the routed `SecretStore` (§4.3, §9.5.1). A bare id matching `^[A-Za-z0-9_.-]+$` (`${secret:DB_PASS}`) routes to `defaultSecretStore`, default `env`. A scheme reference `<scheme>://seg/seg[/seg[/seg]]` (`${secret:op://Vault/Item/field}`) routes to the store owning `<scheme>`; the scheme matches `^[a-z][a-z0-9-]*$`, each of the two to four segments matches `[A-Za-z0-9 _.-]+` (spaces allowed), and an optional `?attribute=<value>` or `?ssh-format=openssh` suffix passes through to the store. Leading or trailing whitespace, empty segments, `..`, control characters, `}`, an unknown scheme, or an unknown default store fail with `SecretReferenceInvalidError`; store failures surface as `SecretNotFoundError` or `SecretStoreUnavailableError` (§9.5.1). Resolved values MUST be registered with the canonical redactor before any event, result, or transcript can carry them, MUST be redacted, and MUST NOT enter caches decrypted. Recipe secret answers MUST resolve to a secret-store reference or exactly one init-only sink, `postInit.stdin` or `postInit.secretEnv.<name>`, and raw bytes MUST NOT enter templates, argv, files, provenance, diagnostics, journals, transcripts, renderer events, or telemetry (§3.7, §8.8).
 
 ### 7.3.2 Template engines
 
@@ -123,7 +123,7 @@ Every engine receives schema-defined `TemplateRenderContext`, limited to scopes 
 | Identity/version | `name`, `runtime`, `lando`, `recipe`, `agentEnv` |
 | Composition/defaults | `includes`, `defaultTemplateEngine`, `templateVars`, `env_file` |
 | Runtime/provider | `provider`, `toolingEngine`, `providers` |
-| App behavior | `services`, `tooling`, `toolingDefaults`, `toolingIncludes`, `commandAliases`, `events`, `proxy`, `router`, `keys` |
+| App behavior | `services`, `tooling`, `toolingDefaults`, `toolingIncludes`, `commandAliases`, `events`, `proxy`, `router`, `keys`, `sshAgent`, `gpgAgent` |
 | Deferred data movement | `remotes`, `sync` (§10.12; implementation deferred to 4.1) |
 | Plugins | `plugins`, `pluginDirs` |
 | Compose subset | `volumes`, `networks`, `configs`, `secrets`, `include`, `x-*` |
@@ -176,14 +176,17 @@ Per-root precedence is explicit runtime option, root-specific environment variab
 | Plugins | `plugins`, `pluginDirs`, `disablePlugins`, `pluginConfig` |
 | Network/router | `bindAddress`, `router`, `network.proxy`, `network.ca`, `scanner`, `healthcheck` |
 | Experience | `logger`, `renderer`, `notify`, `toolingEngine`, `commandAliases`, `agentEnv`, `keys`, `maxKeyWarning`, `logLevelConsole` |
+| Agents/secrets | `sshAgent`, `gpgAgent`, `defaultSecretStore` |
 | Automation | `mcp`, `build`, `experimental`, `stats` |
 | Landofile evaluation | discovery, include, load, and TypeScript-evaluation bounds; `defaultTemplateEngine`; unsafe-engine opt-in; outside-root relaxations |
 
-Published nested keys include `router.{enabled,bindAddress,httpPort,httpsPort,httpFallbacks,httpsFallbacks}`, `network.proxy.{http,https,noProxy,injectIntoServices}`, `network.ca.{trustHost,certs,injectIntoServices}`, `notify.{enabled,thresholdMs,commands}`, `commandAliases.{enabled,disabled,custom}`, `agentEnv.{enabled,allow,deny}`, `mcp.{allow,deny,tooling,maxConcurrent}`, `scanner.{path,okCodes,retries,timeout}`, `healthcheck.{retry,delay}`, `build.{concurrency,failFast,transcripts}`, and `stats.report`. Evaluation-policy keys are `discovery.maxDepth`, `landofile.tsTimeoutMs`, `loadMaxFileBytes`, `loadMaxFilesPerExpression`, `loadMaxRecursionDepth`, `includeMaxDepth`, `allowLoadOutsideRoot`, `allowIncludeOutsideRoot`, and the unsafe-template-engine opt-in. Values are bounded and schema-validated; tuning defaults are not architecture contracts.
+Published nested keys include `router.{enabled,bindAddress,httpPort,httpsPort,httpFallbacks,httpsFallbacks}`, `network.proxy.{http,https,noProxy,injectIntoServices}`, `network.ca.{trustHost,certs,injectIntoServices}`, `notify.{enabled,thresholdMs,commands}`, `commandAliases.{enabled,disabled,custom}`, `agentEnv.{enabled,allow,deny}`, `sshAgent.{sidecar,socket}`, `gpgAgent.{forward,socket}`, `mcp.{allow,deny,tooling,maxConcurrent}`, `scanner.{path,okCodes,retries,timeout}`, `healthcheck.{retry,delay}`, `build.{concurrency,failFast,transcripts}`, and `stats.report`. Evaluation-policy keys are `discovery.maxDepth`, `landofile.tsTimeoutMs`, `loadMaxFileBytes`, `loadMaxFilesPerExpression`, `loadMaxRecursionDepth`, `includeMaxDepth`, `allowLoadOutsideRoot`, `allowIncludeOutsideRoot`, and the unsafe-template-engine opt-in. Values are bounded and schema-validated; tuning defaults are not architecture contracts.
 
 `notify` is the only Beta 1 key published through `PublishedGlobalConfigKey`/`configKey`; it decodes as `NotifyConfig` (§8.9.7). Its canonical-command allowlist is validated against the cwd-independent global registry, so global validity MUST NOT depend on app discovery.
 
 `appEnv` and `appLabels` are bounded whole maps applying only to user apps. Service-authored values win per key. Core-owned `LANDO`/`LANDO_*` environment keys and `dev.lando.*` labels MUST be rejected from these maps, and values MUST be redacted (§3.7). `router.enabled: false` MUST prevent router startup and route publication. `scanner` is `false` or bounded `{ path?, okCodes?, retries?, timeout? }`; failures warn after redaction and MUST NOT fail start (§10.5). Build concurrency, failure policy, and transcript retention live under `build` (§6.13).
+
+`sshAgent` (`sidecar`, default `true`; `socket`, an explicit host agent path for host mode) and `gpgAgent` (`forward`, default `false`; `socket`) are also top-level Landofile keys (§7.4). Each field resolves Landofile, then global config, then default; `socket` is checked at start and never enters the plan cache (§10.4). `defaultSecretStore` names the store that resolves bare `${secret:...}` ids and defaults to the bundled `env` store; scheme references ignore it (§7.3.1). Naming a store that is not installed fails with `SecretReferenceInvalidError` at first use.
 
 #### 7.5.1 Root and path resolution primitive
 
@@ -193,7 +196,7 @@ Published nested keys include `router.{enabled,bindAddress,httpPort,httpsPort,ht
 
 Every global key is overridable with the configured prefix, default `LANDO`: camelCase path segments become `UPPER_SNAKE_CASE`, for example `notify.thresholdMs` becomes `LANDO_NOTIFY_THRESHOLD_MS`. JSON-parseable values decode as arrays or objects.
 
-`appEnv`, `appLabels`, `commandAliases.disabled`, and `commandAliases.custom` are whole-document JSON setters and MUST NOT have per-entry scalar setters. `LANDO_PLUGIN_CONFIG_<NAME>` supplies plugin JSON; `LANDO_PROVIDER_<PROVIDER>_*` supplies provider extension values. Standard proxy variables are honored unless explicit `network.proxy` overrides them. `LANDO_NETWORK_CA_CERTS`, `LANDO_NETWORK_CA_INJECT_INTO_SERVICES`, and `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES` control outbound trust and service injection.
+`appEnv`, `appLabels`, `commandAliases.disabled`, and `commandAliases.custom` are whole-document JSON setters and MUST NOT have per-entry scalar setters. `LANDO_PLUGIN_CONFIG_<NAME>` supplies plugin JSON; `LANDO_PROVIDER_<PROVIDER>_*` supplies provider extension values. Standard proxy variables are honored unless explicit `network.proxy` overrides them. `LANDO_NETWORK_CA_CERTS`, `LANDO_NETWORK_CA_INJECT_INTO_SERVICES`, and `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES` control outbound trust and service injection. The generic `LANDO_CONFIG__<path>` overlay covers every remaining key, so `LANDO_CONFIG__DEFAULT_SECRET_STORE=1password` selects the default secret store for one invocation without editing `config.yml`.
 
 Any §7.4–§7.6 key MAY carry the §18.5 `deprecated` annotation, propagated to schema, generated docs, runtime warning, and `DeprecationService`; removal is gated by §18.7.
 

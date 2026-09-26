@@ -229,7 +229,7 @@ Flags:
 | `--no-viewer` | Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior). |
 | `--service, -s` | Filter logs to a single planned service. |
 | `--since` | Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp. |
-| `--source` | Restrict logs to a single declared source id (or `console` for the engine stream). |
+| `--source` | Select a declared source id, or `console` for the container stream. Redirected sources share that stdout/stderr stream and cannot be isolated. |
 | `--tail` | Show last N lines per service. |
 
 ## `lando app:open`
@@ -717,6 +717,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--all` | List every check, including passing ones, instead of only degraded checks. |
 | `--app` | Also lint the current app's Landofile against the canonical schema. |
 | `--deprecations` | Also report deprecated surfaces used by the current app and loaded plugins. |
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
@@ -1139,7 +1140,7 @@ Flags:
 | `--provider` | Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection. |
 | `--runtime-bundle-sha256` | Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle. |
 | `--runtime-bundle-url` | Override the Lando-managed runtime bundle URL for setup. |
-| `--skip-file-sync` | Skip Mutagen binary download; deferred to first accelerated app:start. |
+| `--skip-file-sync` | Skip Mutagen binary download during setup on a slow-mount host. |
 | `--skip-install-ca` |  |
 | `--skip-provider` |  |
 | `--skip-proxy` | Skip router setup. |
@@ -1157,7 +1158,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--shell` | (one of `posix`, `powershell`, `pwsh`) |
+| `--shell` | Defaults to PowerShell on Windows and POSIX on other platforms. (one of `posix`, `powershell`, `pwsh`) |
 
 ## `lando meta:uninstall`
 
@@ -1170,8 +1171,8 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--dry-run` | Print the uninstall plan without changing the system. |
-| `--keep-data` | Remove Lando-owned toolchain files while preserving app data and global state. |
-| `--purge` | Remove Lando-owned toolchain files and data roots after confirmation. |
+| `--keep-data` | Remove the managed CLI while preserving app data, the managed VM, and runtime tools. |
+| `--purge` | Remove Lando-owned apps, the managed VM, runtime tools, and data roots after confirmation. |
 | `--yes, -y` | Confirm destructive uninstall execution after reviewing the plan. |
 
 ## `lando meta:update`

@@ -40,6 +40,9 @@ files:
   - src: templates/.lando.yml.tmpl
     dest: .lando.yml
     template: true
+  - src: assets/drupal-cms.ini
+    dest: .lando/php/drupal-cms.ini
+    template: false
 postInit:
   - type: message
     text: Run 'lando start', then scaffold Drupal CMS with 'lando drupal-cms-scaffold', then install with 'lando drupal-cms-install'.

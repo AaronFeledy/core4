@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
+import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { makeRuntimeProvider } from "@lando/provider-lando";
+import { makeRuntimeProvider, persistAppliedPlan } from "@lando/provider-lando";
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -12,6 +16,13 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/service";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
+const makeStateStore = () => makeStateStoreUsing({ privateFileAccess: ownerOnlyFileAccess });
+const makePluginStateStore = (
+  store: Parameters<typeof makePluginStateStoreWithAccess>[0],
+  root: Parameters<typeof makePluginStateStoreWithAccess>[1],
+) => makePluginStateStoreWithAccess(store, root, ownerOnlyFileAccess);
 
 import type {
   EngineHttpRequest,
@@ -108,6 +119,41 @@ const typedFailure = (exit: Exit.Exit<unknown, unknown>): { readonly _tag: strin
 };
 
 describe("provider-lando service lifecycle", () => {
+  test("quiesces services from the applied plan after one is removed from the Landofile", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "lando-quiesce-applied-"));
+    try {
+      const store = makePluginStateStore(makeStateStore(), AbsolutePath.make(directory));
+      const oldServiceName = ServiceName.make("old-worker");
+      const oldService = { ...service, name: oldServiceName, primary: false };
+      const appliedPlan: AppPlan = {
+        ...plan,
+        services: { ...plan.services, [oldServiceName]: oldService },
+      };
+      await Effect.runPromise(persistAppliedPlan(store, plan));
+      const fake = makeFakeApi({ status: 204, body: "" });
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          podmanApi: fake.api,
+          appliedPlanState: store,
+          sanitizeAppliedPlan: stripHostProxyRunLando,
+          platform: "linux",
+        }),
+      );
+      const quiesce = provider.quiesceForFileSync;
+      if (quiesce === undefined) throw new Error("managed provider must support file sync quiescence");
+      await Effect.runPromise(quiesce({ app: plan.id, plan }));
+      fake.calls.length = 0;
+      await Effect.runPromise(persistAppliedPlan(store, appliedPlan));
+      await Effect.runPromise(quiesce({ app: plan.id, plan }));
+      const stopped = fake.calls.filter((call) => call.method === "POST" && call.path.endsWith("/stop"));
+      expect(stopped.map((call) => call.path)).toContain("/containers/lando-lifecycle-app-old-worker/stop");
+      expect(stopped.map((call) => call.path)).toContain("/containers/lando-lifecycle-app-web/stop");
+      expect(fake.calls.some((call) => call.path.startsWith("/volumes/"))).toBe(false);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   for (const action of lifecycleActions) {
     test(`issues POST /${action} for the planned container and does not DELETE`, async () => {
       // Given

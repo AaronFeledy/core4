@@ -11,21 +11,25 @@ import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
 import { php83ServiceType } from "../src/services/php.ts";
 
-const serviceFor = (type: string) => {
+const serviceFor = (type: string, via?: "apache" | "fpm" | "cli") => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "myapp",
-    services: { web: { type } },
+    services: { web: { type, ...(via === undefined ? {} : { via }) } },
   });
   const service = landofile.services?.[ServiceName.make("web")];
   if (service === undefined) throw new Error("web service missing");
   return service;
 };
 
-const resolveSources = async (serviceType: ServiceType, type: string): Promise<ReadonlyArray<LogSource>> => {
+const resolveSources = async (
+  serviceType: ServiceType,
+  type: string,
+  via?: "apache" | "fpm" | "cli",
+): Promise<ReadonlyArray<LogSource>> => {
   const resolution = await Effect.runPromise(
     serviceType.resolve({
       name: "web",
-      service: serviceFor(type),
+      service: serviceFor(type, via),
       appRoot: "/srv/apps/myapp",
       appName: "myapp",
       primary: true,
@@ -61,13 +65,24 @@ describe("catalog service type logSources", () => {
     expect(String(byId(sources, "error")?.path)).toBe("/var/log/nginx/error.log");
   });
 
-  test("php declares php-fpm access and error redirect sources", async () => {
+  test("php declares Apache logs for its default serving mode", async () => {
     const sources = await resolveSources(php83ServiceType, "php:8.3");
 
     expect(byId(sources, "access")).toMatchObject({ strategy: "redirect", stream: "stdout" });
-    expect(String(byId(sources, "access")?.path)).toBe("/var/log/php-fpm/access.log");
+    expect(String(byId(sources, "access")?.path)).toBe("/var/log/apache2/access.log");
     expect(byId(sources, "error")).toMatchObject({ strategy: "redirect", stream: "stderr" });
+    expect(String(byId(sources, "error")?.path)).toBe("/var/log/apache2/error.log");
+  });
+
+  test("php declares php-fpm logs only for via fpm", async () => {
+    const sources = await resolveSources(php83ServiceType, "php:8.3", "fpm");
+
+    expect(String(byId(sources, "access")?.path)).toBe("/var/log/php-fpm/access.log");
     expect(String(byId(sources, "error")?.path)).toBe("/var/log/php-fpm/error.log");
+  });
+
+  test("php via cli has no server log sources", async () => {
+    expect(await resolveSources(php83ServiceType, "php:8.3", "cli")).toEqual([]);
   });
 
   test("mysql declares slow and general query follow sources only", async () => {

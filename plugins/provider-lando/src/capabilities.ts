@@ -1,5 +1,6 @@
 import {
   type HostProxyContainerTarget,
+  agentSocketCapabilities,
   buildProviderCapabilities,
   engineInfoArchitecture,
   hostProxyCapabilities,
@@ -14,14 +15,33 @@ import {
   ProviderInternalError,
   type ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { type HostPlatform, ProviderCapabilities, hostPlatformFamily } from "@lando/sdk/schema";
+import {
+  type AgentSocketDelivery,
+  type HostPlatform,
+  ProviderCapabilities,
+  hostPlatformFamily,
+} from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
+
+export const agentSocketDeliveryForPlatform = (
+  family: ReturnType<typeof hostPlatformFamily>,
+): AgentSocketDelivery =>
+  (({ linux: "bind-directory", darwin: "guest-bridge", win32: "guest-bridge" }) as const)[family];
 
 const bindMountPerformanceForPlatform = (
   platform: HostPlatform,
 ): ProviderCapabilities["bindMountPerformance"] => {
   return hostPlatformFamily(platform) === "linux" ? "native" : "slow";
+};
+
+const podmanInfoRootless = (info: unknown): boolean | undefined => {
+  if (typeof info !== "object" || info === null || !("host" in info)) return undefined;
+  const host = info.host;
+  if (typeof host !== "object" || host === null || !("security" in host)) return undefined;
+  const security = host.security;
+  if (typeof security !== "object" || security === null || !("rootless" in security)) return undefined;
+  return typeof security.rootless === "boolean" ? security.rootless : undefined;
 };
 
 export const decodeProviderCapabilities = (input: unknown) =>
@@ -70,8 +90,10 @@ export const decodeProviderCapabilities = (input: unknown) =>
 export const providerLandoCapabilitiesForPlatform = (
   platform: HostPlatform,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
+  rootless = hostPlatformFamily(platform) !== "win32",
 ): ProviderCapabilities => {
   const family = hostPlatformFamily(platform);
+  const agentSocket = agentSocketCapabilities(agentSocketDeliveryForPlatform(family));
   return buildProviderCapabilities({
     bindMounts: true,
     artifactBuild: true,
@@ -83,13 +105,14 @@ export const providerLandoCapabilitiesForPlatform = (
     artifactImport: true,
     ephemeralMounts: true,
     tlsCertificates: "lando",
-    rootless: true,
+    rootless,
     composeSpec: "native",
     composeKnobs: { supported: podmanComposeKnobs() },
     composeServiceFields: { supported: ["labels", "configs"] },
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(family, containerTargets, "host.containers.internal"),
+    ...(agentSocket === undefined ? {} : { agentSocket }),
   });
 };
 
@@ -119,6 +142,10 @@ export const introspectProviderCapabilities = (
     ),
     Effect.map((info) => {
       const containerArch = engineInfoArchitecture(info);
-      return providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTargets(containerArch));
+      return providerLandoCapabilitiesForPlatform(
+        platform,
+        hostProxyContainerTargets(containerArch),
+        podmanInfoRootless(info) ?? hostPlatformFamily(platform) !== "win32",
+      );
     }),
   );

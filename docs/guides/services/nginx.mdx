@@ -45,8 +45,10 @@ network.
 services:
   web:
     type: nginx
+    backend: app
   app:
     type: "php:8.3"
+    via: fpm
 ```
 
 ## Run as a non-root user
@@ -75,5 +77,18 @@ services:
     type: nginx
     image: nginx:1.27-alpine
 ```
+
+  <Scenario id="php-fpm-backend" render>
+    <Step name="scaffold">
+      <UseFixture name="nginx-php" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\"[\\s\\S]*\"backend\":\\s*\"app\"[\\s\\S]*\"app\"[\\s\\S]*\"via\":\\s*\"fpm\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
 </Guide>

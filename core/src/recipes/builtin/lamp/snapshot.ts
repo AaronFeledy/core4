@@ -5,7 +5,7 @@ import { PHP_VERSIONS } from "../php-stack.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LAMP_RECIPE_VERSION = "0.1.0";
-export const LAMP_CONTENT_DIGEST = "sha256:9afda4d9f6ee1b8af319c37c89e8afe76f25a911b9b4d2eb66b033b0fbb1689d";
+export const LAMP_CONTENT_DIGEST = "sha256:8296b2b6dad5128b2f6eea6eb489e1c45cdf19e26695800ad2e3aea7747a2989";
 export const lampProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-lamp",
@@ -74,6 +74,7 @@ export const lampSnapshot: RecipeSnapshot = {
                   kind: "ObjectLiteral",
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+                    { key: "primary", value: { kind: "Literal", value: true } },
                     { key: "framework", value: { kind: "Literal", value: "none" } },
                     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
                     {

@@ -118,6 +118,11 @@ describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
     expect(frame).toEqual({ kind: "progress", stream: "Downloading", current: 100, total: 200 });
   });
 
+  test("trims Podman stream status newlines before publishing", () => {
+    const frame = parseImagePullFrame(JSON.stringify({ stream: "Copying blob sha256:abc123\n" }), dialect);
+    expect(frame).toEqual({ kind: "progress", stream: "Copying blob sha256:abc123" });
+  });
+
   test("publishes redacted progress events from a streaming response", async () => {
     // Given
     const reference = "https://user:s3cr3tPass@registry.internal/team/img:1.0";

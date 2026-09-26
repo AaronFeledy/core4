@@ -80,6 +80,7 @@ const makeRoots = () => {
 };
 
 const sandboxCliExtras = (root: string) => ({
+  _userConfRoot: join(root, "conf"),
   _cgroupsDelegatePath: join(root, "delegate.conf"),
   _shellProfilePath: join(root, ".profile"),
   _socketProxyUnitPaths: [
@@ -92,6 +93,7 @@ const sandboxCliExtras = (root: string) => ({
 });
 
 const sandboxUninstallIo = (root: string) => ({
+  userConfRoot: join(root, "conf"),
   cgroupsDelegatePath: join(root, "delegate.conf"),
   shellProfilePath: join(root, ".profile"),
   socketProxyUnitPaths: [
@@ -101,6 +103,7 @@ const sandboxUninstallIo = (root: string) => ({
     join(root, "lando-proxy-https.service"),
   ],
   socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
+  listDiscoveredApps: async () => [],
 });
 
 const withoutHostRuntimes = async <T>(fn: () => Promise<T>): Promise<T> => {
@@ -167,7 +170,6 @@ describe("meta:uninstall", () => {
             flags: { "dry-run": true, purge: true },
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
-            _userConfRoot: join(root, "config"),
             ...sandboxCliExtras(root),
             _exists: () => false,
             _listDiscoveredApps: listDiscoveredApps,
@@ -274,11 +276,12 @@ describe("meta:uninstall", () => {
       expect(output).toContain("shell entries");
       expect(output).toContain("user data root");
       expect(output).toContain("user cache root");
-      expect(output).toContain("owned by Lando");
       expect(result.steps.find((step) => step.id === "installed-binary")?.status).toBe("skipped");
+      expect(output).toContain("Preserved by --keep-data");
+
       expect(output).toContain("manual remediation");
       expect(result.steps.find((step) => step.id === "managed-provider-runtime")).toMatchObject({
-        status: "owned",
+        status: "skipped",
       });
       expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
         status: "skipped",
@@ -381,7 +384,7 @@ describe("meta:uninstall", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
@@ -405,7 +408,7 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("runtime-service is removed under both keep-data and purge", async () => {
+  test("runtime-service is preserved by keep-data and removed by purge", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtimeDir = join(userDataRoot, "runtime");
@@ -420,7 +423,7 @@ describe("meta:uninstall", () => {
         (await buildUninstallPlan(options, "keep-data")).find((step) => step.id === "runtime-service"),
       ).toMatchObject({
         target: runtimeDir,
-        status: "owned",
+        status: "skipped",
       });
       expect(
         (await buildUninstallPlan(options, "purge")).find((step) => step.id === "runtime-service"),
@@ -444,7 +447,7 @@ describe("meta:uninstall", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
@@ -485,7 +488,8 @@ describe("meta:uninstall", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
+
           ...sandboxUninstallIo(root),
           exists: (path: string) => path === runtimeDir && runtimeDirExists,
           teardownRuntimeService: async (rootPath: string) => {
@@ -642,7 +646,7 @@ describe("meta:uninstall", () => {
     expect(result.failed).toBe(false);
   });
 
-  test("confirmed --keep-data removes owned toolchain entries but preserves data roots", async () => {
+  test("confirmed --keep-data removes the CLI but preserves runtime and sync tools with app data", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtime = join(userDataRoot, "providers", "provider-lando");
@@ -664,9 +668,9 @@ describe("meta:uninstall", () => {
       );
 
       expect(result.refused).toBe(false);
-      expect(existsSync(runtime)).toBe(false);
-      expect(existsSync(mutagen)).toBe(false);
-      expect(existsSync(agents)).toBe(false);
+      expect(existsSync(runtime)).toBe(true);
+      expect(existsSync(mutagen)).toBe(true);
+      expect(existsSync(agents)).toBe(true);
       expect(existsSync(binary)).toBe(false);
       fixture.assertLegacy();
       expect(existsSync(userDataRoot)).toBe(true);
@@ -746,19 +750,23 @@ describe("meta:uninstall", () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       const runtime = join(userDataRoot, "providers", "provider-lando");
+      const binary = join(root, "bin", "lando4");
       const mutagen = join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen");
       mkdirSync(runtime, { recursive: true });
       mkdirSync(join(userDataRoot, "bin"), { recursive: true });
       writeFileSync(mutagen, "mutagen", "utf-8");
+      seedInstall(userDataRoot, binary);
 
       const result = await Effect.runPromise(
         metaUninstallSpec.run({
           flags: { yes: true, "keep-data": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
+          _execPath: binary,
+
           ...sandboxCliExtras(root),
           _remove: async (path: string) => {
-            if (path === runtime) throw new Error("locked runtime");
+            if (path === binary) throw new Error("locked CLI binary");
             rmSync(path, { recursive: true, force: true });
           },
         }),
@@ -771,13 +779,13 @@ describe("meta:uninstall", () => {
       const report = JSON.parse(readFileSync(reportPath, "utf-8"));
       expect(report.status).toBe("failed");
       expect(report.steps).toContainEqual(
-        expect.objectContaining({ id: "managed-provider-runtime", outcome: "failed" }),
+        expect.objectContaining({ id: "managed-provider-runtime", outcome: "skipped" }),
       );
       expect(report.steps).toContainEqual(
-        expect.objectContaining({ id: "mutagen-binary", outcome: "completed" }),
+        expect.objectContaining({ id: "mutagen-binary", outcome: "skipped" }),
       );
       expect(report.steps).toContainEqual(
-        expect.objectContaining({ id: "installed-binary", outcome: "skipped" }),
+        expect.objectContaining({ id: "installed-binary", outcome: "failed" }),
       );
       expect(formatUninstallResult(result)).toContain("uninstall incomplete");
     } finally {
@@ -950,7 +958,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, "keep-data": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: join(root, "conf"),
           ...sandboxCliExtras(root),
         }),
       );
@@ -980,7 +987,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1049,7 +1055,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [], // No running apps
         }),
@@ -1086,7 +1091,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => {
             throw new Error("docker ps query timed out after 1000ms");
@@ -1127,7 +1131,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1175,7 +1178,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => {
             throw new Error(
@@ -1218,7 +1220,6 @@ describe("meta:uninstall", () => {
             flags: { yes: true, purge: true },
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
-            _userConfRoot: userConfRoot,
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1265,7 +1266,6 @@ describe("meta:uninstall", () => {
             flags: { yes: true, purge: true },
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
-            _userConfRoot: userConfRoot,
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1310,7 +1310,6 @@ describe("meta:uninstall", () => {
             flags: { yes: true, purge: true },
             _userDataRoot: userDataRoot,
             _userCacheRoot: userCacheRoot,
-            _userConfRoot: userConfRoot,
             ...sandboxCliExtras(root),
           }),
         ),
@@ -1346,7 +1345,6 @@ describe("meta:uninstall", () => {
           flags: { yes: true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: userConfRoot,
           ...sandboxCliExtras(root),
           _listDiscoveredApps: async () => [
             {
@@ -1402,7 +1400,6 @@ describe("meta:uninstall", () => {
           flags: { "dry-run": true, purge: true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
-          _userConfRoot: join(root, "conf"),
           ...sandboxCliExtras(root),
         }),
       );

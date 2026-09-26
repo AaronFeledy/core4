@@ -195,29 +195,29 @@ describe("restart lifecycle brackets", () => {
     expect(harness.routeRemovals).toEqual([]);
   });
 
-  test("post-start failure during restart does not remove started app routes", async () => {
+  test("post-start failure during restart warns and keeps started app routes", async () => {
     // Given
     const harness = restartHarness("post-start");
     // When
-    const error = await Effect.runPromise(Effect.flip(harness.operation));
+    await Effect.runPromise(harness.operation);
     // Then
-    expect(error).toBeInstanceOf(LandofileEventStepFailedError);
-    expect(harness.executed.at(-1)).toBe("post-start");
-    expect(byTag(harness.events, "post-restart")).toEqual([]);
+    expect(harness.executed).toContain("post-start");
+    expect(byTag(harness.events, "post-restart")).toHaveLength(1);
+    expect(byTag(harness.events, "message.warn")).toHaveLength(1);
     expect(harness.routeRemovals).toEqual([]);
   });
 });
 
 describe("start post-start", () => {
-  test("post-start failure propagates without removing started app routes", async () => {
+  test("post-start failure warns without removing started app routes", async () => {
     // Given
     const harness = startHarness("post-start");
     // When
-    const error = await Effect.runPromise(Effect.flip(harness.operation));
+    await Effect.runPromise(harness.operation);
     // Then
-    expect(error).toBeInstanceOf(LandofileEventStepFailedError);
-    expect(harness.executed).toEqual(["pre-start", "post-start"]);
+    expect(harness.executed).toEqual(["pre-init", "post-init", "pre-start", "post-start"]);
     expect(harness.routeRemovals).toEqual([]);
     expect(byTag(harness.events, "post-start")).toHaveLength(1);
+    expect(byTag(harness.events, "message.warn")).toHaveLength(1);
   });
 });

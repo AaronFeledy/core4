@@ -9,11 +9,9 @@
  * ordering, validation, and mutation. Nothing in this module opens a file,
  * follows a reference, resolves a tag, plans, or contacts a provider.
  *
- * Sections whose native target is not yet available are reported `unsupported`
- * rather than `dropped`. `dropped` is a final disposition that says a source
- * key has no target at all; an `unsupported` section instead blocks the write,
- * which is the honest answer while lowering for that section is still being
- * built. Nothing is ever silently omitted.
+ * Every key is diagnosed; nothing is silently omitted. Global-only keys have
+ * explicit dispositions, and unknown keys are dropped by the model. Diagnostic
+ * kind determines whether conversion is blocked.
  */
 import { Effect } from "effect";
 
@@ -24,7 +22,6 @@ import type {
   ConfigTranslateDiagnostic,
   ConfigTranslateDocument,
   ConfigTranslateInput,
-  ConfigTranslateOutput,
   ConfigTranslateResult,
   ConfigTranslateSourceId,
   LandofileLayer,
@@ -32,32 +29,35 @@ import type {
 import { createRedactor } from "@lando/sdk/secrets";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 
+import { completeLando3CommitSet } from "./commit-set.ts";
 import {
   LANDO3_TRANSLATOR_ID,
   type Lando3Source,
   type Lando3TranslatorPorts,
-  type LegacyOccurrence,
   type MergedLegacyValue,
   lando3SourceLayerOrder,
   lando3TargetLayer,
 } from "./contract.ts";
 import { detectLando3, isAppRootLando3Layer, sourceLayerForDocument } from "./detect.ts";
+import { dedupeDiagnostics, orderDiagnostics } from "./diagnostics.ts";
+import { foldToTargetLayers, legacyPrefixViews } from "./effective-views.ts";
 import { mergeLegacySources, mergedToPlain, occurrencesAt, toMergedValue } from "./legacy-merge.ts";
+import { legacyReferenceDiagnostics } from "./legacy-references.ts";
+import { lowerAppNames } from "./lower-top-level.ts";
+import type { V4Wire } from "./lowering-contract.ts";
 import { decodeLando3Landofile } from "./model.ts";
-import { slugifyAppName } from "./naming.ts";
-import { formatPath } from "./source.ts";
+import {
+  type EstablishedLayer,
+  type EstablishedRecipe,
+  lowerRecipeViews,
+  recipeLayerOutputs,
+} from "./recipe-lowering.ts";
+import { spanOf } from "./service-diagnostics.ts";
+import { lowerServiceViews } from "./service-lowering.ts";
+import { topLevelDispositions, unknownKeyDiagnostics } from "./top-level-dispositions.ts";
+import { isPlainRecord, mergeLandofiles, v4LayerRank } from "./v4-merge.ts";
 
 const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml"]);
-
-/**
- * Lando 3 custom-Landofile settings. They are diagnosed where an author
- * supplied them and never honored: resolving one would mean reading user
- * state, which this package does not do.
- */
-const CUSTOM_BASENAME_KEYS = ["landoFile", "preLandoFiles", "postLandoFiles"] as const;
-
-/** Only `name` is lowered. Every other top-level key still needs its own target. */
-const LOWERED_KEYS = new Set<string>(["name"]);
 
 export const defaultLando3Ports = (): Lando3TranslatorPorts => ({
   decomposers: new Map(),
@@ -67,17 +67,11 @@ export const defaultLando3Ports = (): Lando3TranslatorPorts => ({
 const translateError = (message: string, remediation: string): ConfigTranslateError =>
   new ConfigTranslateError({ message, translator: LANDO3_TRANSLATOR_ID, remediation });
 
-const decodeDocument = (document: ConfigTranslateDocument): string =>
-  new TextDecoder().decode(document.bytes);
-
-const documentLabel = (document: ConfigTranslateDocument): string =>
-  document.path ?? String(document.sourceId);
-
 const parseSource =
   (ports: Lando3TranslatorPorts) =>
   (document: ConfigTranslateDocument): Effect.Effect<Lando3Source, ConfigTranslateError> =>
     Effect.gen(function* () {
-      const file = documentLabel(document);
+      const file = document.path ?? String(document.sourceId);
       if (!YAML_MEDIA_TYPES.has(document.mediaType)) {
         return yield* Effect.fail(
           translateError(
@@ -90,7 +84,7 @@ const parseSource =
       const parsed = yield* parseLegacyLandofile({
         mode: "legacy",
         file,
-        content: decodeDocument(document),
+        content: new TextDecoder().decode(document.bytes),
       }).pipe(
         Effect.mapError((cause) =>
           translateError(
@@ -112,140 +106,79 @@ const parseSource =
       };
     });
 
-/** Input order decides diagnostic order, so index the sources core supplied. */
-const documentRank = (documents: ReadonlyArray<ConfigTranslateDocument>): ReadonlyMap<string, number> =>
-  new Map(documents.map((document, index) => [String(document.sourceId), index]));
-
-const diagnosticOrder =
-  (ranks: ReadonlyMap<string, number>) =>
-  (left: ConfigTranslateDiagnostic, right: ConfigTranslateDiagnostic): number => {
-    const byDocument = (ranks.get(String(left.sourceId)) ?? 0) - (ranks.get(String(right.sourceId)) ?? 0);
-    if (byDocument !== 0) return byDocument;
-    const byLine = (left.span?.start.line ?? 0) - (right.span?.start.line ?? 0);
-    if (byLine !== 0) return byLine;
-    const byColumn = (left.span?.start.column ?? 0) - (right.span?.start.column ?? 0);
-    if (byColumn !== 0) return byColumn;
-    const leftPath = left.keyPath.join(".");
-    const rightPath = right.keyPath.join(".");
-    return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : 0;
-  };
-
-const lastOccurrence = (occurrences: ReadonlyArray<LegacyOccurrence>): LegacyOccurrence | undefined =>
-  occurrences.at(-1);
-
-const spanOf = (occurrence: LegacyOccurrence | undefined): ConfigTranslateDiagnostic["span"] =>
-  occurrence?.span === undefined
-    ? undefined
-    : {
-        start: { line: occurrence.span.start.line, column: occurrence.span.start.column },
-        end: { line: occurrence.span.end.line, column: occurrence.span.end.column },
-      };
-
-const topLevelKeys = (merged: MergedLegacyValue | undefined): ReadonlyArray<string> =>
-  merged?.kind === "mapping" ? [...merged.entries.keys()] : [];
-
-const targetFor = (source: Lando3Source): LandofileLayer => lando3TargetLayer(source.layer);
-
-const nameAssignments = (
-  sources: ReadonlyArray<Lando3Source>,
-): ReadonlyArray<{ readonly source: Lando3Source; readonly name: string }> =>
-  sources.flatMap((source) => {
-    const root = source.value;
-    if (root?.kind !== "mapping") return [];
-    const entry = root.entries.get("name");
-    if (entry?.kind !== "scalar" || typeof entry.value !== "string") return [];
-    return [{ source, name: entry.value }];
-  });
-
-const buildOutputs = (
-  sources: ReadonlyArray<Lando3Source>,
-  writable: ReadonlySet<LandofileLayer>,
-): ReadonlyArray<ConfigTranslateOutput> => {
-  const byTarget = new Map<
-    LandofileLayer,
-    { readonly sourceIds: Array<ConfigTranslateSourceId>; name: string; order: number }
-  >();
-  for (const { source, name } of nameAssignments(sources)) {
-    const target = targetFor(source);
-    if (!writable.has(target)) continue;
-    const order = lando3SourceLayerOrder(source.layer);
-    const existing = byTarget.get(target);
-    if (existing === undefined) {
-      byTarget.set(target, { sourceIds: [source.sourceId], name, order });
-      continue;
-    }
-    existing.sourceIds.push(source.sourceId);
-    // Two Lando 3 layers can fold onto one target. Later Lando 3 order wins,
-    // exactly as it would have at load time.
-    if (order >= existing.order) {
-      existing.name = name;
-      existing.order = order;
-    }
-  }
-  return [...byTarget.entries()].map(([targetLayer, claim]) => ({
-    targetLayer,
-    fragment: { name: slugifyAppName(claim.name) },
-    sourceIds: claim.sourceIds,
-  }));
-};
-
-const configuredBasenames = (value: MergedLegacyValue | undefined): ReadonlyArray<string> => {
-  if (value === undefined) return [];
-  switch (value.kind) {
-    case "scalar":
-      return typeof value.value === "string" && value.value.length > 0 ? [value.value] : [];
-    case "sequence":
-      return value.items.flatMap((item) => configuredBasenames(item.value));
-    case "tagged":
-      return configuredBasenames(value.value);
-    case "mapping":
-      return [];
-  }
-};
-
-const deferredDiagnostics = (
+const orphanConfigDiagnostic = (
   merged: MergedLegacyValue | undefined,
   fallback: ConfigTranslateSourceId,
-): ReadonlyArray<ConfigTranslateDiagnostic> =>
-  topLevelKeys(merged)
-    .filter((key) => !LOWERED_KEYS.has(key))
-    .map((key) => {
-      const occurrence = lastOccurrence(occurrencesAt(merged, [key]));
-      const custom = (CUSTOM_BASENAME_KEYS as ReadonlyArray<string>).includes(key);
-      const names = custom
-        ? configuredBasenames(merged?.kind === "mapping" ? merged.entries.get(key) : undefined)
-        : [];
-      const listed = names.length > 0 ? `: ${names.join(", ")}` : "";
-      return {
-        kind: custom ? ("needs-review" as const) : ("unsupported" as const),
-        sourceId: occurrence?.sourceId ?? fallback,
-        keyPath: [key],
-        span: spanOf(occurrence),
-        message: custom
-          ? `${formatPath([key])} names custom Lando 3 Landofile basenames${listed}.`
-          : `${formatPath([key])} has no Lando 4 target yet.`,
-        remediation: custom
-          ? "Rename the files to the standard Lando 4 basenames before converting; custom Landofile names are not honored."
-          : `Author the Lando 4 equivalent of ${formatPath([key])} by hand, or convert again once this section is supported.`,
-      };
-    });
-
-const unknownKeyDiagnostics = (
-  unknownKeys: ReadonlyArray<ReadonlyArray<string | number>>,
-  merged: MergedLegacyValue | undefined,
-  fallback: ConfigTranslateSourceId,
-): ReadonlyArray<ConfigTranslateDiagnostic> =>
-  unknownKeys.map((keyPath) => {
-    const occurrence = lastOccurrence(occurrencesAt(merged, keyPath));
-    return {
-      kind: "dropped" as const,
+): ReadonlyArray<ConfigTranslateDiagnostic> => {
+  if (merged?.kind !== "mapping" || !merged.entries.has("config")) return [];
+  const occurrence = occurrencesAt(merged, ["config"]).at(-1);
+  return [
+    {
+      kind: "unsupported",
       sourceId: occurrence?.sourceId ?? fallback,
-      keyPath: [...keyPath],
+      keyPath: ["config"],
       span: spanOf(occurrence),
-      message: `${formatPath(keyPath)} is not a Lando 3 key and was ignored by Lando 3 as well.`,
-      remediation: `Remove ${formatPath(keyPath)}, or author the Lando 4 value you intended.`,
-    };
-  });
+      message: "config has no Lando 3 recipe to apply to.",
+      remediation: "Add a recipe, or remove config and author the Lando 4 services directly.",
+    },
+  ];
+};
+
+const withoutAppName = (fragment: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> => {
+  const { name: _name, ...rest } = fragment;
+  return rest;
+};
+
+const persistedOptions = (value: unknown): Readonly<Record<string, string | boolean>> | undefined => {
+  if (!isPlainRecord(value)) return undefined;
+  const options: Record<string, string | boolean> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== "string" && typeof entry !== "boolean") return undefined;
+    options[key] = entry;
+  }
+  return options;
+};
+
+/**
+ * Effective recipe after every established file. Each file is a delta, so id
+ * and options accumulate low-to-high instead of trusting the highest file.
+ */
+const establishedRecipe = (layers: ReadonlyArray<EstablishedLayer>): EstablishedRecipe | undefined => {
+  let recipeId: string | undefined;
+  const options: Record<string, string | boolean> = {};
+  let fragment: Readonly<Record<string, unknown>> = {};
+  let sawRecipe = false;
+  for (const layer of layers) {
+    fragment = mergeLandofiles([fragment, layer.fragment]);
+    const recipe = layer.fragment.recipe;
+    if (!isPlainRecord(recipe)) continue;
+    sawRecipe = true;
+    if (typeof recipe.id === "string") recipeId = recipe.id;
+    const next = persistedOptions(recipe.options);
+    if (next !== undefined) Object.assign(options, next);
+  }
+  if (!sawRecipe || recipeId === undefined) return undefined;
+  return { recipeId, options, fragment };
+};
+
+const establishedLayers = (
+  fragments: ReadonlyArray<{ readonly layerId: LandofileLayer; readonly fragment: unknown }>,
+  layers: ReadonlyArray<ConfigTranslateDocument>,
+): ReadonlyArray<EstablishedLayer> =>
+  [...fragments]
+    .sort((left, right) => v4LayerRank(left.layerId) - v4LayerRank(right.layerId))
+    .flatMap((fragment): EstablishedLayer[] => {
+      if (!isPlainRecord(fragment.fragment)) return [];
+      return [
+        {
+          layer: fragment.layerId,
+          sourceIds: layers
+            .filter((document) => lando3TargetLayer(sourceLayerForDocument(document)) === fragment.layerId)
+            .map((document) => document.sourceId),
+          fragment: withoutAppName(fragment.fragment),
+        },
+      ];
+    });
 
 /**
  * Builds the frontend over host-supplied ports. Recipe decomposition arrives
@@ -272,24 +205,89 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         }
 
         const layers = input.documents.filter(isAppRootLando3Layer);
-        const sources = yield* Effect.forEach(layers, parseSource(ports));
+        const established = establishedLayers(input.currentLowerV4Fragments, layers);
+        const establishedTargets = new Set(established.map((layer) => layer.layer));
+        const legacyLayers = layers.filter(
+          (document) => !establishedTargets.has(lando3TargetLayer(sourceLayerForDocument(document))),
+        );
+        const sources = yield* Effect.forEach(legacyLayers, parseSource(ports));
         const merged = mergeLegacySources(sources);
+        const folded = foldToTargetLayers(legacyPrefixViews(sources));
+        const lowered = yield* lowerRecipeViews(ports, folded, establishedRecipe(established));
+        const recipeFragments = [
+          ...lowered.prefixes.map(({ fragment }) => fragment),
+          ...established.map(({ fragment }) => fragment),
+        ];
+        const recipeServiceWires = new Map<string, V4Wire>();
+        const serviceHolders = [
+          ...[...established].sort((left, right) => v4LayerRank(left.layer) - v4LayerRank(right.layer)),
+          ...lowered.prefixes,
+        ];
+        for (const { fragment } of serviceHolders) {
+          if (!isPlainRecord(fragment.services)) continue;
+          for (const [name, service] of Object.entries(fragment.services)) {
+            if (!isPlainRecord(service)) continue;
+            const current = recipeServiceWires.get(name);
+            if (
+              current === undefined ||
+              !Array.isArray(current.endpoints) ||
+              Array.isArray(service.endpoints)
+            ) {
+              recipeServiceWires.set(name, service);
+            }
+          }
+        }
+        const authored = lowerServiceViews(folded, {
+          tools: new Set(
+            recipeFragments.flatMap(({ tooling }) => (isPlainRecord(tooling) ? Object.keys(tooling) : [])),
+          ),
+          recipeServices: [...recipeServiceWires.keys()],
+          recipeServiceWires,
+        });
         const decoded = decodeLando3Landofile(mergedToPlain(merged));
 
         const writable = new Set<LandofileLayer>(input.writableLayerIds);
-        const outputs = buildOutputs(sources, writable);
+        const planned = recipeLayerOutputs(
+          folded,
+          lowered,
+          lowerAppNames(sources, writable),
+          established,
+          authored.prefixes,
+        );
+        const missing = planned.required.filter((layer) => !writable.has(layer));
+        if (input.mode === "single-layer" && missing.length > 0) {
+          return yield* Effect.fail(
+            translateError(
+              "The conversion needs edits outside the writable layers.",
+              `This layer's conversion also needs edits to ${missing.join(", ")}; run the full conversion instead of --file.`,
+            ),
+          );
+        }
+        const { outputs, deletions } = completeLando3CommitSet(input, planned.outputs);
 
         const fallback = layers[0]?.sourceId;
         if (fallback === undefined) {
           return { outputs: [], diagnostics: [], deletions: [] };
         }
 
-        const diagnostics = [
-          ...deferredDiagnostics(merged, fallback),
-          ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
-        ].toSorted(diagnosticOrder(documentRank(input.documents)));
+        const ranks = new Map(
+          sources.map((source) => [source.sourceId, lando3SourceLayerOrder(source.layer)]),
+        );
+        const recipePresent =
+          establishedRecipe(established) !== undefined || folded.some((view) => view.recipe !== undefined);
+        const diagnostics = orderDiagnostics(
+          dedupeDiagnostics([
+            ...topLevelDispositions(merged, fallback),
+            ...legacyReferenceDiagnostics(merged, fallback),
+            ...(recipePresent ? [] : orphanConfigDiagnostic(merged, fallback)),
+            ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
+            ...planned.diagnostics,
+            ...authored.diagnostics,
+          ]),
+          (sourceId) => ranks.get(sourceId) ?? 0,
+        );
 
-        return { outputs, diagnostics, deletions: [] };
+        return { outputs, diagnostics, deletions };
       }),
   };
 };

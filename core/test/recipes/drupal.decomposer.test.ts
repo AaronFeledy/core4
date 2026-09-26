@@ -18,6 +18,7 @@ import {
   drupalProducer,
   drupalSnapshot,
 } from "../../src/recipes/builtin/drupal/snapshot.ts";
+import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 
 const defaults = { ...drupalDefaults };
 const alternatives = {
@@ -78,6 +79,7 @@ describe("drupal decomposition", () => {
       services: {
         appserver: {
           type: "php:{{ recipe.php }}",
+          primary: true,
           framework: "drupal",
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
@@ -92,7 +94,7 @@ describe("drupal decomposition", () => {
         drush: {
           service: "appserver",
           description: "Run Drush inside the appserver service.",
-          cmds: ["vendor/bin/drush"],
+          cmds: [DRUSH_TOOLING_COMMAND],
         },
         composer: {
           service: "appserver",
@@ -109,6 +111,7 @@ describe("drupal decomposition", () => {
     expect(Object.keys(authoring.services)).toEqual(["appserver", "edge", "database"]);
     expect(authoring.services.appserver).toEqual({
       type: "php:{{ recipe.php }}",
+      primary: true,
       framework: "drupal",
       via: "fpm",
       webroot: "{{ recipe.webroot }}",

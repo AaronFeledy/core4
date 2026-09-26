@@ -1,5 +1,6 @@
 import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
+import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 
 import {
   type HostProxyContainerTarget,
@@ -32,6 +33,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { mergeAppliedPlan } from "@lando/container-runtime/plan";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
@@ -99,6 +101,7 @@ import {
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 
+import { AGENT_RELAY_IMAGE, makeDockerDesktopAgentSocketBridge } from "./agent-socket-relay.ts";
 import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 
@@ -391,6 +394,9 @@ export const dockerCapabilitiesForHost = (
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),
+    agentSocket: {
+      delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
+    },
   });
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
@@ -844,12 +850,32 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     );
   };
 
-  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
-    const persistedPlan = sanitizeAppliedPlan(plan);
-    plans.set(plan.id, persistedPlan);
-    return options.appliedPlanState === undefined
-      ? Effect.void
-      : persistAppliedPlan(options.appliedPlanState, persistedPlan).pipe(Effect.asVoid);
+  const rememberPlan = (plan: AppPlan, reconcile: boolean): Effect.Effect<void, ProviderUnavailableError> => {
+    const state = options.appliedPlanState;
+    const write = Effect.gen(function* () {
+      const previous = reconcile
+        ? undefined
+        : state === undefined
+          ? yield* resolvePlan({ app: plan.id })
+          : yield* loadAppliedPlan(state, plan.id);
+      const persistedPlan = sanitizeAppliedPlan(mergeAppliedPlan(previous, plan, reconcile));
+      if (state !== undefined) yield* persistAppliedPlan(state, persistedPlan);
+      plans.set(plan.id, persistedPlan);
+    });
+    return state === undefined
+      ? write
+      : state.withLock(`applied-plan-${plan.id}`, write).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof ProviderUnavailableError
+              ? cause
+              : new ProviderUnavailableError({
+                  providerId: PROVIDER_ID,
+                  operation: "applied-state.lock",
+                  message: "Could not lock Docker applied-plan state.",
+                  cause,
+                }),
+          ),
+        );
   };
 
   const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
@@ -889,10 +915,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     Effect.map(
       ({ capabilities: resolvedCapabilities, logFileHelperPayload }): RuntimeProviderShape => ({
         id: PROVIDER_ID,
+        inspectResourceNames: (query) => inspectEngineResourceNames(dockerApi, query, DOCKER_CTX),
         displayName: "Docker Runtime Provider",
         version: "0.0.0",
         platform,
         capabilities: resolvedCapabilities,
+        ...(isVmMediatedDockerHost(platform, resolvedDockerHost)
+          ? {
+              openAgentSocketBridge: makeDockerDesktopAgentSocketBridge({
+                api: dockerApi,
+                hostGateway: "host.docker.internal",
+                relayImage: AGENT_RELAY_IMAGE,
+              }),
+            }
+          : {}),
         isAvailable: dockerApi.info.pipe(
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
@@ -929,7 +965,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
         ...resolvedOps,
         destroy: (target, destroyOptions) =>
           resolvePlan(target).pipe(

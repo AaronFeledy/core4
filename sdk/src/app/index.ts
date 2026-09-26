@@ -24,9 +24,13 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
+  GpgAgentTransportError,
+  GpgAgentUnavailableError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
+  Lando3LandofileDetected,
   LandoCommandError,
+  LandofileDialectMixError,
   LandofileEventInvocationDepthError,
   LandofileEventLifecycleReentryError,
   LandofileEventStepFailedError,
@@ -41,7 +45,10 @@ import type {
   LandofileValidationError,
   LandofileVersionConstraintError,
   ManagedFileTransactionError,
+  NoProviderInstalledError,
   NotImplementedError,
+  ProviderConfigError,
+  ProviderUnavailableError,
   ProxyApplyError,
   ProxyError,
   ProxySetupError,
@@ -56,8 +63,12 @@ import type {
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
   SecretNotFoundError,
+  SecretReferenceInvalidError,
+  SecretStoreUnavailableError,
   ShellExecError,
   ShellScriptOutsideRootError,
+  SshAgentTransportError,
+  SshAgentUnavailableError,
   StateStoreError,
   ToolingCompileError,
   ToolingDisabledError,
@@ -210,6 +221,12 @@ export type StartAppError =
   | FileSyncStopError
   | GlobalAutoStartError
   | SecretNotFoundError
+  | SecretStoreUnavailableError
+  | SecretReferenceInvalidError
+  | SshAgentUnavailableError
+  | SshAgentTransportError
+  | GpgAgentUnavailableError
+  | GpgAgentTransportError
   | HostProxySocketStaleError
   | HostProxyTransportUnavailableError
   | LandoCommandError
@@ -233,6 +250,8 @@ export interface StopAppResult {
 }
 
 export type StopAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | AppPlannerError
   | BuildError
   | ManagedFileTransactionError
@@ -255,6 +274,10 @@ export type StopAppError =
   | LandofileVersionConstraintError
   | LandoCommandError
   | AppLockTimeoutError
+  | NoProviderInstalledError
+  | ProviderConfigError
+  | ProviderError
+  | ProviderUnavailableError
   | StateStoreError
   | VolumeOperationError;
 
@@ -436,6 +459,8 @@ export interface LogsAppOptions {
 }
 
 export type LogsAppError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | AppPlannerError
   | ProviderSelectionError
   | ProviderError

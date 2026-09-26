@@ -1015,6 +1015,232 @@ describe("ensureRuntime", () => {
     }
   });
 
+  test("healthy macOS machine also skips the launch lock", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-mac-healthy-"));
+    try {
+      const calls: string[] = [];
+      let locks = 0;
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "darwin",
+          podmanApi: reachableApi(),
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("running", calls),
+          withLaunchLock: <A, E>(_body: Effect.Effect<A, E>) =>
+            Effect.sync(() => {
+              locks += 1;
+              throw new Error("healthy runtime must not wait for the launch lock");
+            }) as Effect.Effect<A, E>,
+          ...paths(dir),
+        }),
+      );
+      expect(locks).toBe(0);
+      expect(calls).toEqual(["inspect"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("healthy Windows machine completes setup progress without taking the launch lock", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-progress-"));
+    try {
+      const phases: string[] = [];
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "win32",
+          podmanApi: reachableApi(),
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("running", []),
+          withLaunchLock: (body) =>
+            Effect.sync(() => {
+              phases.push("lock");
+            }).pipe(Effect.zipRight(body)),
+          setupProgress: {
+            launch: (body) =>
+              Effect.sync(() => {
+                phases.push("launch");
+              }).pipe(Effect.zipRight(body)),
+            readiness: (body) =>
+              Effect.sync(() => {
+                phases.push("readiness");
+              }).pipe(Effect.zipRight(body)),
+          },
+          ...paths(dir),
+        }),
+      );
+      expect(phases).toEqual(["launch", "readiness"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("concurrent Windows commands reuse a healthy runtime without acquiring the launch lock", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-concurrent-"));
+    try {
+      const calls: string[] = [];
+      let locks = 0;
+      let pings = 0;
+      let infos = 0;
+      const deps = {
+        platform: "win32" as const,
+        podmanApi: {
+          ping: Effect.sync(() => {
+            pings += 1;
+          }),
+          info: Effect.sync(() => {
+            infos += 1;
+            return {};
+          }),
+        },
+        serviceRunner: throwingLaunchRunner(),
+        machineRunner: machineRunner("running", calls),
+        withLaunchLock: <A, E>(_body: Effect.Effect<A, E>) =>
+          Effect.sync(() => {
+            locks += 1;
+            throw new Error("healthy runtime must not wait for the launch lock");
+          }) as Effect.Effect<A, E>,
+        ...paths(dir),
+      };
+
+      await Effect.runPromise(
+        Effect.all(
+          Array.from({ length: 6 }, () => ensureRuntime(deps)),
+          {
+            concurrency: "unbounded",
+            discard: true,
+          },
+        ),
+      );
+
+      expect(locks).toBe(0);
+      expect(pings).toBe(6);
+      expect(infos).toBe(6);
+      expect(calls).toEqual(Array(6).fill("inspect"));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reachable Windows API does not bypass the lock for a stopped machine", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-stopped-"));
+    try {
+      const calls: string[] = [];
+      let locks = 0;
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "win32",
+          podmanApi: reachableApi(),
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("stopped", calls),
+          withLaunchLock: (body) =>
+            Effect.sync(() => {
+              locks += 1;
+            }).pipe(Effect.zipRight(body)),
+          ...paths(dir),
+        }),
+      );
+      expect(locks).toBe(1);
+      expect(calls).toEqual(["inspect", "inspect", "inspect", "start"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("Windows cold repair holds the lock and verifies readiness after starting the machine", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-cold-"));
+    try {
+      const calls: string[] = [];
+      let running = false;
+      let insideLock = false;
+      let locks = 0;
+      const machine: PodmanMachineRunner = {
+        ...machineRunner("stopped", calls),
+        inspect: Effect.sync(() => {
+          calls.push("inspect");
+          return running ? "running" : "stopped";
+        }),
+        start: Effect.sync(() => {
+          expect(insideLock).toBe(true);
+          calls.push("start");
+          running = true;
+        }),
+      };
+      const api: PodmanApiClient = {
+        ping: Effect.suspend(() => (running ? Effect.void : Effect.fail(unavailable()))),
+        info: Effect.suspend(() => (running ? Effect.succeed({}) : Effect.fail(unavailable()))),
+      };
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "win32",
+          podmanApi: api,
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machine,
+          withLaunchLock: (body) =>
+            Effect.acquireUseRelease(
+              Effect.sync(() => {
+                locks += 1;
+                insideLock = true;
+              }),
+              () => body,
+              () =>
+                Effect.sync(() => {
+                  insideLock = false;
+                }),
+            ),
+          ...paths(dir),
+        }),
+      );
+      expect(locks).toBe(1);
+      expect(calls).toEqual(["inspect", "start"]);
+      expect(running).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("Windows rechecks health under the lock after another command repairs the runtime", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-race-"));
+    try {
+      const calls: string[] = [];
+      const phases: string[] = [];
+      let running = false;
+      let locks = 0;
+      const api: PodmanApiClient = {
+        ping: Effect.suspend(() => (running ? Effect.void : Effect.fail(unavailable()))),
+        info: Effect.suspend(() => (running ? Effect.succeed({}) : Effect.fail(unavailable()))),
+      };
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "win32",
+          podmanApi: api,
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("running", calls),
+          withLaunchLock: (body) =>
+            Effect.sync(() => {
+              locks += 1;
+              running = true;
+            }).pipe(Effect.zipRight(body)),
+          setupProgress: {
+            launch: (body) =>
+              Effect.sync(() => {
+                phases.push("launch");
+              }).pipe(Effect.zipRight(body)),
+            readiness: (body) =>
+              Effect.sync(() => {
+                phases.push("readiness");
+              }).pipe(Effect.zipRight(body)),
+          },
+          ...paths(dir),
+        }),
+      );
+      expect(locks).toBe(1);
+      expect(calls).toEqual(["inspect"]);
+      expect(phases).toEqual(["launch", "readiness"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("win32 with a running machine is a no-op on the machine", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
@@ -1060,8 +1286,8 @@ describe("ensureRuntime", () => {
         }),
       );
 
-      expect(calls).toEqual(["inspect", "create", "start"]);
-      expect(apiCalls).toEqual(["ping", "info"]);
+      expect(calls).toEqual(["inspect", "inspect", "inspect", "create", "start"]);
+      expect(apiCalls).toEqual(["ping", "info", "ping", "info", "ping", "info"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

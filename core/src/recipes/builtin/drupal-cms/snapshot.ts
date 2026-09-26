@@ -1,14 +1,17 @@
 import type { ExpressionNode } from "@lando/sdk/expressions";
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { DRUSH_TOOLING_COMMAND } from "../drush-command.ts";
 import { PHP_VERSIONS } from "../php-stack.ts";
+import { recipeAssetDigest } from "../snapshot-asset.ts";
 import { encodedStringNode } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND, drupalCmsInstallCommand } from "./commands.ts";
+import { DRUPAL_CMS_PHP_INI, DRUPAL_CMS_PHP_INI_PATH, DRUPAL_CMS_PHP_INI_TARGET } from "./php-config";
 
 export const DRUPAL_CMS_RECIPE_VERSION = "0.1.0";
 export const DRUPAL_CMS_CONTENT_DIGEST =
-  "sha256:4e5ecb51c17423bef94c4699ecea07a572761fe0ec968d7b73fcd9d8a5e5d492";
+  "sha256:80c5365d904ad3bc105b1eea8c00e7702f42a7173c9218567850e1992a5e117c";
 
 export const drupalCmsProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -76,12 +79,30 @@ const apacheAppserver = (): ExpressionNode => ({
   kind: "ObjectLiteral",
   entries: [
     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+    { key: "primary", value: { kind: "Literal", value: true } },
     { key: "framework", value: { kind: "Literal", value: "drupal" } },
     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
     { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
     { key: "allowOverride", value: { kind: "Literal", value: true } },
     { key: "port", value: { kind: "Literal", value: 80 } },
     { key: "dependsOn", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "database" }] } },
+    {
+      key: "mounts",
+      value: {
+        kind: "ArrayLiteral",
+        elements: [
+          {
+            kind: "ObjectLiteral",
+            entries: [
+              { key: "source", value: { kind: "Literal", value: `./${DRUPAL_CMS_PHP_INI_PATH}` } },
+              { key: "target", value: { kind: "Literal", value: DRUPAL_CMS_PHP_INI_TARGET } },
+              { key: "readOnly", value: { kind: "Literal", value: true } },
+            ],
+          },
+        ],
+      },
+    },
+
     { key: "routes", value: primaryRoutes() },
   ],
 });
@@ -90,11 +111,28 @@ const fpmAppserver = (): ExpressionNode => ({
   kind: "ObjectLiteral",
   entries: [
     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
+    { key: "primary", value: { kind: "Literal", value: true } },
     { key: "framework", value: { kind: "Literal", value: "drupal" } },
     { key: "via", value: { kind: "Literal", value: "fpm" } },
     { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
     { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
     { key: "dependsOn", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "database" }] } },
+    {
+      key: "mounts",
+      value: {
+        kind: "ArrayLiteral",
+        elements: [
+          {
+            kind: "ObjectLiteral",
+            entries: [
+              { key: "source", value: { kind: "Literal", value: `./${DRUPAL_CMS_PHP_INI_PATH}` } },
+              { key: "target", value: { kind: "Literal", value: DRUPAL_CMS_PHP_INI_TARGET } },
+              { key: "readOnly", value: { kind: "Literal", value: true } },
+            ],
+          },
+        ],
+      },
+    },
   ],
 });
 
@@ -108,12 +146,18 @@ const edgeService = (): ExpressionNode => ({
   ],
 });
 
-const tool = (description: string, command: string): ExpressionNode => ({
+const tool = (description: string, command: string, encoded = false): ExpressionNode => ({
   kind: "ObjectLiteral",
   entries: [
     { key: "service", value: { kind: "Literal", value: "appserver" } },
     { key: "description", value: { kind: "Literal", value: description } },
-    { key: "cmds", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: command }] } },
+    {
+      key: "cmds",
+      value: {
+        kind: "ArrayLiteral",
+        elements: [encoded ? encodedStringNode(command) : { kind: "Literal", value: command }],
+      },
+    },
   ],
 });
 
@@ -159,7 +203,10 @@ export const drupalCmsSnapshot: RecipeSnapshot = {
           value: {
             kind: "ObjectLiteral",
             entries: [
-              { key: "drush", value: tool("Run Drush inside the appserver service.", "vendor/bin/drush") },
+              {
+                key: "drush",
+                value: tool("Run Drush inside the appserver service.", DRUSH_TOOLING_COMMAND, true),
+              },
               { key: "composer", value: tool("Run Composer inside the appserver service.", "composer") },
               {
                 key: "drupal-cms-scaffold",
@@ -211,7 +258,7 @@ export const drupalCmsSnapshot: RecipeSnapshot = {
       ],
     },
   },
-  assets: [],
+  assets: [{ dest: DRUPAL_CMS_PHP_INI_PATH, digest: recipeAssetDigest(DRUPAL_CMS_PHP_INI), template: false }],
 };
 
 export const drupalCmsSnapshotYaml = recipeSnapshotYaml(drupalCmsSnapshot);

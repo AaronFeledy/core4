@@ -106,6 +106,7 @@ describe("attachExecHostIo", () => {
     expect(attached.tty).toBe(true);
     expect(attached.hostTerminal).toBeUndefined();
     expect(attached.terminalResize).toBeUndefined();
+    expect(attached.env).toMatchObject({ COLUMNS: "80", LINES: "24" });
   });
 });
 
@@ -140,6 +141,40 @@ describe("withInheritedStdinRawMode", () => {
     // Then
     expect(raw).toBe(false);
     expect(flowing === false).toBe(true);
+  });
+
+  test("restores a flowing TTY after a cancellable reader pauses it", async () => {
+    let raw = false;
+    let flowing: boolean | null = true;
+    const stdin = {
+      isTTY: true,
+      get isRaw() {
+        return raw;
+      },
+      get readableFlowing() {
+        return flowing;
+      },
+      setRawMode: (enabled: boolean) => {
+        raw = enabled;
+      },
+      resume: () => {
+        flowing = true;
+      },
+      pause: () => {
+        flowing = false;
+      },
+    };
+
+    await Effect.runPromise(
+      withInheritedStdinRawMode(
+        true,
+        Effect.sync(() => stdin.pause()),
+        stdin,
+      ),
+    );
+
+    expect(raw).toBe(false);
+    expect(flowing).toBe(true);
   });
 
   test("preserves a TTY that was already flowing before interactive exec", async () => {

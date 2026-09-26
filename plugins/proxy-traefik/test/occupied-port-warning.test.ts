@@ -34,7 +34,7 @@ describe("systemdServiceFromCgroup", () => {
 });
 
 describe("formatOccupiedPortWarning", () => {
-  test("names a known service and its stop command", () => {
+  test("names a known service and an available alternate URL", () => {
     // Given: Caddy occupies port 80 and Lando hops to 8080.
     // When: formatOccupiedPortWarning runs.
     const body = formatOccupiedPortWarning({
@@ -42,15 +42,15 @@ describe("formatOccupiedPortWarning", () => {
       chosen: 8080,
       kind: "caddy",
     });
-    // Then: the warning names Caddy, the fallback port, the stop command, and restart.
+    // Then: the warning names Caddy, the fallback port, the usable alternate URL.
     expect(body).toContain("80");
     expect(body).toContain("8080");
     expect(body).toContain("Caddy");
-    expect(body).toContain("sudo systemctl stop caddy");
-    expect(body).toContain("lando global:restart");
+    expect(body).toContain("alternate URL is available");
+    expect(body).toContain("lando info");
   });
 
-  test("names an unknown process and tells the user to close it", () => {
+  test("names an unknown process while preserving the alternate URL", () => {
     // Given: an unrecognized process holds the preferred port.
     // When: formatOccupiedPortWarning runs.
     const body = formatOccupiedPortWarning({
@@ -62,7 +62,7 @@ describe("formatOccupiedPortWarning", () => {
     // Then: the warning names the process and pid, not a service command.
     expect(body).toContain('process "python3" (pid 4242)');
     expect(body).toContain("8080");
-    expect(body).toContain("Close that process");
+    expect(body).toContain("alternate URL is available");
     expect(body).not.toContain("systemctl");
   });
 
@@ -77,11 +77,11 @@ describe("formatOccupiedPortWarning", () => {
     // Then: the warning is generic and still names the fallback.
     expect(body).toContain("443");
     expect(body).toContain("8443");
-    expect(body).toContain("Stop whatever is using that port");
+    expect(body).toContain("alternate URL is available");
     expect(body).not.toContain("process");
   });
 
-  test("uses a systemd unit stop command for an unknown service", () => {
+  test("names a systemd unit without instructing its removal", () => {
     // Given: an unknown occupant with a systemd unit.
     // When: formatOccupiedPortWarning runs.
     const body = formatOccupiedPortWarning({
@@ -90,9 +90,9 @@ describe("formatOccupiedPortWarning", () => {
       kind: "unknown",
       systemdUnit: "my-proxy",
     });
-    // Then: the warning offers systemctl stop for that unit.
+    // Then: the warning names that unit and keeps the alternate URL available.
     expect(body).toContain("my-proxy.service");
-    expect(body).toContain("sudo systemctl stop my-proxy");
+    expect(body).toContain("alternate URL is available");
   });
 });
 
@@ -137,8 +137,8 @@ describe("warningFromHolder", () => {
     // Given: holder comm is nginx.
     // When: warningFromHolder runs.
     const body = warningFromHolder(80, 8080, { holder: "nginx" });
-    // Then: the known-service nginx stop command is used.
+    // Then: the known-service nginx identity is shown with the alternate URL.
     expect(body).toContain("nginx");
-    expect(body).toContain("sudo systemctl stop nginx");
+    expect(body).toContain("alternate URL is available");
   });
 });

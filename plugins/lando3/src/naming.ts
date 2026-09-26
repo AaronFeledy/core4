@@ -31,3 +31,8 @@ export const slugifyAppName = (name: string): string => {
     .replace(/\s+/g, REPLACEMENT)
     .toLowerCase();
 };
+
+export const lando3ProjectName = (name: string): string =>
+  slugifyAppName(name)
+    .toLowerCase()
+    .replace(/_|-|\.+/g, "");

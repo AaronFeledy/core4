@@ -53,6 +53,7 @@ export const backdropDecomposer = ((ports) => ({
           services: {
             appserver: {
               type: "php:{{ recipe.php }}",
+              primary: true,
               framework: "backdrop",
               webroot: "{{ recipe.webroot }}",
               composer: composerEnabled ? "{{ recipe.composer }}" : false,

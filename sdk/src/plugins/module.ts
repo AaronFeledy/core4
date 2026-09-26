@@ -1,4 +1,5 @@
 import type { Effect, Layer } from "effect";
+import type { SecretStoreUnavailableError } from "../errors/secret.ts";
 
 import type {
   ProviderCapabilityError,
@@ -15,7 +16,13 @@ import type {
   ProviderId,
   ServiceConfig,
 } from "../schema/index.ts";
-import type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
+import type {
+  DoctorAppIdentity,
+  DoctorExecutableLocation,
+  DoctorResourceInspection,
+  DoctorResourceNameQuery,
+  PluginDoctorReport,
+} from "../schema/plugin-doctor.ts";
 import type { ConfigTranslatorShape } from "../services/config-translator.ts";
 import type { LogFileHelperAssets } from "../services/host-assets.ts";
 import type {
@@ -29,6 +36,7 @@ import type {
   ProcessRunner,
   RouterService,
   RuntimeProviderShape,
+  SecretStore,
   ServiceFeatureDefinition,
   ServiceType,
   SshService,
@@ -81,17 +89,41 @@ export interface HostTeardownResult {
   readonly pid?: number;
 }
 
+/**
+ * Bounded name/label inspector over the selected provider. Core runs each
+ * query under a deadline and never lets it fail; the provider is contacted
+ * only when `inspect` is called.
+ */
+export interface DoctorResourceInspector {
+  readonly inspect: (query: DoctorResourceNameQuery) => Effect.Effect<DoctorResourceInspection, never>;
+}
+
+/**
+ * Filesystem/PATH-only executable locator. It never executes a candidate and
+ * never reads candidate contents or user/Lando state.
+ */
+export interface DoctorExecutableLocator {
+  readonly locate: (name: string) => Effect.Effect<DoctorExecutableLocation, never>;
+}
+
+export interface PluginDoctorCheckInput {
+  /** Selected provider id; the check decides whether it may contact the daemon. */
+  readonly providerId: string;
+  readonly platform: HostPlatform;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly userDataRoot: string | undefined;
+  readonly binDir: string | undefined;
+  readonly stateDir: string | undefined;
+  /** Present only when doctor runs inside a loadable app. */
+  readonly app?: DoctorAppIdentity | undefined;
+  readonly resources?: DoctorResourceInspector | undefined;
+  readonly executables?: DoctorExecutableLocator | undefined;
+}
+
 export interface PluginDoctorCheckContribution {
   readonly id: string;
   readonly relevant?: (capabilities: ProviderCapabilities) => boolean;
-  readonly run: (input: {
-    readonly providerId: string;
-    readonly platform: HostPlatform;
-    readonly env: Readonly<Record<string, string | undefined>>;
-    readonly userDataRoot: string | undefined;
-    readonly binDir: string | undefined;
-    readonly stateDir: string | undefined;
-  }) => Effect.Effect<ReadonlyArray<PluginDoctorReport>, never>;
+  readonly run: (input: PluginDoctorCheckInput) => Effect.Effect<ReadonlyArray<PluginDoctorReport>, never>;
 }
 
 export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
@@ -114,10 +146,18 @@ export type RouterServiceContributionLayer = Layer.Layer<
   ProxyError,
   CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
+export interface RouterServiceContribution {
+  readonly make: (ctx: LandoPluginContext) => RouterServiceContributionLayer;
+}
 export type SshServiceContributionLayer = Layer.Layer<
   SshService,
   SshError,
   FileSystem | GlobalAppService | PathsService
+>;
+export type SecretStoreContributionLayer = Layer.Layer<
+  SecretStore,
+  SecretStoreUnavailableError,
+  ProcessRunner | PathsService | FileSystem
 >;
 export type GlobalServiceContributionEffect = Effect.Effect<ServiceConfig, unknown, never>;
 export type LoggerContributionLayer = Layer.Layer<never, unknown, unknown>;
@@ -133,8 +173,9 @@ export interface LandoPluginModule {
   readonly fileSyncEngines?: ReadonlyMap<string, FileSyncEngineContribution>;
   readonly certificateAuthorities?: ReadonlyMap<string, CertificateAuthorityContributionLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
-  readonly routerServices?: ReadonlyMap<string, RouterServiceContributionLayer>;
+  readonly routerServices?: ReadonlyMap<string, RouterServiceContribution>;
   readonly sshServices?: ReadonlyMap<string, SshServiceContributionLayer>;
+  readonly secretStores?: ReadonlyMap<string, SecretStoreContributionLayer>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceContributionEffect>;
   readonly serviceTypes?: ReadonlyMap<string, ServiceType>;
   readonly serviceFeatures?: ReadonlyMap<string, ServiceFeatureDefinition>;

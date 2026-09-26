@@ -5,29 +5,59 @@ timeout: 60000
 tags: [beta, docs, installer]
 ---
 
-# Put lando on PATH and run setup
+# Put lando4 on PATH and run setup
 
-> **Alpha status:** Official installers are **not live**. `get.lando.dev` and `update.lando.dev` are not serving v4. There is no installer-printed PATH ritual yet. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
+> **Alpha status:** `get.lando.dev` and `update.lando.dev` are not serving v4 yet. If you run the Windows install script from a release or local build, it prints commands that apply `lando4 shellenv` to the current PowerShell session and append it to your profile. See [Alpha install and bug reports](../../alpha-install-and-bug-reports.md).
 
-After you download the platform-qualified binary from a `v4.0.0-dev.N` prerelease, you own PATH. Use the asset name you downloaded (`lando-linux-x64`, `lando-darwin-arm64`, `lando-windows-x64.exe`, and so on).
+After you download and verify the platform-qualified binary from a `v4.0.0-dev.N` prerelease, put it on PATH as `lando4`. For Linux x64, run these commands from the download directory:
 
 ```sh
 chmod +x lando-linux-x64
-./lando-linux-x64 --version
+mkdir -p "$HOME/.local/bin"
+mv lando-linux-x64 "$HOME/.local/bin/lando4"
+export PATH="$HOME/.local/bin:$PATH"
+lando4 --version
 ```
 
-On Windows, skip `chmod` and run the `.exe`. Move that file into a directory already on PATH, or add its directory to PATH in your shell profile. Then:
+Replace `lando-linux-x64` with the asset you downloaded on Linux or macOS. Add `$HOME/.local/bin` to your shell profile's PATH to keep `lando4` available in new terminals.
+
+On Windows, name the downloaded asset `lando4.exe`, then move it into a directory on PATH. This keeps Lando 4 separate from a Lando 3 `lando.exe`. In PowerShell from the download directory:
+
+```powershell
+Rename-Item .\lando-windows-x64.exe lando4.exe
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\Lando" | Out-Null
+Move-Item .\lando4.exe "$env:LOCALAPPDATA\Programs\Lando\lando4.exe"
+$env:PATH = "$env:LOCALAPPDATA\Programs\Lando;$env:PATH"
+lando4 --version
+```
+
+Use `lando-windows-arm64.exe` on ARM64 Windows. To keep `lando4` on PATH in new PowerShell sessions, append its shell setup to your profile. These commands create the profile if it is missing and preserve any existing content:
+
+```powershell
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $PROFILE) | Out-Null
+if (-not (Test-Path -LiteralPath $PROFILE)) { New-Item -ItemType File -Path $PROFILE | Out-Null }
+$lando4ProfilePath = @'
+$lando4Bin = Join-Path $env:LOCALAPPDATA 'Programs\Lando'
+if (-not (($env:PATH -split [IO.Path]::PathSeparator) -contains $lando4Bin)) {
+  $env:PATH = $lando4Bin + [IO.Path]::PathSeparator + $env:PATH
+}
+'@
+Add-Content -LiteralPath $PROFILE -Value $lando4ProfilePath
+lando4 shellenv --shell=powershell | Add-Content -LiteralPath $PROFILE
+```
+
+Run these once for each profile where you want Lando. The current session already has the PATH entry from the earlier command. Then:
 
 ```sh
-lando setup
+lando4 setup
 ```
 
 The default provider is `lando` (managed Podman). Default setup may fail on Alpha if host prerequisites block the managed runtime. If the managed runtime still cannot install and you have working system Docker:
 
 ```sh
-lando setup --provider=docker
+lando4 setup --provider=docker
 ```
 
 `--yes` consents to confirmation and privileged host changes. It does not switch providers.
 
-Once `lando` is on PATH, `lando shellenv` prints a profile snippet so new shells keep it. That is the PATH story today. Do not wait for a PowerShell installer snippet.
+`lando4 shellenv` prints a profile snippet for the current shell. Use `--shell=powershell` in PowerShell or `--shell=posix` in a POSIX shell. To apply the PowerShell snippet now, run `lando4 shellenv --shell=powershell | Out-String | Invoke-Expression`; to save it for later sessions, use the profile command above.

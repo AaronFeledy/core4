@@ -14,6 +14,9 @@ import { isEnvelopeResultFormat } from "../../format-flags";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags, extractSpecParsedArgv } from "../../spec/command-boundary";
 
+export const execInputUsesCliHostIo = (input: unknown): boolean =>
+  typeof input === "object" && input !== null && "hostIo" in input && input.hostIo === "cli";
+
 export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServices> = {
   resultSchema: EmptyResultSchema,
   id: "app:exec",
@@ -57,7 +60,9 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
       input !== null &&
       "interaction" in input &&
       input.interaction === "non-interactive";
-    if (envelope || nonInteractive) return execApp({ ...base, tty: false, interactive: false });
+    if (!execInputUsesCliHostIo(input) || nonInteractive)
+      return execApp({ ...base, tty: false, interactive: false });
+    if (envelope) return execApp(attachExecHostIo({ ...base, tty: false, interactive: false }));
     const tty = process.stdout.isTTY === true;
     const interactive = flags.interactive === true;
     return withInheritedStdinRawMode(

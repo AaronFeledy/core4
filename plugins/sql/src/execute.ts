@@ -52,7 +52,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
       ...(authored === undefined ? {} : { landofileService: authored }),
       planEnvironment: service.environment,
     });
-    const tokens = secretTokens(creds);
+    const tokens = secretTokens(creds, authored);
     const env = credsEnv(target.family, creds);
     const waitForDatabase = waitForSqlDatabase(deps.exec, {
       service: target.name,

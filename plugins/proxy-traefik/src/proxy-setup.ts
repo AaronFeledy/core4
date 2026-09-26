@@ -1,6 +1,7 @@
 import { DateTime, Effect } from "effect";
 
 import {
+  GlobalAppError,
   ProxySetupError,
   RouterPortPinMismatch,
   RouterPortsExhausted,
@@ -27,7 +28,10 @@ export const mapSetupError = (
   return new ProxySetupError({
     message: "Traefik ingress setup failed.",
     proxyId: TRAEFIK_PROXY_ID,
-    remediation: "Run `lando meta:global:start traefik` and resolve the reported global-app failure.",
+    remediation:
+      cause instanceof GlobalAppError && cause.remediation !== undefined
+        ? cause.remediation
+        : "Run `lando meta:global:start --service=traefik` and resolve the reported global-app failure.",
     cause,
   });
 };

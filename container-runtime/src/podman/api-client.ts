@@ -23,9 +23,9 @@ export const LIBPOD_API_PREFIX = "/v6.0.0" as const;
 export const isNamedPipeEndpoint = (endpoint: string): boolean =>
   endpoint.startsWith("npipe:") || endpoint.startsWith("\\\\.\\pipe\\");
 
-const connect = async (endpoint: string): Promise<SocketHttpConnection> => {
+const connect = async (endpoint: string, signal?: AbortSignal): Promise<SocketHttpConnection> => {
   const socket = createConnection({ path: normalizeNamedPipePath(endpoint) });
-  await connectSocket(socket);
+  await connectSocket(socket, signal);
   return {
     [Symbol.asyncIterator]: () => socket[Symbol.asyncIterator](),
     write: (data) => {
@@ -58,11 +58,15 @@ export const makePodmanApiClient = (endpoint: string, ctx: ProviderErrorContext)
   const client = makeSocketHttpClient({
     apiPrefix: LIBPOD_API_PREFIX,
     operation: "podman-api",
-    connect: () => connect(endpoint),
+    connect: (signal) => connect(endpoint, signal),
   });
   const request = (input: EngineHttpRequest) =>
     Effect.tryPromise({
-      try: () => client.request(input),
+      try: (signal) =>
+        client.request({
+          ...input,
+          signal: input.signal === undefined ? signal : AbortSignal.any([input.signal, signal]),
+        }),
       catch: (cause) => engineApiFailure(ctx, "podman-api", input, cause),
     });
   const stream = (input: EngineHttpRequest) =>
@@ -73,6 +77,7 @@ export const makePodmanApiClient = (endpoint: string, ctx: ProviderErrorContext)
   const pingRequest = { method: "GET", path: "/libpod/_ping" } as const;
 
   return {
+    execAttachNeedsInspectCompletion: isNamedPipeEndpoint(endpoint),
     request,
     stream,
     info: request(infoRequest).pipe(

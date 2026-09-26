@@ -63,6 +63,7 @@ export const sidebar = [
           { label: "Run the Node API recipe", slug: "guides/recipes/node-api-workflow" },
           { label: "Run the Eleventy recipe", slug: "guides/recipes/eleventy-workflow" },
           { label: "Run the Hugo recipe", slug: "guides/recipes/hugo-workflow" },
+          { label: "Run the Drupal CMS recipe", slug: "guides/recipes/drupal-cms-workflow" },
           { label: "Run the Joomla recipe", slug: "guides/recipes/joomla-workflow" },
           { label: "Drupal stack overrides", slug: "guides/recipes/drupal-stack-overrides" },
           { label: "Drupal multisite", slug: "guides/recipes/drupal-multisite" },

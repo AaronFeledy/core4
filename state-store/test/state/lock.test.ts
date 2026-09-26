@@ -3,11 +3,11 @@ import { mkdtemp, readFile, realpath, rm, stat, utimes, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Deferred, Effect, Fiber } from "effect";
 
 import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "../../src/lock.ts";
-import { ownerOnlyFileAccess } from "../private-file-access.ts";
-const withAdvisoryLock = withAdvisoryLockUsing(ownerOnlyFileAccess);
+import { lockTestAccess } from "./lock-test-access.ts";
+const withAdvisoryLock = withAdvisoryLockUsing(lockTestAccess);
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 
@@ -31,7 +31,7 @@ describe("advisory state lock", () => {
           Effect.acquireUseRelease(
             acquireAdvisoryLockAt(path, "test", {
               expireLiveOwner: false,
-              privateFileAccess: ownerOnlyFileAccess,
+              privateFileAccess: lockTestAccess,
             }),
             (lock) => Effect.promise(async () => expect(await readFile(path, "utf8")).toContain(lock.token)),
             (lock) => lock.release,
@@ -57,12 +57,12 @@ describe("advisory state lock", () => {
           `
         import { Effect } from ${JSON.stringify(import.meta.resolve("effect"))};
         import { acquireAdvisoryLockAt } from ${JSON.stringify(import.meta.resolve("../../src/lock.ts"))};
-        import { ownerOnlyFileAccess } from ${JSON.stringify(import.meta.resolve("../private-file-access.ts"))};
+        import { lockTestAccess } from ${JSON.stringify(import.meta.resolve("./lock-test-access.ts"))};
         import { stat } from "node:fs/promises";
         process.umask(0o777);
         const path = ${JSON.stringify(path)};
         await Effect.runPromise(Effect.acquireUseRelease(
-          acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false, privateFileAccess: ownerOnlyFileAccess }),
+          acquireAdvisoryLockAt(path, "test", { expireLiveOwner: false, privateFileAccess: lockTestAccess }),
           () => Effect.promise(async () => {
             if (((await stat(path)).mode & 0o777) !== 0o600) throw new Error("mode mismatch");
           }),
@@ -92,7 +92,7 @@ describe("advisory state lock", () => {
       const result = await Effect.runPromiseExit(
         acquireAdvisoryLockAt(path, "test", {
           expireLiveOwner: false,
-          privateFileAccess: ownerOnlyFileAccess,
+          privateFileAccess: lockTestAccess,
         }),
       );
       // Then contention fails without stealing the live owner's lock
@@ -114,7 +114,7 @@ describe("advisory state lock", () => {
           expireLiveOwner: false,
           timeoutMs: 80,
           retryMs: 10,
-          privateFileAccess: ownerOnlyFileAccess,
+          privateFileAccess: lockTestAccess,
         }),
       );
       expect(result._tag).toBe("Failure");
@@ -141,12 +141,76 @@ describe("advisory state lock", () => {
             await writeFile(file, JSON.stringify(["ok"]));
             return "ran";
           }),
+          { expireLiveOwner: false },
         ),
       );
 
       expect(result).toBe("ran");
       expect(await readFile(file, "utf8")).toContain("ok");
       await expect(stat(`${file}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+  test("withAdvisoryLock never steals an old live owner when expiration is disabled", async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
+    try {
+      const file = join(dir, "state.json");
+      const lockPath = `${file}.lock`;
+      const record = JSON.stringify({ pid: process.pid, token: "live", createdAt: 0 });
+      await writeFile(file, "{}\n");
+      await writeFile(lockPath, record);
+      await utimes(lockPath, new Date(0), new Date(0));
+
+      const result = await Effect.runPromiseExit(
+        withAdvisoryLock(file, "test", Effect.succeed("unreachable"), { expireLiveOwner: false }),
+      );
+
+      expect(result._tag).toBe("Failure");
+      expect(await readFile(lockPath, "utf8")).toBe(record);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("withAdvisoryLock releases after body failure", async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
+    try {
+      const file = join(dir, "state.json");
+      await writeFile(file, "{}\n");
+      const result = await Effect.runPromiseExit(
+        withAdvisoryLock(file, "test", Effect.fail("expected failure"), { expireLiveOwner: false }),
+      );
+      expect(result._tag).toBe("Failure");
+      await expect(stat(`${file}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await run(withAdvisoryLock(file, "test", Effect.succeed("reacquired")))).toBe("reacquired");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("withAdvisoryLock releases after interruption", async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-state-lock-")));
+    try {
+      const file = join(dir, "state.json");
+      await writeFile(file, "{}\n");
+      await run(
+        Effect.gen(function* () {
+          const entered = yield* Deferred.make<void>();
+          const fiber = yield* Effect.fork(
+            withAdvisoryLock(
+              file,
+              "test",
+              Deferred.succeed(entered, undefined).pipe(Effect.zipRight(Effect.never)),
+              { expireLiveOwner: false },
+            ),
+          );
+          yield* Deferred.await(entered);
+          yield* Fiber.interrupt(fiber);
+        }),
+      );
+      await expect(stat(`${file}.lock`)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await run(withAdvisoryLock(file, "test", Effect.succeed("reacquired")))).toBe("reacquired");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

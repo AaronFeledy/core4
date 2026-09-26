@@ -16,7 +16,7 @@ Origin: Lando 3 → 4 parity audit (.local/LANDO3-PARITY.md, 2026-08-09 snapshot
 - After adding plugins/sql, run `bun install` and include the package in test shards.
 - Run touched semantic gates per story: check:boundaries, check:guide-coverage, check:guide-drift, lint:guides, codegen:check when generated outputs move.
 - Do not touch unrelated dirty working-tree files from other waves.
-- Out of scope (do not implement): hoster connectors/RemoteSource impls, custom SSH-key mounts (sshAgent.sidecar:false stays rejected), staged §8.8.10 recipes (node-api, astro, sveltekit, nextjs, django, fastapi, rails, jekyll, hugo, eleventy, empty), image save/load.
+- Out of scope (do not implement): hoster connectors/RemoteSource impls, custom SSH-key mounts (host agent forwarding via sshAgent.sidecar:false is owned by the host-agent-forwarding wave), staged §8.8.10 recipes (node-api, astro, sveltekit, nextjs, django, fastapi, rails, jekyll, hugo, eleventy, empty), image save/load.
 
 ## Codebase Patterns (carry forward)
 

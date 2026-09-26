@@ -45,7 +45,7 @@ services:
 
 Binding a service to `0.0.0.0` exposes it to every device on your LAN. On a shared or untrusted network, that includes anyone else on that network. Only bind wide when you intend LAN or external reachability. Never do it for services holding real credentials or unreviewed dev tooling. Prefer a named interface IP over `0.0.0.0` when you can.
 
-Reverting a wide bind needs a rebuild, not just a restart. Remove `host_ip` or set it back to `127.0.0.1`, then run `lando rebuild -y`.
+Reverting a wide bind needs a rebuild, not just a restart. Remove `host_ip` or set it back to `127.0.0.1`, then run `lando rebuild`.
 
 ## Compose ports short-syntax reference
 

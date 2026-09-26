@@ -83,8 +83,8 @@ export const closeListeningServer = (server: Server): Promise<void> =>
     }
   });
 
-const lockDownUnixSocket = async (socketPath: string): Promise<void> => {
-  await chmod(socketPath, 0o600);
+const lockDownUnixSocket = async (socketPath: string, chmodSocket: typeof chmod = chmod): Promise<void> => {
+  await chmodSocket(socketPath, 0o600);
   // Yield so a concurrent unlink/replace is visible before we publish the session.
   await waitImmediate();
   const info = await lstat(socketPath);
@@ -96,11 +96,12 @@ const lockDownUnixSocket = async (socketPath: string): Promise<void> => {
 const secureSocket = (
   server: Server,
   paths: HostProxySessionPaths,
+  chmodSocket: typeof chmod,
 ): Effect.Effect<void, HostProxyTransportUnavailableError> => {
   if (paths.transport !== "unix-socket" || paths.socketPath === undefined) return Effect.void;
   const socketPath = paths.socketPath;
   return Effect.tryPromise({
-    try: () => lockDownUnixSocket(socketPath),
+    try: () => lockDownUnixSocket(socketPath, chmodSocket),
     catch: (cause) => unixSocketUnavailable(socketPath, cause),
   }).pipe(Effect.tapError(() => Effect.promise(() => closeListeningServer(server))));
 };
@@ -109,6 +110,7 @@ export const listenHostProxyServer = (
   server: Server,
   paths: HostProxySessionPaths,
   options: Pick<HostProxyRunLandoSessionOptions, "hostGatewayName">,
+  chmodSocket: typeof chmod = chmod,
 ): Effect.Effect<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError> =>
   Effect.async<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError>(
     (resume) => {
@@ -134,7 +136,7 @@ export const listenHostProxyServer = (
           paths.transport === "tcp-host-gateway"
             ? tcpListenResult(server, paths, options)
             : Effect.succeed({ socketOwned: true });
-        resume(listenResult.pipe(Effect.zipLeft(secureSocket(server, paths))));
+        resume(listenResult.pipe(Effect.zipLeft(secureSocket(server, paths, chmodSocket))));
       };
       if (paths.transport === "tcp-host-gateway") {
         server.listen(0, "127.0.0.1", completeListen);

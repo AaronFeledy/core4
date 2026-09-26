@@ -17,6 +17,7 @@ const EXPECTED_PLUGIN_NAMES = [
   "@lando/ca-mkcert",
   "@lando/proxy-traefik",
   "@lando/ssh-agent",
+  "@lando/secret-store-1password",
   "@lando/template-handlebars",
   "@lando/template-mustache",
   "@lando/sql",
@@ -34,6 +35,7 @@ describe("generated bundled plugin descriptor tables", () => {
     const manifestNames = BUNDLED_PLUGIN_MODULES.map((module) => String(module.manifest.name));
 
     // Then: both projections match the stable ship list.
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(16);
     expect(names).toEqual(EXPECTED_PLUGIN_NAMES);
     expect(manifestNames).toEqual(EXPECTED_PLUGIN_NAMES);
   });
@@ -45,6 +47,23 @@ describe("generated bundled plugin descriptor tables", () => {
 
     // Then: only the renderer-contributing plugin is imported.
     expect(names).toEqual(["@lando/renderer-lando"]);
+  });
+
+  test("composes lando3 with lazy host ports in the generated table", async () => {
+    // Given: the generated composition root.
+    // When: its source is read.
+    const source = await readFile(resolve(generatedDir, "bundled.ts"), "utf8");
+    // Then: the factory receives the provider, not eagerly resolved ports.
+    expect(source.includes("makeLando3Plugin(loadLando3TranslatorPorts)")).toBe(true);
+  });
+
+  test("loads the bundled lando3 translator", async () => {
+    // Given: the production descriptor, not a test-only plugin factory.
+    const module = BUNDLED_PLUGIN_MODULES.find((entry) => entry.name === "@lando/lando3");
+    // When: translation is requested.
+    const translator = await module?.configTranslators?.get("lando3")?.();
+    // Then: the composed loader resolves successfully.
+    expect(translator?.id).toBe("lando3");
   });
 
   test("marks both descriptor tables as generated", async () => {

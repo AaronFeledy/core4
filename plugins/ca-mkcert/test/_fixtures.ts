@@ -135,6 +135,8 @@ export const makeFakeMkcertRunner = (options: {
     service: {
       run: (input) => Effect.promise(() => run(input)),
       stream: () => Stream.die(new Error("stream is not used by the mkcert certificate authority")),
+      streamWithExit: () =>
+        Stream.die(new Error("streamWithExit is not used by the mkcert certificate authority")),
     },
     calls: () => [...calls],
   };

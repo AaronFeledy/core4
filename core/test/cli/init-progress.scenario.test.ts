@@ -81,6 +81,9 @@ describe("lando init: task tree progress", () => {
       );
       expect(renderStart).toBeDefined();
       expect(renderComplete).toBeDefined();
+      if (renderComplete?._tag === "task.complete") {
+        expect(renderComplete.summary).toBe("Rendered 3 files");
+      }
 
       const hasPostInit = result.postInit.executed.length > 0;
       if (hasPostInit) {
@@ -92,6 +95,9 @@ describe("lando init: task tree progress", () => {
         );
         expect(postinitStart).toBeDefined();
         expect(postinitComplete).toBeDefined();
+        if (postinitComplete?._tag === "task.complete") {
+          expect(postinitComplete.summary).toBe("Ran 1 action");
+        }
         if (treeStart?._tag === "task.tree.start") {
           expect(treeStart.children).toContain("postinit");
         }
@@ -109,6 +115,26 @@ describe("lando init: task tree progress", () => {
         expect(treeComplete.failed).toBe(0);
         expect(treeComplete.succeeded).toBeGreaterThanOrEqual(1);
       }
+    });
+  });
+
+  test("uses singular file and action counts for a one-file recipe", async () => {
+    await withTempCwd(async (dir) => {
+      const sink = collector();
+      await initApp({
+        cwd: dir,
+        recipe: "toolbox",
+        full: false,
+        name: "toolbox-app",
+        nonInteractive: true,
+        events: { publish: sink.publish },
+        postInitIO: bufferedPostInitIO().io,
+      });
+      const summaries = sink.events
+        .filter((event) => event._tag === "task.complete")
+        .map((event) => event.summary);
+      expect(summaries).toContain("Rendered 1 file");
+      expect(summaries).toContain("Ran 1 action");
     });
   });
 
