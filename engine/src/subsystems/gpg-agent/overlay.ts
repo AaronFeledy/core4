@@ -23,7 +23,6 @@ export const gpgAgentEligibleServices = (plan: AppPlan) =>
   Object.values(plan.services).filter(serviceHasGpgAgentFeature);
 
 const agentSocketName = `${target}/${GPG_AGENT_SOCKET_NAME}`;
-const ownedEnvironmentNames = new Set(["GNUPGHOME", "LANDO_GPG_AGENT_SOCKET", "LANDO_GPG_KEYRING"]);
 const ownedEnvironmentValue = (name: string): string | undefined => {
   switch (name) {
     case "GNUPGHOME":
@@ -78,9 +77,7 @@ const stripService = (service: ServicePlan): ServicePlan => {
   return {
     ...service,
     environment: Object.fromEntries(
-      Object.entries(service.environment).filter(
-        ([name, value]) => !ownedEnvironmentNames.has(name) || ownedEnvironmentValue(name) !== value,
-      ),
+      Object.entries(service.environment).filter(([name, value]) => ownedEnvironmentValue(name) !== value),
     ),
     mounts: service.mounts.filter((mount) => !ownedTargets.includes(mount.target)),
   };

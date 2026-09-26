@@ -54,7 +54,7 @@ export const sshAgentPostureCheck = (
         ? yield* registry.value.capabilities.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
         : undefined);
     const delivery = capabilities?.agentSocket?.delivery ?? "none";
-    const probeAgent = (upstream: Parameters<NonNullable<SshAgentDoctorOptions["probe"]>>[0]) =>
+    const probeAgent = (upstream: Parameters<typeof probeSshAgent>[0]) =>
       Effect.tryPromise({
         try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
         catch: (cause: unknown) => cause,

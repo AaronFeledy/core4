@@ -77,49 +77,39 @@ export const resolveSshAgentUpstream = (
             ? "Run `lando setup` to install and start the SSH agent sidecar, then restart this app."
             : "Start your host SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path.",
       });
-    const upstream: AgentRelayUpstream = yield* Effect.gen(function* () {
-      switch (input.intent.mode) {
-        case "sidecar": {
-          const ssh = yield* Effect.serviceOption(SshService);
-          if (Option.isNone(ssh)) return yield* Effect.fail(unavailable("sidecar-not-running"));
-          const socket = yield* ssh.value
-            .getAgentSocket(input.appId)
-            .pipe(Effect.mapError(() => unavailable("sidecar-not-running")));
-          return { _tag: "unix" as const, path: socket.socketPath };
-        }
-        case "host": {
-          const discovered = yield* discoverHostSshAgent({
-            platform: input.platform ?? process.platform,
-            env: input.env ?? process.env,
-            home: input.home ?? homedir(),
-            ...(input.intent.socket === undefined ? {} : { explicitSocket: input.intent.socket }),
-            ...(input.exists === undefined ? {} : { exists: input.exists }),
-            ...(input.runGpgconf === undefined ? {} : { runGpgconf: input.runGpgconf }),
-            ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
-            ...(input.probe === undefined ? {} : { probe: input.probe }),
-            ...(input.gpgSocket === undefined ? {} : { gpgSocket: input.gpgSocket }),
-            ...(input.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: input.probeTimeoutMs }),
-            gpgTimeoutMs: input.gpgTimeoutMs ?? 5_000,
-          });
-          return discovered.upstream;
-        }
-        default:
-          return input.intent.mode satisfies never;
-      }
-    });
     switch (input.intent.mode) {
-      case "sidecar":
+      case "sidecar": {
+        const ssh = yield* Effect.serviceOption(SshService);
+        if (Option.isNone(ssh)) return yield* Effect.fail(unavailable("sidecar-not-running"));
+        const socket = yield* ssh.value
+          .getAgentSocket(input.appId)
+          .pipe(Effect.mapError(() => unavailable("sidecar-not-running")));
+        const upstream: AgentRelayUpstream = { _tag: "unix", path: socket.socketPath };
         yield* Effect.tryPromise({
           try: () => probeSshAgent(upstream, { timeoutMs: 2_000 }),
           catch: () => unavailable("sidecar-not-running"),
         });
-        break;
-      case "host":
-        break;
+        return upstream;
+      }
+      case "host": {
+        const discovered = yield* discoverHostSshAgent({
+          platform: input.platform ?? process.platform,
+          env: input.env ?? process.env,
+          home: input.home ?? homedir(),
+          ...(input.intent.socket === undefined ? {} : { explicitSocket: input.intent.socket }),
+          ...(input.exists === undefined ? {} : { exists: input.exists }),
+          ...(input.runGpgconf === undefined ? {} : { runGpgconf: input.runGpgconf }),
+          ...(input.inspect === undefined ? {} : { inspect: input.inspect }),
+          ...(input.probe === undefined ? {} : { probe: input.probe }),
+          ...(input.gpgSocket === undefined ? {} : { gpgSocket: input.gpgSocket }),
+          ...(input.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: input.probeTimeoutMs }),
+          gpgTimeoutMs: input.gpgTimeoutMs ?? 5_000,
+        });
+        return discovered.upstream;
+      }
       default:
         return input.intent.mode satisfies never;
     }
-    return upstream;
   });
 
 export const startSshAgentSession = (

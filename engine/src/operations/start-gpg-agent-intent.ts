@@ -24,12 +24,10 @@ export const resolveStartGpgAgentIntent = (target: ResolvedAppTarget) =>
             ),
           )
         : undefined);
+    const extension = agentLandofile === undefined ? gpgAgentPlanExtension(plan) : undefined;
     return resolveGpgAgentIntent({
       landofile:
-        agentLandofile ??
-        (gpgAgentPlanExtension(plan) === undefined
-          ? {}
-          : { gpgAgent: { forward: gpgAgentPlanExtension(plan)?.forward ?? false } }),
+        agentLandofile ?? (extension === undefined ? {} : { gpgAgent: { forward: extension.forward } }),
       globalConfig:
         config._tag === "Some" && ref.kind !== "global" && gpgAgentEligibleServices(plan).length > 0
           ? yield* config.value.load.pipe(

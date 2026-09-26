@@ -122,7 +122,7 @@ const stderrTailFromLog = async (logPath: string): Promise<string> => {
   if ((await file.exists()) !== true) return "";
   const text = await file.text();
   if (text.length === 0) return "";
-  const clipped = text.length > STDERR_TAIL_MAX_BYTES ? text.slice(-STDERR_TAIL_MAX_BYTES) : text;
+  const clipped = text.slice(-STDERR_TAIL_MAX_BYTES);
   const lines = clipped.split("\n").filter((line) => line.length > 0);
   return lines.slice(-STDERR_TAIL_MAX_LINES).join("\n");
 };

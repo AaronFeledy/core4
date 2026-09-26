@@ -105,13 +105,12 @@ const readGpgSocket = (options: HostAgentDiscoveryOptions): Effect.Effect<string
 };
 
 const onePasswordPath = (options: HostAgentDiscoveryOptions): string | undefined => {
-  const join = options.platform === "win32" ? win32.join : posix.join;
   switch (options.platform) {
     case "darwin":
-      return join(options.home, "Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock");
+      return posix.join(options.home, "Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock");
     case "linux":
     case "wsl":
-      return join(options.home, ".1password/agent.sock");
+      return posix.join(options.home, ".1password/agent.sock");
     default:
       return undefined;
   }

@@ -24,12 +24,11 @@ export const resolveStartSshAgentIntent = (target: ResolvedAppTarget) =>
             ),
           )
         : undefined);
+    const extension = agentLandofile === undefined ? sshAgentPlanExtension(plan) : undefined;
     return resolveSshAgentIntent({
       landofile:
         agentLandofile ??
-        (sshAgentPlanExtension(plan) === undefined
-          ? {}
-          : { sshAgent: { sidecar: sshAgentPlanExtension(plan)?.mode !== "host" } }),
+        (extension === undefined ? {} : { sshAgent: { sidecar: extension.mode !== "host" } }),
       globalConfig:
         config._tag === "Some" && ref.kind !== "global" && sshAgentEligibleServices(plan).length > 0
           ? yield* config.value.load.pipe(

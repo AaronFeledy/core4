@@ -126,15 +126,13 @@ const makeRedactorOptions = (
 const registeredValues = new Set<string>();
 let registeredGeneration = 0;
 
-const addRegisteredValue = (value: string): void => {
-  if (!isUsableExactRedactionValue(value) || registeredValues.has(value)) return;
-  registeredValues.add(value);
-  registeredGeneration += 1;
-};
-
 export const registerRedactionValues = (values: ReadonlyArray<string>): Effect.Effect<void> =>
   Effect.sync(() => {
-    for (const value of values) addRegisteredValue(value);
+    for (const value of values) {
+      if (!isUsableExactRedactionValue(value) || registeredValues.has(value)) continue;
+      registeredValues.add(value);
+      registeredGeneration += 1;
+    }
   });
 
 /** Clears process-lifetime registrations. Tests call this so cases do not leak values. */

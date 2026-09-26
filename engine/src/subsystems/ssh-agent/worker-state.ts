@@ -10,7 +10,7 @@ import {
   withDetachedWorkerLock,
   writeDetachedWorkerRecord,
 } from "../detached-worker/state-file.ts";
-import { ensureAgentRelayRunRoot, sshAgentSessionPaths } from "./session.ts";
+import { AGENT_RELAY_DIRECTORY_MODE, ensureAgentRelayRunRoot, sshAgentSessionPaths } from "./session.ts";
 import {
   type AgentRelayWorkerIdentity,
   AgentRelayWorkerRecord,
@@ -56,7 +56,7 @@ export const writeAgentRelayWorkerRecord = (
       path: recordPath(app, options),
       schema: AgentRelayWorkerRecord,
       privateFileAccess: options.privateFileAccess,
-      directoryMode: 0o711,
+      directoryMode: AGENT_RELAY_DIRECTORY_MODE,
     },
     record,
   ).pipe(

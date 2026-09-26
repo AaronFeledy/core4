@@ -59,7 +59,7 @@ export const resolvePodmanAgentBridge = (options: {
     const machineName = yield* Effect.tryPromise({
       try: () => resolveDefaultPodmanMachine(run),
       catch: bridgeFailure,
-    }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    }).pipe(Effect.orElseSucceed(() => undefined));
     if (machineName === undefined) return undefined;
     const paths = yield* Effect.serviceOption(PathsService);
     const stateDir =

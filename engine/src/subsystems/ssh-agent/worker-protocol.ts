@@ -42,14 +42,6 @@ export const AgentRelayWorkerIdentity = Schema.Struct({
   pid: Schema.Number.pipe(Schema.int(), Schema.positive()),
 });
 export type AgentRelayWorkerIdentity = typeof AgentRelayWorkerIdentity.Type;
-export const AgentRelayWorkerReady = Schema.TaggedStruct("ready", {
-  ...AgentRelayWorkerIdentity.fields,
-  controlToken: Schema.String,
-  controlPort: PortNumber,
-  socketName: Schema.String,
-  mount: AgentSocketBridgeResult,
-});
-export type AgentRelayWorkerReady = typeof AgentRelayWorkerReady.Type;
 export const AgentRelayWorkerRecord = Schema.Struct({
   ...AgentRelayWorkerIdentity.fields,
   controlToken: Schema.String,
@@ -58,6 +50,8 @@ export const AgentRelayWorkerRecord = Schema.Struct({
   mount: AgentSocketBridgeResult,
 });
 export type AgentRelayWorkerRecord = typeof AgentRelayWorkerRecord.Type;
+export const AgentRelayWorkerReady = Schema.TaggedStruct("ready", AgentRelayWorkerRecord.fields);
+export type AgentRelayWorkerReady = typeof AgentRelayWorkerReady.Type;
 
 const controlError = () =>
   new SshAgentTransportError({
