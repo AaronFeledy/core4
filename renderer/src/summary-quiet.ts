@@ -19,7 +19,7 @@ import {
 } from "./console-layout.ts";
 import type { SummaryDocument, SummaryRow, SummarySection } from "./summary.ts";
 
-const MIN_SUMMARY_WIDTH = 24;
+const MIN_SUMMARY_WIDTH = 10;
 const DEFAULT_SUMMARY_WIDTH = 80;
 const BODY_INDENT = 2;
 const FIELD_INDENT = 4;

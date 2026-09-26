@@ -115,7 +115,7 @@ export const redactSummaryDocument = (
   ...(doc.footer === undefined ? {} : { footer: redact(doc.footer) }),
 });
 
-const MIN_SUMMARY_WIDTH = 24;
+const MIN_SUMMARY_WIDTH = 10;
 const DEFAULT_SUMMARY_WIDTH = 80;
 
 const resolveWidth = (columns: number | undefined): number =>
