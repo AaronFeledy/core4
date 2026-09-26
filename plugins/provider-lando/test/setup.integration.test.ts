@@ -982,6 +982,36 @@ describe("provider-lando setup runtime bundle extraction", () => {
     }
   });
 
+  test("Windows setup repairs a corrupted managed Docker alias on rerun", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-windows-alias-repair-"));
+    const runtimeBinDir = join(root, "runtime", "bin");
+    const podmanBytes = new TextEncoder().encode("verified-podman");
+    const archiveBytes = buildTarGz([
+      { path: "podman.exe", bytes: podmanBytes },
+      { path: "gvproxy.exe", bytes: new TextEncoder().encode("gvproxy") },
+      { path: "win-sshproxy.exe", bytes: new TextEncoder().encode("win-sshproxy") },
+    ]);
+    const options = {
+      platform: "win32" as const,
+      podmanCommand: podmanCommand("podman version 6.0.2"),
+      podmanMachine: machineRunner("running", []),
+      runtimeBundleDownloader: downloaderFor(archiveBytes, "6.0.0"),
+      runtimeBinDir,
+      skipSocketProbe: true,
+    };
+    try {
+      await Effect.runPromise(setupProviderLando(options));
+      const alias = join(runtimeBinDir, "docker-compat", "docker.exe");
+      expect(await readFile(alias)).toEqual(Buffer.from(podmanBytes));
+
+      await writeFile(alias, "corrupt");
+      await Effect.runPromise(setupProviderLando(options));
+      expect(await readFile(alias)).toEqual(Buffer.from(podmanBytes));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("writes nothing into runtimeBinDir when the bundle checksum does not match", async () => {
     const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-mismatch-")), "runtime", "bin");
     try {
