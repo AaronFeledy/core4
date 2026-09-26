@@ -133,7 +133,7 @@
       "observeVolume?: (target: ServiceSelector, destination: PortablePath) => Effect.Effect<VolumeInfo, ProviderError>",
       "adoptVolume?: (target: ServiceSelector, destination: PortablePath) => Effect.Effect<VolumeInfo, ProviderError>",
       "logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>",
-      "prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<{ readonly targets: ReadonlyArray<PreparedFileSyncTarget>; readonly rollback: Effect.Effect<void, ProviderError>; }, ProviderError>",
+      "prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<{ readonly targets: ReadonlyArray<PreparedFileSyncTarget>; readonly rollback?: Effect.Effect<void, ProviderError>; }, ProviderError>",
       "planSetup: (options: ProviderSetupInspectOptions) => Effect.Effect<ProviderSetupPlan, ProviderError>",
       "platform: HostPlatform",
       "pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>",
