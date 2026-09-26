@@ -76,6 +76,26 @@ describe("prepareWindowsDockerCli", () => {
     expect(await readFile(alias, "utf8")).toBe("owned-podman-binary");
   });
 
+  test("repairs a corrupted regular alias only when setup requests repair", async () => {
+    const binDir = await fixture();
+    const alias = await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32"));
+    await writeFile(alias, "untrusted");
+
+    expect(await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32", { repairExisting: true }))).toBe(
+      alias,
+    );
+    expect(await readFile(alias, "utf8")).toBe("owned-podman-binary");
+  });
+
+  test("refreshes a stale regular alias after the managed Podman binary changes", async () => {
+    const binDir = await fixture();
+    const alias = await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32"));
+    await writeFile(join(binDir, "podman.exe"), "updated-podman-binary");
+
+    await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32", { repairExisting: true }));
+    expect(await readFile(alias, "utf8")).toBe("updated-podman-binary");
+  });
+
   test("rejects redirected source, alias, and alias directory", async () => {
     const sourceDir = await fixture();
     await rm(join(sourceDir, "podman.exe"));
@@ -90,6 +110,13 @@ describe("prepareWindowsDockerCli", () => {
     await symlink(join(aliasDir, "podman.exe"), alias);
     expect(
       Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(aliasDir, "win32")))),
+    ).toBe(true);
+    expect(
+      Either.isLeft(
+        await Effect.runPromise(
+          Effect.either(prepareWindowsDockerCli(aliasDir, "win32", { repairExisting: true })),
+        ),
+      ),
     ).toBe(true);
 
     const redirectedDir = await fixture();

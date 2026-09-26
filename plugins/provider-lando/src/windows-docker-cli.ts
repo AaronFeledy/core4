@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { copyFile, link, lstat, mkdir, readFile, rm } from "node:fs/promises";
+import { copyFile, link, lstat, mkdir, readFile, rename, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
 import { Effect } from "effect";
@@ -36,6 +36,7 @@ const realDirectory = async (directory: string): Promise<boolean> => {
 export const prepareWindowsDockerCli = (
   runtimeBinDir: string,
   platform: HostPlatform = process.platform as HostPlatform,
+  options: { readonly repairExisting?: boolean } = {},
 ): Effect.Effect<string, ProviderUnavailableError> =>
   Effect.tryPromise({
     try: async () => {
@@ -62,21 +63,35 @@ export const prepareWindowsDockerCli = (
       const docker = join(compatibilityDir, "docker.exe");
       let present = false;
       try {
-        present = await regularFile(docker);
+        const info = await lstat(docker);
+        if (!info.isFile() || info.isSymbolicLink()) {
+          throw new Error("The Docker-compatible CLI is redirected or is not a regular file.");
+        }
+        present = true;
       } catch (cause) {
         if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
       }
-      if (!present) {
+      const matches = present && (await readFile(docker)).equals(original);
+      if (present && !matches && options.repairExisting !== true) {
+        throw new Error("The Docker-compatible CLI does not match managed Podman.");
+      }
+      if (!matches) {
         const staged = join(compatibilityDir, `.docker.exe.${randomUUID()}`);
         try {
           await copyFile(podman, staged, constants.COPYFILE_EXCL);
           if (!(await regularFile(staged)) || !(await readFile(staged)).equals(original)) {
             throw new Error("The staged Docker-compatible CLI differs from managed Podman.");
           }
-          try {
-            await link(staged, docker);
-          } catch (cause) {
-            if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
+          if (present) {
+            // Setup owns this regular file. Rename replaces its directory entry
+            // without ever executing or modifying the corrupt bytes.
+            await rename(staged, docker);
+          } else {
+            try {
+              await link(staged, docker);
+            } catch (cause) {
+              if ((cause as NodeJS.ErrnoException).code !== "EEXIST") throw cause;
+            }
           }
         } finally {
           await rm(staged, { force: true });
