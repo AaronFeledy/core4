@@ -31,6 +31,7 @@ const clone = <T>(value: T): T => structuredClone(value);
 const makeFakeApi = () => {
   let volume: JsonRecord | undefined;
   let container: JsonRecord | undefined;
+  let nextContainerId = 1;
   const calls: EngineHttpRequest[] = [];
   const controls = {
     failVolumeInspectAfterCreate: false,
@@ -71,15 +72,20 @@ const makeFakeApi = () => {
         if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
           if (container !== undefined && controls.failContainerInspectAfterCreate) return response(500);
           if (container === undefined && controls.failContainerInspectAfterDelete) return response(500);
-          return container === undefined ? response(404) : response(200, container);
+          const name = decodeURIComponent(path.slice("/containers/".length, -"/json".length));
+          return container === undefined || container.Name !== `/${name}`
+            ? response(404)
+            : response(200, container);
         }
         if (method === "POST" && path.startsWith("/containers/create?name=")) {
           if (container !== undefined) return response(409);
           const body = request.body as JsonRecord;
           const host = body.HostConfig as JsonRecord;
           const name = new URL(`http://podman.test${path}`).searchParams.get("name");
+          const id = nextContainerId === 1 ? "helper-container-id" : `helper-container-id-${nextContainerId}`;
+          nextContainerId += 1;
           container = {
-            Id: "helper-container-id",
+            Id: id,
             Name: `/${name}`,
             Config: {
               Image: body.Image,
@@ -104,15 +110,16 @@ const makeFakeApi = () => {
           };
           if (controls.helperCreateResponse === "malformed") return response(201, {});
           if (controls.helperCreateResponse === "lost") return response(500);
-          return response(201, { Id: "helper-container-id" });
+          return response(201, { Id: id });
         }
-        if (method === "POST" && path === "/containers/helper-container-id/start") {
-          if (container === undefined) return response(404);
+        if (method === "POST" && path.endsWith("/start")) {
+          if (container === undefined || path !== `/containers/${container.Id}/start`) return response(404);
           container.State = { Running: true };
           return response(204);
         }
-        if (method === "DELETE" && path === "/containers/helper-container-id?force=true") {
-          if (container === undefined) return response(404);
+        if (method === "DELETE" && path.startsWith("/containers/") && path.endsWith("?force=true")) {
+          if (container === undefined || path !== `/containers/${container.Id}?force=true`)
+            return response(404);
           if (controls.failDelete) return response(500);
           container = undefined;
           return response(204);
@@ -577,6 +584,104 @@ describe("Windows named-volume sync helper", () => {
     expect(error).toBeInstanceOf(ProviderUnavailableError);
     expect(error.message).toContain("unknown version");
     expect(fake.calls).toEqual([]);
+  });
+
+  test("upgrades a verified helper image without replacing the sync volume", async () => {
+    const fake = makeFakeApi();
+    const oldEndpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const oldVolume = fake.volume;
+    const newSpec = { ...spec, image: `example.invalid/lando-sync@sha256:${"b".repeat(64)}` };
+    const count = fake.calls.length;
+    const newEndpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+
+    expect(newEndpoint.containerName).not.toBe(oldEndpoint.containerName);
+    expect(newEndpoint.containerId).not.toBe(oldEndpoint.containerId);
+    expect(newEndpoint.volumeName).toBe(oldEndpoint.volumeName);
+    expect(fake.volume).toBe(oldVolume);
+    expect((fake.container?.Config as JsonRecord).Image).toBe(newSpec.image);
+    expect(fake.calls.slice(count).filter((call) => call.path === "/volumes/create")).toHaveLength(0);
+    expect(fake.calls.slice(count).filter((call) => call.method === "DELETE")).toEqual([
+      expect.objectContaining({ path: `/containers/${oldEndpoint.containerId}?force=true` }),
+    ]);
+    expect(await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec))).toEqual(
+      newEndpoint,
+    );
+    const thirdSpec = { ...spec, image: `example.invalid/lando-sync@sha256:${"c".repeat(64)}` };
+    await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, thirdSpec));
+    expect(fake.volume).toBe(oldVolume);
+    expect(await Effect.runPromise(removeWindowsSyncHelper(fake.api, fake.stateStore, thirdSpec))).toBe(true);
+    expect(fake.volume).toBe(oldVolume);
+  });
+
+  test("resumes an image upgrade after old helper deletion succeeds but inspection fails", async () => {
+    const fake = makeFakeApi();
+    const oldEndpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const oldVolume = fake.volume;
+    const newSpec = { ...spec, image: `example.invalid/lando-sync@sha256:${"b".repeat(64)}` };
+    fake.controls.failContainerInspectAfterDelete = true;
+    const failed = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+    expect(failed.message).toContain("inspect failed");
+    expect(fake.container).toBeUndefined();
+    const count = fake.calls.length;
+    fake.controls.failContainerInspectAfterDelete = false;
+    const newEndpoint = await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+    expect(newEndpoint.containerName).not.toBe(oldEndpoint.containerName);
+    expect(fake.volume).toBe(oldVolume);
+    expect(fake.calls.slice(count).filter((call) => call.method === "DELETE")).toHaveLength(0);
+    expect(fake.calls.slice(count).filter((call) => call.path === "/volumes/create")).toHaveLength(0);
+  });
+
+  test("retries an image upgrade after removal fails without losing the old helper", async () => {
+    const fake = makeFakeApi();
+    await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const oldVolume = fake.volume;
+    const newSpec = { ...spec, image: `example.invalid/lando-sync@sha256:${"b".repeat(64)}` };
+    fake.controls.failDelete = true;
+    const failed = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+    expect(failed.message).toContain("remove failed");
+    expect(fake.container).toBeDefined();
+    fake.controls.failDelete = false;
+    await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+    expect(fake.volume).toBe(oldVolume);
+    expect((fake.container?.Config as JsonRecord).Image).toBe(newSpec.image);
+  });
+
+  test("refuses a replacement old helper during an interrupted image upgrade", async () => {
+    const fake = makeFakeApi();
+    await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const newSpec = { ...spec, image: `example.invalid/lando-sync@sha256:${"b".repeat(64)}` };
+    fake.controls.failDelete = true;
+    await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+    fake.controls.failDelete = false;
+    if (fake.container === undefined) throw new Error("Expected old helper");
+    fake.container.Id = "foreign-replacement-id";
+    const count = fake.calls.length;
+    const failed = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+    expect(failed.message).toContain("foreign ownership");
+    expect(fake.calls.slice(count).some((call) => call.method === "DELETE")).toBe(false);
+  });
+
+  test("refuses an image upgrade when the recorded old helper has drifted", async () => {
+    const fake = makeFakeApi();
+    await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const newSpec = { ...spec, image: `example.invalid/lando-sync@sha256:${"b".repeat(64)}` };
+    (fake.container?.Config as JsonRecord).User = "1000:1000";
+    const count = fake.calls.length;
+    const failed = await failureOf(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+    expect(failed.message).toContain("foreign ownership");
+    expect(fake.calls.slice(count).some((call) => call.method === "DELETE")).toBe(false);
+    expect(fake.container).toBeDefined();
+  });
+
+  test("upgrades the image after the recorded helper was previously removed", async () => {
+    const fake = makeFakeApi();
+    await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    await Effect.runPromise(removeWindowsSyncHelper(fake.api, fake.stateStore, spec));
+    const oldVolume = fake.volume;
+    const newSpec = { ...spec, image: `example.invalid/lando-sync@sha256:${"b".repeat(64)}` };
+    await Effect.runPromise(ensureWindowsSyncHelper(fake.api, fake.stateStore, newSpec));
+    expect(fake.volume).toBe(oldVolume);
+    expect((fake.container?.Config as JsonRecord).Image).toBe(newSpec.image);
   });
 
   test("rejects a mutable helper image before making any API request", async () => {
