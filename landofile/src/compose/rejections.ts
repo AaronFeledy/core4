@@ -1,14 +1,14 @@
 import { Effect } from "effect";
 
 import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
-import { type LandofileTagOccurrence, detectLandofileTags } from "../parser.ts";
 import {
   type ComposeDisposition,
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "./dispositions.ts";
+} from "@lando/sdk/landofile";
+import { type LandofileTagOccurrence, detectLandofileTags } from "../parser.ts";
 import { type DispositionTrieNode, compileDispositionTrie, matchDispositionChild } from "./rejection-trie.ts";
 
 export interface ComposeRejectionMatch {

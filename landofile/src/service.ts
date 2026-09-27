@@ -28,6 +28,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { decodeOrFail } from "./decode.ts";
@@ -50,7 +51,6 @@ import {
   type ResolveLandofileLoadExpressionError,
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
-import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import {
