@@ -58,6 +58,7 @@
       "name": "@lando/data-mover",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/container-runtime": "workspace:*",
         "@lando/landofile": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/redaction": "workspace:*",
