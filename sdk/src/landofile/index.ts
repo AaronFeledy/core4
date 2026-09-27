@@ -8,6 +8,7 @@ export {
   type LandofileLeadingCommentBlock,
 } from "./emit.ts";
 export {
+  compareKeyPaths,
   declaredConfigTranslateSourceIds,
   validateConfigTranslateInput,
   validateConfigTranslateResult,

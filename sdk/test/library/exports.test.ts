@@ -25,6 +25,7 @@ describe("@lando/sdk package exports", () => {
     expect(typeof landofile.mergeLandofiles).toBe("function");
     expect(typeof landofile.landofileLayerRank).toBe("function");
     expect(landofile.composeServiceDispositions).toBeDefined();
+    expect(typeof landofile.compareKeyPaths).toBe("function");
   });
   test("root entry point resolves the public namespaces", async () => {
     const sdk = await import("@lando/sdk");
