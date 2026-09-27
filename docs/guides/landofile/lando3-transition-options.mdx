@@ -26,7 +26,7 @@ An unknown service fails before Lando inspects anything. This keeps a typo from 
 
 ```sh
 lando rebuild --service api
-lando rebuild -s api -s api --format=json
+lando rebuild --yes -s api -s api --format=json
 ```
 
 Repeated names count once. Lando stops and force-builds the selected closure in dependency order, then starts that closure again. Unrelated services and services that depend on your selection keep running.
@@ -86,9 +86,9 @@ Set either map from the shell as one JSON document. `LANDO_APP_ENV` and `LANDO_A
       <Verify command="lando info -s api -s frontend --format=json" expect={{ stdout: { not: { regex: "\"service\":\\s*\"database\"" } } }} />
     </Step>
     <Step name="rebuild-selected-services">
-      <Run command="lando rebuild -s api -s api --format=json" />
-      <Verify command="lando rebuild -s api -s api --format=json" expect={{ stdout: { regex: "\"servicesRebuilt\":\\s*\\[\\s*\"database\",\\s*\"api\"\\s*\\]" } }} />
-      <Verify command="lando rebuild -s api -s api --format=json" expect={{ stdout: { not: { regex: "\"servicesRebuilt\"[^]]*\"frontend\"" } } }} />
+      <Run command="lando rebuild --yes -s api -s api --format=json" />
+      <Verify command="lando rebuild --yes -s api -s api --format=json" expect={{ stdout: { regex: "\"servicesRebuilt\":\\s*\\[\\s*\"database\",\\s*\"api\"\\s*\\]" } }} />
+      <Verify command="lando rebuild --yes -s api -s api --format=json" expect={{ stdout: { not: { regex: "\"servicesRebuilt\"[^]]*\"frontend\"" } } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

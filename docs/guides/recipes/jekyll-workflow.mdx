@@ -255,7 +255,7 @@ Gems with native extensions compile against the `build-essential` step from the 
 
 `lando restart` stops the app and starts it again from the current `.lando.yml`, so `command:`, `root:`, and other config edits land. It also covers the apt line: change a `build.artifact` step and the next start builds a fresh `builder` image before it starts the container.
 
-`lando rebuild` runs the same stop and start, and it also reruns every `build.app` step, even unchanged ones. The Jekyll recipe has no `build.app` steps, so `lando restart` covers every edit on this page. `lando rebuild` doesn't prompt, so it takes no `-y`.
+`lando rebuild` recreates the containers and reruns every `build.app` step, even unchanged ones. The Jekyll recipe has no `build.app` steps, so `lando restart` covers every edit on this page. `lando rebuild` asks for confirmation; pass `-y` to skip the prompt in scripts.
 
 ## Destroy without surprises
 
