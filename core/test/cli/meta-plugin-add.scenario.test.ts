@@ -228,7 +228,7 @@ describe("meta:plugin:add command", () => {
       "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
       "index.js": "export {};\n",
     });
-    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    await mkdir(join(pluginsRoot, "registry.json"), { recursive: true });
     const trustStore = new Set<string>();
 
     const exit = await Effect.runPromiseExit(
@@ -251,7 +251,7 @@ describe("meta:plugin:add command", () => {
       "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
       "index.js": "export {};\n",
     });
-    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    await mkdir(join(pluginsRoot, "registry.json"), { recursive: true });
     const trustStore = new Set<string>(["@lando/plugin-php"]);
 
     const exit = await Effect.runPromiseExit(
@@ -513,7 +513,7 @@ describe("meta:plugin:add command", () => {
       "index.js": "export {};\n",
       "postinstall.js": "throw new Error('must not run during gated install');\n",
     });
-    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    await mkdir(join(pluginsRoot, "registry.json"), { recursive: true });
     const persistentStore = makePluginTrustStore(join(userDataRoot, "plugin-trust.yml"));
     await Effect.runPromise(persistentStore.trustAuthoringRoot(pluginsRoot));
     const trustStore = new Set<string>();
