@@ -150,7 +150,12 @@ export interface ApplyPluginLinkResult {
   readonly registryEntry: string;
 }
 
-export const applyPluginLink = async (input: ApplyPluginLinkInput): Promise<ApplyPluginLinkResult> => {
+const defaultIo = { writeLinkedState, replaceInstalledPluginRegistry };
+
+export const applyPluginLink = async (
+  input: ApplyPluginLinkInput,
+  io: typeof defaultIo = defaultIo,
+): Promise<ApplyPluginLinkResult> => {
   const { pluginsRoot, linkedPath, pluginName, version } = input;
   const registryEntry = resolve(pluginsRoot, pluginName);
   assertInsidePluginsRoot(pluginsRoot, registryEntry, pluginName);
@@ -158,16 +163,16 @@ export const applyPluginLink = async (input: ApplyPluginLinkInput): Promise<Appl
   const prepared = await prepareRegistryEntry(pluginsRoot, pluginName, registryEntry);
   const previousState = await readLinkedState(pluginsRoot);
   const previousRegistry = await readInstalledPluginRegistryFileSnapshot(pluginsRoot);
-  let linkedStateWritten = false;
+  let linkedStateAttempted = false;
   await replaceRegistrySymlink(registryEntry, linkedPath);
   try {
-    await writeLinkedState(pluginsRoot, {
+    linkedStateAttempted = true;
+    await io.writeLinkedState(pluginsRoot, {
       ...previousState,
       [pluginName]: { source: "linked", linkedPath, registryEntry },
     });
-    linkedStateWritten = true;
     const registry = await readRawInstalledPluginRegistryEntries(pluginsRoot);
-    await replaceInstalledPluginRegistry(pluginsRoot, {
+    await io.replaceInstalledPluginRegistry(pluginsRoot, {
       ...registry,
       [pluginName]: {
         name: pluginName,
@@ -181,7 +186,7 @@ export const applyPluginLink = async (input: ApplyPluginLinkInput): Promise<Appl
     await safeRollback("registry", () =>
       restoreInstalledPluginRegistryFileSnapshot(pluginsRoot, previousRegistry),
     );
-    if (linkedStateWritten)
+    if (linkedStateAttempted)
       await safeRollback("linked-state", () => writeLinkedState(pluginsRoot, previousState));
     await safeRollback("symlink", () =>
       restoreRegistrySymlink(registryEntry, prepared.previousSymlinkTarget),
