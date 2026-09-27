@@ -10,7 +10,7 @@ import type {
   ServiceTypeResolution,
 } from "@lando/sdk/services";
 
-import { mergeValues } from "@lando/landofile/merge";
+import { mergeValues } from "@lando/sdk/landofile";
 
 /** Single inheritance chain, depth-limited to at most four `extends` hops. */
 export const MAX_SERVICE_TYPE_EXTENDS_DEPTH = 4;

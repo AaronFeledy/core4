@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { mergeLandofiles } from "@lando/landofile/merge";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import { ConfigTranslateInput } from "@lando/sdk/schema";
 
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
