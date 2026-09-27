@@ -1,13 +1,144 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { writeFileAtomicScoped } from "../../src/atomic.ts";
+import { writeFileAtomic, writeFileAtomicScoped } from "../../src/atomic.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
+
+describe("writeFileAtomic", () => {
+  test("flushes a uniquely named temp before publishing", async () => {
+    // Given a destination with deterministic temp naming
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    const target = join(dir, "state.json");
+    const events: string[] = [];
+    try {
+      // When the file is published
+      await writeFileAtomic(target, new TextEncoder().encode("complete"), {
+        randomId: () => "fixed",
+        syncFile: async (handle) => {
+          await handle.sync();
+          events.push("sync");
+        },
+        renameFile: async (from, to) => {
+          expect(from).toBe(`${target}.tmp-fixed`);
+          expect(to).toBe(target);
+          events.push("rename");
+          await rename(from, to);
+        },
+      });
+      // Then only flushed, complete bytes are published
+      expect(events).toEqual(["sync", "rename"]);
+      expect(await Bun.file(target).text()).toBe("complete");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform === "win32")("pins private permissions", async () => {
+    // Given a private destination
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    const target = join(dir, "private");
+    try {
+      // When strict private bytes are written
+      await writeFileAtomic(target, "secret", { mode: 0o600 });
+      // Then permissions match the requested mode
+      expect((await stat(target)).mode & 0o777).toBe(0o600);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("supports best-effort private writes without an ACL adapter", async () => {
+    // Given no private-access adapter, including on native Windows
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    const target = join(dir, "private");
+    try {
+      // When best-effort access is requested
+      await writeFileAtomic(target, "secret", { mode: 0o600, ownerOnly: "best-effort" });
+      // Then bytes are published without a PrivateFileAccessError
+      expect(await Bun.file(target).text()).toBe("secret");
+      if (process.platform !== "win32") expect((await stat(target)).mode & 0o777).toBe(0o600);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("propagates directory sync failure after publication without removing files", async () => {
+    // Given a directory flush failure
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    const target = join(dir, "state");
+    const failure = new Error("directory sync failed");
+    const removed: string[] = [];
+    try {
+      // When publication succeeds but durability fails
+      await expect(
+        writeFileAtomic(target, "complete", {
+          syncDirectory: async () => {
+            throw failure;
+          },
+          removeFile: async (path) => {
+            removed.push(path);
+          },
+        }),
+      ).rejects.toBe(failure);
+      // Then the original failure propagates and published bytes remain
+      expect(await Bun.file(target).text()).toBe("complete");
+      expect(removed).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("cleans the temp when the target is a directory", async () => {
+    // Given an existing directory at the destination
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    const target = join(dir, "target");
+    await mkdir(target);
+    try {
+      // When rename cannot replace the directory
+      await expect(writeFileAtomic(target, "bytes")).rejects.toMatchObject({
+        code: expect.stringMatching(/^(EISDIR|EEXIST|ENOTEMPTY|EPERM)$/),
+      });
+      // Then no partial temp survives
+      expect((await readdir(dir)).filter((name) => name.includes(".tmp-"))).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("uses the removal seam and preserves the original failure", async () => {
+    // Given a failing flush and cleanup adapter
+    const dir = await mkdtemp(join(tmpdir(), "lando-atomic-"));
+    const target = join(dir, "state");
+    const failure = new Error("file sync failed");
+    const removed: string[] = [];
+    try {
+      // When cleanup also reports failure
+      await expect(
+        writeFileAtomic(target, "bytes", {
+          randomId: () => "fixed",
+          syncFile: async () => {
+            throw failure;
+          },
+          removeFile: async (path) => {
+            removed.push(path);
+            await unlink(path);
+            throw new Error("cleanup failed");
+          },
+        }),
+      ).rejects.toBe(failure);
+      // Then cleanup was attempted without masking the write failure
+      expect(removed).toEqual([`${target}.tmp-fixed`]);
+      expect(await readdir(dir)).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("writeFileAtomicScoped", () => {
   test("rejects a successful ACL swap before writing secrets", async () => {
