@@ -1,4 +1,4 @@
-import { Context, type Effect, Schema, type Scope } from "effect";
+import { Context, type Effect, type Scope } from "effect";
 import { AppId } from "../schema/primitives.ts";
 
 import type {
@@ -98,17 +98,11 @@ export interface SshSetupOptions {
   readonly force: boolean;
 }
 
-const SshAgentSocketSchema = Schema.Struct({
-  socketPath: Schema.String,
-  appId: AppId,
-  runtimeVolume: Schema.optional(
-    Schema.String.annotations({
-      description:
-        "Named volume on the Lando-managed provider publishing agent.sock at its root. The global app owns this volume; consuming apps must not claim it as a store.",
-    }),
-  ),
-});
-export type SshAgentSocket = typeof SshAgentSocketSchema.Type;
+export interface SshAgentSocket {
+  readonly socketPath: string;
+  readonly appId: AppId;
+  readonly runtimeVolume?: string;
+}
 
 export interface SshServiceShape {
   readonly id: string;
