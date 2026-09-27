@@ -4,10 +4,8 @@ import { Effect, type Layer } from "effect";
 
 import { confirmRemoteSyncWithInteraction } from "@lando/engine/app/remote-confirmation";
 import { appConfigLint } from "@lando/engine/operations/app-config-lint";
-import { destroyApp } from "@lando/engine/operations/destroy";
 import { infoApp } from "@lando/engine/operations/info";
 import { followLogsApp, logsApp } from "@lando/engine/operations/logs";
-import { rebuildApp } from "@lando/engine/operations/rebuild";
 import {
   appPull,
   appPush,
@@ -27,9 +25,10 @@ import type { RendererIO } from "@lando/renderer/io";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeLandoRuntime } from "../../runtime/layer";
 import { appConfigOptionsFromInput } from "../command-specs/app/config";
+import { runDestroyCommand } from "../command-specs/app/destroy";
 import { infoOptionsFromInput } from "../command-specs/app/info";
 import { logsFollowFromInput, logsOptionsFromInput } from "../command-specs/app/logs";
-import { rebuildOptionsFromInput } from "../command-specs/app/rebuild";
+import { runRebuildCommand } from "../command-specs/app/rebuild";
 import {
   remoteAddOptionsFromInput,
   remoteEnvListOptionsFromInput,
@@ -141,11 +140,8 @@ export const runOpen = (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 export const runDestroy = (argv: ReadonlyArray<string>, options: RunDestroyOptions = {}): Promise<void> => {
-  const volumes = argv.includes("--volumes") || argv.includes("--purge");
-  const purgeCaches = argv.includes("--purge-caches");
-  const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(
-    destroyApp({ volumes, purgeCaches, yes }),
+    runDestroyCommand(compiledCommandInputFromArgv("app:destroy", argv)),
     options.runtime ?? appRuntimeLayer(),
     renderDestroyAppResult,
     options.io === undefined ? {} : { io: options.io },
@@ -224,10 +220,7 @@ export const runRestart = (): Promise<void> =>
 export const runRebuild = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
-      Effect.zipRight(
-        refreshAppCache(),
-        rebuildApp(rebuildOptionsFromInput({ ...compiledCommandInputFromArgv("app:rebuild", argv), signal })),
-      ),
+      runRebuildCommand({ ...compiledCommandInputFromArgv("app:rebuild", argv), signal }),
       appRuntimeLayer(),
       renderRebuildAppResult,
     ),

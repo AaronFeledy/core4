@@ -65,7 +65,7 @@ services:
 }
 ```
 
-Open the Command Palette, choose `Tasks: Run Task`, then pick the Lando task by its label. `lando rebuild` recreates containers from the current Landofile, so it discards changes that are not persisted in the Landofile or a mounted volume.
+Open the Command Palette, choose `Tasks: Run Task`, then pick the Lando task by its label. `lando rebuild` recreates containers from the current Landofile, so it discards changes that are not persisted in the Landofile or a mounted volume. It asks before it does that; answer in the task terminal, or change the command to `lando rebuild -y` to skip the prompt.
 
 ## Debug PHP and Node
 
