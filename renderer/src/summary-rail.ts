@@ -19,14 +19,13 @@ import {
   paintRail,
   paintTone,
   paintToneBold,
+  resolveSummaryWidth,
   toneGlyph,
   truncateToWidth,
   wrapToWidth,
 } from "./console-layout.ts";
 import type { SummaryDocument, SummaryRow, SummarySection } from "./summary.ts";
 
-const MIN_SUMMARY_WIDTH = 24;
-const DEFAULT_SUMMARY_WIDTH = 80;
 /** `│ ` before every body line. */
 const RAIL_WIDTH = 2;
 /** Details sit under the row label, past its `! ` glyph. */
@@ -34,9 +33,6 @@ const DETAIL_INDENT = 2;
 const FIELD_SEPARATOR = " · ";
 
 type Style = (segment: string) => string;
-
-const resolveWidth = (columns: number | undefined): number =>
-  Math.max(MIN_SUMMARY_WIDTH, columns ?? DEFAULT_SUMMARY_WIDTH);
 
 const railLine = (content = ""): string =>
   content.length === 0 ? paintRail("│") : `${paintRail("│")} ${content}`;
@@ -151,7 +147,7 @@ const pushSection = (lines: string[], section: SummarySection, budget: number): 
 };
 
 export const formatPreparedRailSummary = (doc: SummaryDocument, columns?: number | undefined): string => {
-  const width = resolveWidth(columns);
+  const width = resolveSummaryWidth(columns);
   const budget = width - RAIL_WIDTH;
   const lines: string[] = [];
 

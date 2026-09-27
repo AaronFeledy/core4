@@ -47,50 +47,22 @@ export const hyperlink = (text: string, href: string): string => {
   return `${ESC}]8;;${href}${terminator}${text}${ESC}]8;;${terminator}`;
 };
 
-/** Code points that occupy two terminal columns (East Asian Wide/Fullwidth + emoji). */
-const isWideCodePoint = (cp: number): boolean =>
-  cp >= 0x1100 &&
-  (cp <= 0x115f || // Hangul Jamo
-    cp === 0x2329 ||
-    cp === 0x232a ||
-    (cp >= 0x2e80 && cp <= 0x303e) || // CJK radicals .. Kangxi
-    (cp >= 0x3041 && cp <= 0x33ff) || // Hiragana .. CJK compat
-    (cp >= 0x3400 && cp <= 0x4dbf) || // CJK Ext A
-    (cp >= 0x4e00 && cp <= 0x9fff) || // CJK Unified
-    (cp >= 0xa000 && cp <= 0xa4cf) || // Yi
-    (cp >= 0xac00 && cp <= 0xd7a3) || // Hangul Syllables
-    (cp >= 0xf900 && cp <= 0xfaff) || // CJK compat ideographs
-    (cp >= 0xfe30 && cp <= 0xfe4f) || // CJK compat forms
-    (cp >= 0xff00 && cp <= 0xff60) || // Fullwidth forms
-    (cp >= 0xffe0 && cp <= 0xffe6) ||
-    (cp >= 0x1f300 && cp <= 0x1faff) || // symbols & emoji
-    (cp >= 0x20000 && cp <= 0x3fffd)); // CJK Ext B+
+/**
+ * Width is measured in terminal cells per grapheme cluster, never per code
+ * point: `Bun.stringWidth` supplies the cell count (wide CJK and emoji
+ * presentation are 2, combining marks and joiners are 0) and `Intl.Segmenter`
+ * supplies cluster boundaries so a flag, skin-tone modifier, or ZWJ family is
+ * never split by truncation or a hard break. The segmenter is built on first use.
+ */
+let graphemeSegmenter: Intl.Segmenter | undefined;
 
-/** Code points that occupy zero terminal columns (combining marks, ZWJ, variation selectors). */
-const isZeroWidthCodePoint = (cp: number): boolean =>
-  cp === 0x200d ||
-  (cp >= 0x0300 && cp <= 0x036f) ||
-  (cp >= 0x1ab0 && cp <= 0x1aff) ||
-  (cp >= 0x1dc0 && cp <= 0x1dff) ||
-  (cp >= 0x20d0 && cp <= 0x20ff) ||
-  (cp >= 0xfe00 && cp <= 0xfe0f) ||
-  (cp >= 0xfe20 && cp <= 0xfe2f);
-
-const codePointWidth = (cp: number): number => {
-  if (isZeroWidthCodePoint(cp)) return 0;
-  return isWideCodePoint(cp) ? 2 : 1;
+const graphemes = (text: string): ReadonlyArray<string> => {
+  graphemeSegmenter ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
+  return Array.from(graphemeSegmenter.segment(text), (entry) => entry.segment);
 };
 
 /** Visible terminal width of `text`, counting wide glyphs as 2 and ignoring ANSI. */
-export const displayWidth = (text: string): number => {
-  let width = 0;
-  for (const ch of stripAnsi(text)) {
-    const cp = ch.codePointAt(0);
-    if (cp === undefined) continue;
-    width += codePointWidth(cp);
-  }
-  return width;
-};
+export const displayWidth = (text: string): number => Bun.stringWidth(stripAnsi(text));
 
 const ELLIPSIS = "…";
 
@@ -101,12 +73,10 @@ export const truncateToWidth = (text: string, max: number): string => {
   const budget = max - 1;
   let width = 0;
   let out = "";
-  for (const ch of stripAnsi(text)) {
-    const cp = ch.codePointAt(0);
-    if (cp === undefined) continue;
-    const w = codePointWidth(cp);
+  for (const grapheme of graphemes(stripAnsi(text))) {
+    const w = displayWidth(grapheme);
     if (width + w > budget) break;
-    out += ch;
+    out += grapheme;
     width += w;
   }
   return `${out}${ELLIPSIS}`;
@@ -116,15 +86,14 @@ const hardBreakToken = (token: string, width: number): ReadonlyArray<string> => 
   const segments: string[] = [];
   let current = "";
   let currentWidth = 0;
-  for (const ch of token) {
-    const cp = ch.codePointAt(0) ?? 0;
-    const w = codePointWidth(cp);
+  for (const grapheme of graphemes(token)) {
+    const w = displayWidth(grapheme);
     if (currentWidth + w > width && current.length > 0) {
       segments.push(current);
       current = "";
       currentWidth = 0;
     }
-    current += ch;
+    current += grapheme;
     currentWidth += w;
   }
   if (current.length > 0) segments.push(current);
@@ -161,6 +130,22 @@ export const wrapToWidth = (text: string, width: number): ReadonlyArray<string> 
 };
 
 const repeat = (glyph: string, count: number): string => glyph.repeat(Math.max(0, count));
+
+/** Narrowest width the summary layouts render at; below this a frame has no room for content. */
+export const MIN_SUMMARY_WIDTH = 10;
+/** Width assumed when the terminal does not report a usable column count. */
+export const DEFAULT_SUMMARY_WIDTH = 80;
+
+/**
+ * Resolve a summary width from a reported column count. `undefined`,
+ * non-finite, and non-positive counts mean the terminal size is unknown (a
+ * detached or zero-sized stdout), so they read as the default, not the minimum.
+ */
+export const resolveSummaryWidth = (columns: number | undefined): number =>
+  Math.max(
+    MIN_SUMMARY_WIDTH,
+    columns !== undefined && Number.isFinite(columns) && columns > 0 ? columns : DEFAULT_SUMMARY_WIDTH,
+  );
 
 /** Minimum width below which box framing is skipped to stay readable. */
 export const MIN_BOX_WIDTH = 16 as const;
@@ -244,12 +229,12 @@ const wrapFieldValueToWidth = (value: string, width: number): ReadonlyArray<stri
     let end = 0;
     let used = 0;
     let lastSpaceEnd = 0;
-    for (const ch of remaining) {
-      const charWidth = codePointWidth(ch.codePointAt(0) ?? 0);
-      if (used + charWidth > budget) break;
-      end += ch.length;
-      used += charWidth;
-      if (ch === " ") lastSpaceEnd = end;
+    for (const grapheme of graphemes(remaining)) {
+      const graphemeWidth = displayWidth(grapheme);
+      if (used + graphemeWidth > budget) break;
+      end += grapheme.length;
+      used += graphemeWidth;
+      if (grapheme === " ") lastSpaceEnd = end;
     }
     const breakAt = lastSpaceEnd > 0 && /\S/u.test(remaining.slice(0, lastSpaceEnd)) ? lastSpaceEnd : end;
     if (breakAt === 0) return [...lines, ...hardBreakToken(remaining, budget)];
@@ -260,24 +245,55 @@ const wrapFieldValueToWidth = (value: string, width: number): ReadonlyArray<stri
   return lines;
 };
 
-/** Keep the field separator aligned while long labels and values wrap. */
+/** Each embedded line break in a field value starts a new physical row. */
+const wrapFieldValueLines = (value: string, width: number): ReadonlyArray<string> =>
+  value.split(/\r?\n/u).flatMap((part) => wrapFieldValueToWidth(part, width));
+
+/** Width of the ` : ` separator between a field label and its value. */
+const FIELD_SEPARATOR_WIDTH = 3;
+/** Fewest columns a value keeps beside its label; a label that leaves less stacks instead. */
+const MIN_FIELD_VALUE_WIDTH = 8;
+
+/**
+ * Shared label column for a group of fields laid out in `width` columns: the
+ * widest label that still leaves {@link MIN_FIELD_VALUE_WIDTH} columns for its
+ * value. Wider labels stack over their value (see {@link wrapFieldToWidth})
+ * instead of squeezing the column or being split to fit it.
+ */
+export const fieldLabelWidth = (labels: ReadonlyArray<string>, width: number): number => {
+  const cap = width - FIELD_SEPARATOR_WIDTH - MIN_FIELD_VALUE_WIDTH;
+  return Math.max(0, ...labels.map(displayWidth).filter((labelWidth) => labelWidth <= cap));
+};
+
+/**
+ * Stacked field: `label :` on its own line, then the value wrapped across the
+ * full field width beneath it. The label is split only when it cannot fit
+ * beside its separator at all.
+ */
+const stackFieldToWidth = (label: string, value: string, width: number): ReadonlyArray<string> => {
+  const labels = wrapToWidth(label, Math.max(1, width - 2));
+  const lastLabel = labels[labels.length - 1] ?? "";
+  return [...labels.slice(0, -1), `${lastLabel} :`, ...wrapFieldValueLines(value, width)];
+};
+
+/**
+ * Keep the field separator aligned while long values wrap. A label wider than
+ * the shared `labelWidth` column stacks over its value rather than being split.
+ */
 export const wrapFieldToWidth = (
   label: string,
   value: string,
   labelWidth: number,
   width: number,
 ): ReadonlyArray<string> => {
-  const labels = wrapToWidth(label, Math.max(1, labelWidth));
-  const lastLabel = labels[labels.length - 1] ?? "";
-  const prefix = `${padEndToWidth(lastLabel, labelWidth)} : `;
+  if (displayWidth(label) > labelWidth) return stackFieldToWidth(label, value, width);
+  const prefix = `${padEndToWidth(label, labelWidth)} : `;
   const prefixWidth = displayWidth(prefix);
   if (!/\s/u.test(value) && displayWidth(value) > width - prefixWidth && displayWidth(value) <= width) {
-    return [...labels.slice(0, -1), prefix.slice(0, -1), value];
+    return [prefix.slice(0, -1), value];
   }
-  // Each embedded line break starts a new physical row inside the frame.
-  const values = value.split(/\r?\n/u).flatMap((part) => wrapFieldValueToWidth(part, width - prefixWidth));
+  const values = wrapFieldValueLines(value, width - prefixWidth);
   return [
-    ...labels.slice(0, -1),
     `${prefix}${values[0] ?? ""}`,
     ...values.slice(1).map((line) => `${repeat(" ", prefixWidth)}${line}`),
   ];
