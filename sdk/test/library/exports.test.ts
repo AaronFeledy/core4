@@ -20,6 +20,12 @@ describe("@lando/sdk package exports", () => {
     const landofile = await import("@lando/sdk/landofile");
     expect(landofile.validateConfigTranslateResult).toBeDefined();
   });
+  test("landofile entry point exports overlay merge, layer order, and compose dispositions", async () => {
+    const landofile = await import("@lando/sdk/landofile");
+    expect(typeof landofile.mergeLandofiles).toBe("function");
+    expect(typeof landofile.landofileLayerRank).toBe("function");
+    expect(landofile.composeServiceDispositions).toBeDefined();
+  });
   test("root entry point resolves the public namespaces", async () => {
     const sdk = await import("@lando/sdk");
 
