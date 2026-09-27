@@ -522,6 +522,77 @@ test("keeps every field, row, and remedy readable from 10 to 40 columns in all t
   }
 });
 
+test("keeps text with embedded line breaks inside the frame in all three layouts", () => {
+  const doc: SummaryDocument = {
+    title: "APP\nINFO",
+    subtitle: "sub one\nsub two",
+    sections: [
+      {
+        title: "services\nand more",
+        rows: [
+          {
+            label: "web\nserver",
+            tone: "ok",
+            value: "running\r\nhealthy",
+            detail: "detail one\ndetail two",
+            remedy: "run lando\rrebuild",
+            fields: [
+              { label: "urls", value: "http://a.lndo.site\nhttp://b.lndo.site" },
+              { label: "ports", value: "80" },
+              { label: "multi\nlabel", value: "x" },
+            ],
+          },
+        ],
+        notes: ["note one\nnote two"],
+      },
+    ],
+    nextSteps: ["lando start\nlando info"],
+    footer: "footer one\nfooter two",
+  };
+  const bodyTexts = [
+    "web",
+    "server",
+    "running",
+    "healthy",
+    "detail one",
+    "detail two",
+    "run lando",
+    "rebuild",
+    "http://a.lndo.site",
+    "http://b.lndo.site",
+    "note one",
+    "note two",
+    "lando start",
+    "lando info",
+  ].map(compactBody);
+  const framed: ReadonlyArray<
+    readonly [string, (doc: SummaryDocument, options: { columns: number }) => string, RegExp]
+  > = [
+    ["box", formatSummary, /^[╭├│╰]/u],
+    ["rail", formatRailSummary, /^(?:[╭├╰]─|│| {3}\S)/u],
+  ];
+  for (const width of [10, 24, 80]) {
+    for (const [name, render, edge] of framed) {
+      const lines = stripAnsi(render(doc, { columns: width })).split("\n");
+      for (const line of lines) {
+        expect(line, `${name} @ ${width} escaped the frame`).toMatch(edge);
+        expect(displayWidth(line), `${name} @ ${width} overflowed: ${line}`).toBeLessThanOrEqual(width);
+      }
+    }
+    const quiet = stripAnsi(formatQuietSummary(doc, { columns: width })).split("\n");
+    for (const line of quiet) {
+      expect(displayWidth(line), `quiet @ ${width} overflowed: ${line}`).toBeLessThanOrEqual(width);
+      expect(line.length === 0 || line.trim().length > 0, `quiet @ ${width} blank-padded row`).toBe(true);
+    }
+    for (const render of [formatSummary, formatQuietSummary, formatRailSummary]) {
+      const compact = compactBody(stripAnsi(render(doc, { columns: width })));
+      for (const text of bodyTexts) {
+        expect(compact, `${render.name} @ ${width} lost ${JSON.stringify(text)}`).toContain(text);
+      }
+    }
+  }
+});
+
 test("reads a zero, negative, or non-finite column count as an unknown terminal width", () => {
   for (const render of [formatSummary, formatQuietSummary, formatRailSummary]) {
     const unknown = render(sampleDoc, {});
