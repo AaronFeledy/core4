@@ -8,15 +8,6 @@ import { Effect } from "effect";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
-const failure = (message: string, cause?: unknown) =>
-  new ProviderUnavailableError({
-    providerId: "lando",
-    operation: "prepareFileSyncTransport",
-    message,
-    remediation: "Run `lando setup` to restore the managed runtime before retrying file sync.",
-    ...(cause === undefined ? {} : { cause }),
-  });
-
 const regularFile = async (file: string): Promise<boolean> => {
   const info = await lstat(file);
   return info.isFile() && !info.isSymbolicLink() && info.size > 0;
@@ -108,5 +99,14 @@ export const prepareWindowsDockerCli = (
       return docker;
     },
     catch: (cause) =>
-      failure("Could not prepare a verified Docker-compatible CLI from managed Podman.", cause),
+      new ProviderUnavailableError({
+        providerId: "lando",
+        operation: options.repairExisting === true ? "setup" : "prepareFileSyncTransport",
+        message: "Could not prepare a verified Docker-compatible CLI from managed Podman.",
+        remediation:
+          options.repairExisting === true
+            ? `Remove the Lando-owned directory \`${join(runtimeBinDir, "docker-compat")}\`, then rerun \`lando setup\`.`
+            : "Run `lando setup` to restore the managed runtime before retrying file sync.",
+        ...(cause === undefined ? {} : { cause }),
+      }),
   });

@@ -1012,6 +1012,54 @@ describe("provider-lando setup runtime bundle extraction", () => {
     }
   });
 
+  test("Windows setup recreates the managed Docker alias when the runtime bundle version changes", async () => {
+    // Given an installed Windows bundle with its verified alias.
+    const root = await mkdtemp(join(tmpdir(), "lando-windows-alias-upgrade-"));
+    const runtimeBinDir = join(root, "runtime", "bin");
+    const podmanA = new TextEncoder().encode("verified-podman-A");
+    const podmanB = new TextEncoder().encode("verified-podman-B");
+    const helpers = [
+      { path: "gvproxy.exe", bytes: new TextEncoder().encode("gvproxy") },
+      { path: "win-sshproxy.exe", bytes: new TextEncoder().encode("win-sshproxy") },
+    ];
+    const options = {
+      platform: "win32" as const,
+      podmanCommand: podmanCommand("podman version 6.0.2"),
+      podmanMachine: machineRunner("running", []),
+      runtimeBinDir,
+      skipSocketProbe: true,
+    };
+    try {
+      await Effect.runPromise(
+        setupProviderLando({
+          ...options,
+          runtimeBundleDownloader: downloaderFor(
+            buildTarGz([{ path: "podman.exe", bytes: podmanA }, ...helpers]),
+            "6.0.0",
+          ),
+        }),
+      );
+      const alias = join(runtimeBinDir, "docker-compat", "docker.exe");
+      expect(await readFile(alias)).toEqual(Buffer.from(podmanA));
+
+      // When setup installs a new bundle, replacing the entire runtime bin tree.
+      await Effect.runPromise(
+        setupProviderLando({
+          ...options,
+          runtimeBundleDownloader: downloaderFor(
+            buildTarGz([{ path: "podman.exe", bytes: podmanB }, ...helpers]),
+            "6.0.1",
+          ),
+        }),
+      );
+
+      // Then the recreated alias contains the new bundle's Podman bytes.
+      expect(await readFile(alias)).toEqual(Buffer.from(podmanB));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("writes nothing into runtimeBinDir when the bundle checksum does not match", async () => {
     const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-mismatch-")), "runtime", "bin");
     try {

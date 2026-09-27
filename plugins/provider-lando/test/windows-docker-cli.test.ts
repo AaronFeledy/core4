@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 import { Effect, Either } from "effect";
 
+import { ProviderUnavailableError } from "@lando/sdk/errors";
+
 import { prepareWindowsDockerCli } from "../src/windows-docker-cli.ts";
 
 const directories: string[] = [];
@@ -87,14 +89,33 @@ describe("prepareWindowsDockerCli", () => {
     expect(await readFile(alias, "utf8")).toBe("owned-podman-binary");
   });
 
-  test("refreshes a stale regular alias after the managed Podman binary changes", async () => {
-    const binDir = await fixture();
-    const alias = await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32"));
-    await writeFile(join(binDir, "podman.exe"), "updated-podman-binary");
+  test.each([true, false])(
+    "reports actionable alias failure remediation with repairExisting=%s",
+    async (repairExisting) => {
+      // Given an alias path that cannot safely be replaced.
+      const binDir = await fixture();
+      const compatibilityDir = join(binDir, "docker-compat");
+      await mkdir(join(compatibilityDir, "docker.exe"), { recursive: true });
 
-    await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32", { repairExisting: true }));
-    expect(await readFile(alias, "utf8")).toBe("updated-podman-binary");
-  });
+      // When setup or file sync prepares the alias.
+      const failure = await Effect.runPromise(
+        Effect.flip(prepareWindowsDockerCli(binDir, "win32", { repairExisting })),
+      );
+
+      // Then setup identifies the owned path to remove; file sync still directs users to setup.
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure.operation).toBe(repairExisting ? "setup" : "prepareFileSyncTransport");
+      if (repairExisting) {
+        expect(failure.remediation).toContain(compatibilityDir);
+        expect(failure.remediation).toMatch(/delete|remove/i);
+        expect(failure.remediation).toContain("lando setup");
+      } else {
+        expect(failure.remediation).toBe(
+          "Run `lando setup` to restore the managed runtime before retrying file sync.",
+        );
+      }
+    },
+  );
 
   test("rejects redirected source, alias, and alias directory", async () => {
     const sourceDir = await fixture();
