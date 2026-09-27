@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, EndpointPlan, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
 import type {
@@ -30,6 +30,7 @@ interface ContainerInspect {
 
 export const publishedEndpointsFromInspect = (
   inspect: unknown,
+  plannedEndpoints: ReadonlyArray<EndpointPlan> = [],
 ): NonNullable<ServiceRuntimeInfo["endpoints"]> => {
   if (typeof inspect !== "object" || inspect === null) return [];
   const ports = (inspect as ContainerInspect).NetworkSettings?.Ports;
@@ -41,19 +42,31 @@ export const publishedEndpointsFromInspect = (
     const [portNum, protocol] = containerPort.split("/");
     const port = Number.parseInt(portNum ?? "0", 10);
     if (port <= 0) continue;
+    const transport = protocol === "udp" ? "udp" : "tcp";
+    const planned = plannedEndpoints.find(
+      (endpoint): endpoint is PublishedEndpoint =>
+        endpoint._tag === "published" &&
+        endpoint.port === port &&
+        (endpoint.protocol === "udp" ? "udp" : "tcp") === transport,
+    );
     for (const binding of bindings) {
       if (typeof binding !== "object" || binding === null) continue;
       const hostPort = Number.parseInt(typeof binding.HostPort === "string" ? binding.HostPort : "0", 10);
       if (hostPort <= 0) continue;
+      const materialization = {
+        bindAddress: typeof binding.HostIp === "string" ? binding.HostIp : "0.0.0.0",
+        hostPort,
+      };
+      if (planned !== undefined) {
+        endpoints.push({ ...planned, materialization });
+        continue;
+      }
       endpoints.push({
         _tag: "published" as const,
         port,
-        protocol: protocol === "udp" ? ("udp" as const) : ("http" as const),
+        protocol: transport,
         name: containerPort,
-        publication: {
-          bindAddress: typeof binding.HostIp === "string" ? binding.HostIp : "0.0.0.0",
-          hostPort,
-        },
+        publication: materialization,
       });
     }
   }
@@ -183,7 +196,7 @@ export const inspect = (
     const status = statusFromInspect(decoded);
     const health = healthFromInspect(decoded);
     const startedAt = lastStartedAt(decoded);
-    const materialized = publishedEndpointsFromInspect(decoded);
+    const materialized = publishedEndpointsFromInspect(decoded, service.endpoints);
     return {
       app: plan.id,
       appRoot: plan.root,

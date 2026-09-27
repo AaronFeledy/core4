@@ -28,7 +28,10 @@ export const startupScanUrls = (
     const scan = plan.services[name]?.scanner;
     const path = scan?.path ?? "/";
     return service.endpoints
-      .filter((base) => !new URL(base).hostname.includes("*"))
+      .filter((base) => {
+        const url = new URL(base);
+        return (url.protocol === "http:" || url.protocol === "https:") && !url.hostname.includes("*");
+      })
       .map((base) => ({
         service: name,
         url: appendScanPath(base, path),
