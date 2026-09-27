@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { delimiter, dirname } from "node:path";
+import { readFile } from "node:fs/promises";
+import { delimiter } from "node:path";
 
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import type { PodmanServiceSpec } from "./podman-service-runner.ts";
 
@@ -100,14 +100,7 @@ export const writeLaunchState = (
         ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
       };
       const path = launchStatePath(pidPath);
-      const tempPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
-      await mkdir(dirname(path), { recursive: true });
-      try {
-        await writeFile(tempPath, JSON.stringify(state), { mode: 0o600 });
-        await rename(tempPath, path);
-      } finally {
-        await rm(tempPath, { force: true });
-      }
+      await writeFileAtomic(path, JSON.stringify(state), { mode: 0o600, ownerOnly: "best-effort" });
     },
     catch: (cause) =>
       new ProviderUnavailableError({
