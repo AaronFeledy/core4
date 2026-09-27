@@ -188,6 +188,32 @@ const identity = (spec: WindowsSyncHelperSpec) => {
   };
 };
 
+/** Podman may report a cached tag in Config.Image even when created from a pinned ref. */
+const matchesPinnedImage = (api: Api, body: JsonRecord, image: string) =>
+  Effect.gen(function* () {
+    const inspected = yield* request(api, {
+      method: "GET",
+      path: `/images/${encodeURIComponent(image)}/json` as EngineHttpRequest["path"],
+    }).pipe(
+      Effect.mapError(() =>
+        failure("syncHelper.image.inspect", "Podman image identity could not be verified."),
+      ),
+    );
+    if (inspected.status !== 200) return false;
+    const resolved = parse(inspected.body);
+    const resolvedId = resolved?.Id;
+    const repoDigests = resolved?.RepoDigests;
+    return (
+      typeof resolvedId === "string" &&
+      resolvedId.length > 0 &&
+      typeof body.Image === "string" &&
+      body.Image.length > 0 &&
+      resolvedId.replace(/^sha256:/u, "") === body.Image.replace(/^sha256:/u, "") &&
+      Array.isArray(repoDigests) &&
+      repoDigests.includes(image)
+    );
+  });
+
 const labelsFor = (
   spec: WindowsSyncHelperSpec,
   digest: string,
@@ -264,44 +290,48 @@ const inspectContainer = (api: Api, name: string) =>
   );
 
 const ownedContainerId = (
+  api: Api,
   body: JsonRecord,
   name: string,
   spec: WindowsSyncHelperSpec,
   volumeName: string,
   labels: Readonly<Record<string, string>>,
   expectedId: string,
-): Effect.Effect<string, ProviderUnavailableError> => {
-  const config = record(body.Config);
-  const host = record(body.HostConfig);
-  const policy = record(host?.RestartPolicy);
-  const mounts = Array.isArray(body.Mounts) ? body.Mounts : [];
-  const mount = mounts.length === 1 ? record(mounts[0]) : undefined;
-  const id = body.Id;
-  const exact =
-    typeof id === "string" &&
-    id === expectedId &&
-    (body.Name === name || body.Name === `/${name}`) &&
-    config?.Image === spec.image &&
-    sameStrings(config.Entrypoint, ENTRYPOINT) &&
-    sameStrings(config.Cmd, KEEP_ALIVE) &&
-    config.User === HELPER_USER &&
-    sameLabels(config.Labels, labels) &&
-    safeHostConfig(host) &&
-    host?.NetworkMode === "none" &&
-    policy?.Name === "unless-stopped" &&
-    mount?.Type === "volume" &&
-    mount.Name === volumeName &&
-    mount.Destination === TARGET_PATH &&
-    mount.RW === true;
-  return exact
-    ? Effect.succeed(id)
-    : Effect.fail(
-        failure(
-          "syncHelper.container",
-          "The sync helper exists with foreign ownership or a different specification.",
-        ),
-      );
-};
+): Effect.Effect<string, ProviderUnavailableError> =>
+  Effect.gen(function* () {
+    const imageMatches = yield* matchesPinnedImage(api, body, spec.image);
+    const config = record(body.Config);
+    const host = record(body.HostConfig);
+    const policy = record(host?.RestartPolicy);
+    const mounts = Array.isArray(body.Mounts) ? body.Mounts : [];
+    const mount = mounts.length === 1 ? record(mounts[0]) : undefined;
+    const id = body.Id;
+    const exact =
+      typeof id === "string" &&
+      id === expectedId &&
+      (body.Name === name || body.Name === `/${name}`) &&
+      imageMatches &&
+      config !== undefined &&
+      sameStrings(config.Entrypoint, ENTRYPOINT) &&
+      sameStrings(config.Cmd, KEEP_ALIVE) &&
+      config.User === HELPER_USER &&
+      sameLabels(config.Labels, labels) &&
+      safeHostConfig(host) &&
+      host?.NetworkMode === "none" &&
+      policy?.Name === "unless-stopped" &&
+      mount?.Type === "volume" &&
+      mount.Name === volumeName &&
+      mount.Destination === TARGET_PATH &&
+      mount.RW === true;
+    return exact
+      ? id
+      : yield* Effect.fail(
+          failure(
+            "syncHelper.container",
+            "The sync helper exists with foreign ownership or a different specification.",
+          ),
+        );
+  });
 
 const requireCreatedAt = (body: JsonRecord): Effect.Effect<string, ProviderUnavailableError> =>
   typeof body.CreatedAt === "string" && body.CreatedAt.length > 0
@@ -373,7 +403,17 @@ export const ensureWindowsSyncHelper = (
         };
         yield* saveReceipt(stateStore, spec, receipt);
       }
-      if (receipt.specDigest !== digest) return yield* Effect.fail(collision("sync specification"));
+      if (receipt.specDigest !== digest) {
+        return yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "syncHelper.specification",
+            message: "The helper specification changed; the existing helper and volume remain intact.",
+            remediation:
+              "Restore the original app name and pinned image. Changing the pinned image requires a planned migration of the existing Mutagen sessions and helper.",
+          }),
+        );
+      }
       if (receipt.removing === true) return yield* Effect.fail(collision("sync helper removal"));
       if (volume === undefined) {
         if (receipt.volumeCreatedAt !== null) return yield* Effect.fail(collision("sync volume"));
@@ -450,6 +490,7 @@ export const ensureWindowsSyncHelper = (
         container = yield* inspectContainer(api, containerName);
         if (container === undefined) return yield* Effect.fail(collision("sync helper"));
         yield* ownedContainerId(
+          api,
           container,
           containerName,
           spec,
@@ -462,6 +503,7 @@ export const ensureWindowsSyncHelper = (
       }
       if (receipt.containerId === null) return yield* Effect.fail(collision("sync helper"));
       const containerId = yield* ownedContainerId(
+        api,
         container,
         containerName,
         spec,
@@ -482,6 +524,7 @@ export const ensureWindowsSyncHelper = (
         container = yield* inspectContainer(api, containerName);
         if (container === undefined) return yield* Effect.fail(collision("sync helper"));
         yield* ownedContainerId(
+          api,
           container,
           containerName,
           spec,
@@ -556,6 +599,7 @@ export const removeWindowsSyncHelper = (
       if (receipt.containerId === null) return yield* Effect.fail(collision("sync helper"));
       if (container !== undefined) {
         const id = yield* ownedContainerId(
+          api,
           container,
           containerName,
           spec,
