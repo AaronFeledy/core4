@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { ProviderId } from "@lando/sdk/schema";
-import { BuildOrchestrator } from "@lando/sdk/services";
+import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
 import {
   beginAcceleratedStart,
@@ -38,7 +38,40 @@ test("start reseeds retained targets before creating planned sessions", async ()
   await Effect.runPromise(requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)));
 });
 
-test("start refuses a changed mount plan without mutation", async () => {
+test.each([false, true])(
+  "retained-session preflight protects init events with unknown sessions=%s",
+  async (extraSession) => {
+    // Given surviving two-way sessions and observable init/start event publication.
+    const harness = await Effect.runPromise(recoveryHarness({ extraSession }));
+    // When start enters the real lifecycle pipeline.
+    const result = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        return yield* startApp({}, target).pipe(
+          Effect.provideService(EventService, {
+            ...events,
+            publish: (event) =>
+              Effect.sync(() => {
+                if (["pre-init", "post-init", "pre-start"].includes(event._tag))
+                  harness.calls.push(event._tag);
+              }).pipe(Effect.zipRight(events.publish(event))),
+          }),
+        );
+      }).pipe(Effect.provide(harness.layer)),
+    );
+    // Then recorded sessions terminate before init, or unknown sessions block every hook untouched.
+    expect(Exit.isSuccess(result)).toBe(!extraSession);
+    expect(harness.calls.slice(0, 4)).toEqual(
+      extraSession ? [] : ["terminate:old", "pre-init", "post-init", "pre-start"],
+    );
+    if (extraSession) {
+      const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
+      expect(pending?.phase).toBe("retained");
+    }
+  },
+);
+
+test("start refuses a changed mount plan after stopping retained sessions", async () => {
   // Given a retained attempt and changed excludes.
   const harness = await Effect.runPromise(recoveryHarness());
   const plan = {
@@ -49,16 +82,16 @@ test("start refuses a changed mount plan without mutation", async () => {
   const result = await Effect.runPromiseExit(
     startApp({}, { ...target, plan }).pipe(Effect.provide(harness.layer)),
   );
-  // Then recovery explains the mismatch and preserves everything.
+  // Then recovery explains the mismatch without preparing targets or starting new sessions.
   expect(Exit.isFailure(result)).toBe(true);
   if (Exit.isFailure(result))
     expect(Option.getOrThrow(Cause.failureOption(result.cause)).message).toContain(
       "mount plan digest changed",
     );
-  expect(harness.calls).toEqual([]);
+  expect(harness.calls).toEqual(["terminate:old"]);
 });
 
-test.each([{ extraSession: true }, { replica: false }, { failFlush: true }, { changedVolume: true }])(
+test.each([{ replica: false }, { failFlush: true }, { changedVolume: true }])(
   "failed recovery retains its journal with the recovery error first: %j",
   async (options) => {
     // Given an unsafe or failing recovery.
@@ -72,7 +105,6 @@ test.each([{ extraSession: true }, { replica: false }, { failFlush: true }, { ch
         "cannot roll back prepared accelerated sync targets",
       );
     expect(harness.calls).not.toContain("create:two-way-safe");
-    if ("extraSession" in options) expect(harness.calls).toEqual([]);
     const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
     expect(pending?.phase).toBe("retained");
   },
@@ -104,11 +136,11 @@ test.each([
   const result = await Effect.runPromiseExit(
     startApp({}, { ...target, plan }).pipe(Effect.provide(harness.layer)),
   );
-  // Then it explains why recovery is impossible without mutating resources.
+  // Then it explains why recovery is impossible after safely stopping the recorded session.
   expect(Exit.isFailure(result)).toBe(true);
   if (Exit.isFailure(result))
     expect(Option.getOrThrow(Cause.failureOption(result.cause)).message).toContain(reason);
-  expect(harness.calls).toEqual([]);
+  expect(harness.calls).toEqual(["terminate:old"]);
 });
 
 test("recovery compares the built plan rather than the initial plan", async () => {

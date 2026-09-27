@@ -53,6 +53,7 @@ import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readJournal, requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { terminateRetainedSessions } from "./accelerated-start-recovery.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { runAppEvent, runPostAppEvent } from "./events.ts";
@@ -125,7 +126,7 @@ export const preflightStartAppDrain = (
 ) =>
   Effect.gen(function* () {
     const retained = yield* requireNoPendingAcceleratedStart(target.app, target.plan, allowRetained);
-    if (retained !== undefined) return;
+    if (retained !== undefined) return yield* terminateRetainedSessions(target.app, retained);
     const prior =
       stopPreflight?.appliedFileSync ??
       (yield* Effect.gen(function* () {
