@@ -1,9 +1,15 @@
+export interface SplitCommand {
+  readonly argv: readonly string[];
+  /** An unquoted shell operator ended parsing; Compose silently ignores the rest. */
+  readonly truncated: boolean;
+}
+
 /**
  * Compose uses go-shellwords v1.0.12 with ParseEnv/ParseBacktick disabled.
  * This is word splitting, not shell evaluation: even substitutions stay literal.
- * Undefined means malformed input; an empty array is a valid empty command.
+ * Undefined means malformed input; an empty argv is a valid empty command.
  */
-export const splitComposeCommand = (input: string): readonly string[] | undefined => {
+export const splitComposeCommand = (input: string): SplitCommand | undefined => {
   const args: string[] = [];
   let word = "";
   let started = false;
@@ -12,6 +18,7 @@ export const splitComposeCommand = (input: string): readonly string[] | undefine
   let doubleQuoted = false;
   let backQuoted = false;
   let dollarQuoted = false;
+  let truncated = false;
 
   for (const char of input) {
     if (escaped) {
@@ -53,7 +60,9 @@ export const splitComposeCommand = (input: string): readonly string[] | undefine
     }
     // Compose discards shellwords' remaining-input position at an unquoted operator.
     if (";&|<>".includes(char) && !quoted) {
+      // go-shellwords drops a word whose first byte is a digit before `>` (a file descriptor).
       if (char === ">" && /^[0-9]/u.test(word)) started = false;
+      truncated = true;
       break;
     }
     word += char;
@@ -61,5 +70,15 @@ export const splitComposeCommand = (input: string): readonly string[] | undefine
   }
   if (escaped || singleQuoted || doubleQuoted || backQuoted || dollarQuoted) return undefined;
   if (started) args.push(word);
-  return args;
+  return { argv: args, truncated };
 };
+
+// Lando 3's API-4 `type: lando` service splits single-line commands with string-argv 0.1.1.
+const STRING_ARGV = /([^\s'"]+(['"])([\s\S]*?)\2)|[^\s'"]+|(['"])([\s\S]*?)\4/gu;
+
+/**
+ * A word that starts unquoted keeps its quotes; a leading quote groups and is stripped unless
+ * empty. Backslashes are literal, unmatched quotes are skipped, and nothing is rejected.
+ */
+export const splitStringArgv = (input: string): readonly string[] =>
+  Array.from(input.matchAll(STRING_ARGV), (match) => match[1] || match[5] || match[0]);

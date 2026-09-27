@@ -112,8 +112,8 @@ export const lowerComposeFields = (
 
     let output = input;
     if ((key === "command" || key === "entrypoint") && typeof input === "string") {
-      const argv = splitComposeCommand(input);
-      if (argv === undefined) {
+      const split = splitComposeCommand(input);
+      if (split === undefined) {
         diagnostics.push(
           unsupportedServiceKey({
             ctx,
@@ -126,14 +126,22 @@ export const lowerComposeFields = (
         blocked = true;
         continue;
       }
-      output = argv;
+      output = split.argv;
       diagnostics.push(
-        rewrittenServiceKey({
-          ctx,
-          relative,
-          message: `Split scalar Compose ${key} into arguments to preserve execution without a shell.`,
-          remediation: "Keep the argument list; a Lando 4 string command runs as a shell script.",
-        }),
+        split.truncated
+          ? needsReviewServiceKey({
+              ctx,
+              relative,
+              message: `Compose ${key} stops at an unquoted shell operator, so only the arguments before it were kept; the rest never ran.`,
+              remediation:
+                "To run the whole script, replace the argument list with an explicit shell, such as [sh, -c, <script>].",
+            })
+          : rewrittenServiceKey({
+              ctx,
+              relative,
+              message: `Split scalar Compose ${key} into arguments to preserve execution without a shell.`,
+              remediation: "Keep the argument list; a Lando 4 string command runs as a shell script.",
+            }),
       );
     } else if (key === "environment") {
       output = withoutHostIpVariable(stringMap(input, relative), ctx, relative, diagnostics);

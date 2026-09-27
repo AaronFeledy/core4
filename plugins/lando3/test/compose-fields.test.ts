@@ -25,12 +25,6 @@ describe("Compose field lowering", () => {
     ["echo $HOME ${HOME} # literal", ["echo", "$HOME", "${HOME}", "#", "literal"]],
     ["echo `printf a b` $(printf a b)", ["echo", "`printf a b`", "$(printf a b)"]],
     ['sh -c "echo a && echo b"', ["sh", "-c", "echo a && echo b"]],
-    ["echo a && echo b", ["echo", "a"]],
-    ["echo a; echo b", ["echo", "a"]],
-    ["echo a | cat", ["echo", "a"]],
-    ["echo a 2>file", ["echo", "a"]],
-    ["echo a >file", ["echo", "a"]],
-    ["echo <file", ["echo"]],
   ])("uses Compose shellwords when command is %j", (command, argv) => {
     // Given / When
     const result = lowerComposeFields({ command }, ctx, options);
@@ -40,6 +34,28 @@ describe("Compose field lowering", () => {
     expect(result.diagnostics).toEqual([
       expect.objectContaining({ kind: "rewritten", keyPath: [...ctx.keyPath, "overrides", "command"] }),
     ]);
+  });
+
+  test.each([
+    ["echo a && echo b", ["echo", "a"]],
+    ["echo a; echo b", ["echo", "a"]],
+    ["echo a;", ["echo", "a"]],
+    ["echo a | cat", ["echo", "a"]],
+    ["echo a 2>file", ["echo", "a"]],
+    ["echo 2abc>file", ["echo"]],
+    ["echo a2>file", ["echo", "a2"]],
+    ["echo a >file", ["echo", "a"]],
+    ["echo <file", ["echo"]],
+  ])("flags the dropped remainder when Compose stops %j at an operator", (command, argv) => {
+    // Given / When
+    const result = lowerComposeFields({ entrypoint: command }, ctx, options);
+    // Then
+    expect(result.patch.entrypoint).toEqual(argv);
+    expect(result.blocked).toBeUndefined();
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ kind: "needs-review", keyPath: [...ctx.keyPath, "overrides", "entrypoint"] }),
+    ]);
+    expect(JSON.stringify(result.diagnostics)).not.toContain("file");
   });
 
   test.each(["'unfinished", '"unfinished', "trailing\\", "`unfinished", "$(unfinished", "echo (bad)"])(

@@ -1,5 +1,6 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { splitStringArgv } from "./compose-command.ts";
 import { lowerComposeFields } from "./compose-fields.ts";
 import type { Lando3Path } from "./contract.ts";
 import { withoutHostIpVariable } from "./host-reachability.ts";
@@ -141,6 +142,17 @@ export const lowerApi4Service = (
       Object.assign(patch, lowered.patch);
       diagnostics.push(...lowered.diagnostics);
       blocked ||= lowered.blocked === true;
+    } else if (typeof value === "string" && value.length > 0 && !value.includes("\n")) {
+      // Lando 3 ran a multi-line value as a mounted script, so only a single line splits.
+      patch[key] = splitStringArgv(value);
+      diagnostics.push(
+        rewrittenServiceKey({
+          ctx,
+          relative: [key],
+          message: `Split single-line ${key} into arguments as Lando 3 did, so it runs without a shell.`,
+          remediation: "Keep the argument list; a Lando 4 string command runs as a shell script.",
+        }),
+      );
     } else if (value !== undefined) patch[key] = value;
   }
   for (const key of ["user", "primary", "hostnames", "labels", "certs", "volumes", "networks"]) {
