@@ -42,6 +42,7 @@ import { LANDO_CTX } from "./provider-context.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
 import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { installRuntimeBundle } from "./runtime-extract.ts";
+import { prepareWindowsDockerCli } from "./windows-docker-cli.ts";
 
 const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -1291,7 +1292,15 @@ export const setupProviderLando = (options: SetupOptions): Effect.Effect<SetupRe
                         version: verified.version,
                         runtimeBinDir,
                         platform,
-                      }),
+                      }).pipe(
+                        Effect.zipRight(
+                          family === "win32"
+                            ? prepareWindowsDockerCli(runtimeBinDir, platform, { repairExisting: true }).pipe(
+                                Effect.asVoid,
+                              )
+                            : Effect.void,
+                        ),
+                      ),
                 ),
               ),
             );
