@@ -1,12 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import { Duration, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { ArtifactDownload } from "./runtime-bundle.ts";
@@ -87,16 +84,7 @@ const missingMachineRunnerError = (platform: "darwin" | "win32") =>
 
 const writePidFile = (pidPath: string, pid: number): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.tryPromise({
-    try: async () => {
-      const tempPath = `${pidPath}.tmp-${process.pid}-${randomUUID()}`;
-      await mkdir(dirname(pidPath), { recursive: true });
-      try {
-        await writeFile(tempPath, String(pid), { mode: 0o600 });
-        await rename(tempPath, pidPath);
-      } finally {
-        await rm(tempPath, { force: true });
-      }
-    },
+    try: () => writeFileAtomic(pidPath, String(pid), { mode: 0o600, ownerOnly: "best-effort" }),
     catch: (cause) =>
       new ProviderUnavailableError({
         providerId: "lando",
