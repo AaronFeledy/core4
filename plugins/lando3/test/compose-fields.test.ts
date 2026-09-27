@@ -13,6 +13,50 @@ const ctx: ServiceLoweringContext = {
 const options = { basePath: ["overrides"] } as const;
 
 describe("Compose field lowering", () => {
+  test.each([
+    ["", []],
+    [" \t\r\n", []],
+    ["foo \"\" bar ''", ["foo", "", "bar", ""]],
+    ['--"bar baz"=qux', ["--bar baz=qux"]],
+    [String.raw`foo bar\ baz`, ["foo", "bar baz"]],
+    [String.raw`echo "a\qb" 'a\qb'`, ["echo", "aqb", String.raw`a\qb`]],
+    [String.raw`echo \& \" \\`, ["echo", "&", '"', "\\"]],
+    ["echo a\u00a0b", ["echo", "a\u00a0b"]],
+    ["echo $HOME ${HOME} # literal", ["echo", "$HOME", "${HOME}", "#", "literal"]],
+    ["echo `printf a b` $(printf a b)", ["echo", "`printf a b`", "$(printf a b)"]],
+    ['sh -c "echo a && echo b"', ["sh", "-c", "echo a && echo b"]],
+    ["echo a && echo b", ["echo", "a"]],
+    ["echo a; echo b", ["echo", "a"]],
+    ["echo a | cat", ["echo", "a"]],
+    ["echo a 2>file", ["echo", "a"]],
+    ["echo a >file", ["echo", "a"]],
+    ["echo <file", ["echo"]],
+  ])("uses Compose shellwords when command is %j", (command, argv) => {
+    // Given / When
+    const result = lowerComposeFields({ command }, ctx, options);
+    // Then
+    expect(result.patch.command).toEqual(argv);
+    expect(result.blocked).toBeUndefined();
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ kind: "rewritten", keyPath: [...ctx.keyPath, "overrides", "command"] }),
+    ]);
+  });
+
+  test.each(["'unfinished", '"unfinished', "trailing\\", "`unfinished", "$(unfinished", "echo (bad)"])(
+    "blocks malformed shellwords when command is %j",
+    (command) => {
+      // Given / When
+      const result = lowerComposeFields({ command }, ctx, options);
+      // Then
+      expect(result.patch).not.toHaveProperty("command");
+      expect(result.blocked).toBe(true);
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "unsupported", keyPath: [...ctx.keyPath, "overrides", "command"] }),
+      ]);
+      expect(result.diagnostics[0]?.remediation).toBeTruthy();
+    },
+  );
+
   test("preserves supported fields when lowering overrides", () => {
     // Given
     const input = {

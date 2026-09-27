@@ -1,5 +1,6 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { lowerComposeFields } from "./compose-fields.ts";
 import type { Lando3Path } from "./contract.ts";
 import { withoutHostIpVariable } from "./host-reachability.ts";
 import { lowerScannerAndHome } from "./lower-runtime-intent.ts";
@@ -135,6 +136,11 @@ export const lowerApi4Service = (
     if (isLegacyTagged(value) || entries(value).some(isLegacyTagged)) {
       rejectTag([key]);
       blocked = true;
+    } else if (service.type === "l337" && value !== undefined) {
+      const lowered = lowerComposeFields({ [key]: value }, ctx, { basePath: [] });
+      Object.assign(patch, lowered.patch);
+      diagnostics.push(...lowered.diagnostics);
+      blocked ||= lowered.blocked === true;
     } else if (value !== undefined) patch[key] = value;
   }
   for (const key of ["user", "primary", "hostnames", "labels", "certs", "volumes", "networks"]) {
