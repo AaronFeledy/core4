@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
 import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -36,6 +36,9 @@ type PendingStart = typeof PendingStart.Type;
 type PendingPhase = typeof Phase.Type;
 
 const digest = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+const journalRecovery = (path: string) =>
+  `Inspect and terminate this app's file-sync sessions and inspect and remove its provider sync volumes. Only after that cleanup, delete the accelerated-start journal file ${JSON.stringify(path)} to unblock start/stop/destroy.`;
 
 const journalError = (message: string, cause?: unknown) =>
   new FileSyncStartError({
@@ -86,6 +89,7 @@ const readJournal = (app: AppRef) =>
               )
             : Effect.succeed<PendingStart | null>(null),
         ),
+        Effect.map((pending) => ({ pending, path: bucket.path })),
       ),
     ),
     Effect.mapError((cause) =>
@@ -109,12 +113,17 @@ export const requireNoPendingAcceleratedStart = (app: AppRef, plan?: AppPlan) =>
         return yield* Effect.fail(journalError("The resolved app identity does not match the planned app."));
       }
     }
-    const pending = yield* readJournal(app);
+    const { pending, path } = yield* readJournal(app);
     if (pending !== null && pending.phase !== "completed") {
       return yield* Effect.fail(
-        journalError(
-          `Accelerated start attempt ${pending.attemptId} is still ${pending.phase}; automatic recovery is not available.`,
-        ),
+        new FileSyncStartError({
+          engineId: pending.engineId,
+          message:
+            pending.phase === "retained"
+              ? `Previous accelerated start attempt ${pending.attemptId} failed and its prepared targets could not be rolled back.`
+              : `Accelerated start attempt ${pending.attemptId} is still ${pending.phase}; automatic recovery is not available.`,
+          remediation: journalRecovery(path),
+        }),
       );
     }
   });
@@ -226,5 +235,18 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
           ),
         );
     const clear = phase("completed");
-    return { phase, clear, attemptId: record.attemptId };
+    const retainTargets = <E>(original: Cause.Cause<E>) =>
+      Effect.gen(function* () {
+        const cause = Cause.squash(original);
+        const retained = new FileSyncStartError({
+          engineId: first.engineId,
+          message: `The provider cannot roll back prepared accelerated sync targets after startup failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+          remediation: journalRecovery(bucket.path),
+          cause,
+        });
+        const saved = yield* Effect.exit(phase("retained"));
+        const failure = Cause.sequential(Cause.fail(retained), original);
+        return Exit.isFailure(saved) ? Cause.sequential(failure, saved.cause) : failure;
+      }).pipe(Effect.uninterruptible);
+    return { phase, clear, retainTargets, attemptId: record.attemptId };
   });

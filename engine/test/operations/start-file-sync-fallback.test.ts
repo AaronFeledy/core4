@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Fiber, Scope } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Scope } from "effect";
 
 import { containerHostConfigFragment } from "@lando/container-runtime/plan";
 import {
@@ -84,6 +84,42 @@ const acceleratedPlan: AppPlan = {
       },
     },
   ],
+};
+
+const expectRetainedStart = async (harness: ReturnType<typeof makeHarness>, cause: Cause.Cause<unknown>) => {
+  const retained = Option.getOrThrow(Cause.failureOption(cause));
+  expect(retained).toBeInstanceOf(FileSyncStartError);
+  if (!(retained instanceof FileSyncStartError)) throw new Error("Expected retained-start failure");
+  expect(retained.message).toContain("cannot roll back prepared accelerated sync targets");
+  const original = Array.from(Cause.failures(cause))[1];
+  expect(original).toBeInstanceOf(Error);
+  if (!(original instanceof Error)) throw new Error("Expected original failure");
+  expect(retained.cause).toBe(original);
+  expect(retained.message).toContain(original.message);
+  const journals = Array.from(harness.stateStore.snapshot()).filter(
+    ([path]) => basename(dirname(path)) === "accelerated-starts",
+  );
+  expect(journals).toHaveLength(1);
+  const journal = journals[0];
+  if (journal === undefined) throw new Error("Expected saved journal");
+  const [path, bytes] = journal;
+  expect(isAbsolute(path)).toBe(true);
+  const saved = Schema.decodeUnknownSync(
+    Schema.parseJson(Schema.Struct({ data: Schema.Struct({ phase: Schema.String }) })),
+  )(new TextDecoder().decode(bytes));
+  expect(saved.data.phase).toBe("retained");
+  expect(retained.remediation).toContain(path);
+  const pending = await Effect.runPromiseExit(
+    requireNoPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
+      Effect.provide(harness.stateStore.layer),
+    ),
+  );
+  expect(Exit.isFailure(pending)).toBe(true);
+  if (Exit.isFailure(pending)) {
+    const failure = Option.getOrThrow(Cause.failureOption(pending.cause));
+    expect(failure.message).toContain("prepared targets could not be rolled back");
+    expect(failure.remediation).toContain(path);
+  }
 };
 
 describe("file-sync mount realization before provider apply", () => {
@@ -1156,13 +1192,11 @@ describe("pre-apply accelerated mount preparation", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      expect(Array.from(Cause.failures(exit.cause))).toContainEqual(
-        expect.objectContaining({
-          _tag: "FileSyncStartError",
-          message: expect.stringContaining("cannot roll back prepared accelerated sync targets"),
-          remediation: expect.stringContaining("accelerated-start journal"),
-        }),
-      );
+      await expectRetainedStart(harness, exit.cause);
+      expect(Array.from(Cause.failures(exit.cause))[1]).toMatchObject({
+        _tag: "FileSyncStartError",
+        message: expect.stringContaining("target"),
+      });
     }
     expect(actions).toEqual([]);
     const pending = await Effect.runPromiseExit(
@@ -1854,12 +1888,7 @@ describe("pre-apply accelerated mount preparation", () => {
     if (Exit.isFailure(exit)) {
       const failures = Array.from(Cause.failures(exit.cause));
       expect(failures).toContain(applyFailure);
-      expect(failures).toContainEqual(
-        expect.objectContaining({
-          _tag: "FileSyncStartError",
-          message: expect.stringContaining("cannot roll back prepared accelerated sync targets"),
-        }),
-      );
+      await expectRetainedStart(harness, exit.cause);
     }
     expect(order).toEqual(["apply", "destroy", "terminate:sync-mount-0", "terminate:sync-app-mount"]);
     const pending = await Effect.runPromiseExit(
@@ -2138,12 +2167,7 @@ describe("pre-apply accelerated mount preparation", () => {
     if (Exit.isFailure(exit)) {
       const failures = Array.from(Cause.failures(exit.cause));
       expect(failures).toContain(flushFailure);
-      expect(failures).toContainEqual(
-        expect.objectContaining({
-          _tag: "FileSyncStartError",
-          message: expect.stringContaining("cannot roll back prepared accelerated sync targets"),
-        }),
-      );
+      await expectRetainedStart(harness, exit.cause);
     }
     expect(order).toEqual(["prepare", "flush", "terminate"]);
     const pending = await Effect.runPromiseExit(
