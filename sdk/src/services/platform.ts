@@ -1,4 +1,5 @@
-import { Context, type Effect, type Scope } from "effect";
+import { Context, type Effect, Schema, type Scope } from "effect";
+import { AppId } from "../schema/primitives.ts";
 
 import type {
   CaError,
@@ -19,7 +20,6 @@ import type {
 } from "../errors/index.ts";
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
-  AppId,
   AppPlan,
   HealthcheckPlan,
   ProxyApplyResult,
@@ -98,10 +98,17 @@ export interface SshSetupOptions {
   readonly force: boolean;
 }
 
-export interface SshAgentSocket {
-  readonly socketPath: string;
-  readonly appId: AppId;
-}
+const SshAgentSocketSchema = Schema.Struct({
+  socketPath: Schema.String,
+  appId: AppId,
+  runtimeVolume: Schema.optional(
+    Schema.String.annotations({
+      description:
+        "Named volume on the Lando-managed provider publishing agent.sock at its root. The global app owns this volume; consuming apps must not claim it as a store.",
+    }),
+  ),
+});
+export type SshAgentSocket = typeof SshAgentSocketSchema.Type;
 
 export interface SshServiceShape {
   readonly id: string;

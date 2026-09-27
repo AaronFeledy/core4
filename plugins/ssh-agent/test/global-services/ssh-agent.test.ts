@@ -37,9 +37,12 @@ describe("ssh-agent global service ServiceConfig", () => {
     // Proves openssh-client is installed (not a no-op alpine sleep container)
     expect(text).toContain("apk add --no-cache openssh-client");
     // Proves ssh-agent is actually started
-    expect(text).toContain("eval $(ssh-agent -s -a /ssh-auth/ssh-agent.sock)");
+    expect(text).toContain("eval $(ssh-agent -s -a /tmp/ssh-agent.sock)");
     // Proves socket permissions are set
-    expect(text).toContain("chmod 777 /ssh-auth/ssh-agent.sock");
+    expect(text).toContain(
+      "UNIX-LISTEN:/run/lando/ssh-agent/agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock",
+    );
+    expect(text).toContain("chmod 755 /run/lando/ssh-agent");
     // Proves host keys are loaded
     expect(text).toContain("ssh-add");
   });
@@ -51,8 +54,9 @@ describe("ssh-agent global service ServiceConfig", () => {
     // Prove we're not that stub by checking for actual ssh-agent work
     expect(text).toContain("ssh-agent");
     expect(text).toContain("openssh-client");
-    // The final tail keeps the container alive, but only after ssh-agent is running
-    expect(text).toContain("tail -f /dev/null");
+    expect(text).toContain(
+      "exec socat UNIX-LISTEN:/ssh-auth/ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock",
+    );
   });
 
   test("mounts host ssh directory and creates socket directory", async () => {
@@ -76,8 +80,15 @@ describe("ssh-agent global service ServiceConfig", () => {
   test("sets SSH_AUTH_SOCK environment variable to the agent socket", async () => {
     const config = await decodeConfig();
     expect(config.environment).toEqual({
-      SSH_AUTH_SOCK: "/ssh-auth/ssh-agent.sock",
+      SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
     });
+  });
+
+  test("declares the runtime socket volume as global app storage", async () => {
+    const config = await decodeConfig();
+    expect(config.storage).toEqual([
+      { store: "lando-ssh-agent", target: "/run/lando/ssh-agent", scope: "app" },
+    ]);
   });
 
   test("creates the socket in /ssh-auth directory (bind-mounted from host)", async () => {

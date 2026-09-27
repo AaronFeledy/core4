@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, AppId } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { sshService } from "../src/ssh-service.ts";
@@ -36,6 +36,27 @@ const setup = (userDataRoot: string) =>
     Effect.provideService(PathsService, makeLandoPaths({ platform: "linux", userDataRoot, env: {} })),
     Effect.provideService(GlobalAppService, globalApp),
   );
+
+test("publishes both the host socket and the runtime volume", async () => {
+  const socket = await Effect.runPromise(
+    Effect.gen(function* () {
+      const ssh = yield* SshService;
+      return yield* ssh.getAgentSocket(AppId.make("demo"));
+    }).pipe(
+      Effect.provide(sshService),
+      Effect.provideService(
+        PathsService,
+        makeLandoPaths({ platform: "linux", userDataRoot: "/isolated", env: {} }),
+      ),
+      Effect.provideService(GlobalAppService, globalApp),
+    ),
+  );
+  expect(socket).toEqual({
+    appId: AppId.make("demo"),
+    socketPath: "/isolated/ssh/ssh-agent.sock",
+    runtimeVolume: "lando-ssh-agent",
+  });
+});
 
 test("setup creates userDataRoot/ssh as mode 0700", async () => {
   // Given an empty data root.
