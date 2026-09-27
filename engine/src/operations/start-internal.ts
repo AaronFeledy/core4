@@ -222,6 +222,7 @@ export const startAppForTargetUnlocked = (
       resolvedPlan.fileSync.length > 0 && selectedProvider.prepareFileSyncTargets === undefined;
     if (needsProviderFallback) yield* guardOrdinaryFileSyncFallback(target.plan, inspectPrior);
     const plan = needsProviderFallback ? withOrdinaryMounts(resolvedPlan) : resolvedPlan;
+    const engineId = plan.fileSync[0]?.engineId ?? "unknown";
     if (plan !== target.plan) {
       yield* events.publish(
         MessageWarnEvent.make({
@@ -236,7 +237,7 @@ export const startAppForTargetUnlocked = (
       if (prior.status === "accelerated" && prior.engineId !== plan.fileSync[0]?.engineId) {
         return yield* Effect.fail(
           new FileSyncStartError({
-            engineId: plan.fileSync[0]?.engineId ?? "unknown",
+            engineId,
             message: "The applied app used a different file sync engine.",
             remediation: "Restore the engine recorded in provider state before restarting this app.",
           }),
@@ -319,7 +320,7 @@ export const startAppForTargetUnlocked = (
                   if (plan.fileSync.length > 0 && prepareFileSyncTargets === undefined) {
                     return yield* Effect.fail(
                       new FileSyncStartError({
-                        engineId: plan.fileSync[0]?.engineId ?? "unknown",
+                        engineId,
                         message:
                           "The selected provider cannot prepare accelerated mount targets before app startup.",
                         remediation:
@@ -331,7 +332,7 @@ export const startAppForTargetUnlocked = (
                     plan.fileSync.length > 0 ? yield* beginAcceleratedStart(builtPlan, ref) : undefined;
                   let preparedRollback: Effect.Effect<void, ProviderError> | undefined;
                   let sessionLease: PreparedFileSyncSessions | undefined;
-                  if (plan.fileSync.length > 0) {
+                  if (pendingStart !== undefined) {
                     const selectedPrepare = prepareFileSyncTargets as NonNullable<
                       typeof prepareFileSyncTargets
                     >;
@@ -341,6 +342,9 @@ export const startAppForTargetUnlocked = (
                       verifyPreparedFileSyncTargets(builtPlan, prepared.targets),
                     );
                     if (Exit.isFailure(coverage)) {
+                      if (prepared.rollback === undefined) {
+                        return yield* Effect.failCause(yield* pendingStart.retainTargets(coverage.cause));
+                      }
                       const rollback = yield* Effect.exit(prepared.rollback);
                       if (Exit.isFailure(rollback)) {
                         return yield* Effect.failCause(Cause.sequential(coverage.cause, rollback.cause));
@@ -423,6 +427,9 @@ export const startAppForTargetUnlocked = (
                               )
                             : false;
                         if (!noOwnedSessions) return yield* Effect.failCause(syncExit.cause);
+                        if (prepared.rollback === undefined) {
+                          return yield* Effect.failCause(yield* pendingStart.retainTargets(syncExit.cause));
+                        }
                         const rollbackExit = yield* Effect.exit(
                           prepared.rollback.pipe(Effect.zipRight(pendingStart?.clear ?? Effect.void)),
                         );
@@ -575,16 +582,30 @@ export const startAppForTargetUnlocked = (
                             ...(needWriters ? [teardownForFailure] : []),
                           ]);
                           yield* sessionLease.rollback;
-                          if (sessionLease.rollbackTargets && preparedRollback !== undefined)
-                            yield* preparedRollback;
+                          if (sessionLease.rollbackTargets) {
+                            if (preparedRollback === undefined && pendingStart !== undefined) {
+                              return yield* pendingStart.retainTargets(exit.cause);
+                            }
+                            if (preparedRollback !== undefined) yield* preparedRollback;
+                          }
                           yield* Ref.set(leaseCleanupDone, true);
                           if (sessionLease.rollbackTargets && pendingStart !== undefined)
                             yield* pendingStart.clear;
                         }),
                       );
                       if (Exit.isFailure(cleanupExit)) {
-                        return yield* Effect.failCause(Cause.parallel(exit.cause, cleanupExit.cause));
+                        const failure = Cause.parallel(exit.cause, cleanupExit.cause);
+                        // Without provider rollback, prepared targets survive any cleanup failure.
+                        if (
+                          sessionLease.rollbackTargets &&
+                          preparedRollback === undefined &&
+                          pendingStart !== undefined
+                        ) {
+                          return yield* Effect.failCause(yield* pendingStart.retainTargets(failure));
+                        }
+                        return yield* Effect.failCause(failure);
                       }
+                      if (cleanupExit.value !== undefined) return yield* Effect.failCause(cleanupExit.value);
                       return yield* Effect.failCause(exit.cause);
                     }),
                   );

@@ -322,11 +322,11 @@ export interface RuntimeProviderShape {
   readonly inspectAppliedFileSync?: (
     plan: AppPlan,
   ) => Effect.Effect<AppliedFileSyncInspection, ProviderError>;
-  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. */
+  /** Prepare verified accelerated mount targets before app containers start. Providers implementing this must also implement inspectAppliedFileSync. Rollback is available only when the provider can safely reverse preparation; otherwise startup retains its recovery journal on failure. */
   readonly prepareFileSyncTargets?: (plan: AppPlan) => Effect.Effect<
     {
       readonly targets: ReadonlyArray<PreparedFileSyncTarget>;
-      readonly rollback: Effect.Effect<void, ProviderError>;
+      readonly rollback?: Effect.Effect<void, ProviderError>;
     },
     ProviderError
   >;
