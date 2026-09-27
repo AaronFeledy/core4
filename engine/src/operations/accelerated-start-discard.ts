@@ -2,7 +2,7 @@ import { FileSyncStopError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { openJournal, readJournal, requireNoPendingAcceleratedStop } from "./accelerated-start-journal.ts";
-import { digest, journalRecovery } from "./accelerated-start-record.ts";
+import { digest, isRecoverableStart, journalRecovery } from "./accelerated-start-record.ts";
 import { terminateRetainedSessions } from "./accelerated-start-recovery.ts";
 
 export const readDiscardableStart = (app: AppRef) =>
@@ -22,7 +22,7 @@ export const readDiscardableStart = (app: AppRef) =>
 export const retainedStartDisposal = (app: AppRef, plan: AppPlan) =>
   Effect.gen(function* () {
     const { pending, path } = yield* readDiscardableStart(app);
-    if (pending?.phase !== "retained") {
+    if (!isRecoverableStart(pending)) {
       yield* requireNoPendingAcceleratedStop(app, plan);
       return undefined;
     }

@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 
 export const PendingStart = Schema.Struct({
   attemptId: Schema.String,
+  recoveredFrom: Schema.optional(Schema.String),
   appId: Schema.String,
   appRoot: Schema.String,
   providerId: Schema.String,
@@ -21,6 +22,10 @@ export const PendingStart = Schema.Struct({
   sessions: Schema.Array(Schema.Struct({ name: Schema.String, specDigest: Schema.String })),
 });
 export type PendingStart = typeof PendingStart.Type;
+export const isRecoverableStart = (record: PendingStart | null): record is PendingStart =>
+  record !== null &&
+  record.phase !== "completed" &&
+  (record.phase === "retained" || record.recoveredFrom !== undefined);
 export const pendingStartBucketSpec = (key: string) =>
   ({
     root: "userData",
@@ -44,7 +49,7 @@ export const pendingStartBucketSpec = (key: string) =>
 export const digest = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export const journalRecovery = (path: string) =>
-  `Run \`lando start\` in the app root to recover a retained attempt, or \`lando destroy\` to discard it (add --volumes only to remove volumes). Inspect \`lando doctor\` and journal \`${path}\` if recovery is blocked. Other pending phases require inspection before retrying.`;
+  `Run \`lando start\` in the app root to recover a retained attempt or interrupted recovery, or \`lando destroy\` to discard it (add --volumes only to remove volumes). Inspect \`lando doctor\` and journal \`${path}\` if recovery is blocked. Pending first attempts without a recovery marker require inspection before retrying.`;
 
 export const verifyRetainedStart = (previous: PendingStart, planned: PendingStart, path: string) => {
   const mismatch =

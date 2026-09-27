@@ -53,6 +53,7 @@ import { taggedErrorRemediation } from "../providers/managed.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
 import { readJournal, requireNoPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { isRecoverableStart } from "./accelerated-start-record.ts";
 import { terminateRetainedSessions } from "./accelerated-start-recovery.ts";
 import { publishedEndpointUrl } from "./authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
@@ -204,7 +205,7 @@ export const startAppForTargetUnlocked = (
     const inspectPrior =
       inspectAppliedFileSync === undefined ? undefined : () => inspectAppliedFileSync(target.plan);
     const { pending: retainedJournal } = yield* readJournal(target.app);
-    const recovering = retainedJournal?.phase === "retained";
+    const recovering = isRecoverableStart(retainedJournal);
     if (recovering && target.plan.fileSync.length === 0)
       return yield* Effect.fail(
         new FileSyncStartError({

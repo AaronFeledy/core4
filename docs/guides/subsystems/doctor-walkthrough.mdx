@@ -32,13 +32,13 @@ lando doctor --all
 | preferred-host-ports | Something else owns 80 or 443. Read the selected fallback ports with `lando info`. Stop the holder or choose free router ports, then run `lando global:restart`. |
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
-| accelerated-start | In the reported app root, run `lando start` to recover a retained attempt, or `lando destroy` to discard it. |
+| accelerated-start | In the reported app root, run `lando start` to recover a retained attempt or interrupted recovery, or `lando destroy` to discard it. |
 
 Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
 
 `lando setup` and `lando setup --yes` ignore leftover `defaultProviderId` in user config.
 
-## Recover a retained accelerated start
+## Recover a retained or interrupted accelerated start
 
 ```sh
 lando doctor --format=json
@@ -47,9 +47,12 @@ lando doctor --format=json
 An `accelerated-start` check lists the app ID, app root, phase, attempt ID,
 recorded sessions and volumes, and journal path. It scans saved attempts across
 apps, even without `--app`. `doctor --fix` reports these records but does not
-start or destroy apps for you.
+start or destroy apps for you. An interrupted recovery also shows
+`recoveryState: interrupted recovery` and `recoveredFrom`, the original attempt
+ID. You can retry it even if its phase is `preparing`, `sessions-ready`, or
+`apply-intent`: Lando preserves that recovery marker across retries.
 
-For a `retained` attempt, change to the reported app root and run:
+For a `retained` attempt or an interrupted recovery, change to the reported app root and run:
 
 ```sh
 lando start
@@ -63,11 +66,12 @@ before creating normal sessions. Unknown sessions or an engine without that mode
 block recovery. Stop, restart, and rebuild remain blocked until you recover or
 discard the attempt.
 
-To discard a retained attempt instead, use `lando destroy`. This terminates its
+To discard a retained attempt or interrupted recovery instead, use `lando destroy`. This terminates its
 recorded sessions without copying target data to your host. Volumes stay unless
 you explicitly request their removal. **`--volumes` deletes app volume data**;
-use it only when you intend to discard that data too. Other pending phases are
-not automatically discarded. Keep the journal and inspect its resources rather
+use it only when you intend to discard that data too. Pending first attempts
+without a recovery marker are not automatically recovered or discarded.
+Keep the journal and inspect its resources rather
 than deleting the file by hand.
 
 ## Check the current app

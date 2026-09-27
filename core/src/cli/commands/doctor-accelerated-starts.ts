@@ -29,6 +29,12 @@ export const acceleratedStartsDoctor = (redact: (text: string) => string) =>
             appRoot: record.appRoot,
             phase: record.phase,
             attemptId: record.attemptId,
+            ...(record.recoveredFrom === undefined
+              ? {}
+              : {
+                  recoveredFrom: record.recoveredFrom,
+                  recoveryState: "interrupted recovery",
+                }),
             providerId: record.providerId,
             engineId: record.engineId,
             journalPath: record.path,

@@ -9,6 +9,7 @@ import { StateStore } from "@lando/sdk/services";
 import {
   type PendingStart,
   digest,
+  isRecoverableStart,
   journalRecovery,
   pendingStartBucketSpec,
   verifyRetainedStart,
@@ -77,15 +78,17 @@ export const requireNoPendingAcceleratedStart = (app: AppRef, plan?: AppPlan, al
       }
     }
     const { pending, path } = yield* readJournal(app);
-    if (allowRetained && pending?.phase === "retained") return pending;
+    if (allowRetained && isRecoverableStart(pending)) return pending;
     if (pending !== null && pending.phase !== "completed") {
       return yield* Effect.fail(
         new FileSyncStartError({
           engineId: pending.engineId,
           message:
-            pending.phase === "retained"
-              ? `Previous accelerated start attempt ${pending.attemptId} failed and its prepared targets could not be rolled back.`
-              : `Accelerated start attempt ${pending.attemptId} is still ${pending.phase}; automatic recovery is not available.`,
+            pending.recoveredFrom !== undefined
+              ? `Accelerated start attempt ${pending.attemptId} is an interrupted recovery from ${pending.recoveredFrom}, still ${pending.phase}.`
+              : pending.phase === "retained"
+                ? `Previous accelerated start attempt ${pending.attemptId} failed and its prepared targets could not be rolled back.`
+                : `Accelerated start attempt ${pending.attemptId} is still ${pending.phase}; automatic recovery is not available.`,
           remediation: journalRecovery(path),
         }),
       );
@@ -140,8 +143,10 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
     const previous = yield* bucket.get.pipe(
       Effect.mapError((cause) => journalError("Unable to read accelerated-start intent.", cause)),
     );
+    const recovery = isRecoverableStart(previous) ? previous : undefined;
     const record: PendingStart = {
       attemptId: randomUUID(),
+      ...(recovery === undefined ? {} : { recoveredFrom: recovery.recoveredFrom ?? recovery.attemptId }),
       appId: String(plan.id),
       appRoot: String(plan.root),
       providerId: String(plan.provider),
@@ -159,16 +164,12 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
         specDigest: digest(session),
       })),
     };
-    if (previous?.phase === "retained") yield* verifyRetainedStart(previous, record, bucket.path);
+    if (recovery !== undefined) yield* verifyRetainedStart(recovery, record, bucket.path);
     const began = yield* bucket
       .modify((current) =>
         current !== null &&
         current.phase !== "completed" &&
-        !(
-          current.phase === "retained" &&
-          previous?.phase === "retained" &&
-          digest(current) === digest(previous)
-        )
+        !(isRecoverableStart(current) && recovery !== undefined && digest(current) === digest(recovery))
           ? ([false, current] as const)
           : ([true, record] as const),
       )
@@ -178,6 +179,7 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
     const sameAttempt = (current: PendingStart | null): current is PendingStart =>
       current !== null &&
       current.attemptId === record.attemptId &&
+      current.recoveredFrom === record.recoveredFrom &&
       current.appId === record.appId &&
       current.appRoot === record.appRoot &&
       current.providerId === record.providerId &&
@@ -227,6 +229,6 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
       clear,
       retainTargets,
       attemptId: record.attemptId,
-      retained: previous?.phase === "retained" ? previous : undefined,
+      retained: recovery,
     };
   });
