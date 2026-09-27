@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { CATALOG, type CatalogResolution, LEGACY_TYPE_ALIASES, resolveCatalogType } from "../src/catalog.ts";
-import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "../src/compose-dispositions.ts";
+import {
+  CAPABILITY_FRAGILE_KEYS,
+  COMPOSE_KEY_RENAMES,
+  dispositionOf,
+} from "../src/compose-disposition-of.ts";
 
 const phpVersions = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"];
 const cases: ReadonlyArray<readonly [string, CatalogResolution]> = [

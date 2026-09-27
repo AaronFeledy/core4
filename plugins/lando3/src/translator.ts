@@ -16,7 +16,12 @@
 import { Effect } from "effect";
 
 import { ConfigTranslateError } from "@lando/sdk/errors";
-import { parseLegacyLandofile } from "@lando/sdk/landofile";
+import {
+  isPlainRecord,
+  landofileLayerRank,
+  mergeLandofiles,
+  parseLegacyLandofile,
+} from "@lando/sdk/landofile";
 import type {
   ConfigTranslateDetectInput,
   ConfigTranslateDiagnostic,
@@ -55,7 +60,6 @@ import {
 import { spanOf } from "./service-diagnostics.ts";
 import { lowerServiceViews } from "./service-lowering.ts";
 import { topLevelDispositions, unknownKeyDiagnostics } from "./top-level-dispositions.ts";
-import { isPlainRecord, mergeLandofiles, v4LayerRank } from "./v4-merge.ts";
 
 const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml"]);
 
@@ -166,7 +170,7 @@ const establishedLayers = (
   layers: ReadonlyArray<ConfigTranslateDocument>,
 ): ReadonlyArray<EstablishedLayer> =>
   [...fragments]
-    .sort((left, right) => v4LayerRank(left.layerId) - v4LayerRank(right.layerId))
+    .sort((left, right) => landofileLayerRank(left.layerId) - landofileLayerRank(right.layerId))
     .flatMap((fragment): EstablishedLayer[] => {
       if (!isPlainRecord(fragment.fragment)) return [];
       return [
@@ -220,7 +224,9 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         ];
         const recipeServiceWires = new Map<string, V4Wire>();
         const serviceHolders = [
-          ...[...established].sort((left, right) => v4LayerRank(left.layer) - v4LayerRank(right.layer)),
+          ...[...established].sort(
+            (left, right) => landofileLayerRank(left.layer) - landofileLayerRank(right.layer),
+          ),
           ...lowered.prefixes,
         ];
         for (const { fragment } of serviceHolders) {

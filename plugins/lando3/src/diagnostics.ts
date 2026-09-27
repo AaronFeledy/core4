@@ -1,3 +1,4 @@
+import { compareKeyPaths } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic, ConfigTranslateSourceId } from "@lando/sdk/schema";
 import type { LegacyOccurrence } from "./contract.ts";
 import { formatPath } from "./source.ts";
@@ -111,21 +112,6 @@ export const relocationDiagnostic = (args: {
   }`,
   remediation: `Review ${args.unitLabel} in the ${args.hoistedTo} layer; the earlier layers no longer define it on their own.`,
 });
-
-const compareKeyPaths = (
-  left: ConfigTranslateDiagnostic["keyPath"],
-  right: ConfigTranslateDiagnostic["keyPath"],
-): number => {
-  for (let index = 0; index < Math.min(left.length, right.length); index++) {
-    const a = left[index];
-    const b = right[index];
-    if (a === b) continue;
-    if (typeof a === "number" && typeof b === "number") return a - b;
-    if (typeof a !== typeof b) return typeof a === "number" ? -1 : 1;
-    return String(a) < String(b) ? -1 : 1;
-  }
-  return left.length - right.length;
-};
 
 /**
  * Layer order, then source span, then key path segment by segment. Stable.

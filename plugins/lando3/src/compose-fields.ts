@@ -1,5 +1,5 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
-import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-dispositions.ts";
+import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-disposition-of.ts";
 import type { Lando3Path } from "./contract.ts";
 import { withoutHostAlias, withoutHostIpVariable } from "./host-reachability.ts";
 import { type LoweringPatch, type ServiceLoweringContext, isPlainObject } from "./lowering-contract.ts";

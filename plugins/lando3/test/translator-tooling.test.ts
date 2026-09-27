@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { LEGACY_TAGGED, type LegacyTagged } from "@lando/sdk/landofile";
+import { LEGACY_TAGGED, type LegacyTagged, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileAuthoringFragment, classifyAuthoringSource } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { lowerLegacyTag } from "../src/legacy-tags.ts";
 import { makeLando3ConfigTranslator } from "../src/translator.ts";
-import { isPlainRecord } from "../src/v4-merge.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
 const translateFiles = (files: ReadonlyArray<readonly [string, string]>) => {
