@@ -82,16 +82,16 @@ test("Docker list leaves planless TCP bindings as TCP rather than guessing HTTP"
     request: (input) =>
       Effect.succeed({
         status: 200,
-        body: !input.path.startsWith("/containers/json")
-          ? inspectBody
-          : JSON.stringify([
+        body: input.path.startsWith("/containers/json")
+          ? JSON.stringify([
               {
                 Id: "test-container",
                 Names: ["/lando-endpoint-test-web"],
                 State: "running",
                 Labels: { "dev.lando.app": plan.id, "dev.lando.service": name },
               },
-            ]),
+            ])
+          : inspectBody,
       }),
   };
   const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));

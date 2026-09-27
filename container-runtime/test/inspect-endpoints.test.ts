@@ -3,9 +3,14 @@ import type { EndpointPlan } from "@lando/sdk/schema";
 import { publishedEndpointsFromInspect } from "../src/podman/inspect.ts";
 
 describe("publishedEndpointsFromInspect", () => {
-  test.each(["tcp", "https", "http", "udp"] as const)(
+  test.each([
+    ["tcp", "tcp"],
+    ["https", "tcp"],
+    ["http", "tcp"],
+    ["udp", "udp"],
+  ] as const)(
     "preserves planned %s metadata when materializing a published binding",
-    (protocol) => {
+    (protocol, transport) => {
       // Given
       const planned = {
         _tag: "published",
@@ -15,7 +20,6 @@ describe("publishedEndpointsFromInspect", () => {
         appProtocol: "custom",
         publication: {},
       } as const;
-      const transport = protocol === "udp" ? "udp" : "tcp";
       const inspected = {
         NetworkSettings: { Ports: { [`443/${transport}`]: [{ HostIp: "127.0.0.1", HostPort: "8443" }] } },
       };
