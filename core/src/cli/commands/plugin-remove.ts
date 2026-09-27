@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
@@ -17,6 +17,7 @@ import { removeInstalledPlugin } from "@lando/engine/plugins/installed-registry"
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { makeLandoPaths } from "@lando/paths";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 import { parseNpmPackageSpec } from "../../recipes/npm-source";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
@@ -123,9 +124,7 @@ const updateManagedRootManifest = async (pluginsRoot: string, name: string): Pro
   }
   if (!changed) return;
 
-  const tmpPath = `${manifestPath}.tmp`;
-  await writeFile(tmpPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  await rename(tmpPath, manifestPath);
+  await writeFileAtomic(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 };
 
 const stripInlineComment = (line: string): string => line.replace(/\s+#.*$/u, "");
