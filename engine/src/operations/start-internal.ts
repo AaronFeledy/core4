@@ -594,7 +594,16 @@ export const startAppForTargetUnlocked = (
                         }),
                       );
                       if (Exit.isFailure(cleanupExit)) {
-                        return yield* Effect.failCause(Cause.parallel(exit.cause, cleanupExit.cause));
+                        const failure = Cause.parallel(exit.cause, cleanupExit.cause);
+                        // Without provider rollback, prepared targets survive any cleanup failure.
+                        if (
+                          sessionLease.rollbackTargets &&
+                          preparedRollback === undefined &&
+                          pendingStart !== undefined
+                        ) {
+                          return yield* Effect.failCause(yield* pendingStart.retainTargets(failure));
+                        }
+                        return yield* Effect.failCause(failure);
                       }
                       if (cleanupExit.value !== undefined) return yield* Effect.failCause(cleanupExit.value);
                       return yield* Effect.failCause(exit.cause);

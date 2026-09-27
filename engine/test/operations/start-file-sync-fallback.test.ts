@@ -1897,6 +1897,43 @@ describe("pre-apply accelerated mount preparation", () => {
     expect(Exit.isFailure(pending)).toBe(true);
   });
 
+  test("session cleanup failure after apply still retains the journal without target rollback", async () => {
+    const applyFailure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "apply",
+      message: "app container failed to start",
+    });
+    const terminateFailure = new FileSyncStopError({
+      engineId: "mutagen",
+      sessionRef: "sync-mount-0",
+      message: "session termination failed",
+    });
+    const harness = makeHarness({
+      plannedApp: acceleratedPlan,
+      providerHasFileSyncRollback: false,
+      applyEffect: Effect.fail(applyFailure),
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        sessionsPersistAcrossProcesses: true,
+        isAvailable: Effect.succeed(true),
+        listSessions: () => Effect.succeed([]),
+        createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
+        terminateSession: () => Effect.fail(terminateFailure),
+      },
+    });
+    const app = { kind: "user" as const, id: plan.id, root: plan.root };
+    const exit = await Effect.runPromiseExit(
+      startApp({}, { plan: acceleratedPlan, root: plan.root, app }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Array.from(Cause.failures(exit.cause))).toContain(applyFailure);
+      await expectRetainedStart(harness, exit.cause);
+    }
+  });
+
   test("a post-apply start event failure reverses persistent sessions after writer teardown", async () => {
     const order: string[] = [];
     const harness = makeHarness({
