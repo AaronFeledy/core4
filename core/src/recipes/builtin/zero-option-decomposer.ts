@@ -3,17 +3,18 @@ import type { LandofileRecipeProvenance, RecipeDecomposeResult, RecipeProducer }
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-export const makeZeroOptionDecomposer =
-  ({
-    producer,
-    displayName,
-    fragment,
-  }: {
-    readonly producer: RecipeProducer;
-    readonly displayName: string;
-    readonly fragment: () => Pick<RecipeDecomposeResult["fragment"], "services" | "tooling">;
-  }): RecipeDecomposerFactory =>
-  (ports) => ({
+export const makeZeroOptionDecomposer = <
+  Fragment extends Pick<Exclude<RecipeDecomposeResult["fragment"], string>, "services" | "tooling">,
+>({
+  producer,
+  displayName,
+  fragment,
+}: {
+  readonly producer: RecipeProducer;
+  readonly displayName: string;
+  readonly fragment: () => Fragment;
+}) =>
+  ((ports) => ({
     producer,
     decompose: (input) =>
       Effect.gen(function* () {
@@ -54,4 +55,4 @@ export const makeZeroOptionDecomposer =
         };
         return { fragment: { runtime: 4, recipe: provenance, ...fragment() }, provenance };
       }),
-  });
+  })) satisfies RecipeDecomposerFactory;
