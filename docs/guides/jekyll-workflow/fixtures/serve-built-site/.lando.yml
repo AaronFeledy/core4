@@ -1,0 +1,38 @@
+name: jekyll-demo
+runtime: 4
+recipe: jekyll
+services:
+  builder:
+    build:
+      artifact:
+        - apt-get update && apt-get install -y --no-install-recommends build-essential libssl-dev zlib1g-dev
+    command: "bundle exec jekyll serve --host 0.0.0.0 --port 4000"
+    framework: none
+    port: 4000
+    type: ruby:3.3
+  web:
+    type: static:nginx
+    root: _site
+    appMount:
+      target: /app
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+tooling:
+  jekyll:
+    service: builder
+    description: Run the Jekyll CLI inside the builder service.
+    cmds:
+      - bundle exec jekyll
+  bundle:
+    service: builder
+    description: Run Bundler inside the builder service.
+    cmds:
+      - bundle
+  build-prod:
+    service: builder
+    description: Build the site with JEKYLL_ENV=production.
+    cmds:
+      - bundle exec jekyll build
+    env:
+      JEKYLL_ENV: production
