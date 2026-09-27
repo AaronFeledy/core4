@@ -7,6 +7,7 @@ import {
   readJournal,
   requireNoPendingAcceleratedStart,
 } from "../../src/operations/accelerated-start-journal.ts";
+import { destroyApp } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
@@ -70,6 +71,30 @@ test.each([false, true])(
     }
   },
 );
+
+test("destroy ends retained sessions before init and pre-destroy events", async () => {
+  // Given a retained attempt with a surviving two-way session.
+  const harness = await Effect.runPromise(recoveryHarness());
+  // When destroy runs its real lifecycle pipeline.
+  const result = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const events = yield* EventService;
+      return yield* destroyApp({}, target).pipe(
+        Effect.provideService(EventService, {
+          ...events,
+          publish: (event) =>
+            Effect.sync(() => {
+              if (["pre-init", "post-init", "pre-destroy"].includes(event._tag))
+                harness.calls.push(event._tag);
+            }).pipe(Effect.zipRight(events.publish(event))),
+        }),
+      );
+    }).pipe(Effect.provide(harness.layer)),
+  );
+  // Then the recorded session ends before any hook can write through it.
+  if (Exit.isFailure(result)) throw Option.getOrThrow(Cause.failureOption(result.cause));
+  expect(harness.calls.slice(0, 4)).toEqual(["terminate:old", "pre-init", "post-init", "pre-destroy"]);
+});
 
 test("start refuses a changed mount plan after stopping retained sessions", async () => {
   // Given a retained attempt and changed excludes.

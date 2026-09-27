@@ -185,6 +185,8 @@ const destroyAppForTargetUncoordinated = (
       );
     }
 
+    // End the retained attempt's sessions before hooks can write through them.
+    if (retained !== undefined) yield* retained.terminate;
     yield* runAppInitEvents(plan);
     const preDestroy = PreDestroyEvent.make({
       _tag: "pre-destroy",
@@ -204,7 +206,6 @@ const destroyAppForTargetUncoordinated = (
       },
       work: (tree) =>
         Effect.gen(function* () {
-          if (retained !== undefined) yield* retained.terminate;
           if (fileSyncApplicable) yield* tree.startTask("file-sync");
           if (sessions.length > 0 && quiesceForFileSync !== undefined) {
             yield* quiesceForFileSync({ app: plan.id, plan });
