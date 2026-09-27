@@ -38,7 +38,7 @@ type PendingPhase = typeof Phase.Type;
 const digest = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 const journalRecovery = (path: string) =>
-  `Inspect and terminate this app's file-sync sessions and inspect and remove its provider sync volumes. Only after that cleanup, delete the accelerated-start journal file ${JSON.stringify(path)} to unblock start/stop/destroy.`;
+  `Inspect and terminate this app's file-sync sessions and inspect and remove its provider sync volumes. Only after that cleanup, delete the accelerated-start journal file \`${path}\` to unblock start/stop/destroy.`;
 
 const journalError = (message: string, cause?: unknown) =>
   new FileSyncStartError({
