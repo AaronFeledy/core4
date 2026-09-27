@@ -586,6 +586,14 @@ describe("@lando/sdk package exports", () => {
     expect(probe.ProbeTimeoutError).toBeDefined();
   });
 
+  test("database-creds entry point exports the pure family env helpers", async () => {
+    const databaseCreds = await import("@lando/sdk/database-creds");
+
+    expect(databaseCreds.databaseEnvCreds).toBeDefined();
+    expect(databaseCreds.firstEnv).toBeDefined();
+    expect(databaseCreds.DATABASE_FAMILY_ENV_KEYS).toBeDefined();
+  });
+
   test("task-progress entry point exports the shared task-tree publisher", async () => {
     const taskProgress = await import("@lando/sdk/task-progress");
 

@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/database-creds` is a pure contracts-tier helper exporting the `DatabaseFamily` and `DatabaseEnvCreds` types, the family-to-env-key table `DATABASE_FAMILY_ENV_KEYS`, and `databaseEnvCreds` / `firstEnv`. Key order defines precedence, and empty strings count as defined values. Consumers own credential defaults and outbound environment mappings. The module imports no Effect and performs no Bun or host IO. These are additive Beta helpers, not part of the frozen schema/service-tag lists, and carry no compatibility freeze.
+
 - Command error envelopes add optional `reason: string`. Normal JSON/YAML output and terminal result stream frames preserve the source error's reason when it is a string, including an empty string; absent and non-string reasons remain omitted. Existing tag, message, remediation, and redaction behavior are unchanged.
 - `AgentSocketBridgeInput` requires `appRoot: AbsolutePath`, the canonical app root that owns the bridge. Worker hosts pass it directly from the app reference. Providers derive volume ownership through the canonical container-runtime helper, without looking up a previously applied plan, so fresh starts carry the same ownership proof and selector as later starts. Bridge callers must supply this field.
 - `LandoPaths` requires `agentRelayRunDir(kind: "ssh" | "gpg", appId: string, appRoot: string): string`. The paths primitive derives an app- and kind-scoped directory under `userDataRoot/run`, using the same app-name sanitization and root fingerprint as the host-proxy directory. Custom `PathsService` implementations must supply this builder.
