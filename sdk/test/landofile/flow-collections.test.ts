@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
-import { parseLandofile, parseLegacyLandofile } from "@lando/sdk/landofile";
+import { detectLandofileTags, parseLandofile, parseLegacyLandofile } from "@lando/sdk/landofile";
 
 const file = "/app/.lando.yml";
 const mappings = [
@@ -46,6 +46,7 @@ describe("Landofile flow collections", () => {
     { text: "['a,b', '{', '}', '[x,y]']", value: ["a,b", "{", "}", "[x,y]"] },
     { text: '["a\\",{b", "c"]', value: ['a",{b', "c"] },
     { text: "[{}, [1, 2], {}]", value: [{}, [1, 2], {}] },
+    { text: "[a}, b]", value: ["a}", "b"] },
   ])("v4 preserves supported flow values in $text", ({ text, value }) => {
     // Given
     const content = `value: ${text}\n`;
@@ -53,5 +54,14 @@ describe("Landofile flow collections", () => {
     const result = Effect.runSync(parseLandofile({ file, content, cwd: "/app" }));
     // Then
     expect(result).toEqual({ value });
+  });
+
+  test("a stray flow closer does not hide a later Compose tag", () => {
+    // Given
+    const content = "value: [a}, !reset]\n";
+    // When
+    const occurrences = detectLandofileTags({ content, file });
+    // Then
+    expect(occurrences).toEqual([{ tag: "!reset", line: 1, column: 13 }]);
   });
 });

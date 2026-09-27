@@ -237,7 +237,8 @@ const splitInlineArray = (value: string): ReadonlyArray<string> => {
       continue;
     }
     if (char === "]" || char === "}") {
-      depth -= 1;
+      // A stray closer must not swallow later separators into one item.
+      depth = Math.max(depth - 1, 0);
       continue;
     }
     if (char === "," && depth === 0) {

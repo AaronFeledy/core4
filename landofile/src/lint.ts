@@ -147,7 +147,11 @@ const appNameOf = (parsed: unknown): string => {
 const singleViolationResult = (
   file: string,
   message: string,
-  location: { readonly line: number | undefined; readonly column: number | undefined } = {
+  location: {
+    readonly line: number | undefined;
+    readonly column: number | undefined;
+    readonly suggestedFix?: string | undefined;
+  } = {
     line: undefined,
     column: undefined,
   },
@@ -161,6 +165,7 @@ const singleViolationResult = (
       message,
       ...(location.line === undefined ? {} : { line: location.line }),
       ...(location.column === undefined ? {} : { column: location.column }),
+      ...(location.suggestedFix === undefined ? {} : { suggestedFix: location.suggestedFix }),
     },
   ],
 });
@@ -260,6 +265,7 @@ export const lintLandofile = (
         return singleViolationResult(layer.filePath, error.message, {
           line: error.line,
           column: error.column,
+          suggestedFix: error.remediation,
         });
       }
       parsedLayers.push(parsedEither.right);
