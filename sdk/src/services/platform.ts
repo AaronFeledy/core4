@@ -1,5 +1,5 @@
 import { Context, type Effect, type Scope } from "effect";
-import { AppId } from "../schema/primitives.ts";
+import type { AppId } from "../schema/primitives.ts";
 
 import type {
   CaError,
