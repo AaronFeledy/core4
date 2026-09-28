@@ -48,6 +48,24 @@ const readerFilters = (plan: AppPlan, volumeClass: "cache" | "data") =>
   });
 
 describe("volume ownership selector", () => {
+  test("app volume teardown excludes the global-owned SSH agent volume", () => {
+    // Given
+    const globalPlan: AppPlan = {
+      ...identitylessPlan,
+      id: AppId.make("global"),
+      root: AbsolutePath.make("/lando/global"),
+    };
+    const labels = podmanVolumeCreationLabels(globalPlan, {
+      name: "lando-ssh-agent",
+      scope: "app",
+      kind: "data",
+    });
+    // When
+    const selected = volumeMatchesFilters(labels, readerFilters(plannedPlan, "data"));
+    // Then
+    expect(selected).toBe(false);
+    expect(volumeMatchesFilters(labels, readerFilters(globalPlan, "data"))).toBe(true);
+  });
   test("a selector written without identity.ownerKey is matched by the reading side", () => {
     const written = podmanVolumeCreationLabels(identitylessPlan, dataStore);
 

@@ -1,4 +1,5 @@
 import { Context, type Effect, type Scope } from "effect";
+import type { AppId } from "../schema/primitives.ts";
 
 import type {
   CaError,
@@ -19,7 +20,6 @@ import type {
 } from "../errors/index.ts";
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
-  AppId,
   AppPlan,
   HealthcheckPlan,
   ProxyApplyResult,
@@ -101,6 +101,7 @@ export interface SshSetupOptions {
 export interface SshAgentSocket {
   readonly socketPath: string;
   readonly appId: AppId;
+  readonly runtimeVolume?: string;
 }
 
 export interface SshServiceShape {
