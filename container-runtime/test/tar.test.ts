@@ -76,6 +76,18 @@ test("stores the space-filled checksum with POSIX termination when encoding", ()
   expect(header[155]).toBe(32);
 });
 
+test("stores a seven-digit NUL-terminated checksum when the legacy form is requested", () => {
+  // Given
+  const input = file;
+  // When
+  const header = encodeUstarHeader(input, { checksumForm: "nul-terminated" });
+  // Then
+  const sum = header.reduce((total, byte, index) => total + (index >= 148 && index < 156 ? 32 : byte), 0);
+  expect(Number.parseInt(decoder.decode(header.subarray(148, 155)), 8)).toBe(sum);
+  expect(header[155]).toBe(0);
+  expect(header.subarray(0, 148)).toEqual(encodeUstarHeader(input).subarray(0, 148));
+});
+
 test.each([
   { field: "name", value: "" },
   { field: "name", value: "a".repeat(101) },
