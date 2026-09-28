@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type FileHandle, lstat, mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
+import { isErrnoCode } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import { type OwnerOnlyFileAccess, PrivateFileAccessError } from "./private-file-access.ts";
 
@@ -21,9 +22,6 @@ interface CreatedFileIdentity {
   readonly ino: number;
 }
 
-const hasCode = (cause: unknown, code: string): boolean =>
-  cause instanceof Error && "code" in cause && cause.code === code;
-
 const removeCreatedFile = async (
   path: string,
   identity: CreatedFileIdentity | undefined,
@@ -41,7 +39,7 @@ const removeCreatedFile = async (
       await remove(path);
     }
   } catch (cause) {
-    if (!hasCode(cause, "ENOENT")) throw cause;
+    if (!isErrnoCode(cause, "ENOENT")) throw cause;
   }
 };
 

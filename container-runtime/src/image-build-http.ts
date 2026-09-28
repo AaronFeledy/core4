@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { ArtifactBuildError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -35,9 +35,6 @@ type BuildRequestInput = {
   readonly secretValues: ReadonlyArray<string>;
 };
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const redactBuildQuery = (value: string): string =>
   value.replace(/(buildargs=)(?:[^&\s]+)/giu, "$1[redacted]");
 
@@ -51,7 +48,7 @@ const redactSecrets = (value: string, secretValues: ReadonlyArray<string>): stri
 const sanitizeBuildErrorValue = (value: unknown, secretValues: ReadonlyArray<string>): unknown => {
   if (typeof value === "string") return redactSecrets(value, secretValues);
   if (Array.isArray(value)) return value.map((entry) => sanitizeBuildErrorValue(entry, secretValues));
-  if (!isRecord(value)) return value;
+  if (!Predicate.isRecord(value)) return value;
   return Object.fromEntries(
     Object.entries(value).map(([key, entry]) => [key, sanitizeBuildErrorValue(entry, secretValues)]),
   );
@@ -91,10 +88,10 @@ const buildStreamError = (body: string): string | undefined => {
     if (line.trim().length === 0) continue;
     try {
       const parsed: unknown = JSON.parse(line);
-      if (!isRecord(parsed)) continue;
+      if (!Predicate.isRecord(parsed)) continue;
       if (typeof parsed.error === "string" && parsed.error.trim().length > 0) return parsed.error;
       if (
-        isRecord(parsed.errorDetail) &&
+        Predicate.isRecord(parsed.errorDetail) &&
         typeof parsed.errorDetail.message === "string" &&
         parsed.errorDetail.message.trim().length > 0
       ) {
@@ -112,7 +109,11 @@ const parseDigest = (body: string): string | undefined => {
     if (line.trim().length === 0) continue;
     try {
       const parsed: unknown = JSON.parse(line);
-      if (isRecord(parsed) && isRecord(parsed.aux) && typeof parsed.aux.Digest === "string") {
+      if (
+        Predicate.isRecord(parsed) &&
+        Predicate.isRecord(parsed.aux) &&
+        typeof parsed.aux.Digest === "string"
+      ) {
         return parsed.aux.Digest;
       }
     } catch (cause) {

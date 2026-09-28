@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 
 import { Effect, Option, Schema } from "effect";
 
-import { StateStoreError } from "@lando/sdk/errors";
+import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import type { PrivateFileAccess } from "./private-file-access.ts";
 
 const LOCK_STALE_MS = 30_000;
@@ -35,15 +35,12 @@ type LockRecord = typeof LockRecord.Type;
 const parseLockRecord = Schema.decodeUnknownOption(Schema.parseJson(LockRecord), {
   onExcessProperty: "error",
 });
-const hasCode = (cause: unknown, code: string): boolean =>
-  cause instanceof Error && "code" in cause && cause.code === code;
-
 const processIsDead = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
     return false;
   } catch (cause) {
-    return hasCode(cause, "ESRCH");
+    return isErrnoCode(cause, "ESRCH");
   }
 };
 
@@ -51,7 +48,7 @@ const readLockRecord = async (lockPath: string): Promise<LockRecord | null> => {
   try {
     return Option.getOrNull(parseLockRecord(await readFile(lockPath, "utf8")));
   } catch (cause) {
-    if (hasCode(cause, "ENOENT")) return null;
+    if (isErrnoCode(cause, "ENOENT")) return null;
     throw cause;
   }
 };
@@ -60,7 +57,7 @@ const lockIdentity = async (lockPath: string) => {
   try {
     return await lstat(lockPath);
   } catch (cause) {
-    if (hasCode(cause, "ENOENT")) return null;
+    if (isErrnoCode(cause, "ENOENT")) return null;
     throw cause;
   }
 };
@@ -138,7 +135,7 @@ const acquire = (
             }
             return true;
           } catch (cause) {
-            if (!hasCode(cause, "EEXIST")) throw cause;
+            if (!isErrnoCode(cause, "EEXIST")) throw cause;
             const identity = await lockIdentity(lockPath);
             if (identity === null) return false;
             if (
@@ -152,7 +149,7 @@ const acquire = (
             const staleByMtime = Date.now() - identity.mtimeMs > LOCK_STALE_MS;
             const current = await readLockRecord(lockPath).catch((error: unknown) => {
               // A crashed exclusive create can leave owner-owned mode-000 bytes unreadable.
-              if (hasCode(error, "EACCES")) return null;
+              if (isErrnoCode(error, "EACCES")) return null;
               throw error;
             });
             const takeover =
@@ -172,7 +169,7 @@ const acquire = (
                 latest.ctimeMs === identity.ctimeMs
               ) {
                 await unlink(lockPath).catch((error: unknown) => {
-                  if (!hasCode(error, "ENOENT")) throw error;
+                  if (!isErrnoCode(error, "ENOENT")) throw error;
                 });
               }
             }
@@ -203,7 +200,7 @@ const release = (
     const current = await readLockRecord(lockPath);
     if (current?.token === token) {
       await unlink(lockPath).catch((cause: unknown) => {
-        if (!hasCode(cause, "ENOENT")) throw cause;
+        if (!isErrnoCode(cause, "ENOENT")) throw cause;
       });
     }
   });

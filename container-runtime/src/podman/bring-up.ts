@@ -180,7 +180,7 @@ const appRef = (plan: AppPlan): AppRef => ({
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 const containerRunning = (body: object): boolean => {
   const state = Reflect.get(body, "State");

@@ -62,7 +62,7 @@ const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerN
 
 const networkName = (plan: AppPlan) => landoAppNetworkName(plan);
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 const missingApi = (ctx: ProviderErrorContext) =>
   new ProviderUnavailableError({
