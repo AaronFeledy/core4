@@ -153,6 +153,26 @@ describe("runPostStartScan", () => {
 });
 
 describe("startupScanUrls", () => {
+  test.each(["tcp", "udp", "redis", "valkey", "postgresql", "memcached"])(
+    "excludes %s endpoints while retaining HTTP and HTTPS targets",
+    (protocol) => {
+      // Given
+      const services = [
+        {
+          name: "web",
+          endpoints: [`${protocol}://localhost:16379`, "http://localhost:8080", "https://localhost:8443"],
+        },
+      ];
+      // When
+      const urls = startupScanUrls(plan, services);
+      // Then
+      expect(urls).toEqual([
+        { service: ServiceName.make("web"), url: "http://localhost:8080/" },
+        { service: ServiceName.make("web"), url: "https://localhost:8443/" },
+      ]);
+    },
+  );
+
   test.each([
     "http://*.wild.demo.lndo.site:8000",
     "https://wild.*.demo.lndo.site:4443",

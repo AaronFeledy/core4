@@ -232,12 +232,13 @@ const splitInlineArray = (value: string): ReadonlyArray<string> => {
       quote = char;
       continue;
     }
-    if (char === "[") {
+    if (char === "[" || char === "{") {
       depth += 1;
       continue;
     }
-    if (char === "]") {
-      depth -= 1;
+    if (char === "]" || char === "}") {
+      // A stray closer must not swallow later separators into one item.
+      depth = Math.max(depth - 1, 0);
       continue;
     }
     if (char === "," && depth === 0) {
@@ -347,7 +348,14 @@ const parseScalar = (
     // produces (for empty records, which have no block sequence-item form).
     // Round-trip it while populated inline objects stay rejected.
     if (trimmed.slice(1, -1).trim() === "") return {};
-    throw parseError(filePath, `Inline objects are not supported in Landofiles at line ${line}`, line);
+    throw new LandofileParseErrorClass({
+      message: `Inline objects are not supported in Landofiles at line ${line}. Use an indented block mapping instead.`,
+      filePath,
+      line,
+      column: column + Math.max(value.search(/\S/), 0),
+      remediation:
+        "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.",
+    });
   }
   return trimmed;
 };

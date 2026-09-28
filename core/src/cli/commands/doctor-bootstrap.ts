@@ -11,7 +11,7 @@
  * The runtime is built exactly once, inside a `Scope` that stays open for the
  * runtime-dependent sections and closes with the report.
  */
-import { Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
@@ -94,6 +94,6 @@ const collectResilientDoctorReport = (
                 ),
             }),
         ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
-      }).pipe(Effect.provide(ConfigServiceLive));
+      }).pipe(Effect.provide(context ?? Context.empty()), Effect.provide(ConfigServiceLive));
     }),
   );

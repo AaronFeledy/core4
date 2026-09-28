@@ -6,6 +6,7 @@ import { Effect, Layer } from "effect";
 
 import { SshError } from "@lando/sdk/errors";
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
+import { SSH_AGENT_VOLUME } from "./socket.ts";
 
 const SSH_SIDECAR_ID = "sidecar" as const;
 const SSH_GLOBAL_SERVICE_NAME = "ssh-agent" as const;
@@ -53,6 +54,7 @@ export const sshService = Layer.effect(
       getAgentSocket: (appId) =>
         Effect.succeed({
           socketPath: `${paths.roots.userDataRoot}/ssh/ssh-agent.sock`,
+          runtimeVolume: SSH_AGENT_VOLUME,
           appId,
         }),
     };
