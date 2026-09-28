@@ -200,7 +200,7 @@ export const rebuildApp = (
             const proxy = yield* RouterService;
             const events = yield* EventService;
             const ref: AppRef = resolvedTarget.app;
-            const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
+            const timestamp = () => DateTime.unsafeNow();
             const preRebuild = PreRebuildEvent.make({
               _tag: "pre-rebuild",
               app: ref,

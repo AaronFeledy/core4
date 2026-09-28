@@ -115,7 +115,7 @@ type StartAppServices =
 
 type BoundStartAppServices = Exclude<StartAppServices, LandofileService>;
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 /** Private preflight shared by start, restart, and rebuild before any app hook or provider action. */
 export const ensureStartTransactionConsistent = (target: ResolvedAppTarget) =>

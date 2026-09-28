@@ -20,7 +20,7 @@ export interface RedactedBuildContext {
   readonly providerId: string;
 }
 
-const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
+const timestamp = () => DateTime.unsafeNow();
 
 export const redactedBuildContext = (
   redactor: Pick<Redactor, "redactString">,
