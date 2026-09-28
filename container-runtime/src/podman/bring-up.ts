@@ -257,7 +257,9 @@ const inspectContainer = (
         }),
       );
     }
-    const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect");
+    const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
+      details: redactDetails({ status: response.status, body: response.body }),
+    });
     if (typeof body !== "object" || body === null || !("State" in body)) {
       return {
         exists: true,
