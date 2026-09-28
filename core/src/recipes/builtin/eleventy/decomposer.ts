@@ -58,6 +58,7 @@ export const eleventyDecomposer = ((ports) => ({
               primary: false,
               type: "static:nginx",
               appMount: { target: "/app" },
+              root: "_site",
               routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
             },
           },

@@ -58,6 +58,7 @@ export const hugoDecomposer = ((ports) => ({
               primary: false,
               type: "static:nginx",
               appMount: { target: "/app" },
+              root: "public",
               routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
             },
           },

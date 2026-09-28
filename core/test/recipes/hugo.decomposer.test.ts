@@ -72,6 +72,7 @@ describe("hugo decomposition", () => {
           type: "static:nginx",
           primary: false,
           appMount: { target: "/app" },
+          root: "public",
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
       },

@@ -7,7 +7,7 @@ static frontend.
 
 - `builder` — `ruby:3.3`, runs `bundle exec jekyll serve` on port 4000 for
   iterative development.
-- `web` — `static:nginx`, mounts the app root for serving the built site.
+- `web` — `static:nginx`, serves the build output directory `_site/` as its document root.
 
 ## Generated tooling
 
@@ -16,8 +16,8 @@ static frontend.
 
 ## Alpha limitations
 
-- The recipe assumes site sources live at the app root. Output-directory
-  remapping (`_site` → CDN-style hosting) is deferred to Beta.
+- The recipe assumes site sources live at the app root and build output goes
+  into `_site/`, which the `web` service serves as its document root.
 - The static frontend serves files only; rewrites and asset hashing are
   deferred.
 

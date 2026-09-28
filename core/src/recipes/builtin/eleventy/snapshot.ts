@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const ELEVENTY_RECIPE_VERSION = "0.1.0";
 export const ELEVENTY_CONTENT_DIGEST =
-  "sha256:89591241116d13890e347502e7e25c2a9ace413e695cb217728602466ec7ace1";
+  "sha256:696ef78b76836b476f364e047e25f4c6183dae1e805637c99687e8a887315291";
 
 export const eleventyProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -69,6 +69,7 @@ export const eleventySnapshot: RecipeSnapshot = {
                         entries: [{ key: "target", value: { kind: "Literal", value: "/app" } }],
                       },
                     },
+                    { key: "root", value: { kind: "Literal", value: "_site" } },
                     {
                       key: "routes",
                       value: {
