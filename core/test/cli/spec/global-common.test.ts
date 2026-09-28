@@ -5,7 +5,7 @@ import { globalAppRef, renderGlobalServiceRow } from "../../../src/cli/commands/
 test("marks the app global when projecting a plan identity", () => {
   const plan = { id: AppId.make("host"), root: AbsolutePath.make("/tmp/global") };
   const result = globalAppRef(plan);
-  expect(result).toEqual({ kind: "global", id: "host", root: "/tmp/global" });
+  expect(result).toEqual({ kind: "global", id: plan.id, root: plan.root });
 });
 
 test.each([

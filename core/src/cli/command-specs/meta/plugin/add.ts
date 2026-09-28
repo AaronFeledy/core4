@@ -8,15 +8,13 @@ import { pluginAdd, renderPluginAddResult } from "../../../commands/plugin-add";
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
 
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 
 const extractInput = (input: unknown): { spec: string; trust: boolean; force: boolean; yes: boolean } => {
-  if (typeof input !== "object" || input === null) {
-    return { spec: "", trust: false, force: false, yes: false };
-  }
-  const args = (input as { args?: Record<string, unknown> }).args ?? {};
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
+  const args = specArgsOf(input);
+  const flags = specFlagsOf(input);
   return {
-    spec: typeof args.spec === "string" ? args.spec : "",
+    spec: stringFlag(args, "spec") ?? "",
     trust: flags.trust === true,
     force: flags.force === true,
     yes: flags.yes === true,
