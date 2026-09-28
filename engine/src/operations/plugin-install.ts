@@ -12,7 +12,9 @@ import { invalidatePluginCommandCache } from "../cache/command-index-writer";
 import {
   type InstalledPluginRegistryEntry,
   readInstalledPluginRegistry,
+  readInstalledPluginRegistryFileSnapshot,
   recordInstalledPlugin,
+  restoreInstalledPluginRegistryFileSnapshot,
 } from "../plugins/installed-registry";
 import { withPluginMutationLock } from "../plugins/mutation-lock.ts";
 
@@ -107,8 +109,11 @@ export interface FinalizePluginInstallOptions {
   readonly stagedPath?: string;
 }
 
+const defaultIo = { recordInstalledPlugin };
+
 export const finalizePluginInstall = (
   options: FinalizePluginInstallOptions,
+  io: typeof defaultIo = defaultIo,
 ): Effect.Effect<void, NotImplementedError> => {
   const finalize = Effect.gen(function* () {
     if (options.expectedActivation !== undefined) {
@@ -170,6 +175,9 @@ export const finalizePluginInstall = (
           }),
       });
     }
+    const previousRegistry = yield* Effect.promise(() =>
+      readInstalledPluginRegistryFileSnapshot(options.pluginsRoot),
+    );
     if (options.stagedPath !== undefined) {
       const stagedPath = options.stagedPath;
       yield* Effect.tryPromise({
@@ -193,11 +201,22 @@ export const finalizePluginInstall = (
           }),
       });
     }
-    yield* Effect.promise(() => recordInstalledPlugin(options.pluginsRoot, options.entry)).pipe(
+    yield* Effect.promise(() => io.recordInstalledPlugin(options.pluginsRoot, options.entry)).pipe(
       Effect.onError(() =>
-        options.stagedPath === undefined
-          ? Effect.void
-          : Effect.promise(() => rm(options.entry.path, { recursive: true, force: true })),
+        Effect.promise(async () => {
+          try {
+            await restoreInstalledPluginRegistryFileSnapshot(options.pluginsRoot, previousRegistry);
+          } catch (cause) {
+            process.emitWarning(`plugin-install: registry rollback failed: ${String(cause)}`);
+          }
+          if (options.stagedPath !== undefined) {
+            try {
+              await rm(options.entry.path, { recursive: true, force: true });
+            } catch (cause) {
+              process.emitWarning(`plugin-install: package rollback failed: ${String(cause)}`);
+            }
+          }
+        }),
       ),
     );
   }).pipe(

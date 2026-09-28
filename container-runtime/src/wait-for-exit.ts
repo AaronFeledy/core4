@@ -63,6 +63,7 @@ export const waitForExit = (
 
     const decoded = yield* parseEngineJson(response, options.ctx, "waitForExit", {
       message: "Container engine API returned malformed JSON.",
+      details: redactDetails(response),
     });
     const exitCode = options.dialect.decodeExitCode(decoded);
     if (exitCode === undefined) {

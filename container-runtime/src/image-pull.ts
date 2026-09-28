@@ -296,7 +296,10 @@ export const pullImage = <E = never>(
         }),
       );
     }
-    const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact");
+    const decoded = yield* parseEngineJson(response, options.ctx, "pullArtifact", {
+      message: "Container engine API returned malformed JSON.",
+      details: redactDetails(response),
+    });
     const digest = inspect.decodeDigest(decoded);
     return { ref: reference, ...(digest === undefined ? {} : { digest }) };
   });
