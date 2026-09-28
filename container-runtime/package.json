@@ -29,6 +29,7 @@
     "./data-plane": "./src/data-plane.ts",
     "./capabilities": "./src/capabilities.ts",
     "./applied-state": "./src/applied-state.ts",
+    "./applied-plan-cache": "./src/applied-plan-cache.ts",
     "./volume-classes": "./src/volume-classes.ts",
     "./dependency-gates": "./src/dependency-gates.ts",
     "./dependency-schedule": "./src/dependency-schedule.ts",
