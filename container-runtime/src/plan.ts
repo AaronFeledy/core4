@@ -172,7 +172,7 @@ const containerMountObjects = (
     if (sameAppMountTarget(service.appMount, mount)) return [];
     const strictBind =
       mount.type === "bind" && mount.realization === "passthrough" && mount.createHostPath === false;
-    if (!strictBind && !requiresLongMountSyntax(mount.target)) {
+    if (mount.type !== "volume" && !strictBind && !requiresLongMountSyntax(mount.target)) {
       return [];
     }
     if (mount.type === "tmpfs") return [{ Type: "tmpfs", Target: mount.target, ReadOnly: mount.readOnly }];

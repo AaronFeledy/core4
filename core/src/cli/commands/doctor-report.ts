@@ -25,6 +25,7 @@ import { CORE_VERSION } from "@lando/engine/version";
 import { findAppRoot } from "@lando/landofile/discovery";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
+import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
@@ -297,10 +298,18 @@ const collectWithTree = <R>(
       options.app === true && input.appConfig !== undefined
         ? yield* section("app-config", input.appConfig, undefined, appConfigOutcome)
         : undefined;
+    const accelerated = yield* isolateDoctorSection({
+      section: "accelerated-starts",
+      effect: acceleratedStartsDoctor(redact),
+      fallback: [],
+      budgetMs,
+      redact,
+    });
+    if (accelerated.self !== undefined) selfChecks.push(accelerated.self);
     const report: DoctorReport = {
       version: CORE_VERSION,
       provider: { checks: provider.checks },
-      subsystems,
+      subsystems: { checks: [...subsystems.checks, ...accelerated.value] },
       globalApp,
       mcp,
       ...(appVersionConstraints === undefined ? {} : { appVersionConstraints }),

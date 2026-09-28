@@ -3,7 +3,7 @@ import { arr, defaultRoute, lit, obj, toolNode } from "../snapshot-expression.ts
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LEMP_RECIPE_VERSION = "0.1.0";
-export const LEMP_CONTENT_DIGEST = "sha256:67331adb4acec417a95838f782c2cf77a21c760f9de5e27632c65e2d1446ad33";
+export const LEMP_CONTENT_DIGEST = "sha256:c6839506f4d6f84a185dd4ad04c78a900774d1cb105489b58930f611b186080b";
 export const lempProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-lemp",
@@ -26,8 +26,8 @@ export const lempSnapshot: RecipeSnapshot = {
             obj([
               ["type", lit("nginx")],
               ["primary", lit(false)],
-              ["port", lit(80)],
-              ["dependsOn", arr(lit("appserver"))],
+              ["backend", lit("appserver")],
+              ["webroot", lit("/app")],
               ["routes", arr(defaultRoute())],
             ]),
           ],
@@ -37,6 +37,8 @@ export const lempSnapshot: RecipeSnapshot = {
               ["type", lit("php:{{ recipe.php }}")],
               ["primary", lit(true)],
               ["framework", lit("none")],
+              ["via", lit("fpm")],
+              ["webroot", lit("/app")],
               ["dependsOn", arr(lit("database"))],
             ]),
           ],

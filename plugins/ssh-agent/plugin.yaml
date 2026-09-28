@@ -2,5 +2,9 @@ name: "@lando/ssh-agent"
 summary: SSH agent sidecar for forwarding SSH keys
 description: |
   Provides SSH agent forwarding via a dedicated sidecar container.
-  Services opt in with `sshAgent: true`.
+  Apps choose the sidecar with top-level `sshAgent.sidecar` (default true);
+  the `lando.ssh-agent` feature wires eligible services.
+  Default sidecar on the managed lando provider uses in-runtime volume
+  delivery; other providers and `sshAgent.sidecar: false` use host-relay
+  or host-agent mode.
 hidden: true

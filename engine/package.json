@@ -58,6 +58,7 @@
     "./lifecycle/subscriber-loader": "./src/lifecycle/subscriber-loader.ts",
     "./lifecycle/subscribers": "./src/lifecycle/subscribers.ts",
     "./logging/service": "./src/logging/service.ts",
+    "./operations/accelerated-start-inventory": "./src/operations/accelerated-start-inventory.ts",
     "./operations/app-config-lint": "./src/operations/app-config-lint.ts",
     "./operations/app-mutation-lock": "./src/operations/app-mutation-lock.ts",
     "./operations/applied-state-target": "./src/operations/applied-state-target.ts",
