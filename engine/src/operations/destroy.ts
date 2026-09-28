@@ -38,7 +38,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
-import { requireNoPendingAcceleratedStop } from "./accelerated-start-journal.ts";
+import { readDiscardableStart, retainedStartDisposal } from "./accelerated-start-discard.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
@@ -96,7 +96,7 @@ const destroyAppForTargetUncoordinated = (
   target: ResolvedAppTarget,
 ): Effect.Effect<DestroyAppResult, SdkDestroyAppError, BoundDestroyAppServices> =>
   Effect.gen(function* () {
-    yield* requireNoPendingAcceleratedStop(target.app, target.plan);
+    const retained = yield* retainedStartDisposal(target.app, target.plan);
     const resolvedOptions = options ?? {};
     const registry = yield* RuntimeProviderRegistry;
     const events = yield* EventService;
@@ -108,14 +108,16 @@ const destroyAppForTargetUncoordinated = (
     const ref = target.app;
     const volumes = resolvedOptions.volumes ?? false;
     const appliedFileSync =
-      provider.inspectAppliedFileSync === undefined
-        ? {
-            status:
-              plan.fileSync.length > 0 && provider.prepareFileSyncTargets !== undefined
-                ? ("unknown" as const)
-                : ("ordinary" as const),
-          }
-        : yield* provider.inspectAppliedFileSync(plan);
+      retained !== undefined
+        ? { status: "ordinary" as const }
+        : provider.inspectAppliedFileSync === undefined
+          ? {
+              status:
+                plan.fileSync.length > 0 && provider.prepareFileSyncTargets !== undefined
+                  ? ("unknown" as const)
+                  : ("ordinary" as const),
+            }
+          : yield* provider.inspectAppliedFileSync(plan);
     if (appliedFileSync.status === "unknown") {
       return yield* Effect.fail(
         new FileSyncStopError({
@@ -183,6 +185,8 @@ const destroyAppForTargetUncoordinated = (
       );
     }
 
+    // End the retained attempt's sessions before hooks can write through them.
+    if (retained !== undefined) yield* retained.terminate;
     yield* runAppInitEvents(plan);
     const preDestroy = PreDestroyEvent.make({
       _tag: "pre-destroy",
@@ -257,6 +261,7 @@ const destroyAppForTargetUncoordinated = (
         }),
     });
 
+    if (retained !== undefined) yield* retained.clear;
     const postDestroy = PostDestroyEvent.make({
       _tag: "post-destroy",
       app: ref,
@@ -291,7 +296,9 @@ const destroyAppWithResolvedTarget = (
       if (requireAppliedEvidence && registry.resolveAppliedPlan !== undefined) {
         const appliedPlan = yield* registry.resolveAppliedPlan(validatedTarget.plan.root);
         if (appliedPlan === undefined) {
-          return unchangedResult(validatedTarget.plan.name);
+          const { pending } = yield* readDiscardableStart(validatedTarget.app);
+          if (pending === null || pending.phase === "completed")
+            return unchangedResult(validatedTarget.plan.name);
         }
       }
       const resolvedTarget = yield* resolveMysqlVolumeTarget(validatedTarget, registry);

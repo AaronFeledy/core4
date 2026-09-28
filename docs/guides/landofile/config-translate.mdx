@@ -87,7 +87,32 @@ lando app:config:translate --to lando4
 
 A `--to` target without an encoder fails with `Invalid --to target "<id>": an encoder is required.` and lists the ids you can choose from.
 
+## Preserve Lando 3 Compose arguments
+
+```sh
+lando app:config:translate --from lando3
+```
+
+Scalar `command` and `entrypoint` values in Lando 3 Compose fields become argument lists, not shell scripts. This applies to nested `services` fields on `type: compose` and `type: lando`, and to Compose `overrides` on typed services. For example, `command: --port 8080` becomes `["--port", "8080"]`, so both arguments reach the image's entrypoint.
+
+Quotes keep an argument together: `sh -c "echo a b"` becomes `["sh", "-c", "echo a b"]`. Existing argument lists stay unchanged. A `~` diagnostic explains each scalar rewrite. Unmatched quotes or other unrepresentable syntax produce an `unsupported` diagnostic instead of guessing how to run the service. Fix the source or supply an explicit argument list before writing.
+
+Compose stops reading a scalar at an unquoted `;`, `&`, `|`, `<`, or `>`, so `echo a && echo b` only ever ran `echo a`. Translation keeps that argument list and adds a `?` diagnostic. If you wanted the whole script, write `["sh", "-c", "echo a && echo b"]` instead.
+
+API-4 `type: l337` services in a Lando 3 file also pass these fields to Compose, so their scalar values become argument lists. API-4 `type: lando` services split a single-line `command` or `entrypoint` the way Lando 3 did: on whitespace, with quotes grouping words and no shell operators. A multi-line value stays a script. Catalog-owned top-level commands, such as a Node service's shell script, keep their existing behavior. Native v4 string commands still mean shell scripts. Translation makes the distinction explicit.
+
 <Guide>
+  <Scenario id="lando3-compose-arguments" render>
+    <Step name="preview-compose-arguments">
+      <UseFixture name="lando3-compose-arguments" />
+      <Run command="lando app:config:translate --from lando3" />
+      <Verify command="lando app:config:translate --from lando3" expect={{ stdout: { regex: "command:\\s*\\n\\s*- --port\\s*\\n\\s*- .8080." } }} />
+    </Step>
+    <Step name="cleanup-compose-arguments">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="preview" render>
     <Step name="preview-yaml">
       <UseFixture name="v4-app" />

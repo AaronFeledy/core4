@@ -55,6 +55,31 @@ const service = {
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {
+  test("delivers a read-only named volume at a simple container target", () => {
+    // Given a borrowed volume, not an app-owned store.
+    const mounted: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "volume",
+          source: "lando-ssh-agent",
+          target: PortablePath.make("/run/lando/ssh-agent"),
+          readOnly: true,
+          realization: "passthrough",
+        },
+      ],
+      storage: [],
+    };
+    // When
+    const host = containerHostConfigFragment(plan, mounted);
+    // Then
+    expect(host.Mounts).toContainEqual({
+      Type: "volume",
+      Source: "lando-ssh-agent",
+      Target: "/run/lando/ssh-agent",
+      ReadOnly: true,
+    });
+  });
   test.each(["passthrough", "accelerated"] as const)(
     "preserves colon targets in API Mounts when %s",
     (realization) => {

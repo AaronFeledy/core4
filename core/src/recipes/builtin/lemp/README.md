@@ -4,20 +4,21 @@ Generic LEMP (Linux + nginx + MariaDB + PHP) starter.
 
 ## Generated services
 
-- `web` — `nginx`, fronts the `appserver` service.
-- `appserver` — `php:<8.2|8.3>` with `framework: none`.
-- `database` — `mariadb`.
+- `web`: `nginx`, serves `/app` and forwards PHP requests to `appserver` via FastCGI.
+- `appserver`: `php:<8.2|8.3>` with `via: fpm`, `framework: none`, and webroot `/app`.
+  This is the primary service for tooling, with no separate HTTP route.
+- `database`: `mariadb`.
 
 ## Generated tooling
 
-- `lando composer …` — Composer.
-- `lando php …` — PHP CLI inside the appserver service.
+- `lando composer …`: Composer.
+- `lando php …`: PHP CLI inside the appserver service.
 
-## Alpha limitations
+## Serve PHP
 
-- The bundled nginx service ships a default configuration. Custom
-  vhost / upstream templates are not auto-generated.
-- TLS, HTTP/2, and reverse-proxy caching are deferred to Beta.
+Put `index.php` in the project root, then run `lando start` and `lando info`.
+Open the app URL served by `web`. Lando generates the nginx FastCGI configuration
+and waits for the PHP-FPM backend to be healthy before starting nginx.
 
 ## Host prerequisites
 

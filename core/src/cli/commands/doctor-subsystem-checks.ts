@@ -27,7 +27,8 @@ export const SshAgentPostureDetails = Schema.Struct({
     reachable: Schema.Boolean,
     identities: Schema.optional(Schema.NonNegativeInt),
   }),
-  delivery: Schema.Union(AgentSocketDelivery, Schema.Literal("none")),
+  delivery: Schema.Union(AgentSocketDelivery, Schema.Literal("none", "runtime-volume")),
+  runtimeVolume: Schema.optional(Schema.String),
   security: Schema.String,
   gpg: Schema.optional(
     Schema.Struct({
