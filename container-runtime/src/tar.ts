@@ -35,7 +35,21 @@ const nameBytes = (value: string, field: "name" | "linkName"): Uint8Array => {
   return bytes;
 };
 
-export const encodeUstarHeader = (input: UstarHeaderInput): Uint8Array => {
+/**
+ * `posix` writes the checksum as six octal digits, NUL, space (the ustar form).
+ * `nul-terminated` writes seven octal digits and a NUL; the image build context
+ * keeps this form because its byte digest feeds persisted build keys and image tags.
+ */
+export type UstarChecksumForm = "posix" | "nul-terminated";
+
+export interface EncodeUstarHeaderOptions {
+  readonly checksumForm?: UstarChecksumForm;
+}
+
+export const encodeUstarHeader = (
+  input: UstarHeaderInput,
+  options: EncodeUstarHeaderOptions = {},
+): Uint8Array => {
   const header = new Uint8Array(TAR_BLOCK_SIZE);
   const writeAscii = (offset: number, value: string, width: number): void => {
     header.set(encoder.encode(value).subarray(0, width), offset);
@@ -52,7 +66,13 @@ export const encodeUstarHeader = (input: UstarHeaderInput): Uint8Array => {
   writeAscii(257, "ustar", 6);
   writeAscii(263, "00", 2);
   const checksum = header.reduce((sum, byte) => sum + byte, 0);
-  writeAscii(148, `${octal(checksum, 7, "checksum")} `, 8);
+  writeAscii(
+    148,
+    options.checksumForm === "nul-terminated"
+      ? octal(checksum, 8, "checksum")
+      : `${octal(checksum, 7, "checksum")} `,
+    8,
+  );
   return header;
 };
 
