@@ -601,6 +601,13 @@ describe("@lando/sdk package exports", () => {
     expect(databaseCreds.DATABASE_FAMILY_ENV_KEYS).toBeDefined();
   });
 
+  test("digest entry point exports the hashing and canonical JSON helpers", async () => {
+    const digest = await import("@lando/sdk/digest");
+
+    expect(digest.sha256Hex).toBeDefined();
+    expect(digest.canonicalJson).toBeDefined();
+  });
+
   test("task-progress entry point exports the shared task-tree publisher", async () => {
     const taskProgress = await import("@lando/sdk/task-progress");
 

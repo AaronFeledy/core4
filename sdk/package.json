@@ -22,6 +22,7 @@
     "./app": "./src/app/index.ts",
     "./command-result": "./src/command-result/index.ts",
     "./database-creds": "./src/database-creds/index.ts",
+    "./digest": "./src/digest/index.ts",
     "./schema": "./src/schema/index.ts",
     "./schema/services": "./src/schema/services/index.ts",
     "./schema/services/localstack": "./src/schema/services/localstack.ts",
