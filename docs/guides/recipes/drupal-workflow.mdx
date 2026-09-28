@@ -84,20 +84,18 @@ For Postgres answers, host `database`, port `5432`, user `lando`, database the a
 
 ## Log in and clear caches with Drush
 
-Pass `--uri` that matches the HTTPS endpoint `lando info` prints, port included if the proxy fell back to `:8443`:
-
 ```sh
-lando drush user:login --no-browser --uri='https://drupal-demo.lndo.site:8443'
+lando drush user:login --no-browser
 lando drush cache:rebuild
 lando drush updatedb -y
 ```
 
-`user:login` prints a one-time login link for the admin account. To pin the URI for every Drush call, set `DRUSH_OPTIONS_URI` under `services.appserver.environment` and run `lando rebuild`.
+`user:login` prints a one-time login link for the admin account. `lando drush` builds links from the current app URL, including a nondefault proxy port. To pin another URL, set `DRUSH_OPTIONS_URI` under `services.appserver.environment` and run `lando rebuild`, or pass Drush `--uri` on one command.
 
-Lando keeps `--format` for itself on tooling commands. For Drush JSON, call the binary through `exec`:
+Lando keeps `--format`, `--json`, `--debug`, and `--verbose` for itself when they come before `--`. Put `--` in front of Drush arguments that use them:
 
 ```sh
-lando exec appserver -- vendor/bin/drush status --format=json
+lando drush -- status --format=json
 ```
 
 ## Import, export, and snapshot the database
