@@ -20,7 +20,11 @@ export const writeFileAtomicViaRename = async (
   path: string,
   content: string | Uint8Array,
   options: AtomicWriteOptions = {},
-): Promise<void> => writeFileAtomic(path, content, options);
+): Promise<void> =>
+  writeFileAtomic(path, content, {
+    ...options,
+    ...(options.privateFileAccess === undefined ? { ownerOnly: "best-effort" as const } : {}),
+  });
 
 export const writeAtomicCacheFile = (
   path: string,
