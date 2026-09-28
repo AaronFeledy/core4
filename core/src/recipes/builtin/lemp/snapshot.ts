@@ -3,7 +3,7 @@ import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const LEMP_RECIPE_VERSION = "0.1.0";
-export const LEMP_CONTENT_DIGEST = "sha256:67331adb4acec417a95838f782c2cf77a21c760f9de5e27632c65e2d1446ad33";
+export const LEMP_CONTENT_DIGEST = "sha256:c6839506f4d6f84a185dd4ad04c78a900774d1cb105489b58930f611b186080b";
 
 export const lempProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -34,11 +34,8 @@ export const lempSnapshot: RecipeSnapshot = {
                   entries: [
                     { key: "type", value: { kind: "Literal", value: "nginx" } },
                     { key: "primary", value: { kind: "Literal", value: false } },
-                    { key: "port", value: { kind: "Literal", value: 80 } },
-                    {
-                      key: "dependsOn",
-                      value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "appserver" }] },
-                    },
+                    { key: "backend", value: { kind: "Literal", value: "appserver" } },
+                    { key: "webroot", value: { kind: "Literal", value: "/app" } },
                     {
                       key: "routes",
                       value: {
@@ -68,6 +65,8 @@ export const lempSnapshot: RecipeSnapshot = {
                     { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
                     { key: "primary", value: { kind: "Literal", value: true } },
                     { key: "framework", value: { kind: "Literal", value: "none" } },
+                    { key: "via", value: { kind: "Literal", value: "fpm" } },
+                    { key: "webroot", value: { kind: "Literal", value: "/app" } },
                     {
                       key: "dependsOn",
                       value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "database" }] },
