@@ -30,6 +30,8 @@ lando drush --version
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling and database hosts, see [Run the Drupal recipe](/guides/recipes/drupal-workflow/).
+
 ## 1. scaffold
 
 ```bash
