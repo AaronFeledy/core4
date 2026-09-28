@@ -1,5 +1,6 @@
 import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
+import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 
 import {
@@ -1016,12 +1017,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 }
 
                 return Stream.fromEffect(
-                  discoverContainers(dockerApi, "dev.lando.app").pipe(
+                  discoverContainers(dockerApi, APP_LABEL).pipe(
                     Effect.flatMap((containers) => {
                       const container = containers.find(
                         (c) =>
-                          c.labels["dev.lando.app"] === target.app &&
-                          c.labels["dev.lando.service"] === target.service,
+                          c.labels[APP_LABEL] === target.app && c.labels[SERVICE_LABEL] === target.service,
                       );
                       if (container === undefined) {
                         return Effect.fail(
@@ -1043,17 +1043,17 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ),
           ),
         list: (filter) =>
-          discoverContainers(dockerApi, "dev.lando.app").pipe(
+          discoverContainers(dockerApi, APP_LABEL).pipe(
             Effect.flatMap((containers) =>
               Effect.forEach(
                 containers.filter((container) => {
-                  const appId = container.labels["dev.lando.app"];
+                  const appId = container.labels[APP_LABEL];
                   if (appId === undefined) return false;
                   if (filter.app !== undefined && appId !== filter.app) return false;
                   if (
                     filter.includeScratch !== true &&
                     filter.app === undefined &&
-                    container.labels["dev.lando.scratch"] === "TRUE"
+                    container.labels[SCRATCH_LABEL] === "TRUE"
                   ) {
                     return false;
                   }
@@ -1061,8 +1061,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 }),
                 (container) =>
                   Effect.gen(function* () {
-                    const appId = container.labels["dev.lando.app"] ?? "";
-                    const serviceName = container.labels["dev.lando.service"] ?? "";
+                    const appId = container.labels[APP_LABEL] ?? "";
+                    const serviceName = container.labels[SERVICE_LABEL] ?? "";
                     const isRunning = container.state === "running";
                     const status = isRunning ? "running" : "stopped";
 
@@ -1078,9 +1078,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
                     return {
                       app: AppId.make(appId),
-                      ...(container.labels["dev.lando.app-root"] === undefined
+                      ...(container.labels[APP_ROOT_LABEL] === undefined
                         ? {}
-                        : { appRoot: AbsolutePath.make(container.labels["dev.lando.app-root"]) }),
+                        : { appRoot: AbsolutePath.make(container.labels[APP_ROOT_LABEL]) }),
                       service: ServiceName.make(serviceName),
                       providerId: ProviderId.make(PROVIDER_ID),
                       status,

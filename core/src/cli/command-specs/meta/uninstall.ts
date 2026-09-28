@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { APP_LABEL } from "@lando/container-runtime/labels";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -88,7 +89,7 @@ const runRuntime = async (
   });
 
 // core4 apps carry dev.lando.app; com.lando.app covers Lando 3 leftovers.
-const LANDO_APP_LABELS = ["dev.lando.app", "com.lando.app"] as const;
+const LANDO_APP_LABELS = [APP_LABEL, "com.lando.app"] as const;
 const RUNTIME_PROBE_TIMEOUT_MS = 2_000;
 const RUNTIME_QUERY_TIMEOUT_MS = 5_000;
 const RUNTIME_CLEANUP_TIMEOUT_MS = 60_000;

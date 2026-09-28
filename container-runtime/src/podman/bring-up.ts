@@ -1,4 +1,5 @@
 import { type Context, DateTime, Effect } from "effect";
+import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
@@ -47,7 +48,7 @@ export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
   const scratch = plan.extensions["@lando/core/scratch"];
   const scratchId = typeof scratch === "object" && scratch !== null ? Reflect.get(scratch, "id") : undefined;
   return scratchId === plan.id && typeof scratchId === "string"
-    ? { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratchId }
+    ? { [SCRATCH_LABEL]: "TRUE", [SCRATCH_ID_LABEL]: scratchId }
     : {};
 };
 
@@ -440,7 +441,7 @@ export const podmanVolumeCreationLabels = (
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => ({
   ...volumeCreationLabels(plan, store),
-  "dev.lando.provider": plan.provider,
+  [PROVIDER_LABEL]: plan.provider,
 });
 
 const ensureVolume = (

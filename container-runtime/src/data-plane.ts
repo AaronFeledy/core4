@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
+import { APP_LABEL, STORAGE_SCOPE_LABEL, STORE_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
@@ -332,10 +333,10 @@ interface EngineVolume {
 }
 
 const landoVolumeLabels = {
-  app: "dev.lando.app",
-  store: "dev.lando.store",
-  scope: "dev.lando.scope",
-  instance: "dev.lando.volume-instance",
+  app: APP_LABEL,
+  store: STORE_LABEL,
+  scope: STORAGE_SCOPE_LABEL,
+  instance: VOLUME_INSTANCE_LABEL,
 } as const;
 
 const storageScopeFromLabel = (value: string | undefined): StorageScope | undefined =>

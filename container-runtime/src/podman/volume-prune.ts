@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { VOLUME_SELECTOR_LABEL } from "../labels.ts";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
@@ -29,7 +30,7 @@ export const volumeSelectorValue = (args: {
     ? `${args.providerId}:${args.appId}:${args.ownerKey}:${args.volumeClass}`
     : `${args.providerId}:${args.appId}:${args.ownerKey}:${args.volumeClass}:${args.scope}`;
 
-export const volumeSelectorLabel = (value: string): string => `dev.lando.volume-selector=${value}`;
+export const volumeSelectorLabel = (value: string): string => `${VOLUME_SELECTOR_LABEL}=${value}`;
 
 /** Lando-scoped volume filters use ownership-complete selector values because Podman ORs values for one key. */
 export const buildLandoVolumeFilters = (

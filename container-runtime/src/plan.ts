@@ -6,6 +6,7 @@ import {
   fileSyncVolumeName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
+import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
 
 import {
   bindSourceForComposeConfig,
@@ -105,9 +106,9 @@ export const commonContainerLabels = (
       : {};
   return {
     ...userLabels,
-    "dev.lando.app": plan.id,
-    "dev.lando.app-root": plan.root,
-    "dev.lando.service": service.name,
+    [APP_LABEL]: plan.id,
+    [APP_ROOT_LABEL]: plan.root,
+    [SERVICE_LABEL]: service.name,
     ...extra,
   };
 };

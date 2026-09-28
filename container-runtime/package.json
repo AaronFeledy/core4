@@ -40,6 +40,7 @@
     "./dialect": "./src/dialect.ts",
     "./runtime-provider": "./src/runtime-provider.ts",
     "./image-pull": "./src/image-pull.ts",
+    "./labels": "./src/labels.ts",
     "./service-lifecycle": "./src/service-lifecycle.ts",
     "./wait-for-exit": "./src/wait-for-exit.ts",
     "./podman/api-client": "./src/podman/api-client.ts",
