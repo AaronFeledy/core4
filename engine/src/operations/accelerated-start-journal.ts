@@ -1,44 +1,21 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 
+import {
+  type PendingStart,
+  digest,
+  isRecoverableStart,
+  journalRecovery,
+  pendingStartBucketSpec,
+  verifyRetainedStart,
+} from "./accelerated-start-record.ts";
 import { appRootIdentityKey, canonicalAppRoot } from "./app-root-identity.ts";
-
-const Phase = Schema.Literal("preparing", "sessions-ready", "apply-intent", "retained", "completed");
-const PendingStart = Schema.Struct({
-  attemptId: Schema.String,
-  appId: Schema.String,
-  appRoot: Schema.String,
-  providerId: Schema.String,
-  engineId: Schema.String,
-  mountPlanDigest: Schema.String,
-  phase: Phase,
-  targets: Schema.Array(
-    Schema.Struct({
-      service: Schema.String,
-      mountKey: Schema.String,
-      volumeName: Schema.String,
-      helperSpecDigest: Schema.String,
-    }),
-  ),
-  sessions: Schema.Array(
-    Schema.Struct({
-      name: Schema.String,
-      specDigest: Schema.String,
-    }),
-  ),
-});
-type PendingStart = typeof PendingStart.Type;
-type PendingPhase = typeof Phase.Type;
-
-const digest = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-
-const journalRecovery = (path: string) =>
-  `Inspect and terminate this app's file-sync sessions and inspect and remove its provider sync volumes. Only after that cleanup, delete the accelerated-start journal file \`${path}\` to unblock start/stop/destroy.`;
+type PendingPhase = PendingStart["phase"];
 
 const journalError = (message: string, cause?: unknown) =>
   new FileSyncStartError({
@@ -49,32 +26,19 @@ const journalError = (message: string, cause?: unknown) =>
     ...(cause === undefined ? {} : { cause }),
   });
 
-const openJournal = (app: AppRef) =>
+export const openJournal = (app: AppRef) =>
   canonicalAppRoot(String(app.root)).pipe(
     Effect.flatMap((canonicalRoot) =>
       StateStore.pipe(
         Effect.flatMap((stateStore) =>
-          stateStore.open({
-            root: "userData",
-            namespace: "accelerated-starts",
-            key: `${digest(appRootIdentityKey(app, canonicalRoot))}.json`,
-            schema: PendingStart,
-            version: 1,
-            codec: "json",
-            mode: 0o600,
-            lock: "advisory",
-            onCorrupt: "fail",
-            onVersionMismatch: () => {
-              throw new Error("Unknown accelerated-start journal version");
-            },
-          }),
+          stateStore.open(pendingStartBucketSpec(`${digest(appRootIdentityKey(app, canonicalRoot))}.json`)),
         ),
       ),
     ),
     Effect.mapError((cause) => journalError("The accelerated-start journal cannot be opened.", cause)),
   );
 
-const readJournal = (app: AppRef) =>
+export const readJournal = (app: AppRef) =>
   openJournal(app).pipe(
     Effect.flatMap((bucket) =>
       bucket.exists.pipe(
@@ -100,7 +64,7 @@ const readJournal = (app: AppRef) =>
   );
 
 /** Called under the app mutation lock before init hooks or mount fallback. */
-export const requireNoPendingAcceleratedStart = (app: AppRef, plan?: AppPlan) =>
+export const requireNoPendingAcceleratedStart = (app: AppRef, plan?: AppPlan, allowRetained = false) =>
   Effect.gen(function* () {
     if (plan !== undefined) {
       const appRoot = yield* canonicalAppRoot(String(app.root)).pipe(
@@ -114,14 +78,17 @@ export const requireNoPendingAcceleratedStart = (app: AppRef, plan?: AppPlan) =>
       }
     }
     const { pending, path } = yield* readJournal(app);
+    if (allowRetained && isRecoverableStart(pending)) return pending;
     if (pending !== null && pending.phase !== "completed") {
       return yield* Effect.fail(
         new FileSyncStartError({
           engineId: pending.engineId,
           message:
-            pending.phase === "retained"
-              ? `Previous accelerated start attempt ${pending.attemptId} failed and its prepared targets could not be rolled back.`
-              : `Accelerated start attempt ${pending.attemptId} is still ${pending.phase}; automatic recovery is not available.`,
+            pending.recoveredFrom !== undefined
+              ? `Accelerated start attempt ${pending.attemptId} is an interrupted recovery from ${pending.recoveredFrom}, still ${pending.phase}.`
+              : pending.phase === "retained"
+                ? `Previous accelerated start attempt ${pending.attemptId} failed and its prepared targets could not be rolled back.`
+                : `Accelerated start attempt ${pending.attemptId} is still ${pending.phase}; automatic recovery is not available.`,
           remediation: journalRecovery(path),
         }),
       );
@@ -173,8 +140,13 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
       );
     }
     const bucket = yield* openJournal(app);
+    const previous = yield* bucket.get.pipe(
+      Effect.mapError((cause) => journalError("Unable to read accelerated-start intent.", cause)),
+    );
+    const recovery = isRecoverableStart(previous) ? previous : undefined;
     const record: PendingStart = {
       attemptId: randomUUID(),
+      ...(recovery === undefined ? {} : { recoveredFrom: recovery.recoveredFrom ?? recovery.attemptId }),
       appId: String(plan.id),
       appRoot: String(plan.root),
       providerId: String(plan.provider),
@@ -192,9 +164,12 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
         specDigest: digest(session),
       })),
     };
+    if (recovery !== undefined) yield* verifyRetainedStart(recovery, record, bucket.path);
     const began = yield* bucket
       .modify((current) =>
-        current !== null && current.phase !== "completed"
+        current !== null &&
+        current.phase !== "completed" &&
+        !(isRecoverableStart(current) && recovery !== undefined && digest(current) === digest(recovery))
           ? ([false, current] as const)
           : ([true, record] as const),
       )
@@ -204,6 +179,7 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
     const sameAttempt = (current: PendingStart | null): current is PendingStart =>
       current !== null &&
       current.attemptId === record.attemptId &&
+      current.recoveredFrom === record.recoveredFrom &&
       current.appId === record.appId &&
       current.appRoot === record.appRoot &&
       current.providerId === record.providerId &&
@@ -248,5 +224,11 @@ export const beginAcceleratedStart = (plan: AppPlan, app: AppRef) =>
         const failure = Cause.sequential(Cause.fail(retained), original);
         return Exit.isFailure(saved) ? Cause.sequential(failure, saved.cause) : failure;
       }).pipe(Effect.uninterruptible);
-    return { phase, clear, retainTargets, attemptId: record.attemptId };
+    return {
+      phase,
+      clear,
+      retainTargets,
+      attemptId: record.attemptId,
+      retained: recovery,
+    };
   });

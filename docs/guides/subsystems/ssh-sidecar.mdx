@@ -6,9 +6,9 @@ timeout: 60000
 tags: [beta, docs, subsystems, ssh, sidecar]
 ---
 
-# SSH sidecar
+# Deliver the sidecar SSH agent inside the runtime
 
-This page is a contributor dump for `SshService` and the default SSH-agent delivery path. It stays off the user nav. To forward a 1Password, YubiKey, or gpg-agent instead, see [Use your host SSH agent](./ssh-host-agent.mdx).
+The default SSH sidecar delivers its socket through a runtime volume when the app uses the managed `lando` provider. This contributor explanation covers `SshService` and delivery. To forward a 1Password, YubiKey, or gpg-agent instead, see [Use your host SSH agent](./ssh-host-agent.mdx).
 
 The Landofile knob is top-level `sshAgent`. Leaving it out is the same as this:
 
@@ -24,19 +24,23 @@ Lando starts the sidecar with the global app when a start needs it. You do not s
 
 ## What lands in the container
 
-Every `type: lando` service gets the `lando.ssh-agent` feature (priority 1200) in both modes. It bind-mounts a relay directory and sets:
+Every `type: lando` service gets the `lando.ssh-agent` feature (priority 1200) in both modes. Its start-time overlay mounts a socket directory read-only and sets:
 
 ```sh
 SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock
 ```
 
-The mount is the directory, not the socket. A per-app relay owns that directory and streams raw agent bytes between `agent.sock` and the upstream (here, the sidecar socket under the user data root). Replacing the relay socket never recreates the container. The sidecar's own socket is never bound directly into a service.
+On the managed provider, the plugin publishes `runtimeVolume: "lando-ssh-agent"` through `SshService.getAgentSocket`. The global service declares `storage: [{ store: "lando-ssh-agent", target: "/run/lando/ssh-agent", scope: "app" }]`. The planner preserves that native name and puts the store on the global plan, never on consuming app plans. Apps mount the volume directly: no host socket probe, detached relay worker, or VM bridge. Readiness checks the global service on the managed provider and runs `ssh-add -l` inside it; an empty but reachable agent is ready.
 
-The planner records only the eligible services and the selected mode under the plan extension `@lando/core/ssh-agent` (`{ mode: "sidecar" | "host" }`). The relay directory and the `SSH_AUTH_SOCK` mount are a start-time overlay applied by start, restart, and rebuild; they never enter the plan cache. The relay is scope-owned: kept after a successful apply, closed on stop or destroy.
+The sidecar publishes `agent.sock` at the volume root with mode `0666` and a traversable directory. A socat listener connects to the private agent socket as the agent's owner, allowing non-root service users through OpenSSH's peer-UID check. This local forwarding stays inside the runtime on Linux, macOS, and Windows.
+
+Apps on Docker or user-owned Podman keep the host-relay path. A second sidecar listener preserves `<userDataRoot>/ssh/ssh-agent.sock`; the per-app worker probes and relays it through the selected provider's existing delivery mechanism. A plugin without `runtimeVolume` also uses that path. Cross-provider delivery still depends on the host being able to connect to the sidecar's host-facing socket.
+
+The planner records only the eligible services and the selected mode under the plan extension `@lando/core/ssh-agent` (`{ mode: "sidecar" | "host" }`). The mount and `SSH_AUTH_SOCK` are a start-time overlay applied by start, restart, and rebuild; they never enter the plan cache. Runtime-volume sessions need no per-app cleanup. App stop, destroy, and volume pruning leave the globally owned store alone. Global destroy or uninstall may remove it. Host-relay sessions retain their existing cleanup on stop or destroy.
 
 ## When the sidecar is missing
 
-Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, the sidecar is not installed or not running, or the relay or bridge fails to come up, `lando start` still succeeds. Lando publishes a warning naming the reason and the remediation and starts the app without the `SSH_AUTH_SOCK` overlay. `lando doctor` reports the `ssh` check as degraded with `lando setup` or `lando doctor --fix` as remediation.
+Sidecar mode is best-effort. If the provider does not advertise `agentSocket`, the sidecar is not installed or ready, or a required relay or bridge fails, `lando start` still succeeds. Lando publishes a warning and starts the app without the `SSH_AUTH_SOCK` overlay. `lando doctor` reports `runtime-volume` delivery and the volume name on the managed provider, using in-runtime readiness rather than host socket reachability. A failed check reports degraded with `lando setup` or `lando doctor --fix` as remediation.
 
 Host mode does the opposite and fails closed. That difference is deliberate: nobody opts into the sidecar, so it must never block a start; everyone who opts into host forwarding wants to know when it is not working.
 
@@ -44,7 +48,7 @@ Host mode does the opposite and fails closed. That difference is deliberate: nob
 
 The sidecar is a Lando-managed `ssh-agent` container. At global-app start it runs `ssh-add` against a read-only bind of your `~/.ssh`, so every default key it can load without a passphrase ends up unencrypted in that agent's memory for as long as the global app runs. Passphrase-protected keys are skipped. Hardware-backed keys and 1Password keys never load here; they need [host mode](./ssh-host-agent.mdx), which keeps signing on the host.
 
-Any `type: lando` service in any running app can request signatures from the sidecar. The relay socket on the host is mode `0666` inside a per-user `0700` run directory, so other accounts on the machine cannot reach it. On Windows the bridge into the Podman machine uses a loopback TCP broker without a token; another local account on that host could connect to it while an app runs.
+Any opted-in service can request signatures from the shared sidecar. A read-only socket-volume mount prevents filesystem changes, not signing requests. The host-facing listener is mode `0666` inside the private `0700` SSH directory. The host relay uses a mode `0666` socket inside a per-user `0700` run directory. Managed-provider sidecar delivery does not open a host TCP broker. Host mode and cross-provider delivery retain their existing transport restrictions.
 
 This is not a user how-to. For a shell inside a service, see [Open a shell in a service](../cli/ssh.mdx).
 

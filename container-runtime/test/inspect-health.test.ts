@@ -146,7 +146,7 @@ describe("podman inspect health", () => {
       {
         _tag: "published",
         port: 31080,
-        protocol: "http",
+        protocol: "tcp",
         name: "31080/tcp",
         publication: { bindAddress: "0.0.0.0", hostPort: 32768 },
       },

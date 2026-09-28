@@ -1,0 +1,7 @@
+name: l3cmd
+services:
+  whoami:
+    type: compose
+    services:
+      image: traefik/whoami
+      command: --port 8080

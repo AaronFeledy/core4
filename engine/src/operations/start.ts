@@ -49,7 +49,7 @@ export const startAppForTarget = (
         provider,
         stateStore,
         body: () =>
-          preflightStartAppDrain(resolvedTarget)
+          preflightStartAppDrain(resolvedTarget, undefined, true)
             .pipe(
               Effect.zipRight(
                 execution.transactionPreflightDone === true
