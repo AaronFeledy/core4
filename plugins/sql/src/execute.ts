@@ -1,4 +1,4 @@
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, absurd } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
@@ -21,10 +21,6 @@ import { requireCompatibleSnapshot } from "./snapshot-compatibility.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { resolveSqlTarget } from "./target.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
-
-const assertNever = (value: never): never => {
-  throw new Error(`unexpected db action: ${String(value)}`);
-};
 
 export { dbCommandRedactionTokens, dbInputFromCommand } from "./command-input.ts";
 
@@ -300,7 +296,7 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
         seedStatus = "seeded";
         break;
       default:
-        return assertNever(action);
+        return absurd<never>(action);
     }
 
     yield* progress.complete;

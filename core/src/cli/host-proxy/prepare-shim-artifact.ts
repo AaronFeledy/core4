@@ -165,7 +165,7 @@ const runPrepare = async (input: PrepareHostProxyShimArtifactInput): Promise<str
       return pending;
     }
     default:
-      return absurd(mode);
+      return absurd<never>(mode);
   }
 };
 

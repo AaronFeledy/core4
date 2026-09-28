@@ -48,7 +48,7 @@ const toEffectLogLevel = (level: Exclude<DiagnosticLogLevel, "none">): LogLevel.
     case "trace":
       return LogLevel.Trace;
     default:
-      return absurd(level);
+      return absurd<never>(level);
   }
 };
 
