@@ -12,6 +12,7 @@ services:
     type: ruby:3.3
   web:
     type: static:nginx
+    root: _site
     appMount:
       target: /app
     routes:

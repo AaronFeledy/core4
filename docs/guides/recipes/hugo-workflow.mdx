@@ -23,7 +23,7 @@ Init writes `.lando.yml` only. Add the Hugo dependency and site while `builder` 
 | Piece | What you get |
 | --- | --- |
 | `builder` | `node:lts`, port `1313`, command `npx hugo server --bind 0.0.0.0 --port 1313` |
-| `web` | `static:nginx` with the app mounted at `/app` and one route on both schemes |
+| `web` | `static:nginx` serving `public/` from the app mounted at `/app`, one route on both schemes |
 | Tooling | `lando hugo` (`npx hugo`) and `lando npm` on `builder` |
 
 `builder` is the day-to-day browse target while Hugo serves. `web` is the nginx sidecar on the app hostname. Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS.
@@ -40,6 +40,7 @@ Init writes `.lando.yml` only. Add the Hugo dependency and site while `builder` 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*1313" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "npx hugo server --bind 0.0.0.0 --port 1313" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"root\":\\s*\"public\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hugo\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
     </Step>
@@ -203,7 +204,7 @@ lando hugo build
 
 Day to day, leave the recipe command on `npx hugo server --bind 0.0.0.0 --port 1313` and open the **builder** URL `lando info` prints (for example `https://builder.hugo-demo.lndo.site` or the same host with a fallback port such as `:8443`). Live reload rides with that serve.
 
-Skip the bare app hostname for now. `web` mounts `/app` with no `root`, so Hugo's `public/` build is not the document root until you set `root: public` on `web` (same class of gap as Eleventy `_site` in [#1012](https://github.com/AaronFeledy/core4/issues/1012)).
+Once `lando hugo build` has written `public/`, the app hostname URL (the **web** entry from `lando info`, for example `https://hugo-demo.lndo.site`) serves that build through nginx. `web` ships with `root: public`, so nothing to configure. Keep editing against the **builder** URL for live reload and rebuild when you want the nginx copy to catch up.
 
 Need a one-off rebuild while the development server keeps running? Use `lando hugo build`.
 
