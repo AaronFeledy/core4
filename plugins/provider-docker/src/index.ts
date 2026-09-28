@@ -1,11 +1,8 @@
 import {
-  DOCKER_API_PREFIX,
   type DockerApiClient,
   type DockerHttpRequest,
   type DockerHttpResponse,
-  makeHttpDockerApiClient,
-  makeNamedPipeDockerApiClient,
-  makeUnixDockerApiClient,
+  makeDockerApiClient as makeRuntimeDockerApiClient,
 } from "@lando/container-runtime/docker/api-client";
 import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
@@ -207,19 +204,6 @@ const stream = (
 ): Stream.Stream<Uint8Array, ProviderUnavailableError | ProviderInternalError> =>
   api.stream === undefined ? Stream.fail(missingApi(operation)) : api.stream(input);
 
-const dockerHttpBase = (dockerHost: string): string => {
-  if (dockerHost.startsWith("tcp://")) {
-    return `http://${dockerHost.slice("tcp://".length)}${DOCKER_API_PREFIX}`;
-  }
-  if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
-    return `${dockerHost.replace(/\/+$/u, "")}${DOCKER_API_PREFIX}`;
-  }
-  return dockerHost;
-};
-
-const isUnixDockerHost = (dockerHost: string) =>
-  dockerHost.startsWith("unix://") || dockerHost.startsWith("/");
-
 const unixSocketPath = (dockerHost: string) =>
   dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
 
@@ -318,12 +302,7 @@ export const introspectProviderCapabilities = (
 
 export const makeDockerApiClient = (
   dockerHost = process.env.DOCKER_HOST ?? "/var/run/docker.sock",
-): DockerApiClient => {
-  if (isNpipeDockerHost(dockerHost))
-    return makeNamedPipeDockerApiClient(npipeSocketPath(dockerHost), DOCKER_CTX);
-  if (isUnixDockerHost(dockerHost)) return makeUnixDockerApiClient(unixSocketPath(dockerHost), DOCKER_CTX);
-  return makeHttpDockerApiClient(dockerHttpBase(dockerHost), DOCKER_CTX);
-};
+): DockerApiClient => makeRuntimeDockerApiClient(dockerHost, DOCKER_CTX);
 
 export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): string => {
   const env = options.env ?? process.env;
