@@ -64,7 +64,7 @@ lando drush status
 lando open --print
 ```
 
-Open the HTTPS URL `lando info` prints (add the port when info shows one). A fresh install serves the site name you passed to `site:install`.
+`lando open --print` shows the app HTTPS URL (port included when the proxy fell back). `lando info` lists the same URL with service details. A fresh install serves the site name you passed to `site:install`.
 
 ## Connect Drupal to the database
 
@@ -84,10 +84,10 @@ For Postgres answers, host `database`, port `5432`, user `lando`, database the a
 
 ## Log in and clear caches with Drush
 
-Pass `--uri` that matches the HTTPS endpoint `lando info` prints, port included if the proxy fell back:
+Pass `--uri` that matches the HTTPS endpoint `lando info` prints, port included if the proxy fell back to `:8443`:
 
 ```sh
-lando drush user:login --no-browser --uri='https://drupal-demo.lndo.site'
+lando drush user:login --no-browser --uri='https://drupal-demo.lndo.site:8443'
 lando drush cache:rebuild
 lando drush updatedb -y
 ```
@@ -245,6 +245,7 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 ## Next
 
 - [Drupal recipe](/recipes/drupal/)
+- [Run the Drupal CMS recipe](./drupal-cms-workflow.mdx)
 - [Change a Drupal stack after init](./drupal-stack-overrides.mdx)
 - [Drupal multisite](./drupal-multisite.mdx)
 - [Import and export app databases](../tooling/db-import-export.mdx)
