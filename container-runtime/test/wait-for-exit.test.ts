@@ -207,6 +207,7 @@ describe("waitForExit failures", () => {
     // Then
     expect(failure).toBeInstanceOf(ProviderInternalError);
     expect(failure.message).toBe("Container engine API returned malformed JSON.");
+    expect(failure.details).toMatchObject({ status: 200, body: "not-json" });
   });
 
   test("uses the supplied podman context on failures", async () => {

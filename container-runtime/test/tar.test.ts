@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -86,6 +86,46 @@ test("stores a seven-digit NUL-terminated checksum when the legacy form is reque
   expect(Number.parseInt(decoder.decode(header.subarray(148, 155)), 8)).toBe(sum);
   expect(header[155]).toBe(0);
   expect(header.subarray(0, 148)).toEqual(encodeUstarHeader(input).subarray(0, 148));
+});
+
+test("keeps short-name headers byte-identical when prefix support is enabled", () => {
+  // Given
+  const input = { ...file, name: "dir/payload" };
+  // When
+  const header = encodeUstarHeader(input, { checksumForm: "nul-terminated", longNames: "ustar-prefix" });
+  // Then
+  expect(header).toEqual(encodeUstarHeader(input, { checksumForm: "nul-terminated" }));
+});
+
+test.each(["a".repeat(120), `${"a".repeat(156)}/file`, `${"a".repeat(40)}/${"b".repeat(101)}`])(
+  "rejects an unsplittable long name with prefix support (%s)",
+  (name) => {
+    // Given
+    const input = { ...file, name };
+    // When
+    const encode = () => encodeUstarHeader(input, { longNames: "ustar-prefix" });
+    // Then
+    expect(encode).toThrow(expect.objectContaining({ field: "name" }));
+  },
+);
+
+test("rejects an oversized link target even with prefix support", () => {
+  // Given
+  const input = { ...file, linkName: "a".repeat(101) };
+  // When
+  const encode = () => encodeUstarHeader(input, { longNames: "ustar-prefix" });
+  // Then
+  expect(encode).toThrow(expect.objectContaining({ field: "linkName" }));
+});
+
+test("splits a long directory at a non-trailing slash", () => {
+  // Given
+  const name = `${"a".repeat(70)}/${"b".repeat(40)}/`;
+  // When
+  const header = encodeUstarHeader({ ...file, name, size: 0, typeflag: "5" }, { longNames: "ustar-prefix" });
+  // Then
+  expect(decoder.decode(header.subarray(0, 100)).replace(/\0.*$/u, "")).toBe(`${"b".repeat(40)}/`);
+  expect(decoder.decode(header.subarray(345, 500)).replace(/\0.*$/u, "")).toBe("a".repeat(70));
 });
 
 test.each([
@@ -181,3 +221,51 @@ test.skipIf(Bun.which("tar") === null)("lists the entry when tar reads a complet
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.skipIf(Bun.which("tar") === null)(
+  "lists and extracts a full long UTF-8 path from a prefix header",
+  async () => {
+    // Given
+    const root = await mkdtemp(join(process.cwd(), ".tmp-ustar-long-"));
+    const name = `${"a".repeat(70)}/${"界".repeat(20)}/${"b".repeat(18)}`;
+    try {
+      const path = join(root, "fixture.tar");
+      const payload = new TextEncoder().encode("hello");
+      const archive = new Uint8Array(TAR_BLOCK_SIZE + payload.length + padToBlock(payload.length) + 1024);
+      const header = encodeUstarHeader({ ...file, name }, { longNames: "ustar-prefix" });
+      archive.set(header);
+      archive.set(payload, TAR_BLOCK_SIZE);
+      archive.set(END_OF_ARCHIVE, archive.length - 1024);
+      await Bun.write(path, archive);
+      // When
+      await using listing = Bun.spawn(["tar", "-tvf", path], { stdout: "pipe", stderr: "pipe" });
+      const [listed, listError, listExit] = await Promise.all([
+        new Response(listing.stdout).text(),
+        new Response(listing.stderr).text(),
+        listing.exited,
+      ]);
+      await using extraction = Bun.spawn(["tar", "-xf", path, "-C", root], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [extractError, extractExit] = await Promise.all([
+        new Response(extraction.stderr).text(),
+        extraction.exited,
+      ]);
+      // Then
+      expect(listExit).toBe(0);
+      expect(listError).toBe("");
+      expect(listed).toContain(name);
+      expect(new TextEncoder().encode(name).length).toBe(150);
+      expect(decoder.decode(header.subarray(0, 100)).replace(/\0.*$/u, "")).toBe("b".repeat(18));
+      expect(decoder.decode(header.subarray(345, 500)).replace(/\0.*$/u, "")).toBe(
+        `${"a".repeat(70)}/${"界".repeat(20)}`,
+      );
+      expect(extractExit).toBe(0);
+      expect(extractError).toBe("");
+      expect(await readFile(join(root, name), "utf8")).toBe("hello");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
