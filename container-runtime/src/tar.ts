@@ -44,6 +44,8 @@ export type UstarChecksumForm = "posix" | "nul-terminated";
 
 export interface EncodeUstarHeaderOptions {
   readonly checksumForm?: UstarChecksumForm;
+  /** Opt in only for archives whose reader understands the POSIX ustar prefix field. */
+  readonly longNames?: "ustar-prefix";
 }
 
 export const encodeUstarHeader = (
@@ -54,7 +56,21 @@ export const encodeUstarHeader = (
   const writeAscii = (offset: number, value: string, width: number): void => {
     header.set(encoder.encode(value).subarray(0, width), offset);
   };
-  header.set(nameBytes(input.name, "name"));
+  const fullName = encoder.encode(input.name);
+  if (fullName.length === 0) throw new UstarHeaderError("name");
+  if (fullName.length <= 100) {
+    header.set(fullName);
+  } else {
+    if (options.longNames !== "ustar-prefix") throw new UstarHeaderError("name");
+    // Use the rightmost valid slash: the longest prefix (up to 155 bytes) with a nonempty name of at most 100 bytes.
+    let slash = fullName.lastIndexOf(47);
+    while (slash > 0 && (slash > 155 || fullName.length - slash - 1 > 100 || slash === fullName.length - 1)) {
+      slash = fullName.lastIndexOf(47, slash - 1);
+    }
+    if (slash <= 0) throw new UstarHeaderError("name");
+    header.set(fullName.subarray(slash + 1));
+    header.set(fullName.subarray(0, slash), 345);
+  }
   writeAscii(100, octal(input.mode, 8, "mode"), 8);
   writeAscii(108, octal(input.uid ?? 0, 8, "uid"), 8);
   writeAscii(116, octal(input.gid ?? 0, 8, "gid"), 8);
