@@ -1,9 +1,11 @@
 import { homedir } from "node:os";
+import { MANAGED_PROVIDER_ID, MANAGED_PROVIDER_SELECT_PLAN } from "@lando/engine/providers/managed";
 import { probeSshAgent } from "@lando/engine/subsystems/ssh-agent/agent-probe";
 import {
   type HostAgentDiscoveryOptions,
   discoverHostSshAgent,
 } from "@lando/engine/subsystems/ssh-agent/host-agent-discovery";
+import { runtimeSshAgentReady } from "@lando/engine/subsystems/ssh-agent/session";
 import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
@@ -53,7 +55,8 @@ export const sshAgentPostureCheck = (
       (Option.isSome(registry)
         ? yield* registry.value.capabilities.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
         : undefined);
-    const delivery = capabilities?.agentSocket?.delivery ?? "none";
+    let delivery: Details["delivery"] = capabilities?.agentSocket?.delivery ?? "none";
+    let runtimeVolume: string | undefined;
     const probeAgent = (upstream: Parameters<typeof probeSshAgent>[0]) =>
       Effect.tryPromise({
         try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
@@ -63,6 +66,19 @@ export const sshAgentPostureCheck = (
       switch (intent.mode) {
         case "sidecar": {
           const socket = yield* input.sshService.getAgentSocket(AppId.make("global"));
+          const provider =
+            socket.runtimeVolume !== undefined && Option.isSome(registry)
+              ? yield* registry.value.select(
+                  landofile?.provider === undefined
+                    ? undefined
+                    : { ...MANAGED_PROVIDER_SELECT_PLAN, provider: landofile.provider },
+                )
+              : undefined;
+          if (provider?.id === MANAGED_PROVIDER_ID && socket.runtimeVolume !== undefined) {
+            delivery = "runtime-volume";
+            runtimeVolume = socket.runtimeVolume;
+            return { source: "sidecar" as const, reachable: yield* runtimeSshAgentReady };
+          }
           const upstream = { _tag: "unix" as const, path: socket.socketPath };
           const probed = yield* Effect.either(probeAgent(upstream));
           return {
@@ -166,11 +182,19 @@ export const sshAgentPostureCheck = (
         upstreamReachable: String(upstream.reachable),
         ...(upstream.identities === undefined ? {} : { identities: String(upstream.identities) }),
         delivery,
+        ...(runtimeVolume === undefined ? {} : { runtimeVolume }),
         securityPosture,
         security,
         ...fixContext,
       },
-      details: { mode: intent.mode, upstream, delivery, security, ...(gpg === undefined ? {} : { gpg }) },
+      details: {
+        mode: intent.mode,
+        upstream,
+        delivery,
+        security,
+        ...(runtimeVolume === undefined ? {} : { runtimeVolume }),
+        ...(gpg === undefined ? {} : { gpg }),
+      },
       solutions: ready
         ? []
         : [
