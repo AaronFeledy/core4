@@ -1,18 +1,18 @@
 import { acceleratedStartInventory } from "@lando/engine/operations/accelerated-start-inventory";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { FileSystem, StateStore } from "@lando/sdk/services";
-import { StateStoreLive } from "@lando/state-store/service";
 import { Effect, Layer, Option } from "effect";
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export const acceleratedStartsDoctor = (redact: (text: string) => string) =>
   Effect.gen(function* () {
     const store = yield* Effect.serviceOption(StateStore);
+    if (Option.isNone(store)) return [];
     const fs = yield* Effect.serviceOption(FileSystem);
     const records = yield* acceleratedStartInventory.pipe(
       Effect.provide(
         Layer.merge(
-          Option.isSome(store) ? Layer.succeed(StateStore, store.value) : StateStoreLive,
+          Layer.succeed(StateStore, store.value),
           Option.isSome(fs) ? Layer.succeed(FileSystem, fs.value) : FileSystemLive,
         ),
       ),

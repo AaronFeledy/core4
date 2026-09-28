@@ -5,6 +5,30 @@ import { FileSystem } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
 import { acceleratedStartsDoctor } from "../../src/cli/commands/doctor-accelerated-starts";
 
+test("minimal doctor does not inspect ambient state without a supplied StateStore", async () => {
+  // Given a filesystem service but no runtime state store.
+  let scans = 0;
+  // When the optional accelerated-start check runs.
+  const checks = await Effect.runPromise(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem;
+      return yield* acceleratedStartsDoctor((value) => value).pipe(
+        Effect.provideService(FileSystem, {
+          ...fs,
+          readDir: () =>
+            Effect.sync(() => {
+              scans++;
+              return [];
+            }),
+        }),
+      );
+    }).pipe(Effect.provide(FileSystemLive)),
+  );
+  // Then it leaves the host alone and adds no checks to the minimal report.
+  expect(checks).toEqual([]);
+  expect(scans).toBe(0);
+});
+
 test.each(["retained", "preparing", "sessions-ready", "apply-intent"] as const)(
   "doctor reports pending %s attempts with ownership context and manual remediation",
   async (phase) => {
