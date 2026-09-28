@@ -150,7 +150,7 @@ const tarEntry = (entry: BuildContextEntry): Uint8Array => {
     }
   }
   // Persisted build keys and image tags hash this stream, so the pre-codec checksum form stays.
-  const header = encodeUstarHeader(input, { checksumForm: "nul-terminated" });
+  const header = encodeUstarHeader(input, { checksumForm: "nul-terminated", longNames: "ustar-prefix" });
   const output = new Uint8Array(TAR_BLOCK_SIZE + content.byteLength + padToBlock(content.byteLength));
   output.set(header, 0);
   output.set(content, TAR_BLOCK_SIZE);
