@@ -25,7 +25,7 @@ import type {
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -38,13 +38,12 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { globalAppRef, renderGlobalServiceRow } from "./global-common";
 
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
-
-const globalAppRef = (plan: AppPlan): AppRef => ({ kind: "global", id: plan.id, root: plan.root });
 
 export interface GlobalStartOptions {
   readonly services?: ReadonlyArray<string>;
@@ -146,12 +145,7 @@ const isGlobalStartReady = (result: GlobalStartResult): boolean =>
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
 
 export const renderGlobalStartResult = (result: GlobalStartResult): string => {
-  const services = result.servicesStarted
-    .map((service) => {
-      const endpoints = service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", ");
-      return `${service.name} (${service.state}) ${endpoints}`;
-    })
-    .join("; ");
+  const services = result.servicesStarted.map(renderGlobalServiceRow).join("; ");
   const prefix = isGlobalStartReady(result) ? "ready" : "starting";
   return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
 };

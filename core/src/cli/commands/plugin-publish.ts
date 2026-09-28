@@ -4,16 +4,16 @@ import { join, resolve } from "node:path";
 import { Data, Effect, Schema } from "effect";
 
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
-import { EventService } from "@lando/sdk/services";
 
 import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import { makeLandoPaths } from "@lando/paths";
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
+import { publishOptionalEvent } from "./optional-event-publish";
 import { pluginBuild } from "./plugin-build";
 import { type PluginBuildMixedTreeError, listOutputs, outputDirectoryExists } from "./plugin-build-files";
 import { type PackageJson, entriesFromExports, readPackageJson } from "./plugin-build-package";
-import { findNearestPluginPackageRoot } from "./plugin-package-root";
+import { resolvePluginPackageRoot } from "./plugin-package-root";
 import { pluginTest } from "./plugin-test";
 
 const DEFAULT_PLUGIN_REGISTRY = "https://registry.npmjs.org/";
@@ -82,13 +82,6 @@ type PluginPublishError =
   | PluginBuildMixedTreeError
   | PluginPublishValidationError
   | PluginPublishAuthError;
-
-const publishPluginPublishEvent = (event: Readonly<Record<string, unknown>>) =>
-  Effect.serviceOption(EventService).pipe(
-    Effect.flatMap((events) =>
-      events._tag === "Some" ? events.value.publish(event as never).pipe(Effect.ignore) : Effect.void,
-    ),
-  );
 
 const fileMtime = async (path: string): Promise<number | undefined> =>
   stat(path).then(
@@ -163,20 +156,10 @@ export const pluginPublish = (
   options: PluginPublishOptions = {},
 ): Effect.Effect<PluginPublishResult, PluginPublishError> =>
   Effect.gen(function* () {
-    const cwd = options.cwd ?? process.cwd();
     const dryRun = options.dryRun === true;
     const tag = options.tag ?? "latest";
 
-    const pluginRoot = yield* Effect.tryPromise({
-      try: () => findNearestPluginPackageRoot(cwd, "meta:plugin:publish"),
-      catch: (cause) =>
-        cause instanceof PluginManifestError
-          ? cause
-          : new PluginManifestError({
-              message: `Unable to locate plugin root from ${resolve(cwd)}.`,
-              issues: [String(cause)],
-            }),
-    });
+    const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:publish");
     const { manifest } = yield* Effect.tryPromise({
       try: () => validatePluginManifest(pluginRoot),
       catch: (cause) =>
@@ -213,7 +196,7 @@ export const pluginPublish = (
     };
 
     const registry = options.registry ?? publishConfigRegistry(pkg) ?? DEFAULT_PLUGIN_REGISTRY;
-    yield* publishPluginPublishEvent({
+    yield* publishOptionalEvent({
       _tag: "cli-meta:plugin:publish-start",
       pluginName: manifest.name,
       pluginRoot,
@@ -224,7 +207,7 @@ export const pluginPublish = (
     });
 
     const publishCompleteEvent = (published: boolean, exitCode: number) =>
-      publishPluginPublishEvent({
+      publishOptionalEvent({
         _tag: "cli-meta:plugin:publish-complete",
         pluginName: manifest.name,
         pluginRoot,
