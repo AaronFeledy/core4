@@ -17,7 +17,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
-import { missingApi } from "../engine-errors.ts";
+import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
 
 const textDecoder = new TextDecoder();
@@ -115,22 +115,6 @@ const request = (
 const stream = (session: ExecSession, input: EngineHttpRequest): Stream.Stream<Uint8Array, ExecError> =>
   session.api.stream === undefined ? Stream.fail(apiRequired(session.ctx)) : session.api.stream(input);
 
-const parseJson = (
-  ctx: ProviderErrorContext,
-  response: EngineHttpResponse,
-  operation: string,
-): Effect.Effect<unknown, ProviderInternalError> =>
-  Effect.try({
-    try: () => (response.body.length === 0 ? {} : JSON.parse(response.body)),
-    catch: (cause) =>
-      new ProviderInternalError({
-        providerId: ctx.providerId,
-        operation,
-        message: `provider-${ctx.providerId} API returned invalid JSON.`,
-        cause,
-      }),
-  });
-
 const createExec = (
   session: ExecSession,
   plan: AppPlan,
@@ -165,7 +149,7 @@ const createExec = (
       );
     }
 
-    const decoded = (yield* parseJson(session.ctx, response, "exec.create")) as ExecCreateResponse;
+    const decoded = (yield* parseEngineJson(response, session.ctx, "exec.create")) as ExecCreateResponse;
     const execId = decoded.Id;
     if (typeof execId !== "string" || execId.length === 0) {
       yield* Effect.fail(
@@ -198,7 +182,7 @@ const inspectExecState = (
       );
     }
 
-    const decoded = (yield* parseJson(session.ctx, response, "exec.inspect")) as ExecInspectResponse;
+    const decoded = (yield* parseEngineJson(response, session.ctx, "exec.inspect")) as ExecInspectResponse;
     if (decoded.Running === true) return undefined;
     const exitCode = decoded.ExitCode;
     if (typeof exitCode !== "number") {

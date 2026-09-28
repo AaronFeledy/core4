@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
+import { Effect } from "effect";
+
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
-import { engineApiFailure, missingApi, transportFailure } from "../src/engine-errors.ts";
+import { engineApiFailure, missingApi, parseEngineJson, transportFailure } from "../src/engine-errors.ts";
 import { ContainerTransportError } from "../src/transport.ts";
 
 const ctx = { providerId: "test-provider", remediation: "Run the provider doctor." } as const;
@@ -87,5 +89,24 @@ describe("container engine error mapping", () => {
     expect(error.message).toBe("Provider API stream client is missing.");
     expect(error.providerId).toBe(ctx.providerId);
     expect(error.remediation).toBe(ctx.remediation);
+  });
+
+  test("parses an empty engine body as an empty object", () => {
+    const result = Effect.runSync(parseEngineJson({ status: 204, body: "" }, ctx, "inspect"));
+    expect(result).toEqual({});
+  });
+
+  test("passes valid engine JSON through", () => {
+    const result = Effect.runSync(parseEngineJson({ status: 200, body: '{"ok":true}' }, ctx, "inspect"));
+    expect(result).toEqual({ ok: true });
+  });
+
+  test("fails invalid engine JSON as ProviderInternalError", () => {
+    const error = Effect.runSync(
+      parseEngineJson({ status: 200, body: "{" }, ctx, "inspect").pipe(Effect.flip),
+    );
+    expect(error).toBeInstanceOf(ProviderInternalError);
+    expect(error.operation).toBe("inspect");
+    expect(error.providerId).toBe(ctx.providerId);
   });
 });

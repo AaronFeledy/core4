@@ -24,6 +24,7 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
+import { parseEngineJson } from "../engine-errors.ts";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
@@ -221,24 +222,6 @@ const request = (
 ): Effect.Effect<EngineHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
   deps.api.request === undefined ? Effect.fail(missingApi(deps.options.ctx)) : deps.api.request(input);
 
-const parseJson = (
-  deps: BringUpDeps,
-  response: EngineHttpResponse,
-  operation: string,
-): Effect.Effect<unknown, ProviderInternalError> =>
-  Effect.try({
-    try: () => (response.body.length === 0 ? {} : (JSON.parse(response.body) as unknown)),
-    catch: (cause) =>
-      new ProviderInternalError({
-        providerId: deps.options.ctx.providerId,
-        operation,
-        message: `provider-${deps.options.ctx.providerId} API returned malformed JSON.`,
-        details: redactDetails({ status: response.status, body: response.body }),
-        remediation: APPLY_REMEDIATION,
-        cause,
-      }),
-  });
-
 const inspectContainer = (
   deps: BringUpDeps,
   name: string,
@@ -274,7 +257,7 @@ const inspectContainer = (
         }),
       );
     }
-    const body = yield* parseJson(deps, response, "bringUp.inspect");
+    const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect");
     if (typeof body !== "object" || body === null || !("State" in body)) {
       return {
         exists: true,
