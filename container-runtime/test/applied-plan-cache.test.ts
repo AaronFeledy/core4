@@ -144,6 +144,31 @@ describe("applied plan cache", () => {
     expect(loads).toBe(2);
   });
 
+  test("keeps the cached plan when state removal fails", async () => {
+    const cache = makeAppliedPlanCache({
+      providerId: ProviderId.make("podman"),
+      providerName: "provider-podman",
+      appliedPlanState: stateStore(false),
+      load: () => Effect.succeed(undefined),
+      persist: () => Effect.void,
+      remove: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "podman",
+            operation: "applied-state.remove",
+            message: "Removal failed.",
+          }),
+        ),
+    });
+
+    await Effect.runPromise(cache.rememberPlan(appPlan("sticky", ["web"]), true));
+    const failure = await Effect.runPromise(cache.forgetPlan(appId).pipe(Effect.flip));
+    const stillCached = await Effect.runPromise(cache.resolvePlan(appId));
+
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(stillCached?.name).toBe("sticky");
+  });
+
   test("keeps plans in memory when no state store is configured", async () => {
     let loads = 0;
     let persists = 0;

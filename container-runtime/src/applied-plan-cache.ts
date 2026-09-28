@@ -66,10 +66,12 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
     );
   };
 
-  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
-    plans.delete(appId);
-    return state === undefined ? Effect.void : options.remove(state, appId);
-  };
+  // The cached plan is dropped only once state removal succeeds, so a failed
+  // removal leaves the cache consistent with what is still on disk.
+  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> =>
+    (state === undefined ? Effect.void : options.remove(state, appId)).pipe(
+      Effect.tap(() => Effect.sync(() => plans.delete(appId))),
+    );
 
   return { plans, resolvePlan, rememberPlan, forgetPlan };
 };
