@@ -212,7 +212,7 @@ const HEADLESS_NOTE = "No display server detected; printing the URL instead of o
 
 const openAppRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-const openNow = () => DateTime.unsafeMake(new Date().toISOString());
+const openNow = () => DateTime.unsafeNow();
 
 export const openForPlan = (
   plan: AppPlan,

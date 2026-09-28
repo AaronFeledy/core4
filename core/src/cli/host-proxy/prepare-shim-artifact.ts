@@ -1,6 +1,6 @@
 import { chmod, mkdir, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { Effect } from "effect";
+import { Effect, absurd } from "effect";
 
 import {
   HOST_PROXY_SHIM_ARTIFACT_ENV,
@@ -39,10 +39,6 @@ type PrepareMode =
 const CORE_PACKAGE_ROOT = new URL("../../../", import.meta.url).pathname;
 const DEFAULT_SOURCE_PATH = new URL("./shim-bin.ts", import.meta.url).pathname;
 const inflight = new Map<string, Promise<string>>();
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected prepare mode: ${JSON.stringify(value)}`);
-};
 
 const isNodeError = (cause: unknown): cause is NodeJS.ErrnoException =>
   cause instanceof Error && "code" in cause;
@@ -169,7 +165,7 @@ const runPrepare = async (input: PrepareHostProxyShimArtifactInput): Promise<str
       return pending;
     }
     default:
-      return assertNever(mode);
+      return absurd(mode);
   }
 };
 

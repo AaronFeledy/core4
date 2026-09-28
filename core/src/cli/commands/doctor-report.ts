@@ -124,7 +124,7 @@ const recordAuthoredMailhogUse = Effect.gen(function* () {
           kind: "service-type",
           id: "mailhog",
           notice: MAILHOG_DEPRECATION_NOTICE,
-          timestamp: DateTime.unsafeMake(new Date().toISOString()),
+          timestamp: DateTime.unsafeNow(),
         })
         .pipe(Effect.catchAll(() => Effect.void));
     }
