@@ -22,7 +22,7 @@ describe("API-4 service lowering", () => {
     const service = {
       api: 4,
       image: "curlimages/curl:8.10.1",
-      command: "sleep infinity",
+      command: ["sleep", "infinity"],
       "app-mount": false,
       certs: false,
     };
@@ -33,6 +33,29 @@ describe("API-4 service lowering", () => {
       patch: { type: "lando", image: service.image, command: service.command, appMount: false, certs: false },
       diagnostics: [],
     });
+  });
+  test.each([
+    ["--port 8080", ["--port", "8080"]],
+    ['sh -c "echo a b"', ["sh", "-c", "echo a b"]],
+    ["echo a && echo b", ["echo", "a", "&&", "echo", "b"]],
+    ['--"a b"=c \\x', ['--"a b"', "=c", "\\x"]],
+    ['"unfinished', ["unfinished"]],
+  ])("splits single-line %j into string-argv arguments", (value, argv) => {
+    // Given / When
+    const result = lowerApi4Service({ command: value, entrypoint: value }, ctx);
+    // Then
+    expect(result.patch.command).toEqual(argv);
+    expect(result.patch.entrypoint).toEqual(argv);
+    expect(paths(result, "rewritten")).toEqual([path("command"), path("entrypoint")]);
+  });
+  test("keeps a multi-line command as a script", () => {
+    // Given
+    const command = "set -e\nserve --port 8080\n";
+    // When
+    const result = lowerApi4Service({ command }, ctx);
+    // Then
+    expect(result.patch.command).toBe(command);
+    expect(result.diagnostics).toEqual([]);
   });
   test("blocks SSH forwarding when enabled", () => {
     const result = lowerApi4Service({ image: { ssh: true } }, ctx);

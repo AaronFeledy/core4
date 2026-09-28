@@ -12,6 +12,12 @@
     "justification": "Doctor subsystem checks add optional SSH-agent posture details. Their delivery field reuses AgentSocketDelivery, adding a local schema definition without changing existing required report fields. Reports without details remain valid; the reference-graph checker requires explicit review of the new definition."
   },
   {
+    "surface": "command:meta:doctor",
+    "changeKind": "enum-widened",
+    "path": "$.subsystems.checks.items.details.delivery",
+    "justification": "Doctor subsystem checks add the runtime-volume delivery literal for in-runtime/volume SSH sidecar delivery. Existing report fields remain valid; consumers that ignore unknown delivery values keep working."
+  },
+  {
     "surface": "schema:LandofileShape",
     "changeKind": "enum-changed",
     "path": "$.sshAgent.sidecar",
