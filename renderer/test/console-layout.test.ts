@@ -99,6 +99,11 @@ describe("truncateToWidth", () => {
   });
 });
 
+test("truncateToWidth reads line breaks on single-line surfaces as spaces", () => {
+  expect(truncateToWidth("APP\nINFO", 20)).toBe("APP INFO");
+  expect(truncateToWidth("one\r\ntwo three", 8)).toBe("one two…");
+});
+
 describe("wrapToWidth", () => {
   test("keeps a short line as one row", () => {
     expect(wrapToWidth("one two", 40)).toEqual(["one two"]);
@@ -113,6 +118,14 @@ describe("wrapToWidth", () => {
   test("hard-breaks a single token longer than the width", () => {
     const rows = wrapToWidth("/very/long/unbreakable/path/segment", 10);
     for (const row of rows) expect(displayWidth(row)).toBeLessThanOrEqual(10);
+  });
+
+  test("starts a new row at every embedded line break and drops blank rows", () => {
+    expect(wrapToWidth("one\ntwo", 40)).toEqual(["one", "two"]);
+    expect(wrapToWidth("a\r\nb\rc", 40)).toEqual(["a", "b", "c"]);
+    expect(wrapToWidth("a\n\n  \nb", 40)).toEqual(["a", "b"]);
+    expect(wrapToWidth("\n", 40)).toEqual([""]);
+    expect(wrapToWidth("alpha beta\ngamma", 6)).toEqual(["alpha", "beta", "gamma"]);
   });
 
   test("hard-breaks between grapheme clusters, never inside a flag or ZWJ sequence", () => {

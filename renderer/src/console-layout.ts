@@ -66,8 +66,16 @@ export const displayWidth = (text: string): number => Bun.stringWidth(stripAnsi(
 
 const ELLIPSIS = "…";
 
+const LINE_BREAKS = /\r\n|\r|\n/gu;
+
+/** True when `text` contains a hard line break that must start a new row. */
+export const hasLineBreak = (text: string): boolean => /[\r\n]/u.test(text);
+
 /** Truncate `text` to at most `max` columns, appending an ellipsis when clipped. */
-export const truncateToWidth = (text: string, max: number): string => {
+export const truncateToWidth = (input: string, max: number): string => {
+  // Truncation targets single-line surfaces (frame titles, footers); a line
+  // break there would escape the frame, so it reads as a space.
+  const text = input.replace(LINE_BREAKS, " ");
   if (displayWidth(text) <= max) return text;
   if (max <= 1) return ELLIPSIS;
   const budget = max - 1;
@@ -102,6 +110,16 @@ const hardBreakToken = (token: string, width: number): ReadonlyArray<string> => 
 
 /** Word-wrap `text` to `width` columns, hard-breaking tokens that cannot fit. */
 export const wrapToWidth = (text: string, width: number): ReadonlyArray<string> => {
+  if (!hasLineBreak(text)) return wrapLineToWidth(text, width);
+  // Each embedded line break starts a new physical row; blank rows are dropped
+  // so callers that indent every row never emit whitespace-only lines.
+  const lines = text
+    .split(LINE_BREAKS)
+    .flatMap((line) => (line.trim().length === 0 ? [] : wrapLineToWidth(line, width)));
+  return lines.length === 0 ? [""] : lines;
+};
+
+const wrapLineToWidth = (text: string, width: number): ReadonlyArray<string> => {
   const budget = Math.max(1, width);
   if (displayWidth(text) <= budget) return [text];
   const tokens = text.split(/\s+/).filter((token) => token.length > 0);
@@ -247,7 +265,7 @@ const wrapFieldValueToWidth = (value: string, width: number): ReadonlyArray<stri
 
 /** Each embedded line break in a field value starts a new physical row. */
 const wrapFieldValueLines = (value: string, width: number): ReadonlyArray<string> =>
-  value.split(/\r?\n/u).flatMap((part) => wrapFieldValueToWidth(part, width));
+  value.split(LINE_BREAKS).flatMap((part) => wrapFieldValueToWidth(part, width));
 
 /** Width of the ` : ` separator between a field label and its value. */
 const FIELD_SEPARATOR_WIDTH = 3;
@@ -286,7 +304,7 @@ export const wrapFieldToWidth = (
   labelWidth: number,
   width: number,
 ): ReadonlyArray<string> => {
-  if (displayWidth(label) > labelWidth) return stackFieldToWidth(label, value, width);
+  if (hasLineBreak(label) || displayWidth(label) > labelWidth) return stackFieldToWidth(label, value, width);
   const prefix = `${padEndToWidth(label, labelWidth)} : `;
   const prefixWidth = displayWidth(prefix);
   if (!/\s/u.test(value) && displayWidth(value) > width - prefixWidth && displayWidth(value) <= width) {

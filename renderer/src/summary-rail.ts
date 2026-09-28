@@ -14,6 +14,7 @@ import {
   cyanText,
   dimText,
   displayWidth,
+  hasLineBreak,
   hyperlink,
   paintCodeSpans,
   paintRail,
@@ -79,7 +80,7 @@ const pushRowHead = (lines: string[], row: SummaryRow, budget: number): void => 
   const head = `${glyph}${row.label}`;
   const value = row.value === undefined || row.value.length === 0 ? "" : `  ${row.value}`;
   const labelStyle = rowLabelStyle(row);
-  if (displayWidth(head) + displayWidth(value) <= budget) {
+  if (!hasLineBreak(`${head}${value}`) && displayWidth(head) + displayWidth(value) <= budget) {
     const paintedHead = labelStyle === undefined ? head : labelStyle(head);
     lines.push(railLine(`${paintedHead}${value.length === 0 ? "" : dimText(value)}`));
     return;
@@ -98,6 +99,14 @@ const packFields = (items: ReadonlyArray<string>, width: number): ReadonlyArray<
   const lines: string[] = [];
   let current = "";
   for (const item of items) {
+    if (hasLineBreak(item)) {
+      // A multi-line pair gets rows of its own; packing it would put a raw
+      // line break inside one rail row.
+      if (current.length > 0) lines.push(current);
+      lines.push(...wrapToWidth(item, width));
+      current = "";
+      continue;
+    }
     const candidate = current.length === 0 ? item : `${current}${FIELD_SEPARATOR}${item}`;
     if (displayWidth(candidate) <= width) {
       current = candidate;
