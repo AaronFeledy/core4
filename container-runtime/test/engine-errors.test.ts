@@ -101,6 +101,15 @@ describe("container engine error mapping", () => {
     expect(result).toEqual({ ok: true });
   });
 
+  test("lets a call site override the remediation on invalid engine JSON", () => {
+    const error = Effect.runSync(
+      parseEngineJson({ status: 200, body: "{" }, ctx, "inspect", { remediation: "Run lando destroy." }).pipe(
+        Effect.flip,
+      ),
+    );
+    expect(error.remediation).toBe("Run lando destroy.");
+  });
+
   test("fails invalid engine JSON as ProviderInternalError", () => {
     const error = Effect.runSync(
       parseEngineJson({ status: 200, body: "{" }, ctx, "inspect").pipe(Effect.flip),

@@ -259,6 +259,7 @@ const inspectContainer = (
     }
     const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
       details: redactDetails({ status: response.status, body: response.body }),
+      remediation: APPLY_REMEDIATION,
     });
     if (typeof body !== "object" || body === null || !("State" in body)) {
       return {

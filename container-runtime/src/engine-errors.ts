@@ -56,7 +56,7 @@ export const parseEngineJson = (
   response: EngineHttpResponse,
   ctx: ProviderErrorContext,
   operation: string,
-  options?: { readonly message?: string; readonly details?: unknown },
+  options?: { readonly message?: string; readonly details?: unknown; readonly remediation?: string },
 ): Effect.Effect<unknown, ProviderInternalError> =>
   Effect.try({
     try: (): unknown => (response.body.length === 0 ? {} : JSON.parse(response.body)),
@@ -66,7 +66,7 @@ export const parseEngineJson = (
         operation,
         message: options?.message ?? `provider-${ctx.providerId} API returned invalid JSON.`,
         ...(options?.details === undefined ? {} : { details: options.details }),
-        remediation: ctx.remediation,
+        remediation: options?.remediation ?? ctx.remediation,
         cause,
       }),
   });
