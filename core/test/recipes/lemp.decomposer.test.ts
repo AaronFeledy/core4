@@ -31,11 +31,18 @@ const authoring = {
     web: {
       type: "nginx",
       primary: false,
-      port: 80,
-      dependsOn: ["appserver"],
+      backend: "appserver",
+      webroot: "/app",
       routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
     },
-    appserver: { type: "php:{{ recipe.php }}", primary: true, framework: "none", dependsOn: ["database"] },
+    appserver: {
+      type: "php:{{ recipe.php }}",
+      primary: true,
+      framework: "none",
+      via: "fpm",
+      webroot: "/app",
+      dependsOn: ["database"],
+    },
     database: { type: "mariadb" },
   },
   tooling: {
@@ -53,6 +60,25 @@ const authoring = {
 } as const;
 
 describe("lemp decomposition", () => {
+  test.each(["8.3", "8.2"])("wires nginx to PHP-FPM without an HTTP route on PHP %s", (php) => {
+    // Given a supported PHP version.
+    const input = { ...validInput, options: { php } };
+    // When the LEMP services are decomposed.
+    const { fragment } = Effect.runSync(decomposer.decompose(input));
+    if (typeof fragment === "string") throw new TypeError("Expected an object fragment");
+    if (typeof fragment.services === "string") throw new TypeError("Expected object services");
+    // Then nginx serves the shared webroot through the primary PHP-FPM service.
+    expect(fragment.services?.web).toMatchObject({
+      type: "nginx",
+      primary: false,
+      backend: "appserver",
+      webroot: "/app",
+      routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
+    });
+    expect(fragment.services?.appserver).toMatchObject({ primary: true, via: "fpm", webroot: "/app" });
+    expect(fragment.services?.appserver).not.toHaveProperty("routes");
+  });
+
   test("satisfies the shared contract without provider, planner, or filesystem ports", async () => {
     // Given only the redactor port supplied by the contract harness.
     const harness = {
