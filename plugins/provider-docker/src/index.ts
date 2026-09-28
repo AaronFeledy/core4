@@ -34,7 +34,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
-import { mergeAppliedPlan } from "@lando/container-runtime/plan";
+import { mergeAppliedPlan, serviceContainerName } from "@lando/container-runtime/plan";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
@@ -155,8 +155,7 @@ export interface ResolveDockerHostOptions {
 export type EmitComposeOptions = Omit<RuntimeEmitComposeOptions, "ctx">;
 export type { EmitComposeResult };
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const unavailable = (
   operation: string,

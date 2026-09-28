@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { serviceContainerName } from "../plan.ts";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -65,8 +66,7 @@ export interface InspectOptions {
   readonly ctx: ProviderErrorContext;
 }
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const apiRequired = (ctx: ProviderErrorContext, operation: string): ProviderUnavailableError =>
   missingApi(ctx, operation, `provider-${ctx.providerId} ${operation} requires an engine API client.`);

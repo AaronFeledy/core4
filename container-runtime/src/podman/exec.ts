@@ -1,4 +1,5 @@
 import { Clock, Duration, Effect, Ref, type Scope, Stream } from "effect";
+import { serviceContainerName } from "../plan.ts";
 
 import {
   ProviderInternalError,
@@ -44,8 +45,7 @@ interface ExecSession {
   readonly user?: string;
 }
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const apiRequired = (ctx: ProviderErrorContext): ProviderUnavailableError =>
   missingApi(ctx, "exec", `provider-${ctx.providerId} exec requires an engine API client.`);

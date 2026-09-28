@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { APP_LABEL, STORAGE_SCOPE_LABEL, STORE_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
+import { serviceContainerName as namedServiceContainer } from "./plan.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
 import {
@@ -220,9 +221,7 @@ const serviceContainerName = (target: {
   readonly service: ServiceName;
   readonly plan?: AppPlan;
 }): string | undefined =>
-  target.plan === undefined
-    ? undefined
-    : `lando-${sanitize(target.plan.slug)}-${sanitize(String(target.service))}`;
+  target.plan === undefined ? undefined : namedServiceContainer(target.plan, String(target.service));
 const ephemeralContainerName = (providerId: string): string =>
   `lando-${sanitize(providerId)}-data-${randomUUID()}`;
 

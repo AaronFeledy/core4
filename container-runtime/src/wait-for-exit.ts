@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { serviceContainerName } from "./plan.ts";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -17,7 +18,7 @@ export interface WaitForExitOptions {
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+  serviceContainerName(plan, service.name);
 
 const parseJson = (
   response: EngineHttpResponse,

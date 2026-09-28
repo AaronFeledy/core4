@@ -1,3 +1,4 @@
+import { serviceContainerName } from "@lando/container-runtime/plan";
 import { Effect, Stream } from "effect";
 
 import { ServiceExecError } from "@lando/sdk/errors";
@@ -9,7 +10,7 @@ import type { Context } from "effect";
 type Runner = Context.Tag.Service<typeof ProcessRunner>;
 
 const containerName = (plan: AppPlan, target: ExecTarget): string =>
-  `lando-${plan.slug}-${target.service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+  serviceContainerName(plan, target.service);
 
 export const windowsStdinExecArgs = (
   plan: AppPlan,

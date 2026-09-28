@@ -19,7 +19,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
-import { mergeAppliedPlan } from "@lando/container-runtime/plan";
+import { mergeAppliedPlan, serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import {
   type BringDownOptions,
@@ -1424,10 +1424,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                               : makeDockerLogFileAccess({
                                   providerId: LANDO_CTX.providerId,
                                   api: podmanApi,
-                                  container: `lando-${plan.slug}-${target.service}`.replace(
-                                    /[^a-zA-Z0-9_.-]/gu,
-                                    "-",
-                                  ),
+                                  container: serviceContainerName(plan, target.service),
                                   helperPayload: logFileHelperPayload,
                                 }));
                           return logFileAccess === undefined ? {} : { logFileAccess };

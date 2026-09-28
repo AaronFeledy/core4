@@ -30,6 +30,7 @@ import {
   containerHostConfigFragment,
   fingerprintInspectPublishPorts,
   fingerprintPlannedPublishPorts,
+  serviceContainerName,
 } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
@@ -176,8 +177,7 @@ const appRef = (plan: AppPlan): AppRef => ({
   root: plan.root,
 });
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 

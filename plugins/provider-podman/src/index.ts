@@ -30,7 +30,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
-import { mergeAppliedPlan } from "@lando/container-runtime/plan";
+import { mergeAppliedPlan, serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
@@ -859,10 +859,7 @@ const assembleRuntimeProvider = (
                             : makeDockerLogFileAccess({
                                 providerId: PROVIDER_ID,
                                 api: podmanApi,
-                                container: `lando-${plan.slug}-${target.service}`.replace(
-                                  /[^a-zA-Z0-9_.-]/gu,
-                                  "-",
-                                ),
+                                container: serviceContainerName(plan, target.service),
                                 helperPayload: logFileHelperPayload,
                               }));
                         return logFileAccess === undefined ? {} : { logFileAccess };

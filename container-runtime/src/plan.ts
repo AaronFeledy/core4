@@ -27,6 +27,10 @@ export const mergeAppliedPlan = (
     ? incoming
     : { ...incoming, services: { ...previous.services, ...incoming.services } };
 
+/** Container name shared by every provider. `-` is in the allowed class, so sanitizing the joined name matches sanitizing slug and service separately. */
+export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: string): string =>
+  `lando-${plan.slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
 export class ContainerPlanError extends Error {
   readonly _tag = "ContainerPlanError";
   readonly details?: unknown;
