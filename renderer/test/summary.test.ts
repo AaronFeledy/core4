@@ -4,6 +4,7 @@ import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import {
   type SummaryDocument,
   formatQuietSummary,
+  formatRailSummary,
   formatSummary,
   redactSummaryDocument,
 } from "@lando/renderer/summary";
@@ -320,7 +321,7 @@ test("aligns field separators across rows in both summary layouts", () => {
   }
 });
 
-test("aligns separators and retains long field values when they wrap", () => {
+const wrappingFieldsDoc = (() => {
   const url = "http://127.0.0.1:49281/very/long/appserver/debug/endpoint";
   const logFile = "C:\\Program Files\\Lando\\logs\\my app server.log";
   const doc: SummaryDocument = {
@@ -335,18 +336,36 @@ test("aligns separators and retains long field values when they wrap", () => {
       },
     ],
   };
+  return { doc, url, logFile };
+})();
 
-  for (const columns of [44, 24]) {
-    for (const render of [formatSummary, formatQuietSummary]) {
-      const visible = stripAnsi(render(doc, { columns }));
-      const lines = visible.split("\n");
-      const separators = lines.filter((line) => line.includes(" : "));
-      expect(separators).toHaveLength(2);
-      expect(separators[0]?.indexOf(" : ")).toBe(separators[1]?.indexOf(" : "));
-      expect(lines.every((line) => displayWidth(line) <= columns)).toBe(true);
-      const compact = visible.replace(/[│\s]/gu, "");
-      expect(compact).toContain(url);
-    }
+test("aligns separators and retains long field values when they wrap", () => {
+  const { doc, url } = wrappingFieldsDoc;
+  for (const render of [formatSummary, formatQuietSummary]) {
+    const visible = stripAnsi(render(doc, { columns: 44 }));
+    const lines = visible.split("\n");
+    const separators = lines.filter((line) => line.includes(" : "));
+    expect(separators).toHaveLength(2);
+    expect(separators[0]?.indexOf(" : ")).toBe(separators[1]?.indexOf(" : "));
+    expect(lines.every((line) => displayWidth(line) <= 44)).toBe(true);
+    const compact = visible.replace(/[│\s]/gu, "");
+    expect(compact).toContain(url);
+  }
+});
+
+test("stacks a label over its value when aligning it would leave under eight value columns", () => {
+  // Given a 24-column terminal: `url` keeps its aligned column, while `rootPassword`
+  // would leave its value 3 columns, so it stays whole on a `label :` line above the value.
+  const { doc, url, logFile } = wrappingFieldsDoc;
+  for (const render of [formatSummary, formatQuietSummary]) {
+    const visible = stripAnsi(render(doc, { columns: 24 }));
+    const lines = visible.split("\n");
+    expect(lines.some((line) => /^│?\s+url : http/u.test(line))).toBe(true);
+    expect(lines.some((line) => /^│?\s+rootPassword :\s*│?$/u.test(line))).toBe(true);
+    expect(lines.every((line) => displayWidth(line) <= 24)).toBe(true);
+    const compact = visible.replace(/[│\s]/gu, "");
+    expect(compact).toContain(url);
+    expect(compact).toContain(logFile.replace(/\s/gu, ""));
   }
 });
 
@@ -411,6 +430,177 @@ test("keeps short field values beside their labels at narrow terminal widths", (
   expect(quiet.split("\n").some((line) => /host\s+: x/u.test(line))).toBe(true);
   expect(boxed.split("\n").some((line) => /^│\s+│$/u.test(line))).toBe(false);
   expect(quiet.split("\n").some((line) => line.length > 0 && line.trim().length === 0)).toBe(false);
+});
+
+const narrowDoc: SummaryDocument = {
+  title: "DOCTOR REPORT",
+  tone: "warn",
+  subtitle: "Lando 4.0.0 · provider lando (managed)",
+  sections: [
+    {
+      title: "provider",
+      tone: "warn",
+      rows: [
+        {
+          label: "selected-provider",
+          tone: "ok",
+          value: "lando",
+          detail: "Lando-managed Podman is selected.",
+        },
+        {
+          label: "preferred-host-ports",
+          tone: "warn",
+          value: "80,443 busy",
+          fields: [
+            { label: "host", value: "localhost" },
+            { label: "ports", value: "80,443" },
+          ],
+          remedy: "Stop the process holding the port, or change router.httpPort so Lando uses free ports.",
+        },
+        {
+          label: "runtime",
+          tone: "error",
+          fields: [
+            { label: "detail", value: "podman machine failed to start cleanly\nERROR: disk full" },
+            { label: "a-very-long-field-label", value: "https://myapp.lndo.site" },
+          ],
+          remedy: "Run `lando setup` again.",
+        },
+        {
+          label: "docs",
+          tone: "info",
+          value: "https://docs.lando.dev/doctor",
+          href: "https://docs.lando.dev/doctor",
+        },
+        { label: "mutagen", tone: "pending", value: "starting" },
+        { label: "ca-trust", tone: "skipped", value: "not requested", muted: true },
+      ],
+      notes: ["Run `lando doctor --format=json` for machine-readable output."],
+    },
+  ],
+  nextSteps: ["lando restart", "lando doctor --fix"],
+  footer: "6 checks · 1 failed · 1 warning",
+};
+
+/** Body content with whitespace and frame glyphs removed, so wrapped text reads contiguously. */
+const compactBody = (text: string): string => text.replace(/[\s│╭╮╰╯├┤─↳]/gu, "");
+
+test("keeps every field, row, and remedy readable from 10 to 40 columns in all three layouts", () => {
+  const expected = [
+    ...narrowDoc.sections.flatMap((section) => [
+      ...(section.notes ?? []),
+      ...section.rows.flatMap((row) => [
+        row.label,
+        row.value,
+        row.detail,
+        row.remedy,
+        ...(row.fields ?? []).flatMap((field) => [field.label, field.value]),
+      ]),
+    ]),
+    ...(narrowDoc.nextSteps ?? []),
+  ]
+    .filter((text): text is string => text !== undefined)
+    .map(compactBody);
+
+  for (let width = 10; width <= 40; width += 1) {
+    for (const render of [formatSummary, formatQuietSummary, formatRailSummary]) {
+      const visible = stripAnsi(render(narrowDoc, { columns: width }));
+      const lines = visible.split("\n");
+      for (const line of lines) {
+        expect(displayWidth(line), `${render.name} @ ${width} overflowed: ${line}`).toBeLessThanOrEqual(
+          width,
+        );
+      }
+      // Frame caps (`╭ ├ ╰`) truncate titles by design; body lines never lose content to an ellipsis.
+      const body = lines.filter((line) => !/^[╭├╰]/u.test(line)).join("\n");
+      expect(body, `${render.name} @ ${width} truncated a body line`).not.toContain("…");
+      const compact = compactBody(body);
+      for (const text of expected) {
+        expect(compact, `${render.name} @ ${width} lost ${JSON.stringify(text)}`).toContain(text);
+      }
+    }
+  }
+});
+
+test("keeps text with embedded line breaks inside the frame in all three layouts", () => {
+  const doc: SummaryDocument = {
+    title: "APP\nINFO",
+    subtitle: "sub one\nsub two",
+    sections: [
+      {
+        title: "services\nand more",
+        rows: [
+          {
+            label: "web\nserver",
+            tone: "ok",
+            value: "running\r\nhealthy",
+            detail: "detail one\ndetail two",
+            remedy: "run lando\rrebuild",
+            fields: [
+              { label: "urls", value: "http://a.lndo.site\nhttp://b.lndo.site" },
+              { label: "ports", value: "80" },
+              { label: "multi\nlabel", value: "x" },
+            ],
+          },
+        ],
+        notes: ["note one\nnote two"],
+      },
+    ],
+    nextSteps: ["lando start\nlando info"],
+    footer: "footer one\nfooter two",
+  };
+  const bodyTexts = [
+    "web",
+    "server",
+    "running",
+    "healthy",
+    "detail one",
+    "detail two",
+    "run lando",
+    "rebuild",
+    "http://a.lndo.site",
+    "http://b.lndo.site",
+    "note one",
+    "note two",
+    "lando start",
+    "lando info",
+  ].map(compactBody);
+  const framed: ReadonlyArray<
+    readonly [string, (doc: SummaryDocument, options: { columns: number }) => string, RegExp]
+  > = [
+    ["box", formatSummary, /^[╭├│╰]/u],
+    ["rail", formatRailSummary, /^(?:[╭├╰]─|│| {3}\S)/u],
+  ];
+  for (const width of [10, 24, 80]) {
+    for (const [name, render, edge] of framed) {
+      const lines = stripAnsi(render(doc, { columns: width })).split("\n");
+      for (const line of lines) {
+        expect(line, `${name} @ ${width} escaped the frame`).toMatch(edge);
+        expect(displayWidth(line), `${name} @ ${width} overflowed: ${line}`).toBeLessThanOrEqual(width);
+      }
+    }
+    const quiet = stripAnsi(formatQuietSummary(doc, { columns: width })).split("\n");
+    for (const line of quiet) {
+      expect(displayWidth(line), `quiet @ ${width} overflowed: ${line}`).toBeLessThanOrEqual(width);
+      expect(line.length === 0 || line.trim().length > 0, `quiet @ ${width} blank-padded row`).toBe(true);
+    }
+    for (const render of [formatSummary, formatQuietSummary, formatRailSummary]) {
+      const compact = compactBody(stripAnsi(render(doc, { columns: width })));
+      for (const text of bodyTexts) {
+        expect(compact, `${render.name} @ ${width} lost ${JSON.stringify(text)}`).toContain(text);
+      }
+    }
+  }
+});
+
+test("reads a zero, negative, or non-finite column count as an unknown terminal width", () => {
+  for (const render of [formatSummary, formatQuietSummary, formatRailSummary]) {
+    const unknown = render(sampleDoc, {});
+    for (const columns of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(render(sampleDoc, { columns }), `${render.name} @ ${columns}`).toBe(unknown);
+    }
+  }
+  expect(displayWidth(linesOf(formatSummary(sampleDoc, { columns: 0 }))[0] ?? "")).toBe(80);
 });
 
 test("keeps multiline field values inside the frame", () => {

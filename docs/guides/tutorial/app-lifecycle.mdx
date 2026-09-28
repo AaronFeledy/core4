@@ -88,6 +88,8 @@ Tooling aliases declared under `tooling:` run inside their target service.
 
 ## Restart and rebuild
 
+`lando rebuild` and `lando destroy` ask for confirmation first. Pass `-y` to skip the prompt in scripts.
+
 `restart` cycles the running processes; `rebuild` recreates the containers.
 Reach for `rebuild` when configuration changed, `restart` when only the
 running process needs cycling:

@@ -14,19 +14,19 @@ import {
   cyanText,
   dimText,
   displayWidth,
+  hasLineBreak,
   hyperlink,
   paintCodeSpans,
   paintRail,
   paintTone,
   paintToneBold,
+  resolveSummaryWidth,
   toneGlyph,
   truncateToWidth,
   wrapToWidth,
 } from "./console-layout.ts";
 import type { SummaryDocument, SummaryRow, SummarySection } from "./summary.ts";
 
-const MIN_SUMMARY_WIDTH = 24;
-const DEFAULT_SUMMARY_WIDTH = 80;
 /** `│ ` before every body line. */
 const RAIL_WIDTH = 2;
 /** Details sit under the row label, past its `! ` glyph. */
@@ -34,9 +34,6 @@ const DETAIL_INDENT = 2;
 const FIELD_SEPARATOR = " · ";
 
 type Style = (segment: string) => string;
-
-const resolveWidth = (columns: number | undefined): number =>
-  Math.max(MIN_SUMMARY_WIDTH, columns ?? DEFAULT_SUMMARY_WIDTH);
 
 const railLine = (content = ""): string =>
   content.length === 0 ? paintRail("│") : `${paintRail("│")} ${content}`;
@@ -83,7 +80,7 @@ const pushRowHead = (lines: string[], row: SummaryRow, budget: number): void => 
   const head = `${glyph}${row.label}`;
   const value = row.value === undefined || row.value.length === 0 ? "" : `  ${row.value}`;
   const labelStyle = rowLabelStyle(row);
-  if (displayWidth(head) + displayWidth(value) <= budget) {
+  if (!hasLineBreak(`${head}${value}`) && displayWidth(head) + displayWidth(value) <= budget) {
     const paintedHead = labelStyle === undefined ? head : labelStyle(head);
     lines.push(railLine(`${paintedHead}${value.length === 0 ? "" : dimText(value)}`));
     return;
@@ -102,6 +99,14 @@ const packFields = (items: ReadonlyArray<string>, width: number): ReadonlyArray<
   const lines: string[] = [];
   let current = "";
   for (const item of items) {
+    if (hasLineBreak(item)) {
+      // A multi-line pair gets rows of its own; packing it would put a raw
+      // line break inside one rail row.
+      if (current.length > 0) lines.push(current);
+      lines.push(...wrapToWidth(item, width));
+      current = "";
+      continue;
+    }
     const candidate = current.length === 0 ? item : `${current}${FIELD_SEPARATOR}${item}`;
     if (displayWidth(candidate) <= width) {
       current = candidate;
@@ -151,7 +156,7 @@ const pushSection = (lines: string[], section: SummarySection, budget: number): 
 };
 
 export const formatPreparedRailSummary = (doc: SummaryDocument, columns?: number | undefined): string => {
-  const width = resolveWidth(columns);
+  const width = resolveSummaryWidth(columns);
   const budget = width - RAIL_WIDTH;
   const lines: string[] = [];
 

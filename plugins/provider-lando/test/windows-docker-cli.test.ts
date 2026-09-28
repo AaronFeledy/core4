@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 import { Effect, Either } from "effect";
 
+import { ProviderUnavailableError } from "@lando/sdk/errors";
+
 import { prepareWindowsDockerCli } from "../src/windows-docker-cli.ts";
 
 const directories: string[] = [];
@@ -76,6 +78,45 @@ describe("prepareWindowsDockerCli", () => {
     expect(await readFile(alias, "utf8")).toBe("owned-podman-binary");
   });
 
+  test("repairs a corrupted regular alias only when setup requests repair", async () => {
+    const binDir = await fixture();
+    const alias = await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32"));
+    await writeFile(alias, "untrusted");
+
+    expect(await Effect.runPromise(prepareWindowsDockerCli(binDir, "win32", { repairExisting: true }))).toBe(
+      alias,
+    );
+    expect(await readFile(alias, "utf8")).toBe("owned-podman-binary");
+  });
+
+  test.each([true, false])(
+    "reports actionable alias failure remediation with repairExisting=%s",
+    async (repairExisting) => {
+      // Given an alias path that cannot safely be replaced.
+      const binDir = await fixture();
+      const compatibilityDir = join(binDir, "docker-compat");
+      await mkdir(join(compatibilityDir, "docker.exe"), { recursive: true });
+
+      // When setup or file sync prepares the alias.
+      const failure = await Effect.runPromise(
+        Effect.flip(prepareWindowsDockerCli(binDir, "win32", { repairExisting })),
+      );
+
+      // Then setup identifies the owned path to remove; file sync still directs users to setup.
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure.operation).toBe(repairExisting ? "setup" : "prepareFileSyncTransport");
+      if (repairExisting) {
+        expect(failure.remediation).toContain(compatibilityDir);
+        expect(failure.remediation).toMatch(/delete|remove/i);
+        expect(failure.remediation).toContain("lando setup");
+      } else {
+        expect(failure.remediation).toBe(
+          "Run `lando setup` to restore the managed runtime before retrying file sync.",
+        );
+      }
+    },
+  );
+
   test("rejects redirected source, alias, and alias directory", async () => {
     const sourceDir = await fixture();
     await rm(join(sourceDir, "podman.exe"));
@@ -90,6 +131,13 @@ describe("prepareWindowsDockerCli", () => {
     await symlink(join(aliasDir, "podman.exe"), alias);
     expect(
       Either.isLeft(await Effect.runPromise(Effect.either(prepareWindowsDockerCli(aliasDir, "win32")))),
+    ).toBe(true);
+    expect(
+      Either.isLeft(
+        await Effect.runPromise(
+          Effect.either(prepareWindowsDockerCli(aliasDir, "win32", { repairExisting: true })),
+        ),
+      ),
     ).toBe(true);
 
     const redirectedDir = await fixture();

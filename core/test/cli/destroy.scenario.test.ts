@@ -368,7 +368,7 @@ describe("lando destroy", () => {
 
     // When
     try {
-      await runDestroy([], { runtime: harness.commandLayer, io });
+      await runDestroy(["-y"], { runtime: harness.commandLayer, io });
     } finally {
       setActiveRendererMode("lando");
     }
@@ -387,7 +387,7 @@ describe("lando destroy", () => {
 
     // When
     try {
-      await runDestroy([], { runtime: harness.commandLayer, io });
+      await runDestroy(["-y"], { runtime: harness.commandLayer, io });
     } finally {
       setActiveRendererMode("lando");
     }
@@ -414,7 +414,7 @@ describe("lando destroy", () => {
 
     // When
     try {
-      await runDestroy([], { runtime: harness.commandLayer, io });
+      await runDestroy(["--yes"], { runtime: harness.commandLayer, io });
     } finally {
       setActiveRendererMode("lando");
       setActiveResultFormat("text");
@@ -643,7 +643,7 @@ describe("lando destroy", () => {
 
   test("compiled CLI accepts lando destroy --volumes before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["destroy", "--volumes"], dir);
+      const result = await runCli(["destroy", "--volumes", "-y"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
@@ -653,7 +653,7 @@ describe("lando destroy", () => {
 
   test("compiled CLI accepts lando destroy --purge before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["destroy", "--purge"], dir);
+      const result = await runCli(["destroy", "--purge", "-y"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
@@ -663,7 +663,7 @@ describe("lando destroy", () => {
 
   test("compiled CLI accepts lando destroy --purge-caches before missing Landofile resolution", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["destroy", "--purge-caches"], dir);
+      const result = await runCli(["destroy", "--purge-caches", "-y"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
@@ -673,7 +673,7 @@ describe("lando destroy", () => {
 
   test("preserves the missing Landofile error outside an app directory", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["destroy"], dir);
+      const result = await runCli(["destroy", "-y"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");

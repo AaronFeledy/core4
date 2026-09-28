@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
+import { publishedEndpointsFromInspect } from "@lando/container-runtime/podman/inspect";
 import {
   GlobalAppError,
   GlobalDestroyConfirmationError,
@@ -250,9 +251,10 @@ const makeHarness = async (
         providerId,
         status: "running",
         state: "running",
-        endpoints: [
-          { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
-        ],
+        endpoints: publishedEndpointsFromInspect(
+          { NetworkSettings: { Ports: { "443/tcp": [{ HostIp: "127.0.0.1", HostPort: "8443" }] } } },
+          [{ _tag: "published", protocol: "https", port: 443, name: "websecure", publication: {} }],
+        ),
       });
     },
   };
@@ -666,6 +668,7 @@ describe("meta:global command effects", () => {
       expect(harness.calls.inspect.map((call) => String(call.target.service))).toEqual(["mail"]);
       expect(result.materialized).toBe(true);
       expect(result.services.map((service) => service.service)).toEqual(["mail"]);
+      expect(result.services.flatMap((service) => service.endpoints)).toEqual(["https://localhost:8443"]);
     });
   });
 

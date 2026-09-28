@@ -133,6 +133,7 @@ export const makeHarness = (
       plan: AppPlan,
     ) => ReadonlyArray<import("@lando/sdk/schema").PreparedFileSyncTarget>;
     readonly fileSyncRollbackEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly providerHasFileSyncRollback?: boolean;
     readonly onBuildApp?: (plan: AppPlan) => void;
     readonly onFileSyncRollback?: () => void;
     readonly onPublish?: (event: LandoEvent) => Effect.Effect<void, EventError>;
@@ -198,9 +199,13 @@ export const makeHarness = (
                         session.target._tag === "volume" ? session.target.name : "unsupported-target",
                     },
                   })),
-                rollback: Effect.sync(() => {
-                  options.onFileSyncRollback?.();
-                }).pipe(Effect.zipRight(options.fileSyncRollbackEffect ?? Effect.void)),
+                ...(options.providerHasFileSyncRollback === false
+                  ? {}
+                  : {
+                      rollback: Effect.sync(() => {
+                        options.onFileSyncRollback?.();
+                      }).pipe(Effect.zipRight(options.fileSyncRollbackEffect ?? Effect.void)),
+                    }),
               };
             }),
         }),

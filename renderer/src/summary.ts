@@ -16,9 +16,10 @@ import {
   boxSeparator,
   boxTop,
   dimText,
-  displayWidth,
+  fieldLabelWidth,
   hyperlink,
   paintTone,
+  resolveSummaryWidth,
   styleBoxBottom,
   styleBoxFooter,
   styleBoxSeparator,
@@ -115,12 +116,6 @@ export const redactSummaryDocument = (
   ...(doc.footer === undefined ? {} : { footer: redact(doc.footer) }),
 });
 
-const MIN_SUMMARY_WIDTH = 24;
-const DEFAULT_SUMMARY_WIDTH = 80;
-
-const resolveWidth = (columns: number | undefined): number =>
-  Math.max(MIN_SUMMARY_WIDTH, columns ?? DEFAULT_SUMMARY_WIDTH);
-
 const headerTitle = (doc: SummaryDocument): string => {
   const chip = doc.tone === undefined ? "" : ` ${toneChip(doc.tone)}`;
   const subtitle = doc.subtitle === undefined ? "" : `  ${doc.subtitle}`;
@@ -150,7 +145,7 @@ const composeRowStyle = (row: SummaryRow): ((line: string) => string) | undefine
 
 export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
   const prepared = options.redact === undefined ? doc : redactSummaryDocument(doc, options.redact);
-  const width = resolveWidth(options.columns);
+  const width = resolveSummaryWidth(options.columns);
   const innerWidth = width - 4;
   const lines: string[] = [];
 
@@ -167,12 +162,9 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
     lines.push(styleBoxSeparator(boxSeparator(sectionTitle(section), width)));
     if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0))
       pushBody("(none)", 2, undefined);
-    const labelWidth = Math.min(
-      Math.max(
-        0,
-        ...section.rows.flatMap((row) => row.fields?.map((field) => displayWidth(field.label)) ?? []),
-      ),
-      Math.max(1, innerWidth - 2 - 3 - 8),
+    const labelWidth = fieldLabelWidth(
+      section.rows.flatMap((row) => row.fields?.map((field) => field.label) ?? []),
+      innerWidth - 2,
     );
     for (const row of section.rows) {
       pushBody(rowHead(row), 0, composeRowStyle(row));
