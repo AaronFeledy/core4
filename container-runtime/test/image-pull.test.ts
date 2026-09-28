@@ -294,6 +294,8 @@ describe("docker image pull dialect", () => {
 
     // Then
     expect(failure).toBeInstanceOf(ProviderInternalError);
+    expect(failure.message).toBe("Container engine API returned malformed JSON.");
+    expect(failure).toMatchObject({ details: { status: 200, body: "not-json" } });
   });
 });
 
