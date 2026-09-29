@@ -1,5 +1,6 @@
 import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 
+import { lit, obj } from "../snapshot-expression.ts";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const EMPTY_RECIPE_VERSION = "0.1.0";
@@ -20,10 +21,7 @@ export const emptySnapshot: RecipeSnapshot = {
   optionTypes: {},
   defaults: emptyDefaults,
   template: {
-    expression: {
-      kind: "ObjectLiteral",
-      entries: [{ key: "runtime", value: { kind: "Literal", value: 4 } }],
-    },
+    expression: obj([["runtime", lit(4)]]),
   },
   assets: [],
 };
