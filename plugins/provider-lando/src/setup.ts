@@ -1,6 +1,6 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rename } from "node:fs/promises";
 
 import { Cause, DateTime, Effect, Exit } from "effect";
 
@@ -22,6 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ProviderError } from "@lando/sdk/services";
 import { type ProgressEmitter, type TaskTreeController, makeTaskTree } from "@lando/sdk/task-progress";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { rejectIntelMacHost } from "./host-support.ts";
 import {
@@ -1125,17 +1126,12 @@ export const persistSetupState = (
 ) =>
   Effect.tryPromise({
     try: async () => {
-      const providerDir = `${stateDir.replace(/\/+$/u, "")}/provider-lando`;
       const statePath = providerStatePath(stateDir);
-      const tempPath = `${statePath}.tmp-${process.pid}-${randomUUID()}`;
-
-      await mkdir(providerDir, { recursive: true });
-      try {
-        await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
-        await renameState(tempPath, statePath);
-      } finally {
-        await rm(tempPath, { force: true });
-      }
+      await writeFileAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`, {
+        mode: 0o600,
+        ownerOnly: "best-effort",
+        renameFile: renameState,
+      });
 
       return statePath;
     },

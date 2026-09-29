@@ -1,19 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { rename, rm, writeFile } from "node:fs/promises";
-
-interface SecretWriteOptions {
-  readonly mode: number;
-}
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 export interface WriteSecretAtomicOptions {
   readonly randomId?: () => string;
   readonly renameFile?: (from: string, to: string) => Promise<void>;
   readonly removeFile?: (path: string, options: { readonly force: boolean }) => Promise<void>;
-  readonly writeFile?: (
-    path: string,
-    content: string | Uint8Array,
-    options: SecretWriteOptions,
-  ) => Promise<void>;
 }
 
 /**
@@ -26,12 +16,11 @@ export const writeSecretAtomic = async (
   content: string | Uint8Array,
   options: WriteSecretAtomicOptions = {},
 ): Promise<void> => {
-  const tempPath = `${path}.tmp-${process.pid}-${options.randomId?.() ?? randomUUID()}`;
-  try {
-    await (options.writeFile ?? writeFile)(tempPath, content, { mode: 0o600 });
-    await (options.renameFile ?? rename)(tempPath, path);
-  } catch (cause) {
-    await (options.removeFile ?? rm)(tempPath, { force: true }).catch(() => undefined);
-    throw cause;
-  }
+  const { removeFile, ...writeOptions } = options;
+  await writeFileAtomic(path, content, {
+    ...writeOptions,
+    mode: 0o600,
+    ownerOnly: "best-effort",
+    ...(removeFile === undefined ? {} : { removeFile: (temp: string) => removeFile(temp, { force: true }) }),
+  });
 };

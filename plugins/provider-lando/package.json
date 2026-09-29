@@ -31,6 +31,7 @@
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
     "@lando/paths": "workspace:*",
+    "@lando/state-store": "workspace:*",
     "effect": "^3.21.2"
   },
   "devDependencies": {

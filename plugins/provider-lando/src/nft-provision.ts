@@ -1,10 +1,11 @@
-import { chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { gunzipSync, zstdDecompressSync } from "node:zlib";
 
 import { Effect, Schema } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import manifestData from "../nft-versions.json" with { type: "json" };
 import type { ArtifactDownload } from "./runtime-bundle.ts";
@@ -629,13 +630,8 @@ export const hasUsableManagedNft = async (runtimeBinDir: string): Promise<boolea
   }
 };
 
-const writeAtomic = async (path: string, bytes: Uint8Array, mode: number): Promise<void> => {
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp-${process.pid}`;
-  await writeFile(tmpPath, bytes, { flag: "w" });
-  await chmod(tmpPath, mode);
-  await rename(tmpPath, path);
-};
+const writeAtomic = async (path: string, bytes: Uint8Array, mode: number): Promise<void> =>
+  writeFileAtomic(path, bytes, { mode, ownerOnly: "best-effort" });
 
 export const installManagedNftLayout = async (
   runtimeBinDir: string,
