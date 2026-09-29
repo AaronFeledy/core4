@@ -21,6 +21,7 @@
     ".": "./src/index.ts",
     "./transport": "./src/transport.ts",
     "./streams": "./src/streams.ts",
+    "./tar": "./src/tar.ts",
     "./plan": "./src/plan.ts",
     "./image-build": "./src/image-build.ts",
     "./log-file-access": "./src/log-file-access.ts",
