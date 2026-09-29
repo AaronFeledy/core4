@@ -72,7 +72,7 @@ describe("eleventy decomposition", () => {
           type: "static:nginx",
           primary: false,
           appMount: { target: "/app" },
-          root: "_site",
+          webroot: "/app/_site",
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
       },

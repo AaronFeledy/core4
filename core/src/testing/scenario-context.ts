@@ -508,10 +508,11 @@ const appendInitAnswers = (
 
 const staticRootFromLandofile = (content: string): string | undefined => {
   if (!/^\s*type:\s*static(?::\w+)?\s*$/m.test(content)) return undefined;
-  const root = /^\s*root:\s*(\S+)\s*$/m.exec(content)?.[1];
-  return root === undefined || root === "" || root === "/"
-    ? "."
-    : root.replace(/^\/+/, "").replace(/\/+$/, "");
+  const webroot = /^\s*webroot:\s*(\S+)\s*$/m.exec(content)?.[1] ?? "/app";
+  if (webroot === "/app") return ".";
+  return webroot.startsWith("/app/") && !webroot.split("/").includes("..")
+    ? webroot.slice("/app/".length)
+    : undefined;
 };
 
 const runScenarioLayerCommand = async (

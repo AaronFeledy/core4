@@ -7,7 +7,7 @@ static frontend.
 
 - `builder` — `node:lts` running `npx hugo server` on port 1313 for iterative
   development.
-- `web` — `static:nginx`, serves the build output directory `public/` as its document root.
+- `web` — `static:nginx`, serves the build output directory `/app/public` as its document root.
 
 ## Generated tooling
 

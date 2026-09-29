@@ -40,7 +40,7 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*4000" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "bundle exec jekyll serve --host 0.0.0.0 --port 4000" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"root\":\\s*\"_site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/_site\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"jekyll\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"bundle\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
     </Step>
@@ -67,7 +67,7 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
     <Step name="configure">
       <UseFixture name="serve-built-site" />
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"root\":\\s*\"_site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/_site\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"build-prod\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"JEKYLL_ENV\":\\s*\"production\"" } }} />
     </Step>
@@ -172,7 +172,7 @@ Need a one-off rebuild while the development server keeps running? Use `lando je
 
 ## Serve the built site on the app hostname
 
-Init wrote `root: _site` on `web`, so the app hostname already points at the built site rather than your source files. Nothing to add.
+Init wrote `webroot: /app/_site` on `web`, so the app hostname already points at the built site rather than your source files. Nothing to add.
 
 ```sh
 lando info
@@ -246,7 +246,7 @@ Gems with native extensions compile against the `build-essential` step from the 
 
 ## Restart or rebuild
 
-`lando restart` stops the app and starts it again from the current `.lando.yml`, so `command:`, `root:`, and other config edits land. It also covers the apt line: change a `build.artifact` step and the next start builds a fresh `builder` image before it starts the container.
+`lando restart` stops the app and starts it again from the current `.lando.yml`, so `command:`, `webroot:`, and other config edits land. It also covers the apt line: change a `build.artifact` step and the next start builds a fresh `builder` image before it starts the container.
 
 `lando rebuild` recreates the containers and reruns every `build.app` step, even unchanged ones. The Jekyll recipe has no `build.app` steps, so `lando restart` covers every edit on this page. `lando rebuild` asks for confirmation; pass `-y` to skip the prompt in scripts.
 

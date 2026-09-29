@@ -4,7 +4,7 @@ import type { RecipeProducer, RecipeSnapshot } from "@lando/sdk/schema";
 import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const HUGO_RECIPE_VERSION = "0.1.0";
-export const HUGO_CONTENT_DIGEST = "sha256:29ec7b645fe72872ae53ce6e8d84e4dfb8b55926d7602b4cdde3607aa448d7b9";
+export const HUGO_CONTENT_DIGEST = "sha256:297c9145943a2e7d49d15ea186ee704d3d95d2d269256391311d53bf3f857c81";
 
 export const hugoProducer: RecipeProducer = {
   sourceKind: "bundled",
@@ -68,7 +68,7 @@ export const hugoSnapshot: RecipeSnapshot = {
                         entries: [{ key: "target", value: { kind: "Literal", value: "/app" } }],
                       },
                     },
-                    { key: "root", value: { kind: "Literal", value: "public" } },
+                    { key: "webroot", value: { kind: "Literal", value: "/app/public" } },
                     {
                       key: "routes",
                       value: {

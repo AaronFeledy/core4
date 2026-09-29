@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- The pre-release `ServiceConfig.root` field is removed. Set `webroot` to an absolute container path instead, including on `static`, `static:nginx`, and `static:caddy`; static defaults to `/app`.
+
 - `SshAgentSocket` adds optional `runtimeVolume`: a named volume on the Lando-managed provider with `agent.sock` at its root. The global app owns it; consuming app plans mount it without adding a store. The host `socketPath` remains available for cross-provider delivery. `SshService` method signatures are unchanged. Doctor `command:meta:doctor` subsystem details add the additive `runtime-volume` delivery literal and optional `runtimeVolume` name; existing report fields remain valid.
 
 - Command error envelopes add optional `reason: string`. Normal JSON/YAML output and terminal result stream frames preserve the source error's reason when it is a string, including an empty string; absent and non-string reasons remain omitted. Existing tag, message, remediation, and redaction behavior are unchanged.

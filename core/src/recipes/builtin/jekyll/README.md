@@ -7,7 +7,7 @@ static frontend.
 
 - `builder` — `ruby:3.3`, runs `bundle exec jekyll serve` on port 4000 for
   iterative development.
-- `web` — `static:nginx`, serves the build output directory `_site/` as its document root.
+- `web` — `static:nginx`, serves the build output directory `/app/_site` as its document root.
 
 ## Generated tooling
 

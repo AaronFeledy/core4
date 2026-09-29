@@ -37,7 +37,7 @@ lando destroy -y
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"builder\":\\s*\\{[^}]*\"type\":\\s*\"ruby:3\\.3\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "bundle exec jekyll serve --host 0.0.0.0 --port 4000" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"root\":\\s*\"_site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/_site\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

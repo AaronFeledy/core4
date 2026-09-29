@@ -41,7 +41,7 @@ Init writes `.lando.yml` only. Put an Eleventy app in after start.
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8080" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "npx @11ty/eleventy --serve --port 8080" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"static:nginx\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"root\":\\s*\"_site\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"/app/_site\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"eleventy\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"builder\"" } }} />
     </Step>
@@ -92,7 +92,7 @@ lando eleventy
 
 That writes `_site/index.html`. The recipe already runs `npx @11ty/eleventy --serve --port 8080` on `builder`, so open the `builder` URL `lando info` prints (for example `https://builder.eleventy-demo.lndo.site` or the same host with a fallback port). Live reload rides with that serve.
 
-Once a build has written `_site/`, the app hostname URL (the **web** entry from `lando info`, for example `https://eleventy-demo.lndo.site`) serves it through nginx. `web` ships with `root: _site`, so nothing to configure. Keep editing against the **builder** URL for live reload; nginx picks up the next `lando eleventy` build.
+Once a build has written `_site/`, the app hostname URL (the **web** entry from `lando info`, for example `https://eleventy-demo.lndo.site`) serves it through nginx. `web` ships with `webroot: /app/_site`, so there's nothing to configure. Keep editing against the **builder** URL for live reload; nginx picks up the next `lando eleventy` build.
 
 Need a one-off rebuild while the development server keeps running? Use `lando eleventy`.
 

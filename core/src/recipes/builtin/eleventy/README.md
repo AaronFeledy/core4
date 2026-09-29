@@ -7,7 +7,7 @@ static frontend.
 
 - `builder` — `node:lts` running `npx @11ty/eleventy --serve` on port 8080
   for iterative development.
-- `web` — `static:nginx`, serves the build output directory `_site/` as its document root.
+- `web` — `static:nginx`, serves the build output directory `/app/_site` as its document root.
 
 ## Generated tooling
 
