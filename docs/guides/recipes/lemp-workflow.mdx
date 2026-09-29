@@ -21,7 +21,7 @@ If something else owns 80 or 443, Lando picks the next free port (usually `:8080
 
 | Piece | What you get |
 | --- | --- |
-| `web` | `nginx`, `backend: appserver`, webroot `/app`, HTTP and HTTPS routes (not primary) |
+| `web` | `nginx`, `backend: appserver`, webroot `/app`, HTTP and HTTPS routes, not primary |
 | `appserver` | `php:8.3`, `framework: none`, `via: fpm`, webroot `/app`, primary, depends on `database` |
 | `database` | `type: mariadb` (MariaDB 11.4) |
 | Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
@@ -96,7 +96,7 @@ The recipe has one database service, so neither command needs `--service`. A `.g
 
 ## Check the config and tear down
 
-`lando app:config --format=json` prints the planned config without touching containers. Here's the whole loop, init to destroy:
+`lando app:config --format=json` prints the planned config without touching containers. Full loop, init to destroy:
 
 <Guide>
   <Scenario id="reader-path" render>
