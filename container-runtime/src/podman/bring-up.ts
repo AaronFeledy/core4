@@ -1,4 +1,5 @@
 import { type Context, DateTime, Effect } from "effect";
+import { PROVIDER_LABEL, SCRATCH_ID_LABEL, SCRATCH_LABEL } from "../labels.ts";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
@@ -23,12 +24,14 @@ import type {
   EngineHttpResponse,
   ProviderErrorContext,
 } from "../engine-api.ts";
+import { parseEngineJson } from "../engine-errors.ts";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
   containerHostConfigFragment,
   fingerprintInspectPublishPorts,
   fingerprintPlannedPublishPorts,
+  serviceContainerName,
 } from "../plan.ts";
 import { redactDetails, withApiReason } from "../redact.ts";
 import { runServiceStartSchedule } from "../service-start-schedule.ts";
@@ -47,7 +50,7 @@ export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
   const scratch = plan.extensions["@lando/core/scratch"];
   const scratchId = typeof scratch === "object" && scratch !== null ? Reflect.get(scratch, "id") : undefined;
   return scratchId === plan.id && typeof scratchId === "string"
-    ? { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratchId }
+    ? { [SCRATCH_LABEL]: "TRUE", [SCRATCH_ID_LABEL]: scratchId }
     : {};
 };
 
@@ -175,8 +178,7 @@ const appRef = (plan: AppPlan): AppRef => ({
   root: plan.root,
 });
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -220,24 +222,6 @@ const request = (
 ): Effect.Effect<EngineHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
   deps.api.request === undefined ? Effect.fail(missingApi(deps.options.ctx)) : deps.api.request(input);
 
-const parseJson = (
-  deps: BringUpDeps,
-  response: EngineHttpResponse,
-  operation: string,
-): Effect.Effect<unknown, ProviderInternalError> =>
-  Effect.try({
-    try: () => (response.body.length === 0 ? {} : (JSON.parse(response.body) as unknown)),
-    catch: (cause) =>
-      new ProviderInternalError({
-        providerId: deps.options.ctx.providerId,
-        operation,
-        message: `provider-${deps.options.ctx.providerId} API returned malformed JSON.`,
-        details: redactDetails({ status: response.status, body: response.body }),
-        remediation: APPLY_REMEDIATION,
-        cause,
-      }),
-  });
-
 const inspectContainer = (
   deps: BringUpDeps,
   name: string,
@@ -273,7 +257,10 @@ const inspectContainer = (
         }),
       );
     }
-    const body = yield* parseJson(deps, response, "bringUp.inspect");
+    const body = yield* parseEngineJson(response, deps.options.ctx, "bringUp.inspect", {
+      details: redactDetails({ status: response.status, body: response.body }),
+      remediation: APPLY_REMEDIATION,
+    });
     if (typeof body !== "object" || body === null || !("State" in body)) {
       return {
         exists: true,
@@ -440,7 +427,7 @@ export const podmanVolumeCreationLabels = (
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => ({
   ...volumeCreationLabels(plan, store),
-  "dev.lando.provider": plan.provider,
+  [PROVIDER_LABEL]: plan.provider,
 });
 
 const ensureVolume = (

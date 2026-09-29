@@ -1,7 +1,9 @@
 import { createConnection, isIP } from "node:net";
 import { connect as createTlsConnection } from "node:tls";
+import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 
+import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import {
   type HostProxyContainerTarget,
   buildProviderCapabilities,
@@ -33,7 +35,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
-import { mergeAppliedPlan } from "@lando/container-runtime/plan";
+import { serviceContainerName } from "@lando/container-runtime/plan";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
@@ -154,8 +156,7 @@ export interface ResolveDockerHostOptions {
 export type EmitComposeOptions = Omit<RuntimeEmitComposeOptions, "ctx">;
 export type { EmitComposeResult };
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const unavailable = (
   operation: string,
@@ -777,7 +778,6 @@ const makeUnavailable = (operation: string) =>
   unavailable(operation, `provider-docker does not implement ${operation} yet.`);
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
-  const plans = new Map<string, AppPlan>();
   if (options.platform === undefined) {
     return Effect.fail(
       unavailable("select", "provider-docker construction requires the resolved host platform."),
@@ -831,59 +831,24 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     volumeCreationLabels,
   });
 
-  const sanitizeAppliedPlan = options.sanitizeAppliedPlan ?? ((plan: AppPlan) => plan);
-
-  const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): Effect.Effect<
-    AppPlan | undefined,
-    never
-  > => {
-    if (target.plan !== undefined) return Effect.succeed(target.plan);
-    const cached = plans.get(target.app);
-    if (cached !== undefined) return Effect.succeed(cached);
-    if (options.appliedPlanState === undefined) return Effect.succeed(undefined);
-    return loadAppliedPlan(options.appliedPlanState, target.app).pipe(
-      Effect.tap((loaded) =>
-        Effect.sync(() => {
-          if (loaded !== undefined) plans.set(target.app, loaded);
-        }),
-      ),
-    );
-  };
-
-  const rememberPlan = (plan: AppPlan, reconcile: boolean): Effect.Effect<void, ProviderUnavailableError> => {
-    const state = options.appliedPlanState;
-    const write = Effect.gen(function* () {
-      const previous = reconcile
-        ? undefined
-        : state === undefined
-          ? yield* resolvePlan({ app: plan.id })
-          : yield* loadAppliedPlan(state, plan.id);
-      const persistedPlan = sanitizeAppliedPlan(mergeAppliedPlan(previous, plan, reconcile));
-      if (state !== undefined) yield* persistAppliedPlan(state, persistedPlan);
-      plans.set(plan.id, persistedPlan);
-    });
-    return state === undefined
-      ? write
-      : state.withLock(`applied-plan-${plan.id}`, write).pipe(
-          Effect.mapError((cause) =>
-            cause instanceof ProviderUnavailableError
-              ? cause
-              : new ProviderUnavailableError({
-                  providerId: PROVIDER_ID,
-                  operation: "applied-state.lock",
-                  message: "Could not lock Docker applied-plan state.",
-                  cause,
-                }),
-          ),
-        );
-  };
-
-  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
-    plans.delete(appId);
-    return options.appliedPlanState === undefined
-      ? Effect.void
-      : removeAppliedPlan(options.appliedPlanState, appId);
-  };
+  const appliedPlans = makeAppliedPlanCache({
+    providerId: ProviderId.make(PROVIDER_ID),
+    providerName: "Docker",
+    ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
+    ...(options.sanitizeAppliedPlan === undefined
+      ? {}
+      : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
+    load: loadAppliedPlan,
+    persist: persistAppliedPlan,
+    remove: removeAppliedPlan,
+  });
+  const resolvePlan = (target: {
+    readonly app: AppId;
+    readonly plan?: AppPlan;
+  }): Effect.Effect<AppPlan | undefined, never> =>
+    target.plan === undefined ? appliedPlans.resolvePlan(target.app) : Effect.succeed(target.plan);
+  const rememberPlan = appliedPlans.rememberPlan;
+  const forgetPlan = appliedPlans.forgetPlan;
 
   const resolvedOps = makeResolvedProviderOps({
     ctx: DOCKER_CTX,
@@ -1016,12 +981,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 }
 
                 return Stream.fromEffect(
-                  discoverContainers(dockerApi, "dev.lando.app").pipe(
+                  discoverContainers(dockerApi, APP_LABEL).pipe(
                     Effect.flatMap((containers) => {
                       const container = containers.find(
                         (c) =>
-                          c.labels["dev.lando.app"] === target.app &&
-                          c.labels["dev.lando.service"] === target.service,
+                          c.labels[APP_LABEL] === target.app && c.labels[SERVICE_LABEL] === target.service,
                       );
                       if (container === undefined) {
                         return Effect.fail(
@@ -1043,17 +1007,17 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ),
           ),
         list: (filter) =>
-          discoverContainers(dockerApi, "dev.lando.app").pipe(
+          discoverContainers(dockerApi, APP_LABEL).pipe(
             Effect.flatMap((containers) =>
               Effect.forEach(
                 containers.filter((container) => {
-                  const appId = container.labels["dev.lando.app"];
+                  const appId = container.labels[APP_LABEL];
                   if (appId === undefined) return false;
                   if (filter.app !== undefined && appId !== filter.app) return false;
                   if (
                     filter.includeScratch !== true &&
                     filter.app === undefined &&
-                    container.labels["dev.lando.scratch"] === "TRUE"
+                    container.labels[SCRATCH_LABEL] === "TRUE"
                   ) {
                     return false;
                   }
@@ -1061,8 +1025,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 }),
                 (container) =>
                   Effect.gen(function* () {
-                    const appId = container.labels["dev.lando.app"] ?? "";
-                    const serviceName = container.labels["dev.lando.service"] ?? "";
+                    const appId = container.labels[APP_LABEL] ?? "";
+                    const serviceName = container.labels[SERVICE_LABEL] ?? "";
                     const isRunning = container.state === "running";
                     const status = isRunning ? "running" : "stopped";
 
@@ -1078,9 +1042,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
                     return {
                       app: AppId.make(appId),
-                      ...(container.labels["dev.lando.app-root"] === undefined
+                      ...(container.labels[APP_ROOT_LABEL] === undefined
                         ? {}
-                        : { appRoot: AbsolutePath.make(container.labels["dev.lando.app-root"]) }),
+                        : { appRoot: AbsolutePath.make(container.labels[APP_ROOT_LABEL]) }),
                       service: ServiceName.make(serviceName),
                       providerId: ProviderId.make(PROVIDER_ID),
                       status,

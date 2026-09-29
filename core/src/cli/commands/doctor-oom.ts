@@ -1,3 +1,4 @@
+import { APP_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 import type { HostPlatform } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -93,9 +94,8 @@ const buildCorrelation = (event: Record<string, unknown>): DiedEventCorrelation 
   const containerName = stringAttr(attrs?.name) ?? stringAttr(event.Name);
   const image = stringAttr(attrs?.image) ?? stringAttr(event.Image);
   const exitCode = parseExitCode(attrs?.containerExitCode ?? event.ContainerExitCode ?? attrs?.exitCode);
-  const app = stringAttr(attrs?.["dev.lando.app"]) ?? stringAttr(attrs?.["com.docker.compose.project"]);
-  const service =
-    stringAttr(attrs?.["dev.lando.service"]) ?? stringAttr(attrs?.["com.docker.compose.service"]);
+  const app = stringAttr(attrs?.[APP_LABEL]) ?? stringAttr(attrs?.["com.docker.compose.project"]);
+  const service = stringAttr(attrs?.[SERVICE_LABEL]) ?? stringAttr(attrs?.["com.docker.compose.service"]);
   return {
     ...(containerName === undefined ? {} : { containerName }),
     ...(image === undefined ? {} : { image }),

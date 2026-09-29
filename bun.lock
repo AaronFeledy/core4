@@ -285,6 +285,7 @@
       "name": "@lando/sql",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/container-runtime": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },

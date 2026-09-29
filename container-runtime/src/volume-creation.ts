@@ -1,4 +1,12 @@
 import { randomUUID } from "node:crypto";
+import {
+  APP_LABEL,
+  SCRATCH_ID_LABEL,
+  SCRATCH_LABEL,
+  STORE_LABEL,
+  VOLUME_INSTANCE_LABEL,
+  VOLUME_OWNER_LABEL,
+} from "./labels.ts";
 
 import { Option, Schema } from "effect";
 
@@ -11,7 +19,7 @@ const scratchVolumeLabels = (plan: Pick<AppPlan, "id" | "extensions">): Readonly
   const scratch = plan.extensions["@lando/core/scratch"];
   const scratchId = typeof scratch === "object" && scratch !== null ? Reflect.get(scratch, "id") : undefined;
   return scratchId === plan.id && typeof scratchId === "string"
-    ? { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratchId }
+    ? { [SCRATCH_LABEL]: "TRUE", [SCRATCH_ID_LABEL]: scratchId }
     : {};
 };
 
@@ -19,10 +27,10 @@ export const volumeCreationLabels = (
   plan: Pick<AppPlan, "id" | "provider" | "root" | "identity" | "extensions">,
   store: AppPlan["stores"][number],
 ): Readonly<Record<string, string>> => ({
-  "dev.lando.app": plan.id,
-  "dev.lando.store": store.name,
+  [APP_LABEL]: plan.id,
+  [STORE_LABEL]: store.name,
   [STORAGE_SCOPE_LABEL]: store.scope,
-  "dev.lando.volume-instance": randomUUID(),
+  [VOLUME_INSTANCE_LABEL]: randomUUID(),
   ...volumeOwnershipLabels(plan, store),
   ...scratchVolumeLabels(plan),
   ...(store.kind === "cache" ? { [STORAGE_KIND_LABEL]: "cache" } : {}),
@@ -44,14 +52,14 @@ export const volumeCreationFact = (input: {
   const decoded = Schema.decodeUnknownOption(CreatedVolume)(input.body);
   if (Option.isNone(decoded)) return [];
   const volume = decoded.value;
-  const generation = input.labels["dev.lando.volume-instance"];
-  const owner = input.labels["dev.lando.volume-owner"];
+  const generation = input.labels[VOLUME_INSTANCE_LABEL];
+  const owner = input.labels[VOLUME_OWNER_LABEL];
   if (
     !generation ||
     !owner ||
     volume.Name !== input.name ||
-    volume.Labels["dev.lando.volume-instance"] !== generation ||
-    volume.Labels["dev.lando.volume-owner"] !== owner
+    volume.Labels[VOLUME_INSTANCE_LABEL] !== generation ||
+    volume.Labels[VOLUME_OWNER_LABEL] !== owner
   )
     return [];
   const root = Schema.decodeUnknownOption(AbsolutePath)(owner);
