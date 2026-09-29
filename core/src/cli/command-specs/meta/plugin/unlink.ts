@@ -8,12 +8,9 @@ import {
 } from "../../../commands/plugin-unlink";
 
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
 
-const extractName = (input: unknown): string => {
-  if (typeof input !== "object" || input === null) return "";
-  const args = (input as { args?: Record<string, unknown> }).args ?? {};
-  return typeof args.name === "string" ? args.name : "";
-};
+const extractName = (input: unknown): string => stringFlag(specArgsOf(input), "name") ?? "";
 
 export const pluginUnlinkSpec: LandoCommandSpec<PluginUnlinkResult> = {
   resultSchema: PluginUnlinkResultSchema,

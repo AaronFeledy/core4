@@ -1,4 +1,5 @@
 import { ConfigTranslateError, Lando3UnsupportedRecipeError } from "@lando/sdk/errors";
+import { isPlainRecord, landofileLayerRank, mergeLandofiles } from "@lando/sdk/landofile";
 import type {
   ConfigTranslateDiagnostic,
   ConfigTranslateOutput,
@@ -20,7 +21,6 @@ import { type DesiredPrefix, planLayerDeltas } from "./layer-delta.ts";
 import { occurrencesAt } from "./legacy-merge.ts";
 import { BUNDLED_RECIPE_OPTION_MAPS, classifyRecipe, mapConfigOptions } from "./recipe-options.ts";
 import type { LoweredServicePrefix } from "./service-lowering.ts";
-import { isPlainRecord, mergeLandofiles, v4LayerRank } from "./v4-merge.ts";
 
 interface LoweredPrefix {
   readonly targetLayer: LandofileLayer;
@@ -246,7 +246,9 @@ export const recipeLayerOutputs = (
   for (const { targetLayer, sourceIds } of authored) {
     layers.set(targetLayer, [...new Set([...(layers.get(targetLayer) ?? []), ...sourceIds])]);
   }
-  for (const [layer, sourceIds] of [...layers].sort(([a], [b]) => v4LayerRank(a) - v4LayerRank(b))) {
+  for (const [layer, sourceIds] of [...layers].sort(
+    ([a], [b]) => landofileLayerRank(a) - landofileLayerRank(b),
+  )) {
     const known = established.find((item) => item.layer === layer);
     desired = known
       ? mergeLandofiles([desired, known.fragment])

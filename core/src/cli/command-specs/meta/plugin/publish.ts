@@ -9,14 +9,12 @@ import {
 } from "../../../commands/plugin-publish";
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 
 const extractInput = (input: unknown): PluginPublishOptions => {
-  const flags =
-    typeof input === "object" && input !== null
-      ? ((input as { flags?: Record<string, unknown> }).flags ?? {})
-      : {};
-  const tag = typeof flags.tag === "string" ? flags.tag : undefined;
-  const registry = typeof flags.registry === "string" ? flags.registry : undefined;
+  const flags = specFlagsOf(input);
+  const tag = stringFlag(flags, "tag");
+  const registry = stringFlag(flags, "registry");
   return {
     ...(tag === undefined ? {} : { tag }),
     ...(registry === undefined ? {} : { registry }),

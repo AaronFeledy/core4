@@ -106,7 +106,7 @@ export const runCaSetupStep = (
             .publish(
               MessageInfoEvent.make({
                 body: "Installing local certificate trust. Windows may open a Security Warning; approve it to continue. --yes cannot answer Windows security prompts.",
-                timestamp: DateTime.unsafeMake(Date.now()),
+                timestamp: DateTime.unsafeNow(),
               }),
             )
             .pipe(Effect.ignore);

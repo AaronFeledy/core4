@@ -11,11 +11,10 @@ import {
 } from "../../../commands/plugin-remove";
 
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
 
 const extractInput = (input: unknown): { name: string } => {
-  if (typeof input !== "object" || input === null) return { name: "" };
-  const args = (input as { args?: Record<string, unknown> }).args ?? {};
-  return { name: typeof args.name === "string" ? args.name : "" };
+  return { name: stringFlag(specArgsOf(input), "name") ?? "" };
 };
 
 export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {

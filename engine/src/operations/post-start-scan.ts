@@ -38,7 +38,7 @@ export const startupScanUrls = (
       }));
   });
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 const resolveRedactor = Effect.gen(function* () {
   const redaction = yield* Effect.serviceOption(RedactionService);

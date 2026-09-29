@@ -8,7 +8,7 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "../src/compose/dispositions.ts";
+} from "@lando/sdk/landofile";
 import { compileDispositionTrie, matchDispositionPath } from "../src/compose/rejection-trie.ts";
 import {
   analyzeComposeRejections,

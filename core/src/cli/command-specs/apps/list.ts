@@ -8,29 +8,19 @@ import {
 import { Flags } from "../../spec/metadata";
 
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { booleanFlag, formatFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
-const extractFormat = (input: unknown): "json" | "table" => {
-  if (typeof input !== "object" || input === null) return "table";
-  const flags = (input as { flags?: { format?: unknown } }).flags;
-  return flags?.format === "json" ? "json" : "table";
-};
+const extractFormat = (input: unknown): "json" | "table" =>
+  formatFlag(specFlagsOf(input), ["json", "table"], "table");
 
-export const appsListPathFromInput = (input: unknown): string | undefined => {
-  if (typeof input !== "object" || input === null) return undefined;
-  const flags = (input as { flags?: { path?: unknown } }).flags;
-  return typeof flags?.path === "string" ? flags.path : undefined;
-};
+export const appsListPathFromInput = (input: unknown): string | undefined =>
+  stringFlag(specFlagsOf(input), "path");
 
-export const appsListPruneFromInput = (input: unknown): boolean => {
-  if (typeof input !== "object" || input === null) return false;
-  const flags = (input as { flags?: { prune?: unknown } }).flags;
-  return flags?.prune === true;
-};
+export const appsListPruneFromInput = (input: unknown): boolean => booleanFlag(specFlagsOf(input), "prune");
 
 export const appsListIncludeScratchFromInput = (input: unknown): boolean => {
-  if (typeof input !== "object" || input === null) return false;
-  const flags = (input as { flags?: { "include-scratch"?: unknown; all?: unknown } }).flags;
-  return flags?.["include-scratch"] === true || flags?.all === true;
+  const flags = specFlagsOf(input);
+  return booleanFlag(flags, "include-scratch") || booleanFlag(flags, "all");
 };
 
 export const listSpec: LandoCommandSpec<ListServicesResult> = {

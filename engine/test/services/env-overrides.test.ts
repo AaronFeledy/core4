@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
-import { mergeLandofiles } from "@lando/landofile/merge";
 import { ConfigError } from "@lando/sdk/errors";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 import { resolveProviderSelection } from "../../src/providers/precedence.ts";

@@ -26,6 +26,7 @@
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "data-mover", "volume-snapshot"],
   "dependencies": {
+    "@lando/container-runtime": "workspace:*",
     "@lando/landofile": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/redaction": "workspace:*",

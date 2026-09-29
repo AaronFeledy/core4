@@ -10,7 +10,7 @@ import {
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTopLevelDispositions,
-} from "@lando/landofile/compose/dispositions";
+} from "@lando/sdk/landofile";
 import {
   checkComposeCoverage,
   formatComposeCoverageFailure,
@@ -38,7 +38,6 @@ describe("compose coverage gate", () => {
     try {
       await Promise.all([
         mkdir(join(root, "scripts"), { recursive: true }),
-        mkdir(join(root, "landofile/src/compose"), { recursive: true }),
         mkdir(join(root, "vendor/compose"), { recursive: true }),
         symlink(resolve(repoRoot, "node_modules"), join(root, "node_modules"), "dir"),
       ]);
@@ -46,10 +45,6 @@ describe("compose coverage gate", () => {
         copyFile(join(repoRoot, "scripts/check-compose-coverage.ts"), copiedScript),
         copyFile(join(repoRoot, "scripts/compose-schema.ts"), join(root, "scripts/compose-schema.ts")),
         copyFile(join(repoRoot, "scripts/compose-vendor.ts"), join(root, "scripts/compose-vendor.ts")),
-        copyFile(
-          join(repoRoot, "landofile/src/compose/dispositions.ts"),
-          join(root, "landofile/src/compose/dispositions.ts"),
-        ),
         copyFile(join(repoRoot, "vendor/compose/pin.json"), join(root, "vendor/compose/pin.json")),
         copyFile(join(repoRoot, "vendor/compose/compose-spec.json"), copiedSchema),
       ]);

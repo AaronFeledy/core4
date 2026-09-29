@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 
-import { Cause, type Context, Effect, Either, Layer, ParseResult } from "effect";
+import { Cause, type Context, Effect, Either, Layer, ParseResult, Predicate } from "effect";
 
 import {
   type ComposeKeyRejectedError,
@@ -28,6 +28,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { decodeOrFail } from "./decode.ts";
@@ -50,7 +51,6 @@ import {
   type ResolveLandofileLoadExpressionError,
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
-import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 import {
@@ -306,9 +306,6 @@ const materializeLoadExpressions = (
   );
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 interface LandofileLoadContext {
   readonly validCanonicalFile?: string;
   readonly appRoot: string;
@@ -391,7 +388,7 @@ export const loadLandofileFile = (
       );
     }
     const materialized =
-      context === undefined && isRecord(resolved.value)
+      context === undefined && Predicate.isRecord(resolved.value)
         ? yield* materializeLoadExpressions(
             resolved.value,
             filePath,

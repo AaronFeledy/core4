@@ -1,4 +1,4 @@
-import { Either, Schema } from "effect";
+import { Either, Predicate, Schema } from "effect";
 
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";
@@ -107,15 +107,12 @@ export const writeValidationErrorFromIssues = (input: {
     remediation: "Fix the reported issue(s), then retry the write. The file was left unchanged.",
   });
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
 export const emitConfigYaml = (input: {
   readonly file: string;
   readonly value: unknown;
   readonly path?: string;
 }): Either.Either<string, LandofileWriteValidationError> => {
-  if (!isRecord(input.value)) {
+  if (!Predicate.isRecord(input.value)) {
     return Either.left(
       writeValidationErrorFromIssues({
         file: input.file,

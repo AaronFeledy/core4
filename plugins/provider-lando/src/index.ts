@@ -1,5 +1,6 @@
 import { type Context, Effect, Layer, Schema, Stream } from "effect";
 
+import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type {
@@ -19,7 +20,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
-import { mergeAppliedPlan } from "@lando/container-runtime/plan";
+import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient as makeRuntimePodmanApiClient } from "@lando/container-runtime/podman/api-client";
 import {
   type BringDownOptions,
@@ -539,7 +540,6 @@ type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
 };
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
-  const plans = new Map<string, AppPlan>();
   const providerId = ProviderId.make("lando");
   const platform = options.platform;
   const family = hostPlatformFamily(platform);
@@ -705,18 +705,19 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           volumeCreationLabels: podmanVolumeCreationLabels,
         });
 
-  const resolvePlan = (appId: AppId): Effect.Effect<AppPlan | undefined, never> => {
-    const cached = plans.get(appId);
-    if (cached !== undefined) return Effect.succeed(cached);
-    if (options.appliedPlanState === undefined) return Effect.succeed(undefined);
-    return loadAppliedPlan(options.appliedPlanState, appId).pipe(
-      Effect.tap((loaded) =>
-        Effect.sync(() => {
-          if (loaded !== undefined) plans.set(appId, loaded);
-        }),
-      ),
-    );
-  };
+  const appliedPlans = makeAppliedPlanCache({
+    providerId,
+    providerName: "provider-lando",
+    ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
+    sanitizeAppliedPlan: options.sanitizeAppliedPlan,
+    load: loadAppliedPlan,
+    persist: persistAppliedPlan,
+    remove: removeAppliedPlan,
+  });
+  const plans = appliedPlans.plans;
+  const resolvePlan = appliedPlans.resolvePlan;
+  const rememberPlan = appliedPlans.rememberPlan;
+  const forgetPlan = appliedPlans.forgetPlan;
 
   const freshPlanForTeardown = (
     target: Parameters<RuntimeProviderShape["destroy"]>[0],
@@ -759,42 +760,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
       }
       return prior.plan;
     });
-  const rememberPlan = (plan: AppPlan, reconcile: boolean): Effect.Effect<void, ProviderUnavailableError> => {
-    const state = options.appliedPlanState;
-    const write = Effect.gen(function* () {
-      const previous = reconcile
-        ? undefined
-        : state === undefined
-          ? yield* resolvePlan(plan.id)
-          : yield* loadAppliedPlan(state, plan.id);
-      const persistedPlan = options.sanitizeAppliedPlan(mergeAppliedPlan(previous, plan, reconcile));
-      if (state !== undefined) yield* persistAppliedPlan(state, persistedPlan);
-      plans.set(plan.id, persistedPlan);
-    });
-    return state === undefined
-      ? write
-      : state.withLock(`applied-plan-${plan.id}`, write).pipe(
-          Effect.mapError((cause) =>
-            cause instanceof ProviderUnavailableError
-              ? cause
-              : new ProviderUnavailableError({
-                  providerId: LANDO_CTX.providerId,
-                  operation: "applied-state.lock",
-                  message: "Unable to lock provider-lando applied plan state.",
-                  remediation: "Retry after the concurrent app operation completes.",
-                  cause,
-                }),
-          ),
-        );
-  };
-
-  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
-    plans.delete(appId);
-    return options.appliedPlanState === undefined
-      ? Effect.void
-      : removeAppliedPlan(options.appliedPlanState, appId);
-  };
-
   const hydratePlansFromDisk: Effect.Effect<void, ProviderUnavailableError> =
     options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined
       ? Effect.void
@@ -1424,10 +1389,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                               : makeDockerLogFileAccess({
                                   providerId: LANDO_CTX.providerId,
                                   api: podmanApi,
-                                  container: `lando-${plan.slug}-${target.service}`.replace(
-                                    /[^a-zA-Z0-9_.-]/gu,
-                                    "-",
-                                  ),
+                                  container: serviceContainerName(plan, target.service),
                                   helperPayload: logFileHelperPayload,
                                 }));
                           return logFileAccess === undefined ? {} : { logFileAccess };

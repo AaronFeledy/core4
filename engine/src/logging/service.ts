@@ -11,7 +11,7 @@
  *
  * `--debug` raises the floor to `debug`. `--verbose` only changes Renderer.
  */
-import { type Context, Effect, Logger as EffectLogger, Layer, LogLevel, Option } from "effect";
+import { type Context, Effect, Logger as EffectLogger, Layer, LogLevel, Option, absurd } from "effect";
 
 import { RedactionService } from "@lando/redaction/service";
 import type { LogLevel as DiagnosticLogLevel } from "@lando/sdk/schema";
@@ -35,10 +35,6 @@ export interface LoggerLiveOptions {
   readonly writeLine?: DiagnosticLineWriter;
 }
 
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected log level: ${String(value)}`);
-};
-
 const toEffectLogLevel = (level: Exclude<DiagnosticLogLevel, "none">): LogLevel.LogLevel => {
   switch (level) {
     case "error":
@@ -52,7 +48,7 @@ const toEffectLogLevel = (level: Exclude<DiagnosticLogLevel, "none">): LogLevel.
     case "trace":
       return LogLevel.Trace;
     default:
-      return assertNever(level);
+      return absurd<never>(level);
   }
 };
 

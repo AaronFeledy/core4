@@ -1,12 +1,13 @@
 import { Effect } from "effect";
+import { serviceContainerName } from "./plan.ts";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { ProviderError, ServiceExitResult, ServiceSelector } from "@lando/sdk/services";
 
 import type { WaitDialect } from "./dialect.ts";
-import type { EngineHttpApi, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
-import { missingApi } from "./engine-errors.ts";
+import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
+import { missingApi, parseEngineJson } from "./engine-errors.ts";
 import { redactDetails, withApiReason } from "./redact.ts";
 
 export interface WaitForExitOptions {
@@ -17,24 +18,7 @@ export interface WaitForExitOptions {
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
-const parseJson = (
-  response: EngineHttpResponse,
-  ctx: ProviderErrorContext,
-): Effect.Effect<unknown, ProviderInternalError> =>
-  Effect.try({
-    try: (): unknown => (response.body.length === 0 ? {} : JSON.parse(response.body)),
-    catch: (cause) =>
-      new ProviderInternalError({
-        providerId: ctx.providerId,
-        operation: "waitForExit",
-        message: "Container engine API returned malformed JSON.",
-        details: redactDetails(response),
-        remediation: ctx.remediation,
-        cause,
-      }),
-  });
+  serviceContainerName(plan, service.name);
 
 export const waitForExit = (
   plan: AppPlan,
@@ -77,7 +61,10 @@ export const waitForExit = (
       );
     }
 
-    const decoded = yield* parseJson(response, options.ctx);
+    const decoded = yield* parseEngineJson(response, options.ctx, "waitForExit", {
+      message: "Container engine API returned malformed JSON.",
+      details: redactDetails(response),
+    });
     const exitCode = options.dialect.decodeExitCode(decoded);
     if (exitCode === undefined) {
       return yield* Effect.fail(

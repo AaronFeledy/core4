@@ -1,13 +1,9 @@
 import { Effect, Schema } from "effect";
 import { Flags } from "../../spec/metadata";
 
-import {
-  ShellenvInstallRecordError,
-  defaultShellenvShell,
-  normalizeShellenvShell,
-  renderShellenv,
-} from "../../commands/shellenv";
+import { ShellenvInstallRecordError, normalizeShellenvShell, renderShellenv } from "../../commands/shellenv";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 /**
  * `lando meta:shellenv` — print shell-profile snippets to add Lando to PATH.
@@ -15,13 +11,8 @@ import type { LandoCommandSpec } from "../../spec/command-base";
  * **CLI-only** — not exported from `@lando/core/cli`.
  */
 
-export const shellenvShellFromInput = (input: unknown) => {
-  if (typeof input !== "object" || input === null || !("flags" in input)) return defaultShellenvShell();
-  const flags = (input as { readonly flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null || !("shell" in flags)) return defaultShellenvShell();
-  const shell = (flags as { readonly shell?: unknown }).shell;
-  return normalizeShellenvShell(typeof shell === "string" ? shell : undefined);
-};
+export const shellenvShellFromInput = (input: unknown) =>
+  normalizeShellenvShell(stringFlag(specFlagsOf(input), "shell"));
 
 export const shellenvSpec: LandoCommandSpec<string, ShellenvInstallRecordError, never> = {
   resultSchema: Schema.String,

@@ -1,7 +1,7 @@
 import { landofileLayerPaths } from "@lando/landofile/layers";
-import { mergeLandofiles } from "@lando/landofile/merge";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 import { ConfigTranslateError } from "@lando/sdk/errors";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import {
   type ConfigTranslateLayerFragment,
   type ConfigTranslateOutput,

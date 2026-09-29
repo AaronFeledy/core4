@@ -6,7 +6,7 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "@lando/landofile/compose/dispositions";
+} from "@lando/sdk/landofile";
 import {
   ComposeKeyMatrixError,
   assertMatrixInvariants,

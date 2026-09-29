@@ -1,11 +1,11 @@
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
 import type { ConfigError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor-contract";
 import type { SubsystemRecovery } from "./doctor-subsystem-checks";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 import { resolveSetupNetworkTrust } from "./setup-network-trust";
 
 export interface NetworkTrustDoctorStatus {
@@ -31,10 +31,7 @@ export const networkTrustDoctorStatus = (
       sourceEnv: env,
       proxyUrls,
     };
-    const redactionService = yield* Effect.serviceOption(RedactionService);
-    const redactor = Option.isSome(redactionService)
-      ? yield* redactionService.value.forProfile("secrets", redactionOptions)
-      : createStandaloneRedactor("secrets", redactionOptions);
+    const { redactor } = yield* resolveSecretsRedactor(redactionOptions);
 
     return yield* resolveSetupNetworkTrust(config, env).pipe(
       Effect.match({

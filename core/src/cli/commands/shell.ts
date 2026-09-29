@@ -141,7 +141,7 @@ const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, Deprec
                 kind: "flag",
                 id: HOST_FLAG_DEPRECATION_ID,
                 notice: notice.value,
-                timestamp: DateTime.unsafeMake(new Date().toISOString()),
+                timestamp: DateTime.unsafeNow(),
               }),
         ),
       );

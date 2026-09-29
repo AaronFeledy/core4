@@ -8,6 +8,7 @@ import { dirname } from "node:path";
 import { Effect, Either, ParseResult, Schema } from "effect";
 
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
+import { composeTopLevelDispositions, mergeValues } from "@lando/sdk/landofile";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
@@ -15,7 +16,6 @@ import {
   type ConfigLintViolation,
   LandofileShape,
 } from "@lando/sdk/schema";
-import { composeTopLevelDispositions } from "./compose/dispositions.ts";
 import {
   type ComposeRejectionMatch,
   analyzeComposeRejections,
@@ -23,7 +23,6 @@ import {
 } from "./compose/rejections.ts";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
 import { presentLandofileLayers } from "./layers.ts";
-import { mergeValues } from "./merge.ts";
 import { detectLandofileTags, parseLandofile } from "./parser.ts";
 import type { TemplateEngineInputs } from "./ports.ts";
 import { normalizeRoutes } from "./route-normalize.ts";

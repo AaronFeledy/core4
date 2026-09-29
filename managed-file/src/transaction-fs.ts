@@ -2,11 +2,12 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, rename, unlink } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
+import { isErrnoCode } from "@lando/sdk/errors";
 import { syncDirectory } from "@lando/state-store/atomic";
 import { type PrivateFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { transactionError } from "./transaction-error.ts";
 import type { Entry, FileState, Stage } from "./transaction-journal.ts";
-import { createPrivateFile, hasCode, statMaybe, targetPath } from "./transaction-private-file.ts";
+import { createPrivateFile, statMaybe, targetPath } from "./transaction-private-file.ts";
 
 export { canonicalRoot, ensureDirectory, statMaybe, targetPath } from "./transaction-private-file.ts";
 
@@ -116,7 +117,7 @@ export const ensureBackup = async (options: EnsureBackupOptions): Promise<void> 
       privateFileAccess: options.privateFileAccess.enforce,
     });
   } catch (cause) {
-    if (!hasCode(cause, "EEXIST")) throw cause;
+    if (!isErrnoCode(cause, "EEXIST")) throw cause;
   }
   await verifyPrivateFile(options.path, digestOf(options.bytes), options.privateFileAccess);
 };
