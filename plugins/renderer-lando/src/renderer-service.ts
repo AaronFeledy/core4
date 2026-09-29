@@ -29,7 +29,7 @@ const makeEventConsumerLive = (
     }),
   );
 
-const nowTimestamp = (): DateTime.Utc => DateTime.unsafeMake(new Date().toISOString());
+const nowTimestamp = (): DateTime.Utc => DateTime.unsafeNow();
 
 const makeMessageContract = (io: RendererIO) => {
   const output = outputJournalFor(io);

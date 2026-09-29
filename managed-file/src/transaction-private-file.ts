@@ -1,5 +1,6 @@
 import { lstat, mkdir, open, realpath, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { isErrnoCode } from "@lando/sdk/errors";
 import { syncDirectory } from "@lando/state-store/atomic";
 import { type OwnerOnlyFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { transactionError } from "./transaction-error.ts";
@@ -64,14 +65,11 @@ export const createPrivateFile = async (options: CreatePrivateFileOptions): Prom
   await syncDirectory(dirname(options.path));
 };
 
-export const hasCode = (cause: unknown, code: string): boolean =>
-  cause instanceof Error && "code" in cause && cause.code === code;
-
 export const statMaybe = async (path: string) => {
   try {
     return await lstat(path);
   } catch (cause) {
-    if (hasCode(cause, "ENOENT")) return null;
+    if (isErrnoCode(cause, "ENOENT")) return null;
     throw cause;
   }
 };
@@ -87,7 +85,7 @@ export const ensureDirectory = async (path: string): Promise<void> => {
   try {
     await mkdir(path, { mode: 0o700 });
   } catch (cause) {
-    if (!hasCode(cause, "EEXIST")) throw cause;
+    if (!isErrnoCode(cause, "EEXIST")) throw cause;
   }
   const created = await lstat(path);
   if (!created.isDirectory() || created.isSymbolicLink()) throw transactionError("path", "prepare", path);

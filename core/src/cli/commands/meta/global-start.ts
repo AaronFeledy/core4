@@ -43,7 +43,7 @@ import { globalAppRef, renderGlobalServiceRow } from "./global-common";
 import { globalInstall } from "@lando/engine/operations/global-install";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "@lando/engine/operations/global-plan";
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 export interface GlobalStartOptions {
   readonly services?: ReadonlyArray<string>;

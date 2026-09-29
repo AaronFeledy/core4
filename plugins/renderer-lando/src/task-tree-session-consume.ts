@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, absurd } from "effect";
 
 import type { LandoEvent } from "@lando/sdk/services";
 
@@ -24,10 +24,6 @@ export type SessionSubstrate = {
     dispose(): Promise<void>;
   };
   readonly transcriptTail: { readonly close: Effect.Effect<void> };
-};
-
-const assertNever = (value: never): never => {
-  throw new Error(`Unexpected session boundary action: ${String(value)}`);
 };
 
 export const commitOpenSession = <E>(
@@ -102,7 +98,7 @@ export const routeSessionEvent = <E>(
       case "ignore":
         return { session: boundary.session };
       default:
-        return assertNever(boundary.action);
+        return absurd<never>(boundary.action);
     }
     if (active !== undefined) {
       return { session: yield* consumeActive(event, session, active) };

@@ -1,6 +1,6 @@
 import { lstat } from "node:fs/promises";
 import { posix, win32 } from "node:path";
-import { SshAgentUnavailableError } from "@lando/sdk/errors";
+import { SshAgentUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { probeSshAgent } from "./agent-probe.ts";
@@ -41,9 +41,6 @@ const unavailable = (reason: "socket-missing" | "host-agent-not-found", socketPa
     remediation: "Start your SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path.",
   });
 
-const isEnoent = (cause: unknown): boolean =>
-  typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT";
-
 const nodeInspect = (path: string): Effect.Effect<HostAgentPathKind, never> =>
   Effect.tryPromise({
     try: () => lstat(path),
@@ -55,7 +52,7 @@ const nodeInspect = (path: string): Effect.Effect<HostAgentPathKind, never> =>
       return "other";
     }),
     Effect.catchAll((cause) => {
-      const kind: HostAgentPathKind = isEnoent(cause) ? "missing" : "other";
+      const kind: HostAgentPathKind = isErrnoCode(cause, "ENOENT") ? "missing" : "other";
       return Effect.succeed(kind);
     }),
   );

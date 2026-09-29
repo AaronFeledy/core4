@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
@@ -23,9 +23,6 @@ const appNameFor = (ctx: ServiceFeatureContext): string => {
   if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
   return basename(ctx.appRoot) || "app";
 };
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const applyCompose = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -126,7 +123,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   if (tmpfsEntries.length > 0) {
     const existing = service.providers?.compose;
     ctx.addExtension("compose", {
-      ...(isRecord(existing) ? existing : {}),
+      ...(Predicate.isRecord(existing) ? existing : {}),
       tmpfs: tmpfsEntries,
     });
   }

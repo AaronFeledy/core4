@@ -13,7 +13,6 @@
  *     (i.e. not `--yes`/`--no-interactive`) the user is prompted once and a
  *     decline aborts with `checksum-unverified`.
  */
-import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
@@ -28,6 +27,7 @@ import { ConfigServiceLive } from "@lando/engine/services/config";
 import { EventServiceLive } from "@lando/engine/services/event-service";
 import { DownloaderLive } from "@lando/http-client/downloader";
 import { HttpClientLive } from "@lando/http-client/live";
+import { sha256Hex } from "@lando/sdk/digest";
 import { publish } from "./git-source";
 import type { ResolvedRecipe } from "./source";
 
@@ -74,8 +74,6 @@ const sourceError = (input: {
 }): RecipeSourceError => new RecipeSourceError(input);
 
 const SHA256_RE = /^[0-9a-f]{64}$/u;
-const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
-
 const normalizeSubpath = (subpath: string | undefined): string | undefined => {
   if (subpath === undefined || subpath.trim() === "" || subpath === ".") return undefined;
   const slashPath = subpath.replace(/\\/gu, "/");

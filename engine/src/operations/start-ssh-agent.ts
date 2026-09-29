@@ -215,7 +215,7 @@ export const withStartedSshAgent = <A, E, R>(
                 .publish(
                   MessageWarnEvent.make({
                     body: `SSH agent forwarding is unavailable (${error._tag}: ${error._tag === "SshAgentUnavailableError" ? error.reason : error.stage}); starting without it. ${error.remediation}`,
-                    timestamp: DateTime.unsafeMake(new Date().toISOString()),
+                    timestamp: DateTime.unsafeNow(),
                   }),
                 )
                 .pipe(Effect.catchAll(() => Effect.void));

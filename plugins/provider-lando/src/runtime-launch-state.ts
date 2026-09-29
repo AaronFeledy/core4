@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { delimiter } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { writeFileAtomic } from "@lando/state-store/atomic";
@@ -16,16 +16,13 @@ interface RuntimeLaunchState {
 
 export const launchStatePath = (pidPath: string): string => `${pidPath}.launch.json`;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const parseRuntimeLaunchState = (raw: string): RuntimeLaunchState | undefined => {
   const parsed: unknown = JSON.parse(raw);
   if (
-    !isRecord(parsed) ||
+    !Predicate.isRecord(parsed) ||
     typeof parsed.pid !== "number" ||
     !Number.isInteger(parsed.pid) ||
-    !isRecord(parsed.env)
+    !Predicate.isRecord(parsed.env)
   ) {
     return undefined;
   }

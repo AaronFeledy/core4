@@ -1,6 +1,6 @@
 import { basename } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Schema, absurd } from "effect";
 
 import {
   AppFeatureSelectorMatchedNothingError,
@@ -135,10 +135,6 @@ const siblingHasHealthProbe = (sibling: AppFeatureServiceView): boolean => {
   return healthcheck !== undefined && healthcheck.kind !== "none";
 };
 
-const assertNever = (value: never): never => {
-  throw new Error(`unexpected authored hosts wire: ${String(value)}`);
-};
-
 const addSiblingDependencies = (
   mutator: AppFeatureServiceMutators,
   siblings: ReadonlyArray<AppFeatureServiceView>,
@@ -184,7 +180,7 @@ const applyPhpMyAdminWire = (ctx: AppFeatureContext): Effect.Effect<void, PhpMyA
         authored.set(view.serviceName, resolved);
         break;
       default:
-        return assertNever(resolved);
+        return absurd<never>(resolved);
     }
   }
 
