@@ -5,6 +5,13 @@ import { StreamFrame } from "@lando/sdk/schema";
 import { type LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
 import { renderLogsAppResult } from "../../commands/logs";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import {
+  logFollowFromInput,
+  logLinesToStreamFrames,
+  logOptionsFromInput,
+  logSignalFromInput,
+} from "../logs-input";
 
 export interface LogsFlags {
   readonly service?: string;
@@ -19,25 +26,15 @@ export interface LogsFlags {
   readonly "no-viewer"?: boolean;
 }
 
-const flagsFromInput = (input: unknown): LogsFlags =>
-  typeof input === "object" && input !== null ? ((input as { readonly flags?: LogsFlags }).flags ?? {}) : {};
-
 export const logsOptionsFromInput = (input: unknown): Parameters<typeof logsApp>[0] => {
-  const flags = flagsFromInput(input);
+  const source = stringFlag(specFlagsOf(input), "source");
   return {
-    ...(flags.service === undefined ? {} : { service: flags.service }),
-    ...(flags.tail === undefined ? {} : { tail: flags.tail }),
-    ...(flags.since === undefined ? {} : { since: flags.since }),
-    ...(flags.source === undefined ? {} : { source: flags.source }),
+    ...logOptionsFromInput(input),
+    ...(source === undefined ? {} : { source }),
   };
 };
 
-export const logsFollowFromInput = (input: unknown): boolean => flagsFromInput(input).follow === true;
-
-const signalFromInput = (input: unknown): AbortSignal | undefined =>
-  typeof input === "object" && input !== null
-    ? (input as { readonly signal?: AbortSignal }).signal
-    : undefined;
+export const logsFollowFromInput = (input: unknown): boolean => logFollowFromInput(input);
 
 export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   resultSchema: EmptyResultSchema,
@@ -71,17 +68,12 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   run: (input) => {
     const options = logsOptionsFromInput(input);
     if (!logsFollowFromInput(input)) return logsApp(options);
-    const signal = signalFromInput(input);
+    const signal = logSignalFromInput(input);
     return followLogsApp({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
   },
   streamFrames: (value) => {
     const result = value as LogsAppResult;
-    return result.lines.map((line) => ({
-      _tag: line.stream,
-      service: line.service,
-      chunk: `${line.line}\n`,
-      ...(line.source === undefined ? {} : { source: line.source }),
-    }));
+    return logLinesToStreamFrames(result);
   },
   render: (result) => renderLogsAppResult(result as LogsAppResult),
 };

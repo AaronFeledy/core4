@@ -8,17 +8,12 @@ import {
   renderGlobalStartResult,
 } from "../../../commands/meta/global-start";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../../spec/command-base";
-
-const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
-  if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
-  return typeof value === "string" ? [value] : [];
-};
+import { specFlagsOf, stringArrayFlag } from "../../../spec/input-coercion";
 
 export const globalStartOptionsFromInput = (input: unknown): GlobalStartOptions => {
   const signal = extractSpecAbortSignal(input);
-  if (typeof input !== "object" || input === null) return signal === undefined ? {} : { signal };
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
-  const services = stringArrayFlag(flags.service).filter((service) => service.length > 0);
+  const flags = specFlagsOf(input);
+  const services = stringArrayFlag(flags, "service").filter((service) => service.length > 0);
   return {
     ...(services.length === 0 ? {} : { services }),
     ...(signal === undefined ? {} : { signal }),

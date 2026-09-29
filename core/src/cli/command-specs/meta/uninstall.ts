@@ -16,6 +16,7 @@ import {
 import { readAppliedPlansFromUserData } from "../../commands/list-discovery";
 import { renderUninstallResult } from "../../commands/uninstall";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { specFlagsOf } from "../../spec/input-coercion";
 
 const CONTAINER_RUNTIMES = [
   { cmd: "docker", providerId: "docker" },
@@ -499,7 +500,7 @@ export const makeCleanupDiscoveredApps =
 
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
-  const flags = (input as { readonly flags?: Record<string, unknown> }).flags ?? {};
+  const flags = specFlagsOf(input);
   const extra = input as {
     readonly _userDataRoot?: unknown;
     readonly _userCacheRoot?: unknown;

@@ -13,13 +13,13 @@ import {
   renderPluginTrustRevokeResult,
 } from "../../../commands/plugin-trust";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
 
 const extractInput = (input: unknown): { action: string; name: string } => {
-  if (typeof input !== "object" || input === null) return { action: "", name: "" };
-  const args = (input as { args?: Record<string, unknown> }).args ?? {};
+  const args = specArgsOf(input);
   return {
-    action: typeof args.action === "string" ? args.action : "",
-    name: typeof args.name === "string" ? args.name : "",
+    action: stringFlag(args, "action") ?? "",
+    name: stringFlag(args, "name") ?? "",
   };
 };
 

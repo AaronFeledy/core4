@@ -1,3 +1,11 @@
+import {
+  booleanFlag,
+  formatFlag,
+  specArgsOf,
+  specFlagsOf,
+  stringArrayFlag,
+  stringFlag,
+} from "../../../spec/input-coercion";
 import { Args, Flags } from "../../../spec/metadata";
 
 import type {
@@ -50,18 +58,10 @@ export const remoteSetupFlags = {
   force: Flags.boolean({ description: "Force remote setup checks." }),
 } as const;
 
-const recordOf = (value: unknown): Record<string, unknown> =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-
-const stringValue = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
-const booleanValue = (value: unknown): boolean => value === true;
-const formatValue = (value: unknown): "text" | "json" => (value === "json" ? "json" : "text");
-
 export const remoteFormatFromInput = (input: unknown): "text" | "json" =>
-  formatValue(recordOf(recordOf(input).flags).format);
+  formatFlag(specFlagsOf(input), ["text", "json"], "text");
 
-const onlyValue = (value: unknown): ReadonlyArray<string> | undefined => {
-  const raw = stringValue(value);
+const onlyValue = (raw: string | undefined): ReadonlyArray<string> | undefined => {
   if (raw === undefined) return undefined;
   if (raw.length === 0) return [];
   return raw
@@ -71,11 +71,9 @@ const onlyValue = (value: unknown): ReadonlyArray<string> | undefined => {
 };
 
 const remoteSelection = (
-  remoteFlag: unknown,
-  selectorArg: unknown,
+  flaggedRemote: string | undefined,
+  selector: string | undefined,
 ): { readonly remote?: string; readonly env?: string } => {
-  const flaggedRemote = stringValue(remoteFlag);
-  const selector = stringValue(selectorArg);
   if (flaggedRemote !== undefined) {
     if (selector === undefined) return { remote: flaggedRemote };
     const separator = selector.indexOf("@");
@@ -94,71 +92,67 @@ const remoteSelection = (
 };
 
 export const remoteSyncOptionsFromInput = (input: unknown): RemoteSyncOptions => {
-  const flags = recordOf(recordOf(input).flags);
-  const args = recordOf(recordOf(input).args);
-  const options: Record<string, unknown> = {};
-  const { remote, env } = remoteSelection(flags.remote, args.env);
-  const only = onlyValue(flags.only);
-  if (remote !== undefined) options.remote = remote;
-  if (env !== undefined) options.env = env;
-  if (only !== undefined) options.only = only;
-  if (booleanValue(flags["no-snapshot"])) options.noSnapshot = true;
-  if (booleanValue(flags.force)) options.force = true;
-  if (booleanValue(flags.yes)) options.yes = true;
-  if (booleanValue(flags["no-interactive"])) options.noInteractive = true;
-  return options as unknown as RemoteSyncOptions;
+  const flags = specFlagsOf(input);
+  const args = specArgsOf(input);
+  const selection = remoteSelection(stringFlag(flags, "remote"), stringFlag(args, "env"));
+  const only = onlyValue(stringFlag(flags, "only"));
+  return {
+    ...selection,
+    ...(only === undefined ? {} : { only }),
+    ...(booleanFlag(flags, "no-snapshot") ? { noSnapshot: true } : {}),
+    ...(booleanFlag(flags, "force") ? { force: true } : {}),
+    ...(booleanFlag(flags, "yes") ? { yes: true } : {}),
+    ...(booleanFlag(flags, "no-interactive") ? { noInteractive: true } : {}),
+  };
 };
 
 export const remoteListOptionsFromInput = (input: unknown): RemoteListOptions => {
-  const remote = stringValue(recordOf(recordOf(input).flags).remote);
+  const remote = stringFlag(specFlagsOf(input), "remote");
   const format = remoteFormatFromInput(input);
   return remote === undefined ? { format } : { remote, format };
 };
 
 export const remoteAddOptionsFromInput = (input: unknown): RemoteAddOptions => {
-  const flags = recordOf(recordOf(input).flags);
-  const args = recordOf(recordOf(input).args);
-  const name = stringValue(args.name) ?? stringValue(flags.remote) ?? "default";
-  const source = stringValue(args.source) ?? "local";
-  const config: Record<string, unknown> = { source };
-  const pairs = flags.set;
-  const values = Array.isArray(pairs) ? pairs : pairs === undefined ? [] : [pairs];
+  const flags = specFlagsOf(input);
+  const args = specArgsOf(input);
+  const name = stringFlag(args, "name") ?? stringFlag(flags, "remote") ?? "default";
+  const source = stringFlag(args, "source") ?? "local";
+  const config: { source: string; [key: string]: unknown } = { source };
+  const values = stringArrayFlag(flags, "set");
   for (const value of values) {
-    if (typeof value !== "string") continue;
     const eq = value.indexOf("=");
     if (eq <= 0) continue;
     config[value.slice(0, eq)] = value.slice(eq + 1);
   }
   return {
     name,
-    config: config as { readonly source: string } & Readonly<Record<string, unknown>>,
+    config,
     format: remoteFormatFromInput(input),
   };
 };
 
 export const remoteRemoveOptionsFromInput = (input: unknown): RemoteRemoveOptions => {
-  const flags = recordOf(recordOf(input).flags);
-  const args = recordOf(recordOf(input).args);
+  const flags = specFlagsOf(input);
+  const args = specArgsOf(input);
   return {
-    name: stringValue(args.name) ?? stringValue(flags.remote) ?? "default",
+    name: stringFlag(args, "name") ?? stringFlag(flags, "remote") ?? "default",
     format: remoteFormatFromInput(input),
   };
 };
 
 export const remoteTestOptionsFromInput = (input: unknown): RemoteTestOptions => {
-  const flags = recordOf(recordOf(input).flags);
-  const args = recordOf(recordOf(input).args);
-  const options: Record<string, unknown> = { format: remoteFormatFromInput(input) };
-  const { remote, env } = remoteSelection(flags.remote, args.env);
-  if (remote !== undefined) options.remote = remote;
-  if (env !== undefined) options.env = env;
-  return options as unknown as RemoteTestOptions;
+  const flags = specFlagsOf(input);
+  const args = specArgsOf(input);
+  return {
+    format: remoteFormatFromInput(input),
+    ...remoteSelection(stringFlag(flags, "remote"), stringFlag(args, "env")),
+  };
 };
 
 export const remoteSetupOptionsFromInput = (input: unknown): RemoteSetupOptions => {
   const base = remoteTestOptionsFromInput(input);
-  const flags = recordOf(recordOf(input).flags);
-  return { ...base, ...(booleanValue(flags.force) ? { force: true } : {}) };
+  const flags = specFlagsOf(input);
+  return { ...base, ...(booleanFlag(flags, "force") ? { force: true } : {}) };
 };
 
 export const remoteEnvListOptionsFromInput = (input: unknown): RemoteEnvListOptions =>

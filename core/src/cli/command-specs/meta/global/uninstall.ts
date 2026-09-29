@@ -8,11 +8,12 @@ import {
   renderGlobalUninstallResult,
 } from "../../../commands/meta/global-uninstall";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, specFlagsOf } from "../../../spec/input-coercion";
 
 export const globalUninstallOptionsFromInput = (input: unknown): GlobalUninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
-  const args = (input as { args?: Record<string, unknown> }).args ?? {};
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
+  const args = specArgsOf(input);
+  const flags = specFlagsOf(input);
   return {
     ...(typeof args.plugin === "string" ? { plugin: args.plugin } : {}),
     purge: flags.purge === true,

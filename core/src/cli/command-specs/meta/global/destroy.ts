@@ -8,10 +8,11 @@ import {
   renderGlobalDestroyResult,
 } from "../../../commands/meta/global-destroy";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specFlagsOf } from "../../../spec/input-coercion";
 
 export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOptions => {
   if (typeof input !== "object" || input === null) return {};
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
+  const flags = specFlagsOf(input);
   return { yes: flags.yes === true, purge: flags.purge === true };
 };
 

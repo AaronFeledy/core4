@@ -11,12 +11,11 @@
  * The runtime is built exactly once, inside a `Scope` that stays open for the
  * runtime-dependent sections and closes with the report.
  */
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import { ConfigServiceLive } from "@lando/engine/services/config";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
@@ -24,6 +23,7 @@ import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./d
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
@@ -43,10 +43,7 @@ const collectResilientDoctorReport = (
   Effect.scoped(
     Effect.gen(function* () {
       const sourceEnv = { ...(options.env ?? process.env) };
-      const redactionService = yield* Effect.serviceOption(RedactionService);
-      const redactor = Option.isSome(redactionService)
-        ? yield* redactionService.value.forProfile("secrets", { sourceEnv })
-        : createStandaloneRedactor("secrets", { sourceEnv });
+      const { redactor } = yield* resolveSecretsRedactor({ sourceEnv });
 
       const runtimeLayerFactory = yield* RuntimeLayerFactory;
       const runtime = runtimeLayerFactory.make(
