@@ -1,0 +1,154 @@
+---
+id: lemp-workflow
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, lemp, php, nginx, mariadb]
+---
+
+# Run the LEMP recipe
+
+```sh
+lando init --recipe lemp --name=lemp-demo --yes
+cd lemp-demo
+lando start
+```
+
+The named init creates `lemp-demo/` and writes only `.lando.yml` there. Change into it before app commands. `--yes` keeps PHP 8.3. Nginx fronts PHP-FPM on `appserver`, and MariaDB is up after start. Drop an `index.php` in the project root, then open the URL `lando info` prints.
+
+If something else owns 80 or 443, Lando picks the next free port (usually `:8080` / `:8443`) and `lando info` shows it.
+
+## See what the recipe writes
+
+| Piece | What you get |
+| --- | --- |
+| `web` | `nginx`, `backend: appserver`, webroot `/app`, HTTP and HTTPS routes (not primary) |
+| `appserver` | `php:8.3`, `framework: none`, `via: fpm`, webroot `/app`, primary, depends on `database` |
+| `database` | `type: mariadb` (MariaDB 11.4) |
+| Tooling | `lando composer` and `lando php` on `appserver`, plus `lando mariadb` from the database service |
+
+Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pass `--answer=php=8.2` when you want PHP 8.2 instead.
+
+`web` owns the public URL. `appserver` runs PHP-FPM only, so `lando info` lists no HTTP endpoints on it. That split is the point of LEMP: nginx takes the requests, FPM runs the PHP.
+
+## Serve a simple PHP page
+
+Put `index.php` in the app root (`/app`):
+
+```php
+<?php
+header('Content-Type: text/plain; charset=utf-8');
+echo 'lemp-ok php=' . PHP_VERSION . ' sapi=' . PHP_SAPI . "\n";
+```
+
+Then:
+
+```sh
+lando info
+lando open --print
+```
+
+`lando open --print` shows the app HTTPS URL (port included when the proxy fell back). Open that URL or curl it. A working FPM path reports `sapi=fpm-fcgi`, not `cli`.
+
+## Run Composer, PHP, and MariaDB
+
+```sh
+lando composer --version
+lando php -v
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+`lando composer` and `lando php` run on `appserver`. `lando mariadb` opens the client on `database` with the app credentials already set.
+
+## Connect PHP to MariaDB
+
+| Setting | Value |
+| --- | --- |
+| Host | `database` |
+| Database | app name (here `lemp-demo`) |
+| User | `lando` |
+| Password | `lando` |
+| Port | `3306` |
+
+Use the service key `database`, not `127.0.0.1` or `localhost`. Root password is generated; `lando info` redacts it, and you do not need it for the app user.
+
+PDO example that hits MariaDB from PHP-FPM:
+
+```php
+<?php
+header('Content-Type: text/plain; charset=utf-8');
+echo 'lemp-ok php=' . PHP_VERSION . ' sapi=' . PHP_SAPI . "\n";
+$pdo = new PDO('mysql:host=database;dbname=lemp-demo', 'lando', 'lando');
+$row = $pdo->query('SELECT 1 AS ok')->fetch(PDO::FETCH_ASSOC);
+echo 'pdo-ok=' . ($row['ok'] ?? 'missing') . "\n";
+```
+
+The stock PHP image already has `pdo_mysql`.
+
+## Import and export the database
+
+```sh
+lando db:export dump.sql.gz
+lando db:import dump.sql.gz --yes
+lando mariadb -e 'SELECT 1 AS ok;'
+```
+
+The recipe has one database service, so neither command needs `--service`. A `.gz` name gzips on export and gunzips on import. Importing into a non-empty database asks first; `--yes` skips the prompt.
+
+## Check the config and tear down
+
+`lando app:config --format=json` prints the planned config without touching containers. Here's the whole loop, init to destroy:
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="lemp-demo" display="lemp-demo" />
+      <Run command="lando init --recipe lemp --name={{appName}} --yes" />
+    </Step>
+    <Step name="confirm-defaults">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"nginx\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"backend\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.3\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"php\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="info">
+      <Run command="lando info" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="php82" render={false} reason="Regression: php=8.2 answer plans php:8.2 with via fpm">
+    <Step name="init">
+      <Variable name="appName" value="lemp-php82" display="lemp-php82" />
+      <Run command="lando init --recipe lemp --name={{appName}} --yes --answer=php=8.2" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"php:8\\.2\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"fpm\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"backend\":\\s*\"appserver\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+`lando destroy -y` removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+
+## Next
+
+- [LEMP recipe](/recipes/lemp/)
+- [Change a LAMP stack after init](./lamp-stack-variants.mdx)
+- [Add PHP](../services/php.mdx)
+- [Add nginx](../services/nginx.mdx)
+- [Add MariaDB](../services/mariadb.mdx)
+- [Install an extra PHP extension](../services/php-customization.mdx)
+- [Import and export app databases](../tooling/db-import-export.mdx)

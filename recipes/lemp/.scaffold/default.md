@@ -18,6 +18,8 @@ for PHP and Composer tooling; it does not expose a separate HTTP route.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling, PHP-FPM behind nginx, and database hosts, see [Run the LEMP recipe](/guides/recipes/lemp-workflow/).
+
 ## 1. scaffold
 
 ```bash

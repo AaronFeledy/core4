@@ -52,6 +52,7 @@ export const sidebar = [
         collapsed: true,
         items: [
           { label: "LAMP stack variants", slug: "guides/recipes/lamp-stack-variants" },
+          { label: "Run the LEMP recipe", slug: "guides/recipes/lemp-workflow" },
           { label: "Run the Rails recipe", slug: "guides/recipes/rails-workflow" },
           { label: "Run the Astro recipe", slug: "guides/recipes/astro-workflow" },
           { label: "Run the Django recipe", slug: "guides/recipes/django-workflow" },
