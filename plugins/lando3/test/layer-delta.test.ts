@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
 import { ConfigTranslateSourceId, type LandofileLayer } from "@lando/sdk/schema";
 import { type DesiredPrefix, planLayerDeltas } from "../src/layer-delta.ts";
-import { isPlainRecord, mergeLandofiles } from "../src/v4-merge.ts";
 
 const prefix = (layer: LandofileLayer, desired: Readonly<Record<string, unknown>>): DesiredPrefix => ({
   layer,

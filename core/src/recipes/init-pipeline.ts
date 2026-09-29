@@ -2,9 +2,9 @@ import { join } from "node:path";
 import { makeConfigTranslatorRegistryLive } from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
-import { mergeLandofiles } from "@lando/landofile/merge";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { mergeLandofiles } from "@lando/sdk/landofile";
 import { validateRecipeSecretPrompts } from "@lando/sdk/recipes";
 import {
   type ConfigTranslateDiagnostic,
