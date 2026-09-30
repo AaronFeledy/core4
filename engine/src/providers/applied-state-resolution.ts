@@ -7,6 +7,7 @@ import { type AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import type {
   AppliedOrphanGroup,
   AppliedTeardownEvidence,
+  ListFilter,
   ProviderError,
   ProviderRuntimeSnapshot,
   RuntimeProviderShape,
@@ -17,13 +18,13 @@ export type AppliedStateProvider = Pick<
   "id" | "appliedPlans" | "isAvailable" | "list" | "listVolumes"
 >;
 
-const runtimeEvidence = (provider: AppliedStateProvider) =>
+const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter) =>
   provider.isAvailable.pipe(
     Effect.flatMap((available) =>
       available
         ? Effect.all({
             runtimeObserved: Effect.succeed(true),
-            services: provider.list({}),
+            services: provider.list(filter),
             volumes: provider.listVolumes({}),
           })
         : Effect.succeed({ runtimeObserved: false, services: [], volumes: [] }),
@@ -108,7 +109,7 @@ export const observeProviderRuntime = (
   Effect.forEach(providers, (provider) =>
     Effect.gen(function* () {
       const appliedPlans = yield* gatherAppliedPlans(provider);
-      const runtime = yield* runtimeEvidence(provider);
+      const runtime = yield* runtimeEvidence(provider, { includeUnplanned: true });
       return { providerId: ProviderId.make(provider.id), appliedPlans, ...runtime };
     }),
   );
@@ -145,7 +146,9 @@ const collectEvidence = (
       .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
     const selected = matches[0];
     if (selected === undefined) {
-      const evidence = yield* Effect.forEach(providers, runtimeEvidence);
+      const evidence = yield* Effect.forEach(providers, (provider) =>
+        runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
+      );
       const groups = groupOrphans(root, providers, evidence);
       return groups.length > 0 ? { kind: "orphans" as const, groups } : { kind: "absent" as const };
     }

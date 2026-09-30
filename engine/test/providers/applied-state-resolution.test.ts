@@ -4,7 +4,7 @@ import { DateTime, Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { RuntimeProviderShape } from "@lando/sdk/services";
+import type { ListFilter, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import {
@@ -14,6 +14,41 @@ import {
 } from "../../src/providers/applied-state-resolution.ts";
 
 const root = AbsolutePath.make("/tmp/applied-state-evidence");
+
+test.each([
+  {
+    name: "host observation",
+    run: (providers: ReadonlyArray<RuntimeProviderShape>) =>
+      observeProviderRuntime(providers).pipe(Effect.asVoid),
+    filter: { includeUnplanned: true },
+  },
+  {
+    name: "exact teardown",
+    run: (providers: ReadonlyArray<RuntimeProviderShape>) =>
+      resolveTeardownEvidence(root, providers).pipe(Effect.asVoid),
+    filter: { includeUnplanned: true },
+  },
+  {
+    name: "ancestor resolution",
+    run: (providers: ReadonlyArray<RuntimeProviderShape>) =>
+      resolveAppliedPlanEvidence(root, providers).pipe(Effect.asVoid),
+    filter: {},
+  },
+])("$name uses the intended runtime discovery filter", async ({ run, filter }) => {
+  const filters: ListFilter[] = [];
+  await Effect.runPromise(
+    run([
+      provider("lando", {
+        isAvailable: Effect.succeed(true),
+        list: (input) => {
+          filters.push(input);
+          return Effect.succeed([]);
+        },
+      }),
+    ]),
+  );
+  expect(filters).toEqual([filter]);
+});
 
 const provider = (
   id: string,
