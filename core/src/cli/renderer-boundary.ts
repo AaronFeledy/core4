@@ -61,7 +61,11 @@ export const isDecoratedContext = (ctx?: RenderContext): boolean =>
 
 /** OSC 8 wraps existing labels only on a TTY when TERM is not dumb and NO_COLOR is unset. */
 export const contextAllowsHyperlinks = (ctx?: RenderContext): boolean =>
-  ctx !== undefined && shouldEmitHyperlinks({ isTTY: ctx.isTTY, env: ctx.env });
+  ctx !== undefined &&
+  shouldEmitHyperlinks({
+    isTTY: ctx.isTTY,
+    ...(ctx.env === undefined ? {} : { env: ctx.env }),
+  });
 
 /** Columns + before-paint redactor for {@link formatSummary}. */
 export const summaryPaintOptions = (ctx?: RenderContext): FormatSummaryOptions => ({
