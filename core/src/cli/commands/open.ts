@@ -362,7 +362,7 @@ export const renderOpenAppResult = (
       appendTerminalQr(output, {
         url: target.url,
         isTTY: ctx?.isTTY === true,
-        format: ctx?.format,
+        ...(ctx?.format === undefined ? {} : { format: ctx.format }),
         force: true,
       }),
     text,

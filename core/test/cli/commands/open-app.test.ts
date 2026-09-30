@@ -14,8 +14,8 @@ import {
   openOptionsFromInput,
   renderOpenAppResult,
 } from "../../../src/cli/commands/open.ts";
-import { renderTerminalQr } from "../../../src/cli/terminal-qr.ts";
 import type { RenderContext } from "../../../src/cli/renderer-boundary.ts";
+import { renderTerminalQr } from "../../../src/cli/terminal-qr.ts";
 
 const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
   priority: 2,

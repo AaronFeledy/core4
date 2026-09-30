@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { AppId, ServiceName, type TunnelSession } from "@lando/sdk/schema";
 
 import { renderShareResult } from "../../../src/cli/commands/share.ts";
-import { renderTerminalQr } from "../../../src/cli/terminal-qr.ts";
 import type { RenderContext } from "../../../src/cli/renderer-boundary.ts";
+import { renderTerminalQr } from "../../../src/cli/terminal-qr.ts";
 
 const PUBLIC_URL = "https://share.example.test";
 const LOCAL_URL = "https://web.myapp.lndo.site";
