@@ -648,7 +648,6 @@ const ServiceConfigWithExtensions = Schema.Struct(
       description:
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
-    root: Schema.optional(Schema.String),
     environment: Schema.optional(ComposeEnvironmentInput),
     envFile: Schema.optional(ComposeEnvFileInput).annotations({
       description:

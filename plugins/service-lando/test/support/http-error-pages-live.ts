@@ -56,7 +56,11 @@ const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<
   switch (server) {
     case "static":
       return [
-        { name: "web", serviceType: staticNginxServiceType, config: { type: "static", root: "dist", ports } },
+        {
+          name: "web",
+          serviceType: staticNginxServiceType,
+          config: { type: "static", webroot: "/app/dist", ports },
+        },
       ];
     case "nginx-fpm":
       return [

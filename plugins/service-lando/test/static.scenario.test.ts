@@ -173,10 +173,10 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(web.environment.LANDO_WEBROOT).toBe("/app");
   });
 
-  test("AppPlanner with root: dist sets LANDO_WEBROOT to /app/dist", async () => {
+  test("AppPlanner with webroot: /app/dist sets LANDO_WEBROOT", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { web: { type: "static", root: "dist" } },
+      services: { web: { type: "static", webroot: "/app/dist" } },
     });
 
     const appPlan = await planLandofile(landofile);
@@ -193,7 +193,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     const fileBody = "<!doctype html><html><body>hello</body></html>\n";
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { web: { type: "static", root: "dist" } },
+      services: { web: { type: "static", webroot: "/app/dist" } },
       tooling: {
         curl: {
           service: "web",

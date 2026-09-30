@@ -9,7 +9,7 @@ cd my-jekyll
 
 Jekyll declares no recipe options, so the only prompt is the app name and `--yes` answers it. Pass an undeclared `--answer` and init fails instead of quietly ignoring it.
 
-The scaffold writes only `.lando.yml`. Park `builder` with compile tooling before the first start, install gems and scaffold the site, then restore the serve command. Open the **builder** URL from `lando info` after that restore.
+The scaffold writes only `.lando.yml`. Park `builder` with compile tooling before the first start, install gems and scaffold the site, then restore the serve command. Open the **builder** URL from `lando info` after that restore. The app hostname URL (`web`) serves `_site/` through nginx once a build has written it.
 
 For park, install, scaffold, build, browse, and cleanup steps, see [Run the Jekyll recipe](/guides/recipes/jekyll-workflow/).
 
