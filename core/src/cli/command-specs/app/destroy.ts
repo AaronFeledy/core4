@@ -1,10 +1,16 @@
 /**
  * `lando app:destroy` — native command metadata adapter.
  */
+import { resolve } from "node:path";
 import { Effect } from "effect";
 import { Flags } from "../../spec/metadata";
 
-import { type DestroyAppResult, DestroyAppResultSchema, destroyApp } from "@lando/engine/operations/destroy";
+import {
+  type DestroyAppResult,
+  DestroyAppResultSchema,
+  destroyApp,
+  destroyAppAtRoot,
+} from "@lando/engine/operations/destroy";
 import { renderDestroyAppResult } from "../../commands/destroy";
 import { requireConfirmation } from "../../require-confirmation";
 import type { LandoCommandSpec } from "../../spec/command-base";
@@ -20,15 +26,17 @@ export const runDestroyCommand = (input: unknown) => {
         ? "Volumes are deleted too."
         : "Data volumes are kept.";
   return Effect.gen(function* () {
+    const root = typeof flags.root === "string" ? resolve(process.cwd(), flags.root) : undefined;
     yield* requireConfirmation({
       yes: flags.yes === true,
-      message: `Destroy this app? This removes containers and networks. ${storage}${flags["purge-caches"] === true ? " Cache volumes are deleted too." : ""}`,
+      message: `${root === undefined ? "Destroy this app? This removes containers and networks." : `Destroy the app recorded at ${root}? That folder no longer exists. This removes its containers and networks.`} ${storage}${flags["purge-caches"] === true ? " Cache volumes are deleted too." : ""}`,
     });
-    return yield* destroyApp({
+    const options = {
       volumes,
       purgeCaches: flags["purge-caches"] === true,
       yes: flags.yes === true,
-    });
+    };
+    return yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
   });
 };
 
@@ -41,6 +49,9 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   flags: {
+    root: Flags.string({
+      description: "Clean up an app whose folder no longer exists, using the path lando doctor prints.",
+    }),
     volumes: Flags.boolean({
       description: "Also remove app/service-scoped storage volumes.",
       default: false,

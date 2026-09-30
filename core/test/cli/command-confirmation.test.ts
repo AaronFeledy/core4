@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 import { deriveToolInputSchema } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { InteractionService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -11,6 +12,40 @@ import { type AppRuntimeServices, makeLandoRuntime } from "../../src/runtime/lay
 import { makeTestInteractionService } from "../../src/testing/interaction";
 
 describe("lifecycle confirmation boundary", () => {
+  test("destroy root confirmation names the folder and declines before engine access", async () => {
+    const root = resolve("missing-confirmation-app");
+    const interaction = makeTestInteractionService({ answers: { confirm: "false" } });
+    const result = await Effect.runPromise(
+      runDestroyCommand({ flags: { root, volumes: true } }).pipe(
+        Effect.provide(
+          makeLandoRuntime({ bootstrap: "app", telemetry: false }).pipe(
+            Layer.merge(
+              Layer.succeed(InteractionService, {
+                ...interaction.service,
+                isInteractive: Effect.succeed(true),
+              }),
+            ),
+            Layer.merge(
+              Layer.succeed(RuntimeProviderRegistry, {
+                list: Effect.die("Unexpected provider list"),
+                capabilities: Effect.die("Unexpected capabilities"),
+                select: () => Effect.die("Unexpected provider selection"),
+                resolveTeardownEvidence: () => Effect.die("Unexpected teardown resolution"),
+              }),
+            ),
+          ),
+        ),
+        Effect.either,
+      ),
+    );
+    if (result._tag !== "Left") throw new TypeError("expected declined confirmation");
+    expect(result.left).toMatchObject({ _tag: "CommandConfirmationError", reason: "declined" });
+    expect(interaction.transcript()).toHaveLength(1);
+    expect(interaction.transcript()[0]?.message).toContain(root);
+    expect(interaction.transcript()[0]?.message).toContain("no longer exists");
+    expect(interaction.transcript()[0]?.message).toContain("Volumes are deleted");
+  });
+
   for (const { spec, run } of [
     { spec: destroySpec, run: runDestroyCommand },
     { spec: rebuildSpec, run: runRebuildCommand },

@@ -10,6 +10,9 @@ import type {
 import {
   AppResolveError,
   type ComposeKeyRejectedError,
+  type FileIoError,
+  type FileNotFoundError,
+  type FilePermissionError,
   FileSyncStopError,
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
@@ -389,7 +392,11 @@ export const destroyApp = (
 export const destroyAppAtRoot = (
   root: string,
   options: DestroyAppOptions = {},
-): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices | FileSystem> =>
+): Effect.Effect<
+  DestroyAppResult,
+  DestroyAppError | FileIoError | FileNotFoundError | FilePermissionError,
+  DestroyAppServices | FileSystem
+> =>
   Effect.gen(function* () {
     const canonical = AbsolutePath.make(yield* canonicalMissingAppRoot(root));
     const fs = yield* FileSystem;
