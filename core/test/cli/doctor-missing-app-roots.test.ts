@@ -13,7 +13,16 @@ const snapshot = (appRoot = root, cache = false, runtimeObserved = true): Provid
   providerId,
   runtimeObserved,
   appliedPlans: [],
-  services: [{ app, appRoot, providerId, service: ServiceName.make("web"), status: "running" }],
+  services: [
+    {
+      app,
+      appRoot,
+      providerId,
+      service: ServiceName.make("web"),
+      status: "running",
+      containerId: "observed-container",
+    },
+  ],
   volumes: [
     {
       ref: { app, store: "database" },
@@ -137,7 +146,9 @@ test.each([false, true])(
     const description = checks[0]?.solutions[0]?.description ?? "";
     expect(description).toContain("move it back");
     expect(description).toContain("--volumes");
-    expect(description.includes("lando setup")).toBe(!runtimeObserved);
-    expect(description.includes("rerun doctor")).toBe(!runtimeObserved);
+    const guidance =
+      " Its runtime was not running, so containers and volumes may be missing from this list. Start the runtime, then rerun lando doctor before you clean up.";
+    expect(description.endsWith(guidance)).toBe(!runtimeObserved);
+    expect(description).not.toContain("lando setup");
   },
 );

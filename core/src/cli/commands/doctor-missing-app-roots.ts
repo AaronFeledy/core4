@@ -17,7 +17,7 @@ export const missingAppRootsDoctor = (redact: (text: string) => string) =>
       const command = `lando destroy --root ${shellArg(record.root)} --volumes${record.cacheVolumes.length > 0 ? " --purge-caches" : ""}`;
       const runtimeGuidance = record.runtimeObserved
         ? ""
-        : " The runtime was not running, so containers and volumes may be missing from this list. Check its status with lando setup, start the runtime by starting any app, and rerun doctor before cleaning up.";
+        : " Its runtime was not running, so containers and volumes may be missing from this list. Start the runtime, then rerun lando doctor before you clean up.";
       const description = `The app folder no longer exists. If you moved the app, move it back to that path and keep using it. Otherwise, this command removes its containers and deletes its data volumes; drop --volumes to keep data.${runtimeGuidance}`;
       return {
         name: "missing-app-root",
