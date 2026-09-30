@@ -136,7 +136,9 @@ test.each([
     "scratch-service": snapshot({ services: [{ ...service, labels: { "dev.lando.scratch": "TRUE" } }] }),
     "scratch-volume": snapshot({ volumes: [volume("data", { "dev.lando.scratch": "TRUE" })] }),
     "unowned-volume": snapshot({ volumes: [{ ref: { app, store: "data" } }] }),
-    "unowned-service": snapshot({ services: [{ app, service: service.service, providerId, status: "running" }] }),
+    "unowned-service": snapshot({
+      services: [{ app, service: service.service, providerId, status: "running" }],
+    }),
   }[kind];
   expect(await run(evidence === undefined ? [] : [evidence])).toEqual([]);
 });

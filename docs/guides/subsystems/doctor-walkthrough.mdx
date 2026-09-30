@@ -33,6 +33,7 @@ lando doctor --all
 | certs | Run `lando setup` to install and trust the local CA. |
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 | accelerated-start | In the reported app root, run `lando start` to recover a retained attempt or interrupted recovery, or `lando destroy` to discard it. |
+| missing-app-root | Move your app folder back to the reported path to keep using it, or remove its leftover resources with `lando destroy --root <path> --volumes`. |
 
 Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
 
@@ -73,6 +74,36 @@ use it only when you intend to discard that data too. Pending first attempts
 without a recovery marker are not automatically recovered or discarded.
 Keep the journal and inspect its resources rather
 than deleting the file by hand.
+
+## Clean up an app whose folder is gone
+
+```sh
+lando doctor --format=json
+```
+
+A `missing-app-root` warning lists resources recorded against an app folder that
+no longer exists. If you moved the folder and want to keep using the app, move
+it back to the reported path instead of cleaning up its resources.
+
+If `runtimeObserved` is `false`, the runtime wasn't running. The list may omit
+containers and volumes. Check the runtime with `lando setup`, start any app to
+start the runtime, and rerun doctor before cleaning up.
+
+**`--volumes` deletes your app's data volumes.** Drop that flag to keep the data.
+When you're ready to discard the app, replace `<path>` with the reported app
+root. Quote it if it contains spaces or shell metacharacters:
+
+```sh
+lando destroy --root <path> --volumes
+```
+
+Add `--purge-caches` if you also want to remove the reported cache volumes.
+`lando doctor --fix` never cleans up these resources for you. Check again after
+cleanup:
+
+```sh
+lando doctor --format=json
+```
 
 ## Check the current app
 
