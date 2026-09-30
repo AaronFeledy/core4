@@ -237,6 +237,9 @@ export interface ServiceRuntimeIdentity {
 export interface ListFilter {
   readonly app?: AppId;
   readonly includeScratch?: boolean;
+  /** Also report Lando-labeled containers no applied plan accounts for. Used by teardown evidence
+   * and host-wide observation; providers that already discover by label may ignore this flag. */
+  readonly includeUnplanned?: boolean;
 }
 
 /** Runtime resources owned by one app root that no applied plan accounts for. */
