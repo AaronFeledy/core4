@@ -14,6 +14,8 @@ import {
   openOptionsFromInput,
   renderOpenAppResult,
 } from "../../../src/cli/commands/open.ts";
+import { renderTerminalQr } from "../../../src/cli/terminal-qr.ts";
+import type { RenderContext } from "../../../src/cli/renderer-boundary.ts";
 
 const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
   priority: 2,
@@ -259,6 +261,23 @@ describe("openForPlan", () => {
     expect(rec.events).toEqual([]);
   });
 
+  test("--qr prints and does not launch a browser", async () => {
+    const rec = record();
+    const exit = await run(httpsPlan(), { qr: true, platform: "linux", env: { DISPLAY: ":0" } }, rec);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.launch).toBe("printed");
+      expect(exit.value.targets.map((target) => target.url)).toEqual(["https://web.myapp.lndo.site"]);
+    }
+    expect(rec.commands).toEqual([]);
+    expect(rec.events).toEqual([]);
+  });
+
+  test("openOptionsFromInput maps --qr", () => {
+    expect(openOptionsFromInput({ flags: { qr: true } }).qr).toBe(true);
+    expect(openOptionsFromInput({ flags: { print: true } }).qr).toBeUndefined();
+  });
+
   test.each(["json", "yaml"])(
     "--format=%s without explicit selection + tty does not launch",
     async (format) => {
@@ -305,19 +324,54 @@ describe("openForPlan", () => {
 });
 
 describe("renderOpenAppResult", () => {
+  const printed = {
+    app: "myapp",
+    targets: [
+      {
+        service: "web",
+        hostname: "web.myapp.lndo.site",
+        scheme: "https" as const,
+        url: "https://web.myapp.lndo.site",
+      },
+    ],
+    launch: "printed" as const,
+  };
+  const tty: RenderContext = { mode: "lando", format: "text", columns: 80, isTTY: true };
+
   test("prints resolved urls and launch outcome", () => {
-    const text = renderOpenAppResult({
-      app: "myapp",
+    const text = renderOpenAppResult(printed);
+    expect(text).toContain("https://web.myapp.lndo.site");
+    expect(text).not.toContain(renderTerminalQr("https://web.myapp.lndo.site").trimEnd());
+  });
+
+  test("local *.lndo.site URLs get a QR only when --qr is set", () => {
+    const withoutFlag = renderOpenAppResult(printed, tty);
+    const withFlag = renderOpenAppResult(printed, tty, { qr: true });
+    expect(withoutFlag).toBe("Resolved:\nweb\thttps://web.myapp.lndo.site\n");
+    expect(withFlag.startsWith(withoutFlag)).toBe(true);
+    expect(withFlag).toContain(renderTerminalQr("https://web.myapp.lndo.site").trimEnd());
+  });
+
+  test("loopback 127.0.0.1 URLs get a QR only when --qr is set", () => {
+    const loopback = {
+      ...printed,
       targets: [
         {
           service: "web",
-          hostname: "web.myapp.lndo.site",
-          scheme: "https",
-          url: "https://web.myapp.lndo.site",
+          hostname: "127.0.0.1",
+          scheme: "http" as const,
+          url: "http://127.0.0.1:8080",
         },
       ],
-      launch: "printed",
-    });
-    expect(text).toContain("https://web.myapp.lndo.site");
+    };
+    expect(renderOpenAppResult(loopback, tty)).toBe("Resolved:\nweb\thttp://127.0.0.1:8080\n");
+    expect(renderOpenAppResult(loopback, tty, { qr: true })).toContain(
+      renderTerminalQr("http://127.0.0.1:8080").trimEnd(),
+    );
+  });
+
+  test("--qr stays URL-only in JSON format", () => {
+    const text = renderOpenAppResult(printed, { ...tty, format: "json" }, { qr: true });
+    expect(text).toBe("Resolved:\nweb\thttps://web.myapp.lndo.site\n");
   });
 });
