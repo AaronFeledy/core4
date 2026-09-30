@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { FileSystemLive } from "@lando/engine/services/file-system";
+import { shellArg } from "@lando/engine/services/shell-quote";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -130,14 +131,15 @@ test.each([false, true])("purges caches only when cache volumes were observed: %
   );
 });
 
-test.each([
-  ["/apps/space name", "'/apps/space name'"],
-  ["/apps/a;$(touch nope)", "'/apps/a;$(touch nope)'"],
-  ["/apps/it's gone", "'/apps/it'\\''s gone'"],
-])("quotes root %s as one shell argument", async (path, quoted) => {
-  const checks = await run([snapshot(AbsolutePath.make(path))]);
-  expect(checks[0]?.solutions[0]?.command).toBe(`lando destroy --root ${quoted} --volumes`);
-});
+test.each(["/apps/space name", "/apps/a;$(touch nope)", "/apps/it's gone"])(
+  "quotes root %s as one argument for the host shell",
+  async (path) => {
+    const checks = await run([snapshot(AbsolutePath.make(path))]);
+    const command = checks[0]?.solutions[0]?.command;
+    expect(command).toBe(`lando destroy --root ${shellArg(path)} --volumes`);
+    expect(command).not.toContain(`--root ${path} `);
+  },
+);
 
 test.each([false, true])(
   "explains moved-folder and data choices, with incomplete-runtime guidance only when needed: %s",
