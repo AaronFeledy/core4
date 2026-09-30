@@ -7,7 +7,7 @@ tags: [beta, docs, typesense, compose, service]
 
 # Add Typesense with Compose
 
-Need a Typesense server next to your app. Put `type: compose` on the official image and wire the data dir plus API key through environment variables:
+Put Typesense next to your app with `type: compose` on the official image, and wire the data dir plus API key through environment variables:
 
 ```yaml
 name: typesense-demo
@@ -27,7 +27,7 @@ services:
       TYPESENSE_ENABLE_CORS: "true"
 ```
 
-`appMount: false` keeps Typesense off your app tree. This example sets `home: false` because the image comes from the Landofile and Lando does not know that image's user or home path. `home: false` is not required. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](./home-and-host.mdx). Create the host data directory, then start:
+`appMount: false` keeps Typesense off your app tree. Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](./home-and-host.mdx). Create the host data directory, then start:
 
 ```sh
 mkdir -p typesense-data
