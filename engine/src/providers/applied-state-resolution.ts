@@ -8,6 +8,7 @@ import type {
   AppliedOrphanGroup,
   AppliedTeardownEvidence,
   ProviderError,
+  ProviderRuntimeSnapshot,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 
@@ -20,8 +21,12 @@ const runtimeEvidence = (provider: AppliedStateProvider) =>
   provider.isAvailable.pipe(
     Effect.flatMap((available) =>
       available
-        ? Effect.all({ services: provider.list({}), volumes: provider.listVolumes({}) })
-        : Effect.succeed({ services: [], volumes: [] }),
+        ? Effect.all({
+            runtimeObserved: Effect.succeed(true),
+            services: provider.list({}),
+            volumes: provider.listVolumes({}),
+          })
+        : Effect.succeed({ runtimeObserved: false, services: [], volumes: [] }),
     ),
   );
 
@@ -79,6 +84,35 @@ const groupOrphans = (
 
 type RuntimeEvidence = Effect.Effect.Success<ReturnType<typeof runtimeEvidence>>;
 
+const gatherAppliedPlans = (provider: AppliedStateProvider) =>
+  (provider.appliedPlans ?? Effect.succeed([])).pipe(
+    Effect.flatMap((appliedPlans) =>
+      Effect.forEach(appliedPlans, (plan) =>
+        String(plan.provider) === provider.id
+          ? Effect.succeed(plan)
+          : Effect.fail(
+              new AppResolveError({
+                message: `Provider ${provider.id} supplied applied state attributed to ${plan.provider}.`,
+                reason: "mismatch",
+                detail: "applied-state-provider",
+                remediation: "Remove the mismatched applied state before retrying teardown.",
+              }),
+            ),
+      ),
+    ),
+  );
+
+export const observeProviderRuntime = (
+  providers: ReadonlyArray<AppliedStateProvider>,
+): Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>, AppResolveError | ProviderError> =>
+  Effect.forEach(providers, (provider) =>
+    Effect.gen(function* () {
+      const appliedPlans = yield* gatherAppliedPlans(provider);
+      const runtime = yield* runtimeEvidence(provider);
+      return { providerId: ProviderId.make(provider.id), appliedPlans, ...runtime };
+    }),
+  );
+
 /**
  * Resolves what the providers actually hold for `root`: the applied plan that owns it, the orphaned
  * resources recorded against it, or nothing at all.
@@ -99,24 +133,7 @@ const collectEvidence = (
         }),
       );
     }
-    const plans = (yield* Effect.forEach(providers, (provider) =>
-      (provider.appliedPlans ?? Effect.succeed([])).pipe(
-        Effect.flatMap((appliedPlans) =>
-          Effect.forEach(appliedPlans, (plan) =>
-            String(plan.provider) === provider.id
-              ? Effect.succeed(plan)
-              : Effect.fail(
-                  new AppResolveError({
-                    message: `Provider ${provider.id} supplied applied state attributed to ${plan.provider}.`,
-                    reason: "mismatch",
-                    detail: "applied-state-provider",
-                    remediation: "Remove the mismatched applied state before retrying teardown.",
-                  }),
-                ),
-          ),
-        ),
-      ),
-    )).flat();
+    const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
     const matches = plans
       .filter((plan) => {
         const appRoot = plan.identity?.appRoot;

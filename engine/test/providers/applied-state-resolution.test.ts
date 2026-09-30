@@ -8,6 +8,7 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import {
+  observeProviderRuntime,
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
 } from "../../src/providers/applied-state-resolution.ts";
@@ -56,6 +57,84 @@ const planFor = (providerId: string): AppPlan => ({
     runtime: 4,
   },
   extensions: {},
+});
+
+describe("observeProviderRuntime", () => {
+  test.each([false, true])(
+    "reports applied plans and observes only available runtimes: %s",
+    async (available) => {
+      const plan = planFor("lando");
+      const service = {
+        app: plan.id,
+        appRoot: root,
+        service: ServiceName.make("web"),
+        providerId: plan.provider,
+        status: "running",
+      };
+      const volume = { ref: { app: plan.id, store: "data" } };
+      const result = await Effect.runPromise(
+        observeProviderRuntime([
+          provider("lando", {
+            appliedPlans: Effect.succeed([plan]),
+            isAvailable: Effect.succeed(available),
+            list: () => (available ? Effect.succeed([service]) : Effect.fail(unavailable("lando", "list"))),
+            listVolumes: () =>
+              available ? Effect.succeed([volume]) : Effect.fail(unavailable("lando", "listVolumes")),
+          }),
+          provider("docker", { isAvailable: Effect.succeed(false) }),
+        ]),
+      );
+      expect(result).toEqual([
+        {
+          providerId: plan.provider,
+          appliedPlans: [plan],
+          runtimeObserved: available,
+          services: available ? [service] : [],
+          volumes: available ? [volume] : [],
+        },
+        {
+          providerId: ProviderId.make("docker"),
+          appliedPlans: [],
+          runtimeObserved: false,
+          services: [],
+          volumes: [],
+        },
+      ]);
+    },
+  );
+
+  test("rejects mismatched applied-plan attribution", async () => {
+    const result = await Effect.runPromiseExit(
+      observeProviderRuntime([provider("lando", { appliedPlans: Effect.succeed([planFor("docker")]) })]),
+    );
+    expect(String(result)).toContain("applied-state-provider");
+  });
+
+  test("propagates runtime listing failures", async () => {
+    const result = await Effect.runPromiseExit(
+      observeProviderRuntime([
+        provider("lando", {
+          isAvailable: Effect.succeed(true),
+          list: () => Effect.fail(unavailable("lando", "list")),
+        }),
+      ]),
+    );
+    expect(String(result)).toContain("lando evidence unavailable");
+  });
+
+  test("keeps matching teardown runtime listing lazy", async () => {
+    const plan = planFor("lando");
+    const result = await Effect.runPromise(
+      resolveTeardownEvidence(root, [
+        provider("lando", {
+          appliedPlans: Effect.succeed([plan]),
+          isAvailable: Effect.fail(unavailable("lando", "availability")),
+          list: () => Effect.fail(unavailable("lando", "list")),
+        }),
+      ]),
+    );
+    expect(result).toEqual({ kind: "applied", plan });
+  });
 });
 
 describe("resolveAppliedPlanEvidence", () => {
