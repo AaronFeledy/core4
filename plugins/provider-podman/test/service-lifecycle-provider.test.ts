@@ -16,6 +16,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import type { ListFilter } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 import { persistAppliedPlan } from "../src/applied-state.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -126,6 +127,61 @@ const typedFailure = (exit: Exit.Exit<unknown, unknown>): { readonly _tag: strin
 };
 
 describe("provider-podman service lifecycle", () => {
+  test.each([
+    { filter: {}, ids: ["planned"] },
+    { filter: { includeUnplanned: false }, ids: ["planned"] },
+    { filter: { includeUnplanned: true }, ids: ["planned", "orphan"] },
+    { filter: { includeUnplanned: true, includeScratch: true }, ids: ["planned", "orphan", "scratch"] },
+    { filter: { includeUnplanned: true, app: AppId.make("orphan") }, ids: ["orphan"] },
+    { filter: { includeUnplanned: true, app: AppId.make("scratch") }, ids: [] },
+  ] satisfies ReadonlyArray<{ readonly filter: ListFilter; readonly ids: ReadonlyArray<string> }>)(
+    "lists only opted-in unplanned containers: $filter",
+    async ({ filter, ids }) => {
+      const calls: EngineHttpRequest[] = [];
+      const api: PodmanApiClient = {
+        info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
+        ping: Effect.void,
+        request: (input) => {
+          calls.push(input);
+          return Effect.succeed({
+            status: 200,
+            body: JSON.stringify(
+              input.path.startsWith("/containers/json?")
+                ? [
+                    {
+                      Id: "untracked-planned-app",
+                      State: "running",
+                      Labels: { "dev.lando.app": appId, "dev.lando.service": "extra" },
+                    },
+                    {
+                      Id: "orphan",
+                      State: "running",
+                      Labels: { "dev.lando.app": "orphan", "dev.lando.service": "db" },
+                    },
+                    {
+                      Id: "scratch",
+                      State: "running",
+                      Labels: {
+                        "dev.lando.app": "scratch",
+                        "dev.lando.service": "db",
+                        "dev.lando.scratch": "TRUE",
+                      },
+                    },
+                  ]
+                : { Id: "planned", State: { Running: true } },
+            ),
+          });
+        },
+      };
+      const provider = await makeProvider(api);
+      const result = await Effect.runPromise(provider.list(filter));
+      expect(result.map((snapshot) => snapshot.containerId)).toEqual(ids);
+      expect(calls.some((call) => call.path.startsWith("/containers/json?"))).toBe(
+        filter.includeUnplanned === true,
+      );
+    },
+  );
+
   for (const action of lifecycleActions) {
     test(`issues POST /${action} for the planned container and does not DELETE`, async () => {
       // Given
