@@ -44,7 +44,7 @@ import {
   parseContainerEventPayloads,
   getContainerDiedEvents as runtimeGetContainerDiedEvents,
 } from "@lando/container-runtime/podman/container-events";
-import { discoverLabeledContainers } from "@lando/container-runtime/podman/discover";
+import { discoverLabeledContainers, labelOwnedSnapshots } from "@lando/container-runtime/podman/discover";
 import {
   type ExecOptions,
   exec as runtimeExec,
@@ -1426,9 +1426,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
             filter.includeUnplanned === true
               ? discoverLabeledContainers(podmanApi, LANDO_CTX).pipe(
                   Effect.map((discovered) => {
-                    const reported = new Set(snapshots.map((snapshot) => snapshot.containerId));
+                    const planned = labelOwnedSnapshots(snapshots, discovered);
+                    const reported = new Set(planned.map((snapshot) => snapshot.containerId));
                     return [
-                      ...snapshots,
+                      ...planned,
                       ...discovered.filter(
                         (snapshot) =>
                           !reported.has(snapshot.containerId) &&

@@ -42,7 +42,7 @@ import {
 } from "@lando/container-runtime/podman/bring-up";
 import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
 import { getContainerDiedEvents as getRuntimeContainerDiedEvents } from "@lando/container-runtime/podman/container-events";
-import { discoverLabeledContainers } from "@lando/container-runtime/podman/discover";
+import { discoverLabeledContainers, labelOwnedSnapshots } from "@lando/container-runtime/podman/discover";
 import { exec, execStream } from "@lando/container-runtime/podman/exec";
 import { inspect } from "@lando/container-runtime/podman/inspect";
 import { logs } from "@lando/container-runtime/podman/logs";
@@ -860,7 +860,7 @@ const assembleRuntimeProvider = (
 
             const discovered =
               filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
-            const planned = snapshots.flat();
+            const planned = labelOwnedSnapshots(snapshots.flat(), discovered);
             const reported = new Set(planned.map((snapshot) => snapshot.containerId));
             const flat = [
               ...planned,

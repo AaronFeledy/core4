@@ -151,7 +151,11 @@ describe("provider-lando service lifecycle", () => {
                       {
                         Id: "planned",
                         State: "running",
-                        Labels: { "dev.lando.app": appId, "dev.lando.service": "web" },
+                        Labels: {
+                          "dev.lando.app": appId,
+                          "dev.lando.service": "web",
+                          "dev.lando.app-root": "/relabeled",
+                        },
                       },
                       {
                         Id: "untracked-planned-app",
@@ -189,6 +193,10 @@ describe("provider-lando service lifecycle", () => {
         );
         const result = await Effect.runPromise(provider.list(filter));
         expect(result.map((snapshot) => snapshot.containerId)).toEqual(ids);
+        const plannedRoot = result.find((snapshot) => snapshot.containerId === "planned")?.appRoot;
+        if (ids.includes("planned")) {
+          expect(plannedRoot === "/relabeled").toBe(filter.includeUnplanned === true);
+        }
         expect(calls.some((call) => call.path.startsWith("/containers/json?"))).toBe(
           filter.includeUnplanned === true,
         );

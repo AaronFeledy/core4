@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
-import { discoverLabeledContainers } from "../src/podman/discover.ts";
+import { discoverLabeledContainers, labelOwnedSnapshots } from "../src/podman/discover.ts";
 
 const ctx = { providerId: "podman", remediation: "Check the runtime." };
 
@@ -67,4 +67,25 @@ test.each([
   const api: EngineHttpApi = { request: () => Effect.succeed({ status, body }) };
   const result = await Effect.runPromiseExit(discoverLabeledContainers(api, ctx));
   expect(String(result)).toContain(tag);
+});
+
+test("a container's app-root label overrides the planned root for the same container id", () => {
+  const observed = (containerId: string, appRoot: string) => ({
+    providerId: ProviderId.make("lando"),
+    app: AppId.make("app"),
+    appRoot: AbsolutePath.make(appRoot),
+    service: ServiceName.make("web"),
+    containerId,
+    status: "running" as const,
+  });
+
+  const result = labelOwnedSnapshots(
+    [observed("recreated", "/plan-root"), observed("unchanged", "/plan-root")],
+    [observed("recreated", "/deleted-root"), observed("unrelated", "/other")],
+  );
+
+  expect(result.map((snapshot) => [snapshot.containerId, snapshot.appRoot])).toEqual([
+    ["recreated", "/deleted-root"],
+    ["unchanged", "/plan-root"],
+  ]);
 });

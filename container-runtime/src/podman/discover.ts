@@ -78,3 +78,27 @@ export const discoverLabeledContainers = (
     });
   });
 };
+
+/**
+ * A container's own `dev.lando.app-root` label is the ownership record: an interrupted apply from
+ * another folder can recreate a planned app's same-named container before its plan is saved. When
+ * a planned observation and a discovered one share a container id, the label's root wins.
+ */
+export const labelOwnedSnapshots = (
+  planned: ReadonlyArray<ServiceRuntimeInfo>,
+  discovered: ReadonlyArray<ServiceRuntimeInfo>,
+): ReadonlyArray<ServiceRuntimeInfo> => {
+  const labeledRoots = new Map(
+    discovered.flatMap((snapshot) =>
+      snapshot.containerId === undefined || snapshot.appRoot === undefined
+        ? []
+        : [[snapshot.containerId, snapshot.appRoot] as const],
+    ),
+  );
+  return planned.map((snapshot) => {
+    const labeled = snapshot.containerId === undefined ? undefined : labeledRoots.get(snapshot.containerId);
+    return labeled === undefined || labeled === snapshot.appRoot
+      ? snapshot
+      : { ...snapshot, appRoot: labeled };
+  });
+};
