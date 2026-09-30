@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -30,8 +30,9 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 
 import { type ResolvedAppTarget, withResolvedCwd } from "../../src/landofile/app-resolution.ts";
-import { destroyApp, destroyAppForTarget } from "../../src/operations/destroy.ts";
+import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
+import { FileSystemLive } from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const providerId = ProviderId.make("lando");
@@ -105,6 +106,7 @@ const makeLayer = (input: {
   const removedVolumes: Array<{ readonly store: string; readonly generation: string }> = [];
   const removalAttempts: Array<{ readonly service: string; readonly containerId: string | undefined }> = [];
   const desiredLoads: string[] = [];
+  const evidenceRoots: string[] = [];
   let appliedPlan = input.appliedPlan;
   const provider = {
     ...TestRuntimeProvider,
@@ -154,6 +156,7 @@ const makeLayer = (input: {
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (_cwd: AbsolutePath) => Effect.succeed(appliedPlan),
     resolveTeardownEvidence: (_root: AbsolutePath) => {
+      evidenceRoots.push(_root);
       if (appliedPlan !== undefined) {
         return Effect.succeed({ kind: "applied", plan: appliedPlan } as const);
       }
@@ -164,6 +167,7 @@ const makeLayer = (input: {
     },
   };
   const layer = Layer.mergeAll(
+    FileSystemLive,
     PrivateFileAccessLive,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
@@ -198,6 +202,7 @@ const makeLayer = (input: {
     removedVolumes,
     removalAttempts,
     desiredLoads,
+    evidenceRoots,
     appliedPlan: () => appliedPlan,
   };
 };
@@ -244,6 +249,148 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test.each([
+    [
+      "identity",
+      (plan: AppPlan): AppPlan => {
+        const { identity, ...rest } = plan;
+        return rest;
+      },
+    ],
+    [
+      "canonical-root",
+      (plan: AppPlan): AppPlan => ({
+        ...plan,
+        identity: { appRoot: AbsolutePath.make("/other/root"), ownerKey: "other" },
+      }),
+    ],
+    ["provider", (plan: AppPlan): AppPlan => ({ ...plan, provider: ProviderId.make("docker") })],
+  ] as const)("destroy at a missing root rejects mismatched %s before mutation", async (detail, mutate) => {
+    await withTempRoot(async (parent) => {
+      const root = join(parent, "gone");
+      const harness = makeLayer({ appliedPlan: mutate(planAt(root)) });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+      );
+      if (result._tag !== "Left") throw new TypeError("expected ownership refusal");
+      expect(result.left).toMatchObject({ _tag: "AppResolveError", reason: "mismatch", detail });
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
+  test("destroy at root refuses an existing folder before provider access", async () => {
+    await withTempRoot(async (root) => {
+      const harness = makeLayer({ appliedPlan: planAt(root) });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+      );
+      if (result._tag !== "Left") throw new TypeError("expected existing-root refusal");
+      expect(result.left).toMatchObject({
+        _tag: "AppResolveError",
+        reason: "mismatch",
+        detail: "root-exists",
+      });
+      expect(harness.evidenceRoots).toEqual([]);
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
+  test("destroy at a missing root uses its applied plan without loading the folder", async () => {
+    await withTempRoot(async (parent) => {
+      const root = join(parent, "gone");
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({ appliedPlan });
+      const result = await Effect.runPromise(destroyAppAtRoot(root).pipe(Effect.provide(harness.layer)));
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+      expect(harness.desiredLoads).toEqual([]);
+      expect(harness.evidenceRoots).toEqual([root, root]);
+    });
+  });
+
+  test.each([
+    { volumes: false, purgeCaches: false, removed: [] },
+    { volumes: true, purgeCaches: false, removed: ["database"] },
+    { volumes: false, purgeCaches: true, removed: ["cache"] },
+    { volumes: true, purgeCaches: true, removed: ["database", "cache"] },
+  ])(
+    "destroy at a missing root honors orphan storage options %j",
+    async ({ volumes, purgeCaches, removed }) => {
+      await withTempRoot(async (parent) => {
+        const root = join(parent, "gone");
+        const harness = makeLayer({
+          orphans: [orphanGroup({ root, services: ["web"], volumes: ["database", "cache"] })],
+        });
+        const result = await Effect.runPromise(
+          destroyAppAtRoot(root, { volumes, purgeCaches }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(result).toMatchObject({
+          outcome: "destroyed",
+          servicesDestroyed: ["web"],
+          volumesRemoved: removed.length > 0,
+        });
+        expect(harness.removedVolumes.map((volume) => volume.store)).toEqual([...removed]);
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    },
+  );
+
+  test("destroy at an absent missing root returns unchanged without desired config", async () => {
+    await withTempRoot(async (parent) => {
+      const harness = makeLayer({});
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(join(parent, "gone")).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result).toEqual({
+        app: "gone",
+        outcome: "unchanged",
+        servicesDestroyed: [],
+        volumesRemoved: false,
+      });
+      expect(harness.destroyCalls).toEqual([]);
+      expect(harness.desiredLoads).toEqual([]);
+    });
+  });
+
+  test("destroy at a missing root removes orphan leftovers after the applied plan in one run", async () => {
+    await withTempRoot(async (parent) => {
+      const root = join(parent, "gone");
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({
+        appliedPlan,
+        orphans: [orphanGroup({ root, services: ["leftover"], volumes: ["cache"] })],
+      });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root, { purgeCaches: true }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+      expect(harness.removalAttempts).toEqual([{ service: "leftover", containerId: "container-leftover" }]);
+      expect(harness.removedVolumes).toEqual([{ store: "cache", generation: "generation-cache" }]);
+      expect(result).toMatchObject({
+        outcome: "destroyed",
+        servicesDestroyed: ["leftover"],
+        volumesRemoved: true,
+      });
+      expect(harness.evidenceRoots).toEqual([root, root]);
+    });
+  });
+
+  test("destroy at a missing root canonicalizes a symlinked parent before resolving evidence", async () => {
+    await withTempRoot(async (parent) => {
+      const alias = join(parent, "alias");
+      await symlink(parent, alias);
+      const root = join(parent, "gone");
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({ appliedPlan });
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(join(alias, "gone")).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+    });
+  });
+
   test("tears down from the last applied plan when desired config is invalid", async () => {
     await withTempRoot(async (root) => {
       const appliedPlan = planAt(root);

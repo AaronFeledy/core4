@@ -8,16 +8,18 @@ import type {
   DestroyAppError as SdkDestroyAppError,
 } from "@lando/sdk/app";
 import {
+  AppResolveError,
   type ComposeKeyRejectedError,
   FileSyncStopError,
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
 import { MessageWarnEvent, PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
   FileSyncEngine,
+  FileSystem,
   LandofileService,
   PathsService,
   RouterService,
@@ -39,10 +41,12 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { readDiscardableStart, retainedStartDisposal } from "./accelerated-start-discard.ts";
-import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { appLockTarget, canonicalMissingAppRoot, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
+  missingRootAppliedTarget,
   resolveTeardownResolution,
+  teardownResolutionFromEvidence,
   validateResolvedAppTarget,
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
@@ -381,3 +385,61 @@ export const destroyApp = (
             result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
         ),
       );
+
+export const destroyAppAtRoot = (
+  root: string,
+  options: DestroyAppOptions = {},
+): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices | FileSystem> =>
+  Effect.gen(function* () {
+    const canonical = AbsolutePath.make(yield* canonicalMissingAppRoot(root));
+    const fs = yield* FileSystem;
+    if (yield* fs.exists(canonical)) {
+      return yield* Effect.fail(
+        new AppResolveError({
+          reason: "mismatch",
+          detail: "root-exists",
+          message: `The app folder ${canonical} still exists.`,
+          remediation: `Run lando destroy from inside ${canonical}. --root is only for app folders that no longer exist.`,
+        }),
+      );
+    }
+    const registry = yield* RuntimeProviderRegistry;
+    const resolve = Effect.gen(function* () {
+      const evidence =
+        registry.resolveTeardownEvidence !== undefined
+          ? yield* registry.resolveTeardownEvidence(canonical)
+          : registry.resolveAppliedPlan !== undefined
+            ? yield* registry
+                .resolveAppliedPlan(canonical)
+                .pipe(
+                  Effect.map((plan) =>
+                    plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+                  ),
+                )
+            : { kind: "absent" as const };
+      return yield* teardownResolutionFromEvidence(evidence, canonical, false, (plan) =>
+        missingRootAppliedTarget(plan, canonical),
+      );
+    });
+    const resolution = yield* resolve;
+    switch (resolution.kind) {
+      case "applied": {
+        const result = yield* destroyAppWithResolvedTarget(options, resolution.target, false, false);
+        const remaining = yield* resolve;
+        if (remaining.kind === "orphans") {
+          const removed = yield* destroyOrphans(options, remaining);
+          return {
+            ...result,
+            outcome: "destroyed" as const,
+            servicesDestroyed: [...new Set([...result.servicesDestroyed, ...removed.servicesDestroyed])],
+            volumesRemoved: result.volumesRemoved || removed.volumesRemoved,
+          };
+        }
+        return { ...result, outcome: "destroyed" as const };
+      }
+      case "orphans":
+        return yield* destroyOrphans(options, resolution);
+      case "absent":
+        return unchangedResult(basename(root));
+    }
+  });
