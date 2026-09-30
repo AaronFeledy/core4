@@ -16,6 +16,24 @@ import { requireConfirmation } from "../../require-confirmation";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecFlags } from "../../spec/command-boundary";
 
+/**
+ * Prompts render as a one-line title, so the data loss comes first and the (possibly long) folder
+ * path last: when the title is cut, the path the user just typed is what gets cut.
+ */
+const rootConfirmation = (
+  root: string,
+  deletes: { readonly volumes: boolean; readonly snapshots: boolean; readonly caches: boolean },
+): string => {
+  const items = [
+    "containers",
+    ...(deletes.volumes ? ["data volumes"] : []),
+    ...(deletes.snapshots ? ["snapshots"] : []),
+    ...(deletes.caches ? ["cache volumes"] : []),
+  ];
+  const list = items.length === 1 ? items[0] : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+  return `Delete the ${list} left by ${root}?${deletes.volumes ? "" : " Data volumes are kept."}`;
+};
+
 export const runDestroyCommand = (input: unknown) => {
   const flags = extractSpecFlags(input);
   const volumes = flags.volumes === true || flags.purge === true;
@@ -29,7 +47,14 @@ export const runDestroyCommand = (input: unknown) => {
     const root = typeof flags.root === "string" ? resolve(process.cwd(), flags.root) : undefined;
     yield* requireConfirmation({
       yes: flags.yes === true,
-      message: `${root === undefined ? "Destroy this app? This removes containers and networks." : `Destroy the app recorded at ${root}? That folder no longer exists. This removes its containers and networks.`} ${storage}${flags["purge-caches"] === true ? " Cache volumes are deleted too." : ""}`,
+      message:
+        root === undefined
+          ? `Destroy this app? This removes containers and networks. ${storage}${flags["purge-caches"] === true ? " Cache volumes are deleted too." : ""}`
+          : rootConfirmation(root, {
+              volumes,
+              snapshots: flags.purge === true,
+              caches: flags["purge-caches"] === true,
+            }),
     });
     const options = {
       volumes,
