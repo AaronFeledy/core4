@@ -39,6 +39,7 @@
 - `RuntimeProviderShape.appliedPlans` optionally exposes provider-owned applied state, and `RuntimeProviderRegistry.resolveAppliedPlan(root)` optionally resolves it by canonical app root for teardown recovery. `StopAppResult` and `DestroyAppResult` add optional explicit recovery outcomes, and their error unions add `AppResolveError` for fail-closed ownership mismatches.
 
 - `RuntimeProviderRegistry.resolveTeardownEvidence(root)` is an optional teardown-only resolver that reports whether an app root is covered by an applied plan, holds orphaned runtime resources, or holds nothing at all. It additively exports `AppliedTeardownEvidence` and `AppliedOrphanGroup` from `@lando/sdk/services`. `resolveAppliedPlan(root)` keeps its fail-closed refusal of orphaned resources for every other caller.
+- `RuntimeProviderRegistry.observeRuntime` is an optional, read-only, host-wide snapshot of applied plans and runtime resources across installed providers. It additively exports `ProviderRuntimeSnapshot` from `@lando/sdk/services`; `runtimeObserved` is false when a provider runtime was not available and running, so its services and volumes were not listed.
 
 - `GlobalConfigView` is the additive curated effective-config schema used by config view and get. It explicitly selects public settings from `GlobalConfig`, including both app-default maps, without exposing loader bookkeeping.
 

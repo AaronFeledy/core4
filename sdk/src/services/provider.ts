@@ -253,6 +253,15 @@ export type AppliedTeardownEvidence =
   | { readonly kind: "orphans"; readonly groups: ReadonlyArray<AppliedOrphanGroup> }
   | { readonly kind: "absent" };
 
+/** Read-only host-wide evidence; an unobserved runtime contributes only applied plans. */
+export interface ProviderRuntimeSnapshot {
+  readonly providerId: ProviderId;
+  readonly runtimeObserved: boolean;
+  readonly appliedPlans: ReadonlyArray<AppPlan>;
+  readonly services: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly volumes: ReadonlyArray<VolumeInfo>;
+}
+
 export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
   RuntimeProviderRegistry,
   {
@@ -265,6 +274,10 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
     readonly resolveTeardownEvidence?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly observeRuntime?: Effect.Effect<
+      ReadonlyArray<ProviderRuntimeSnapshot>,
+      AppResolveError | ProviderError | NoProviderInstalledError
+    >;
   }
 >() {}
 
