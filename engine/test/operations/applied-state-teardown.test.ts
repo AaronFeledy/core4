@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
@@ -155,13 +155,23 @@ const makeLayer = (input: {
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
     resolveAppliedPlan: (_cwd: AbsolutePath) => Effect.succeed(appliedPlan),
-    resolveTeardownEvidence: (_root: AbsolutePath) => {
-      evidenceRoots.push(_root);
-      if (appliedPlan !== undefined) {
+    // Providers answer only for the root they are asked about. Either root field may match, so a
+    // malformed plan still reaches the ownership validators under test.
+    resolveTeardownEvidence: (root: AbsolutePath) => {
+      evidenceRoots.push(root);
+      if (
+        appliedPlan !== undefined &&
+        (appliedPlan.root === root || appliedPlan.identity?.appRoot === root)
+      ) {
         return Effect.succeed({ kind: "applied", plan: appliedPlan } as const);
       }
-      if (input.orphans !== undefined && input.orphans.length > 0) {
-        return Effect.succeed({ kind: "orphans", groups: input.orphans } as const);
+      const groups = (input.orphans ?? []).filter(
+        (group) =>
+          group.services.some((service) => service.appRoot === root) ||
+          group.volumes.some((volume) => volume.identity?.ownerRoot === root),
+      );
+      if (groups.length > 0) {
+        return Effect.succeed({ kind: "orphans", groups } as const);
       }
       return Effect.succeed({ kind: "absent" } as const);
     },
@@ -265,6 +275,13 @@ describe("applied-state teardown", () => {
       }),
     ],
     ["provider", (plan: AppPlan): AppPlan => ({ ...plan, provider: ProviderId.make("docker") })],
+    [
+      "owner-key",
+      (plan: AppPlan): AppPlan => ({
+        ...plan,
+        identity: { appRoot: plan.root, ownerKey: ownerKey("/somewhere/else") },
+      }),
+    ],
   ] as const)("destroy at a missing root rejects mismatched %s before mutation", async (detail, mutate) => {
     await withTempRoot(async (parent) => {
       const root = join(parent, "gone");
@@ -386,7 +403,26 @@ describe("applied-state teardown", () => {
         destroyAppAtRoot(join(alias, "gone")).pipe(Effect.provide(harness.layer)),
       );
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root]);
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+    });
+  });
+
+  test("destroy at a missing root finds the recorded path after its parent became a symlink", async () => {
+    await withTempRoot(async (parent) => {
+      // Given an app recorded under projects/, which was later moved and replaced by a symlink.
+      await mkdir(join(parent, "new-projects"));
+      await symlink(join(parent, "new-projects"), join(parent, "projects"));
+      const recorded = join(parent, "projects", "gone");
+      const appliedPlan = planAt(recorded);
+      const harness = makeLayer({ appliedPlan });
+
+      // When the user passes the path doctor printed.
+      const result = await Effect.runPromise(destroyAppAtRoot(recorded).pipe(Effect.provide(harness.layer)));
+
+      // Then the recorded path wins over the symlink's current destination.
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.evidenceRoots).toEqual([recorded, recorded]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });

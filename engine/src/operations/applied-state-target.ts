@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { AppResolveError } from "@lando/sdk/errors";
-import type { AbsolutePath, AppPlan, AppRef } from "@lando/sdk/schema";
+import { type AbsolutePath, type AppPlan, type AppRef, appIdentityKey } from "@lando/sdk/schema";
 import {
   type AppliedOrphanGroup,
   type AppliedTeardownEvidence,
@@ -66,6 +66,9 @@ export const missingRootAppliedTarget = (plan: AppPlan, canonicalRoot: AbsoluteP
     if (plan.identity === undefined) return yield* Effect.fail(mismatch("identity"));
     if (plan.identity.appRoot !== canonicalRoot || plan.root !== canonicalRoot) {
       return yield* Effect.fail(mismatch("canonical-root"));
+    }
+    if (plan.identity.ownerKey !== appIdentityKey("owner", canonicalRoot)) {
+      return yield* Effect.fail(mismatch("owner-key"));
     }
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(plan);

@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, resolve as resolvePath } from "node:path";
 
 import { DateTime, Effect, Option, Schema } from "effect";
 
@@ -398,37 +398,52 @@ export const destroyAppAtRoot = (
   DestroyAppServices | FileSystem
 > =>
   Effect.gen(function* () {
+    // Owners are recorded by the exact path the app had. Try that first, then the path the
+    // current filesystem resolves it to (e.g. /tmp -> /private/tmp); a parent that was moved and
+    // replaced by a symlink must not redirect the lookup away from what was recorded.
+    const requested = AbsolutePath.make(resolvePath(root));
     const canonical = AbsolutePath.make(yield* canonicalMissingAppRoot(root));
+    const candidates = requested === canonical ? [requested] : [requested, canonical];
     const fs = yield* FileSystem;
-    if (yield* fs.exists(canonical)) {
-      return yield* Effect.fail(
-        new AppResolveError({
-          reason: "mismatch",
-          detail: "root-exists",
-          message: `The app folder ${canonical} still exists.`,
-          remediation: `Run lando destroy from inside ${canonical}. --root is only for app folders that no longer exist.`,
-        }),
-      );
+    for (const candidate of candidates) {
+      if (yield* fs.exists(candidate)) {
+        return yield* Effect.fail(
+          new AppResolveError({
+            reason: "mismatch",
+            detail: "root-exists",
+            message: `The app folder ${candidate} still exists.`,
+            remediation: `Run lando destroy from inside ${candidate}. --root is only for app folders that no longer exist.`,
+          }),
+        );
+      }
     }
     const registry = yield* RuntimeProviderRegistry;
-    const resolve = Effect.gen(function* () {
-      const evidence =
-        registry.resolveTeardownEvidence !== undefined
-          ? yield* registry.resolveTeardownEvidence(canonical)
-          : registry.resolveAppliedPlan !== undefined
-            ? yield* registry
-                .resolveAppliedPlan(canonical)
-                .pipe(
-                  Effect.map((plan) =>
-                    plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
-                  ),
-                )
-            : { kind: "absent" as const };
-      return yield* teardownResolutionFromEvidence(evidence, canonical, false, (plan) =>
-        missingRootAppliedTarget(plan, canonical),
-      );
-    });
-    const resolution = yield* resolve;
+    const resolveAt = (recorded: AbsolutePath) =>
+      Effect.gen(function* () {
+        const evidence =
+          registry.resolveTeardownEvidence !== undefined
+            ? yield* registry.resolveTeardownEvidence(recorded)
+            : registry.resolveAppliedPlan !== undefined
+              ? yield* registry
+                  .resolveAppliedPlan(recorded)
+                  .pipe(
+                    Effect.map((plan) =>
+                      plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+                    ),
+                  )
+              : { kind: "absent" as const };
+        return yield* teardownResolutionFromEvidence(evidence, recorded, false, (plan) =>
+          missingRootAppliedTarget(plan, recorded),
+        );
+      });
+    let recordedRoot = requested;
+    let resolution = yield* resolveAt(recordedRoot);
+    for (const candidate of candidates.slice(1)) {
+      if (resolution.kind !== "absent") break;
+      recordedRoot = candidate;
+      resolution = yield* resolveAt(candidate);
+    }
+    const resolve = resolveAt(recordedRoot);
     switch (resolution.kind) {
       case "applied": {
         const result = yield* destroyAppWithResolvedTarget(options, resolution.target, false, false);
