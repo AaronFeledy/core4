@@ -18,6 +18,7 @@ static frontend.
 
 - The recipe assumes site sources live at the app root. Custom input/output
   directory configuration runs through `.eleventy.js` (authored by the user).
+  If you change the output directory, point `webroot` on `web` at it.
 - The static frontend serves files only; rewrites and asset hashing are
   deferred.
 

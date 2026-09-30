@@ -18,6 +18,8 @@ static frontend.
 
 - The recipe uses `npx hugo` (Node-distributed Hugo) rather than a dedicated
   Hugo service type. A first-class `hugo` service type is deferred to Beta.
+- The recipe assumes Hugo's default `public/` output. If you set `publishDir`
+  in your Hugo config, point `webroot` on `web` at the new directory.
 - The static frontend serves files only; advanced routing/rewrites are
   deferred.
 
