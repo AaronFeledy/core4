@@ -1,5 +1,5 @@
 import { findMissingAppRoots } from "@lando/engine/operations/missing-app-roots";
-import { quoteShellPath } from "@lando/engine/services/shell-quote";
+import { shellArg } from "@lando/engine/services/shell-quote";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
@@ -14,8 +14,7 @@ export const missingAppRootsDoctor = (redact: (text: string) => string) =>
       Effect.provideService(FileSystem, fs.value),
     );
     return roots.map((record): DoctorSubsystemCheck => {
-      const root = /^[a-zA-Z0-9_./:-]+$/.test(record.root) ? record.root : quoteShellPath(record.root);
-      const command = `lando destroy --root ${root} --volumes${record.cacheVolumes.length > 0 ? " --purge-caches" : ""}`;
+      const command = `lando destroy --root ${shellArg(record.root)} --volumes${record.cacheVolumes.length > 0 ? " --purge-caches" : ""}`;
       const runtimeGuidance = record.runtimeObserved
         ? ""
         : " The runtime was not running, so containers and volumes may be missing from this list. Check its status with lando setup, start the runtime by starting any app, and rerun doctor before cleaning up.";

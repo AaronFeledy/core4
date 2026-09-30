@@ -12,3 +12,7 @@
  * command line where no parameter expansion is desired.
  */
 export const quoteShellPath = (target: string): string => `'${target.replaceAll("'", `'\\''`)}'`;
+
+/** A copy-pasteable argument: bare when it has no shell metacharacters, POSIX-quoted otherwise. */
+export const shellArg = (value: string): string =>
+  /^[a-zA-Z0-9_./:@%+=,-]+$/.test(value) ? value : quoteShellPath(value);

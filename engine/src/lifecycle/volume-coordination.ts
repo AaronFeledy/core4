@@ -4,6 +4,8 @@ import { type StateStoreError, VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
 import { type RuntimeProviderShape, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
 
+import { shellArg } from "../services/shell-quote.ts";
+
 type LocatedPlanVolume = {
   readonly ref: VolumeRef;
   readonly locator: VolumeLocator;
@@ -54,7 +56,7 @@ const locatePlanVolumes = (
               operation: "coordinateVolume",
               store: store.name,
               message: `Volume ${locator.nativeName} (store ${store.name}) belongs to the app at ${locator.identity.ownerRoot}, not ${plan.identity?.appRoot ?? plan.root}.`,
-              remediation: `If that folder still exists, the two apps share an app name: change name: in one Landofile. If it is gone, run lando destroy --root ${locator.identity.ownerRoot} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
+              remediation: `If that folder still exists, the two apps share an app name: change name: in one Landofile. If it is gone, run lando destroy --root ${shellArg(locator.identity.ownerRoot)} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
             }),
           );
         }
