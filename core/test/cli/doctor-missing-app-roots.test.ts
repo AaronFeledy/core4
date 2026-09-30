@@ -1,0 +1,143 @@
+import { expect, test } from "bun:test";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { Effect, Layer } from "effect";
+import { missingAppRootsDoctor } from "../../src/cli/commands/doctor-missing-app-roots";
+
+const root = AbsolutePath.make("/apps/gone");
+const app = AppId.make("gone");
+const providerId = ProviderId.make("test");
+const snapshot = (appRoot = root, cache = false, runtimeObserved = true): ProviderRuntimeSnapshot => ({
+  providerId,
+  runtimeObserved,
+  appliedPlans: [],
+  services: [{ app, appRoot, providerId, service: ServiceName.make("web"), status: "running" }],
+  volumes: [
+    {
+      ref: { app, store: "database" },
+      identity: {
+        coordinationKey: "key",
+        nativeName: "native-data",
+        generation: "1",
+        ownerRoot: appRoot,
+        origin: "created",
+      },
+    },
+    ...(cache
+      ? [
+          {
+            ref: { app, store: "cache" },
+            labels: { "dev.lando.storage-kind": "cache" },
+            identity: {
+              coordinationKey: "cache",
+              nativeName: "native-cache",
+              generation: "1",
+              ownerRoot: appRoot,
+              origin: "created" as const,
+            },
+          },
+        ]
+      : []),
+  ],
+});
+const registry = (snapshots: ReadonlyArray<ProviderRuntimeSnapshot>) => ({
+  list: Effect.succeed([providerId]),
+  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+  select: () => Effect.succeed(TestRuntimeProvider),
+  observeRuntime: Effect.succeed(snapshots),
+});
+const fsLayer = Layer.effect(
+  FileSystem,
+  Effect.map(FileSystem, (fs) => ({ ...fs, exists: () => Effect.succeed(false) })),
+).pipe(Layer.provide(FileSystemLive));
+const run = (
+  snapshots: ReadonlyArray<ProviderRuntimeSnapshot>,
+  redact: (text: string) => string = (text) => text,
+) =>
+  Effect.runPromise(
+    missingAppRootsDoctor(redact).pipe(
+      Effect.provide(Layer.merge(fsLayer, Layer.succeed(RuntimeProviderRegistry, registry(snapshots)))),
+    ),
+  );
+
+test("does not scan without a registry", async () => {
+  expect(
+    await Effect.runPromise(missingAppRootsDoctor((text) => text).pipe(Effect.provide(fsLayer))),
+  ).toEqual([]);
+});
+
+test("does not observe the runtime without a filesystem", async () => {
+  let observed = false;
+  const checks = await Effect.runPromise(
+    missingAppRootsDoctor((text) => text).pipe(
+      Effect.provideService(RuntimeProviderRegistry, {
+        ...registry([]),
+        observeRuntime: Effect.sync(() => {
+          observed = true;
+          return [];
+        }),
+      }),
+    ),
+  );
+  expect(checks).toEqual([]);
+  expect(observed).toBe(false);
+});
+
+test("emits one manual warning per root and redacts every context value and solution", async () => {
+  const checks = await run(
+    [snapshot(), snapshot(AbsolutePath.make("/apps/second"))],
+    (text) => `redacted(${text})`,
+  );
+  expect(checks).toHaveLength(2);
+  expect(checks[0]).toMatchObject({
+    name: "missing-app-root",
+    status: "warn",
+    severity: "warn",
+    recovery: "manual",
+    context: {
+      appRoot: "redacted(/apps/gone)",
+      apps: "redacted(gone)",
+      providers: "redacted(test)",
+      appliedState: "redacted(false)",
+      runtimeObserved: "redacted(true)",
+      containers: "redacted(gone/web)",
+      dataVolumes: "redacted(native-data)",
+    },
+  });
+  expect(checks[0]?.context).not.toHaveProperty("cacheVolumes");
+  expect(checks[0]?.solutions[0]).toMatchObject({
+    kind: "manual",
+    command: "redacted(lando destroy --root /apps/gone --volumes)",
+  });
+  expect(checks[0]?.solutions[0]?.description).toMatch(/^redacted\(/);
+});
+
+test.each([false, true])("purges caches only when cache volumes were observed: %s", async (cache) => {
+  const checks = await run([snapshot(root, cache)]);
+  expect(checks[0]?.solutions[0]?.command).toBe(
+    `lando destroy --root /apps/gone --volumes${cache ? " --purge-caches" : ""}`,
+  );
+});
+
+test.each([
+  ["/apps/space name", "'/apps/space name'"],
+  ["/apps/a;$(touch nope)", "'/apps/a;$(touch nope)'"],
+  ["/apps/it's gone", "'/apps/it'\\''s gone'"],
+])("quotes root %s as one shell argument", async (path, quoted) => {
+  const checks = await run([snapshot(AbsolutePath.make(path))]);
+  expect(checks[0]?.solutions[0]?.command).toBe(`lando destroy --root ${quoted} --volumes`);
+});
+
+test.each([false, true])(
+  "explains moved-folder and data choices, with incomplete-runtime guidance only when needed: %s",
+  async (runtimeObserved) => {
+    const checks = await run([snapshot(root, false, runtimeObserved)]);
+    const description = checks[0]?.solutions[0]?.description ?? "";
+    expect(description).toContain("move it back");
+    expect(description).toContain("--volumes");
+    expect(description.includes("lando setup")).toBe(!runtimeObserved);
+    expect(description.includes("rerun doctor")).toBe(!runtimeObserved);
+  },
+);

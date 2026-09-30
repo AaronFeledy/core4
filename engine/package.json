@@ -152,6 +152,7 @@
     "./services/secret-store": "./src/services/secret-store.ts",
     "./services/secret-store-registry": "./src/services/secret-store-registry.ts",
     "./services/shell-runner": "./src/services/shell-runner.ts",
+    "./services/shell-quote": "./src/services/shell-quote.ts",
     "./services/tooling-engine": "./src/services/tooling-engine.ts",
     "./subsystems/certs/api": "./src/subsystems/certs/api.ts",
     "./subsystems/detached-worker/process": "./src/subsystems/detached-worker/process.ts",
