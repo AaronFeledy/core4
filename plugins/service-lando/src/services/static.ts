@@ -59,7 +59,6 @@ export const defaultStaticCommand = (
 const StaticFeatureConfigSchema = Schema.Struct({
   server: Schema.Literal(...SUPPORTED_STATIC_SERVERS),
   docRoot: Schema.String,
-  webroot: Schema.optional(StaticWebroot),
 });
 type StaticFeatureConfig = typeof StaticFeatureConfigSchema.Type;
 
@@ -177,11 +176,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
             features: [
               {
                 id: STATIC_FEATURE_ID,
-                config: {
-                  server: resolvedServer,
-                  docRoot,
-                  ...(input.service.webroot != null ? { webroot: docRoot } : {}),
-                },
+                config: { server: resolvedServer, docRoot },
               },
               {
                 id: "lando.env",

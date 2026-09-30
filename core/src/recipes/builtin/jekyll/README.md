@@ -16,8 +16,9 @@ static frontend.
 
 ## Alpha limitations
 
-- The recipe assumes site sources live at the app root and build output goes
-  into `_site/`, which the `web` service serves as its document root.
+- The recipe assumes site sources live at the app root and Jekyll's default
+  `_site/` destination. If you set `destination` in `_config.yml`, point
+  `webroot` on `web` at the new directory.
 - The static frontend serves files only; rewrites and asset hashing are
   deferred.
 
