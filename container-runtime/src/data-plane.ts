@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import { APP_LABEL, STORAGE_SCOPE_LABEL, STORE_LABEL, VOLUME_INSTANCE_LABEL } from "./labels.ts";
 import { requiresLongMountSyntax } from "./mount-syntax.ts";
 import { serviceContainerName as namedServiceContainer } from "./plan.ts";
+import { redactString, withApiReason } from "./redact.ts";
 import { makeAttachDecoder } from "./streams.ts";
 import { UstarHeaderError, encodeUstarHeader, padToBlock, TAR_BLOCK_SIZE as tarBlockSize } from "./tar.ts";
 import {
@@ -1189,9 +1190,41 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         ),
         Effect.tap((response) => ensure2xx(options, "removeVolume", response, ref.store)),
         Effect.asVoid,
-        Effect.mapError((cause) =>
-          volumeError(options, "removeVolume", "Provider volume remove failed.", undefined, cause, ref.store),
-        ),
+        Effect.mapError((cause) => {
+          const details = cause instanceof VolumeOperationError ? cause.details : undefined;
+          if (
+            typeof details === "object" &&
+            details !== null &&
+            "body" in details &&
+            typeof details.body === "string" &&
+            (("status" in details && details.status === 409) ||
+              /\b(?:in use|being used by)\b/i.test(details.body))
+          ) {
+            const base = "Provider volume remove failed.";
+            const message = withApiReason(base, details);
+            return new VolumeOperationError({
+              providerId: options.providerId,
+              operation: "removeVolume",
+              store: ref.store,
+              message:
+                message === base && details.body.trim().length > 0
+                  ? `${base} ${redactString(details.body.trim())}`
+                  : message,
+              remediation:
+                "A container still uses this volume. Remove that container first (for a Lando app, run lando destroy for it; lando doctor lists leftovers), then retry.",
+              details: options.redactDetails(details),
+              cause,
+            });
+          }
+          return volumeError(
+            options,
+            "removeVolume",
+            "Provider volume remove failed.",
+            undefined,
+            cause,
+            ref.store,
+          );
+        }),
       )) satisfies RuntimeProviderShape["removeVolume"],
     copyToService: ((target, spec) =>
       Effect.tryPromise({
