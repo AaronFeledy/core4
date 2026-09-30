@@ -93,7 +93,7 @@ describe("physical volume lifecycle coordination", () => {
     expect(mutated).toBe(false);
     if (result._tag !== "Left") throw new TypeError("expected ownership refusal");
     expect(result.left).toMatchObject({ _tag: "VolumeOperationError", store: "zeta" });
-    expect(result.left.message).toContain("app_zeta");
+    expect(result.left.message).toContain("app_zeta (store zeta)");
     expect(result.left.message).toContain(ownerRoot);
     expect(result.left.message).toContain(plan.root);
     expect(result.left.remediation).toContain(`lando destroy --root ${ownerRoot} --volumes`);
