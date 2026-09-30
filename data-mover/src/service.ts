@@ -84,7 +84,7 @@ const noopEvents: DataMoverEvents = {
 
 const helperTarget = Schema.decodeUnknownSync(PortablePath)("/data");
 const helperPayload = Schema.decodeUnknownSync(PortablePath)("/data/payload");
-const timestamp = () => DateTime.unsafeMake(Date.now());
+const timestamp = () => DateTime.unsafeNow();
 const snapshotIndexSchema = Schema.Array(SnapshotInfoSchema);
 
 const absolutePath = (path: string) => Schema.decodeUnknownSync(AbsolutePath)(path);

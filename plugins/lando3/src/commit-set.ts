@@ -1,7 +1,7 @@
+import { landofileLayerRank } from "@lando/sdk/landofile";
 import type { ConfigTranslateDocumentSetInput, ConfigTranslateOutput } from "@lando/sdk/schema";
 import { lando3TargetLayer } from "./contract.ts";
 import { isAppRootLando3Layer, sourceLayerForDocument } from "./detect.ts";
-import { v4LayerRank } from "./v4-merge.ts";
 
 export const completeLando3CommitSet = (
   input: ConfigTranslateDocumentSetInput,
@@ -25,7 +25,7 @@ export const completeLando3CommitSet = (
     }
   }
   return {
-    outputs: outputs.sort((a, b) => v4LayerRank(a.targetLayer) - v4LayerRank(b.targetLayer)),
+    outputs: outputs.sort((a, b) => landofileLayerRank(a.targetLayer) - landofileLayerRank(b.targetLayer)),
     deletions: selected
       .filter((document) => sourceLayerForDocument(document) === "recipe")
       .map(({ sourceId }) => ({

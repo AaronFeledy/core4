@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { VOLUME_INSTANCE_LABEL, VOLUME_OWNER_LABEL } from "./labels.ts";
 
 import type { VolumeOperationError } from "@lando/sdk/errors";
 import { type VolumeInfo, VolumeLocator, type VolumeRef } from "@lando/sdk/schema";
@@ -80,7 +81,7 @@ export const locateVolume = (
   }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId, "locateVolume")));
 
 export const volumeInfo = (target: MountedVolumeTarget, volume: NativeVolume): VolumeInfo => {
-  const instanceId = volume.Labels?.["dev.lando.volume-instance"];
+  const instanceId = volume.Labels?.[VOLUME_INSTANCE_LABEL];
   return {
     ref: { app: target.app, store: volume.Name },
     ...(instanceId ? { instanceId, provenance: "known" as const } : { provenance: "legacy" as const }),
@@ -107,10 +108,10 @@ export const adoptMountedVolume = (
     const volume = yield* resolveMountedVolume(provider, target);
     if (volume.Driver !== "local" || Object.keys(volume.Options ?? {}).length !== 0)
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    const owner = volume.Labels?.["dev.lando.volume-owner"];
+    const owner = volume.Labels?.[VOLUME_OWNER_LABEL];
     if (owner !== undefined && owner !== target.ownerRoot)
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    if (owner && volume.Labels?.["dev.lando.volume-instance"]) {
+    if (owner && volume.Labels?.[VOLUME_INSTANCE_LABEL]) {
       const observed = yield* observeMountedVolume(provider, target);
       if (!observed.identity || observed.identity.ownerRoot !== target.ownerRoot)
         return yield* Effect.fail(volumeObservationFailure(provider.providerId));
@@ -123,8 +124,8 @@ export const adoptMountedVolume = (
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     const current = yield* resolveMountedVolume(provider, target);
     if (
-      current.Labels?.["dev.lando.volume-owner"] !== undefined &&
-      current.Labels["dev.lando.volume-owner"] !== target.ownerRoot
+      current.Labels?.[VOLUME_OWNER_LABEL] !== undefined &&
+      current.Labels[VOLUME_OWNER_LABEL] !== target.ownerRoot
     )
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     if (

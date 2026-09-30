@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from "effect";
+import { Effect, Either, Predicate, Schema } from "effect";
 
 import { type LandofileIncludeError, LandofileParseError } from "@lando/sdk/errors";
 import { ToolingIncludeShape } from "@lando/sdk/schema";
@@ -11,15 +11,12 @@ const FRAGMENT_KEY_REMEDIATION =
   "A tooling fragment may only declare tooling: and toolingIncludes:; move other keys into a Landofile include.";
 const ENTRY_FIELD_REMEDIATION = `A toolingIncludes: entry accepts only ${[...TOOLING_INCLUDE_KEYS].join(", ")}; dir: and checksum: are not part of the tooling-include shape.`;
 
-export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 export const assertToolingFragment = (
   parsed: unknown,
   source: string,
   filePath: string,
 ): Effect.Effect<Record<string, unknown>, LandofileIncludeError | LandofileParseError> => {
-  if (!isPlainRecord(parsed)) {
+  if (!Predicate.isRecord(parsed)) {
     return Effect.fail(
       new LandofileParseError({
         message: `Tooling include ${source} did not parse to a mapping.`,
@@ -40,7 +37,7 @@ export const assertToolingFragment = (
       }),
     );
   }
-  if (parsed.tooling !== undefined && !isPlainRecord(parsed.tooling)) {
+  if (parsed.tooling !== undefined && !Predicate.isRecord(parsed.tooling)) {
     return Effect.fail(
       includeError({
         message: `Tooling include ${source} declares tooling: as a non-mapping value.`,
@@ -51,7 +48,7 @@ export const assertToolingFragment = (
     );
   }
   if (parsed.toolingIncludes !== undefined) {
-    if (!isPlainRecord(parsed.toolingIncludes)) {
+    if (!Predicate.isRecord(parsed.toolingIncludes)) {
       return Effect.fail(
         includeError({
           message: `Tooling include ${source} declares toolingIncludes: as a non-mapping value.`,
@@ -62,7 +59,7 @@ export const assertToolingFragment = (
       );
     }
     for (const [name, entry] of Object.entries(parsed.toolingIncludes)) {
-      const unsupported = isPlainRecord(entry)
+      const unsupported = Predicate.isRecord(entry)
         ? Object.keys(entry).find((key) => !TOOLING_INCLUDE_KEYS.has(key))
         : undefined;
       if (unsupported !== undefined) {

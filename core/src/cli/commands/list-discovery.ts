@@ -2,6 +2,7 @@ import type { Dirent } from "node:fs";
 import { access, readFile, readdir } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { basename, join } from "node:path";
+import { APP_LABEL, PROVIDER_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
 
 import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { makeLandoPaths } from "@lando/paths";
@@ -30,10 +31,6 @@ export const appliedPlansDirectory = (userDataRoot: string, pluginId = "@lando/p
   join(makeLandoPaths({ userDataRoot }).pluginStateDir(pluginId), APPLIED_PLANS_NAMESPACE);
 
 const APPLIED_PLANS_RECORD = "applied-plans.json";
-const APP_LABEL = "dev.lando.app";
-const SERVICE_LABEL = "dev.lando.service";
-const PROVIDER_LABEL = "dev.lando.provider";
-const SCRATCH_LABEL = "dev.lando.scratch";
 const GLOBAL_APP_ID = "global";
 const CONTAINER_LIST_TIMEOUT_MS = 1500;
 

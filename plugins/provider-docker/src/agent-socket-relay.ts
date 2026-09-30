@@ -7,6 +7,7 @@ import {
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import type { EngineApiClient, EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { pullImage } from "@lando/container-runtime/image-pull";
+import { AGENT_SESSION_LABEL } from "@lando/container-runtime/labels";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import { type AgentSocketBridgeInput, type AgentSocketBridgeResult, ProviderId } from "@lando/sdk/schema";
@@ -28,7 +29,6 @@ const ExecStatus = Schema.parseJson(
   Schema.Struct({ Running: Schema.Boolean, ExitCode: Schema.NullOr(Schema.Int) }),
 );
 
-const AGENT_SESSION_LABEL = "dev.lando.agent-session";
 const LabelRecord = Schema.NullOr(Schema.Record({ key: Schema.String, value: Schema.String }));
 const VolumeInspect = Schema.parseJson(Schema.Struct({ Labels: Schema.optional(LabelRecord) }));
 const ContainerInspect = Schema.parseJson(

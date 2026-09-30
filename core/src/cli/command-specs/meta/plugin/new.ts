@@ -9,28 +9,23 @@ import {
 import { pluginNew, renderPluginNewResult } from "../../../commands/plugin-new";
 import { resolveNonInteractive } from "../../../prompts/answer-flags";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 
 const extractInput = (input: unknown) => {
-  const parsed =
-    typeof input === "object" && input !== null
-      ? (input as { args?: Record<string, unknown>; flags?: Record<string, unknown> })
-      : {};
-  const args = parsed.args ?? {};
-  const flags = parsed.flags ?? {};
-  const stringFlag = (name: string): string | undefined =>
-    typeof flags[name] === "string" ? flags[name] : undefined;
+  const args = specArgsOf(input);
+  const flags = specFlagsOf(input);
   const arrayFlag = (name: string): ReadonlyArray<string> | undefined =>
     Array.isArray(flags[name]) && flags[name].every((entry) => typeof entry === "string")
       ? (flags[name] as ReadonlyArray<string>)
       : undefined;
   return {
-    name: typeof args.name === "string" ? args.name : undefined,
-    destination: typeof args.destination === "string" ? args.destination : undefined,
-    template: stringFlag("template"),
-    cspace: stringFlag("cspace"),
-    description: stringFlag("description"),
+    name: stringFlag(args, "name"),
+    destination: stringFlag(args, "destination"),
+    template: stringFlag(flags, "template"),
+    cspace: stringFlag(flags, "cspace"),
+    description: stringFlag(flags, "description"),
     answers: arrayFlag("answer"),
-    answersFile: stringFlag("answers"),
+    answersFile: stringFlag(flags, "answers"),
     nonInteractive: resolveNonInteractive({
       noInteractive: flags["no-interactive"] === true,
       isTTY: process.stdin.isTTY,

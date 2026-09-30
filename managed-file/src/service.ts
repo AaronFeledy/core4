@@ -528,7 +528,7 @@ const makeLifecycleEvent = (
     readonly summary: string;
   },
 ): LandoEvent => {
-  const timestamp = DateTime.unsafeMake(Date.now());
+  const timestamp = DateTime.unsafeNow();
   const payload = { eventName: kind, ...fields, timestamp } as const;
   switch (kind) {
     case "pre-managed-file-write":

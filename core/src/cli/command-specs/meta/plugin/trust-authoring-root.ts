@@ -7,11 +7,10 @@ import {
   renderPluginTrustAuthoringRootResult,
 } from "../../../commands/plugin-trust";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { specArgsOf, stringFlag } from "../../../spec/input-coercion";
 
 const extractInput = (input: unknown): { path: string } => {
-  if (typeof input !== "object" || input === null) return { path: "" };
-  const args = (input as { args?: Record<string, unknown> }).args ?? {};
-  return { path: typeof args.path === "string" ? args.path : "" };
+  return { path: stringFlag(specArgsOf(input), "path") ?? "" };
 };
 
 export const pluginTrustAuthoringRootSpec: LandoCommandSpec<PluginTrustAuthoringRootResult> = {

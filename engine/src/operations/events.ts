@@ -195,7 +195,7 @@ export const runPostAppEvent = (
           events.publish(
             MessageWarnEvent.make({
               body: [error.message, error.remediation].join(" "),
-              timestamp: DateTime.unsafeMake(new Date().toISOString()),
+              timestamp: DateTime.unsafeNow(),
             }),
           ),
         ),
@@ -207,10 +207,10 @@ export const runAppInitEvents = (plan: AppPlan) =>
   Effect.gen(function* () {
     const events = yield* EventService;
     const app = { kind: "user" as const, id: plan.id, root: plan.root };
-    const pre = PreInitEvent.make({ app, timestamp: DateTime.unsafeMake(new Date().toISOString()) });
+    const pre = PreInitEvent.make({ app, timestamp: DateTime.unsafeNow() });
     yield* events.publish(pre);
     yield* runAppEvent(plan, "pre-init", pre);
-    const post = PostInitEvent.make({ app, timestamp: DateTime.unsafeMake(new Date().toISOString()) });
+    const post = PostInitEvent.make({ app, timestamp: DateTime.unsafeNow() });
     yield* events.publish(post);
     yield* runAppEvent(plan, "post-init", post);
   });

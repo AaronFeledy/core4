@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { APP_LABEL } from "@lando/container-runtime/labels";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -15,6 +16,7 @@ import {
 import { readAppliedPlansFromUserData } from "../../commands/list-discovery";
 import { renderUninstallResult } from "../../commands/uninstall";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { specFlagsOf } from "../../spec/input-coercion";
 
 const CONTAINER_RUNTIMES = [
   { cmd: "docker", providerId: "docker" },
@@ -88,7 +90,7 @@ const runRuntime = async (
   });
 
 // core4 apps carry dev.lando.app; com.lando.app covers Lando 3 leftovers.
-const LANDO_APP_LABELS = ["dev.lando.app", "com.lando.app"] as const;
+const LANDO_APP_LABELS = [APP_LABEL, "com.lando.app"] as const;
 const RUNTIME_PROBE_TIMEOUT_MS = 2_000;
 const RUNTIME_QUERY_TIMEOUT_MS = 5_000;
 const RUNTIME_CLEANUP_TIMEOUT_MS = 60_000;
@@ -498,7 +500,7 @@ export const makeCleanupDiscoveredApps =
 
 export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
-  const flags = (input as { readonly flags?: Record<string, unknown> }).flags ?? {};
+  const flags = specFlagsOf(input);
   const extra = input as {
     readonly _userDataRoot?: unknown;
     readonly _userCacheRoot?: unknown;

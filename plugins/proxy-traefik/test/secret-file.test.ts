@@ -20,17 +20,20 @@ test("writes secret files atomically with owner-only permissions", async () => {
 
 test("preserves the primary failure when temporary-file cleanup also fails", async () => {
   const primary = new Error("rename failed");
-
-  await expect(
-    writeSecretAtomic("/unused/proxy.key", "private key", {
-      randomId: () => "test",
-      writeFile: async () => undefined,
-      renameFile: async () => {
-        throw primary;
-      },
-      removeFile: async () => {
-        throw new Error("cleanup failed");
-      },
-    }),
-  ).rejects.toBe(primary);
+  const directory = await mkdtemp(join(tmpdir(), "lando-secret-file-"));
+  try {
+    await expect(
+      writeSecretAtomic(join(directory, "proxy.key"), "private key", {
+        randomId: () => "test",
+        renameFile: async () => {
+          throw primary;
+        },
+        removeFile: async () => {
+          throw new Error("cleanup failed");
+        },
+      }),
+    ).rejects.toBe(primary);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

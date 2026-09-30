@@ -12,12 +12,10 @@ import {
 import { StateStore } from "@lando/sdk/services";
 import { makePluginUpdateRunner } from "../../commands/update-plugins";
 import type { LandoCommandSpec } from "../../spec/command-base";
+import { specFlagsOf } from "../../spec/input-coercion";
 
 export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
-  const flags =
-    typeof input === "object" && input !== null
-      ? ((input as { readonly flags?: Record<string, unknown> }).flags ?? {})
-      : {};
+  const flags = specFlagsOf(input);
   const channel = flags.channel;
   const only = flags.only;
   return {

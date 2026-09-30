@@ -34,7 +34,7 @@ import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { globalInstall } from "./global-install.ts";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
+const now = () => DateTime.unsafeNow();
 
 const globalAppRef = (plan: AppPlan): AppRef => ({ kind: "global", id: plan.id, root: plan.root });
 

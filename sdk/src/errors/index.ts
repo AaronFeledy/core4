@@ -5,6 +5,7 @@ export * from "./config.ts";
 export * from "./data-transfer.ts";
 export * from "./deprecation.ts";
 export * from "./download.ts";
+export * from "./errno.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global.ts";

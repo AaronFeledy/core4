@@ -98,9 +98,6 @@ export const recordBuildResult = (
 ): Effect.Effect<void, StateStoreError> =>
   bucket
     .update((current) =>
-      rotateBuildResults([
-        ...(current ?? []),
-        { ...entry, completedAt: DateTime.unsafeMake(new Date().toISOString()) },
-      ]),
+      rotateBuildResults([...(current ?? []), { ...entry, completedAt: DateTime.unsafeNow() }]),
     )
     .pipe(Effect.asVoid);

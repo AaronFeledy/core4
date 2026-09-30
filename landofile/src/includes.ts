@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
-import { Effect, ParseResult, Schema } from "effect";
+import { Effect, ParseResult, Predicate, Schema } from "effect";
 
 import {
   type ComposeKeyRejectedError,
@@ -16,6 +16,7 @@ import {
 import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
 import type { StateBucket, StateRoot, StateStoreShape } from "@lando/sdk/services";
 
+import { mergeLandofiles, mergeValues } from "@lando/sdk/landofile";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";
@@ -34,7 +35,6 @@ import {
   type ResolveLandofileLoadExpressionError,
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
-import { mergeLandofiles, mergeValues } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import type {
   GitAcquisitionPort,
@@ -146,9 +146,6 @@ const LOCK_REMEDIATION =
   "Run lando app:includes:update to refresh .lando.lock.yml after reviewing the include change.";
 const NO_NETWORK_REMEDIATION =
   "Run lando app:includes:update with network access to populate the include cache before retrying with --no-network.";
-
-const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const causeMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
 
@@ -642,7 +639,7 @@ const parseFragment = (
     ),
     Effect.flatMap((parsed) => rejectComposeKeys(fragment.authoredSource, parsed)),
     Effect.flatMap((parsed) => {
-      if (!isPlainRecord(parsed)) {
+      if (!Predicate.isRecord(parsed)) {
         return Effect.fail(
           includeError({
             message: `Include ${fragment.sourceId} did not parse to a Landofile object.`,
@@ -703,9 +700,9 @@ const withResolvedTooling = (
   included: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> => {
   const inline = inlineWithoutIncludes(landofile);
-  const own = isPlainRecord(inline.tooling) ? inline.tooling : {};
+  const own = Predicate.isRecord(inline.tooling) ? inline.tooling : {};
   const merged = mergeValues(included, own);
-  if (!isPlainRecord(merged) || Object.keys(merged).length === 0) return inline;
+  if (!Predicate.isRecord(merged) || Object.keys(merged).length === 0) return inline;
   return { ...inline, tooling: merged };
 };
 
@@ -879,10 +876,10 @@ const lockScalar = (value: unknown): string | undefined => {
  */
 const parseLockEntriesFromText = (content: string): LockEntry[] => {
   const parsed = parseLockfileYaml(content);
-  if (!isPlainRecord(parsed) || !Array.isArray(parsed.includes)) return [];
+  if (!Predicate.isRecord(parsed) || !Array.isArray(parsed.includes)) return [];
   const entries: LockEntry[] = [];
   for (const entry of parsed.includes) {
-    if (!isPlainRecord(entry)) continue;
+    if (!Predicate.isRecord(entry)) continue;
     const source = lockScalar(entry.source);
     const resolved = lockScalar(entry.resolved);
     const checksum = lockScalar(entry.checksum);

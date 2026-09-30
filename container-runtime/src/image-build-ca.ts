@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { Effect, Either, Schema } from "effect";
+import { Effect, Either, Predicate, Schema } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
@@ -21,9 +21,6 @@ export interface PreparedDerivedBuild {
   readonly steps: ReadonlyArray<PreparedBuildStep>;
   readonly caEntries: ReadonlyArray<BuildContextEntry>;
 }
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const internalError = (providerId: string, message: string, cause?: unknown): ProviderInternalError =>
   new ProviderInternalError({
@@ -49,7 +46,7 @@ const parseStep = (
   value: unknown,
   providerId: string,
 ): Effect.Effect<PreparedBuildStep | undefined, ProviderInternalError> => {
-  if (!isRecord(value)) return Effect.succeed(undefined);
+  if (!Predicate.isRecord(value)) return Effect.succeed(undefined);
   if (value.phase !== "build") return Effect.succeed(undefined);
   const caFiles = "caFiles" in value ? parseCaFiles(value.caFiles, providerId) : Effect.succeed([]);
   return Effect.gen(function* () {
@@ -62,7 +59,7 @@ const parseStep = (
     } else if (Array.isArray(value.command)) {
       command = value.command.filter((part): part is string => typeof part === "string");
       if (command.length !== value.command.length) return undefined;
-    } else if (isRecord(value.command) && "directories" in value.command) {
+    } else if (Predicate.isRecord(value.command) && "directories" in value.command) {
       const decoded = Schema.decodeUnknownEither(ServiceBuildDirectoryCommand)(value.command);
       if (Either.isLeft(decoded)) {
         return yield* Effect.fail(
@@ -125,7 +122,8 @@ export const prepareDerivedBuild = (
   providerId: string,
 ): Effect.Effect<PreparedDerivedBuild, ProviderInternalError> => {
   const extension = service.extensions["@lando/core/service-features"];
-  const rawSteps = isRecord(extension) && Array.isArray(extension.buildSteps) ? extension.buildSteps : [];
+  const rawSteps =
+    Predicate.isRecord(extension) && Array.isArray(extension.buildSteps) ? extension.buildSteps : [];
   return Effect.gen(function* () {
     const parsed = yield* Effect.forEach(rawSteps, (step) => parseStep(step, providerId));
     const steps = parsed.filter((step) => step !== undefined);

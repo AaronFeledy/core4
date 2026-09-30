@@ -23,7 +23,6 @@ import type { TaskTreeController } from "@lando/sdk/task-progress";
 
 import { CORE_VERSION } from "@lando/engine/version";
 import { findAppRoot } from "@lando/landofile/discovery";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
@@ -53,6 +52,7 @@ import {
   subsystemDoctor,
 } from "./doctor-subsystems";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 export type {
   DoctorDeprecationEntry,
@@ -125,7 +125,7 @@ const recordAuthoredMailhogUse = Effect.gen(function* () {
           kind: "service-type",
           id: "mailhog",
           notice: MAILHOG_DEPRECATION_NOTICE,
-          timestamp: DateTime.unsafeMake(new Date().toISOString()),
+          timestamp: DateTime.unsafeNow(),
         })
         .pipe(Effect.catchAll(() => Effect.void));
     }
@@ -210,11 +210,7 @@ const collectWithTree = <R>(
   Effect.gen(function* () {
     const options = input.options;
     const sourceEnv = { ...(options.env ?? process.env) };
-    const redactionService = yield* Effect.serviceOption(RedactionService);
-    const redactor = Option.isSome(redactionService)
-      ? yield* redactionService.value.forProfile("secrets", { sourceEnv })
-      : createStandaloneRedactor("secrets", { sourceEnv });
-    const redact = (value: string): string => redactor.redactString(value);
+    const { redact } = yield* resolveSecretsRedactor({ sourceEnv });
     const budgetMs = doctorSectionBudgetMs(sourceEnv);
     const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
     yield* tree.start;

@@ -1,4 +1,11 @@
 import { join as pathJoin } from "node:path";
+import {
+  APP_LABEL,
+  PROVIDER_LABEL,
+  STORAGE_KIND_LABEL,
+  STORAGE_SCOPE_LABEL,
+  STORE_LABEL,
+} from "../labels.ts";
 
 import { Effect } from "effect";
 
@@ -275,12 +282,12 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
     ...plan.stores.map(
       (store): [string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }] => {
         const labels = {
-          "dev.lando.app": plan.id,
-          "dev.lando.provider": plan.provider,
-          "dev.lando.store": store.name,
-          "dev.lando.scope": store.scope,
+          [APP_LABEL]: plan.id,
+          [PROVIDER_LABEL]: plan.provider,
+          [STORE_LABEL]: store.name,
+          [STORAGE_SCOPE_LABEL]: store.scope,
           ...volumeOwnershipLabels(plan, store),
-          ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+          ...(store.kind === "cache" ? { [STORAGE_KIND_LABEL]: "cache" } : {}),
         };
         return [
           store.name,

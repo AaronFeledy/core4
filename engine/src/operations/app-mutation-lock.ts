@@ -122,7 +122,7 @@ const announceWait = (): Effect.Effect<void> =>
     yield* events.value.publish(
       MessageWarnEvent.make({
         body: APP_LOCK_WAIT_MESSAGE,
-        timestamp: DateTime.unsafeMake(new Date().toISOString()),
+        timestamp: DateTime.unsafeNow(),
       }),
     );
   }).pipe(Effect.catchAll(() => Effect.void));

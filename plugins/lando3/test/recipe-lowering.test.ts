@@ -1,12 +1,11 @@
 import { expect, test } from "bun:test";
-import { parseLegacyLandofile } from "@lando/sdk/landofile";
+import { isPlainRecord, mergeLandofiles, parseLegacyLandofile } from "@lando/sdk/landofile";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import type { Lando3SourceLayer } from "../src/contract.ts";
 import { foldToTargetLayers, legacyPrefixViews } from "../src/effective-views.ts";
 import { toMergedValue } from "../src/legacy-merge.ts";
 import { lowerRecipeViews, recipeLayerOutputs } from "../src/recipe-lowering.ts";
-import { isPlainRecord, mergeLandofiles } from "../src/v4-merge.ts";
 import { document, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
 
 const views = async (entries: ReadonlyArray<readonly [Lando3SourceLayer, string]>) => {

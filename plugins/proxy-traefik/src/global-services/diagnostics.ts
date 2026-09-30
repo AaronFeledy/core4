@@ -1,8 +1,9 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { Effect, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { ServiceConfig } from "@lando/sdk/schema";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import {
   TRAEFIK_DIAGNOSTICS_CONTAINER_DIR,
@@ -14,7 +15,6 @@ import {
 } from "../diagnostics.ts";
 import { diagnosticConfigFile, diagnosticDir, diagnosticHtmlFile } from "../proxy-paths.ts";
 import type { TraefikProxyDependencies } from "../proxy-types.ts";
-import { writeSecretAtomic } from "../secret-file.ts";
 
 export const prepareTraefikDiagnostics = ({
   fileSystem,
@@ -80,11 +80,7 @@ const diagnosticsGlobalService = Effect.gen(function* () {
     fileSystem: {
       mkdir: (path) => Effect.tryPromise(() => mkdir(path, { recursive: true })).pipe(Effect.asVoid),
       writeAtomic: (path, content) =>
-        Effect.tryPromise(() =>
-          writeSecretAtomic(path, content, {
-            writeFile: (file, bytes) => writeFile(file, bytes, { mode: 0o644 }),
-          }),
-        ),
+        Effect.tryPromise(() => writeFileAtomic(path, content, { mode: 0o644 })),
     },
   });
   return diagnosticsServiceConfig;
