@@ -49,6 +49,7 @@ test.each([false, true])(
                 service: ServiceName.make("web"),
                 providerId: ProviderId.make(provider.id),
                 status: "running",
+                containerId: "observed-container",
               },
             ],
           },
