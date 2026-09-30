@@ -1,5 +1,6 @@
 import { access } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, isAbsolute } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { Effect, Schema } from "effect";
 
@@ -16,8 +17,10 @@ import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 import { deleteCwdAppMapEntriesForRoot, listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
+import { hyperlink } from "@lando/renderer/console-layout";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundary";
 import {
   type AppsDiscoveryEvidence,
   type AppsListEntry,
@@ -72,10 +75,17 @@ const cacheEntryToApp = (entry: { readonly appRoot: string }): AppsListEntry => 
   services: [],
 });
 
+const linkAppRoot = (appRoot: string): string => {
+  if (appRoot.length === 0 || !isAbsolute(appRoot)) return appRoot;
+  return hyperlink(appRoot, pathToFileURL(appRoot).href);
+};
+
 export const renderAppsListResult = (
   result: ListServicesResult,
   _format: "json" | "table" = "table",
+  ctx?: RenderContext,
 ): string => {
+  const linkRoots = contextAllowsHyperlinks(ctx);
   const inventory = (() => {
     if (result.apps.length === 0) return "No Lando apps applied on this host.";
     const header = ["APP", "STATUS", "PROVIDER", "SERVICES", "ROOT"];
@@ -88,7 +98,12 @@ export const renderAppsListResult = (
     ]);
     const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? "").length)));
     const pad = (cells: ReadonlyArray<string>): string =>
-      cells.map((c, i) => (i === cells.length - 1 ? c : c.padEnd(widths[i] ?? 0))).join("  ");
+      cells
+        .map((c, i) => {
+          if (i !== cells.length - 1) return c.padEnd(widths[i] ?? 0);
+          return linkRoots ? linkAppRoot(c) : c;
+        })
+        .join("  ");
     return [pad(header), ...rows.map(pad)].join("\n");
   })();
   if (result.pruned === undefined) return inventory;

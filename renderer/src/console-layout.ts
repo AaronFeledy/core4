@@ -37,14 +37,47 @@ const hasC0OrDel = (value: string): boolean => {
   return false;
 };
 
-const isSafeHttpHref = (href: string): boolean =>
-  href.length > 0 && (href.startsWith("https://") || href.startsWith("http://")) && !hasC0OrDel(href);
+const isSafeHref = (href: string): boolean =>
+  href.length > 0 &&
+  (href.startsWith("https://") || href.startsWith("http://") || href.startsWith("file://")) &&
+  !hasC0OrDel(href);
 
-/** Wrap `text` in OSC 8 ST hyperlinks when `href` is a safe non-empty http(s) URL. */
+/**
+ * Wrap `text` in OSC 8 ST hyperlinks when `href` is a safe http(s) or file URL.
+ * The visible label is unchanged; unsupported schemes stay plain text.
+ */
 export const hyperlink = (text: string, href: string): string => {
-  if (!isSafeHttpHref(href)) return text;
+  if (!isSafeHref(href)) return text;
   const terminator = `${ESC}\\`;
   return `${ESC}]8;;${href}${terminator}${text}${ESC}]8;;${terminator}`;
+};
+
+/** True when stdout can take OSC 8: a TTY, TERM is not dumb, and NO_COLOR is unset. */
+export const shouldEmitHyperlinks = (input: {
+  readonly isTTY: boolean;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}): boolean => {
+  if (!input.isTTY) return false;
+  const noColor = input.env?.NO_COLOR;
+  if (noColor !== undefined && noColor !== "") return false;
+  return input.env?.TERM !== "dumb";
+};
+
+const isHttpUrl = (url: string): boolean => url.startsWith("https://") || url.startsWith("http://");
+
+/**
+ * Wrap each known http(s) URL that still appears intact in `text`.
+ * A URL split by wrapping is left plain so OSC 8 never wraps a partial label.
+ */
+export const linkKnownHttpUrls = (text: string, urls: ReadonlyArray<string>): string => {
+  let out = text;
+  for (const url of urls) {
+    if (!isHttpUrl(url) || !out.includes(url)) continue;
+    const linked = hyperlink(url, url);
+    if (linked === url) continue;
+    out = out.split(url).join(linked);
+  }
+  return out;
 };
 
 /**

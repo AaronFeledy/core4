@@ -187,6 +187,7 @@ export const makeEventCommandExecutor = (
               format: "text",
               columns: undefined,
               isTTY: outputRenderer.capabilities.interactive,
+              env: process.env,
             });
             if (rendered !== undefined && rendered.length > 0) {
               yield* outputRenderer.output.stdout(`${rendered}\n`);

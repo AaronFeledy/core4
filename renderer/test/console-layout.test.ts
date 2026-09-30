@@ -8,7 +8,9 @@ import {
   displayWidth,
   fieldLabelWidth,
   hyperlink,
+  linkKnownHttpUrls,
   resolveSummaryWidth,
+  shouldEmitHyperlinks,
   stripAnsi,
   toneChip,
   truncateToWidth,
@@ -314,9 +316,15 @@ describe("hyperlink", () => {
     expect(hyperlink("docs", "")).toBe("docs");
   });
 
-  test("returns visible text unchanged for a non-http target", () => {
+  test("wraps a safe file target in OSC 8 with ST terminators", () => {
+    expect(hyperlink("/tmp/app", "file:///tmp/app")).toBe(
+      `${ESC}]8;;file:///tmp/app${ST}/tmp/app${ESC}]8;;${ST}`,
+    );
+  });
+
+  test("returns visible text unchanged for a non-http non-file target", () => {
     expect(hyperlink("db", "tcp://localhost:5432")).toBe("db");
-    expect(hyperlink("file", "file:///tmp/x")).toBe("file");
+    expect(hyperlink("ide", "vscode://file/tmp/x")).toBe("ide");
   });
 
   test("returns visible text unchanged when the target contains C0, DEL, or ESC", () => {
@@ -324,5 +332,45 @@ describe("hyperlink", () => {
     expect(hyperlink("x", `https://example.com/${BEL}`)).toBe("x");
     expect(hyperlink("x", "https://example.com/\u0000")).toBe("x");
     expect(hyperlink("x", "https://example.com/\u007f")).toBe("x");
+    expect(hyperlink("x", `file:///tmp/${ESC}x`)).toBe("x");
+  });
+});
+
+describe("shouldEmitHyperlinks", () => {
+  test("emits on a TTY when TERM is set and NO_COLOR is unset", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color" } })).toBe(true);
+  });
+
+  test("treats empty NO_COLOR as unset", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color", NO_COLOR: "" } })).toBe(true);
+  });
+
+  test("stays plain when stdout is not a TTY", () => {
+    expect(shouldEmitHyperlinks({ isTTY: false, env: { TERM: "xterm-256color" } })).toBe(false);
+  });
+
+  test("stays plain when NO_COLOR is set", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color", NO_COLOR: "1" } })).toBe(false);
+  });
+
+  test("stays plain when TERM is dumb", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "dumb" } })).toBe(false);
+  });
+});
+
+describe("linkKnownHttpUrls", () => {
+  test("wraps each intact http(s) URL and leaves other text alone", () => {
+    const text = "web\thttps://app.lndo.site, http://localhost:3000, tcp://localhost:5432";
+    expect(
+      linkKnownHttpUrls(text, ["https://app.lndo.site", "http://localhost:3000", "tcp://localhost:5432"]),
+    ).toBe(
+      `web\t${hyperlink("https://app.lndo.site", "https://app.lndo.site")}, ${hyperlink("http://localhost:3000", "http://localhost:3000")}, tcp://localhost:5432`,
+    );
+  });
+
+  test("leaves a URL plain when wrapping split the label", () => {
+    expect(linkKnownHttpUrls("https://example.com/very", ["https://example.com/very/long"])).toBe(
+      "https://example.com/very",
+    );
   });
 });
