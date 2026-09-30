@@ -337,11 +337,16 @@ describe("renderOpenAppResult", () => {
     launch: "printed" as const,
   };
   const tty: RenderContext = { mode: "lando", format: "text", columns: 80, isTTY: true };
+  const qrFor = (url: string): string => {
+    const qr = renderTerminalQr(url);
+    expect(qr).toBeDefined();
+    return qr ?? "";
+  };
 
   test("prints resolved urls and launch outcome", () => {
     const text = renderOpenAppResult(printed);
     expect(text).toContain("https://web.myapp.lndo.site");
-    expect(text).not.toContain(renderTerminalQr("https://web.myapp.lndo.site").trimEnd());
+    expect(text).not.toContain(qrFor("https://web.myapp.lndo.site").trimEnd());
   });
 
   test("local *.lndo.site URLs get a QR only when --qr is set", () => {
@@ -349,7 +354,7 @@ describe("renderOpenAppResult", () => {
     const withFlag = renderOpenAppResult(printed, tty, { qr: true });
     expect(withoutFlag).toBe("Resolved:\nweb\thttps://web.myapp.lndo.site\n");
     expect(withFlag.startsWith(withoutFlag)).toBe(true);
-    expect(withFlag).toContain(renderTerminalQr("https://web.myapp.lndo.site").trimEnd());
+    expect(withFlag).toContain(qrFor("https://web.myapp.lndo.site").trimEnd());
   });
 
   test("loopback 127.0.0.1 URLs get a QR only when --qr is set", () => {
@@ -366,8 +371,84 @@ describe("renderOpenAppResult", () => {
     };
     expect(renderOpenAppResult(loopback, tty)).toBe("Resolved:\nweb\thttp://127.0.0.1:8080\n");
     expect(renderOpenAppResult(loopback, tty, { qr: true })).toContain(
-      renderTerminalQr("http://127.0.0.1:8080").trimEnd(),
+      qrFor("http://127.0.0.1:8080").trimEnd(),
     );
+  });
+
+  test("localhost and ::1 URLs get a QR only when --qr is set", () => {
+    const localhost = {
+      ...printed,
+      targets: [
+        {
+          service: "web",
+          hostname: "localhost",
+          scheme: "http" as const,
+          url: "http://localhost:8080",
+        },
+      ],
+    };
+    const ipv6 = {
+      ...printed,
+      targets: [
+        {
+          service: "web",
+          hostname: "[::1]",
+          scheme: "http" as const,
+          url: "http://[::1]:8080",
+        },
+      ],
+    };
+    expect(renderOpenAppResult(localhost, tty)).toBe("Resolved:\nweb\thttp://localhost:8080\n");
+    expect(renderOpenAppResult(localhost, tty, { qr: true })).toContain(
+      qrFor("http://localhost:8080").trimEnd(),
+    );
+    expect(renderOpenAppResult(ipv6, tty)).toBe("Resolved:\nweb\thttp://[::1]:8080\n");
+    expect(renderOpenAppResult(ipv6, tty, { qr: true })).toContain(qrFor("http://[::1]:8080").trimEnd());
+  });
+
+  test("--qr on a pipe prints URLs and skips the QR", () => {
+    const text = renderOpenAppResult(printed, { ...tty, isTTY: false }, { qr: true });
+    expect(text).toBe("Resolved:\nweb\thttps://web.myapp.lndo.site\n");
+  });
+
+  test("prints the URL list then unlabeled QRs for each target", () => {
+    const result = {
+      ...printed,
+      targets: [
+        {
+          service: "web",
+          hostname: "web.myapp.lndo.site",
+          scheme: "https" as const,
+          url: "https://web.myapp.lndo.site",
+        },
+        {
+          service: "api",
+          hostname: "api.myapp.lndo.site",
+          scheme: "https" as const,
+          url: "https://api.myapp.lndo.site",
+        },
+      ],
+    };
+    const heading = "Resolved:\nweb\thttps://web.myapp.lndo.site\napi\thttps://api.myapp.lndo.site\n";
+    expect(renderOpenAppResult(result, tty, { qr: true })).toBe(
+      `${heading}${qrFor("https://web.myapp.lndo.site")}${qrFor("https://api.myapp.lndo.site")}`,
+    );
+  });
+
+  test("skips a QR for an overlong URL and still prints it", () => {
+    const overlong = `https://share.example.test/${"a".repeat(4000)}`;
+    const result = {
+      ...printed,
+      targets: [
+        {
+          service: "web",
+          hostname: "share.example.test",
+          scheme: "https" as const,
+          url: overlong,
+        },
+      ],
+    };
+    expect(renderOpenAppResult(result, tty, { qr: true })).toBe(`Resolved:\nweb\t${overlong}\n`);
   });
 
   test("--qr stays URL-only in JSON format", () => {

@@ -8,6 +8,8 @@ import { renderTerminalQr } from "../../../src/cli/terminal-qr.ts";
 
 const PUBLIC_URL = "https://share.example.test";
 const LOCAL_URL = "https://web.myapp.lndo.site";
+const LOCALHOST_URL = "http://localhost:8080";
+const IPV6_LOOPBACK_URL = "http://[::1]:8080";
 
 const session = (over: Partial<TunnelSession> = {}): TunnelSession => ({
   id: "tun1",
@@ -32,11 +34,17 @@ const ctx = (over: Partial<RenderContext> = {}): RenderContext => ({
 const tunnelLine = (url?: string): string =>
   `Tunnel tun1 ready via test-tunnel (web:80)${url === undefined ? "" : ` at ${url}`}\n`;
 
+const qrFor = (url: string): string => {
+  const qr = renderTerminalQr(url);
+  expect(qr).toBeDefined();
+  return qr ?? "";
+};
+
 describe("renderShareResult", () => {
   test("text TTY with a public URL prints the tunnel line plus a QR", () => {
     const output = renderShareResult(session(), "text", ctx());
     expect(output.startsWith(tunnelLine(PUBLIC_URL))).toBe(true);
-    expect(output).toContain(renderTerminalQr(PUBLIC_URL).trimEnd());
+    expect(output).toContain(qrFor(PUBLIC_URL).trimEnd());
   });
 
   test("piped text stays the tunnel line only", () => {
@@ -54,5 +62,14 @@ describe("renderShareResult", () => {
 
   test("local *.lndo.site URLs need --qr and stay text-only on share", () => {
     expect(renderShareResult(session({ publicUrl: LOCAL_URL }), "text", ctx())).toBe(tunnelLine(LOCAL_URL));
+  });
+
+  test("loopback-by-name publicUrl stays text-only on share", () => {
+    expect(renderShareResult(session({ publicUrl: LOCALHOST_URL }), "text", ctx())).toBe(
+      tunnelLine(LOCALHOST_URL),
+    );
+    expect(renderShareResult(session({ publicUrl: IPV6_LOOPBACK_URL }), "text", ctx())).toBe(
+      tunnelLine(IPV6_LOOPBACK_URL),
+    );
   });
 });
