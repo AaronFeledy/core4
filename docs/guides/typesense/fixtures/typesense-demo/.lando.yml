@@ -1,0 +1,15 @@
+name: typesense-demo
+services:
+  search:
+    type: compose
+    image: typesense/typesense:30.2
+    appMount: false
+    home: false
+    ports:
+      - 8108:8108
+    volumes:
+      - ./typesense-data:/data
+    environment:
+      TYPESENSE_DATA_DIR: /data
+      TYPESENSE_API_KEY: xyz
+      TYPESENSE_ENABLE_CORS: "true"

@@ -64,6 +64,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-02 | US-090 | meilisearch service type | `docs/guides/services/meilisearch.mdx` | Shipped |
 | PRD-02 | US-093 | static service type | `docs/guides/services/static.mdx` | Shipped |
 | PRD-02 | US-094 | raw Compose passthrough service | `docs/guides/services/compose-passthrough.mdx` | Shipped |
+| — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
 | PRD-03 | US-097 | Mutagen host CLI + agent download via `lando setup` | `docs/guides/setup/file-sync-mutagen.mdx` | Shipped |
 | PRD-03 | US-099 | exclude patterns (volume-shadow + Mutagen ignores) | `docs/guides/setup/file-sync-excludes.mdx` | Shipped |
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
