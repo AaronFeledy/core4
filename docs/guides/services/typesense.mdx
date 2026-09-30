@@ -27,7 +27,7 @@ services:
       TYPESENSE_ENABLE_CORS: "true"
 ```
 
-`appMount: false` keeps Typesense off your app tree. `home: false` is required when the image comes from the Landofile, because Lando does not know that image's user or home path. Create the host data directory, then start:
+`appMount: false` keeps Typesense off your app tree. This example sets `home: false` because the image comes from the Landofile and Lando does not know that image's user or home path. `home: false` is not required. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](./home-and-host.mdx). Create the host data directory, then start:
 
 ```sh
 mkdir -p typesense-data
@@ -84,7 +84,13 @@ From a Node or PHP service, call that URL with the `X-TYPESENSE-API-KEY` header.
 
 ## Pass flags as a command list
 
-Prefer the environment variables above. If you set `command:` instead, use a YAML list of argv entries:
+A YAML string `command:` is one argv, so the upstream Typesense Compose one-liner does not work. That file sets `command` to one quoted string:
+
+```yaml
+command: '--data-dir /data --api-key=xyz --enable-cors'
+```
+
+The whole string is a single argument. Set the environment variables in the first example, or pass each flag and value as its own argv entry:
 
 ```yaml
 services:
@@ -151,3 +157,4 @@ Keep the data directory and API key the same across bumps unless that release's 
 - [Add Meilisearch](./meilisearch.mdx)
 - [Add Solr](./solr.mdx)
 - [How services find each other](../subsystems/service-dns.mdx)
+- [Keep a service home across rebuilds and reach your host](./home-and-host.mdx)

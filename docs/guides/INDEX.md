@@ -64,7 +64,6 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-02 | US-090 | meilisearch service type | `docs/guides/services/meilisearch.mdx` | Shipped |
 | PRD-02 | US-093 | static service type | `docs/guides/services/static.mdx` | Shipped |
 | PRD-02 | US-094 | raw Compose passthrough service | `docs/guides/services/compose-passthrough.mdx` | Shipped |
-| — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
 | PRD-03 | US-097 | Mutagen host CLI + agent download via `lando setup` | `docs/guides/setup/file-sync-mutagen.mdx` | Shipped |
 | PRD-03 | US-099 | exclude patterns (volume-shadow + Mutagen ignores) | `docs/guides/setup/file-sync-excludes.mdx` | Shipped |
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
@@ -285,3 +284,4 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | — | — | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
 | — | — | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
 | n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |
+| — | — | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
