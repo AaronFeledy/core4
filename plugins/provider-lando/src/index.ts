@@ -1425,14 +1425,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
           Effect.flatMap((snapshots) =>
             filter.includeUnplanned === true
               ? discoverLabeledContainers(podmanApi, LANDO_CTX).pipe(
-                  Effect.map((discovered) => [
-                    ...snapshots,
-                    ...discovered.filter(
-                      (snapshot) =>
-                        !plans.has(snapshot.app) &&
-                        (filter.includeScratch === true || snapshot.labels?.["dev.lando.scratch"] !== "TRUE"),
-                    ),
-                  ]),
+                  Effect.map((discovered) => {
+                    const reported = new Set(snapshots.map((snapshot) => snapshot.containerId));
+                    return [
+                      ...snapshots,
+                      ...discovered.filter(
+                        (snapshot) =>
+                          !reported.has(snapshot.containerId) &&
+                          (filter.includeScratch === true ||
+                            snapshot.labels?.["dev.lando.scratch"] !== "TRUE"),
+                      ),
+                    ];
+                  }),
                 )
               : Effect.succeed(snapshots),
           ),

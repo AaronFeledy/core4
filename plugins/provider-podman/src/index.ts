@@ -860,11 +860,13 @@ const assembleRuntimeProvider = (
 
             const discovered =
               filter.includeUnplanned === true ? yield* discoverLabeledContainers(podmanApi, PODMAN_CTX) : [];
+            const planned = snapshots.flat();
+            const reported = new Set(planned.map((snapshot) => snapshot.containerId));
             const flat = [
-              ...snapshots.flat(),
+              ...planned,
               ...discovered.filter(
                 (snapshot) =>
-                  !allPlans.some((plan) => plan.id === snapshot.app) &&
+                  !reported.has(snapshot.containerId) &&
                   (filter.includeScratch === true || snapshot.labels?.["dev.lando.scratch"] !== "TRUE"),
               ),
             ];

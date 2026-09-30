@@ -123,8 +123,11 @@ describe("provider-lando service lifecycle", () => {
   test.each([
     { filter: {}, ids: ["planned"] },
     { filter: { includeUnplanned: false }, ids: ["planned"] },
-    { filter: { includeUnplanned: true }, ids: ["planned", "orphan"] },
-    { filter: { includeUnplanned: true, includeScratch: true }, ids: ["planned", "orphan", "scratch"] },
+    { filter: { includeUnplanned: true }, ids: ["planned", "untracked-planned-app", "orphan"] },
+    {
+      filter: { includeUnplanned: true, includeScratch: true },
+      ids: ["planned", "untracked-planned-app", "orphan", "scratch"],
+    },
     { filter: { includeUnplanned: true, app: AppId.make("orphan") }, ids: ["orphan"] },
     { filter: { includeUnplanned: true, app: AppId.make("scratch") }, ids: [] },
   ] satisfies ReadonlyArray<{ readonly filter: ListFilter; readonly ids: ReadonlyArray<string> }>)(
@@ -145,6 +148,11 @@ describe("provider-lando service lifecycle", () => {
               body: JSON.stringify(
                 input.path.startsWith("/containers/json?")
                   ? [
+                      {
+                        Id: "planned",
+                        State: "running",
+                        Labels: { "dev.lando.app": appId, "dev.lando.service": "web" },
+                      },
                       {
                         Id: "untracked-planned-app",
                         State: "running",
