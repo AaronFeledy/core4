@@ -49,7 +49,13 @@ const locatePlanVolumes = (
           locator.identity.ownerRoot !== (plan.identity?.appRoot ?? plan.root)
         ) {
           return Effect.fail(
-            failure(provider.id, `Volume ${locator.nativeName} is owned by another app root.`),
+            new VolumeOperationError({
+              providerId: provider.id,
+              operation: "coordinateVolume",
+              store: store.name,
+              message: `Volume ${locator.nativeName} (store ${store.name}) belongs to the app at ${locator.identity.ownerRoot}, not ${plan.identity?.appRoot ?? plan.root}.`,
+              remediation: `If that folder still exists, the two apps share an app name: change name: in one Landofile. If it is gone, run lando destroy --root ${locator.identity.ownerRoot} --volumes to delete its leftovers (this deletes that data), or move the app back there. lando doctor lists app folders that no longer exist.`,
+            }),
           );
         }
         return Effect.succeed({ ref, locator });

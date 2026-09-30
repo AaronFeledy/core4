@@ -55,6 +55,52 @@ const liveStore = (): Promise<StateStoreShape> =>
   Effect.runPromise(StateStore.pipe(Effect.provide(StateStoreLive)));
 
 describe("physical volume lifecycle coordination", () => {
+  test("names the owning folder and recovery choices when another app owns a volume", async () => {
+    // Given a store whose physical volume belongs to a different app root.
+    const store = await liveStore();
+    let mutated = false;
+    const ownerRoot = AbsolutePath.make("/apps/old-app");
+    const provider = {
+      id: "test",
+      locateVolume: (ref: { readonly store: string }) =>
+        Effect.succeed({
+          coordinationKey: coordinationKey(ref.store),
+          nativeName: `app_${ref.store}`,
+          identity: {
+            coordinationKey: coordinationKey(ref.store),
+            nativeName: `app_${ref.store}`,
+            generation: "one",
+            ownerRoot,
+            origin: "created" as const,
+          },
+        }),
+    };
+
+    // When lifecycle coordination observes that owner.
+    const result = await Effect.runPromise(
+      withPlanVolumeCoordination({
+        plan,
+        provider,
+        stateStore: store,
+        body: () =>
+          Effect.sync(() => {
+            mutated = true;
+          }),
+      }).pipe(Effect.either),
+    );
+
+    // Then it refuses mutation with the store, both roots, and actionable recovery.
+    expect(mutated).toBe(false);
+    if (result._tag !== "Left") throw new TypeError("expected ownership refusal");
+    expect(result.left).toMatchObject({ _tag: "VolumeOperationError", store: "zeta" });
+    expect(result.left.message).toContain("app_zeta");
+    expect(result.left.message).toContain(ownerRoot);
+    expect(result.left.message).toContain(plan.root);
+    expect(result.left.remediation).toContain(`lando destroy --root ${ownerRoot} --volumes`);
+    expect(result.left.remediation).toContain("name:");
+    expect(result.left.remediation).toContain("lando doctor");
+  });
+
   test("sorts and deduplicates provider locators before acquiring advisory locks", async () => {
     // Given three plan stores where two provider locators identify one physical volume.
     const live = await liveStore();
