@@ -32,7 +32,14 @@ const plan: AppPlan = {
   extensions: {},
   metadata: { resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00Z"), source: "test", runtime: 4 },
 };
-const service = { app, appRoot: root, service: ServiceName.make("web"), providerId, status: "running" };
+const service = {
+  app,
+  appRoot: root,
+  service: ServiceName.make("web"),
+  providerId,
+  status: "running",
+  containerId: "observed-container",
+};
 const volume = (name: string, labels: Readonly<Record<string, string>> = {}): VolumeInfo => ({
   ref: { app, store: name },
   labels,
@@ -64,6 +71,12 @@ const run = (
       );
     }).pipe(Effect.provide(FileSystemLive)),
   );
+
+test("retains applied state without counting a service whose container is gone", async () => {
+  const { containerId: _containerId, ...gone } = service;
+  const result = await run([snapshot({ appliedPlans: [plan], services: [gone] })]);
+  expect(result).toMatchObject([{ appliedState: true, services: [] }]);
+});
 
 test("groups applied state, services and native data/cache volumes across providers", async () => {
   const result = await run([

@@ -62,6 +62,7 @@ export const findMissingAppRoots: Effect.Effect<
     }
     for (const service of snapshot.services) {
       if (
+        service.containerId === undefined ||
         service.appRoot === undefined ||
         service.app === "global" ||
         service.labels?.["dev.lando.scratch"] === "TRUE"
