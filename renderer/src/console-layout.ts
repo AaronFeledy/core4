@@ -29,7 +29,7 @@ const csi = {
   defaultFg: `${ESC}[39m`,
 } as const;
 
-const hasC0OrDel = (value: string): boolean => {
+export const hasC0OrDel = (value: string): boolean => {
   for (const ch of value) {
     const cp = ch.codePointAt(0);
     if (cp !== undefined && (cp <= 0x1f || cp === 0x7f)) return true;
@@ -47,35 +47,93 @@ const isSafeHref = (href: string): boolean =>
  * The visible label is unchanged; unsupported schemes stay plain text.
  */
 export const hyperlink = (text: string, href: string): string => {
-  if (!isSafeHref(href)) return text;
+  if (hasC0OrDel(text) || !isSafeHref(href)) return text;
   const terminator = `${ESC}\\`;
   return `${ESC}]8;;${href}${terminator}${text}${ESC}]8;;${terminator}`;
 };
 
-/** True when stdout can take OSC 8: a TTY, TERM is not dumb, and NO_COLOR is unset. */
+/** True when stdout can take OSC 8: a TTY, an env snapshot is present, TERM is not dumb, and NO_COLOR is unset. */
 export const shouldEmitHyperlinks = (input: {
   readonly isTTY: boolean;
   readonly env?: Readonly<Record<string, string | undefined>>;
 }): boolean => {
-  if (!input.isTTY) return false;
-  const noColor = input.env?.NO_COLOR;
+  if (!input.isTTY || input.env === undefined) return false;
+  const noColor = input.env.NO_COLOR;
   if (noColor !== undefined && noColor !== "") return false;
-  return input.env?.TERM !== "dumb";
+  return input.env.TERM !== "dumb";
 };
 
 const isHttpUrl = (url: string): boolean => url.startsWith("https://") || url.startsWith("http://");
 
+const OSC8_PREFIX = `${ESC}]8;`;
+const OSC8_ST = `${ESC}\\`;
+const OSC8_BEL = "\x07";
+
+/** End index of an OSC 8 sequence starting at `start`, or undefined if none. */
+const skipOsc8 = (text: string, start: number): number | undefined => {
+  if (!text.startsWith(OSC8_PREFIX, start)) return undefined;
+  const from = start + OSC8_PREFIX.length;
+  const st = text.indexOf(OSC8_ST, from);
+  const bel = text.indexOf(OSC8_BEL, from);
+  let end = -1;
+  if (st >= 0) end = st + OSC8_ST.length;
+  if (bel >= 0 && (end < 0 || bel + 1 < end)) end = bel + 1;
+  return end > start ? end : undefined;
+};
+
+/** Separators around printed endpoints; a prefix of a longer URL is not a token. */
+const isUrlTokenBoundary = (ch: string | undefined): boolean => {
+  if (ch === undefined) return true;
+  const code = ch.codePointAt(0);
+  if (code === undefined || code <= 0x20 || code === 0x7f) return true;
+  return (
+    ch === "," ||
+    ch === ";" ||
+    ch === "|" ||
+    ch === "(" ||
+    ch === ")" ||
+    ch === "<" ||
+    ch === ">" ||
+    ch === "{" ||
+    ch === "}" ||
+    ch === "[" ||
+    ch === "]" ||
+    ch === '"' ||
+    ch === "'"
+  );
+};
+
+const isWholeEndpointTokenAt = (text: string, index: number, url: string): boolean => {
+  if (!text.startsWith(url, index)) return false;
+  return isUrlTokenBoundary(text[index - 1]) && isUrlTokenBoundary(text[index + url.length]);
+};
+
 /**
- * Wrap each known http(s) URL that still appears intact in `text`.
+ * Wrap each known http(s) URL that still appears as a whole token in `text`.
+ * Longer endpoints win so a prefix (`:80` vs `:8080`, host vs host:port) cannot
+ * nest inside another link. OSC 8 already in `text` is copied, never rewritten.
  * A URL split by wrapping is left plain so OSC 8 never wraps a partial label.
  */
 export const linkKnownHttpUrls = (text: string, urls: ReadonlyArray<string>): string => {
-  let out = text;
-  for (const url of urls) {
-    if (!isHttpUrl(url) || !out.includes(url)) continue;
-    const linked = hyperlink(url, url);
-    if (linked === url) continue;
-    out = out.split(url).join(linked);
+  const candidates = [...new Set(urls.filter(isHttpUrl))].sort((left, right) => right.length - left.length);
+  if (candidates.length === 0) return text;
+  let out = "";
+  let index = 0;
+  while (index < text.length) {
+    const oscEnd = skipOsc8(text, index);
+    if (oscEnd !== undefined) {
+      out += text.slice(index, oscEnd);
+      index = oscEnd;
+      continue;
+    }
+    const match = candidates.find((url) => isWholeEndpointTokenAt(text, index, url));
+    if (match !== undefined) {
+      out += hyperlink(match, match);
+      index += match.length;
+      continue;
+    }
+    out += text[index];
+    index += 1;
   }
   return out;
 };

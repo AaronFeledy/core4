@@ -17,7 +17,7 @@ import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 import { deleteCwdAppMapEntriesForRoot, listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
 import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
-import { hyperlink } from "@lando/renderer/console-layout";
+import { hasC0OrDel, hyperlink } from "@lando/renderer/console-layout";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { type RenderContext, contextAllowsHyperlinks } from "../renderer-boundary";
@@ -76,7 +76,7 @@ const cacheEntryToApp = (entry: { readonly appRoot: string }): AppsListEntry => 
 });
 
 const linkAppRoot = (appRoot: string): string => {
-  if (appRoot.length === 0 || !isAbsolute(appRoot)) return appRoot;
+  if (appRoot.length === 0 || !isAbsolute(appRoot) || hasC0OrDel(appRoot)) return appRoot;
   return hyperlink(appRoot, pathToFileURL(appRoot).href);
 };
 

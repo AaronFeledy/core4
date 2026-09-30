@@ -61,4 +61,41 @@ describe("renderInfoAppResult URL hyperlinks", () => {
     expect(out).toContain("https://my-app.lndo.site");
     expect(out).not.toContain(`${ESC}]8;`);
   });
+
+  test("keeps endpoints plain when env is missing on a TTY context", () => {
+    const out = renderInfoAppResult(result, {
+      mode: "lando",
+      format: "text",
+      columns: 80,
+      isTTY: true,
+    });
+    expect(out).toContain("https://my-app.lndo.site");
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
+
+  test("leaves a wrapped URL plain at a narrow column width", () => {
+    const longUrl = "https://example.com/very/long/path/that/must/wrap/across/columns";
+    const narrow: InfoAppResult = {
+      app: "my-app",
+      services: [
+        {
+          app: "my-app",
+          service: "web",
+          api: 4,
+          type: "node",
+          provider: "lando",
+          primary: true,
+          status: "running",
+          endpoints: [longUrl],
+        },
+      ],
+    };
+    const out = renderInfoAppResult(narrow, { ...tty(), columns: 36 });
+    expect(out).not.toContain(`${ESC}]8;;${longUrl}`);
+    expect(out).not.toContain(`${ESC}]8;`);
+    const visible = stripAnsi(out);
+    expect(visible).toContain("https://example.co");
+    expect(visible).toContain("ss/columns");
+    expect(visible).not.toContain(longUrl);
+  });
 });

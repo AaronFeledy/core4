@@ -60,4 +60,33 @@ describe("renderAppsListResult ROOT hyperlinks", () => {
     expect(out).toContain("/srv/apps/my-app");
     expect(out).not.toContain(`${ESC}]8;`);
   });
+
+  test("keeps ROOT plain when env is missing on a TTY context", () => {
+    const out = renderAppsListResult(result, "table", {
+      mode: "lando",
+      format: "text",
+      columns: 80,
+      isTTY: true,
+    });
+    expect(out).toContain("/srv/apps/my-app");
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
+
+  test("keeps ROOT plain when the printed path contains C0", () => {
+    const dirty = {
+      apps: [
+        {
+          appId: "my-app",
+          appName: "my-app",
+          providerId: "lando",
+          appRoot: "/srv/apps/my-app\u0007x",
+          services: ["web"],
+          status: "active" as const,
+        },
+      ],
+    };
+    const out = renderAppsListResult(dirty, "table", tty());
+    expect(out).toContain("/srv/apps/my-app\u0007x");
+    expect(out).not.toContain(`${ESC}]8;`);
+  });
 });

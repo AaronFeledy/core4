@@ -325,6 +325,15 @@ describe("hyperlink", () => {
   test("returns visible text unchanged for a non-http non-file target", () => {
     expect(hyperlink("db", "tcp://localhost:5432")).toBe("db");
     expect(hyperlink("ide", "vscode://file/tmp/x")).toBe("ide");
+    expect(hyperlink("script", "javascript:alert(1)")).toBe("script");
+    expect(hyperlink("payload", "data:text/plain,hi")).toBe("payload");
+    expect(hyperlink("rel", "/tmp/app")).toBe("rel");
+    expect(hyperlink("rel", "./readme")).toBe("rel");
+  });
+
+  test("returns visible text unchanged when the label contains C0 or DEL", () => {
+    expect(hyperlink(`docs${ESC}x`, "https://example.com/docs")).toBe(`docs${ESC}x`);
+    expect(hyperlink("docs\u0007", "https://example.com/docs")).toBe("docs\u0007");
   });
 
   test("returns visible text unchanged when the target contains C0, DEL, or ESC", () => {
@@ -356,6 +365,10 @@ describe("shouldEmitHyperlinks", () => {
   test("stays plain when TERM is dumb", () => {
     expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "dumb" } })).toBe(false);
   });
+
+  test("stays plain when env is missing", () => {
+    expect(shouldEmitHyperlinks({ isTTY: true })).toBe(false);
+  });
 });
 
 describe("linkKnownHttpUrls", () => {
@@ -371,6 +384,30 @@ describe("linkKnownHttpUrls", () => {
   test("leaves a URL plain when wrapping split the label", () => {
     expect(linkKnownHttpUrls("https://example.com/very", ["https://example.com/very/long"])).toBe(
       "https://example.com/very",
+    );
+  });
+
+  test("links a prefix pair as whole tokens with one OSC each", () => {
+    const shortUrl = "http://localhost:80";
+    const longUrl = "http://localhost:8080";
+    const line = `${shortUrl}, ${longUrl}`;
+    const out = linkKnownHttpUrls(line, [shortUrl, longUrl]);
+    const hrefs = [...out.matchAll(new RegExp(`${ESC}\\]8;;(.*?)(?:${ESC}\\\\|\\x07)`, "g"))]
+      .map((match) => match[1] ?? "")
+      .filter((href) => href.length > 0);
+    expect(hrefs).toEqual([shortUrl, longUrl]);
+    expect(out).toContain(hyperlink(shortUrl, shortUrl));
+    expect(out).toContain(hyperlink(longUrl, longUrl));
+    expect(out).not.toContain(`${ESC}]8;;${shortUrl}${ST}${ESC}]8;`);
+    expect(stripAnsi(out)).toBe(line);
+  });
+
+  test("does not rewrite a URL already wrapped in OSC 8", () => {
+    const longUrl = "http://localhost:8080";
+    const shortUrl = "http://localhost:80";
+    const already = hyperlink(longUrl, longUrl);
+    expect(linkKnownHttpUrls(`${already}, ${shortUrl}`, [shortUrl, longUrl])).toBe(
+      `${already}, ${hyperlink(shortUrl, shortUrl)}`,
     );
   });
 });
