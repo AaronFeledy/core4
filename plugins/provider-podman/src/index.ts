@@ -25,6 +25,7 @@ import { VOLUME_WITNESS_IMAGE, makeProviderDataPlane } from "@lando/container-ru
 import { libpodPullDialect, libpodWaitDialect } from "@lando/container-runtime/dialect";
 import type { PodmanApiClient, ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
+import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
@@ -780,6 +781,7 @@ const assembleRuntimeProvider = (
           bringUp(plan, {
             api: podmanApi,
             ctx: PODMAN_CTX,
+            ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
             ...(applyOptions.serviceEnvironment === undefined
               ? {}

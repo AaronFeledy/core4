@@ -29,7 +29,11 @@ const metadata = {
 
 const mailpitRef = "axllent/mailpit:v1.30.1";
 
-const makeService = (name: string, ref: string): ServicePlan => ({
+const makeService = (
+  name: string,
+  ref: string,
+  compose?: Record<string, unknown>,
+): ServicePlan => ({
   name: ServiceName.make(name),
   type: "test",
   provider: providerId,
@@ -43,7 +47,7 @@ const makeService = (name: string, ref: string): ServicePlan => ({
   dependsOn: [],
   hostAliases: [],
   metadata,
-  extensions: {},
+  extensions: compose === undefined ? {} : { compose },
 });
 
 const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
@@ -79,6 +83,7 @@ interface FakeApiOptions {
   readonly pullBody?: string;
   readonly pullStatus?: number;
   readonly inspectStatus?: number;
+  readonly inspectBody?: unknown;
   readonly createStatus?: number;
   readonly createStatuses?: ReadonlyArray<number>;
   readonly createBody?: string;
@@ -109,7 +114,14 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
       }
       return {
         status: 200,
-        body: JSON.stringify({ Id: "sha256:test", RepoDigests: [`${ref}@sha256:test`] }),
+        body: JSON.stringify(
+          options.inspectBody ?? {
+            Id: "sha256:test",
+            Os: "linux",
+            Architecture: "amd64",
+            RepoDigests: [`${ref}@sha256:test`],
+          },
+        ),
       };
     }
     if (method === "POST" && path.startsWith("/images/create?")) {
@@ -265,6 +277,85 @@ describe("provider-docker apply image pull", () => {
     expect(startError.remediation).toContain("lando doctor --provider=docker");
     expect(fake.requests.filter((entry) => entry.startsWith("POST /images/create?"))).toHaveLength(1);
     expect(fake.requests.filter((entry) => entry.startsWith("POST /containers/create"))).toHaveLength(2);
+  });
+
+  test("forwards an explicit service platform on pull", async () => {
+    const fake = makeFakeApi();
+    const plan = makePlan([makeService("mailpit", mailpitRef, { platform: "linux/amd64" })]);
+
+    await apply(plan, fake.api);
+
+    const pull = fake.requests.find((entry) => entry.startsWith("POST /images/create?"));
+    expect(pull).toContain("platform=linux%2Famd64");
+  });
+
+  test("pulls a wrong-arch registry image with the service platform", async () => {
+    const fake = makeFakeApi({
+      images: new Set([mailpitRef]),
+      inspectBody: {
+        Os: "linux",
+        Architecture: "arm64",
+        RepoDigests: [`${mailpitRef}@sha256:test`],
+      },
+    });
+    const plan = makePlan([makeService("mailpit", mailpitRef, { platform: "linux/amd64" })]);
+
+    await apply(plan, fake.api);
+
+    expect(fake.requests.filter((entry) => entry.startsWith("POST /images/create?"))).toEqual([
+      `POST ${buildImagePullRequest(mailpitRef, dockerPullDialect, { platform: "linux/amd64" }).path}`,
+    ]);
+  });
+
+  test("fails a wrong-arch local build without pulling", async () => {
+    const fake = makeFakeApi({
+      images: new Set([mailpitRef]),
+      inspectBody: { Os: "linux", Architecture: "arm64", RepoDigests: [] },
+    });
+    const plan = makePlan([makeService("mailpit", mailpitRef, { platform: "linux/amd64" })]);
+
+    const failure = await applyFailure(plan, fake.api);
+
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect((failure as ProviderUnavailableError).message).toContain("linux/arm64");
+    expect((failure as ProviderUnavailableError).message).toContain("linux/amd64");
+    expect(fake.requests.some((entry) => entry.startsWith("POST /images/create?"))).toBe(false);
+    expect(fake.requests.some((entry) => entry.startsWith("POST /containers/create"))).toBe(false);
+  });
+
+  test("force:true includes the service platform on the retry pull", async () => {
+    const fake = makeFakeApi({
+      images: new Set([mailpitRef]),
+      createStatuses: [404, 201],
+      createBody: JSON.stringify({ message: `No such image: ${mailpitRef}` }),
+    });
+    const plan = makePlan([makeService("mailpit", mailpitRef, { platform: "linux/amd64" })]);
+
+    await apply(plan, fake.api);
+
+    const pulls = fake.requests.filter((entry) => entry.startsWith("POST /images/create?"));
+    expect(pulls).toHaveLength(1);
+    expect(pulls[0]).toContain("platform=linux%2Famd64");
+  });
+
+  test("does not pull-pin a build-only service from build.platforms", async () => {
+    const fake = makeFakeApi();
+    const plan = makePlan([
+      {
+        ...makeService("mailpit", mailpitRef, { build: { platforms: ["linux/amd64"] } }),
+        artifact: {
+          kind: "build",
+          context: AbsolutePath.make("/tmp/mailpit-build"),
+          specInline: "FROM scratch",
+        },
+      },
+    ]);
+
+    const failure = await applyFailure(plan, fake.api);
+
+    expect(failure).toMatchObject({ _tag: "ServiceStartError" });
+    expect(fake.requests.some((entry) => entry.startsWith("POST /images/create?"))).toBe(false);
+    expect(fake.requests.some((entry) => entry.includes("platform="))).toBe(false);
   });
 
   test("does not recommend lando destroy when image pull fails during apply", async () => {
