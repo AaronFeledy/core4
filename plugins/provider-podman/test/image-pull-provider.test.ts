@@ -201,6 +201,36 @@ describe("provider-podman apply image pull", () => {
     );
   });
 
+  test("re-pulls a Variant-less registry inspect against a linux/arm/v7 pin", async () => {
+    const fake = makeFakeApi({
+      inspectStatus: 200,
+      inspectBody: { Os: "linux", Architecture: "arm", RepoDigests: [`${mailpitRef}@sha256:test`] },
+    });
+    const plan = makePlan([makeService("mailpit", mailpitRef, { platform: "linux/arm/v7" })]);
+
+    await apply(plan, fake.api);
+
+    expect(fake.requests).toContain(
+      `POST ${buildImagePullRequest(mailpitRef, libpodPullDialect, { platform: "linux/arm/v7" }).path}`,
+    );
+  });
+
+  test("fails a Variant-less local build against a variant pin without pulling", async () => {
+    const fake = makeFakeApi({
+      inspectStatus: 200,
+      inspectBody: { Os: "linux", Architecture: "arm", RepoDigests: [] },
+    });
+    const plan = makePlan([makeService("mailpit", mailpitRef, { platform: "linux/arm/v7" })]);
+
+    const failure = await applyFailure(plan, fake.api);
+
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect((failure as ProviderUnavailableError).message).toContain("linux/arm");
+    expect((failure as ProviderUnavailableError).message).toContain("linux/arm/v7");
+    expect(fake.requests.some((entry) => entry.startsWith("POST /libpod/images/pull"))).toBe(false);
+    expect(fake.requests.some((entry) => entry.startsWith("POST /containers/create"))).toBe(false);
+  });
+
   test("fails a wrong-arch local build without pulling", async () => {
     const fake = makeFakeApi({
       inspectStatus: 200,

@@ -179,6 +179,92 @@ describe("ensureImage", () => {
     expect(fake.requests.some((request) => request.path.includes("platform=linux%2Famd64"))).toBe(true);
   });
 
+  test("pulls a registry image when libpod inspect omits Variant against a variant pin", async () => {
+    const fake = makeApi({
+      inspectBody: inspectBody({
+        os: "linux",
+        architecture: "arm",
+        repoDigests: ["nginx@sha256:test"],
+      }),
+    });
+
+    await Effect.runPromise(
+      ensureImage(fake.api, "nginx:1.27", {
+        ctx: podmanCtx,
+        dialect: libpodPullDialect,
+        platform: "linux/arm/v7",
+      }),
+    );
+
+    expect(fake.requests.some((request) => request.path.includes("OS=linux"))).toBe(true);
+    expect(fake.requests.some((request) => request.path.includes("Arch=arm"))).toBe(true);
+    expect(fake.requests.some((request) => request.path.includes("Variant=v7"))).toBe(true);
+  });
+
+  test("pulls a registry image when inspect Variant v6 does not match a v7 pin", async () => {
+    const fake = makeApi({
+      inspectBody: inspectBody({
+        os: "linux",
+        architecture: "arm",
+        variant: "v6",
+        repoDigests: ["nginx@sha256:test"],
+      }),
+    });
+
+    await Effect.runPromise(
+      ensureImage(fake.api, "nginx:1.27", {
+        ctx: dockerCtx,
+        dialect: dockerPullDialect,
+        platform: "linux/arm/v7",
+      }),
+    );
+
+    expect(fake.requests.some((request) => request.path.includes("platform=linux%2Farm%2Fv7"))).toBe(true);
+  });
+
+  test("fails a Variant-less local build against a variant pin and does not pull", async () => {
+    const fake = makeApi({
+      inspectBody: inspectBody({ os: "linux", architecture: "arm", repoDigests: [] }),
+    });
+
+    const failure = await Effect.runPromise(
+      ensureImage(fake.api, "nginx:1.27", {
+        ctx: podmanCtx,
+        dialect: libpodPullDialect,
+        platform: "linux/arm/v7",
+      }).pipe(Effect.flip),
+    );
+
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.message).toContain("linux/arm");
+    expect(failure.message).toContain("linux/arm/v7");
+    expect(failure.remediation).toContain("Rebuild the image");
+    expect(fake.requests.every((request) => request.method !== "POST")).toBe(true);
+  });
+
+  test("fails closed on an unparseable platform pin instead of keeping the local tag", async () => {
+    const fake = makeApi({
+      inspectBody: inspectBody({
+        os: "linux",
+        architecture: "amd64",
+        repoDigests: ["nginx@sha256:test"],
+      }),
+    });
+
+    const failure = await Effect.runPromise(
+      ensureImage(fake.api, "nginx:1.27", {
+        ctx: dockerCtx,
+        dialect: dockerPullDialect,
+        platform: "amd64",
+      }).pipe(Effect.flip),
+    );
+
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    expect(failure.message).toContain("amd64");
+    expect(failure.remediation).toContain("linux/amd64");
+    expect(fake.requests).toHaveLength(0);
+  });
+
   test("fails a wrong-arch local build and does not pull", async () => {
     const fake = makeApi({
       inspectBody: inspectBody({ os: "linux", architecture: "arm64", repoDigests: [] }),

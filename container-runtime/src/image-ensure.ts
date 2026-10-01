@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { type ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 
-import type { PullDialect } from "./dialect.ts";
+import type { ImagePlatform, PullDialect } from "./dialect.ts";
 import { parseImagePlatform } from "./dialect.ts";
 import type {
   EngineHttpApi,
@@ -53,9 +53,7 @@ const inspectRepoDigests = (json: unknown): ReadonlyArray<string> => {
   return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 };
 
-const inspectMatchesPlatform = (inspect: unknown, platform: string): boolean => {
-  const pin = parseImagePlatform(platform);
-  if (pin === undefined) return true;
+const inspectMatchesPlatform = (inspect: unknown, pin: ImagePlatform): boolean => {
   const os = textField(inspect, "Os");
   const architecture = textField(inspect, "Architecture");
   if (os === undefined || architecture === undefined) return false;
@@ -63,7 +61,7 @@ const inspectMatchesPlatform = (inspect: unknown, platform: string): boolean => 
   if (architecture.toLowerCase() !== pin.architecture.toLowerCase()) return false;
   if (pin.variant === undefined) return true;
   const variant = textField(inspect, "Variant");
-  return variant === undefined || variant.toLowerCase() === pin.variant.toLowerCase();
+  return variant !== undefined && variant.toLowerCase() === pin.variant.toLowerCase();
 };
 
 const localPlatformLabel = (inspect: unknown): string => {
@@ -116,11 +114,25 @@ const inspectFailure = (ctx: ProviderErrorContext, response: EngineHttpResponse)
     remediation: ctx.remediation,
   });
 
+const unparseablePlatformError = (ctx: ProviderErrorContext, platform: string): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: ctx.providerId,
+    operation: "apply",
+    message: `Service platform pin ${platform} is not a valid os/arch or os/arch/variant value.`,
+    details: redactDetails({ platform }),
+    remediation: "Use a platform pin such as linux/amd64 or linux/arm/v7.",
+  });
+
 export const ensureImage = <E = never>(
   api: EngineHttpApi,
   reference: string,
   options: EnsureImageOptions<E>,
 ): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError | E> => {
+  const platform = options.platform;
+  const pin = platform === undefined ? undefined : parseImagePlatform(platform);
+  if (platform !== undefined && pin === undefined) {
+    return Effect.fail(unparseablePlatformError(options.ctx, platform));
+  }
   if (options.force === true) return pull(api, reference, options);
   return Effect.gen(function* () {
     const inspectResponse = yield* request(api, options.ctx, inspectRequest(options.dialect, reference));
@@ -131,17 +143,17 @@ export const ensureImage = <E = never>(
     if (inspectResponse.status !== 200) {
       return yield* Effect.fail(inspectFailure(options.ctx, inspectResponse));
     }
-    if (options.platform === undefined) return;
+    if (platform === undefined || pin === undefined) return;
     const decoded = yield* parseEngineJson(inspectResponse, options.ctx, "apply", {
       message: "Container engine API returned malformed JSON.",
       details: redactDetails(inspectResponse),
     });
-    if (inspectMatchesPlatform(decoded, options.platform)) return;
+    if (inspectMatchesPlatform(decoded, pin)) return;
     if (inspectRepoDigests(decoded).length > 0) {
       yield* pull(api, reference, options);
       return;
     }
-    return yield* Effect.fail(localBuildPlatformError(options.ctx, reference, options.platform, decoded));
+    return yield* Effect.fail(localBuildPlatformError(options.ctx, reference, platform, decoded));
   });
 };
 
