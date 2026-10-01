@@ -37,6 +37,7 @@ interface LifecycleCalls {
 const fakeLifecycle = (
   calls: LifecycleCalls,
   overrides: {
+    readonly clear?: Effect.Effect<void, string>;
     readonly up?: Effect.Effect<void, string>;
     readonly down?: Effect.Effect<void, string>;
     readonly results?: ReadonlyArray<ExecResult>;
@@ -44,6 +45,10 @@ const fakeLifecycle = (
 ): LiveAppLifecycle => {
   let execIndex = 0;
   return {
+    clearPreviousRun: () =>
+      Effect.sync(() => {
+        calls.order.push("clear");
+      }).pipe(Effect.flatMap(() => overrides.clear ?? Effect.void)),
     bringUp: () =>
       Effect.sync(() => {
         calls.order.push("up");
@@ -105,18 +110,32 @@ describe("live-app-scope: temp app root", () => {
 });
 
 describe("live-app-scope: app lifecycle", () => {
+  test("does not start an app when clearing the previous run fails", async () => {
+    const calls = noCalls();
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        acquireLiveApp({
+          plan,
+          socketPath: "/tmp/fake.sock",
+          lifecycle: fakeLifecycle(calls, { clear: Effect.fail("volume busy") }),
+        }),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls.order).toEqual(["clear"]);
+  });
   test("brings the app down with its volumes when the scope closes", async () => {
     const calls = noCalls();
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           yield* acquireLiveApp({ plan, socketPath: "/tmp/fake.sock", lifecycle: fakeLifecycle(calls) });
-          expect(calls.order).toEqual(["up"]);
+          expect(calls.order).toEqual(["clear", "up"]);
         }),
       ),
     );
 
-    expect(calls.order).toEqual(["up", "down"]);
+    expect(calls.order).toEqual(["clear", "up", "down"]);
     expect(calls.downOptions).toEqual([{ volumes: true }]);
   });
 
@@ -132,7 +151,7 @@ describe("live-app-scope: app lifecycle", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(calls.order).toEqual(["up", "down"]);
+    expect(calls.order).toEqual(["clear", "up", "down"]);
   });
 
   test("never brings down an app that failed to come up", async () => {
@@ -148,7 +167,7 @@ describe("live-app-scope: app lifecycle", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(calls.order).toEqual(["up"]);
+    expect(calls.order).toEqual(["clear", "up"]);
   });
 
   test("surfaces a teardown failure instead of swallowing it", async () => {
@@ -164,7 +183,7 @@ describe("live-app-scope: app lifecycle", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(calls.order).toEqual(["up", "down"]);
+    expect(calls.order).toEqual(["clear", "up", "down"]);
   });
 });
 
