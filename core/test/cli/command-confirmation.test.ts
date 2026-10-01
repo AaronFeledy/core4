@@ -15,20 +15,34 @@ describe("lifecycle confirmation boundary", () => {
   const confirmationRoot = resolve("missing-confirmation-app");
   test.each([
     {
-      flags: { volumes: true },
+      flags: { root: confirmationRoot, volumes: true },
       message: `Delete the containers and data volumes left by ${confirmationRoot}?`,
     },
     {
-      flags: { "purge-caches": true },
+      flags: { root: confirmationRoot, "purge-caches": true },
       message: `Delete the containers and cache volumes left by ${confirmationRoot}? Data volumes are kept.`,
     },
+    { flags: {}, message: "Delete this app's containers? Data volumes are kept." },
+    { flags: { volumes: true }, message: "Delete this app's containers and data volumes?" },
+    {
+      flags: { "purge-caches": true },
+      message: "Delete this app's containers and cache volumes? Data volumes are kept.",
+    },
+    { flags: { purge: true }, message: "Delete this app's containers, data volumes and snapshots?" },
+    {
+      flags: { volumes: true, "purge-caches": true },
+      message: "Delete this app's containers, data volumes and cache volumes?",
+    },
+    {
+      flags: { purge: true, "purge-caches": true },
+      message: "Delete this app's containers, data volumes, snapshots and cache volumes?",
+    },
   ])(
-    "destroy root confirmation leads with what it deletes and declines before engine access",
+    "destroy confirmation leads with what it deletes and declines before engine access: $message",
     async ({ flags, message }) => {
-      const root = confirmationRoot;
       const interaction = makeTestInteractionService({ answers: { confirm: "false" } });
       const result = await Effect.runPromise(
-        runDestroyCommand({ flags: { root, ...flags } }).pipe(
+        runDestroyCommand({ flags }).pipe(
           Effect.provide(
             makeLandoRuntime({ bootstrap: "app", telemetry: false }).pipe(
               Layer.merge(

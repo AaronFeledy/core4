@@ -20,8 +20,8 @@ import { extractSpecFlags } from "../../spec/command-boundary";
  * Prompts render as a one-line title, so the data loss comes first and the (possibly long) folder
  * path last: when the title is cut, the path the user just typed is what gets cut.
  */
-const rootConfirmation = (
-  root: string,
+const destroyConfirmation = (
+  root: string | undefined,
   deletes: { readonly volumes: boolean; readonly snapshots: boolean; readonly caches: boolean },
 ): string => {
   const items = [
@@ -31,30 +31,22 @@ const rootConfirmation = (
     ...(deletes.caches ? ["cache volumes"] : []),
   ];
   const list = items.length === 1 ? items[0] : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
-  return `Delete the ${list} left by ${root}?${deletes.volumes ? "" : " Data volumes are kept."}`;
+  const subject = root === undefined ? `this app's ${list}` : `the ${list} left by ${root}`;
+  return `Delete ${subject}?${deletes.volumes ? "" : " Data volumes are kept."}`;
 };
 
 export const runDestroyCommand = (input: unknown) => {
   const flags = extractSpecFlags(input);
   const volumes = flags.volumes === true || flags.purge === true;
-  const storage =
-    flags.purge === true
-      ? "Volumes and snapshots are deleted too."
-      : volumes
-        ? "Volumes are deleted too."
-        : "Data volumes are kept.";
   return Effect.gen(function* () {
     const root = typeof flags.root === "string" ? resolve(process.cwd(), flags.root) : undefined;
     yield* requireConfirmation({
       yes: flags.yes === true,
-      message:
-        root === undefined
-          ? `Destroy this app? This removes containers and networks. ${storage}${flags["purge-caches"] === true ? " Cache volumes are deleted too." : ""}`
-          : rootConfirmation(root, {
-              volumes,
-              snapshots: flags.purge === true,
-              caches: flags["purge-caches"] === true,
-            }),
+      message: destroyConfirmation(root, {
+        volumes,
+        snapshots: flags.purge === true,
+        caches: flags["purge-caches"] === true,
+      }),
     });
     const options = {
       volumes,
