@@ -32,6 +32,12 @@ const plan: AppPlan = {
   extensions: {},
   metadata: { resolvedAt: DateTime.unsafeMake("2026-09-16T00:00:00Z"), source: "test", runtime: 4 },
 };
+/** A plan recorded at `at`, the way every current build records it. */
+const planAt = (at: string): AppPlan => ({
+  ...plan,
+  root: AbsolutePath.make(at),
+  identity: { appRoot: AbsolutePath.make(at), ownerKey: "owner" },
+});
 const service = {
   app,
   appRoot: root,
@@ -108,11 +114,7 @@ test("returns only missing roots and treats filesystem failures as present", asy
   const result = await run(
     [
       snapshot({
-        appliedPlans: [
-          plan,
-          { ...plan, root: AbsolutePath.make("/present"), identity: undefined },
-          { ...plan, root: AbsolutePath.make("/denied"), identity: undefined },
-        ],
+        appliedPlans: [plan, planAt("/present"), planAt("/denied")],
       }),
     ],
     (path) =>
@@ -156,16 +158,16 @@ test.each([
   expect(await run(evidence === undefined ? [] : [evidence])).toEqual([]);
 });
 
-test("uses identity roots before legacy roots and sorts roots deterministically", async () => {
+test("groups plans by their recorded identity root and sorts roots deterministically", async () => {
   const result = await run([
-    snapshot({
-      appliedPlans: [
-        { ...plan, root: AbsolutePath.make("/unused") },
-        { ...plan, root: AbsolutePath.make("/aaa"), identity: undefined },
-      ],
-    }),
+    snapshot({ appliedPlans: [{ ...plan, root: AbsolutePath.make("/unused") }, planAt("/aaa")] }),
   ]);
   expect(result.map((item) => item.root)).toEqual([AbsolutePath.make("/aaa"), root]);
+});
+
+test("ignores applied plans without an identity, which teardown cannot target", async () => {
+  const result = await run([snapshot({ appliedPlans: [{ ...plan, identity: undefined }] })]);
+  expect(result).toEqual([]);
 });
 
 test("marks a root partially observed only when a contributing provider was not observed", async () => {
@@ -179,7 +181,7 @@ test("marks a root partially observed only when a contributing provider was not 
     snapshot({
       providerId: ProviderId.make("podman"),
       runtimeObserved: false,
-      appliedPlans: [{ ...plan, root: AbsolutePath.make("/other"), identity: undefined }],
+      appliedPlans: [planAt("/other")],
     }),
   ]);
   expect(result.find((item) => item.root === root)).toMatchObject({

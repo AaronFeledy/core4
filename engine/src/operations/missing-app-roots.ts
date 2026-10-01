@@ -57,8 +57,14 @@ export const findMissingAppRoots: Effect.Effect<
       return group;
     };
     for (const plan of snapshot.appliedPlans) {
-      if (plan.id === "global" || plan.extensions["@lando/core/scratch"] !== undefined) continue;
-      groupFor(plan.identity?.appRoot ?? plan.root, plan.id).appliedState = true;
+      // Teardown only targets plans by their recorded identity, so report nothing it cannot act on.
+      if (
+        plan.identity === undefined ||
+        plan.id === "global" ||
+        plan.extensions["@lando/core/scratch"] !== undefined
+      )
+        continue;
+      groupFor(plan.identity.appRoot, plan.id).appliedState = true;
     }
     for (const service of snapshot.services) {
       if (
