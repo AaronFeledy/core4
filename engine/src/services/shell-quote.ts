@@ -26,7 +26,7 @@ export const shellArg = (
   shell: "posix" | "windows" = sep === "\\" ? "windows" : "posix",
 ): string => {
   if (shell === "windows") {
-    if (/^[a-zA-Z0-9_.\\/:@+=,-]+$/.test(value)) return value;
+    if (/^[a-zA-Z0-9_.\\/:@+=-]+$/.test(value)) return value;
     return /[$`]/.test(value) ? `'${value.replaceAll("'", "''")}'` : `"${value}"`;
   }
   return /^[a-zA-Z0-9_./:@%+=,-]+$/.test(value) ? value : quoteShellPath(value);

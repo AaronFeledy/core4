@@ -22,6 +22,14 @@ describe("shellArg", () => {
     expect(shellArg("C:\\Users\\O'Brien\\site", "windows")).toBe(`"C:\\Users\\O'Brien\\site"`);
   });
 
+  test("double-quotes a Windows comma path PowerShell would split into an array", () => {
+    expect(shellArg("C:\\a,b", "windows")).toBe('"C:\\a,b"');
+  });
+
+  test("leaves a POSIX comma path bare", () => {
+    expect(shellArg("/a,b", "posix")).toBe("/a,b");
+  });
+
   test("single-quotes a Windows path PowerShell would expand inside double quotes", () => {
     expect(shellArg("C:\\apps\\$(calc)", "windows")).toBe("'C:\\apps\\$(calc)'");
     expect(shellArg("C:\\apps\\it's $x", "windows")).toBe("'C:\\apps\\it''s $x'");
