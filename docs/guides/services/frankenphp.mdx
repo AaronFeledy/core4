@@ -50,7 +50,7 @@ Curl the published port from the host:
 curl -sf http://localhost:9080/
 ```
 
-That prints `hello from frankenphp on lando`. Response headers include `Server: FrankenPHP Caddy` and `X-Powered-By: PHP/8.4.26` for this image tag.
+That prints `hello from frankenphp on lando`. On the 2026-10-01 live check, response headers included `Server: FrankenPHP Caddy` and `X-Powered-By: PHP/8.4.26`.
 
 ## Run PHP and FrankenPHP tooling
 
@@ -61,7 +61,7 @@ lando php -v
 lando frankenphp version
 ```
 
-`lando php -v` prints `PHP 8.4.26 (cli)` for this pin. `lando frankenphp version` prints a line like `FrankenPHP v1.12.7 PHP 8.4.26 Caddy v2.11.4 ...`.
+On the 2026-10-01 live check, `lando php -v` printed `PHP 8.4.26 (cli)` and `lando frankenphp version` printed a line like `FrankenPHP v1.12.7 PHP 8.4.26 Caddy v2.11.4 ...`.
 
 ## Add Composer with a Dockerfile
 
@@ -99,11 +99,11 @@ lando start
 lando composer --version
 ```
 
-`lando composer --version` prints `Composer version 2.10.3` (the `composer:2` tag can float the patch). Rebuild after Dockerfile changes so the new layer lands.
+On the 2026-10-01 live check, `lando composer --version` printed `Composer version 2.10.3` (the `composer:2` tag can float the patch). Rebuild after Dockerfile changes so the new layer lands.
 
 ## Pin a FrankenPHP and PHP version
 
-Change the image tag (or the `FROM` line) when you want a different FrankenPHP or PHP release. Debian tags are the upstream default; Alpine tags also work. Examples:
+Change the image tag (or the `FROM` line) when you want a different FrankenPHP or PHP release. This guide checked the Debian tag. The Alpine tag is upstream-only and was not checked here.
 
 ```yaml
 image: dunglas/frankenphp:1.12.7-php8.4
@@ -122,8 +122,6 @@ Other services on the app join the same network. The hostname is the service key
 ```
 http://appserver:9080
 ```
-
-Do not use `localhost` inside another container. That is the container itself, not FrankenPHP.
 
 ## Start, inspect, destroy
 
