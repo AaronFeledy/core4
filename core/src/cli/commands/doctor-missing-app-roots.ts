@@ -1,7 +1,7 @@
 import { findMissingAppRoots } from "@lando/engine/operations/missing-app-roots";
 import { shellArg } from "@lando/engine/services/shell-quote";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect, Option } from "effect";
+import { Effect, Either, Option } from "effect";
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export const missingAppRootsDoctor = (redact: (text: string) => string) =>
@@ -9,11 +9,32 @@ export const missingAppRootsDoctor = (redact: (text: string) => string) =>
     const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
     const fs = yield* Effect.serviceOption(FileSystem);
     if (Option.isNone(registry) || Option.isNone(fs)) return [];
-    const roots = yield* findMissingAppRoots.pipe(
+    const inventory = yield* findMissingAppRoots.pipe(
       Effect.provideService(RuntimeProviderRegistry, registry.value),
       Effect.provideService(FileSystem, fs.value),
+      Effect.either,
     );
-    return roots.map((record): DoctorSubsystemCheck => {
+    if (Either.isLeft(inventory)) {
+      const message = inventory.left.message;
+      return [
+        {
+          name: "missing-app-root-scan",
+          status: "warn",
+          severity: "warn",
+          recovery: "manual",
+          context: { error: redact(message) },
+          solutions: [
+            {
+              kind: "manual",
+              description: redact(
+                `Lando could not read app state to look for app folders that no longer exist: ${message} Fix that problem, then rerun lando doctor.`,
+              ),
+            },
+          ],
+        } satisfies DoctorSubsystemCheck,
+      ];
+    }
+    return inventory.right.map((record): DoctorSubsystemCheck => {
       const command = `lando destroy --root ${shellArg(record.root)} --volumes${record.cacheVolumes.length > 0 ? " --purge-caches" : ""}`;
       const runtimeGuidance = record.runtimeObserved
         ? ""

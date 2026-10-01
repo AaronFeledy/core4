@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { FileSystemLive } from "@lando/engine/services/file-system";
 import { shellArg } from "@lando/engine/services/shell-quote";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, type ProviderRuntimeSnapshot, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -76,6 +77,46 @@ test("does not scan without a registry", async () => {
   expect(
     await Effect.runPromise(missingAppRootsDoctor((text) => text).pipe(Effect.provide(fsLayer))),
   ).toEqual([]);
+});
+
+test("returns one redacted manual warning when app state cannot be read", async () => {
+  // Given an inventory that cannot read provider state.
+  const error = new ProviderUnavailableError({
+    providerId,
+    operation: "observeRuntime",
+    message: "Unable to inspect secret-path applied plan state.",
+  });
+  // When doctor collects missing-root checks.
+  const checks = await Effect.runPromise(
+    missingAppRootsDoctor((text) => text.replaceAll("secret-path", "[redacted]")).pipe(
+      Effect.provide(
+        Layer.merge(
+          fsLayer,
+          Layer.succeed(RuntimeProviderRegistry, {
+            ...registry([]),
+            observeRuntime: Effect.fail(error),
+          }),
+        ),
+      ),
+    ),
+  );
+  // Then the failed scan is a warning, not a doctor failure.
+  expect(checks).toEqual([
+    {
+      name: "missing-app-root-scan",
+      status: "warn",
+      severity: "warn",
+      recovery: "manual",
+      context: { error: "Unable to inspect [redacted] applied plan state." },
+      solutions: [
+        {
+          kind: "manual",
+          description:
+            "Lando could not read app state to look for app folders that no longer exist: Unable to inspect [redacted] applied plan state. Fix that problem, then rerun lando doctor.",
+        },
+      ],
+    },
+  ]);
 });
 
 test("does not observe the runtime without a filesystem", async () => {
