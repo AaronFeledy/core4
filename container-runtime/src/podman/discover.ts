@@ -102,3 +102,20 @@ export const labelOwnedSnapshots = (
       : { ...snapshot, appRoot: labeled };
   });
 };
+
+export const mergeDiscoveredContainers = (
+  planned: ReadonlyArray<ServiceRuntimeInfo>,
+  discovered: ReadonlyArray<ServiceRuntimeInfo>,
+  includeScratch: boolean,
+): ReadonlyArray<ServiceRuntimeInfo> => {
+  const owned = labelOwnedSnapshots(planned, discovered);
+  const reported = new Set(owned.map((snapshot) => snapshot.containerId));
+  return [
+    ...owned,
+    ...discovered.filter(
+      (snapshot) =>
+        !reported.has(snapshot.containerId) &&
+        (includeScratch || snapshot.labels?.["dev.lando.scratch"] !== "TRUE"),
+    ),
+  ];
+};

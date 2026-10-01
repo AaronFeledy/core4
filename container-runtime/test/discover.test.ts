@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import type { EngineHttpApi, EngineHttpRequest } from "../src/engine-api.ts";
-import { discoverLabeledContainers, labelOwnedSnapshots } from "../src/podman/discover.ts";
+import {
+  discoverLabeledContainers,
+  labelOwnedSnapshots,
+  mergeDiscoveredContainers,
+} from "../src/podman/discover.ts";
 
 const ctx = { providerId: "podman", remediation: "Check the runtime." };
 
@@ -88,4 +92,22 @@ test("a container's app-root label overrides the planned root for the same conta
     ["recreated", "/deleted-root"],
     ["unchanged", "/plan-root"],
   ]);
+});
+
+test.each([false, true])("merges label-owned containers with includeScratch=%s", (includeScratch) => {
+  const planned = {
+    providerId: ProviderId.make("podman"),
+    app: AppId.make("app"),
+    appRoot: AbsolutePath.make("/plan-root"),
+    service: ServiceName.make("web"),
+    containerId: "planned",
+    status: "running" as const,
+  };
+  const labeled = { ...planned, appRoot: AbsolutePath.make("/label-root") };
+  const unplanned = { ...planned, containerId: "unplanned" };
+  const scratch = { ...planned, containerId: "scratch", labels: { "dev.lando.scratch": "TRUE" } };
+
+  const result = mergeDiscoveredContainers([planned], [labeled, unplanned, scratch], includeScratch);
+
+  expect(result).toEqual(includeScratch ? [labeled, unplanned, scratch] : [labeled, unplanned]);
 });

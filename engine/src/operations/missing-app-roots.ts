@@ -36,26 +36,26 @@ export const findMissingAppRoots: Effect.Effect<
       cacheVolumes: Set<string>;
     }
   >();
+  const groupFor = (root: AbsolutePath, app: AppId, providerId: ProviderId, runtimeObserved: boolean) => {
+    let group = groups.get(root);
+    if (group === undefined) {
+      group = {
+        apps: new Set(),
+        providers: new Set(),
+        appliedState: false,
+        runtimeObserved: true,
+        services: new Set(),
+        dataVolumes: new Set(),
+        cacheVolumes: new Set(),
+      };
+      groups.set(root, group);
+    }
+    group.apps.add(app);
+    group.providers.add(providerId);
+    group.runtimeObserved &&= runtimeObserved;
+    return group;
+  };
   for (const snapshot of snapshots) {
-    const groupFor = (root: AbsolutePath, app: AppId) => {
-      let group = groups.get(root);
-      if (group === undefined) {
-        group = {
-          apps: new Set(),
-          providers: new Set(),
-          appliedState: false,
-          runtimeObserved: true,
-          services: new Set(),
-          dataVolumes: new Set(),
-          cacheVolumes: new Set(),
-        };
-        groups.set(root, group);
-      }
-      group.apps.add(app);
-      group.providers.add(snapshot.providerId);
-      group.runtimeObserved &&= snapshot.runtimeObserved;
-      return group;
-    };
     for (const plan of snapshot.appliedPlans) {
       // Teardown only targets plans by their recorded identity, so report nothing it cannot act on.
       if (
@@ -64,7 +64,8 @@ export const findMissingAppRoots: Effect.Effect<
         plan.extensions["@lando/core/scratch"] !== undefined
       )
         continue;
-      groupFor(plan.identity.appRoot, plan.id).appliedState = true;
+      groupFor(plan.identity.appRoot, plan.id, snapshot.providerId, snapshot.runtimeObserved).appliedState =
+        true;
     }
     for (const service of snapshot.services) {
       if (
@@ -74,7 +75,9 @@ export const findMissingAppRoots: Effect.Effect<
         service.labels?.["dev.lando.scratch"] === "TRUE"
       )
         continue;
-      groupFor(service.appRoot, service.app).services.add(`${service.app}/${service.service}`);
+      groupFor(service.appRoot, service.app, snapshot.providerId, snapshot.runtimeObserved).services.add(
+        `${service.app}/${service.service}`,
+      );
     }
     for (const volume of snapshot.volumes) {
       if (
@@ -84,7 +87,12 @@ export const findMissingAppRoots: Effect.Effect<
         volume.labels?.["dev.lando.scratch"] === "TRUE"
       )
         continue;
-      const group = groupFor(volume.identity.ownerRoot, volume.ref.app);
+      const group = groupFor(
+        volume.identity.ownerRoot,
+        volume.ref.app,
+        snapshot.providerId,
+        snapshot.runtimeObserved,
+      );
       const names = volumeClassFromLabels(volume.labels) === "cache" ? group.cacheVolumes : group.dataVolumes;
       names.add(volume.identity.nativeName);
     }

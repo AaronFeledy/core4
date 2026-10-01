@@ -1,12 +1,8 @@
 import { Effect } from "effect";
 
-import { AppResolveError } from "@lando/sdk/errors";
+import { AppResolveError, type NoProviderInstalledError } from "@lando/sdk/errors";
 import { type AbsolutePath, type AppPlan, type AppRef, appIdentityKey } from "@lando/sdk/schema";
-import {
-  type AppliedOrphanGroup,
-  type AppliedTeardownEvidence,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
+import { type AppliedOrphanGroup, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { findAppRoot } from "@lando/landofile/discovery";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
@@ -61,13 +57,13 @@ const appliedStateTarget = (plan: AppPlan) =>
         app: appRef(plan),
       } satisfies ResolvedAppTarget);
 
-export const missingRootAppliedTarget = (plan: AppPlan, canonicalRoot: AbsolutePath) =>
+export const missingRootAppliedTarget = (plan: AppPlan, root: AbsolutePath) =>
   Effect.gen(function* () {
     if (plan.identity === undefined) return yield* Effect.fail(mismatch("identity"));
-    if (plan.identity.appRoot !== canonicalRoot || plan.root !== canonicalRoot) {
+    if (plan.identity.appRoot !== root || plan.root !== root) {
       return yield* Effect.fail(mismatch("canonical-root"));
     }
-    if (plan.identity.ownerKey !== appIdentityKey("owner", canonicalRoot)) {
+    if (plan.identity.ownerKey !== appIdentityKey("owner", root)) {
       return yield* Effect.fail(mismatch("owner-key"));
     }
     const registry = yield* RuntimeProviderRegistry;
@@ -105,21 +101,38 @@ export type TeardownResolution =
     }
   | { readonly kind: "absent"; readonly root: AbsolutePath; readonly landofilePresent: boolean };
 
-export const teardownResolutionFromEvidence = <E, R>(
-  evidence: AppliedTeardownEvidence,
+export const teardownResolutionAt = <E, R>(
   root: AbsolutePath,
   landofilePresent: boolean,
   targetFor: (plan: AppPlan) => Effect.Effect<ResolvedAppTarget, E, R>,
-): Effect.Effect<TeardownResolution, E, R> => {
-  switch (evidence.kind) {
-    case "applied":
-      return targetFor(evidence.plan).pipe(Effect.map((target) => ({ kind: "applied" as const, target })));
-    case "orphans":
-      return Effect.succeed({ kind: "orphans", root, groups: evidence.groups });
-    case "absent":
-      return Effect.succeed({ kind: "absent", root, landofilePresent });
-  }
-};
+): Effect.Effect<
+  TeardownResolution,
+  E | AppResolveError | ProviderError | NoProviderInstalledError,
+  R | RuntimeProviderRegistry
+> =>
+  Effect.gen(function* () {
+    const registry = yield* RuntimeProviderRegistry;
+    const resolveEvidence = registry.resolveTeardownEvidence;
+    const resolveAppliedPlan = registry.resolveAppliedPlan;
+    const evidence =
+      resolveEvidence !== undefined
+        ? yield* resolveEvidence(root)
+        : resolveAppliedPlan !== undefined
+          ? yield* resolveAppliedPlan(root).pipe(
+              Effect.map((plan) =>
+                plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+              ),
+            )
+          : { kind: "absent" as const };
+    switch (evidence.kind) {
+      case "applied":
+        return { kind: "applied", target: yield* targetFor(evidence.plan) };
+      case "orphans":
+        return { kind: "orphans", root, groups: evidence.groups };
+      case "absent":
+        return { kind: "absent", root, landofilePresent };
+    }
+  });
 
 /**
  * Resolves the app root by discovery, which succeeds while the Landofile is unreadable, then asks
@@ -131,21 +144,5 @@ export const resolveTeardownResolution = Effect.gen(function* () {
   const identity = yield* resolveAppIdentity(discovered ?? process.cwd());
   const root = identity.appRoot;
   const landofilePresent = discovered !== undefined;
-  const registry = yield* RuntimeProviderRegistry;
-  const resolveEvidence = registry.resolveTeardownEvidence;
-  if (resolveEvidence === undefined) {
-    const resolveAppliedPlan = registry.resolveAppliedPlan;
-    if (resolveAppliedPlan === undefined) {
-      return { kind: "absent" as const, root, landofilePresent };
-    }
-    const plan = yield* resolveAppliedPlan(root);
-    return yield* teardownResolutionFromEvidence(
-      plan === undefined ? { kind: "absent" } : { kind: "applied", plan },
-      root,
-      landofilePresent,
-      appliedStateTarget,
-    );
-  }
-  const evidence = yield* resolveEvidence(root);
-  return yield* teardownResolutionFromEvidence(evidence, root, landofilePresent, appliedStateTarget);
+  return yield* teardownResolutionAt(root, landofilePresent, appliedStateTarget);
 });

@@ -27,6 +27,7 @@ import {
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -50,7 +51,7 @@ import {
   type TeardownResolution,
   missingRootAppliedTarget,
   resolveTeardownResolution,
-  teardownResolutionFromEvidence,
+  teardownResolutionAt,
   validateResolvedAppTarget,
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
@@ -98,6 +99,24 @@ const unchangedResult = (app: string): DestroyAppResult => ({
   servicesDestroyed: [],
   volumesRemoved: false,
 });
+
+const removeStrayAppContainers = (provider: RuntimeProviderShape, plan: AppPlan) =>
+  Effect.gen(function* () {
+    if (plan.id === "global") return;
+    // Listing is best effort; provider.destroy below reports runtime failures.
+    const observed = yield* provider
+      .list({ app: plan.id, includeUnplanned: true })
+      .pipe(Effect.catchAll(() => Effect.succeed([])));
+    for (const service of observed) {
+      if (
+        service.containerId !== undefined &&
+        service.app === plan.id &&
+        service.appRoot === (plan.identity?.appRoot ?? plan.root) &&
+        !Object.hasOwn(plan.services, service.service)
+      )
+        yield* provider.removeObservedService(service);
+    }
+  });
 
 const destroyAppForTargetUncoordinated = (
   options: DestroyAppOptions | undefined,
@@ -223,23 +242,7 @@ const destroyAppForTargetUncoordinated = (
 
           yield* tree.startTask("provider");
           const providerDestroy = verifyActiveVolumeCoordination(provider).pipe(
-            Effect.zipRight(
-              Effect.gen(function* () {
-                if (plan.id === "global") return;
-                const observed = yield* provider
-                  .list({ app: plan.id, includeUnplanned: true })
-                  .pipe(Effect.catchAll(() => Effect.succeed([])));
-                for (const service of observed) {
-                  if (
-                    service.containerId !== undefined &&
-                    service.app === plan.id &&
-                    service.appRoot === (plan.identity?.appRoot ?? plan.root) &&
-                    !Object.hasOwn(plan.services, service.service)
-                  )
-                    yield* provider.removeObservedService(service);
-                }
-              }),
-            ),
+            Effect.zipRight(removeStrayAppContainers(provider, plan)),
             Effect.zipRight(
               provider.destroy(
                 { app: plan.id, plan },
@@ -454,37 +457,18 @@ export const destroyAppAtRoot = (
         );
       }
     }
-    const registry = yield* RuntimeProviderRegistry;
     const resolveAt = (recorded: AbsolutePath) =>
-      Effect.gen(function* () {
-        const evidence =
-          registry.resolveTeardownEvidence !== undefined
-            ? yield* registry.resolveTeardownEvidence(recorded)
-            : registry.resolveAppliedPlan !== undefined
-              ? yield* registry
-                  .resolveAppliedPlan(recorded)
-                  .pipe(
-                    Effect.map((plan) =>
-                      plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
-                    ),
-                  )
-              : { kind: "absent" as const };
-        return yield* teardownResolutionFromEvidence(evidence, recorded, false, (plan) =>
-          missingRootAppliedTarget(plan, recorded),
-        );
-      });
+      teardownResolutionAt(recorded, false, (plan) => missingRootAppliedTarget(plan, recorded));
     let recordedRoot = requested;
-    let resolution = yield* resolveAt(recordedRoot);
-    for (const candidate of candidates.slice(1)) {
-      if (resolution.kind !== "absent") break;
-      recordedRoot = candidate;
-      resolution = yield* resolveAt(candidate);
+    let resolution = yield* resolveAt(requested);
+    if (resolution.kind === "absent" && canonical !== requested) {
+      recordedRoot = canonical;
+      resolution = yield* resolveAt(canonical);
     }
-    const resolve = resolveAt(recordedRoot);
     switch (resolution.kind) {
       case "applied": {
         const result = yield* destroyAppWithResolvedTarget(options, resolution.target, false, false);
-        const remaining = yield* resolve;
+        const remaining = yield* resolveAt(recordedRoot);
         if (remaining.kind === "orphans") {
           const removed = yield* destroyOrphans(options, remaining);
           return {

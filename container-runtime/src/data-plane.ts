@@ -250,6 +250,14 @@ const copyModeSnapshotFile = (snapshotId: string): string => `${sanitize(snapsho
 
 const nativeSnapshotImage = (id: string): string => `${nativeSnapshotRepo}:${sanitize(id).toLowerCase()}`;
 
+const isVolumeInUse = (details: unknown): details is { readonly body: string } => {
+  if (typeof details !== "object" || details === null) return false;
+  if (!("body" in details) || typeof details.body !== "string") return false;
+  return (
+    ("status" in details && details.status === 409) || /\b(?:in use|being used by)\b/i.test(details.body)
+  );
+};
+
 const volumeError = (
   options: ProviderDataPlaneOptions,
   operation: string,
@@ -1192,14 +1200,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         Effect.asVoid,
         Effect.mapError((cause) => {
           const details = cause instanceof VolumeOperationError ? cause.details : undefined;
-          if (
-            typeof details === "object" &&
-            details !== null &&
-            "body" in details &&
-            typeof details.body === "string" &&
-            (("status" in details && details.status === 409) ||
-              /\b(?:in use|being used by)\b/i.test(details.body))
-          ) {
+          if (isVolumeInUse(details)) {
             const base = "Provider volume remove failed.";
             const message = withApiReason(base, details);
             return new VolumeOperationError({
