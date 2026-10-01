@@ -34,6 +34,7 @@ lando doctor --all
 | setup readiness | Rerun `lando setup` to resume the first failed step. |
 | accelerated-start | In the reported app root, run `lando start` to recover a retained attempt or interrupted recovery, or `lando destroy` to discard it. |
 | missing-app-root | Move your app folder back to the reported path to keep using it, or remove its leftover resources with `lando destroy --root <path> --volumes`. |
+| missing-app-root-scan | Lando could not read app state to look for missing app folders. Fix the reported problem, then rerun `lando doctor`. |
 
 Default setup may fail on Alpha. If doctor names a host prerequisite, fix it and rerun `lando setup`. If the managed runtime still cannot install and you have working system Docker, run `lando setup --provider=docker`.
 
