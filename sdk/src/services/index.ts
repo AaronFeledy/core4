@@ -202,6 +202,7 @@ import type {
   LogTarget,
   ObservedServiceRemoval,
   ProviderError,
+  ProviderRuntimeSnapshot,
   ProviderSelectionError,
   ProviderSetupInspectOptions,
   ProviderSetupOptions,
@@ -634,6 +635,10 @@ export declare class RuntimeProviderRegistry extends Context.Tag("@lando/core/Ru
     readonly resolveTeardownEvidence?: (
       root: AbsolutePath,
     ) => Effect.Effect<AppliedTeardownEvidence, AppResolveError | ProviderError | NoProviderInstalledError>;
+    readonly observeRuntime?: Effect.Effect<
+      ReadonlyArray<ProviderRuntimeSnapshot>,
+      AppResolveError | ProviderError | NoProviderInstalledError
+    >;
   }
 >() {}
 

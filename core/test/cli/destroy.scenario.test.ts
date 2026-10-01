@@ -32,6 +32,7 @@ import {
   StateStore,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
+import { FileSystemLive } from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
@@ -45,11 +46,13 @@ import type {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessLive } from "@lando/state-store/private-file-access";
 import { runDestroy } from "../../src/cli/cli-adapters/app-lifecycle.ts";
+import { runDestroyCommand } from "../../src/cli/command-specs/app/destroy.ts";
 import {
   setActiveCommandId,
   setActiveRendererMode,
   setActiveResultFormat,
 } from "../../src/cli/compiled-runtime.ts";
+import { withCwd } from "../_support/temp-cwd.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -201,6 +204,7 @@ const makeDestroyLayer = (
     readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
     readonly proxyAvailable?: boolean;
     readonly plannedApp?: AppPlan;
+    readonly appliedPlanEvidence?: boolean;
     readonly appliedFileSync?: AppliedFileSyncInspection;
   } = {},
 ) => {
@@ -210,6 +214,7 @@ const makeDestroyLayer = (
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
+  const evidenceRoots: string[] = [];
   const volumes = new Set(plannedApp.stores.map((store) => store.name));
   const routeRemovals: string[] = [];
   const provider: RuntimeProviderShape = {
@@ -297,6 +302,7 @@ const makeDestroyLayer = (
     stop: Effect.void,
   });
   const commandLayer = Layer.mergeAll(
+    FileSystemLive,
     PrivateFileAccessLive,
     Layer.succeed(StateStore, makeTestStateStore().service),
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
@@ -314,6 +320,18 @@ const makeDestroyLayer = (
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
+      ...(options.appliedPlanEvidence === true
+        ? {
+            resolveTeardownEvidence: (root: AbsolutePath) => {
+              evidenceRoots.push(root);
+              return Effect.succeed(
+                evidenceRoots.length === 1
+                  ? { kind: "applied" as const, plan: plannedApp }
+                  : { kind: "absent" as const },
+              );
+            },
+          }
+        : {}),
     }),
     ...(options.proxyAvailable === false ? [] : [proxyLayer]),
   );
@@ -331,7 +349,16 @@ const makeDestroyLayer = (
   });
   const layer = Layer.merge(commandLayer, eventLayer);
 
-  return { layer, commandLayer, events, publishedEvents, destroyCalls, routeRemovals, volumes };
+  return {
+    layer,
+    commandLayer,
+    events,
+    publishedEvents,
+    destroyCalls,
+    routeRemovals,
+    volumes,
+    evidenceRoots,
+  };
 };
 
 const DESTROY_LIFECYCLE_TAGS = ["pre-init", "post-init", "pre-destroy", "post-destroy"] as const;
@@ -360,6 +387,42 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("lando destroy", () => {
+  test("relative --root resolves against cwd and destroys the recorded missing app", async () => {
+    await withTempCwd(async (parent) => {
+      const root = AbsolutePath.make(join(parent, "gone"));
+      const appliedPlan = { ...plan, root, identity: { appRoot: root, ownerKey: ownerKey(root) } };
+      const harness = makeDestroyLayer({ plannedApp: appliedPlan, appliedPlanEvidence: true });
+      const io = createBufferedRendererIO();
+      setActiveRendererMode("plain");
+      try {
+        await withCwd(parent, () =>
+          runDestroy(["--root", "gone", "--yes"], { runtime: harness.commandLayer, io }),
+        );
+      } finally {
+        setActiveRendererMode("lando");
+      }
+      expect(harness.evidenceRoots).toEqual([root, root]);
+      expect(harness.destroyCalls).toHaveLength(1);
+      expect(harness.destroyCalls[0]?.target.plan).toEqual(appliedPlan);
+    });
+  });
+
+  test("--root surfaces a tagged refusal for an existing folder without provider mutation", async () => {
+    await withTempCwd(async (root) => {
+      const harness = makeDestroyLayer();
+      const result = await Effect.runPromise(
+        runDestroyCommand({ flags: { root, yes: true } }).pipe(Effect.provide(harness.layer), Effect.either),
+      );
+      if (result._tag !== "Left") throw new TypeError("expected existing-root refusal");
+      expect(result.left).toMatchObject({
+        _tag: "AppResolveError",
+        reason: "mismatch",
+        detail: "root-exists",
+      });
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
   test("renders the proxy-unavailable warning through the production destroy command boundary", async () => {
     // Given
     const harness = makeDestroyLayer({ proxyAvailable: false });

@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, resolve as resolvePath } from "node:path";
 
 import { DateTime, Effect, Option, Schema } from "effect";
 
@@ -8,20 +8,26 @@ import type {
   DestroyAppError as SdkDestroyAppError,
 } from "@lando/sdk/app";
 import {
+  AppResolveError,
   type ComposeKeyRejectedError,
+  type FileIoError,
+  type FileNotFoundError,
+  type FilePermissionError,
   FileSyncStopError,
   type LandofileLoadExpressionError,
 } from "@lando/sdk/errors";
 import { MessageWarnEvent, PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
   FileSyncEngine,
+  FileSystem,
   LandofileService,
   PathsService,
   RouterService,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
   StateStore,
 } from "@lando/sdk/services";
 import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -35,14 +41,17 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { shellArg } from "../services/shell-quote.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
 import { readDiscardableStart, retainedStartDisposal } from "./accelerated-start-discard.ts";
-import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
+import { appLockTarget, canonicalMissingAppRoot, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
+  missingRootAppliedTarget,
   resolveTeardownResolution,
+  teardownResolutionAt,
   validateResolvedAppTarget,
 } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
@@ -90,6 +99,24 @@ const unchangedResult = (app: string): DestroyAppResult => ({
   servicesDestroyed: [],
   volumesRemoved: false,
 });
+
+const removeStrayAppContainers = (provider: RuntimeProviderShape, plan: AppPlan) =>
+  Effect.gen(function* () {
+    if (plan.id === "global") return;
+    // Listing is best effort; provider.destroy below reports runtime failures.
+    const observed = yield* provider
+      .list({ app: plan.id, includeUnplanned: true })
+      .pipe(Effect.catchAll(() => Effect.succeed([])));
+    for (const service of observed) {
+      if (
+        service.containerId !== undefined &&
+        service.app === plan.id &&
+        service.appRoot === (plan.identity?.appRoot ?? plan.root) &&
+        !Object.hasOwn(plan.services, service.service)
+      )
+        yield* provider.removeObservedService(service);
+    }
+  });
 
 const destroyAppForTargetUncoordinated = (
   options: DestroyAppOptions | undefined,
@@ -215,6 +242,7 @@ const destroyAppForTargetUncoordinated = (
 
           yield* tree.startTask("provider");
           const providerDestroy = verifyActiveVolumeCoordination(provider).pipe(
+            Effect.zipRight(removeStrayAppContainers(provider, plan)),
             Effect.zipRight(
               provider.destroy(
                 { app: plan.id, plan },
@@ -381,3 +409,80 @@ export const destroyApp = (
             result.outcome === "unchanged" ? result : { ...result, outcome: "destroyed" },
         ),
       );
+
+export const destroyAppAtRoot = (
+  root: string,
+  options: DestroyAppOptions = {},
+): Effect.Effect<
+  DestroyAppResult,
+  DestroyAppError | FileIoError | FileNotFoundError | FilePermissionError,
+  DestroyAppServices | FileSystem
+> =>
+  Effect.gen(function* () {
+    // Owners are recorded by the exact path the app had. Try that first, then the path the
+    // current filesystem resolves it to (e.g. /tmp -> /private/tmp); a parent that was moved and
+    // replaced by a symlink must not redirect the lookup away from what was recorded.
+    const requested = AbsolutePath.make(resolvePath(root));
+    const canonical = AbsolutePath.make(
+      yield* canonicalMissingAppRoot(root).pipe(
+        Effect.mapError(
+          (error) =>
+            new AppResolveError({
+              reason: "missing-root",
+              detail: "unresolvable-root",
+              message: `The app folder path ${requested} cannot be resolved.`,
+              remediation:
+                typeof error.cause === "object" &&
+                error.cause !== null &&
+                "code" in error.cause &&
+                error.cause.code === "ENOENT"
+                  ? `Part of ${requested} is a symlink whose target no longer exists. Remove or fix that symlink, then rerun lando destroy --root ${shellArg(requested)}.`
+                  : `Check that you can read every folder in ${requested}, then rerun.`,
+              cause: error,
+            }),
+        ),
+      ),
+    );
+    const candidates = requested === canonical ? [requested] : [requested, canonical];
+    const fs = yield* FileSystem;
+    for (const candidate of candidates) {
+      if (yield* fs.exists(candidate)) {
+        return yield* Effect.fail(
+          new AppResolveError({
+            reason: "mismatch",
+            detail: "root-exists",
+            message: `The app folder ${candidate} still exists.`,
+            remediation: `Run lando destroy from inside ${candidate}. --root is only for app folders that no longer exist.`,
+          }),
+        );
+      }
+    }
+    const resolveAt = (recorded: AbsolutePath) =>
+      teardownResolutionAt(recorded, false, (plan) => missingRootAppliedTarget(plan, recorded));
+    let recordedRoot = requested;
+    let resolution = yield* resolveAt(requested);
+    if (resolution.kind === "absent" && canonical !== requested) {
+      recordedRoot = canonical;
+      resolution = yield* resolveAt(canonical);
+    }
+    switch (resolution.kind) {
+      case "applied": {
+        const result = yield* destroyAppWithResolvedTarget(options, resolution.target, false, false);
+        const remaining = yield* resolveAt(recordedRoot);
+        if (remaining.kind === "orphans") {
+          const removed = yield* destroyOrphans(options, remaining);
+          return {
+            ...result,
+            outcome: "destroyed" as const,
+            servicesDestroyed: [...new Set([...result.servicesDestroyed, ...removed.servicesDestroyed])],
+            volumesRemoved: result.volumesRemoved || removed.volumesRemoved,
+          };
+        }
+        return { ...result, outcome: "destroyed" as const };
+      }
+      case "orphans":
+        return yield* destroyOrphans(options, resolution);
+      case "absent":
+        return unchangedResult(basename(root));
+    }
+  });

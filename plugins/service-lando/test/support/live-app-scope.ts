@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { serviceContainerName } from "@lando/container-runtime/plan";
 import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
@@ -21,6 +22,7 @@ export interface BringDownOptions {
  * unit test can substitute fakes without a container runtime.
  */
 export interface LiveAppLifecycle {
+  readonly clearPreviousRun: (plan: AppPlan, api: LiveProviderApi) => Effect.Effect<void, unknown>;
   readonly bringUp: (plan: AppPlan, api: LiveProviderApi) => Effect.Effect<void, unknown>;
   readonly bringDown: (
     plan: AppPlan,
@@ -42,6 +44,29 @@ export interface LiveApp {
 }
 
 export const defaultLiveAppLifecycle: LiveAppLifecycle = {
+  clearPreviousRun: (plan, api) =>
+    Effect.gen(function* () {
+      const request = api.request;
+      if (request === undefined)
+        return yield* Effect.fail(new Error("Live app cleanup requires a provider API request client."));
+      const targets = [
+        ...Object.values(plan.services).map((service) => ({
+          // The engine API takes the query in the path; a running leftover needs force.
+          path: `/containers/${encodeURIComponent(serviceContainerName(plan, service.name))}?force=true` as const,
+        })),
+        ...plan.stores.map((store) => ({ path: `/volumes/${encodeURIComponent(store.name)}` as const })),
+      ];
+      for (const target of targets) {
+        const response = yield* request({ method: "DELETE", ...target });
+        if (response.status !== 200 && response.status !== 204 && response.status !== 404) {
+          return yield* Effect.fail(
+            new Error(
+              `Unable to clear previous live app run: DELETE ${target.path} returned HTTP ${response.status}.`,
+            ),
+          );
+        }
+      }
+    }),
   bringUp: (plan, api) => Effect.asVoid(bringUp(plan, { api })),
   bringDown: (plan, api, options) =>
     Effect.asVoid(
@@ -105,8 +130,12 @@ export const acquireLiveApp = (args: {
     api,
     exec: (service, command) => lifecycle.exec(args.plan, api, ServiceName.make(service), command),
   };
-  return Effect.acquireRelease(Effect.as(lifecycle.bringUp(args.plan, api), app), () =>
-    Effect.orDie(lifecycle.bringDown(args.plan, api, { volumes: true })),
+  return Effect.acquireRelease(
+    Effect.as(
+      Effect.zipRight(lifecycle.clearPreviousRun(args.plan, api), lifecycle.bringUp(args.plan, api)),
+      app,
+    ),
+    () => Effect.orDie(lifecycle.bringDown(args.plan, api, { volumes: true })),
   );
 };
 
