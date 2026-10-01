@@ -29,7 +29,7 @@ tooling:
     cmd: frankenphp
 ```
 
-Landofile-supplied images need `home: false` or `home.path`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](./home-and-host.mdx).
+Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](./home-and-host.mdx).
 
 `SERVER_NAME: ":9080"` tells FrankenPHP (Caddy) to listen for HTTP on container port `9080`. The short port form publishes that port on the host. Drop a page at `public/index.php`, then start:
 
@@ -61,7 +61,7 @@ lando php -v
 lando frankenphp version
 ```
 
-On the 2026-10-01 live check, `lando php -v` printed `PHP 8.4.26 (cli)` and `lando frankenphp version` printed a line like `FrankenPHP v1.12.7 PHP 8.4.26 Caddy v2.11.4 ...`.
+On the 2026-10-01 live check, `lando php -v` printed `PHP 8.4.26 (cli)` and `lando frankenphp version` printed FrankenPHP, PHP, and Caddy versions (`FrankenPHP v1.12.7 PHP 8.4.26 Caddy v2.11.4`).
 
 ## Add Composer with a Dockerfile
 
@@ -122,6 +122,8 @@ Other services on the app join the same network. The hostname is the service key
 ```
 http://appserver:9080
 ```
+
+From another service, call that URL. Do not use `localhost` inside another container. That is the container itself, not FrankenPHP.
 
 ## Start, inspect, destroy
 
