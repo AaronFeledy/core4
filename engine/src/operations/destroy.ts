@@ -40,6 +40,7 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
+import { shellArg } from "../services/shell-quote.ts";
 
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
@@ -419,7 +420,26 @@ export const destroyAppAtRoot = (
     // current filesystem resolves it to (e.g. /tmp -> /private/tmp); a parent that was moved and
     // replaced by a symlink must not redirect the lookup away from what was recorded.
     const requested = AbsolutePath.make(resolvePath(root));
-    const canonical = AbsolutePath.make(yield* canonicalMissingAppRoot(root));
+    const canonical = AbsolutePath.make(
+      yield* canonicalMissingAppRoot(root).pipe(
+        Effect.mapError(
+          (error) =>
+            new AppResolveError({
+              reason: "missing-root",
+              detail: "unresolvable-root",
+              message: `The app folder path ${requested} cannot be resolved.`,
+              remediation:
+                typeof error.cause === "object" &&
+                error.cause !== null &&
+                "code" in error.cause &&
+                error.cause.code === "ENOENT"
+                  ? `Part of ${requested} is a symlink whose target no longer exists. Remove or fix that symlink, then rerun lando destroy --root ${shellArg(requested)}.`
+                  : `Check that you can read every folder in ${requested}, then rerun.`,
+              cause: error,
+            }),
+        ),
+      ),
+    );
     const candidates = requested === canonical ? [requested] : [requested, canonical];
     const fs = yield* FileSystem;
     for (const candidate of candidates) {

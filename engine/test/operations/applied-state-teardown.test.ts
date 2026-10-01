@@ -421,6 +421,35 @@ describe("applied-state teardown", () => {
     });
   });
 
+  test.each(["dangling-symlink", "non-directory-parent"] as const)(
+    "destroy at root explains an unresolvable path under a %s before provider access",
+    async (kind) => {
+      await withTempRoot(async (parent) => {
+        const broken = join(parent, "broken");
+        if (kind === "dangling-symlink") await symlink(join(parent, "absent-target"), broken);
+        else await Bun.write(broken, "not a folder");
+        const root = join(broken, "gone");
+        const harness = makeLayer({});
+        const result = await Effect.runPromise(
+          destroyAppAtRoot(root).pipe(Effect.provide(harness.layer), Effect.either),
+        );
+        if (result._tag !== "Left") throw new TypeError("expected unresolvable-root refusal");
+        expect(result.left).toMatchObject({
+          _tag: "AppResolveError",
+          reason: "missing-root",
+          detail: "unresolvable-root",
+          message: `The app folder path ${root} cannot be resolved.`,
+          remediation:
+            kind === "dangling-symlink"
+              ? `Part of ${root} is a symlink whose target no longer exists. Remove or fix that symlink, then rerun lando destroy --root ${root}.`
+              : `Check that you can read every folder in ${root}, then rerun.`,
+        });
+        expect(harness.evidenceRoots).toEqual([]);
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    },
+  );
+
   test("destroy at a missing root uses its applied plan without loading the folder", async () => {
     await withTempRoot(async (parent) => {
       const root = join(parent, "gone");
