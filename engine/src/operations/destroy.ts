@@ -223,6 +223,23 @@ const destroyAppForTargetUncoordinated = (
           yield* tree.startTask("provider");
           const providerDestroy = verifyActiveVolumeCoordination(provider).pipe(
             Effect.zipRight(
+              Effect.gen(function* () {
+                if (plan.id === "global") return;
+                const observed = yield* provider
+                  .list({ app: plan.id, includeUnplanned: true })
+                  .pipe(Effect.catchAll(() => Effect.succeed([])));
+                for (const service of observed) {
+                  if (
+                    service.containerId !== undefined &&
+                    service.app === plan.id &&
+                    service.appRoot === (plan.identity?.appRoot ?? plan.root) &&
+                    !Object.hasOwn(plan.services, service.service)
+                  )
+                    yield* provider.removeObservedService(service);
+                }
+              }),
+            ),
+            Effect.zipRight(
               provider.destroy(
                 { app: plan.id, plan },
                 {

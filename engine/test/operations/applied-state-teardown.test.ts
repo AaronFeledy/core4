@@ -17,7 +17,7 @@ import {
   ServiceName,
   type VolumeInfo,
 } from "@lando/sdk/schema";
-import type { AppliedOrphanGroup } from "@lando/sdk/services";
+import type { AppliedOrphanGroup, ListFilter, ServiceRuntimeInfo } from "@lando/sdk/services";
 import {
   AppPlanner,
   EventService,
@@ -34,6 +34,7 @@ import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/ope
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -93,10 +94,15 @@ const makeLayer = (input: {
   readonly orphans?: ReadonlyArray<AppliedOrphanGroup>;
   readonly providerId?: string;
   readonly destroy?: () => Effect.Effect<void, ProviderUnavailableError>;
+  readonly observed?: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly listFailure?: ProviderUnavailableError;
+  readonly removalFailure?: ProviderUnavailableError;
   /** Observed services whose container survives removal; every other one is reported removed. */
   readonly survivingServices?: ReadonlyArray<string>;
 }) => {
   const destroyCalls: AppPlan[] = [];
+  const mutationOrder: string[] = [];
+  const listFilters: ListFilter[] = [];
   const destroyTargets: Array<{
     readonly app: string;
     readonly hasPlan: boolean;
@@ -111,11 +117,22 @@ const makeLayer = (input: {
   const provider = {
     ...TestRuntimeProvider,
     id: input.providerId ?? "lando",
+    list: (filter: ListFilter) =>
+      Effect.sync(() => {
+        listFilters.push(filter);
+      }).pipe(
+        Effect.zipRight(
+          input.listFailure === undefined
+            ? Effect.succeed(input.observed ?? [])
+            : Effect.fail(input.listFailure),
+        ),
+      ),
     destroy: (
       target: { readonly app: string; readonly plan?: AppPlan },
       options: { readonly removeState?: boolean; readonly volumes?: boolean },
     ) =>
       Effect.sync(() => {
+        mutationOrder.push("destroy");
         if (target.plan !== undefined) destroyCalls.push(target.plan);
         destroyTargets.push({
           app: String(target.app),
@@ -143,12 +160,17 @@ const makeLayer = (input: {
       readonly containerId?: string;
     }) =>
       Effect.sync(() => {
+        mutationOrder.push(`remove:${observed.service}`);
         removalAttempts.push({ service: String(observed.service), containerId: observed.containerId });
         const survives =
           observed.containerId === undefined ||
           (input.survivingServices ?? []).includes(String(observed.service));
         return survives ? ({ kind: "absent" } as const) : ({ kind: "removed" } as const);
-      }),
+      }).pipe(
+        Effect.tap(() =>
+          input.removalFailure === undefined ? Effect.void : Effect.fail(input.removalFailure),
+        ),
+      ),
   };
   const registry = {
     list: Effect.succeed([providerId]),
@@ -207,6 +229,8 @@ const makeLayer = (input: {
   );
   return {
     layer,
+    mutationOrder,
+    listFilters,
     destroyCalls,
     destroyTargets,
     removedVolumes,
@@ -259,6 +283,91 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test.each(["cwd", "root"] as const)(
+    "%s destroy removes only same-app, same-root stray containers before the plan",
+    async (mode) => {
+      await withTempRoot(async (parent) => {
+        const root = mode === "root" ? join(parent, "gone") : parent;
+        const appliedPlan = { ...planAt(root), services: { [web.name]: web } };
+        const observed = orphanGroup({
+          root,
+          services: ["stray", "web", "unobserved"],
+          withoutContainerId: ["unobserved"],
+        }).services;
+        const harness = makeLayer({
+          appliedPlan,
+          observed: [
+            ...observed,
+            ...orphanGroup({ root: join(parent, "other"), services: ["other-root"] }).services,
+            {
+              ...observed[0],
+              app: AppId.make("other-app"),
+              service: ServiceName.make("other-app"),
+              appRoot: AbsolutePath.make(root),
+              providerId,
+              status: "running",
+              containerId: "foreign",
+            },
+          ],
+        });
+        await Effect.runPromise(
+          (mode === "root" ? destroyAppAtRoot(root) : withResolvedCwd(root, destroyApp())).pipe(
+            Effect.provide(harness.layer),
+          ),
+        );
+        expect(harness.mutationOrder).toEqual(["remove:stray", "destroy"]);
+        expect(harness.removalAttempts).toEqual([{ service: "stray", containerId: "container-stray" }]);
+        expect(harness.listFilters).toEqual([{ app: appliedPlan.id, includeUnplanned: true }]);
+      });
+    },
+  );
+
+  test("destroy continues when stray inventory fails", async () => {
+    await withTempRoot(async (root) => {
+      const appliedPlan = planAt(root);
+      const harness = makeLayer({
+        appliedPlan,
+        listFailure: new ProviderUnavailableError({
+          providerId,
+          operation: "list",
+          message: "Cannot inventory containers.",
+        }),
+      });
+      await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+      expect(harness.removalAttempts).toEqual([]);
+    });
+  });
+
+  test("destroy propagates stray removal failure before destroying the plan", async () => {
+    await withTempRoot(async (root) => {
+      const failure = new ProviderUnavailableError({
+        providerId,
+        operation: "removeObservedService",
+        message: "Cannot remove stray container.",
+      });
+      const harness = makeLayer({
+        appliedPlan: planAt(root),
+        observed: orphanGroup({ root, services: ["stray"] }).services,
+        removalFailure: failure,
+      });
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer), Effect.either),
+      );
+      expect(result).toMatchObject({ _tag: "Left", left: failure });
+      expect(harness.destroyCalls).toEqual([]);
+    });
+  });
+
+  test("destroy skips stray inventory for the global app", async () => {
+    await withTempRoot(async (root) => {
+      const appliedPlan = { ...planAt(root), id: AppId.make("global") };
+      const harness = makeLayer({ appliedPlan });
+      await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
+      expect(harness.listFilters).toEqual([]);
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+    });
+  });
   test.each([
     [
       "identity",
