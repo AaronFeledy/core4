@@ -29,11 +29,7 @@ const metadata = {
 
 const mailpitRef = "axllent/mailpit:v1.30.1";
 
-const makeService = (
-  name: string,
-  ref: string,
-  compose?: Record<string, unknown>,
-): ServicePlan => ({
+const makeService = (name: string, ref: string, compose?: Record<string, unknown>): ServicePlan => ({
   name: ServiceName.make(name),
   type: "test",
   provider: providerId,

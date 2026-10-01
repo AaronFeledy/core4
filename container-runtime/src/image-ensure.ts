@@ -1,11 +1,16 @@
 import { Effect } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { type ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 
 import type { PullDialect } from "./dialect.ts";
 import { parseImagePlatform } from "./dialect.ts";
-import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
+import type {
+  EngineHttpApi,
+  EngineHttpRequest,
+  EngineHttpResponse,
+  ProviderErrorContext,
+} from "./engine-api.ts";
 import { missingApi, parseEngineJson } from "./engine-errors.ts";
 import { type PullImageOptions, pullImage } from "./image-pull.ts";
 import { redactDetails } from "./redact.ts";
@@ -31,11 +36,7 @@ const request = (
 ): Effect.Effect<EngineHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
   api.request === undefined
     ? Effect.fail(
-        missingApi(
-          ctx,
-          "apply",
-          `provider-${ctx.providerId} apply requires a container engine API client.`,
-        ),
+        missingApi(ctx, "apply", `provider-${ctx.providerId} apply requires a container engine API client.`),
       )
     : api.request(input);
 
@@ -106,10 +107,7 @@ const localBuildPlatformError = (
       "Rebuild the image for the pinned platform, or delete the local tag so Lando can pull the matching registry image.",
   });
 
-const inspectFailure = (
-  ctx: ProviderErrorContext,
-  response: EngineHttpResponse,
-): ProviderUnavailableError =>
+const inspectFailure = (ctx: ProviderErrorContext, response: EngineHttpResponse): ProviderUnavailableError =>
   new ProviderUnavailableError({
     providerId: ctx.providerId,
     operation: "apply",
@@ -143,9 +141,7 @@ export const ensureImage = <E = never>(
       yield* pull(api, reference, options);
       return;
     }
-    return yield* Effect.fail(
-      localBuildPlatformError(options.ctx, reference, options.platform, decoded),
-    );
+    return yield* Effect.fail(localBuildPlatformError(options.ctx, reference, options.platform, decoded));
   });
 };
 
@@ -158,11 +154,11 @@ export const makeEnsureImage =
     readonly ref: string;
     readonly force: boolean;
   }) => Effect.Effect<void, ProviderUnavailableError | ProviderInternalError | E>) =>
-  ({ service, ref, force }) =>
-    ensureImage(api, ref, {
+  ({ service, ref, force }) => {
+    const platform = serviceImagePlatform(service);
+    return ensureImage(api, ref, {
       ...options,
       force,
-      ...(serviceImagePlatform(service) === undefined
-        ? {}
-        : { platform: serviceImagePlatform(service) }),
+      ...(platform === undefined ? {} : { platform }),
     });
+  };

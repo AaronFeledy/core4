@@ -135,9 +135,7 @@ describe("ensureImage", () => {
     );
 
     expect(docker.requests[1]?.path).toBe("/images/create?fromImage=nginx&tag=1.27");
-    expect(libpod.requests[1]?.path).toBe(
-      "/libpod/images/pull?reference=nginx%3A1.27&pullProgress=true",
-    );
+    expect(libpod.requests[1]?.path).toBe("/libpod/images/pull?reference=nginx%3A1.27&pullProgress=true");
   });
 
   test("treats a present matching image as already available", async () => {

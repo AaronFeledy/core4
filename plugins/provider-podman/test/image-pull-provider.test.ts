@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
-import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "@lando/container-runtime/engine-api";
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
 import { makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -79,7 +83,8 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
     request: (request: EngineHttpRequest) => {
       requests.push(`${request.method} ${request.path}`);
       const responseFor = (): EngineHttpResponse => {
-        if (request.method === "GET" && request.path.startsWith("/networks/")) return { status: 404, body: "" };
+        if (request.method === "GET" && request.path.startsWith("/networks/"))
+          return { status: 404, body: "" };
         if (request.path === "/networks/create") return { status: 201, body: "" };
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
           return {
@@ -92,7 +97,11 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
         if (request.method === "POST" && request.path.startsWith("/libpod/images/pull")) {
           return { status: 200, body: '{"status":"Pull complete"}\n' };
         }
-        if (request.method === "GET" && request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
+        if (
+          request.method === "GET" &&
+          request.path.startsWith("/containers/") &&
+          request.path.endsWith("/json")
+        ) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
           return existing.has(name)
             ? { status: 200, body: JSON.stringify({ State: { Running: running.has(name) } }) }

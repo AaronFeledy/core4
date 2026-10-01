@@ -4,7 +4,11 @@ import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-s
 import { DateTime, Effect, Stream } from "effect";
 
 import { libpodPullDialect } from "@lando/container-runtime/dialect";
-import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "@lando/container-runtime/engine-api";
+import type {
+  EngineHttpRequest,
+  EngineHttpResponse,
+  PodmanApiClient,
+} from "@lando/container-runtime/engine-api";
 import { buildImagePullRequest } from "@lando/container-runtime/image-pull";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import type { ImagePullProgressEvent } from "@lando/sdk/events";
@@ -196,7 +200,8 @@ const makeApplyApi = (inspectStatus = 404) => {
     request: (request: EngineHttpRequest) => {
       requests.push(`${request.method} ${request.path}`);
       const response = ((): EngineHttpResponse => {
-        if (request.method === "GET" && request.path.startsWith("/networks/")) return { status: 404, body: "" };
+        if (request.method === "GET" && request.path.startsWith("/networks/"))
+          return { status: 404, body: "" };
         if (request.path === "/networks/create") return { status: 201, body: "" };
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
           return { status: inspectStatus, body: "{}" };
@@ -204,7 +209,11 @@ const makeApplyApi = (inspectStatus = 404) => {
         if (request.method === "POST" && request.path.startsWith("/libpod/images/pull")) {
           return { status: 200, body: '{"status":"Pull complete"}\n' };
         }
-        if (request.method === "GET" && request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
+        if (
+          request.method === "GET" &&
+          request.path.startsWith("/containers/") &&
+          request.path.endsWith("/json")
+        ) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
           return existing.has(name)
             ? { status: 200, body: JSON.stringify({ State: { Running: true } }) }
@@ -265,4 +274,3 @@ describe("provider-lando apply image pull", () => {
     );
   });
 });
-
