@@ -51,8 +51,8 @@ export const defaultLiveAppLifecycle: LiveAppLifecycle = {
         return yield* Effect.fail(new Error("Live app cleanup requires a provider API request client."));
       const targets = [
         ...Object.values(plan.services).map((service) => ({
-          path: `/containers/${encodeURIComponent(serviceContainerName(plan, service.name))}` as const,
-          query: { force: true },
+          // The engine API takes the query in the path; a running leftover needs force.
+          path: `/containers/${encodeURIComponent(serviceContainerName(plan, service.name))}?force=true` as const,
         })),
         ...plan.stores.map((store) => ({ path: `/volumes/${encodeURIComponent(store.name)}` as const })),
       ];
