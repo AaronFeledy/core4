@@ -147,6 +147,7 @@ export const runImport = (
     path: input.file,
     compression: input.compression,
     direction: "import",
+    ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
     transfer: (workingPath, stagedDigest) => {
       // DataMover checks the file at workingPath. Uncompressed imports keep the
       // original dump digest from ensureReadableDump; compressed imports pass

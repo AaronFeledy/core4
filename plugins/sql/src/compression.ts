@@ -1,11 +1,11 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, open, unlink } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 
-import { SqlDumpCompressionError } from "@lando/sdk/errors";
+import { DataChecksumMismatchError, SqlDumpCompressionError } from "@lando/sdk/errors";
+import { persistVerifiedStream } from "@lando/sdk/verified-stream";
 
 export type DumpCompression = "gzip" | "zstd" | "none";
 
@@ -55,31 +55,6 @@ const streamThrough = (
     operation === "compress" ? new CompressionStream(compression) : new DecompressionStream(compression),
   );
 
-const persistWebStream = async (
-  source: ReadableStream<Uint8Array>,
-  destPath: string,
-): Promise<{ readonly digest: string; readonly sizeBytes: number }> => {
-  await mkdir(dirname(destPath), { recursive: true });
-  const hash = new Bun.CryptoHasher("sha256");
-  const handle = await open(destPath, "w");
-  const reader = source.getReader();
-  let sizeBytes = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      hash.update(value);
-      await handle.write(value);
-      sizeBytes += value.byteLength;
-    }
-    await handle.sync().catch(() => undefined);
-  } finally {
-    reader.releaseLock();
-    await handle.close().catch(() => undefined);
-  }
-  return { digest: hash.digest("hex"), sizeBytes };
-};
-
 const dumpCompressionError = (
   path: string,
   compression: Exclude<DumpCompression, "none">,
@@ -104,33 +79,97 @@ export const writeDumpTransform = (
   destPath: string,
   compression: Exclude<DumpCompression, "none">,
   operation: "compress" | "decompress",
-): Effect.Effect<{ readonly digest: string; readonly sizeBytes: number }, SqlDumpCompressionError> =>
+  expectedDigest?: string,
+): Effect.Effect<
+  { readonly digest: string; readonly sizeBytes: number },
+  SqlDumpCompressionError | DataChecksumMismatchError
+> =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const hash = new Bun.CryptoHasher("sha256");
+      const source = Bun.file(sourcePath)
+        .stream()
+        .pipeThrough(
+          new TransformStream<Uint8Array, Uint8Array>({
+            transform: (chunk, controller) => {
+              hash.update(chunk);
+              controller.enqueue(chunk);
+            },
+          }),
+        );
+      const result = yield* persistVerifiedStream({
+        body: Stream.fromReadableStream({
+          evaluate: () => streamThrough(source, compression, operation),
+          onError: () => dumpCompressionError(sourcePath, compression, operation),
+          releaseLockOnEnd: true,
+        }),
+        destinationPath: destPath,
+        mode: 0o600,
+      }).pipe(
+        Effect.mapError(() =>
+          dumpCompressionError(operation === "compress" ? destPath : sourcePath, compression, operation),
+        ),
+      );
+      const actualDigest = hash.digest("hex");
+      if (expectedDigest !== undefined && actualDigest !== expectedDigest) {
+        return yield* Effect.fail(
+          new DataChecksumMismatchError({
+            message: "The compressed dump changed after it was selected for import.",
+            expectedSha256: expectedDigest,
+            actualSha256: actualDigest,
+            archivePath: sourcePath,
+            remediation: "Select the dump again and retry the import.",
+          }),
+        );
+      }
+      return { digest: result.sha256, sizeBytes: result.sizeBytes };
+    }),
+  );
+
+export const acquireStagedDump = (
+  parent: string,
+  compression: Exclude<DumpCompression, "none">,
+  operation: "compress" | "decompress",
+): Effect.Effect<string, SqlDumpCompressionError> =>
   Effect.tryPromise({
-    try: async () =>
-      persistWebStream(streamThrough(Bun.file(sourcePath).stream(), compression, operation), destPath),
-    catch: () =>
-      dumpCompressionError(operation === "compress" ? destPath : sourcePath, compression, operation),
+    try: async () => {
+      await mkdir(parent, { recursive: true });
+      return mkdtemp(join(parent, ".lando-dump-"));
+    },
+    catch: () => dumpCompressionError(parent, compression, operation),
   });
 
-export const acquireStagedDump = (): Effect.Effect<string, never, never> =>
-  Effect.sync(() => join(tmpdir(), `lando-dump-${randomUUID()}`));
-
 export const releaseStagedDump = (path: string): Effect.Effect<void> =>
-  Effect.promise(() => unlink(path).catch(() => undefined)).pipe(Effect.asVoid);
+  Effect.promise(() => rm(path, { recursive: true, force: true }));
 
 export const withHostDumpCompression = <A, E, R>(input: {
   readonly path: string;
   readonly compression: DumpCompression;
   readonly direction: "export" | "import";
+  readonly expectedDigest?: string;
   readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<A, E, R>;
-}): Effect.Effect<A, E | SqlDumpCompressionError, R> => {
+}): Effect.Effect<A, E | SqlDumpCompressionError | DataChecksumMismatchError, R> => {
   const compression = input.compression;
   if (compression === "none") return input.transfer(input.path);
   return Effect.scoped(
     Effect.gen(function* () {
-      const staged = yield* Effect.acquireRelease(acquireStagedDump(), releaseStagedDump);
+      const directory = yield* Effect.acquireRelease(
+        acquireStagedDump(
+          input.direction === "export" ? dirname(input.path) : tmpdir(),
+          compression,
+          input.direction === "export" ? "compress" : "decompress",
+        ),
+        releaseStagedDump,
+      );
+      const staged = join(directory, "dump");
       if (input.direction === "import") {
-        const decompressed = yield* writeDumpTransform(input.path, staged, compression, "decompress");
+        const decompressed = yield* writeDumpTransform(
+          input.path,
+          staged,
+          compression,
+          "decompress",
+          input.expectedDigest,
+        );
         return yield* input.transfer(staged, decompressed.digest);
       }
       const result = yield* input.transfer(staged);
