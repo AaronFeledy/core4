@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -15,8 +14,10 @@ import {
 import { MysqlServiceConfig } from "@lando/sdk/schema/services/mysql";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { appNameFor } from "../app-name.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 export const MYSQL_VERSIONS = ["8.0", "8.4", "9.7"] as const;
@@ -56,9 +57,6 @@ const MYSQL_LOG_SOURCES: ReadonlyArray<LogSource> = [
 
 const defaultRootPassword = (appId: string, serviceName: string): string =>
   `lando-${createHash("sha256").update(`${appId}:${serviceName}:root`).digest("hex").slice(0, 24)}`;
-
-const appNameFor = (input: { readonly appName?: string | undefined; readonly appRoot: string }): string =>
-  input.appName || basename(input.appRoot) || "app";
 
 const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceConfig): ServiceCreds => {
   const authored = service.creds;
@@ -114,10 +112,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 60,
   });
 
-  if (service.command !== undefined) ctx.setCommand(service.command);
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx);
 
   const server = service.config?.server;
   if (server !== undefined && server.length > 0) {
