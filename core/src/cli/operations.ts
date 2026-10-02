@@ -92,6 +92,7 @@ export * from "./commands/app-config-lint";
 export * from "./commands/app-config-translate";
 export * from "./commands/app-includes-update";
 export * from "./commands/app-includes-verify";
+export * from "./commands/agent-skills";
 export * from "./commands/app-cache-refresh";
 export * from "./commands/version";
 export * from "@lando/engine/operations/update";

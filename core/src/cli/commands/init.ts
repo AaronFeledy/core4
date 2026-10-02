@@ -37,6 +37,7 @@ import {
 } from "../../recipes/tarball-source";
 import { readAnswersFile } from "../prompts/answer-flags";
 import { activeRendererMode } from "../renderer-mode-state";
+import { type AgentSkillsResult, installAgentSkills } from "./agent-skills";
 import type { BunSelfSpawner } from "./bun-self-runner";
 import { defaultAppNameFromCwd, withAppNameDefault } from "./init-app-name";
 import { chromeForInitNamePrompt } from "./init-app-name-chrome";
@@ -125,6 +126,8 @@ export interface InitAppOptions {
   readonly destination?: string;
   // Run recipe `postInit:` actions after rendering; defaults to true.
   readonly runPostInit?: boolean;
+  // Opt-in: write the Lando agent skill pack after a successful init. Default off.
+  readonly agentSkills?: boolean;
 }
 
 export interface InitAppResult {
@@ -134,6 +137,7 @@ export interface InitAppResult {
   readonly answers: PromptAnswers;
   readonly postInit: PostInitOutcome;
   readonly skippedScaffold: ReadonlyArray<string>;
+  readonly agentSkills?: AgentSkillsResult;
 }
 
 export const stripSecretInitAnswers = (
@@ -406,6 +410,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
       ...(shouldRunPostInit
         ? [{ id: "postinit", label: `Run post-init actions (${postInitActions.length})` }]
         : []),
+      ...(options.agentSkills === true ? [{ id: "agentskills", label: "Install agent skills" }] : []),
     ],
     mode: "list",
   });
@@ -539,7 +544,24 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     );
   }
 
-  await Effect.runPromise(tree.close(`Initialized ${appName}`));
+  if (options.agentSkills !== true) {
+    await Effect.runPromise(tree.close(`Initialized ${appName}`));
+    return { appName, directory, answers: publicAnswers, postInit, skippedScaffold };
+  }
 
-  return { appName, directory, answers: publicAnswers, postInit, skippedScaffold };
+  await Effect.runPromise(tree.startTask("agentskills"));
+  let agentSkills: AgentSkillsResult;
+  try {
+    agentSkills = await Effect.runPromise(
+      installAgentSkills({ appRoot: directory }),
+      options.signal === undefined ? undefined : { signal: options.signal },
+    );
+  } catch (cause) {
+    await Effect.runPromise(tree.failTask("agentskills", "Agent skill installation failed"));
+    await Effect.runPromise(tree.close("Initialization failed"));
+    throw cause;
+  }
+  await Effect.runPromise(tree.completeTask("agentskills", "Installed agent skills"));
+  await Effect.runPromise(tree.close(`Initialized ${appName}`));
+  return { appName, directory, answers: publicAnswers, postInit, skippedScaffold, agentSkills };
 };
