@@ -5,6 +5,7 @@ import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schem
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const SUPPORTED_RUBY_VERSIONS = ["3.3"] as const;
 export type SupportedRubyVersion = (typeof SUPPORTED_RUBY_VERSIONS)[number];
@@ -102,7 +103,7 @@ const applyRubyFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
-  if (service.user !== undefined) ctx.setUser(service.user);
+  applyAuthoredProcessFields(ctx, ["user"]);
   ctx.setAppMount({
     source: AbsolutePath.make(ctx.appRoot),
     target: APP_MOUNT_TARGET,
@@ -126,7 +127,7 @@ const applyRubyFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 10,
   });
 
-  if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
+  applyAuthoredProcessFields(ctx, ["entrypoint"]);
 
   ctx.addExtension("lando-service-ruby", {
     framework,
