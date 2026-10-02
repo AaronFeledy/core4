@@ -60,7 +60,9 @@ export interface McpRuntimeConfigShape {
   readonly runtimeLayer: Layer.Layer<unknown> | Layer.Layer<never>;
 }
 
-export class McpRuntimeConfig extends Context.Service<McpRuntimeConfig, McpRuntimeConfigShape>()("@lando/mcp/McpRuntimeConfig") {}
+export class McpRuntimeConfig extends Context.Service<McpRuntimeConfig, McpRuntimeConfigShape>()(
+  "@lando/mcp/McpRuntimeConfig",
+) {}
 
 export interface McpServiceShape {
   /**

@@ -1,4 +1,4 @@
-import { Context, Effect, Result, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 
 import { SshError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -27,7 +27,9 @@ interface SshServiceRegistryShape {
   readonly select: (selection?: SshServiceSelection) => Effect.Effect<SshServiceRegistration, SshError>;
 }
 
-export class SshServiceRegistry extends Context.Service<SshServiceRegistry, SshServiceRegistryShape>()("@lando/core/SshServiceRegistry") {}
+export class SshServiceRegistry extends Context.Service<SshServiceRegistry, SshServiceRegistryShape>()(
+  "@lando/core/SshServiceRegistry",
+) {}
 
 const selectionError = (message: string, sshId: string): SshError =>
   new SshError({

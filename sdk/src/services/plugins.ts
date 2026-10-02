@@ -20,7 +20,9 @@ import type {
 import type { AppFeatureDefinition } from "./app-features.ts";
 import type { ServiceFeatureDefinition } from "./features.ts";
 
-export class PluginRegistry extends Context.Service<PluginRegistry, {
+export class PluginRegistry extends Context.Service<
+  PluginRegistry,
+  {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
@@ -32,7 +34,8 @@ export class PluginRegistry extends Context.Service<PluginRegistry, {
     readonly loadAppFeature: (
       id: string,
     ) => Effect.Effect<AppFeatureDefinition, PluginLoadError | PluginManifestError>;
-  }>()("@lando/core/PluginRegistry") {}
+  }
+>()("@lando/core/PluginRegistry") {}
 
 /** Host identity facts a service type may read while resolving config. */
 export interface ServiceTypeHostFacts {
@@ -171,6 +174,9 @@ export interface RegisteredCommand {
   };
 }
 
-export class CommandRegistry extends Context.Service<CommandRegistry, {
+export class CommandRegistry extends Context.Service<
+  CommandRegistry,
+  {
     readonly list: Effect.Effect<ReadonlyArray<RegisteredCommand>, never>;
-  }>()("@lando/core/CommandRegistry") {}
+  }
+>()("@lando/core/CommandRegistry") {}

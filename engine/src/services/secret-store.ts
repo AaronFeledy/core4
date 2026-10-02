@@ -1,4 +1,4 @@
-import { type Context, Effect, Result, Layer } from "effect";
+import { type Context, Effect, Layer, Result } from "effect";
 
 import { SecretNotFoundError, SecretReferenceInvalidError } from "@lando/sdk/errors";
 import { parseSecretReference } from "@lando/sdk/secrets";

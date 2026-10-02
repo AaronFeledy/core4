@@ -196,9 +196,7 @@ export const makePluginManagedFiles = (
 
   const adopt: PluginManagedFiles["adopt"] = (path) => {
     const normalizedPath = normalizeManagedPath(path) as PortablePath;
-    return assertNoForeignPath([normalizedPath], "adopt").pipe(
-      Effect.andThen(service.adopt(normalizedPath)),
-    );
+    return assertNoForeignPath([normalizedPath], "adopt").pipe(Effect.andThen(service.adopt(normalizedPath)));
   };
 
   const release: PluginManagedFiles["release"] = (path) => {

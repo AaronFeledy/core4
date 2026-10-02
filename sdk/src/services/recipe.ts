@@ -10,7 +10,9 @@ import type {
 } from "../errors/index.ts";
 import type { RecipeManifest } from "../schema/index.ts";
 
-export class RecipeManifestService extends Context.Service<RecipeManifestService, {
+export class RecipeManifestService extends Context.Service<
+  RecipeManifestService,
+  {
     readonly parse: (
       source: string,
       content: string,
@@ -23,4 +25,5 @@ export class RecipeManifestService extends Context.Service<RecipeManifestService
       | RecipeSourceError
       | NotImplementedError
     >;
-  }>()("@lando/core/RecipeManifestService") {}
+  }
+>()("@lando/core/RecipeManifestService") {}

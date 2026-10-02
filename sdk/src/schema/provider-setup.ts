@@ -48,7 +48,12 @@ export const ProvisionCgroupsDelegationHostChange = Schema.TaggedStruct("provisi
 export type ProvisionCgroupsDelegationHostChange = typeof ProvisionCgroupsDelegationHostChange.Type;
 
 /** Closed provider-setup host-change union. Additions require a reviewed SDK contract change. */
-export const ProviderSetupHostChange = Schema.Union([InstallUidmapHostChange, ProvisionSubuidHostChange, ProvisionSubgidHostChange, ProvisionCgroupsDelegationHostChange]);
+export const ProviderSetupHostChange = Schema.Union([
+  InstallUidmapHostChange,
+  ProvisionSubuidHostChange,
+  ProvisionSubgidHostChange,
+  ProvisionCgroupsDelegationHostChange,
+]);
 export type ProviderSetupHostChange = typeof ProviderSetupHostChange.Type;
 
 export const ProviderSetupPlan = Schema.Struct({

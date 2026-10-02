@@ -9,20 +9,29 @@ import { transactionError, transactionIO } from "./transaction-error.ts";
 import { digestOf, ensureDirectory, statMaybe } from "./transaction-fs.ts";
 
 const Digest = Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u)));
-const Mode = Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 0, maximum: 0o7777 })));
+const Mode = Schema.Number.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isBetween({ minimum: 0, maximum: 0o7777 })),
+);
 const Absent = Schema.Struct({ present: Schema.Literal(false) });
-export const FileState = Schema.Union([Absent, Schema.Struct({
+export const FileState = Schema.Union([
+  Absent,
+  Schema.Struct({
     present: Schema.Literal(true),
     digest: Digest,
     mode: Mode,
-  })]);
+  }),
+]);
 export type FileState = typeof FileState.Type;
-const Before = Schema.Union([Absent, Schema.Struct({
+const Before = Schema.Union([
+  Absent,
+  Schema.Struct({
     present: Schema.Literal(true),
     digest: Digest,
     mode: Mode,
     backup: Schema.String,
-  })]);
+  }),
+]);
 export const Stage = Schema.Struct({ path: Schema.String, dev: Schema.String, ino: Schema.String });
 export type Stage = typeof Stage.Type;
 export const Entry = Schema.Struct({

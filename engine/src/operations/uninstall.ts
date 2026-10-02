@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, Effect, Result, Option, Schema } from "effect";
+import { type Context, Effect, Option, Result, Schema } from "effect";
 
 import { PrivilegeService } from "@lando/sdk/services";
 
@@ -734,7 +734,13 @@ export const buildUninstallPlan = async (
       label: "install record",
       target: paths.installRecordFile,
       destructive: true,
-      status: Result.match(inspectOwnedExecutable({ recordFile: paths.installRecordFile, platform: paths.platform }), { onFailure: (error) => (error.reason === "no-record" ? ("skipped" as const) : ("owned" as const)), onSuccess: () => "owned" as const }),
+      status: Result.match(
+        inspectOwnedExecutable({ recordFile: paths.installRecordFile, platform: paths.platform }),
+        {
+          onFailure: (error) => (error.reason === "no-record" ? ("skipped" as const) : ("owned" as const)),
+          onSuccess: () => "owned" as const,
+        },
+      ),
       detail:
         "Remove the install record last, only after executable and shell cleanup completed or were skipped.",
     },

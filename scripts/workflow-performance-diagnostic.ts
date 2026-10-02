@@ -22,7 +22,8 @@ export const imagePullDiagnosticFromStderr = (stderr: string): ImagePullFailureD
       continue;
     }
     const decoded = Schema.decodeUnknownResult(FailureEvidenceSchema)(parsed);
-    if (Result.isSuccess(decoded) && decoded.success.imagePull !== undefined) return decoded.success.imagePull;
+    if (Result.isSuccess(decoded) && decoded.success.imagePull !== undefined)
+      return decoded.success.imagePull;
   }
   return undefined;
 };
@@ -37,7 +38,8 @@ export const setupFileSyncStatusFromStdout = (stdout: string): FileSyncStatus | 
       continue;
     }
     const envelope = Schema.decodeUnknownResult(CommandResultEnvelope)(parsed);
-    if (Result.isFailure(envelope) || envelope.success.command !== "meta:setup" || !envelope.success.ok) continue;
+    if (Result.isFailure(envelope) || envelope.success.command !== "meta:setup" || !envelope.success.ok)
+      continue;
     const result = Schema.decodeUnknownResult(SetupResultSchema)(envelope.success.result);
     if (Result.isSuccess(result)) return result.success.fileSyncStatus;
   }

@@ -70,7 +70,9 @@ export interface ProcessStreamChunk {
 
 export type ProcessStreamEvent = ProcessStreamChunk | { readonly exitCode: number };
 
-export class ProcessRunner extends Context.Service<ProcessRunner, {
+export class ProcessRunner extends Context.Service<
+  ProcessRunner,
+  {
     readonly run: (
       options: ProcessSpawnOptions,
     ) => Effect.Effect<ProcessResult, ProcessExecError | ProcessTimeoutError>;
@@ -80,9 +82,12 @@ export class ProcessRunner extends Context.Service<ProcessRunner, {
     readonly streamWithExit: (
       options: ProcessSpawnOptions,
     ) => Stream.Stream<ProcessStreamEvent, ProcessExecError | ProcessTimeoutError>;
-  }>()("@lando/core/ProcessRunner") {}
+  }
+>()("@lando/core/ProcessRunner") {}
 
-export class ShellRunner extends Context.Service<ShellRunner, {
+export class ShellRunner extends Context.Service<
+  ShellRunner,
+  {
     readonly exec: (
       command: string,
       options?: ShellCommandOptions,
@@ -98,8 +103,12 @@ export class ShellRunner extends Context.Service<ShellRunner, {
     readonly interactive: (
       spec: ShellInteractiveSpec,
     ) => Effect.Effect<ShellInteractiveResult, ShellExecError>;
-  }>()("@lando/core/ShellRunner") {}
+  }
+>()("@lando/core/ShellRunner") {}
 
-export class PrivilegeService extends Context.Service<PrivilegeService, {
+export class PrivilegeService extends Context.Service<
+  PrivilegeService,
+  {
     readonly elevate: (command: ReadonlyArray<string>) => Effect.Effect<ProcessResult, never>;
-  }>()("@lando/core/PrivilegeService") {}
+  }
+>()("@lando/core/PrivilegeService") {}

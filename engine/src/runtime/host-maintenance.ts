@@ -12,7 +12,10 @@ export interface HostMaintenanceRegistryShape {
   readonly maintainers: ReadonlyArray<HostMaintenanceContribution>;
 }
 
-export class HostMaintenanceRegistry extends Context.Service<HostMaintenanceRegistry, HostMaintenanceRegistryShape>()("@lando/core/HostMaintenanceRegistry") {}
+export class HostMaintenanceRegistry extends Context.Service<
+  HostMaintenanceRegistry,
+  HostMaintenanceRegistryShape
+>()("@lando/core/HostMaintenanceRegistry") {}
 
 export const makeHostMaintenanceRegistryLayer = (
   modules: ReadonlyArray<LandoPluginModule>,

@@ -1,4 +1,4 @@
-import { Duration, Effect, Result, Fiber } from "effect";
+import { Duration, Effect, Fiber, Result } from "effect";
 
 import {
   DatasetBindingError,
@@ -182,7 +182,8 @@ export const runRemoteSourceContract = (
       source.resolve(harness.config, harness.supportedEnv, harness.unsupportedDataset),
     );
     yield* requireRemoteSyncContract(
-      Result.isFailure(unsupportedDataset) && unsupportedDataset.failure instanceof RemoteDatasetUnsupportedError,
+      Result.isFailure(unsupportedDataset) &&
+        unsupportedDataset.failure instanceof RemoteDatasetUnsupportedError,
       "unknown dataset fails RemoteDatasetUnsupportedError",
       unsupportedDataset,
     );
@@ -261,7 +262,8 @@ export const runRemoteSourceContract = (
       Effect.scoped(source.send(protectedLocator, harness.artifact)),
     );
     yield* requireRemoteSyncContract(
-      Result.isFailure(protectedWithoutForce) && protectedWithoutForce.failure instanceof RemoteProtectedEnvError,
+      Result.isFailure(protectedWithoutForce) &&
+        protectedWithoutForce.failure instanceof RemoteProtectedEnvError,
       "protected env push requires explicit confirmation",
       protectedWithoutForce,
     );

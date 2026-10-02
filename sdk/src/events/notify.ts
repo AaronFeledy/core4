@@ -22,7 +22,10 @@ export type CommandInvocationCorrelation = typeof CommandInvocationCorrelation.T
  * publish; the renderer sanitizes again before `triggerNotification`.
  */
 export const NotifyDesktopEvent = Schema.TaggedStruct("notify.desktop", {
-  title: Schema.String.pipe(Schema.check(Schema.isMinLength(1)), Schema.check(Schema.isMaxLength(256))).annotate({
+  title: Schema.String.pipe(
+    Schema.check(Schema.isMinLength(1)),
+    Schema.check(Schema.isMaxLength(256)),
+  ).annotate({
     description: "Notification title (1..256 chars after schema decode).",
   }),
   body: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(4096)))).annotate({

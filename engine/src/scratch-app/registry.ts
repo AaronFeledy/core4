@@ -28,7 +28,10 @@ import { makeStateStore } from "@lando/state-store/service";
 
 const REGISTRY_VERSION = 1 as const;
 
-const ScratchSourceSchema = Schema.Union([Schema.Struct({ kind: Schema.Literal("fork") }), Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String })]);
+const ScratchSourceSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("fork") }),
+  Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String }),
+]);
 
 const RegistryEntrySchema = Schema.Struct({
   id: Schema.String,
@@ -203,7 +206,9 @@ export interface ScratchRegistryService {
   readonly get: (id: string) => Effect.Effect<ScratchRegistryEntry | undefined, ScratchAppError>;
 }
 
-export class ScratchRegistry extends Context.Service<ScratchRegistry, ScratchRegistryService>()("@lando/core/ScratchRegistry") {}
+export class ScratchRegistry extends Context.Service<ScratchRegistry, ScratchRegistryService>()(
+  "@lando/core/ScratchRegistry",
+) {}
 
 const openRegistryBucket = (
   privateFileAccess: PrivateFileAccess,

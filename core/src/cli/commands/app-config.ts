@@ -100,9 +100,14 @@ export const AppConfigResultSchema = Schema.Struct({
   app: Schema.optionalKey(Schema.String),
   source: Schema.optionalKey(Schema.Literal("resolved")),
   landofile: Schema.optionalKey(LandofileShape),
-  sources: Schema.optionalKey(Schema.Array(
-      Schema.Struct({ id: Schema.String, sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u))) }),
-    )),
+  sources: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.String,
+        sha256: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
+      }),
+    ),
+  ),
   ...ConfigWriteResultFields,
 });
 

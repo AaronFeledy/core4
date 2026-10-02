@@ -56,10 +56,12 @@ export const ROUTE_PRIORITY_MAX = ROUTE_PRIORITY_EXACT_BASE + ROUTE_PATH_WEIGHT_
  * Route plan — host-facing HTTP/TLS mapping.
  */
 export const RoutePlan = Schema.Struct({
-  priority: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(2))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 2))).annotate({
-    description:
-      "Planner-assigned router priority; higher wins. Priority 1 is reserved for diagnostics. Standalone routes default to 2.",
-  }),
+  priority: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(2)))
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 2)))
+    .annotate({
+      description:
+        "Planner-assigned router priority; higher wins. Priority 1 is reserved for diagnostics. Standalone routes default to 2.",
+    }),
   /** Host header pattern (`*.lndo.site`, `app.example.test`, …). */
   hostname: Schema.String,
   /** TLS scheme (`http`, `https`, `both`). */
@@ -75,13 +77,13 @@ export const RoutePlan = Schema.Struct({
   }),
   /** Planner-resolved service endpoint; proxy implementations never infer it. */
   backend: Schema.Struct({
-      service: ServiceName,
-      protocol: Schema.Literals(["http", "https"]),
-      port: PortNumber,
-      host: Schema.optionalKey(Schema.String).annotate({
-        description: "Host Traefik should dial when the backend is not on the managed shared network.",
-      }),
-    }).annotateKey({ description: "Planner-resolved service endpoint consumed by the route provider." }),
+    service: ServiceName,
+    protocol: Schema.Literals(["http", "https"]),
+    port: PortNumber,
+    host: Schema.optionalKey(Schema.String).annotate({
+      description: "Host Traefik should dial when the backend is not on the managed shared network.",
+    }),
+  }).annotateKey({ description: "Planner-resolved service endpoint consumed by the route provider." }),
 });
 export type RoutePlan = typeof RoutePlan.Type;
 
@@ -107,20 +109,29 @@ export const HealthcheckPlan = Schema.Struct({
 });
 export type HealthcheckPlan = typeof HealthcheckPlan.Type;
 
-export const ScannerConfig = Schema.Union([Schema.Literal(false), Schema.Struct({
+export const ScannerConfig = Schema.Union([
+  Schema.Literal(false),
+  Schema.Struct({
     path: Schema.optionalKey(Schema.String.pipe(Schema.check(Schema.isStartingWith("/")))).annotate({
       description: "URL path to probe, starting with a slash.",
     }),
-    okCodes: Schema.optionalKey(Schema.Array(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 100, maximum: 599 }))))).annotate({
+    okCodes: Schema.optionalKey(
+      Schema.Array(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 100, maximum: 599 })))),
+    ).annotate({
       description: "HTTP response status codes accepted as reachable.",
     }),
-    retries: Schema.optionalKey(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 20 })))).annotate({
+    retries: Schema.optionalKey(
+      Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 20 }))),
+    ).annotate({
       description: "Retry budget after the first attempt; N retries allow N+1 attempts.",
     }),
-    timeout: Schema.optionalKey(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 600000 })))).annotate({
+    timeout: Schema.optionalKey(
+      Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 600000 }))),
+    ).annotate({
       description: "Overall probe deadline in milliseconds, including all retry attempts.",
     }),
-  })]).annotate({
+  }),
+]).annotate({
   identifier: "ScannerConfig",
   title: "Scanner Config",
   description: "Post-start URL scan settings, or false to skip scanning.",
@@ -244,21 +255,24 @@ export type NetworkingPlan = typeof NetworkingPlan.Type;
 
 // Provider capabilities — the typed manifest of what a provider can do.
 
-export const HostProxyContainerTarget = Schema.Union([Schema.Struct({
+export const HostProxyContainerTarget = Schema.Union([
+  Schema.Struct({
     os: Schema.Literal("linux").annotateKey({
       description: "Container operating system.",
     }),
     arch: Schema.Literal("x64").annotateKey({
       description: "x64 container CPU architecture.",
     }),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     os: Schema.Literal("linux").annotateKey({
       description: "Container operating system.",
     }),
     arch: Schema.Literal("arm64").annotateKey({
       description: "arm64 container CPU architecture.",
     }),
-  })]).annotate({
+  }),
+]).annotate({
   identifier: "HostProxyContainerTarget",
   title: "Host Proxy Container Target",
   description: "Linux container architecture eligible for the host-proxy shim.",
@@ -266,9 +280,11 @@ export const HostProxyContainerTarget = Schema.Union([Schema.Struct({
 export type HostProxyContainerTarget = typeof HostProxyContainerTarget.Type;
 
 export const HostProxyGatewayHostname = Schema.String.pipe(
-  Schema.check(Schema.isPattern(HOST_PROXY_GATEWAY_HOSTNAME_PATTERN, {
-    message: "Expected a non-empty hostname without scheme, port, or path.",
-  })),
+  Schema.check(
+    Schema.isPattern(HOST_PROXY_GATEWAY_HOSTNAME_PATTERN, {
+      message: "Expected a non-empty hostname without scheme, port, or path.",
+    }),
+  ),
 ).annotate({
   identifier: "HostProxyGatewayHostname",
   title: "Host Proxy Gateway Hostname",
@@ -325,7 +341,9 @@ export const ProviderCapabilities = Schema.Struct({
   tlsCertificates: Schema.Literals(["native", "lando", "none"]),
   rootless: Schema.Boolean,
   privilegedServices: Schema.Boolean,
-  architectureEmulation: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
+  architectureEmulation: Schema.Boolean.pipe(
+    Schema.withDecodingDefaultKey(Effect.sync(() => false)),
+  ).annotate({
     title: "Architecture Emulation",
     description:
       "Whether the provider can run container images for a CPU architecture other than the host via emulation.",

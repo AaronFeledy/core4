@@ -66,7 +66,13 @@ const resolveRedactor = Effect.gen(function* () {
 
 const makeAttempt = (context: AttemptContext): Effect.Effect<AttemptOutcome> =>
   Effect.gen(function* () {
-    const completed = yield* Effect.timeoutOrElse(Effect.map(Effect.result(context.deps.exec(context.target, context.command)), (result) => result), { duration: Duration.seconds(context.timeoutSeconds), orElse: () => Effect.succeed((() => "timeout" as const)()) });
+    const completed = yield* Effect.timeoutOrElse(
+      Effect.map(Effect.result(context.deps.exec(context.target, context.command)), (result) => result),
+      {
+        duration: Duration.seconds(context.timeoutSeconds),
+        orElse: () => Effect.succeed((() => "timeout" as const)()),
+      },
+    );
 
     if (completed === "timeout") {
       yield* Ref.set(context.status, { _tag: "timeout" });

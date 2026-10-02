@@ -1,4 +1,4 @@
-import { type Context, Effect, Result, Fiber } from "effect";
+import { type Context, Effect, Fiber, Result } from "effect";
 
 import type { ManagedFileError } from "../errors/index.ts";
 import type {

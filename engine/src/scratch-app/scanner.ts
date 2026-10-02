@@ -27,7 +27,10 @@ export interface ScratchResourceScannerService {
   readonly pruneScratch: (id: string) => Effect.Effect<void, ScratchAppError>;
 }
 
-export class ScratchResourceScanner extends Context.Service<ScratchResourceScanner, ScratchResourceScannerService>()("@lando/core/ScratchResourceScanner") {}
+export class ScratchResourceScanner extends Context.Service<
+  ScratchResourceScanner,
+  ScratchResourceScannerService
+>()("@lando/core/ScratchResourceScanner") {}
 
 export const ScratchResourceScannerLive = Layer.effect(
   ScratchResourceScanner,

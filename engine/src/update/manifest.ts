@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Result, Layer, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 
 import { DownloaderLive } from "@lando/http-client/downloader";
 import { HttpClientLive } from "@lando/http-client/live";

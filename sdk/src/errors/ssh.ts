@@ -11,7 +11,13 @@ export class SshAgentUnavailableError extends Schema.TaggedError<SshAgentUnavail
   {
     message: Schema.String,
     mode: Schema.Literals(["sidecar", "host"]),
-    reason: Schema.Literals(["host-agent-not-found", "socket-missing", "capability-missing", "sidecar-not-running", "bridge-failed"]),
+    reason: Schema.Literals([
+      "host-agent-not-found",
+      "socket-missing",
+      "capability-missing",
+      "sidecar-not-running",
+      "bridge-failed",
+    ]),
     socketPath: Schema.optional(Schema.String),
     remediation: Schema.String,
   },

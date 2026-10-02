@@ -74,7 +74,10 @@ export interface ScratchLogsResult {
   readonly lines: ReadonlyArray<string>;
 }
 
-export const ScratchSourceResultSchema = Schema.Union([Schema.Struct({ kind: Schema.Literal("fork") }), Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String })]);
+export const ScratchSourceResultSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("fork") }),
+  Schema.Struct({ kind: Schema.Literal("recipe"), ref: Schema.String }),
+]);
 
 export const ScratchAppRefResultSchema = Schema.Struct({
   kind: Schema.Literals(["user", "global", "scratch"]),

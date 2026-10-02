@@ -7,7 +7,13 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 export const UpdateChannel = Schema.Literals(["stable", "next", "dev"]);
 export type UpdateChannel = typeof UpdateChannel.Type;
 
-export const UpdateManifestPlatform = Schema.Literals(["darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64", "windows-x64"]);
+export const UpdateManifestPlatform = Schema.Literals([
+  "darwin-x64",
+  "darwin-arm64",
+  "linux-x64",
+  "linux-arm64",
+  "windows-x64",
+]);
 export type UpdateManifestPlatform = typeof UpdateManifestPlatform.Type;
 
 export const UpdateManifestHttpsUrl = Schema.String.pipe(

@@ -216,9 +216,11 @@ export const AppPlan = Schema.Struct({
   fileSync: Schema.Array(FileSyncPlan),
   metadata: PlanMetadata,
   extensions: ProviderExtensionConfig,
-  router: Schema.optionalKey(Schema.Struct({
+  router: Schema.optionalKey(
+    Schema.Struct({
       enabled: Schema.Boolean.annotate({ description: "Whether shared routing is enabled for this app." }),
-    })).annotate({
+    }),
+  ).annotate({
     description:
       "Resolved router enablement; optional only because persisted cached plans predate this field.",
   }),
@@ -228,8 +230,10 @@ export const AppPlan = Schema.Struct({
    * path ensures these are running in the global app before bringing the app up.
    * Omitted when the app needs no global services.
    */
-  requires: Schema.optionalKey(Schema.Struct({
+  requires: Schema.optionalKey(
+    Schema.Struct({
       globalServices: Schema.Array(Schema.String),
-    })),
+    }),
+  ),
 });
 export type AppPlan = typeof AppPlan.Type;

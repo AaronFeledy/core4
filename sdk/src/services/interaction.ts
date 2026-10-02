@@ -76,4 +76,6 @@ export interface InteractionServiceShape {
  * detection, and secret masking. Available at bootstrap level `minimal`,
  * host/test-overridable, and a plugin manifest contribution surface.
  */
-export class InteractionService extends Context.Service<InteractionService, InteractionServiceShape>()("@lando/core/InteractionService") {}
+export class InteractionService extends Context.Service<InteractionService, InteractionServiceShape>()(
+  "@lando/core/InteractionService",
+) {}

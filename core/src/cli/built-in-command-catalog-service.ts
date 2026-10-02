@@ -6,7 +6,10 @@ export type BuiltInCommandCatalogService = {
   readonly entries: ReadonlyArray<BuiltInCommandEntry>;
 };
 
-export class BuiltInCommandCatalog extends Context.Service<BuiltInCommandCatalog, BuiltInCommandCatalogService>()("@lando/core/BuiltInCommandCatalog") {}
+export class BuiltInCommandCatalog extends Context.Service<
+  BuiltInCommandCatalog,
+  BuiltInCommandCatalogService
+>()("@lando/core/BuiltInCommandCatalog") {}
 
 export const makeBuiltInCommandCatalogLive = (
   entries: ReadonlyArray<BuiltInCommandEntry>,

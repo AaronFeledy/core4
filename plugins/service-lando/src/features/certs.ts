@@ -21,9 +21,11 @@ const LandoCertsFeatureConfigSchema = Schema.Struct({
   sans: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => []))),
   caId: Schema.optionalKey(Schema.String),
 }).pipe(
-  Schema.check(Schema.makeFilter((config) => config.keyPath === undefined || config.certPath !== undefined, {
-    message: "lando.certs keyPath requires certPath.",
-  })),
+  Schema.check(
+    Schema.makeFilter((config) => config.keyPath === undefined || config.certPath !== undefined, {
+      message: "lando.certs keyPath requires certPath.",
+    }),
+  ),
 );
 type LandoCertsFeatureConfig = typeof LandoCertsFeatureConfigSchema.Type;
 

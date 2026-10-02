@@ -18,7 +18,10 @@ interface EventCommandExecutorResult {
   readonly stderr: string;
 }
 
-export class EventCommandExecutor extends Context.Service<EventCommandExecutor, {
+export class EventCommandExecutor extends Context.Service<
+  EventCommandExecutor,
+  {
     readonly validate?: (input: EventCommandExecutorInput) => Effect.Effect<void, unknown>;
     readonly run: (input: EventCommandExecutorInput) => Effect.Effect<EventCommandExecutorResult, unknown>;
-  }>()("@lando/engine/EventCommandExecutor") {}
+  }
+>()("@lando/engine/EventCommandExecutor") {}

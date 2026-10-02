@@ -1,6 +1,6 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 import { Cause, Duration, Effect, Fiber, Schema } from "effect";
+import { TestClock } from "effect/testing";
 
 import {
   type ClassifyFn,
@@ -28,10 +28,7 @@ const spec = (policy: RetryPolicy, classify?: ClassifyFn): ProbeSpec => ({
  * Run a probe under TestClock by forking it, advancing virtual time, then
  * joining — all inside one program so the fiber and the clock share a runtime.
  */
-const runUnderClock = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  advance: Duration.Input,
-): Promise<A> =>
+const runUnderClock = <A, E>(effect: Effect.Effect<A, E, never>, advance: Duration.Input): Promise<A> =>
   Effect.runPromise(
     Effect.gen(function* () {
       const fiber = yield* Effect.forkChild(effect);

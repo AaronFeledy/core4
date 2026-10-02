@@ -1,4 +1,4 @@
-import { Effect, Result, Layer, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 
 import {
   NoProviderInstalledError,

@@ -118,19 +118,25 @@ const makeAttempt = (
 ): Effect.Effect<ProbeOutcome> =>
   Effect.gen(function* () {
     const timeoutMs = Math.min(config.timeoutSeconds * 1000, config.deadlineMs ?? Number.POSITIVE_INFINITY);
-    const completed = yield* Effect.timeoutOrElse(Effect.map(Effect.result(
-        Effect.scoped(
-          deps
-            .stream({
-              url,
-              method: "GET",
-              timeoutMs,
-              redirect: config.maxRedirects > 0 ? "follow" : "manual",
-              callerId: "url-scanner",
-            })
-            .pipe(Effect.map((response) => response.status)),
+    const completed = yield* Effect.timeoutOrElse(
+      Effect.map(
+        Effect.result(
+          Effect.scoped(
+            deps
+              .stream({
+                url,
+                method: "GET",
+                timeoutMs,
+                redirect: config.maxRedirects > 0 ? "follow" : "manual",
+                callerId: "url-scanner",
+              })
+              .pipe(Effect.map((response) => response.status)),
+          ),
         ),
-      ), (result) => result), { duration: Duration.millis(timeoutMs), orElse: () => Effect.succeed((() => "timeout" as const)()) });
+        (result) => result,
+      ),
+      { duration: Duration.millis(timeoutMs), orElse: () => Effect.succeed((() => "timeout" as const)()) },
+    );
 
     if (completed === "timeout") {
       yield* Ref.set(status, { _tag: "timeout" });

@@ -19,7 +19,9 @@ export interface GlobalDistResult {
   readonly serviceIds: ReadonlyArray<string>;
 }
 
-export class GlobalAppService extends Context.Service<GlobalAppService, {
+export class GlobalAppService extends Context.Service<
+  GlobalAppService,
+  {
     readonly id: "global";
     readonly root: Effect.Effect<AbsolutePath, GlobalAppError>;
     readonly ensureRoot: Effect.Effect<void, GlobalAppError, Scope.Scope>;
@@ -53,4 +55,5 @@ export class GlobalAppService extends Context.Service<GlobalAppService, {
       GlobalDistResult,
       GlobalAppError | GlobalDistConflictError
     >;
-  }>()("@lando/core/GlobalAppService") {}
+  }
+>()("@lando/core/GlobalAppService") {}

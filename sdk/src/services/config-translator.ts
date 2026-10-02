@@ -27,7 +27,9 @@ export interface ConfigTranslatorShape {
   ) => Effect.Effect<ConfigTranslateEncodeResult, ConfigTranslateError, never>;
 }
 
-export class ConfigTranslator extends Context.Service<ConfigTranslator, ConfigTranslatorShape>()("@lando/core/ConfigTranslator") {}
+export class ConfigTranslator extends Context.Service<ConfigTranslator, ConfigTranslatorShape>()(
+  "@lando/core/ConfigTranslator",
+) {}
 
 /**
  * Registry of plugin-contributed config translators. `list` resolves every
@@ -47,4 +49,7 @@ export interface ConfigTranslatorRegistryShape {
   >;
 }
 
-export class ConfigTranslatorRegistry extends Context.Service<ConfigTranslatorRegistry, ConfigTranslatorRegistryShape>()("@lando/core/ConfigTranslatorRegistry") {}
+export class ConfigTranslatorRegistry extends Context.Service<
+  ConfigTranslatorRegistry,
+  ConfigTranslatorRegistryShape
+>()("@lando/core/ConfigTranslatorRegistry") {}

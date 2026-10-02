@@ -44,16 +44,19 @@ export const AgentSocketProviderCapabilities = Schema.Struct({
 });
 export type AgentSocketProviderCapabilities = typeof AgentSocketProviderCapabilities.Type;
 
-export const AgentSocketUpstream = Schema.Union([Schema.TaggedStruct("unix", {
+export const AgentSocketUpstream = Schema.Union([
+  Schema.TaggedStruct("unix", {
     _tag: Schema.tag("unix").annotate({ description: "Unix socket upstream discriminator." }),
     path: Schema.String.annotate({ description: "Host Unix socket path carrying the agent byte stream." }),
-  }), Schema.TaggedStruct("loopback-tcp", {
+  }),
+  Schema.TaggedStruct("loopback-tcp", {
     _tag: Schema.tag("loopback-tcp").annotate({ description: "Loopback TCP upstream discriminator." }),
     port: PortNumber.annotate({ description: "Host loopback TCP port carrying the agent byte stream." }),
     token: Schema.optionalKey(Schema.String).annotate({
       description: "Authentication token required by the loopback broker before relaying agent bytes.",
     }),
-  })]);
+  }),
+]);
 export type AgentSocketUpstream = typeof AgentSocketUpstream.Type;
 
 export const AgentSocketBridgeInput = Schema.Struct({
@@ -74,19 +77,22 @@ export const AgentSocketBridgeInput = Schema.Struct({
 });
 export type AgentSocketBridgeInput = typeof AgentSocketBridgeInput.Type;
 
-export const AgentSocketBridgeResult = Schema.Union([Schema.TaggedStruct("bind-directory", {
+export const AgentSocketBridgeResult = Schema.Union([
+  Schema.TaggedStruct("bind-directory", {
     _tag: Schema.tag("bind-directory").annotate({
       description: "Directory-backed agent socket delivery discriminator.",
     }),
     directory: AbsolutePath.annotate({
       description: "Provider-visible directory containing the named agent socket, mounted into app services.",
     }),
-  }), Schema.TaggedStruct("volume", {
+  }),
+  Schema.TaggedStruct("volume", {
     _tag: Schema.tag("volume").annotate({
       description: "Volume-backed agent socket delivery discriminator.",
     }),
     volume: Schema.String.annotate({
       description: "Provider-owned volume containing the named agent socket, mounted into app services.",
     }),
-  })]);
+  }),
+]);
 export type AgentSocketBridgeResult = typeof AgentSocketBridgeResult.Type;

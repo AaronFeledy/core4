@@ -130,7 +130,9 @@ describe("tunnel SDK schemas", () => {
       ),
     ).toBe(true);
     expect(
-      Result.isFailure(Schema.decodeUnknownResult(TunnelTarget)({ _tag: "service", service: "web", port: 0 })),
+      Result.isFailure(
+        Schema.decodeUnknownResult(TunnelTarget)({ _tag: "service", service: "web", port: 0 }),
+      ),
     ).toBe(true);
     expect(
       Result.isFailure(
@@ -191,9 +193,9 @@ describe("tunnel SDK schemas", () => {
         }),
       ),
     ).toBe(true);
-    expect(Result.isFailure(Schema.decodeUnknownResult(TunnelStatusRequest)({ sessionId: "tun_1\nnext" }))).toBe(
-      true,
-    );
+    expect(
+      Result.isFailure(Schema.decodeUnknownResult(TunnelStatusRequest)({ sessionId: "tun_1\nnext" })),
+    ).toBe(true);
     expect(
       Result.isFailure(
         Schema.decodeUnknownResult(TunnelSession)({

@@ -37,8 +37,7 @@ export const startAppForTarget = (
   withAppMutationLock(
     appLockTarget(target.plan),
     Effect.gen(function* () {
-      const context =
-        yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
+      const context = yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
       const registry = yield* RuntimeProviderRegistry;
       const stateStore = yield* StateStore;
       const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);

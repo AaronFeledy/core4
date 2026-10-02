@@ -9,7 +9,7 @@ import {
   ManagedFileTransactionGuard,
   StateStore,
 } from "@lando/sdk/services";
-import { Context, Effect, Result, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 import { withResolvedCwd } from "../src/app-resolution.ts";
 import { loadLandofileFile, loadLandofileLayers, makeLandofileServiceLive } from "../src/service.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";

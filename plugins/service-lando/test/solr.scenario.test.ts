@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Result, Schema, Stream } from "effect";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import { PluginRegistryLive } from "@lando/engine/plugins/registry";

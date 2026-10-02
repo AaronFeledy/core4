@@ -30,9 +30,11 @@ export const RecipeDecomposeInput = Schema.Struct({
   secrets: Schema.Record(Schema.String, ConfigTranslateSecretReference).annotate({
     description: "Approved secret references or named init-only sinks, keyed by prompt name.",
   }),
-  services: Schema.optionalKey(RecipeServiceMap.annotate({
+  services: Schema.optionalKey(
+    RecipeServiceMap.annotate({
       description: "Generated to current service names, when the caller already renamed services.",
-    })),
+    }),
+  ),
 }).annotate(metadata("RecipeDecomposeInput", "Merged recipe identity and nonsecret options to decompose."));
 export type RecipeDecomposeInput = typeof RecipeDecomposeInput.Type;
 
@@ -46,5 +48,7 @@ export const RecipeDecomposeResult = Schema.Struct({
   provenance: LandofileRecipeProvenance.annotate({
     description: "Inert provenance recorded alongside the generated authoring data.",
   }),
-}).annotate(metadata("RecipeDecomposeResult", "Authoring fragment and provenance produced by one decomposition."));
+}).annotate(
+  metadata("RecipeDecomposeResult", "Authoring fragment and provenance produced by one decomposition."),
+);
 export type RecipeDecomposeResult = typeof RecipeDecomposeResult.Type;

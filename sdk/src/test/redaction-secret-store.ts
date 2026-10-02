@@ -1,4 +1,4 @@
-import { Cause, Effect, Result, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Option, Result } from "effect";
 
 import {
   SecretNotFoundError,

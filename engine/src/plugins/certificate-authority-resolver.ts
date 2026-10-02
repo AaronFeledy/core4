@@ -1,4 +1,4 @@
-import { Context, Effect, Result, Layer, Scope } from "effect";
+import { Context, Effect, Layer, Result, Scope } from "effect";
 
 import {
   AmbiguousCertificateAuthoritiesError,
@@ -74,7 +74,10 @@ export interface CertificateAuthorityResolverShape {
   >;
 }
 
-export class CertificateAuthorityResolver extends Context.Service<CertificateAuthorityResolver, CertificateAuthorityResolverShape>()("@lando/core/private/CertificateAuthorityResolver") {}
+export class CertificateAuthorityResolver extends Context.Service<
+  CertificateAuthorityResolver,
+  CertificateAuthorityResolverShape
+>()("@lando/core/private/CertificateAuthorityResolver") {}
 
 const isModuleRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null;
@@ -127,7 +130,9 @@ export const CertificateAuthorityResolverLive = Layer.effect(
     const acquire: Effect.Effect<
       Context.Service.Shape<typeof CertificateAuthority>,
       SelectionError | PluginLoadError
-    > = Result.match(selected, { onFailure: Effect.fail, onSuccess: (selection) =>
+    > = Result.match(selected, {
+      onFailure: Effect.fail,
+      onSuccess: (selection) =>
         loadContributionLayer(selection).pipe(
           Effect.flatMap((layer) =>
             Layer.buildWithScope(
@@ -144,7 +149,8 @@ export const CertificateAuthorityResolverLive = Layer.effect(
             ),
           ),
           Effect.map((context) => Context.get(context, CertificateAuthority)),
-        ) });
+        ),
+    });
     const cached = yield* Effect.cached(acquire);
     return { resolve: cached };
   }),

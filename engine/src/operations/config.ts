@@ -85,10 +85,17 @@ export const ConfigResultSchema = Schema.Struct({
   value: Schema.optionalKey(Schema.Unknown),
   path: Schema.optionalKey(Schema.String),
   format: Schema.Union([Schema.Literal("json"), Schema.Literal("yaml"), Schema.Literal("table")]),
-  telemetry: Schema.optionalKey(Schema.Struct({
+  telemetry: Schema.optionalKey(
+    Schema.Struct({
       enabled: Schema.Boolean,
-      source: Schema.Union([Schema.Literal("flag"), Schema.Literal("env"), Schema.Literal("config"), Schema.Literal("default")]),
-    })),
+      source: Schema.Union([
+        Schema.Literal("flag"),
+        Schema.Literal("env"),
+        Schema.Literal("config"),
+        Schema.Literal("default"),
+      ]),
+    }),
+  ),
   changed: Schema.optionalKey(Schema.Boolean),
   dryRun: Schema.optionalKey(Schema.Boolean),
   valid: Schema.optionalKey(Schema.Boolean),

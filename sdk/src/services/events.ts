@@ -85,7 +85,9 @@ export interface EventServiceShape {
   ) => Effect.Effect<ReadonlyArray<EventFor<Name>>, never>;
 }
 
-export class EventService extends Context.Service<EventService, EventServiceShape>()("@lando/core/EventService") {}
+export class EventService extends Context.Service<EventService, EventServiceShape>()(
+  "@lando/core/EventService",
+) {}
 
 /**
  * Logger — structured logging through Effect.
@@ -96,7 +98,9 @@ export class EventService extends Context.Service<EventService, EventServiceShap
  * This tag is the *Lando* logger service — a thin wrapper that selects which
  * Effect Logger configuration to install.
  */
-export class Logger extends Context.Service<Logger, {
+export class Logger extends Context.Service<
+  Logger,
+  {
     readonly debug: (
       message: string,
       data?: Readonly<Record<string, unknown>>,
@@ -113,4 +117,5 @@ export class Logger extends Context.Service<Logger, {
       message: string,
       data?: Readonly<Record<string, unknown>>,
     ) => Effect.Effect<void, EventError>;
-  }>()("@lando/core/Logger") {}
+  }
+>()("@lando/core/Logger") {}

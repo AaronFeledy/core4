@@ -25,13 +25,17 @@ const failure = (message: string) =>
       "Provide the canonical app root and an authenticated loopback TCP broker; run `lando doctor --provider=docker` and retry.",
   });
 const Identifier = Schema.fromJsonString(Schema.Struct({ Id: Schema.NonEmptyString }));
-const ExecStatus = Schema.fromJsonString(Schema.Struct({ Running: Schema.Boolean, ExitCode: Schema.NullOr(Schema.Int) }));
+const ExecStatus = Schema.fromJsonString(
+  Schema.Struct({ Running: Schema.Boolean, ExitCode: Schema.NullOr(Schema.Int) }),
+);
 
 const LabelRecord = Schema.NullOr(Schema.Record(Schema.String, Schema.String));
 const VolumeInspect = Schema.fromJsonString(Schema.Struct({ Labels: Schema.optionalKey(LabelRecord) }));
-const ContainerInspect = Schema.fromJsonString(Schema.Struct({
+const ContainerInspect = Schema.fromJsonString(
+  Schema.Struct({
     Config: Schema.optionalKey(Schema.Struct({ Labels: Schema.optionalKey(LabelRecord) })),
-  }));
+  }),
+);
 type RelayPresence = "absent" | "owned" | "foreign";
 
 const ownedRelayLabels = (
@@ -96,7 +100,10 @@ export const makeDockerDesktopAgentSocketBridge =
         return yield* Effect.fail(failure("Docker API requests are unavailable."));
       const request = (req: EngineHttpRequest) =>
         apiRequest(req).pipe(
-          Effect.timeoutOrElse({ duration: Duration.seconds(15), orElse: () => Effect.fail((() => failure("Docker agent relay request timed out."))()) }),
+          Effect.timeoutOrElse({
+            duration: Duration.seconds(15),
+            orElse: () => Effect.fail((() => failure("Docker agent relay request timed out."))()),
+          }),
           Effect.mapError(() => failure("Docker agent relay API request failed.")),
         );
       const checked = (req: EngineHttpRequest) =>

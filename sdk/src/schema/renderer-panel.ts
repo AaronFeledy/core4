@@ -33,9 +33,11 @@ export type RendererPanelId = typeof RendererPanelId.Type;
 export const RendererPanelWatch = Schema.Array(Schema.String).pipe(
   Schema.check(Schema.isMinLength(1)),
   Schema.check(Schema.isMaxLength(32)),
-  Schema.check(Schema.makeFilter((tags) => new Set(tags).size === tags.length, {
-    message: "RendererPanelWatch entries must be unique",
-  })),
+  Schema.check(
+    Schema.makeFilter((tags) => new Set(tags).size === tags.length, {
+      message: "RendererPanelWatch entries must be unique",
+    }),
+  ),
 );
 export type RendererPanelWatch = typeof RendererPanelWatch.Type;
 
@@ -91,10 +93,17 @@ const encodedByteLength = (text: string): number => new TextEncoder().encode(tex
  * Bounded rows-of-spans: ≤8 rows, ≤32 spans/row, ≤4096 UTF-8 text bytes total.
  * Over-bound results fail decode (dropped); never clipped or truncated.
  */
-export const PanelView = Schema.Array(Schema.Array(StyledSpan).pipe(Schema.check(Schema.isMaxLength(32)))).pipe(
+export const PanelView = Schema.Array(
+  Schema.Array(StyledSpan).pipe(Schema.check(Schema.isMaxLength(32))),
+).pipe(
   Schema.check(Schema.isMaxLength(8)),
-  Schema.check(Schema.makeFilter((rows) =>
-      rows.reduce((n, row) => n + row.reduce((m, span) => m + encodedByteLength(span.text), 0), 0) <= 4096, { message: "PanelView encoded text exceeds the 4096 UTF-8 byte total limit" })),
+  Schema.check(
+    Schema.makeFilter(
+      (rows) =>
+        rows.reduce((n, row) => n + row.reduce((m, span) => m + encodedByteLength(span.text), 0), 0) <= 4096,
+      { message: "PanelView encoded text exceeds the 4096 UTF-8 byte total limit" },
+    ),
+  ),
 );
 export type PanelView = typeof PanelView.Type;
 

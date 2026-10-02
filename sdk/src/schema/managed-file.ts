@@ -15,7 +15,17 @@ import { AbsolutePath, PortablePath } from "./primitives.ts";
  * `landofile` round-trip structured content through the shared codec module;
  * `toml`/`ini` are reserved and fail with a `format` remediation until 4.x.
  */
-export const FileFormat = Schema.Literals(["text", "env", "json", "yaml", "toml", "ini", "landofile", "javascript", "typescript"]);
+export const FileFormat = Schema.Literals([
+  "text",
+  "env",
+  "json",
+  "yaml",
+  "toml",
+  "ini",
+  "landofile",
+  "javascript",
+  "typescript",
+]);
 export type FileFormat = typeof FileFormat.Type;
 
 const TextContentSource = Schema.Struct({
@@ -51,7 +61,12 @@ const InlineContentSource = Schema.Struct({
  * `text` (verbatim), `structured` (codec-encoded data), `template` (a template
  * file rendered before encode), and `inline` (an inline template string).
  */
-export const ContentSource = Schema.Union([TextContentSource, StructuredContentSource, TemplateContentSource, InlineContentSource]);
+export const ContentSource = Schema.Union([
+  TextContentSource,
+  StructuredContentSource,
+  TemplateContentSource,
+  InlineContentSource,
+]);
 export type ContentSource = typeof ContentSource.Type;
 
 /**
@@ -80,7 +95,14 @@ export type ManagedFile = typeof ManagedFile.Type;
  * in-place user edit (`conflict`), or a marker-removed file recorded as adopted
  * (`adopt-detected`).
  */
-export const ManagedFileAction = Schema.Literals(["create", "update", "skip-unchanged", "skip-adopted", "conflict", "adopt-detected"]);
+export const ManagedFileAction = Schema.Literals([
+  "create",
+  "update",
+  "skip-unchanged",
+  "skip-adopted",
+  "conflict",
+  "adopt-detected",
+]);
 export type ManagedFileAction = typeof ManagedFileAction.Type;
 
 /**

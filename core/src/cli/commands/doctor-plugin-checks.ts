@@ -61,7 +61,9 @@ export interface PluginDoctorRunOutcome {
  */
 const PROBE_BUDGET_MS = 5_000;
 const MAX_REPORTS_PER_CHECK = 32;
-const PluginDoctorReports = Schema.Array(PluginDoctorReport).pipe(Schema.check(Schema.isMaxLength(MAX_REPORTS_PER_CHECK)));
+const PluginDoctorReports = Schema.Array(PluginDoctorReport).pipe(
+  Schema.check(Schema.isMaxLength(MAX_REPORTS_PER_CHECK)),
+);
 
 class PluginDoctorReportInvalidError extends Schema.TaggedError<PluginDoctorReportInvalidError>()(
   "PluginDoctorReportInvalidError",

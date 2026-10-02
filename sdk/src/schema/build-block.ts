@@ -70,7 +70,12 @@ const BuildBlockObjectFields = {
   dockerfile: Schema.optionalKey(Schema.String),
   dockerfile_inline: Schema.optionalKey(Schema.String),
   dockerfileInline: Schema.optionalKey(Schema.String),
-  args: Schema.optionalKey(Schema.Union([Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Null])), Schema.Array(Schema.String)])),
+  args: Schema.optionalKey(
+    Schema.Union([
+      Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Null])),
+      Schema.Array(Schema.String),
+    ]),
+  ),
   cache_from: Schema.optionalKey(Schema.Unknown),
   cache_to: Schema.optionalKey(Schema.Unknown),
   entitlements: Schema.optionalKey(Schema.Unknown),
@@ -93,8 +98,13 @@ const BuildBlockObjectFields = {
   ulimits: Schema.optionalKey(Schema.Unknown),
 } as const;
 
-const BuildBlockObjectFrom = Schema.Struct(BuildBlockObjectFields).pipe(
-  (self) => Schema.StructWithRest(self, [Schema.Record(Schema.TemplateLiteral([COMPOSE_BUILD_EXTENSION_KEY_PREFIX, Schema.String]), Schema.Unknown)]),
+const BuildBlockObjectFrom = Schema.Struct(BuildBlockObjectFields).pipe((self) =>
+  Schema.StructWithRest(self, [
+    Schema.Record(
+      Schema.TemplateLiteral([COMPOSE_BUILD_EXTENSION_KEY_PREFIX, Schema.String]),
+      Schema.Unknown,
+    ),
+  ]),
 );
 
 const BUILD_BLOCK_DESCRIPTION =
@@ -218,13 +228,21 @@ const encodeBuildBlock = (input: BuildBlockShape): BuildBlockInput => {
   };
 };
 
-export const BuildBlock = BuildBlockFrom.pipe(Schema.decodeTo(BuildBlockCanonical, SchemaTransformation.transformEffect({ decode: (input) => {
-    try {
-      return Effect.succeed(decodeBuildBlock(input));
-    } catch (error) {
-      if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
-      throw error;
-    }
-  }, encode: (input) => Effect.succeed(encodeBuildBlock(input)) }))).annotate({
+export const BuildBlock = BuildBlockFrom.pipe(
+  Schema.decodeTo(
+    BuildBlockCanonical,
+    SchemaTransformation.transformEffect({
+      decode: (input) => {
+        try {
+          return Effect.succeed(decodeBuildBlock(input));
+        } catch (error) {
+          if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
+          throw error;
+        }
+      },
+      encode: (input) => Effect.succeed(encodeBuildBlock(input)),
+    }),
+  ),
+).annotate({
   description: BUILD_BLOCK_DESCRIPTION,
 });

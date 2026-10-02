@@ -1,10 +1,10 @@
-import { SchemaIssue } from "effect";
 /**
  * Validates discovered Landofile layers against `LandofileShape` without
  * running translators, provider probes, or runtime capability scanners.
  * Unknown keys remain structured lint violations rather than runtime errors.
  */
 import { dirname } from "node:path";
+import { SchemaIssue } from "effect";
 
 import { Effect, Result, Schema } from "effect";
 

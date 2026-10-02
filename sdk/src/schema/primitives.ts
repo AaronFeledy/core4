@@ -19,7 +19,10 @@ export const PortablePath = Schema.String.pipe(Schema.brand("PortablePath"));
 export type PortablePath = typeof PortablePath.Type;
 
 /** Integer TCP/UDP port in the inclusive IANA range. */
-export const PortNumber = Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 })));
+export const PortNumber = Schema.Number.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isBetween({ minimum: 1, maximum: 65535 })),
+);
 export type PortNumber = typeof PortNumber.Type;
 
 /**
@@ -31,7 +34,9 @@ export const CONTAINER_USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-
 
 export const isContainerUser = (value: string): boolean => CONTAINER_USER_PATTERN.test(value);
 
-export const ContainerUser = Schema.String.pipe(Schema.check(Schema.isPattern(CONTAINER_USER_PATTERN))).annotate({
+export const ContainerUser = Schema.String.pipe(
+  Schema.check(Schema.isPattern(CONTAINER_USER_PATTERN)),
+).annotate({
   description:
     'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.',
 });
@@ -75,7 +80,17 @@ export const hostPlatformFamily = (platform: HostPlatform): HostPlatformFamily =
 export const HostArchitecture = Schema.Literals(["x64", "arm64"]);
 export type HostArchitecture = typeof HostArchitecture.Type;
 
-export const BootstrapLevel = Schema.Literals(["none", "minimal", "plugins", "commands", "tooling", "provider", "global", "scratch", "app"]);
+export const BootstrapLevel = Schema.Literals([
+  "none",
+  "minimal",
+  "plugins",
+  "commands",
+  "tooling",
+  "provider",
+  "global",
+  "scratch",
+  "app",
+]);
 export type BootstrapLevel = typeof BootstrapLevel.Type;
 
 export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {

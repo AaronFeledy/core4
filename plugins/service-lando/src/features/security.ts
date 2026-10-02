@@ -15,7 +15,9 @@ const TRUST_STORE_COMMAND =
 const CaDescriptor = Schema.Struct({
   path: Schema.String,
   digest: Schema.String.pipe(
-    Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u, { message: "Expected a lowercase SHA-256 hex digest." })),
+    Schema.check(
+      Schema.isPattern(/^[0-9a-f]{64}$/u, { message: "Expected a lowercase SHA-256 hex digest." }),
+    ),
   ),
 });
 

@@ -25,7 +25,9 @@ export interface RedactionServiceShape {
   ) => Effect.Effect<Redactor, never>;
 }
 
-export class RedactionService extends Context.Service<RedactionService, RedactionServiceShape>()("@lando/core/RedactionService") {}
+export class RedactionService extends Context.Service<RedactionService, RedactionServiceShape>()(
+  "@lando/core/RedactionService",
+) {}
 
 const nonEmpty = (value: string | undefined): value is string =>
   value !== undefined && value.trim().length > 0;

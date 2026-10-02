@@ -58,7 +58,9 @@ export const DataStorePlan = Schema.Struct({
   name: Schema.String,
   scope: StorageScope,
   /** Storage kind; `cache` stores are cross-app shared dependency caches. */
-  kind: Schema.Literals(["data", "cache"]).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "data" as const))),
+  kind: Schema.Literals(["data", "cache"]).pipe(
+    Schema.withDecodingDefaultKey(Effect.sync(() => "data" as const)),
+  ),
   /** Cache identity when `kind` is `cache`. */
   key: Schema.optionalKey(Schema.String),
   /** Driver (provider-specific; `null` = default). */

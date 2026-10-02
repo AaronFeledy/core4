@@ -1,4 +1,4 @@
-import { Duration, Effect, Result, Fiber, type Scope } from "effect";
+import { Duration, Effect, Fiber, Result, type Scope } from "effect";
 
 import type { HttpRequest } from "../schema/index.ts";
 import type { HttpClientShape, LandoEvent } from "../services/index.ts";

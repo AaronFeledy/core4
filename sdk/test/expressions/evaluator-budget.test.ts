@@ -35,7 +35,9 @@ const expectBudgetFailure = (
 describe("expression evaluation budgets", () => {
   test("options scope resolves from the supplied context", () => {
     const context = Schema.decodeUnknownSync(ExpressionContext)({ options: { db: "mysql" } });
-    expect(evaluateTemplateEither(parseTemplate("{{ options.db }}"), context)).toEqual(Result.succeed("mysql"));
+    expect(evaluateTemplateEither(parseTemplate("{{ options.db }}"), context)).toEqual(
+      Result.succeed("mysql"),
+    );
   });
 
   test("collection budget rejects an oversized range", () => {

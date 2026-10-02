@@ -51,13 +51,15 @@ const ComposeVolumeEntry = Schema.Struct({
 });
 export type ComposeVolumeEntry = typeof ComposeVolumeEntry.Type;
 
-const ComposeVolumeCanonicalInput = ComposeVolumeEntry.pipe(Schema.fieldsAssign({
+const ComposeVolumeCanonicalInput = ComposeVolumeEntry.pipe(
+  Schema.fieldsAssign({
     read_only: Forbidden,
     volume: Forbidden,
     bind: Forbidden,
     consistency: Forbidden,
     image: Forbidden,
-  }));
+  }),
+);
 
 const isPathLikeSource = (source: string): boolean =>
   source.startsWith(".") ||
@@ -203,20 +205,29 @@ const encodeLongVolume = (entry: ComposeVolumeEntry): typeof ComposeVolumeLongIn
 });
 
 export const ComposeVolumesField = Schema.Array(
-  Schema.Union([Schema.String, ComposeVolumeLongInput, ComposeVolumeCanonicalInput]).pipe(Schema.decodeTo(ComposeVolumeEntry, SchemaTransformation.transformEffect({ decode: (input, _options) => { 
-        if (typeof input === "string") {
-          const failure = shortVolumeFailure(input);
+  Schema.Union([Schema.String, ComposeVolumeLongInput, ComposeVolumeCanonicalInput]).pipe(
+    Schema.decodeTo(
+      ComposeVolumeEntry,
+      SchemaTransformation.transformEffect({
+        decode: (input, _options) => {
+          if (typeof input === "string") {
+            const failure = shortVolumeFailure(input);
+            return failure === undefined
+              ? Effect.succeed(parseShortVolume(input))
+              : Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, input));
+          }
+          const failure = longVolumeFailure(input);
+          if (failure !== undefined)
+            return Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, input));
+          return Effect.succeed(decodeLongVolume(input));
+        },
+        encode: (entry, _options) => {
+          const failure = longVolumeFailure(entry);
           return failure === undefined
-            ? Effect.succeed(parseShortVolume(input))
-            : Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, input));
-        }
-        const failure = longVolumeFailure(input);
-        if (failure !== undefined) return Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, input));
-        return Effect.succeed(decodeLongVolume(input));
-       }, encode: (entry, _options) => { 
-        const failure = longVolumeFailure(entry);
-        return failure === undefined
-          ? Effect.succeed(encodeLongVolume(entry))
-          : Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, entry));
-       } }))),
+            ? Effect.succeed(encodeLongVolume(entry))
+            : Effect.fail(new SchemaIssue.InvalidValue({ message: failure }, entry));
+        },
+      }),
+    ),
+  ),
 );

@@ -256,7 +256,8 @@ export const executeDbCommand = (deps: SqlCommandDeps, input: DbCommandInput) =>
           retentionApplied = false;
           break;
         }
-        if (prunePolicy === undefined) return yield* Effect.die(new Error("retention policy was not resolved"));
+        if (prunePolicy === undefined)
+          return yield* Effect.die(new Error("retention policy was not resolved"));
         prunedSnapshotIds = yield* deps.pruneSnapshots(prunePolicy);
         retentionApplied = true;
         break;

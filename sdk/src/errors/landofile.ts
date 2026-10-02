@@ -185,7 +185,14 @@ const versionConstraintProvenance = (
     order: Schema.Literal(order),
   });
 
-const VersionConstraintProvenance = Schema.Union([versionConstraintProvenance("base", 0), versionConstraintProvenance("dist", 1), versionConstraintProvenance("upstream", 2), versionConstraintProvenance("canonical", 3), versionConstraintProvenance("local", 4), versionConstraintProvenance("user", 5)]);
+const VersionConstraintProvenance = Schema.Union([
+  versionConstraintProvenance("base", 0),
+  versionConstraintProvenance("dist", 1),
+  versionConstraintProvenance("upstream", 2),
+  versionConstraintProvenance("canonical", 3),
+  versionConstraintProvenance("local", 4),
+  versionConstraintProvenance("user", 5),
+]);
 
 /**
  * The running Lando core version does not satisfy the top-level
@@ -268,7 +275,16 @@ export class LandofileIncludeError extends Schema.TaggedError<LandofileIncludeEr
   {
     message: Schema.String,
     source: Schema.String,
-    kind: Schema.Literals(["source-unresolved", "fetch-failed", "parse-failed", "forbidden-field", "outside-root", "cycle", "max-depth", "subpath-invalid"]),
+    kind: Schema.Literals([
+      "source-unresolved",
+      "fetch-failed",
+      "parse-failed",
+      "forbidden-field",
+      "outside-root",
+      "cycle",
+      "max-depth",
+      "subpath-invalid",
+    ]),
     remediation: Schema.String,
   },
 ) {}

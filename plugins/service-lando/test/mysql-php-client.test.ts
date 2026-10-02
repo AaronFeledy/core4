@@ -7,13 +7,15 @@ import { planMysqlApp } from "./support/mysql-planner.ts";
 
 const buildStepsFor = (extensions: Readonly<Record<string, unknown>>) => {
   const BuildSteps = Schema.Struct({
-    buildSteps: Schema.optionalKey(Schema.Array(
+    buildSteps: Schema.optionalKey(
+      Schema.Array(
         Schema.Struct({
           id: Schema.optionalKey(Schema.String),
           command: Schema.Unknown,
           buildKeyInputs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
         }),
-      )),
+      ),
+    ),
   });
   return Schema.decodeUnknownSync(BuildSteps)(extensions["@lando/core/service-features"]).buildSteps ?? [];
 };

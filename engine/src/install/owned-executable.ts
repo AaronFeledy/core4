@@ -36,7 +36,17 @@ const INSTALL_OWNERSHIP_REMEDIATION =
 export class InstallOwnershipError extends Schema.TaggedError<InstallOwnershipError>()(
   "InstallOwnershipError",
   {
-    reason: Schema.Literals(["no-record", "record-unreadable", "record-invalid", "foreign-basename", "path-mismatch", "not-regular-file", "digest-mismatch", "size-mismatch", "destination-unreadable"]),
+    reason: Schema.Literals([
+      "no-record",
+      "record-unreadable",
+      "record-invalid",
+      "foreign-basename",
+      "path-mismatch",
+      "not-regular-file",
+      "digest-mismatch",
+      "size-mismatch",
+      "destination-unreadable",
+    ]),
     recordFile: Schema.String,
     destination: Schema.optionalKey(Schema.String),
     message: Schema.String,

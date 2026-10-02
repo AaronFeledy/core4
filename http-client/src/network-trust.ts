@@ -173,4 +173,6 @@ export const withWindowsHostTrust = (
  * object. Provided by callers that resolved trust (setup preflight); consumed
  * by `HttpClientLive`.
  */
-export class NetworkTrust extends Context.Service<NetworkTrust, ResolvedNetworkTrust>()("@lando/core/NetworkTrust") {}
+export class NetworkTrust extends Context.Service<NetworkTrust, ResolvedNetworkTrust>()(
+  "@lando/core/NetworkTrust",
+) {}

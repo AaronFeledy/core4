@@ -96,9 +96,7 @@ const verifyCosignBlob = ({
         }
       }),
     (root) =>
-      Effect.promise(() => rm(root, { recursive: true, force: true })).pipe(
-        Effect.catch(() => Effect.void),
-      ),
+      Effect.promise(() => rm(root, { recursive: true, force: true })).pipe(Effect.catch(() => Effect.void)),
   );
 
 export const defaultVerifyManifestSignature: UpdateManifestSignatureVerifier = ({

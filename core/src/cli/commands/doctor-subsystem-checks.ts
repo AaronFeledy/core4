@@ -14,14 +14,24 @@ export type SubsystemRecovery = "automatic" | "manual";
 export const SshAgentPostureDetails = Schema.Struct({
   mode: Schema.Literals(["sidecar", "host"]),
   upstream: Schema.Struct({
-    source: Schema.Literals(["sidecar", "explicit", "env", "1password", "gpg", "yubikey-agent", "windows-openssh", "none"]),
+    source: Schema.Literals([
+      "sidecar",
+      "explicit",
+      "env",
+      "1password",
+      "gpg",
+      "yubikey-agent",
+      "windows-openssh",
+      "none",
+    ]),
     reachable: Schema.Boolean,
     identities: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
   }),
   delivery: Schema.Union([AgentSocketDelivery, Schema.Literals(["none", "runtime-volume"])]),
   runtimeVolume: Schema.optionalKey(Schema.String),
   security: Schema.String,
-  gpg: Schema.optionalKey(Schema.Struct({
+  gpg: Schema.optionalKey(
+    Schema.Struct({
       forward: Schema.Literal(true),
       upstream: Schema.Struct({
         source: Schema.Literals(["explicit", "gpgconf", "none"]),
@@ -29,7 +39,8 @@ export const SshAgentPostureDetails = Schema.Struct({
       }),
       keyringExported: Schema.Boolean,
       security: Schema.String,
-    })),
+    }),
+  ),
 });
 
 export interface DoctorSubsystemCheck {

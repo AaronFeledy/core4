@@ -14,10 +14,12 @@ export const LANDO_ENV_FEATURE_ID = "lando.env" as const;
 export const LANDO_ENV_FEATURE_PRIORITY = 700;
 
 const LandoEnvFeatureConfigSchema = Schema.Struct({
-  appPaths: Schema.optionalKey(Schema.Struct({
+  appPaths: Schema.optionalKey(
+    Schema.Struct({
       appRoot: Schema.String,
       projectMount: Schema.String,
-    })),
+    }),
+  ),
   webroot: Schema.optionalKey(Schema.String),
 });
 type LandoEnvFeatureConfig = typeof LandoEnvFeatureConfigSchema.Type;

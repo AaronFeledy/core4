@@ -85,9 +85,9 @@ describe("remote-sync SDK schemas", () => {
 
   test("rejects invalid dataset kinds and incomplete sync results", () => {
     expect(Result.isFailure(Schema.decodeUnknownResult(DatasetKind)("code"))).toBe(true);
-    expect(Result.isFailure(Schema.decodeUnknownResult(DatasetArtifactFormat)({ endpoint: "artifact" }))).toBe(
-      true,
-    );
+    expect(
+      Result.isFailure(Schema.decodeUnknownResult(DatasetArtifactFormat)({ endpoint: "artifact" })),
+    ).toBe(true);
     expect(Result.isFailure(Schema.decodeUnknownResult(SyncResult)({ direction: "pull" }))).toBe(true);
   });
 });

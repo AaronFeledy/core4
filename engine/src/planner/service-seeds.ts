@@ -128,6 +128,4 @@ export const resolveServiceSeeds = (input: ServiceSeedInput) =>
     return { services, topLevelEnvFiles };
   });
 
-export type ResolvedServiceSeed = Effect.Success<
-  ReturnType<typeof resolveServiceSeeds>
->["services"][number];
+export type ResolvedServiceSeed = Effect.Success<ReturnType<typeof resolveServiceSeeds>>["services"][number];

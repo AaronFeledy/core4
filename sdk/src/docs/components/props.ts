@@ -48,7 +48,12 @@ const asRecord = (input: unknown): Record<string, unknown> | undefined => {
   return input as Record<string, unknown>;
 };
 
-export const MatcherScalar = Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]).annotate({
+export const MatcherScalar = Schema.Union([
+  Schema.String,
+  Schema.Number,
+  Schema.Boolean,
+  Schema.Null,
+]).annotate({
   identifier: "MatcherScalar",
 });
 export type MatcherScalar = typeof MatcherScalar.Type;
@@ -75,16 +80,27 @@ const MATCHER_OPERATOR_KEYS = ["regex", "schema", "anyOf", "not", "exact", "allO
 
 export const MatcherPartialObject = Schema.Record(Schema.String, Schema.Unknown)
   .pipe(
-    Schema.check(Schema.makeFilter((input) => MATCHER_OPERATOR_KEYS.every((key) => !Object.hasOwn(input, key)), {
-      message: "Matcher partial objects cannot use reserved matcher operator keys.",
-      jsonSchema: {},
-    })),
-  ).annotate({
+    Schema.check(
+      Schema.makeFilter((input) => MATCHER_OPERATOR_KEYS.every((key) => !Object.hasOwn(input, key)), {
+        message: "Matcher partial objects cannot use reserved matcher operator keys.",
+        jsonSchema: {},
+      }),
+    ),
+  )
+  .annotate({
     identifier: "MatcherPartialObject",
   });
 export type MatcherPartialObject = typeof MatcherPartialObject.Type;
 
-export const MatcherSchema = Schema.Union([MatcherScalar, Schema.Array(Schema.Unknown), MatcherRegex, MatcherSchemaRef, MatcherAnyOf, MatcherNot, MatcherPartialObject]).annotate({
+export const MatcherSchema = Schema.Union([
+  MatcherScalar,
+  Schema.Array(Schema.Unknown),
+  MatcherRegex,
+  MatcherSchemaRef,
+  MatcherAnyOf,
+  MatcherNot,
+  MatcherPartialObject,
+]).annotate({
   identifier: "MatcherSchema",
   title: "Matcher Schema",
   description: "Declarative matcher subset for executable-guide verification.",
@@ -106,11 +122,17 @@ export const ScenarioProps = Schema.Struct({
   layer: Schema.optionalKey(Schema.Literals(["scenario", "e2e"])),
 })
   .pipe(
-    Schema.check(Schema.makeFilter((input) => input.render !== false || (input.reason !== undefined && input.reason.length >= 8), {
-        message: "<Scenario render={false}> requires a `reason` of at least 8 characters.",
-        jsonSchema: {},
-      })),
-  ).annotate({
+    Schema.check(
+      Schema.makeFilter(
+        (input) => input.render !== false || (input.reason !== undefined && input.reason.length >= 8),
+        {
+          message: "<Scenario render={false}> requires a `reason` of at least 8 characters.",
+          jsonSchema: {},
+        },
+      ),
+    ),
+  )
+  .annotate({
     identifier: "ScenarioProps",
     title: "Scenario Props",
     description: "<Scenario> component props.",
@@ -126,19 +148,23 @@ export const StepProps = Schema.Struct({
 });
 export type StepProps = typeof StepProps.Type;
 
-export const RunProps = Schema.Union([Schema.Struct({
+export const RunProps = Schema.Union([
+  Schema.Struct({
     command: Schema.String,
     answers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
     expectExit: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()))),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     shell: Schema.String,
     answers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
     expectExit: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()))),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     runtime: Schema.Literal("library"),
     code: Schema.String,
     displayCode: Schema.String,
-  })]).annotate({
+  }),
+]).annotate({
   identifier: "RunProps",
   title: "Run Props",
   description: "<Run> component props.",
@@ -153,10 +179,16 @@ export const VerifyProps = Schema.Struct({
   expect: Schema.optionalKey(MatcherSchema),
 })
   .pipe(
-    Schema.check(Schema.makeFilter((input) =>
-        [input.event, input.command, input.file, input.errorTag].filter((value) => value !== undefined)
-          .length === 1, { message: "<Verify> requires exactly one target.", jsonSchema: {} })),
-  ).annotate({
+    Schema.check(
+      Schema.makeFilter(
+        (input) =>
+          [input.event, input.command, input.file, input.errorTag].filter((value) => value !== undefined)
+            .length === 1,
+        { message: "<Verify> requires exactly one target.", jsonSchema: {} },
+      ),
+    ),
+  )
+  .annotate({
     identifier: "VerifyProps",
     title: "Verify Props",
     description: "<Verify> component props.",
@@ -207,13 +239,19 @@ export const InspectProps = Schema.Struct({
   output: Schema.optionalKey(Schema.Literal(true)),
 })
   .pipe(
-    Schema.check(Schema.makeFilter((input) =>
-        [input.file, input.json, input.events, input.output].filter((value) => value !== undefined).length ===
-        1, {
-        message: "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
-        jsonSchema: {},
-      })),
-  ).annotate({
+    Schema.check(
+      Schema.makeFilter(
+        (input) =>
+          [input.file, input.json, input.events, input.output].filter((value) => value !== undefined)
+            .length === 1,
+        {
+          message: "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
+          jsonSchema: {},
+        },
+      ),
+    ),
+  )
+  .annotate({
     identifier: "InspectProps",
     title: "Inspect Props",
     description: "<Inspect> component props.",
@@ -222,9 +260,11 @@ export type InspectProps = typeof InspectProps.Type;
 
 /** Tab axis names and values — lowercase kebab-case (a-z, 0-9, hyphen). */
 export const AxisToken = Schema.String.pipe(
-  Schema.check(Schema.isPattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, {
-    message: "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
-  })),
+  Schema.check(
+    Schema.isPattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, {
+      message: "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
+    }),
+  ),
 ).annotate({ identifier: "AxisToken" });
 export type AxisToken = typeof AxisToken.Type;
 

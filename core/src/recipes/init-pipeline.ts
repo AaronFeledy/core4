@@ -19,7 +19,7 @@ import {
   type RecipeDecomposerFactory,
 } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Effect, Result, Option, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { RECIPE_TRANSLATOR_ID } from "./config-translator.ts";
 import {
   type RecipeAuxiliaryContentSource,
@@ -191,9 +191,9 @@ const encodeRecipeLandofile = (
       output.fragment,
     ).pipe(Effect.mapError(() => blocked("validate")));
     const context = mergeLandofiles([mapping, { name: request.appName }]);
-    yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, { onExcessProperty: "error" }).pipe(
-      Effect.mapError(() => blocked("validate")),
-    );
+    yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, {
+      onExcessProperty: "error",
+    }).pipe(Effect.mapError(() => blocked("validate")));
     if (containsSecret(context)) return yield* Effect.fail(blocked("validate"));
     const encode = request.encoder.encode;
     if (encode === undefined) return yield* Effect.fail(blocked("encode"));

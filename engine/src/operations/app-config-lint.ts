@@ -1,7 +1,7 @@
 import { dirname } from "node:path";
 import { loadLandofileLayers } from "@lando/landofile/service";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
-import { Effect, Result, Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import { resolveKnownEventSet } from "../planner/event-set.ts";
 
 import type {

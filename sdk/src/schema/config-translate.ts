@@ -21,9 +21,15 @@ const authoringContext: AuthoringContextSchema = LandofileAuthoringShapeWire.ann
 export const ConfigTranslateSourceId = Schema.String.pipe(
   Schema.check(Schema.isMinLength(1)),
   Schema.brand("ConfigTranslateSourceId"),
-).annotate(metadata("ConfigTranslateSourceId", "Core-assigned document or synthetic recipe source identity."));
-export const ConfigTranslateConfidence = Schema.Literals(["exact", "likely", "possible"]).annotate(metadata("ConfigTranslateConfidence", "Translator detection confidence."));
-export const ConfigTranslateMode = Schema.Literals(["full", "single-layer"]).annotate(metadata("ConfigTranslateMode", "Full document-set or selected-layer conversion."));
+).annotate(
+  metadata("ConfigTranslateSourceId", "Core-assigned document or synthetic recipe source identity."),
+);
+export const ConfigTranslateConfidence = Schema.Literals(["exact", "likely", "possible"]).annotate(
+  metadata("ConfigTranslateConfidence", "Translator detection confidence."),
+);
+export const ConfigTranslateMode = Schema.Literals(["full", "single-layer"]).annotate(
+  metadata("ConfigTranslateMode", "Full document-set or selected-layer conversion."),
+);
 export const ConfigTranslateDocumentBytes = Schema.Uint8ArrayFromBase64.annotate({
   description: "Bounded raw source bytes, encoded as base64 on the wire.",
 });
@@ -62,25 +68,33 @@ export const ConfigTranslateDocumentSetInput = Schema.Struct({
   }),
 }).annotate(metadata("ConfigTranslateDocumentSetInput", "One ordered document set to translate."));
 const AnswerScalar = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]);
-export const ConfigTranslateAnswerValue = Schema.Union([AnswerScalar, Schema.Array(AnswerScalar)]).annotate(metadata("ConfigTranslateAnswerValue", "Nonsecret scalar or scalar-array recipe answer."));
-export const ConfigTranslateSecretReference = Schema.Union([Schema.Struct({
+export const ConfigTranslateAnswerValue = Schema.Union([AnswerScalar, Schema.Array(AnswerScalar)]).annotate(
+  metadata("ConfigTranslateAnswerValue", "Nonsecret scalar or scalar-array recipe answer."),
+);
+export const ConfigTranslateSecretReference = Schema.Union([
+  Schema.Struct({
     disposition: Schema.Literal("secret-store").annotate({ description: "Stored-secret disposition." }),
     reference: Schema.String.pipe(Schema.check(Schema.isPattern(/^\$\{secret:[^}]+\}$/))).annotate({
       description: "One canonical ${secret:...} reference, never the secret value.",
     }),
-  }).annotate(metadata("ConfigTranslateStoredSecretReference", "Approved stored-secret reference.")), Schema.Struct({
+  }).annotate(metadata("ConfigTranslateStoredSecretReference", "Approved stored-secret reference.")),
+  Schema.Struct({
     disposition: Schema.Literal("postInit.stdin").annotate({
       description: "Init-only standard-input secret sink.",
     }),
-  }).annotate(metadata("ConfigTranslateStdinSecretReference", "Approved standard-input secret sink.")), Schema.Struct({
+  }).annotate(metadata("ConfigTranslateStdinSecretReference", "Approved standard-input secret sink.")),
+  Schema.Struct({
     disposition: Schema.Literal("postInit.secretEnv").annotate({
       description: "Init-only environment secret sink.",
     }),
     name: Schema.String.annotate({ description: "Approved secret environment variable name." }),
-  }).annotate(metadata("ConfigTranslateEnvSecretReference", "Approved environment secret sink."))]).annotate(metadata(
+  }).annotate(metadata("ConfigTranslateEnvSecretReference", "Approved environment secret sink.")),
+]).annotate(
+  metadata(
     "ConfigTranslateSecretReference",
     "Approved secret reference or init-only sink; contains no raw secret.",
-  ));
+  ),
+);
 export const ConfigTranslateRecipeRequestInput = Schema.Struct({
   _tag: Schema.Literal("recipe-request").annotate({ description: "Recipe request discriminator." }),
   recipe: Schema.Struct({
@@ -94,8 +108,13 @@ export const ConfigTranslateRecipeRequestInput = Schema.Struct({
   secretAnswers: Schema.Record(Schema.String, ConfigTranslateSecretReference).annotate({
     description: "Approved secret references keyed by answer name.",
   }),
-}).annotate(metadata("ConfigTranslateRecipeRequestInput", "One recipe request without filesystem discovery."));
-export const ConfigTranslateInput = Schema.Union([ConfigTranslateDocumentSetInput, ConfigTranslateRecipeRequestInput]).annotate(metadata("ConfigTranslateInput", "Explicit document-set or recipe translation request."));
+}).annotate(
+  metadata("ConfigTranslateRecipeRequestInput", "One recipe request without filesystem discovery."),
+);
+export const ConfigTranslateInput = Schema.Union([
+  ConfigTranslateDocumentSetInput,
+  ConfigTranslateRecipeRequestInput,
+]).annotate(metadata("ConfigTranslateInput", "Explicit document-set or recipe translation request."));
 export const ConfigTranslateDetectInput = Schema.Struct({
   documents: Schema.Array(ConfigTranslateDocument).annotate({
     description: "Core-read snapshots available for explicit detection.",
@@ -111,7 +130,14 @@ export const ConfigTranslateMatch = Schema.Struct({
 }).annotate(metadata("ConfigTranslateMatch", "Explicit translator detection match."));
 
 // ==== Provenance, diagnostics, and output ownership
-export const ConfigTranslateDiagnosticKind = Schema.Literals(["generated", "dropped", "rewritten", "unsupported", "non-portable", "needs-review"]).annotate(metadata("ConfigTranslateDiagnosticKind", "Translation diagnostic classification."));
+export const ConfigTranslateDiagnosticKind = Schema.Literals([
+  "generated",
+  "dropped",
+  "rewritten",
+  "unsupported",
+  "non-portable",
+  "needs-review",
+]).annotate(metadata("ConfigTranslateDiagnosticKind", "Translation diagnostic classification."));
 const Position = Schema.Struct({
   line: Schema.Int.annotate({ description: "Source line number." }),
   column: Schema.Int.annotate({ description: "Source column number." }),
@@ -159,7 +185,9 @@ export const ConfigTranslateResult = Schema.Struct({
 export const ConfigTranslateEncodeInput = Schema.Struct({
   context: authoringContext,
   fragment: Schema.optionalKey(authoringFragment("Exact fragment to emit instead of the complete context.")),
-}).annotate(metadata("ConfigTranslateEncodeInput", "Complete context and optional exact fragment for text encoding."));
+}).annotate(
+  metadata("ConfigTranslateEncodeInput", "Complete context and optional exact fragment for text encoding."),
+);
 export const ConfigTranslateEncodeResult = Schema.Struct({
   text: Schema.String.annotate({ description: "Encoded target text." }),
   diagnostics: Schema.Array(ConfigTranslateDiagnostic).annotate({

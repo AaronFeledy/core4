@@ -1,6 +1,6 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 import { Cause, Duration, Effect, Exit, Fiber, Ref, Stream } from "effect";
+import { TestClock } from "effect/testing";
 
 import {
   type LogFollowEvent,

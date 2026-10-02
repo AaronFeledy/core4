@@ -9,11 +9,96 @@ import { ConfigError } from "../errors/config.ts";
  * Closed renderer action ids. Surfaces are mutually exclusive input contexts;
  * a chord may be reused across surfaces without conflict.
  */
-export const RendererActionId = Schema.Literals(["tree.focus-prev", "tree.focus-next", "tree.cycle", "tree.expand", "tree.collapse", "prompt.cancel", "viewer.scroll-up", "viewer.scroll-down", "viewer.follow", "viewer.source-next", "viewer.quit", "keymap.help"]);
+export const RendererActionId = Schema.Literals([
+  "tree.focus-prev",
+  "tree.focus-next",
+  "tree.cycle",
+  "tree.expand",
+  "tree.collapse",
+  "prompt.cancel",
+  "viewer.scroll-up",
+  "viewer.scroll-down",
+  "viewer.follow",
+  "viewer.source-next",
+  "viewer.quit",
+  "keymap.help",
+]);
 export type RendererActionId = typeof RendererActionId.Type;
 
 /** Frozen key-name vocabulary (all lowercase; punctuation by name only). */
-export const RendererKeyName = Schema.Literals(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "up", "down", "left", "right", "tab", "enter", "escape", "space", "backspace", "delete", "home", "end", "page-up", "page-down", "insert", "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12", "question-mark", "slash", "minus", "plus", "period", "comma", "semicolon", "backtick"]);
+export const RendererKeyName = Schema.Literals([
+  "a",
+  "b",
+  "c",
+  "d",
+  "e",
+  "f",
+  "g",
+  "h",
+  "i",
+  "j",
+  "k",
+  "l",
+  "m",
+  "n",
+  "o",
+  "p",
+  "q",
+  "r",
+  "s",
+  "t",
+  "u",
+  "v",
+  "w",
+  "x",
+  "y",
+  "z",
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "up",
+  "down",
+  "left",
+  "right",
+  "tab",
+  "enter",
+  "escape",
+  "space",
+  "backspace",
+  "delete",
+  "home",
+  "end",
+  "page-up",
+  "page-down",
+  "insert",
+  "f1",
+  "f2",
+  "f3",
+  "f4",
+  "f5",
+  "f6",
+  "f7",
+  "f8",
+  "f9",
+  "f10",
+  "f11",
+  "f12",
+  "question-mark",
+  "slash",
+  "minus",
+  "plus",
+  "period",
+  "comma",
+  "semicolon",
+  "backtick",
+]);
 export type RendererKeyName = typeof RendererKeyName.Type;
 
 /**
@@ -28,25 +113,37 @@ export const RendererKeyChordPattern = /^(ctrl\+)?(alt\+)?(shift\+)?[a-z0-9][a-z
  */
 export const RendererKeyChord = Schema.String.pipe(
   Schema.check(Schema.isPattern(RendererKeyChordPattern)),
-  Schema.check(Schema.makeFilter((chord) => Schema.is(RendererKeyName)(chord.replace(/^(ctrl\+)?(alt\+)?(shift\+)?/, "")), {
-    message: "unknown key name",
-  })),
-  Schema.check(Schema.makeFilter((chord) => chord !== "ctrl+c", {
-    message: "ctrl+c is reserved and can never be bound",
-  })),
+  Schema.check(
+    Schema.makeFilter(
+      (chord) => Schema.is(RendererKeyName)(chord.replace(/^(ctrl\+)?(alt\+)?(shift\+)?/, "")),
+      {
+        message: "unknown key name",
+      },
+    ),
+  ),
+  Schema.check(
+    Schema.makeFilter((chord) => chord !== "ctrl+c", {
+      message: "ctrl+c is reserved and can never be bound",
+    }),
+  ),
 );
 export type RendererKeyChord = typeof RendererKeyChord.Type;
 
 /**
  * One chord, or an array of 1..4 distinct chords for a single action.
  */
-export const RendererKeyBinding = Schema.Union([RendererKeyChord, Schema.Array(RendererKeyChord).pipe(
+export const RendererKeyBinding = Schema.Union([
+  RendererKeyChord,
+  Schema.Array(RendererKeyChord).pipe(
     Schema.check(Schema.isMinLength(1)),
     Schema.check(Schema.isMaxLength(4)),
-    Schema.check(Schema.makeFilter((chords) => new Set(chords).size === chords.length, {
-      message: "duplicate chord for one action",
-    })),
-  )]);
+    Schema.check(
+      Schema.makeFilter((chords) => new Set(chords).size === chords.length, {
+        message: "duplicate chord for one action",
+      }),
+    ),
+  ),
+]);
 export type RendererKeyBinding = typeof RendererKeyBinding.Type;
 
 const bindingField = (description: string) =>

@@ -113,12 +113,8 @@ export const readHelperHopTargets = (
   access: HostPathAccess,
 ): Effect.Effect<{ readonly httpTarget: number; readonly httpsTarget: number } | undefined> =>
   Effect.gen(function* () {
-    const httpUnit = yield* access
-      .readText(HTTP_SERVICE_PATH)
-      .pipe(Effect.catch(() => Effect.succeed("")));
-    const httpsUnit = yield* access
-      .readText(HTTPS_SERVICE_PATH)
-      .pipe(Effect.catch(() => Effect.succeed("")));
+    const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+    const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
     const httpTarget = hopPortFromUnit(httpUnit);
     const httpsTarget = hopPortFromUnit(httpsUnit);
     if (httpTarget === undefined || httpsTarget === undefined) return undefined;
@@ -131,12 +127,8 @@ const hopsMatchTargets = (
   httpsTarget: number,
 ): Effect.Effect<boolean> =>
   Effect.gen(function* () {
-    const httpUnit = yield* access
-      .readText(HTTP_SERVICE_PATH)
-      .pipe(Effect.catch(() => Effect.succeed("")));
-    const httpsUnit = yield* access
-      .readText(HTTPS_SERVICE_PATH)
-      .pipe(Effect.catch(() => Effect.succeed("")));
+    const httpUnit = yield* access.readText(HTTP_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
+    const httpsUnit = yield* access.readText(HTTPS_SERVICE_PATH).pipe(Effect.catch(() => Effect.succeed("")));
     const hopPattern = /127\.0\.0\.1:\d+/u;
     if (!hopPattern.test(httpUnit) && !hopPattern.test(httpsUnit)) return true;
     return hopTargetPattern(httpTarget).test(httpUnit) && hopTargetPattern(httpsTarget).test(httpsUnit);

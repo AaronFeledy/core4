@@ -690,8 +690,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
     );
   };
   const ensureEffect = ensureEffectFor();
-  const ensureBefore = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    ensureEffect.pipe(Effect.andThen(effect));
+  const ensureBefore = <A, E, R>(effect: Effect.Effect<A, E, R>) => ensureEffect.pipe(Effect.andThen(effect));
   const dataPlane =
     podmanApi === undefined
       ? undefined
@@ -1293,8 +1292,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
                   ctx: LANDO_CTX,
                   dialect: libpodPullDialect,
                   publish: (event) =>
-                    options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ??
-                    Effect.void,
+                    options.eventService?.publish(event).pipe(Effect.catch(() => Effect.void)) ?? Effect.void,
                 }).pipe(
                   Effect.map((result) => ({
                     providerId,

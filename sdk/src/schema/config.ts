@@ -16,22 +16,30 @@ const encodedMapByteLength = (value: Readonly<Record<string, string>>): number =
 
 const APP_ENVIRONMENT_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const AppEnvironmentValue = Schema.String.pipe(
-  Schema.check(Schema.makeFilter((value) => encodedByteLength(value) <= 32 * 1024, {
-    message: "Global app environment values must not exceed 32 KiB of UTF-8 text",
-  })),
+  Schema.check(
+    Schema.makeFilter((value) => encodedByteLength(value) <= 32 * 1024, {
+      message: "Global app environment values must not exceed 32 KiB of UTF-8 text",
+    }),
+  ),
 );
 
 export const AppEnvironmentDefaults = Schema.Record(Schema.String, AppEnvironmentValue).pipe(
-  Schema.check(Schema.makeFilter((value) => {
-      const keys = Object.keys(value);
-      return (
-        keys.length <= 256 &&
-        keys.every((key) => APP_ENVIRONMENT_KEY.test(key) && !isCoreServiceEnvKey(key)) &&
-        encodedMapByteLength(value) <= 1024 * 1024
-      );
-    }, {
-      message: "Global app environment must use POSIX identifiers, exclude core-owned keys, contain at most 256 entries, and encode to at most 1 MiB",
-    })),
+  Schema.check(
+    Schema.makeFilter(
+      (value) => {
+        const keys = Object.keys(value);
+        return (
+          keys.length <= 256 &&
+          keys.every((key) => APP_ENVIRONMENT_KEY.test(key) && !isCoreServiceEnvKey(key)) &&
+          encodedMapByteLength(value) <= 1024 * 1024
+        );
+      },
+      {
+        message:
+          "Global app environment must use POSIX identifiers, exclude core-owned keys, contain at most 256 entries, and encode to at most 1 MiB",
+      },
+    ),
+  ),
   Schema.annotate({
     identifier: "AppEnvironmentDefaults",
     title: "Global App Environment Defaults",
@@ -48,18 +56,28 @@ const validAppLabelKey = (key: string): boolean => {
   );
 };
 const AppLabelValue = Schema.String.pipe(
-  Schema.check(Schema.makeFilter((value) => encodedByteLength(value) <= 4 * 1024, {
-    message: "Global app label values must not exceed 4 KiB of UTF-8 text",
-  })),
+  Schema.check(
+    Schema.makeFilter((value) => encodedByteLength(value) <= 4 * 1024, {
+      message: "Global app label values must not exceed 4 KiB of UTF-8 text",
+    }),
+  ),
 );
 
 export const AppLabelDefaults = Schema.Record(Schema.String, AppLabelValue).pipe(
-  Schema.check(Schema.makeFilter((value) => {
-      const keys = Object.keys(value);
-      return keys.length <= 256 && keys.every(validAppLabelKey) && encodedMapByteLength(value) <= 256 * 1024;
-    }, {
-      message: "Global app labels must use valid non-reserved keys, contain at most 256 entries, and encode to at most 256 KiB",
-    })),
+  Schema.check(
+    Schema.makeFilter(
+      (value) => {
+        const keys = Object.keys(value);
+        return (
+          keys.length <= 256 && keys.every(validAppLabelKey) && encodedMapByteLength(value) <= 256 * 1024
+        );
+      },
+      {
+        message:
+          "Global app labels must use valid non-reserved keys, contain at most 256 entries, and encode to at most 256 KiB",
+      },
+    ),
+  ),
   Schema.annotate({
     identifier: "AppLabelDefaults",
     title: "Global App Label Defaults",
@@ -127,7 +145,9 @@ export const McpConfig = Schema.Struct({
   tooling: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
   }),
-  maxConcurrent: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))).annotate({
+  maxConcurrent: Schema.optionalKey(
+    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  ).annotate({
     description: "Positive cap on concurrent MCP tool calls (global mcp.maxConcurrent; default 4).",
   }),
 });
@@ -214,7 +234,9 @@ export const GlobalConfig = Schema.Struct({
   appLabels: Schema.optionalKey(AppLabelDefaults).annotate({
     description: "Container-label defaults applied below each user-app service's authored labels.",
   }),
-  telemetry: TelemetryConfig.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => ({ enabled: true })))).annotate({
+  telemetry: TelemetryConfig.pipe(
+    Schema.withDecodingDefaultKey(Effect.sync(() => ({ enabled: true }))),
+  ).annotate({
     description: "CLI telemetry policy.",
   }),
   renderer: Schema.optionalKey(Schema.String).annotate({
@@ -224,12 +246,26 @@ export const GlobalConfig = Schema.Struct({
     description:
       "Diagnostic log level (none, error, warn, info, debug, trace). Unknown values fail at resolve, not config load.",
   }),
-  allowLoadOutsideRoot: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
-    description: "Allow Landofile load/import paths outside the app root (default false).",
-  }),
-  loadMaxFileBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 1_048_576))).annotate({ description: "Maximum bytes read by one Landofile load/import call." }),
-  loadMaxFilesPerExpression: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 16))).annotate({ description: "Maximum distinct files read by one Landofile expression." }),
-  loadMaxRecursionDepth: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 4))).annotate({ description: "Maximum nested Landofile load/import call depth." }),
+  allowLoadOutsideRoot: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate(
+    {
+      description: "Allow Landofile load/import paths outside the app root (default false).",
+    },
+  ),
+  loadMaxFileBytes: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 1_048_576)))
+    .annotate({ description: "Maximum bytes read by one Landofile load/import call." }),
+  loadMaxFilesPerExpression: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isGreaterThan(0)),
+  )
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 16)))
+    .annotate({ description: "Maximum distinct files read by one Landofile expression." }),
+  loadMaxRecursionDepth: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isGreaterThan(0)),
+  )
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 4)))
+    .annotate({ description: "Maximum nested Landofile load/import call depth." }),
   network: Schema.optionalKey(NetworkConfig).annotate({
     description: "Outbound proxy and certificate trust policy.",
   }),
@@ -237,12 +273,16 @@ export const GlobalConfig = Schema.Struct({
    * Ingress proxy settings (`proxy.defaultDomain`). Distinct from `network.proxy`
    * (HTTP egress / HTTP_PROXY).
    */
-  proxy: Schema.optionalKey(Schema.Struct({
-      defaultDomain: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => "lndo.site"))).annotate({
+  proxy: Schema.optionalKey(
+    Schema.Struct({
+      defaultDomain: Schema.String.pipe(
+        Schema.withDecodingDefaultKey(Effect.sync(() => "lndo.site")),
+      ).annotate({
         description:
           "Default local domain used when routes omit a custom domain (global proxy.defaultDomain).",
       }),
-    })).annotate({
+    }),
+  ).annotate({
     description: "Global ingress proxy settings (global proxy). Distinct from network.proxy HTTP egress.",
   }),
   router: Schema.optionalKey(RouterConfig).annotate({
@@ -260,12 +300,20 @@ export const GlobalConfig = Schema.Struct({
   notify: Schema.optionalKey(NotifyConfig).annotate({
     description: "Global desktop-notification policy (global notify).",
   }),
-  events: Schema.optionalKey(Schema.Struct({
-      deliveryQueueCapacity: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)), Schema.check(Schema.isLessThanOrEqualTo(65_536))).annotate({
+  events: Schema.optionalKey(
+    Schema.Struct({
+      deliveryQueueCapacity: Schema.optionalKey(
+        Schema.Number.pipe(
+          Schema.check(Schema.isInt()),
+          Schema.check(Schema.isGreaterThan(0)),
+          Schema.check(Schema.isLessThanOrEqualTo(65_536)),
+        ).annotate({
           description:
             "Positive per-subscriber event delivery queue capacity up to 65536 (global events.deliveryQueueCapacity; default 64).",
-        })),
-    })).annotate({
+        }),
+      ),
+    }),
+  ).annotate({
     description: "Global event delivery policy (global events).",
   }),
 });

@@ -27,11 +27,16 @@ const isJsonObject = (value: unknown): value is JsonObject =>
 const readWorkspacePatterns = async (root: string): Promise<readonly string[]> => {
   const manifest = resolve(root, "package.json");
   const parsed: unknown = JSON.parse(await Bun.file(manifest).text());
-  if (!isJsonObject(parsed) || !Array.isArray(parsed.workspaces)) {
+  const workspaces = isJsonObject(parsed)
+    ? isJsonObject(parsed.workspaces)
+      ? parsed.workspaces.packages
+      : parsed.workspaces
+    : undefined;
+  if (!Array.isArray(workspaces)) {
     throw new TypeError(`Invalid root workspace manifest: ${manifest}`);
   }
-  const patterns = parsed.workspaces.filter((value): value is string => typeof value === "string");
-  if (patterns.length !== parsed.workspaces.length) {
+  const patterns = workspaces.filter((value): value is string => typeof value === "string");
+  if (patterns.length !== workspaces.length) {
     throw new TypeError(`Invalid root workspace manifest: ${manifest}`);
   }
   return patterns;

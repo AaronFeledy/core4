@@ -1,5 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
 import { BuildBlock, LandofileShape, ServiceConfig } from "../../src/schema/landofile.ts";
@@ -26,8 +26,8 @@ const expectLandofileFailure = (input: unknown, fragments: ReadonlyArray<string>
   for (const result of results) {
     expect(Result.isFailure(result)).toBe(true);
     if (!Result.isFailure(result)) continue;
-    const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.find(({ message }) =>
-      message.startsWith("Landofile service"),
+    const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.find(
+      ({ message }) => message.startsWith("Landofile service"),
     )?.message;
     expect(message?.startsWith("Landofile service")).toBe(true);
     for (const fragment of fragments) expect(message).toContain(fragment);
@@ -116,8 +116,8 @@ describe("BuildBlock", () => {
         const result = Schema.decodeUnknownResult(BuildBlock)(input, options);
         expect(Result.isFailure(result)).toBe(true);
         if (!Result.isFailure(result)) continue;
-        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
-          .map(({ message }) => message)
+        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+          .issues.map(({ message }) => message)
           .join("\n");
         expect(message).not.toContain("build.dockerfile");
       }
@@ -141,8 +141,8 @@ describe("BuildBlock", () => {
         expect(Result.isFailure(result)).toBe(true);
         if (!Result.isFailure(result)) continue;
         expect(Schema.isSchemaError(result.failure)).toBe(true);
-        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
-          .map(({ message }) => message)
+        const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+          .issues.map(({ message }) => message)
           .join("\n");
         expect(message).not.toContain("Translate build.");
         expect(message).not.toContain("ComposeKeyRejectedError");
@@ -164,8 +164,8 @@ describe("BuildBlock", () => {
       // Then
       expect(Result.isFailure(result)).toBe(true);
       if (!Result.isFailure(result)) continue;
-      const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
-        .map(({ message }) => message)
+      const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+        .issues.map(({ message }) => message)
         .join("\n");
       expect(message).toContain("artifact");
       expect(message).toContain("no_cache");

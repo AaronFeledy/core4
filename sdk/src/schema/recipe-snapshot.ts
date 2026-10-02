@@ -33,7 +33,12 @@ const EnumOptionType = Schema.Struct({
   values: Schema.NonEmptyArray(Schema.String).annotate({ description: "Closed set of accepted values." }),
 });
 
-const ScalarOptionType = Schema.Union([StringOptionType, NumberOptionType, BooleanOptionType, EnumOptionType]);
+const ScalarOptionType = Schema.Union([
+  StringOptionType,
+  NumberOptionType,
+  BooleanOptionType,
+  EnumOptionType,
+]);
 
 const ArrayOptionType = Schema.Struct({
   kind: Schema.Literal("array").annotate({ description: "Array option discriminator." }),
@@ -54,7 +59,14 @@ const OptionalOptionType = Schema.Struct({
  * deliberately closed: an option a recipe cannot express here makes that recipe
  * nonmigratable rather than licensing serialized code to describe it.
  */
-export const RecipeOptionType = Schema.Union([StringOptionType, NumberOptionType, BooleanOptionType, EnumOptionType, ArrayOptionType, OptionalOptionType]).annotate(metadata("RecipeOptionType", "Serializable descriptor for one persistable recipe option."));
+export const RecipeOptionType = Schema.Union([
+  StringOptionType,
+  NumberOptionType,
+  BooleanOptionType,
+  EnumOptionType,
+  ArrayOptionType,
+  OptionalOptionType,
+]).annotate(metadata("RecipeOptionType", "Serializable descriptor for one persistable recipe option."));
 export type RecipeOptionType = typeof RecipeOptionType.Type;
 
 /** Auxiliary file a recipe writes, recorded as metadata and digest only. */
@@ -63,8 +75,12 @@ export const RecipeSnapshotAsset = Schema.Struct({
     description: "App-relative destination the recipe writes.",
   }),
   digest: RecipeContentDigest.annotate({ description: "SHA-256 of the asset content." }),
-  mode: Schema.optionalKey(Schema.String.annotate({ description: "Recorded file mode, when the recipe sets one." })),
-  template: Schema.optionalKey(Schema.Boolean.annotate({ description: "Whether the asset is rendered from a template." })),
+  mode: Schema.optionalKey(
+    Schema.String.annotate({ description: "Recorded file mode, when the recipe sets one." }),
+  ),
+  template: Schema.optionalKey(
+    Schema.Boolean.annotate({ description: "Whether the asset is rendered from a template." }),
+  ),
 }).annotate(metadata("RecipeSnapshotAsset", "Metadata and digest for one recipe-authored auxiliary file."));
 export type RecipeSnapshotAsset = typeof RecipeSnapshotAsset.Type;
 
@@ -101,15 +117,28 @@ export const RecipeSnapshot = Schema.Struct({
   assets: Schema.Array(RecipeSnapshotAsset).annotate({
     description: "Auxiliary files this version writes, as metadata and digests.",
   }),
-}).annotate(metadata("RecipeSnapshot", "Inert declarative data that renders one recipe version's authoring output."));
+}).annotate(
+  metadata("RecipeSnapshot", "Inert declarative data that renders one recipe version's authoring output."),
+);
 export type RecipeSnapshot = typeof RecipeSnapshot.Type;
 
 /** The declarative operations a migration edge may declare. */
-export const RecipeHunkKind = Schema.Literals(["option-default", "add", "remove", "rename", "replace"]).annotate(metadata("RecipeHunkKind", "Declarative migration operation kind."));
+export const RecipeHunkKind = Schema.Literals([
+  "option-default",
+  "add",
+  "remove",
+  "rename",
+  "replace",
+]).annotate(metadata("RecipeHunkKind", "Declarative migration operation kind."));
 export type RecipeHunkKind = typeof RecipeHunkKind.Type;
 
 /** How analysis resolved one hunk against the current file. */
-export const RecipeHunkClassification = Schema.Literals(["already-satisfied", "selected", "retained-option", "blocking"]).annotate(metadata("RecipeHunkClassification", "Resolution class assigned to one migration hunk."));
+export const RecipeHunkClassification = Schema.Literals([
+  "already-satisfied",
+  "selected",
+  "retained-option",
+  "blocking",
+]).annotate(metadata("RecipeHunkClassification", "Resolution class assigned to one migration hunk."));
 export type RecipeHunkClassification = typeof RecipeHunkClassification.Type;
 
 const HUNK_ID_PATTERN = /^hunk-[0-9a-f]{24}$/;
@@ -178,7 +207,13 @@ const ReplaceHunk = Schema.Struct({
  * and carries enough before/after context to render a deterministic diff and
  * decide whether the target is still untouched.
  */
-export const RecipeMigrationHunk = Schema.Union([OptionDefaultHunk, AddHunk, RemoveHunk, RenameHunk, ReplaceHunk]).annotate(metadata("RecipeMigrationHunk", "One declarative edit inside a recipe migration edge."));
+export const RecipeMigrationHunk = Schema.Union([
+  OptionDefaultHunk,
+  AddHunk,
+  RemoveHunk,
+  RenameHunk,
+  ReplaceHunk,
+]).annotate(metadata("RecipeMigrationHunk", "One declarative edit inside a recipe migration edge."));
 export type RecipeMigrationHunk = typeof RecipeMigrationHunk.Type;
 
 /**

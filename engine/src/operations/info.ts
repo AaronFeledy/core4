@@ -41,7 +41,15 @@ export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/a
 
 type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
-const InfoServiceStatusSchema = Schema.Literals(["unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"]);
+const InfoServiceStatusSchema = Schema.Literals([
+  "unknown",
+  "stopped",
+  "starting",
+  "running",
+  "healthy",
+  "unhealthy",
+  "error",
+]);
 
 const AppInfoLogSourceSchema = Schema.Struct({
   id: Schema.String,

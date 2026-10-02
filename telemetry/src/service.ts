@@ -14,7 +14,9 @@ export interface TelemetrySink {
   readonly record: (event: string, data: Readonly<Record<string, unknown>>) => Effect.Effect<void, unknown>;
 }
 
-export class TelemetrySinks extends Context.Service<TelemetrySinks, ReadonlyArray<TelemetrySink>>()("@lando/core/TelemetrySinks") {}
+export class TelemetrySinks extends Context.Service<TelemetrySinks, ReadonlyArray<TelemetrySink>>()(
+  "@lando/core/TelemetrySinks",
+) {}
 
 export interface TelemetryTransportOptions {
   readonly capacity?: number;

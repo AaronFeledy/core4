@@ -9,16 +9,19 @@ import { Schema } from "effect";
  * cli-command-terminal (expands to every canonical command's run/error pair).
  * No regex, wildcard, or partial match.
  */
-export const SubscriberSelector = Schema.Union([Schema.Struct({
+export const SubscriberSelector = Schema.Union([
+  Schema.Struct({
     event: Schema.String.annotate({
       description: "Exact built-in or generated lifecycle event name.",
     }),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     family: Schema.Literal("cli-command-terminal").annotate({
       description:
         "Precomputed family: cli-<canonical-id>-run and cli-<canonical-id>-error for every command.",
     }),
-  })]);
+  }),
+]);
 export type SubscriberSelector = typeof SubscriberSelector.Type;
 
 /**
@@ -37,15 +40,23 @@ export const SubscriberManifestEntry = Schema.Struct({
   id: Schema.String.annotate({
     description: "Subscriber id unique within the contributing plugin.",
   }),
-  selectors: Schema.Array(SubscriberSelector).pipe(Schema.check(Schema.isMinLength(1))).annotate({
-    description: "One or more exact-event or cli-command-terminal family selectors.",
-  }),
+  selectors: Schema.Array(SubscriberSelector)
+    .pipe(Schema.check(Schema.isMinLength(1)))
+    .annotate({
+      description: "One or more exact-event or cli-command-terminal family selectors.",
+    }),
   module: Schema.String.annotate({
     description: "Relative module path whose default export is a SubscriberFactory.",
   }),
-  priority: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(100)), Schema.check(Schema.isLessThanOrEqualTo(999))).pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 500))).annotate({
-    description: "Priority in the plugin default band 100..999 (default 500).",
-  }),
+  priority: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isGreaterThanOrEqualTo(100)),
+    Schema.check(Schema.isLessThanOrEqualTo(999)),
+  )
+    .pipe(Schema.withDecodingDefaultKey(Effect.sync(() => 500)))
+    .annotate({
+      description: "Priority in the plugin default band 100..999 (default 500).",
+    }),
   abortOnError: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.sync(() => false))).annotate({
     description: "When true, subscriber errors at post-* events abort the step (default false).",
   }),

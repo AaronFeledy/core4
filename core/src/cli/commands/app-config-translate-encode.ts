@@ -32,13 +32,13 @@ export const encodeTranslateOutputs = (
     for (const entry of ordered) {
       const invalidPrefix = (cause: unknown) =>
         new ConfigTranslateError({ message: `Invalid merge prefix at layer ${entry.layer}.`, cause });
-      const mapping = yield* Schema.decodeUnknownEffect(
-        Schema.Record(Schema.String, Schema.Unknown),
-      )(entry.fragment).pipe(Effect.mapError(invalidPrefix));
+      const mapping = yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(
+        entry.fragment,
+      ).pipe(Effect.mapError(invalidPrefix));
       merged = mergeLandofiles([merged, mapping]);
-      yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(merged, { onExcessProperty: "error" }).pipe(
-        Effect.mapError(invalidPrefix),
-      );
+      yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(merged, {
+        onExcessProperty: "error",
+      }).pipe(Effect.mapError(invalidPrefix));
     }
     yield* Schema.decodeUnknownEffect(LandofileAuthoringShape)(merged, { onExcessProperty: "error" }).pipe(
       Effect.mapError(

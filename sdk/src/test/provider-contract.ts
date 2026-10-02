@@ -339,12 +339,18 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     yield* requireContract(typeof execResult.stdout === "string", "exec result includes stdout", execResult);
     yield* requireContract(typeof execResult.stderr === "string", "exec result includes stderr", execResult);
 
-    const logChunks = yield* Effect.timeoutOrElse(provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: true, tail: 20 }).pipe(
+    const logChunks = yield* Effect.timeoutOrElse(
+      provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: true, tail: 20 }).pipe(
         Stream.take(1),
         Stream.runCollect,
         Effect.map((chunks) => Array.from(chunks)),
         Effect.mapError(mapProviderFailure("logs emits structured chunks")),
-      ), { duration: Duration.seconds(15), orElse: () => Effect.fail((() => contractFailure("logs emits at least one chunk", []))()) });
+      ),
+      {
+        duration: Duration.seconds(15),
+        orElse: () => Effect.fail((() => contractFailure("logs emits at least one chunk", []))()),
+      },
+    );
     yield* requireContract(logChunks.length > 0, "logs emits at least one chunk", logChunks);
     for (const chunk of logChunks) {
       yield* requireContract(chunk.service === TEST_SERVICE_NAME, "log chunk includes service name", chunk);

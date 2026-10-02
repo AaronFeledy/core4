@@ -36,7 +36,9 @@ export interface McpTransportShape {
   readonly notify: (notification: McpTransportNotification) => Effect.Effect<void, McpTransportError>;
 }
 
-export class McpTransport extends Context.Service<McpTransport, McpTransportShape>()("@lando/mcp/McpTransport") {}
+export class McpTransport extends Context.Service<McpTransport, McpTransportShape>()(
+  "@lando/mcp/McpTransport",
+) {}
 
 export interface InMemoryTransport {
   readonly transport: McpTransportShape;

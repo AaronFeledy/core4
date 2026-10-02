@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { Context, Effect, Result, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -195,7 +195,10 @@ export const makePluginRegistryLive = (
           (module) => !(discovery.disable ?? []).includes(module.manifest.name),
         );
       }
-      const capabilities = yield* Result.match(makePluginCapabilityIndex(enabledModules), { onFailure: (error) => Effect.fail(error), onSuccess: (index) => Effect.succeed(index) }).pipe(Effect.orDie);
+      const capabilities = yield* Result.match(makePluginCapabilityIndex(enabledModules), {
+        onFailure: (error) => Effect.fail(error),
+        onSuccess: (index) => Effect.succeed(index),
+      }).pipe(Effect.orDie);
       const services = makePluginRegistry(
         configService._tag === "Some" ? configService.value : undefined,
         logger._tag === "Some" ? logger.value : undefined,

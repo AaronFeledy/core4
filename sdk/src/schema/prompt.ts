@@ -6,7 +6,16 @@ import { Schema } from "effect";
 // shape is unchanged apart from the additive `editor` prompt type.
 
 /** Prompt control type — the eight published prompt types. */
-export const PromptType = Schema.Literals(["text", "select", "multiselect", "confirm", "number", "secret", "path", "editor"]);
+export const PromptType = Schema.Literals([
+  "text",
+  "select",
+  "multiselect",
+  "confirm",
+  "number",
+  "secret",
+  "path",
+  "editor",
+]);
 export type PromptType = typeof PromptType.Type;
 
 /** Dynamic-choices source — run a canonical Lando command and parse its stdout into choices. */
@@ -18,11 +27,16 @@ export const ChoicesFrom = Schema.Struct({
 export type ChoicesFrom = typeof ChoicesFrom.Type;
 
 /** Prompt choice — bare value or labeled object. */
-export const PromptChoice = Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Struct({
+export const PromptChoice = Schema.Union([
+  Schema.String,
+  Schema.Number,
+  Schema.Boolean,
+  Schema.Struct({
     value: Schema.Union([Schema.String, Schema.Number, Schema.Boolean]),
     label: Schema.optionalKey(Schema.String),
     description: Schema.optionalKey(Schema.String),
-  })]);
+  }),
+]);
 export type PromptChoice = typeof PromptChoice.Type;
 
 /** Prompt validation — per-type validator keys. */
@@ -36,7 +50,12 @@ export const PromptValidate = Schema.Struct({
 export type PromptValidate = typeof PromptValidate.Type;
 
 /** Resolved prompt answer — a scalar or a list of scalars (for `multiselect`). */
-export const PromptAnswer = Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Array(Schema.Union([Schema.String, Schema.Number, Schema.Boolean]))]);
+export const PromptAnswer = Schema.Union([
+  Schema.String,
+  Schema.Number,
+  Schema.Boolean,
+  Schema.Array(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
+]);
 export type PromptAnswer = typeof PromptAnswer.Type;
 
 /** Generalized prompt specification — the published prompting vocabulary. */

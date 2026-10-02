@@ -1,5 +1,4 @@
 import { SchemaIssue } from "effect";
-import { Schema } from "effect";
 
 const byteSizeFailure = (literal: string): SchemaIssue.InvalidValue => {
   // The "Landofile service" prefix is load-bearing: core's Landofile validation

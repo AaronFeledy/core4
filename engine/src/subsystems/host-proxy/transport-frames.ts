@@ -12,13 +12,18 @@ import { CommandResultEnvelope } from "@lando/sdk/schema";
 import type { HostProxyRunLandoResult } from "./dispatch.ts";
 import type { WireResponse } from "./transport-wire.ts";
 
-const NdjsonFrame = Schema.Union([Schema.Struct({ kind: Schema.Literal("stdout"), chunk: Schema.String }), Schema.Struct({ kind: Schema.Literal("stderr"), chunk: Schema.String }), Schema.Struct({ kind: Schema.Literal("exit"), code: Schema.Number }), Schema.Struct({
+const NdjsonFrame = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("stdout"), chunk: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("stderr"), chunk: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("exit"), code: Schema.Number }),
+  Schema.Struct({
     kind: Schema.Literal("error"),
     code: Schema.String,
     message: Schema.String,
     reason: Schema.optionalKey(Schema.String),
     remediation: Schema.optionalKey(Schema.String),
-  })]);
+  }),
+]);
 type NdjsonErrorFrame = Extract<typeof NdjsonFrame.Type, { kind: "error" }>;
 
 export const encodeNdjsonFrame = (response: WireResponse): string => {

@@ -1,6 +1,6 @@
-import { SchemaIssue } from "effect";
 import { expect, test } from "bun:test";
 import { PluginManifest } from "@lando/sdk/schema";
+import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
 test("PluginManifest accepts contributes.secretStores with schemes", () => {

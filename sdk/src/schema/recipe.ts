@@ -30,30 +30,36 @@ export type RecipePromptValidate = PromptValidate;
  * There is no third option, and neither form lets a raw value reach a
  * template, argv, an emitted file, provenance, or a diagnostic.
  */
-export const RecipeSecretDisposition = Schema.Union([Schema.Struct({
+export const RecipeSecretDisposition = Schema.Union([
+  Schema.Struct({
     kind: Schema.Literal("secret-store").annotate({
       description: "Record an existing stored-secret reference instead of a value.",
     }),
     field: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
       description: "Field that receives the approved stored-secret reference.",
     }),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     kind: Schema.Literal("init-only").annotate({
       description: "Deliver the answer once to a named init-only sink and never persist it.",
     }),
-    sink: Schema.Union([Schema.Struct({
+    sink: Schema.Union([
+      Schema.Struct({
         kind: Schema.Literal("stdin").annotate({
           description: "Deliver on the post-init action's standard input.",
         }),
-      }), Schema.Struct({
+      }),
+      Schema.Struct({
         kind: Schema.Literal("secretEnv").annotate({
           description: "Deliver as one named post-init secret environment variable.",
         }),
         name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
           description: "Secret environment variable name receiving the answer.",
         }),
-      })]).annotate({ description: "The single init-only sink this answer may reach." }),
-  })]);
+      }),
+    ]).annotate({ description: "The single init-only sink this answer may reach." }),
+  }),
+]);
 export type RecipeSecretDisposition = typeof RecipeSecretDisposition.Type;
 
 /** Recipe prompt — {@link PromptSpec} fields plus the recipe-only `when:`/`deprecated:` keys. */
@@ -67,34 +73,38 @@ export const RecipePrompt = Schema.Struct({
   choices: Schema.optionalKey(Schema.Array(PromptChoice)),
   choicesFrom: Schema.optionalKey(ChoicesFrom),
   deprecated: Schema.optionalKey(DeprecationNotice),
-  disposition: Schema.optionalKey(RecipeSecretDisposition.annotate({
+  disposition: Schema.optionalKey(
+    RecipeSecretDisposition.annotate({
       description: "Required on a secret prompt; forbidden elsewhere. Names the single allowed destination.",
-    })),
+    }),
+  ),
 }).pipe(
-  Schema.check(Schema.makeFilter((value) => {
-    if (value.type === "secret") {
-      if (value.disposition === undefined) {
+  Schema.check(
+    Schema.makeFilter((value) => {
+      if (value.type === "secret") {
+        if (value.disposition === undefined) {
+          return {
+            path: ["disposition"],
+            issue: `Secret prompt "${value.name}" must declare exactly one disposition.`,
+          };
+        }
+        if (value.default !== undefined) {
+          return {
+            path: ["default"],
+            issue: `Secret prompt "${value.name}" must not declare a default value.`,
+          };
+        }
+        return true;
+      }
+      if (value.disposition !== undefined) {
         return {
           path: ["disposition"],
-          issue: `Secret prompt "${value.name}" must declare exactly one disposition.`,
-        };
-      }
-      if (value.default !== undefined) {
-        return {
-          path: ["default"],
-          issue: `Secret prompt "${value.name}" must not declare a default value.`,
+          issue: `Prompt "${value.name}" is not a secret prompt and must not declare a disposition.`,
         };
       }
       return true;
-    }
-    if (value.disposition !== undefined) {
-      return {
-        path: ["disposition"],
-        issue: `Prompt "${value.name}" is not a secret prompt and must not declare a disposition.`,
-      };
-    }
-    return true;
-  })),
+    }),
+  ),
 );
 export type RecipePrompt = typeof RecipePrompt.Type;
 
@@ -106,12 +116,16 @@ const RecipeSecretSinkBinding = Schema.Struct({
 });
 
 const secretSinkFields = {
-  stdin: Schema.optionalKey(RecipeSecretSinkBinding.annotate({
+  stdin: Schema.optionalKey(
+    RecipeSecretSinkBinding.annotate({
       description: "Secret prompt delivered on this action's standard input.",
-    })),
-  secretEnv: Schema.optionalKey(Schema.Record(Schema.String, Schema.String).annotate({
+    }),
+  ),
+  secretEnv: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.String).annotate({
       description: "Secret environment variable name to the prompt whose answer fills it.",
-    })),
+    }),
+  ),
 } as const;
 
 /** Authoring-only prompt drop — consumed by flatten on raw objects before RecipeManifest decode. */
@@ -225,11 +239,23 @@ const RecipePostInitBunX = Schema.Struct({
 });
 
 /** Recipe post-init `bun` action — one of the supported verbs. */
-export const RecipePostInitBun = Schema.Union([RecipePostInitBunInstall, RecipePostInitBunScript, RecipePostInitBunAdd, RecipePostInitBunCreate, RecipePostInitBunRun, RecipePostInitBunX]);
+export const RecipePostInitBun = Schema.Union([
+  RecipePostInitBunInstall,
+  RecipePostInitBunScript,
+  RecipePostInitBunAdd,
+  RecipePostInitBunCreate,
+  RecipePostInitBunRun,
+  RecipePostInitBunX,
+]);
 export type RecipePostInitBun = typeof RecipePostInitBun.Type;
 
 /** Recipe post-init action — discriminated by `type`. */
-export const RecipePostInitAction = Schema.Union([RecipePostInitGitInit, RecipePostInitMessage, RecipePostInitCommand, RecipePostInitBun]);
+export const RecipePostInitAction = Schema.Union([
+  RecipePostInitGitInit,
+  RecipePostInitMessage,
+  RecipePostInitCommand,
+  RecipePostInitBun,
+]);
 export type RecipePostInitAction = typeof RecipePostInitAction.Type;
 
 /** Recipe requires — supported pre-conditions. */
@@ -245,9 +271,11 @@ export const RecipeManifest = Schema.Struct({
   title: Schema.String,
   description: Schema.String,
   version: RecipeVersion,
-  extends: Schema.optionalKey(Schema.String.annotate({
+  extends: Schema.optionalKey(
+    Schema.String.annotate({
       description: "Parent recipe id or path flattened into this recipe before validation.",
-    })),
+    }),
+  ),
   deprecated: Schema.optionalKey(DeprecationNotice),
   authors: Schema.optionalKey(Schema.Array(Schema.String)),
   tags: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -257,13 +285,17 @@ export const RecipeManifest = Schema.Struct({
   prompts: Schema.optionalKey(Schema.Array(RecipePrompt)),
   files: Schema.optionalKey(Schema.Array(RecipeFile)),
   postInit: Schema.optionalKey(Schema.Array(RecipePostInitAction)),
-  snapshot: Schema.optionalKey(RecipeSnapshot.annotate({
+  snapshot: Schema.optionalKey(
+    RecipeSnapshot.annotate({
       description:
         "Declarative data that renders this version's authoring output without running recipe code.",
-    })),
-  migrations: Schema.optionalKey(Schema.Array(RecipeMigration).annotate({
+    }),
+  ),
+  migrations: Schema.optionalKey(
+    Schema.Array(RecipeMigration).annotate({
       description: "Ordered declarative edges from earlier versioned identities to this one.",
-    })),
+    }),
+  ),
 });
 export type RecipeManifest = typeof RecipeManifest.Type;
 
@@ -283,16 +315,19 @@ export type RecipeFactory = (ctx: RecipeContext) => Recipe | Promise<Recipe>;
 export const defineRecipe = <const T extends Recipe | RecipeFactory>(value: T): T => value;
 
 /** Registry resolution result — points a recipe id at an underlying git/tarball source. */
-export const RecipeRegistryResolution = Schema.Union([Schema.Struct({
+export const RecipeRegistryResolution = Schema.Union([
+  Schema.Struct({
     kind: Schema.Literal("git"),
     url: Schema.String,
     path: Schema.optionalKey(Schema.String),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     kind: Schema.Literal("tarball"),
     url: Schema.String,
     path: Schema.optionalKey(Schema.String),
     checksum: Schema.optionalKey(Schema.String),
-  })]);
+  }),
+]);
 export type RecipeRegistryResolution = typeof RecipeRegistryResolution.Type;
 
 /** Registry response payload for a resolved recipe id. */

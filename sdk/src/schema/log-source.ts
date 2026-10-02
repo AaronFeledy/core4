@@ -1,6 +1,6 @@
+import { posix } from "node:path";
 import { SchemaIssue } from "effect";
 import { Effect } from "effect";
-import { posix } from "node:path";
 
 import { Schema, SchemaTransformation } from "effect";
 
@@ -18,12 +18,16 @@ export const RESERVED_LOG_SOURCE_ID = "console";
  * brand rejects it (and empty ids) at decode time.
  */
 export const LogSourceId = Schema.String.pipe(
-  Schema.check(Schema.makeFilter((id) => id.length > 0, {
-    message: "A log source id must not be empty.",
-  })),
-  Schema.check(Schema.makeFilter((id) => id !== RESERVED_LOG_SOURCE_ID, {
-    message: "`console` is a reserved log source id and cannot be declared.",
-  })),
+  Schema.check(
+    Schema.makeFilter((id) => id.length > 0, {
+      message: "A log source id must not be empty.",
+    }),
+  ),
+  Schema.check(
+    Schema.makeFilter((id) => id !== RESERVED_LOG_SOURCE_ID, {
+      message: "`console` is a reserved log source id and cannot be declared.",
+    }),
+  ),
   Schema.brand("LogSourceId"),
 );
 export type LogSourceId = typeof LogSourceId.Type;
@@ -98,30 +102,41 @@ const LogSourceInputFields = Schema.Struct({
  * to `strategy: "follow"` (Lando does not own a user's arbitrary image build)
  * and `timestamps: false`; the id defaults to the path basename.
  */
-export const LogSourceInput = LogSourceInputFields.pipe(Schema.decodeTo(LogSource, SchemaTransformation.transformEffect<typeof LogSource.Encoded, typeof LogSourceInputFields.Type>({
-  decode: (input) =>
-    Effect.succeed({
-      id: input.id ?? posix.basename(input.path),
-      ...(input.label === undefined ? {} : { label: input.label }),
-      path: input.path,
-      stream: input.stream,
-      strategy: "follow" as const,
-      required: false,
-      timestamps: false,
-    }),
-  encode: (source: typeof LogSource.Encoded) => {
-    if (source.strategy !== "follow" || source.required !== false || source.timestamps !== false) {
-      return Effect.fail(
-        new SchemaIssue.InvalidValue({ message: "Landofile log source input can only encode follow sources with required=false and timestamps=false." }, source),
-      );
-    }
+export const LogSourceInput = LogSourceInputFields.pipe(
+  Schema.decodeTo(
+    LogSource,
+    SchemaTransformation.transformEffect<typeof LogSource.Encoded, typeof LogSourceInputFields.Type>({
+      decode: (input) =>
+        Effect.succeed({
+          id: input.id ?? posix.basename(input.path),
+          ...(input.label === undefined ? {} : { label: input.label }),
+          path: input.path,
+          stream: input.stream,
+          strategy: "follow" as const,
+          required: false,
+          timestamps: false,
+        }),
+      encode: (source: typeof LogSource.Encoded) => {
+        if (source.strategy !== "follow" || source.required !== false || source.timestamps !== false) {
+          return Effect.fail(
+            new SchemaIssue.InvalidValue(
+              {
+                message:
+                  "Landofile log source input can only encode follow sources with required=false and timestamps=false.",
+              },
+              source,
+            ),
+          );
+        }
 
-    return Effect.succeed({
-      path: AbsolutePath.make(source.path),
-      ...(source.label === undefined ? {} : { label: source.label }),
-      stream: source.stream,
-      id: LogSourceId.make(source.id),
-    });
-  },
-})));
+        return Effect.succeed({
+          path: AbsolutePath.make(source.path),
+          ...(source.label === undefined ? {} : { label: source.label }),
+          stream: source.stream,
+          id: LogSourceId.make(source.id),
+        });
+      },
+    }),
+  ),
+);
 export type LogSourceInput = typeof LogSourceInput.Type;

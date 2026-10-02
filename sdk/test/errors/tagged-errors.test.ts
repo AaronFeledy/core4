@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Effect, Result, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Result, Schema } from "effect";
 
 import {
   AmbiguousCertificateAuthoritiesError,

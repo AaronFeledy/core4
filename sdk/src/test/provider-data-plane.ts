@@ -221,7 +221,9 @@ export const runProviderDataPlaneContract = (
       yield* requireContract(
         unsupportedExit._tag === "Failure" &&
           unsupportedExit.cause.reasons.length === 1 &&
-          unsupportedExit.cause.reasons.some((reason) => reason._tag === "Fail" && reason.error instanceof DataEndpointUnsupportedError),
+          unsupportedExit.cause.reasons.some(
+            (reason) => reason._tag === "Fail" && reason.error instanceof DataEndpointUnsupportedError,
+          ),
         "unrealizable transfer fails DataEndpointUnsupportedError",
         unsupportedExit,
       );

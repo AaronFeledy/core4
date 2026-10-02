@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Fiber, Layer, Stream } from "effect";
+import { Effect, Fiber, Layer, Result, Stream } from "effect";
 
 import type { DownloadRequest, DownloadResult } from "@lando/sdk/schema";
 import { Downloader } from "@lando/sdk/services";

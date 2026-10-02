@@ -82,9 +82,7 @@ export const CommandRegistryLive = Layer.effect(
     const pluginRegistryOption = yield* Effect.serviceOption(PluginRegistry);
     return {
       list: Effect.gen(function* () {
-        const cached = yield* readFreshAppCommandCacheForCwd().pipe(
-          Effect.catch(() => Effect.succeed(null)),
-        );
+        const cached = yield* readFreshAppCommandCacheForCwd().pipe(Effect.catch(() => Effect.succeed(null)));
         if (cached !== null) return toRegisteredCommands(cached.entries);
 
         const landofile = yield* loadUserLandofile(landofileService);

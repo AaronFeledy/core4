@@ -1,6 +1,9 @@
 import { Schema } from "effect";
 
-export const ComposePreservedPathKey = Schema.Literals(["depends_on.*.restart", "healthcheck.start_interval"]).annotate({
+export const ComposePreservedPathKey = Schema.Literals([
+  "depends_on.*.restart",
+  "healthcheck.start_interval",
+]).annotate({
   identifier: "ComposePreservedPathKey",
   title: "Compose Preserved Path Key",
   description:

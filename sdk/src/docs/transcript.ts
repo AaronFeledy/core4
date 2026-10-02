@@ -3,9 +3,11 @@ import { Schema } from "effect";
 import { GuideId } from "./guide-frontmatter.ts";
 
 const Iso8601Timestamp = Schema.String.pipe(
-  Schema.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, {
-    message: "Timestamp must be an ISO8601 UTC string.",
-  })),
+  Schema.check(
+    Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, {
+      message: "Timestamp must be an ISO8601 UTC string.",
+    }),
+  ),
 ).annotate({ identifier: "TranscriptTimestamp" });
 
 export const TranscriptRunFrame = Schema.Struct({
@@ -79,7 +81,14 @@ export const TranscriptInlineFrame = Schema.Struct({
 });
 export type TranscriptInlineFrame = typeof TranscriptInlineFrame.Type;
 
-export const TranscriptFrame = Schema.Union([TranscriptRunFrame, TranscriptVerifyFrame, TranscriptFixtureFrame, TranscriptCleanupFrame, TranscriptInspectFrame, TranscriptInlineFrame]).annotate({
+export const TranscriptFrame = Schema.Union([
+  TranscriptRunFrame,
+  TranscriptVerifyFrame,
+  TranscriptFixtureFrame,
+  TranscriptCleanupFrame,
+  TranscriptInspectFrame,
+  TranscriptInlineFrame,
+]).annotate({
   identifier: "TranscriptFrame",
   title: "Transcript Frame",
   description: "Internal guide scenario transcript frame.",

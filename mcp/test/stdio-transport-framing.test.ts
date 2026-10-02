@@ -1,6 +1,6 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber, Option } from "effect";
+import { TestClock } from "effect/testing";
 
 import type { McpCatalog } from "@lando/sdk/schema";
 

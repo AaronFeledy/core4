@@ -31,7 +31,9 @@ export class PrivateFileAccessError extends Error {
   }
 }
 
-export class PrivateFileAccessService extends Context.Service<PrivateFileAccessService, PrivateFileAccess>()("@lando/state-store/PrivateFileAccess") {}
+export class PrivateFileAccessService extends Context.Service<PrivateFileAccessService, PrivateFileAccess>()(
+  "@lando/state-store/PrivateFileAccess",
+) {}
 
 type ClosablePrivateFileAccess = PrivateFileAccess & { readonly close: () => Promise<void> };
 

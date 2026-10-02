@@ -57,7 +57,9 @@ const SampleSchema = Schema.Struct({
   key: Schema.String,
   outcome: OutcomeSchema,
   resetCondition: Schema.String,
-  stagedFixture: Schema.optionalKey(Schema.Struct({ path: Schema.String, bytes: Schema.Number, sha256: Schema.String })),
+  stagedFixture: Schema.optionalKey(
+    Schema.Struct({ path: Schema.String, bytes: Schema.Number, sha256: Schema.String }),
+  ),
   steps: Schema.Array(StepSchema).pipe(Schema.check(Schema.isMaxLength(MAX_STEPS))),
   skipReason: Schema.optionalKey(Schema.String),
 });
@@ -93,14 +95,17 @@ const WorkflowPerformanceReportStruct = Schema.Struct({
 });
 
 export const WorkflowPerformanceReportSchema = WorkflowPerformanceReportStruct.pipe(
-  Schema.check(Schema.makeFilter((report) =>
-    report.lanes.every((lane) =>
-      lane.samples.every((sample) =>
-        isWorkflowPerformanceSampleKey(sample.key, report.run.id, lane.id, sample.index),
-      ),
-    )
-      ? undefined
-      : "sample keys must be derived from their lane and ordinal")),
+  Schema.check(
+    Schema.makeFilter((report) =>
+      report.lanes.every((lane) =>
+        lane.samples.every((sample) =>
+          isWorkflowPerformanceSampleKey(sample.key, report.run.id, lane.id, sample.index),
+        ),
+      )
+        ? undefined
+        : "sample keys must be derived from their lane and ordinal",
+    ),
+  ),
 );
 
 export type WorkflowPerformanceReport = typeof WorkflowPerformanceReportSchema.Type;

@@ -1,5 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 
 import { DateTime, Result, Schema } from "effect";
 

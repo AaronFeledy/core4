@@ -13,4 +13,6 @@ export interface StreamFrameSinkShape {
   readonly emit: (frame: StreamFrameSinkFrame) => Effect.Effect<void>;
 }
 
-export class StreamFrameSink extends Context.Service<StreamFrameSink, StreamFrameSinkShape>()("@lando/core/StreamFrameSink") {}
+export class StreamFrameSink extends Context.Service<StreamFrameSink, StreamFrameSinkShape>()(
+  "@lando/core/StreamFrameSink",
+) {}

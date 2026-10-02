@@ -30,7 +30,10 @@ const NftPackageSchema = Schema.Struct({
 const NftManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   toolVersion: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  packages: Schema.Record(Schema.String, Schema.Array(NftPackageSchema).pipe(Schema.check(Schema.isMinLength(1)))),
+  packages: Schema.Record(
+    Schema.String,
+    Schema.Array(NftPackageSchema).pipe(Schema.check(Schema.isMinLength(1))),
+  ),
 });
 
 export type NftPackage = Schema.Schema.Type<typeof NftPackageSchema>;

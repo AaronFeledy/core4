@@ -133,9 +133,9 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
     );
 
     test("condition-map rejects an entry without condition", () => {
-      expect(Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ dependsOn: { database: {} } }))).toBe(
-        true,
-      );
+      expect(
+        Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ dependsOn: { database: {} } })),
+      ).toBe(true);
     });
 
     test("encoding a non-bare dependency defaults its condition", () => {

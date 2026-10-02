@@ -6,4 +6,7 @@ export interface GlobalPluginManifestsShape {
   readonly list: Effect.Effect<ReadonlyArray<PluginManifest>>;
 }
 
-export class GlobalPluginManifests extends Context.Service<GlobalPluginManifests, GlobalPluginManifestsShape>()("@lando/core/GlobalPluginManifests") {}
+export class GlobalPluginManifests extends Context.Service<
+  GlobalPluginManifests,
+  GlobalPluginManifestsShape
+>()("@lando/core/GlobalPluginManifests") {}

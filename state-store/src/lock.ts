@@ -1,6 +1,6 @@
-import { Semaphore } from "effect";
 import { lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
+import { Semaphore } from "effect";
 
 import { Effect, Option, Schema } from "effect";
 
@@ -28,9 +28,15 @@ const guardFor = (file: string): Effect.Effect<Semaphore.Semaphore> =>
   });
 
 const LockRecord = Schema.Struct({
-  pid: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 }))),
+  pid: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 })),
+  ),
   token: Schema.NonEmptyString.pipe(Schema.check(Schema.isMaxLength(256))),
-  createdAt: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }))),
+  createdAt: Schema.Number.pipe(
+    Schema.check(Schema.isInt()),
+    Schema.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })),
+  ),
 });
 type LockRecord = typeof LockRecord.Type;
 const parseLockRecord = Schema.decodeUnknownOption(Schema.fromJsonString(LockRecord), {

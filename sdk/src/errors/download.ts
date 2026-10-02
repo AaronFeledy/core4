@@ -4,7 +4,9 @@ export class DownloadFetchError extends Schema.TaggedError<DownloadFetchError>()
   message: Schema.String,
   urlOrigin: Schema.String,
   status: Schema.optional(Schema.Number),
-  trustCause: Schema.optional(Schema.Literals(["proxy-authentication", "tls-interception", "missing-custom-ca", "blocked-endpoint"])),
+  trustCause: Schema.optional(
+    Schema.Literals(["proxy-authentication", "tls-interception", "missing-custom-ca", "blocked-endpoint"]),
+  ),
   remediation: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
 }) {}

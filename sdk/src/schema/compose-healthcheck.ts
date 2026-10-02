@@ -41,11 +41,13 @@ export const HealthcheckCanonicalBase = Schema.Struct({
   startPeriodSeconds: Schema.optionalKey(Schema.Number),
 });
 
-const ComposeHealthcheckCanonical = HealthcheckCanonicalBase.pipe(Schema.fieldsAssign({
+const ComposeHealthcheckCanonical = HealthcheckCanonicalBase.pipe(
+  Schema.fieldsAssign({
     startInterval: Schema.optionalKey(Schema.String).annotate({
       description: "Raw Compose start_interval duration preserved losslessly for runtime extensions.",
     }),
-  }));
+  }),
+);
 
 type AcceptedHealthcheck = typeof ComposeHealthcheckAccepted.Type;
 type NormalizedTest = Readonly<{
@@ -61,25 +63,49 @@ const normalizeTest = (test: AcceptedHealthcheck["test"]): NormalizedTest => {
   switch (marker) {
     case "NONE":
       if (test.length !== 1) {
-        throw new SchemaIssue.InvalidValue({ message: 'Landofile service healthcheck.test marker "NONE" must be the only array entry.' }, test);
+        throw new SchemaIssue.InvalidValue(
+          { message: 'Landofile service healthcheck.test marker "NONE" must be the only array entry.' },
+          test,
+        );
       }
       return { kind: "none" };
     case "CMD":
       if (test.length < 2) {
-        throw new SchemaIssue.InvalidValue({ message: 'Landofile service healthcheck.test marker "CMD" requires at least one argv entry.' }, test);
+        throw new SchemaIssue.InvalidValue(
+          { message: 'Landofile service healthcheck.test marker "CMD" requires at least one argv entry.' },
+          test,
+        );
       }
       return { kind: "command", command: test.slice(1) };
     case "CMD-SHELL": {
       const command = test[1];
       if (test.length !== 2 || command === undefined) {
-        throw new SchemaIssue.InvalidValue({ message: 'Landofile service healthcheck.test marker "CMD-SHELL" requires exactly one command string.' }, test);
+        throw new SchemaIssue.InvalidValue(
+          {
+            message:
+              'Landofile service healthcheck.test marker "CMD-SHELL" requires exactly one command string.',
+          },
+          test,
+        );
       }
       return { kind: "command", command };
     }
     case undefined:
-      throw new SchemaIssue.InvalidValue({ message: 'Landofile service healthcheck.test must use a non-empty array beginning with "CMD", "CMD-SHELL", or "NONE".' }, test);
+      throw new SchemaIssue.InvalidValue(
+        {
+          message:
+            'Landofile service healthcheck.test must use a non-empty array beginning with "CMD", "CMD-SHELL", or "NONE".',
+        },
+        test,
+      );
     default:
-      throw new SchemaIssue.InvalidValue({ message: 'Landofile service healthcheck.test marker is unsupported; expected "CMD", "CMD-SHELL", or "NONE".' }, test);
+      throw new SchemaIssue.InvalidValue(
+        {
+          message:
+            'Landofile service healthcheck.test marker is unsupported; expected "CMD", "CMD-SHELL", or "NONE".',
+        },
+        test,
+      );
   }
 };
 
@@ -88,7 +114,10 @@ const normalizeDisable = (disable: AcceptedHealthcheck["disable"]): boolean | un
   const normalized = disable.trim().toLowerCase();
   if (normalized === "true") return true;
   if (normalized === "false") return false;
-  throw new SchemaIssue.InvalidValue({ message: 'Landofile service healthcheck.disable must be a boolean or the string "true" or "false".' }, disable);
+  throw new SchemaIssue.InvalidValue(
+    { message: 'Landofile service healthcheck.disable must be a boolean or the string "true" or "false".' },
+    disable,
+  );
 };
 
 const normalizeRetries = (retries: AcceptedHealthcheck["retries"]): number | undefined => {
@@ -96,7 +125,10 @@ const normalizeRetries = (retries: AcceptedHealthcheck["retries"]): number | und
   const normalized = Number(retries);
   const formatIsValid = typeof retries === "number" || /^[0-9]+$/.test(retries);
   if (formatIsValid && Number.isSafeInteger(normalized) && normalized >= 0) return normalized;
-  throw new SchemaIssue.InvalidValue({ message: "Landofile service healthcheck.retries must be a non-negative decimal integer." }, retries);
+  throw new SchemaIssue.InvalidValue(
+    { message: "Landofile service healthcheck.retries must be a non-negative decimal integer." },
+    retries,
+  );
 };
 
 const decodeHealthcheck = (input: AcceptedHealthcheck): typeof ComposeHealthcheckCanonical.Type => {
@@ -158,11 +190,19 @@ const encodeHealthcheck = (
   ...(input.startInterval === undefined ? {} : { start_interval: input.startInterval }),
 });
 
-export const HealthcheckField = ComposeHealthcheckAccepted.pipe(Schema.decodeTo(ComposeHealthcheckCanonical, SchemaTransformation.transformEffect({ decode: (input) => {
-      try {
-        return Effect.succeed(decodeHealthcheck(input));
-      } catch (error) {
-        if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
-        throw error;
-      }
-    }, encode: (input) => Effect.succeed(encodeHealthcheck(input)) })));
+export const HealthcheckField = ComposeHealthcheckAccepted.pipe(
+  Schema.decodeTo(
+    ComposeHealthcheckCanonical,
+    SchemaTransformation.transformEffect({
+      decode: (input) => {
+        try {
+          return Effect.succeed(decodeHealthcheck(input));
+        } catch (error) {
+          if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
+          throw error;
+        }
+      },
+      encode: (input) => Effect.succeed(encodeHealthcheck(input)),
+    }),
+  ),
+);

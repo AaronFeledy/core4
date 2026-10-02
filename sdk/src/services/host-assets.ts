@@ -4,4 +4,6 @@ export interface LogFileHelperAssetsShape {
   readonly payloads: Effect.Effect<Readonly<Record<string, Uint8Array>>, never>;
 }
 
-export class LogFileHelperAssets extends Context.Service<LogFileHelperAssets, LogFileHelperAssetsShape>()("@lando/core/LogFileHelperAssets") {}
+export class LogFileHelperAssets extends Context.Service<LogFileHelperAssets, LogFileHelperAssetsShape>()(
+  "@lando/core/LogFileHelperAssets",
+) {}

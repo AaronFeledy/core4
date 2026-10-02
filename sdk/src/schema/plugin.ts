@@ -39,10 +39,12 @@ export const GlobalServiceContribution = Schema.Struct({
   /** Initial enabled state in `global.config.yml` when the plugin is first installed. */
   enabledByDefault: Schema.optionalKey(Schema.Boolean),
   /** Provider/global-app dependencies that must be satisfied for materialization. */
-  requires: Schema.optionalKey(Schema.Struct({
+  requires: Schema.optionalKey(
+    Schema.Struct({
       /** ProviderCapabilities keys the active provider MUST satisfy. */
       providerCapabilities: Schema.optionalKey(Schema.Array(Schema.String)),
-    })),
+    }),
+  ),
   /** Other global service ids that cannot coexist with this contribution. */
   conflicts: Schema.optionalKey(Schema.Array(Schema.String)),
   /** One-line description surfaced in `meta:global:list` / `info`. */
@@ -95,9 +97,11 @@ export type HttpClientContribution = typeof HttpClientContribution.Type;
 export const InteractionServiceContribution = Schema.Struct({
   /** Unique across plugins; `stdio` is reserved. */
   id: Schema.String.pipe(
-    Schema.check(Schema.makeFilter((id) => id !== "stdio", {
-      message: "Interaction service id `stdio` is reserved by core.",
-    })),
+    Schema.check(
+      Schema.makeFilter((id) => id !== "stdio", {
+        message: "Interaction service id `stdio` is reserved by core.",
+      }),
+    ),
   ),
   module: Schema.String,
   capabilities: Schema.Struct({
@@ -126,9 +130,11 @@ export const RouterServiceContribution = Schema.Struct({
   capabilities: Schema.optionalKey(ProxyCapabilities).annotate({
     description: "Static capability declaration available before loading the implementation.",
   }),
-  defaultFor: Schema.optionalKey(Schema.Struct({
+  defaultFor: Schema.optionalKey(
+    Schema.Struct({
       platform: Schema.optionalKey(Schema.Array(Schema.String)),
-    })).annotate({ description: "Host matchers that nominate this implementation as a default." }),
+    }),
+  ).annotate({ description: "Host matchers that nominate this implementation as a default." }),
   enabledByDefault: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Whether this contribution starts enabled after installation.",
   }),
@@ -148,9 +154,11 @@ export const SshServiceContribution = Schema.Struct({
   module: Schema.String.annotateKey({
     description: "Contained plugin module exporting the SshService Layer.",
   }),
-  defaultFor: Schema.optionalKey(Schema.Struct({
+  defaultFor: Schema.optionalKey(
+    Schema.Struct({
       platform: Schema.optionalKey(Schema.Array(Schema.String)),
-    })).annotate({ description: "Host matchers that nominate this implementation as a default." }),
+    }),
+  ).annotate({ description: "Host matchers that nominate this implementation as a default." }),
   enabledByDefault: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Whether this contribution starts enabled after installation.",
   }),

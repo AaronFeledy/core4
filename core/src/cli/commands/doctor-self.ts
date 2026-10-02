@@ -204,7 +204,9 @@ export const isolateDoctorSection = <A, E, R>(
     // Forked so a section that interrupts *itself* cannot masquerade as user
     // cancellation: if the parent were interrupted, `Fiber.await` would itself be
     // interrupted and never reach the classification below.
-    const fiber = yield* Effect.forkChild(options.effect.pipe(Effect.timeoutOption(Duration.millis(budgetMs))));
+    const fiber = yield* Effect.forkChild(
+      options.effect.pipe(Effect.timeoutOption(Duration.millis(budgetMs))),
+    );
     const outcome = yield* Fiber.await(fiber);
 
     if (Exit.isSuccess(outcome)) {

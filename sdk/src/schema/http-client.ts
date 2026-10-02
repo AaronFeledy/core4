@@ -47,7 +47,10 @@ export const HttpUploadRequest = Schema.Struct({
   url: Schema.String,
   method: Schema.optionalKey(Schema.String),
   headers: Schema.optionalKey(Schema.Array(HttpHeader)),
-  source: Schema.Union([Schema.Struct({ kind: Schema.Literal("file"), path: Schema.String }), Schema.Struct({ kind: Schema.Literal("inline") })]),
+  source: Schema.Union([
+    Schema.Struct({ kind: Schema.Literal("file"), path: Schema.String }),
+    Schema.Struct({ kind: Schema.Literal("inline") }),
+  ]),
   contentType: Schema.optionalKey(Schema.String),
   contentLength: Schema.optionalKey(Schema.Number),
   callerId: Schema.optionalKey(Schema.String),

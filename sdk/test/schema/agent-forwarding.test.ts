@@ -1,6 +1,6 @@
-import { Struct } from "effect";
 import { expect, test } from "bun:test";
 import * as Contracts from "@lando/sdk/schema";
+import { Struct } from "effect";
 import { Result, Schema } from "effect";
 
 test("AgentSocketBridgeResult decodes bind-directory and volume members", () => {
@@ -49,7 +49,9 @@ test.each(["bind-directory", "guest-bridge", "volume-relay"])(
     const input = { agentSocket: { delivery } };
     expect(Contracts.ProviderCapabilities.fields).toHaveProperty("agentSocket");
     // When
-    const result = Schema.decodeUnknownSync(Schema.Struct(Struct.pick(Contracts.ProviderCapabilities.fields, ["agentSocket"])))(input);
+    const result = Schema.decodeUnknownSync(
+      Schema.Struct(Struct.pick(Contracts.ProviderCapabilities.fields, ["agentSocket"])),
+    )(input);
     // Then
     expect(result).toEqual(input);
   },

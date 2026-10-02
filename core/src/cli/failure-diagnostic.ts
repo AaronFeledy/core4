@@ -33,13 +33,15 @@ const FailureCauseEvidenceSchema = Schema.Struct({
   operation: Schema.optionalKey(Schema.Literals([...OPERATIONS])),
   kind: Schema.optionalKey(Schema.Literals([...TRANSPORT_KINDS])),
   systemCode: Schema.optionalKey(Schema.Literals([...TRANSPORT_SYSTEM_CODES])),
-  details: Schema.optionalKey(Schema.Struct({
+  details: Schema.optionalKey(
+    Schema.Struct({
       status: Schema.optionalKey(HttpStatusSchema),
       method: Schema.optionalKey(Schema.Literals([...HTTP_METHODS])),
       failureKind: Schema.optionalKey(Schema.Literals([...PULL_FAILURE_KINDS])),
       source: Schema.optionalKey(Schema.Literals([...PULL_FAILURE_SOURCES])),
       signature: Schema.optionalKey(Schema.Literals([...PULL_FAILURE_SIGNATURES])),
-    })),
+    }),
+  ),
 });
 
 export const ImagePullFailureDiagnosticSchema = Schema.Struct({

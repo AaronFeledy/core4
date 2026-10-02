@@ -15,15 +15,23 @@ export type ArchiveFormat = typeof ArchiveFormat.Type;
  * A byte-movement endpoint. Every `DataMover` operation is a transfer between
  * two of these, or a snapshot/restore over a `volume`.
  */
-export const DataEndpoint = Schema.Union([Schema.TaggedStruct("hostPath", {
+export const DataEndpoint = Schema.Union([
+  Schema.TaggedStruct("hostPath", {
     path: AbsolutePath,
     trusted: Schema.optionalKey(Schema.Boolean),
-  }), Schema.TaggedStruct("hostArchive", { path: AbsolutePath, format: ArchiveFormat }), Schema.TaggedStruct("stream", {}), Schema.TaggedStruct("volume", { app: AppId, store: Schema.String }), Schema.TaggedStruct("servicePath", { app: AppId, service: ServiceName, path: PortablePath }), Schema.TaggedStruct("serviceCmd", {
+  }),
+  Schema.TaggedStruct("hostArchive", { path: AbsolutePath, format: ArchiveFormat }),
+  Schema.TaggedStruct("stream", {}),
+  Schema.TaggedStruct("volume", { app: AppId, store: Schema.String }),
+  Schema.TaggedStruct("servicePath", { app: AppId, service: ServiceName, path: PortablePath }),
+  Schema.TaggedStruct("serviceCmd", {
     app: AppId,
     service: ServiceName,
     command: CommandSpec,
     env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-  }), Schema.TaggedStruct("artifact", { ref: Schema.String })]);
+  }),
+  Schema.TaggedStruct("artifact", { ref: Schema.String }),
+]);
 export type DataEndpoint = typeof DataEndpoint.Type;
 
 /**

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { Effect, Result, Fiber } from "effect";
+import { Effect, Fiber, Result } from "effect";
 
 import type { AbsolutePath, DownloadResult } from "../schema/index.ts";
 import type { DownloaderShape, LandoEvent } from "../services/index.ts";
@@ -137,7 +137,8 @@ export const runDownloaderContract = (
       }),
     );
     yield* requireDownloaderContract(
-      Result.isFailure(offlineResult) && downloaderErrorLeft(offlineResult.failure)._tag === "DownloadOfflineError",
+      Result.isFailure(offlineResult) &&
+        downloaderErrorLeft(offlineResult.failure)._tag === "DownloadOfflineError",
       "offline + uncached fails with DownloadOfflineError",
       offlineResult,
     );
@@ -176,7 +177,8 @@ export const runDownloaderContract = (
       }),
     );
     yield* requireDownloaderContract(
-      Result.isFailure(sizeResult) && downloaderErrorLeft(sizeResult.failure)._tag === "DownloadSizeMismatchError",
+      Result.isFailure(sizeResult) &&
+        downloaderErrorLeft(sizeResult.failure)._tag === "DownloadSizeMismatchError",
       "a size mismatch is rejected with DownloadSizeMismatchError",
       sizeResult,
     );

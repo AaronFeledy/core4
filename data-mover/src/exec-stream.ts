@@ -10,7 +10,9 @@ export const execStdoutStream = <E, R>(
   source.pipe(
     Stream.mapEffect((chunk) => {
       if ("exitCode" in chunk) {
-        return chunk.exitCode === 0 ? Effect.succeed(Result.fail(undefined)) : Effect.fail(failedExit(chunk.exitCode));
+        return chunk.exitCode === 0
+          ? Effect.succeed(Result.fail(undefined))
+          : Effect.fail(failedExit(chunk.exitCode));
       }
       return Effect.succeed(chunk.kind === "stdout" ? Result.succeed(chunk.chunk) : Result.fail(undefined));
     }),

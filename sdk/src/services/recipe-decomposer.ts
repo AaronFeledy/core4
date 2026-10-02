@@ -44,4 +44,6 @@ export interface RecipeDecomposerPorts {
  */
 export type RecipeDecomposerFactory = (ports: RecipeDecomposerPorts) => RecipeDecomposerShape;
 
-export class RecipeDecomposer extends Context.Service<RecipeDecomposer, RecipeDecomposerShape>()("@lando/core/RecipeDecomposer") {}
+export class RecipeDecomposer extends Context.Service<RecipeDecomposer, RecipeDecomposerShape>()(
+  "@lando/core/RecipeDecomposer",
+) {}

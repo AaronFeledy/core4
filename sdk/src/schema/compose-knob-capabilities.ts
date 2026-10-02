@@ -4,7 +4,32 @@ import { Schema } from "effect";
 // Compose runtime knob capabilities — provider-declared preserved knob support.
 // =============================================================================
 
-export const ComposeServiceKnobKey = Schema.Literals(["restart", "cap_add", "cap_drop", "privileged", "devices", "ulimits", "sysctls", "tmpfs", "shm_size", "dns", "dns_search", "dns_opt", "extra_hosts", "init", "stop_signal", "stop_grace_period", "security_opt", "group_add", "read_only", "platform", "pull_policy", "logging", "gpus", "deploy.resources"]).annotate({
+export const ComposeServiceKnobKey = Schema.Literals([
+  "restart",
+  "cap_add",
+  "cap_drop",
+  "privileged",
+  "devices",
+  "ulimits",
+  "sysctls",
+  "tmpfs",
+  "shm_size",
+  "dns",
+  "dns_search",
+  "dns_opt",
+  "extra_hosts",
+  "init",
+  "stop_signal",
+  "stop_grace_period",
+  "security_opt",
+  "group_add",
+  "read_only",
+  "platform",
+  "pull_policy",
+  "logging",
+  "gpus",
+  "deploy.resources",
+]).annotate({
   identifier: "ComposeServiceKnobKey",
   title: "Compose Service Knob Key",
   description: "Preserved Compose service runtime knob path eligible for provider capability declaration.",

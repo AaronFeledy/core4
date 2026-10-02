@@ -1,7 +1,7 @@
-import { Latch } from "effect";
 import { expect, test } from "bun:test";
 import { lstat, readFile, readdir, rename, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { Latch } from "effect";
 import { Effect, Fiber } from "effect";
 import type { TransactionCheckpoint } from "../src/transaction.ts";
 import { fixture, scoped } from "./transaction-fixture.ts";

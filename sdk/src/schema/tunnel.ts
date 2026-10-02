@@ -12,19 +12,25 @@ const LOOPBACK_URL_PATTERN =
   /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\/[^\s?#]*)?$/u;
 
 const TunnelIdentifier = Schema.String.pipe(
-  Schema.check(Schema.isPattern(TUNNEL_IDENTIFIER_PATTERN, {
-    message: "Expected a tunnel identifier without path separators or control characters.",
-  })),
+  Schema.check(
+    Schema.isPattern(TUNNEL_IDENTIFIER_PATTERN, {
+      message: "Expected a tunnel identifier without path separators or control characters.",
+    }),
+  ),
 );
 const TunnelServiceName = ServiceName.pipe(
-  Schema.check(Schema.isPattern(TUNNEL_SERVICE_NAME_PATTERN, {
-    message: "Expected a service name without path separators or control characters.",
-  })),
+  Schema.check(
+    Schema.isPattern(TUNNEL_SERVICE_NAME_PATTERN, {
+      message: "Expected a service name without path separators or control characters.",
+    }),
+  ),
 );
 const TunnelHostname = Schema.String.pipe(
-  Schema.check(Schema.isPattern(TUNNEL_HOSTNAME_PATTERN, {
-    message: "Expected a DNS hostname.",
-  })),
+  Schema.check(
+    Schema.isPattern(TUNNEL_HOSTNAME_PATTERN, {
+      message: "Expected a DNS hostname.",
+    }),
+  ),
 );
 const isSafeHttpUrl = (value: string): boolean => {
   if (!SAFE_HTTP_URL_PATTERN.test(value)) return false;
@@ -42,10 +48,12 @@ const isSafeHttpUrl = (value: string): boolean => {
   }
 };
 const SafeHttpUrl = Schema.String.pipe(
-  Schema.check(Schema.makeFilter(isSafeHttpUrl, {
-    message: "Expected an http(s) URL without credentials, query, or fragment.",
-    jsonSchema: { format: "uri", pattern: SAFE_HTTP_URL_PATTERN.source },
-  })),
+  Schema.check(
+    Schema.makeFilter(isSafeHttpUrl, {
+      message: "Expected an http(s) URL without credentials, query, or fragment.",
+      jsonSchema: { format: "uri", pattern: SAFE_HTTP_URL_PATTERN.source },
+    }),
+  ),
 );
 const isLoopbackUrl = (value: string): boolean => {
   if (!LOOPBACK_URL_PATTERN.test(value)) return false;
@@ -65,10 +73,12 @@ const isLoopbackUrl = (value: string): boolean => {
   }
 };
 const LoopbackUrl = Schema.String.pipe(
-  Schema.check(Schema.makeFilter(isLoopbackUrl, {
-    message: "Expected a core-created http(s) loopback URL.",
-    jsonSchema: { format: "uri", pattern: LOOPBACK_URL_PATTERN.source },
-  })),
+  Schema.check(
+    Schema.makeFilter(isLoopbackUrl, {
+      message: "Expected a core-created http(s) loopback URL.",
+      jsonSchema: { format: "uri", pattern: LOOPBACK_URL_PATTERN.source },
+    }),
+  ),
 );
 
 export const TunnelCapabilities = Schema.Struct({
@@ -95,7 +105,11 @@ const TunnelLoopbackTarget = Schema.TaggedStruct("loopback", {
   url: LoopbackUrl,
 });
 
-export const TunnelTarget = Schema.Union([TunnelRouteTarget, TunnelServiceEndpointTarget, TunnelLoopbackTarget]);
+export const TunnelTarget = Schema.Union([
+  TunnelRouteTarget,
+  TunnelServiceEndpointTarget,
+  TunnelLoopbackTarget,
+]);
 export type TunnelTarget = typeof TunnelTarget.Type;
 
 export const TunnelStatus = Schema.Literals(["starting", "ready", "stopped", "failed", "unknown"]);

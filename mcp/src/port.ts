@@ -16,4 +16,6 @@ export interface McpCommandExecutorShape {
   ) => Effect.Effect<Exit.Exit<A, E>, never, R>;
 }
 
-export class McpCommandExecutor extends Context.Service<McpCommandExecutor, McpCommandExecutorShape>()("@lando/mcp/McpCommandExecutor") {}
+export class McpCommandExecutor extends Context.Service<McpCommandExecutor, McpCommandExecutorShape>()(
+  "@lando/mcp/McpCommandExecutor",
+) {}

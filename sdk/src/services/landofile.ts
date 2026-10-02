@@ -46,6 +46,9 @@ export type LandofileServiceError =
 
 export type UserLandofileError = LandofileServiceError | LandofileVersionConstraintError | AppIdReservedError;
 
-export class LandofileService extends Context.Service<LandofileService, {
+export class LandofileService extends Context.Service<
+  LandofileService,
+  {
     readonly discover: Effect.Effect<LandofileShape, LandofileServiceError>;
-  }>()("@lando/core/LandofileService") {}
+  }
+>()("@lando/core/LandofileService") {}

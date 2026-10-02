@@ -254,8 +254,8 @@ describe("HealthcheckField", () => {
     // Then
     expect(Result.isFailure(result)).toBe(true);
     if (!Result.isFailure(result)) return;
-    const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.find(({ message }) =>
-      message.startsWith("Landofile service"),
+    const message = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.find(
+      ({ message }) => message.startsWith("Landofile service"),
     )?.message;
     expect(message).toBeDefined();
     if (message === undefined) return;

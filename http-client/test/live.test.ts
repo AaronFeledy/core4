@@ -670,7 +670,9 @@ describe("HttpClientLive lifecycle events", () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const fiber = yield* streamAndCollect({ url: "https://evt.test/interrupted" }).pipe(Effect.forkChild);
+          const fiber = yield* streamAndCollect({ url: "https://evt.test/interrupted" }).pipe(
+            Effect.forkChild,
+          );
           yield* Effect.sleep(Duration.millis(10));
           yield* Fiber.interrupt(fiber);
         }).pipe(Effect.provide(makeHttpClientLive(hangingBodyFetch).pipe(Layer.provide(cap.layer)))),

@@ -13,7 +13,7 @@ import {
   SecretStore,
   type SecretStoreShape,
 } from "@lando/sdk/services";
-import { Context, Effect, Result, Layer, Scope } from "effect";
+import { Context, Effect, Layer, Result, Scope } from "effect";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
 import { SecretStoreLive } from "./secret-store.ts";
 

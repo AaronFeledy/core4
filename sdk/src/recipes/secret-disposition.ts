@@ -99,9 +99,10 @@ export const validateRecipeSecretPrompts = (
 export const approvedSecretReferencesOnly = (
   input: RecipeDecomposeInput,
 ): Result.Result<RecipeDecomposeInput, RecipeDecomposeError> => {
-  const secrets = Schema.decodeUnknownResult(
-    Schema.Record(Schema.String, ConfigTranslateSecretReference),
-  )(input.secrets, { onExcessProperty: "error" });
+  const secrets = Schema.decodeUnknownResult(Schema.Record(Schema.String, ConfigTranslateSecretReference))(
+    input.secrets,
+    { onExcessProperty: "error" },
+  );
   if (Result.isFailure(secrets))
     return Result.fail(
       new RecipeDecomposeError({

@@ -44,7 +44,9 @@ class InvalidTranscriptFileError extends Error {
   }
 }
 
-export class TranscriptTailReader extends Context.Service<TranscriptTailReader, TranscriptTailReaderShape>()("@lando/renderer-lando/TranscriptTailReader") {}
+export class TranscriptTailReader extends Context.Service<TranscriptTailReader, TranscriptTailReaderShape>()(
+  "@lando/renderer-lando/TranscriptTailReader",
+) {}
 
 type FileIdentity = {
   readonly key: string;

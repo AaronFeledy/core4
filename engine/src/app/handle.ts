@@ -1,5 +1,5 @@
-import { Context } from "effect";
-import { Effect, type Runtime, Stream } from "effect";
+import type { Context } from "effect";
+import { Effect, Stream } from "effect";
 
 import type {
   App,

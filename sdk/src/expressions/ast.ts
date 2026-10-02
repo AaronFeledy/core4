@@ -146,7 +146,12 @@ export const DynamicPathSegment: Schema.Codec<DynamicPathSegment> = Schema.Struc
   }),
 });
 
-export const PathSegment: Schema.Codec<PathSegment> = Schema.Union([PropPathSegment, IndexPathSegment, KeyPathSegment, DynamicPathSegment]);
+export const PathSegment: Schema.Codec<PathSegment> = Schema.Union([
+  PropPathSegment,
+  IndexPathSegment,
+  KeyPathSegment,
+  DynamicPathSegment,
+]);
 
 export const ArrayLiteralExpressionNode: Schema.Codec<ArrayLiteralExpressionNode> = Schema.Struct({
   kind: Schema.Literal("ArrayLiteral"),
@@ -208,7 +213,15 @@ export const ConditionalExpressionNode: Schema.Codec<ConditionalExpressionNode> 
 
 export const ExpressionNode: Schema.Codec<ExpressionNode> = Schema.suspend(
   (): Schema.Codec<ExpressionNode> =>
-    Schema.Union([LiteralExpressionNode, ArrayLiteralExpressionNode, ObjectLiteralExpressionNode, PathExpressionNode, AccessExpressionNode, CallExpressionNode, ConditionalExpressionNode]),
+    Schema.Union([
+      LiteralExpressionNode,
+      ArrayLiteralExpressionNode,
+      ObjectLiteralExpressionNode,
+      PathExpressionNode,
+      AccessExpressionNode,
+      CallExpressionNode,
+      ConditionalExpressionNode,
+    ]),
 ).annotate({ identifier: "ExpressionNode" });
 
 export const LiteralSegment: Schema.Codec<LiteralSegment> = Schema.Struct({
@@ -230,7 +243,13 @@ export const CommentSegment: Schema.Codec<CommentSegment> = Schema.Struct({
   text: Schema.String,
 });
 
-export const ShellParamOperator = Schema.Literals(["plain", "default-empty", "default-unset", "error", "alt"]);
+export const ShellParamOperator = Schema.Literals([
+  "plain",
+  "default-empty",
+  "default-unset",
+  "error",
+  "alt",
+]);
 export const ShellParamSegment: Schema.Codec<ShellParamSegment> = Schema.Struct({
   kind: Schema.Literal("ShellParamSegment"),
   name: Schema.String,
@@ -243,7 +262,13 @@ export const SecretRefSegment: Schema.Codec<SecretRefSegment> = Schema.Struct({
   name: Schema.String,
 });
 
-export const ExpressionSegment: Schema.Codec<ExpressionSegment> = Schema.Union([LiteralSegment, InterpolationSegment, CommentSegment, ShellParamSegment, SecretRefSegment]);
+export const ExpressionSegment: Schema.Codec<ExpressionSegment> = Schema.Union([
+  LiteralSegment,
+  InterpolationSegment,
+  CommentSegment,
+  ShellParamSegment,
+  SecretRefSegment,
+]);
 
 export const ExpressionTemplate: Schema.Codec<ExpressionTemplate> = Schema.Struct({
   whole: Schema.Boolean,

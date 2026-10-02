@@ -4,37 +4,55 @@ import { transactionError } from "./transaction-error.ts";
 import { digestOf, sameState, snapshot, statMaybe, targetPath } from "./transaction-fs.ts";
 import type { Entry } from "./transaction-journal.ts";
 
-const ExpectedBefore = Schema.Union([Schema.Struct({ present: Schema.Literal(false) }), Schema.Struct({
+const ExpectedBefore = Schema.Union([
+  Schema.Struct({ present: Schema.Literal(false) }),
+  Schema.Struct({
     present: Schema.Literal(true),
     digest: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
-  })]);
+  }),
+]);
 
 export const TransactionRequest = Schema.Struct({
   appRoot: Schema.String,
-  readConditions: Schema.optionalKey(Schema.Array(
+  readConditions: Schema.optionalKey(
+    Schema.Array(
       Schema.Struct({
         path: Schema.String,
         expectedBefore: ExpectedBefore,
       }),
-    )),
+    ),
+  ),
   operations: Schema.Array(
-    Schema.Union([Schema.Struct({
+    Schema.Union([
+      Schema.Struct({
         kind: Schema.Literal("write"),
         path: Schema.String,
         content: Schema.Union([Schema.String, Schema.Uint8Array]),
         secret: Schema.optionalKey(Schema.Boolean),
-        expectedBefore: Schema.optionalKey(Schema.Union([Schema.Struct({ present: Schema.Literal(false) }), Schema.Struct({
+        expectedBefore: Schema.optionalKey(
+          Schema.Union([
+            Schema.Struct({ present: Schema.Literal(false) }),
+            Schema.Struct({
               present: Schema.Literal(true),
               digest: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
-            })])),
-      }), Schema.Struct({
+            }),
+          ]),
+        ),
+      }),
+      Schema.Struct({
         kind: Schema.Literal("remove"),
         path: Schema.String,
-        expectedBefore: Schema.optionalKey(Schema.Union([Schema.Struct({ present: Schema.Literal(false) }), Schema.Struct({
+        expectedBefore: Schema.optionalKey(
+          Schema.Union([
+            Schema.Struct({ present: Schema.Literal(false) }),
+            Schema.Struct({
               present: Schema.Literal(true),
               digest: Schema.String.pipe(Schema.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
-            })])),
-      })]),
+            }),
+          ]),
+        ),
+      }),
+    ]),
   ),
 });
 export type TransactionRequest = typeof TransactionRequest.Type;

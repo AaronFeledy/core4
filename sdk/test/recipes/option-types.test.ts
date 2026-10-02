@@ -23,7 +23,10 @@ test.each([
 );
 test("option descriptor rejection names the option in path", () => {
   const result = validateOptionValues({ php: { kind: "string" } }, {}, { php: 8 });
-  expect(Result.isFailure(result) && [result.failure.reason, result.failure.path]).toEqual(["option-type", "php"]);
+  expect(Result.isFailure(result) && [result.failure.reason, result.failure.path]).toEqual([
+    "option-type",
+    "php",
+  ]);
 });
 test("undeclared option is unsupported-option", () => {
   const result = validateOptionValues({}, {}, { php: 8 });

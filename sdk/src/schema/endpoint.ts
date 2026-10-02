@@ -19,10 +19,12 @@ const isBindAddress = (value: string): boolean => {
 
 /** Host IP address used for explicit endpoint publication. */
 export const BindAddress = Schema.String.pipe(
-  Schema.check(Schema.makeFilter(isBindAddress, {
-    message: "Expected an IPv4 or IPv6 bind address.",
-    jsonSchema: { format: "ip" },
-  })),
+  Schema.check(
+    Schema.makeFilter(isBindAddress, {
+      message: "Expected an IPv4 or IPv6 bind address.",
+      jsonSchema: { format: "ip" },
+    }),
+  ),
 );
 export type BindAddress = typeof BindAddress.Type;
 
@@ -121,7 +123,9 @@ export const EndpointMaterialization = Schema.Struct({
 });
 export type EndpointMaterialization = typeof EndpointMaterialization.Type;
 
-export const PublishedEndpointInfo = PublishedEndpoint.pipe(Schema.fieldsAssign({ materialization: Schema.optionalKey(EndpointMaterialization) }));
+export const PublishedEndpointInfo = PublishedEndpoint.pipe(
+  Schema.fieldsAssign({ materialization: Schema.optionalKey(EndpointMaterialization) }),
+);
 export type PublishedEndpointInfo = typeof PublishedEndpointInfo.Type;
 
 export const EndpointInfo = Schema.Union([InternalEndpoint, PublishedEndpointInfo]);

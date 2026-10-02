@@ -26,7 +26,9 @@ const ImportRefMetadata = Schema.Struct({
 });
 
 export const ImportRef = <A, I, R>(value: Schema.Codec<A, I, R, R>) =>
-  ImportRefMetadata.pipe(Schema.fieldsAssign({ value: value.annotate({ description: "Decoded imported value." }) }));
+  ImportRefMetadata.pipe(
+    Schema.fieldsAssign({ value: value.annotate({ description: "Decoded imported value." }) }),
+  );
 
 export const StringImportRef = ImportRef(Schema.String).annotate({
   identifier: "StringImportRef",

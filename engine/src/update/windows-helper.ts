@@ -17,9 +17,11 @@ const WindowsReplacementSchema = Schema.Struct({
   token: Schema.String,
   precondition: CoreReplacementPreconditionSchema,
 });
-const RequestSchema = WindowsReplacementSchema.pipe(Schema.fieldsAssign({
+const RequestSchema = WindowsReplacementSchema.pipe(
+  Schema.fieldsAssign({
     parentPid: Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 }))),
-  }));
+  }),
+);
 
 const swapError = () =>
   new UpdatePermissionError({

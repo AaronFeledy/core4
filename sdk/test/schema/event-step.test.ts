@@ -71,9 +71,9 @@ describe("EventStep", () => {
 
     // When / Then
     for (const step of invalid) {
-      expect(Result.isFailure(Schema.decodeUnknownResult(EventStep)(step, { onExcessProperty: "error" }))).toBe(
-        true,
-      );
+      expect(
+        Result.isFailure(Schema.decodeUnknownResult(EventStep)(step, { onExcessProperty: "error" })),
+      ).toBe(true);
     }
   });
   test("accepts the tooling working-directory grammar on direct event commands", () => {

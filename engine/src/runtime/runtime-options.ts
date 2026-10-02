@@ -7,7 +7,7 @@
  * renderer preset → library renderer mode, and validation of host-supplied
  * plugin layers. No layer composition happens here.
  */
-import { Result, Layer, Schema } from "effect";
+import { Layer, Result, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import {
@@ -56,9 +56,11 @@ const GlobalConfigOverrides = Schema.Struct({
   userCacheRoot: Schema.optionalKey(AbsolutePath),
   systemPluginRoot: Schema.optionalKey(AbsolutePath),
   defaultProviderId: Schema.optionalKey(Schema.Union([ProviderId, Schema.Null])),
-  telemetry: Schema.optionalKey(Schema.Struct({
+  telemetry: Schema.optionalKey(
+    Schema.Struct({
       enabled: Schema.optionalKey(Schema.Boolean),
-    })),
+    }),
+  ),
   renderer: Schema.optionalKey(Schema.String),
   logLevel: Schema.optionalKey(Schema.String),
 });

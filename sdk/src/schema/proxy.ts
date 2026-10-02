@@ -54,14 +54,16 @@ export const ProxyConfig = Schema.Struct({
   router: Schema.optionalKey(RouterConfig).annotate({
     description: "Shared host-router bind address and port policy.",
   }),
-  routerPin: Schema.optionalKey(Schema.Struct({
+  routerPin: Schema.optionalKey(
+    Schema.Struct({
       httpPort: Schema.optionalKey(PortNumber).annotate({
         description: "Pinned host HTTP port the running router must already hold.",
       }),
       httpsPort: Schema.optionalKey(PortNumber).annotate({
         description: "Pinned host HTTPS port the running router must already hold.",
       }),
-    }).annotate({ identifier: "RouterPin", title: "Router Pin" })).annotate({
+    }).annotate({ identifier: "RouterPin", title: "Router Pin" }),
+  ).annotate({
     description: "Persisted host-router ports that setup must reuse when the router is already running.",
   }),
 });

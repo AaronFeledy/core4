@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Result, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 import Mustache from "mustache";
 
 import type { TemplateRenderContext } from "@lando/sdk/schema";

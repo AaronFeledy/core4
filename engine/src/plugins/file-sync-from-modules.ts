@@ -1,4 +1,4 @@
-import { Effect, Result, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 
 import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";

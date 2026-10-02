@@ -235,10 +235,13 @@ export const runProbe = <A, E, R>(
       const completed =
         deadline === undefined
           ? yield* Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit }))
-          : yield* Effect.timeoutOrElse(Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit })), {
-              duration: Duration.millis(deadline - (yield* Clock.currentTimeMillis)),
-              orElse: () => Effect.succeed({ _tag: "TimedOut" as const }),
-            });
+          : yield* Effect.timeoutOrElse(
+              Effect.map(run, (exit) => ({ _tag: "Completed" as const, exit })),
+              {
+                duration: Duration.millis(deadline - (yield* Clock.currentTimeMillis)),
+                orElse: () => Effect.succeed({ _tag: "TimedOut" as const }),
+              },
+            );
 
       if (completed._tag === "TimedOut") {
         lastOutcome = "red";

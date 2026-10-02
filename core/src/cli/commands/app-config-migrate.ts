@@ -17,7 +17,7 @@ import {
 } from "@lando/sdk/schema";
 import { InteractionService, ManagedFileTransactionGuard } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Effect, Result, Option, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 import { BUILTIN_RECIPE_SNAPSHOTS } from "../../recipes/builtin/snapshots.ts";
 import { analyzeRecipeMigration } from "./app-config-migrate-analysis.ts";
 import type { AppConfigMigrateResult, MigrateBlockedReason } from "./app-config-migrate-output.ts";
@@ -109,7 +109,8 @@ export const appConfigMigrate = (options: AppConfigMigrateOptions = {}) =>
         try: () => Bun.file(landofilePath).bytes(),
         catch: () => "Cannot read the canonical Landofile.",
       }).pipe(Effect.result);
-      if (Result.isFailure(originalBytes)) return blocked("invalid-provenance", "Canonical YAML is unreadable.");
+      if (Result.isFailure(originalBytes))
+        return blocked("invalid-provenance", "Canonical YAML is unreadable.");
       const parsed = yield* parseLandofile({
         file: landofilePath,
         content: new TextDecoder().decode(originalBytes.success),

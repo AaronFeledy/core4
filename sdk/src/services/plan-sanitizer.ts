@@ -6,4 +6,6 @@ export interface AppPlanSanitizerShape {
   readonly sanitizeForPersistence: (plan: AppPlan) => AppPlan;
 }
 
-export class AppPlanSanitizer extends Context.Service<AppPlanSanitizer, AppPlanSanitizerShape>()("@lando/core/AppPlanSanitizer") {}
+export class AppPlanSanitizer extends Context.Service<AppPlanSanitizer, AppPlanSanitizerShape>()(
+  "@lando/core/AppPlanSanitizer",
+) {}

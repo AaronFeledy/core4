@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import type { Schema } from "effect";
 // `@lando/sdk/app` — stable App-handle contract surface for embedding hosts.
 //
 // These are the canonical, semver-stable contracts an embedding host consumes

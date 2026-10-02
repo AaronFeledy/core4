@@ -55,7 +55,12 @@ const WriteResultSchema = Schema.Struct({
   deletions: Schema.Array(ConfigTranslateDeletion),
 });
 
-export const AppConfigTranslateResultSchema = Schema.Union([ListResultSchema, DetectResultSchema, PreviewResultSchema, WriteResultSchema]);
+export const AppConfigTranslateResultSchema = Schema.Union([
+  ListResultSchema,
+  DetectResultSchema,
+  PreviewResultSchema,
+  WriteResultSchema,
+]);
 
 export type AppConfigTranslateResult = Schema.Schema.Type<typeof AppConfigTranslateResultSchema>;
 type AppConfigTranslateTarget = Schema.Schema.Type<typeof TranslateTargetSchema>;

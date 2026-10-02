@@ -145,7 +145,9 @@ describe("prepareWindowsDockerCli", () => {
     await mkdir(join(targetDir, "redirected"));
     await symlink(join(targetDir, "redirected"), join(redirectedDir, "docker-compat"));
     expect(
-      Result.isFailure(await Effect.runPromise(Effect.result(prepareWindowsDockerCli(redirectedDir, "win32")))),
+      Result.isFailure(
+        await Effect.runPromise(Effect.result(prepareWindowsDockerCli(redirectedDir, "win32"))),
+      ),
     ).toBe(true);
   });
 

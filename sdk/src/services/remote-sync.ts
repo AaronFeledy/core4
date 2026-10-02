@@ -94,6 +94,8 @@ export interface DatasetShape {
   readonly localStore: (ctx: DatasetContext) => Effect.Effect<VolumeRef | null, DatasetServiceError>;
 }
 
-export class RemoteSource extends Context.Service<RemoteSource, RemoteSourceShape>()("@lando/core/RemoteSource") {}
+export class RemoteSource extends Context.Service<RemoteSource, RemoteSourceShape>()(
+  "@lando/core/RemoteSource",
+) {}
 
 export class Dataset extends Context.Service<Dataset, DatasetShape>()("@lando/core/Dataset") {}

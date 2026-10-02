@@ -228,8 +228,8 @@ const decodeFeatureConfig = (
     return Effect.succeed(rawConfig);
   }
 
-  const details = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues
-    .map((issue) => issue.message)
+  const details = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue)
+    .issues.map((issue) => issue.message)
     .join("; ");
   return Effect.fail(
     new AppFeatureSelectorMatchedNothingError({

@@ -265,7 +265,9 @@ export interface ProviderRuntimeSnapshot {
   readonly volumes: ReadonlyArray<VolumeInfo>;
 }
 
-export class RuntimeProviderRegistry extends Context.Service<RuntimeProviderRegistry, {
+export class RuntimeProviderRegistry extends Context.Service<
+  RuntimeProviderRegistry,
+  {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
     readonly capabilities: Effect.Effect<ProviderCapabilities, ProviderSelectionError>;
     readonly select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;
@@ -279,7 +281,8 @@ export class RuntimeProviderRegistry extends Context.Service<RuntimeProviderRegi
       ReadonlyArray<ProviderRuntimeSnapshot>,
       AppResolveError | ProviderError | NoProviderInstalledError
     >;
-  }>()("@lando/core/RuntimeProviderRegistry") {}
+  }
+>()("@lando/core/RuntimeProviderRegistry") {}
 
 export type AppliedFileSyncInspection =
   | { readonly status: "missing" | "ordinary" | "unknown" }
@@ -444,4 +447,6 @@ export type DestroyOutcome =
 /** Whether `removeObservedService` removed the container behind an observation, or found none. */
 export type ObservedServiceRemoval = { readonly kind: "removed" } | { readonly kind: "absent" };
 
-export class RuntimeProvider extends Context.Service<RuntimeProvider, RuntimeProviderShape>()("@lando/core/RuntimeProvider") {}
+export class RuntimeProvider extends Context.Service<RuntimeProvider, RuntimeProviderShape>()(
+  "@lando/core/RuntimeProvider",
+) {}

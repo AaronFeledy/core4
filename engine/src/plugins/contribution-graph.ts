@@ -1,4 +1,4 @@
-import { Context, Effect, Result, Layer, Option, Schema, Scope } from "effect";
+import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
 import { LandoRuntimeBootstrapError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type {
@@ -7,8 +7,8 @@ import type {
   LandoPluginModule,
 } from "@lando/sdk/plugins";
 import {
-  PluginManifest,
   type CertificateAuthorityContribution,
+  PluginManifest,
   type ResolvedPluginInput,
 } from "@lando/sdk/schema";
 import { CertificateAuthority, Logger, PathsService } from "@lando/sdk/services";

@@ -20,14 +20,16 @@ import {
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const BuildSteps = Schema.Struct({
-  buildSteps: Schema.optionalKey(Schema.Array(
+  buildSteps: Schema.optionalKey(
+    Schema.Array(
       Schema.Struct({
         id: Schema.optionalKey(Schema.String),
         command: Schema.Unknown,
         user: Schema.optionalKey(Schema.String),
         buildKeyInputs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
       }),
-    )),
+    ),
+  ),
 });
 
 const composePhpPlan = (

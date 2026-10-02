@@ -55,7 +55,9 @@ export const RouteInput = Schema.Union([Schema.NonEmptyString, RouteObjectInput]
 export type RouteInput = typeof RouteInput.Type;
 
 /** Mount input — short ("./src:/app") or expanded form. */
-export const MountInput = Schema.Union([Schema.String, Schema.Struct({
+export const MountInput = Schema.Union([
+  Schema.String,
+  Schema.Struct({
     type: Schema.optionalKey(Schema.Literals(["bind", "tmpfs", "volume"])),
     source: Schema.optionalKey(Schema.String),
     target: Schema.String,
@@ -64,18 +66,22 @@ export const MountInput = Schema.Union([Schema.String, Schema.Struct({
     excludes: Schema.optionalKey(Schema.Array(Schema.String)),
     /** Includes — re-bind specific excluded paths. */
     includes: Schema.optionalKey(Schema.Array(Schema.String)),
-  })]);
+  }),
+]);
 export type MountInput = typeof MountInput.Type;
 
 /** Storage input — named volume reference. */
-export const StorageInput = Schema.Union([Schema.String, Schema.Struct({
+export const StorageInput = Schema.Union([
+  Schema.String,
+  Schema.Struct({
     store: Schema.String,
     target: Schema.String,
     readOnly: Schema.optionalKey(Schema.Boolean),
     scope: Schema.optionalKey(StorageScope),
     kind: Schema.optionalKey(Schema.Literals(["data", "cache"])),
     key: Schema.optionalKey(Schema.String),
-  })]);
+  }),
+]);
 export type StorageInput = typeof StorageInput.Type;
 
 /** Canonical Lando healthcheck schema; Compose-capable authoring is accepted by `ServiceConfig`. */
@@ -135,151 +141,275 @@ const ReservedDependencyMapInput = Schema.Unknown.annotate({
 
 const reservedMapKeyFailure = (input: unknown) =>
   Effect.fail(
-    new SchemaIssue.InvalidValue({ message: 'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.' }, input),
+    new SchemaIssue.InvalidValue(
+      {
+        message: 'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
+      },
+      input,
+    ),
   );
 
-const reservedMapKeyCheck = Schema.makeFilter((input: unknown) =>
-  !(typeof input === "object" && input !== null && Object.hasOwn(input, "__proto__")), {
+const reservedMapKeyCheck = Schema.makeFilter(
+  (input: unknown) => !(typeof input === "object" && input !== null && Object.hasOwn(input, "__proto__")),
+  {
     message: 'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
-  });
+  },
+);
 
 const StringRecord = Schema.Record(Schema.String, Schema.String);
-const ComposeScalarRecord = Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]));
+const ComposeScalarRecord = Schema.Record(
+  Schema.String,
+  Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Null]),
+);
 
-const ServiceDependencyInputRecord = ReservedDependencyMapInput.check(reservedMapKeyCheck).pipe(Schema.decodeTo(Schema.Record(Schema.String, ServiceDependencyInput)));
+const ServiceDependencyInputRecord = ReservedDependencyMapInput.check(reservedMapKeyCheck).pipe(
+  Schema.decodeTo(Schema.Record(Schema.String, ServiceDependencyInput)),
+);
 
-const ComposeScalarMapInput = ReservedComposeScalarMapInput.check(reservedMapKeyCheck).pipe(Schema.decodeTo(ComposeScalarRecord));
+const ComposeScalarMapInput = ReservedComposeScalarMapInput.check(reservedMapKeyCheck).pipe(
+  Schema.decodeTo(ComposeScalarRecord),
+);
 
-const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)]).pipe(Schema.decodeTo(StringRecord, SchemaTransformation.transformEffect({ decode: (input, _options) => {
-      if (!Array.isArray(input)) {
-        const entries = Object.entries(input);
-        const unresolved = entries.find(([, value]) => value === null);
-        if (unresolved !== undefined) {
-          return Effect.fail(
-            new SchemaIssue.InvalidValue({ message: `Landofile service environment entry "${unresolved[0]}" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.` }, input),
+const ComposeEnvironmentInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
+  .pipe(
+    Schema.decodeTo(
+      StringRecord,
+      SchemaTransformation.transformEffect({
+        decode: (input, _options) => {
+          if (!Array.isArray(input)) {
+            const entries = Object.entries(input);
+            const unresolved = entries.find(([, value]) => value === null);
+            if (unresolved !== undefined) {
+              return Effect.fail(
+                new SchemaIssue.InvalidValue(
+                  {
+                    message: `Landofile service environment entry "${unresolved[0]}" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.`,
+                  },
+                  input,
+                ),
+              );
+            }
+            return Effect.succeed(Object.fromEntries(entries.map(([key, value]) => [key, String(value)])));
+          }
+          const entries: Array<readonly [string, string]> = [];
+          for (const entry of input) {
+            const separator = entry.indexOf("=");
+            if (separator < 0) {
+              return Effect.fail(
+                new SchemaIssue.InvalidValue(
+                  {
+                    message: `Landofile service environment entry "${entry}" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).`,
+                  },
+                  input,
+                ),
+              );
+            }
+            entries.push([entry.slice(0, separator), entry.slice(separator + 1)]);
+          }
+          const record = Object.fromEntries(entries);
+          if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
+          return Effect.succeed(record);
+        },
+        encode: (record) => Effect.succeed(record),
+      }),
+    ),
+  )
+  .annotate({
+    description:
+      "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.",
+  });
+
+const ComposeLabelsInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)])
+  .pipe(
+    Schema.decodeTo(
+      StringRecord,
+      SchemaTransformation.transformEffect({
+        decode: (input, _options) => {
+          if (!Array.isArray(input)) {
+            return Effect.succeed(
+              Object.fromEntries(
+                Object.entries(input).map(([key, value]) => [key, value === null ? "" : String(value)]),
+              ),
+            );
+          }
+          const record = Object.fromEntries(
+            input.map((entry) => {
+              const separator = entry.indexOf("=");
+              return separator < 0 ? [entry, ""] : [entry.slice(0, separator), entry.slice(separator + 1)];
+            }),
           );
-        }
-        return Effect.succeed(Object.fromEntries(entries.map(([key, value]) => [key, String(value)])));
-      }
-      const entries: Array<readonly [string, string]> = [];
-      for (const entry of input) {
-        const separator = entry.indexOf("=");
-        if (separator < 0) {
-          return Effect.fail(
-            new SchemaIssue.InvalidValue({ message: `Landofile service environment entry "${entry}" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).` }, input),
-          );
-        }
-        entries.push([entry.slice(0, separator), entry.slice(separator + 1)]);
-      }
-      const record = Object.fromEntries(entries);
-      if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
-      return Effect.succeed(record);
-     }, encode: (record) => Effect.succeed(record) }))).annotate({
-  description:
-    "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.",
-});
+          if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
+          return Effect.succeed(record);
+        },
+        encode: (record) => Effect.succeed(record),
+      }),
+    ),
+  )
+  .annotate({
+    description:
+      "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
+  });
 
-const ComposeLabelsInput = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)]).pipe(Schema.decodeTo(StringRecord, SchemaTransformation.transformEffect({ decode: (input, _options) => { const ast = Schema.Union([ComposeScalarMapInput, Schema.Array(Schema.String)]).ast; 
-      if (!Array.isArray(input)) {
-        return Effect.succeed(
-          Object.fromEntries(
-            Object.entries(input).map(([key, value]) => [key, value === null ? "" : String(value)]),
-          ),
-        );
-      }
-      const record = Object.fromEntries(
-        input.map((entry) => {
-          const separator = entry.indexOf("=");
-          return separator < 0 ? [entry, ""] : [entry.slice(0, separator), entry.slice(separator + 1)];
-        }),
-      );
-      if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record);
-      return Effect.succeed(record);
-     }, encode: (record) => Effect.succeed(record) }))).annotate({
-  description:
-    "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
-});
-
-const ComposeEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.String)]).pipe(Schema.decodeTo(Schema.Array(Schema.String), SchemaTransformation.transform({ decode: (input) => (typeof input === "string" ? [input] : input), encode: (list) => list }))).annotate({
-  description:
-    "One or more env-file paths whose KEY=value lines seed the service environment. String or string list.",
-});
+const ComposeEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.String)])
+  .pipe(
+    Schema.decodeTo(
+      Schema.Array(Schema.String),
+      SchemaTransformation.transform({
+        decode: (input) => (typeof input === "string" ? [input] : input),
+        encode: (list) => list,
+      }),
+    ),
+  )
+  .annotate({
+    description:
+      "One or more env-file paths whose KEY=value lines seed the service environment. String or string list.",
+  });
 
 const TOP_LEVEL_ENV_FILE_DESCRIPTION =
   "One or more app-root-relative env-file paths applied to every service below service-level envFile and environment overrides.";
 
-const TopLevelEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.String)]).annotate({
+const TopLevelEnvFileInput = Schema.Union([Schema.String, Schema.Array(Schema.String)])
+  .annotate({
     description: TOP_LEVEL_ENV_FILE_DESCRIPTION,
-  }).pipe(Schema.decodeTo(Schema.Array(Schema.String), SchemaTransformation.transform({ decode: (input) => (typeof input === "string" ? [input] : input), encode: (paths) => paths }))).annotate({ description: TOP_LEVEL_ENV_FILE_DESCRIPTION });
+  })
+  .pipe(
+    Schema.decodeTo(
+      Schema.Array(Schema.String),
+      SchemaTransformation.transform({
+        decode: (input) => (typeof input === "string" ? [input] : input),
+        encode: (paths) => paths,
+      }),
+    ),
+  )
+  .annotate({ description: TOP_LEVEL_ENV_FILE_DESCRIPTION });
 
-const ComposeDependsOnInput = Schema.Union([Schema.Array(Schema.String), ServiceDependencyInputRecord, Schema.Array(ServiceDependency)]).pipe(Schema.decodeTo(Schema.Array(ServiceDependency), SchemaTransformation.transformEffect({ decode: (input) => {
-      if (Array.isArray(input)) {
-        return Effect.succeed(
-          input.map((entry) => (typeof entry === "string" ? { service: entry } : entry)),
-        );
-      }
-      return Effect.succeed(Object.entries(input).map(([service, spec]) => ({ service, ...spec })));
-    }, encode: (deps: ReadonlyArray<ServiceDependency>, _options) => { 
-      const allBare = deps.every(
-        (dep) => dep.condition === undefined && dep.required === undefined && dep.restart === undefined,
-      );
-      if (allBare) return Effect.succeed(deps.map((dep) => dep.service));
-      const reserved = deps.find((dep) => dep.service === "__proto__");
-      if (reserved !== undefined) {
-        return Effect.fail(
-          new SchemaIssue.InvalidValue({ message: 'The dependency service "__proto__" cannot be encoded as a map key; choose another service name.' }, deps),
-        );
-      }
-      return Effect.succeed(
-        Object.fromEntries(
-          deps.map((dep) => {
-            const { service, ...rest } = dep;
-            return [service, { ...rest, condition: rest.condition ?? "service_started" }];
-          }),
-        ),
-      );
-     } }))).annotate({
-  description:
-    "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
-});
+const ComposeDependsOnInput = Schema.Union([
+  Schema.Array(Schema.String),
+  ServiceDependencyInputRecord,
+  Schema.Array(ServiceDependency),
+])
+  .pipe(
+    Schema.decodeTo(
+      Schema.Array(ServiceDependency),
+      SchemaTransformation.transformEffect({
+        decode: (input) => {
+          if (Array.isArray(input)) {
+            return Effect.succeed(
+              input.map((entry) => (typeof entry === "string" ? { service: entry } : entry)),
+            );
+          }
+          return Effect.succeed(Object.entries(input).map(([service, spec]) => ({ service, ...spec })));
+        },
+        encode: (deps: ReadonlyArray<ServiceDependency>, _options) => {
+          const allBare = deps.every(
+            (dep) => dep.condition === undefined && dep.required === undefined && dep.restart === undefined,
+          );
+          if (allBare) return Effect.succeed(deps.map((dep) => dep.service));
+          const reserved = deps.find((dep) => dep.service === "__proto__");
+          if (reserved !== undefined) {
+            return Effect.fail(
+              new SchemaIssue.InvalidValue(
+                {
+                  message:
+                    'The dependency service "__proto__" cannot be encoded as a map key; choose another service name.',
+                },
+                deps,
+              ),
+            );
+          }
+          return Effect.succeed(
+            Object.fromEntries(
+              deps.map((dep) => {
+                const { service, ...rest } = dep;
+                return [service, { ...rest, condition: rest.condition ?? "service_started" }];
+              }),
+            ),
+          );
+        },
+      }),
+    ),
+  )
+  .annotate({
+    description:
+      "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
+  });
 
-const ExtensionRecord = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown).annotate({
-  description:
-    "preserved losslessly; never interpreted by Lando or the provider; implies no vendor-specific behavior.",
-});
+const ExtensionRecord = Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown).annotate(
+  {
+    description:
+      "preserved losslessly; never interpreted by Lando or the provider; implies no vendor-specific behavior.",
+  },
+);
 
-const ComposeNetworkAttachment = Schema.StructWithRest(Schema.Struct({
+const ComposeNetworkAttachment = Schema.StructWithRest(
+  Schema.Struct({
     aliases: Schema.optionalKey(Schema.Array(Schema.String)),
     interface_name: Schema.optionalKey(Schema.String),
     ipv4_address: Schema.optionalKey(Schema.String),
     ipv6_address: Schema.optionalKey(Schema.String),
     link_local_ips: Schema.optionalKey(Schema.Array(Schema.String)),
     mac_address: Schema.optionalKey(Schema.String),
-    driver_opts: Schema.optionalKey(Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number]))),
+    driver_opts: Schema.optionalKey(
+      Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number])),
+    ),
     priority: Schema.optionalKey(Schema.Number),
     gw_priority: Schema.optionalKey(Schema.Number),
-  }), [ExtensionRecord]);
+  }),
+  [ExtensionRecord],
+);
 
 const ComposeNetworkAttachmentRecord = Schema.Record(Schema.String, ComposeNetworkAttachment);
 
 const COMPOSE_NETWORKS_DESCRIPTION =
   "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
 
-const ComposeNetworksInput = Schema.Union([Schema.Array(Schema.String), Schema.Record(Schema.String, Schema.Union([ComposeNetworkAttachment, Schema.Null]))]).annotate({ description: COMPOSE_NETWORKS_DESCRIPTION }).pipe(Schema.decodeTo(ComposeNetworkAttachmentRecord, SchemaTransformation.transform({ decode: (input) =>
-      Array.isArray(input)
-        ? Object.fromEntries(input.map((name) => [name, {}]))
-        : Object.fromEntries(Object.entries(input).map(([name, attachment]) => [name, attachment ?? {}])), encode: (attachments) => attachments }))).annotate({ description: COMPOSE_NETWORKS_DESCRIPTION });
+const ComposeNetworksInput = Schema.Union([
+  Schema.Array(Schema.String),
+  Schema.Record(Schema.String, Schema.Union([ComposeNetworkAttachment, Schema.Null])),
+])
+  .annotate({ description: COMPOSE_NETWORKS_DESCRIPTION })
+  .pipe(
+    Schema.decodeTo(
+      ComposeNetworkAttachmentRecord,
+      SchemaTransformation.transform({
+        decode: (input) =>
+          Array.isArray(input)
+            ? Object.fromEntries(input.map((name) => [name, {}]))
+            : Object.fromEntries(Object.entries(input).map(([name, attachment]) => [name, attachment ?? {}])),
+        encode: (attachments) => attachments,
+      }),
+    ),
+  )
+  .annotate({ description: COMPOSE_NETWORKS_DESCRIPTION });
 
-const ComposeConfigOrSecretEntry = Schema.StructWithRest(Schema.Struct({
+const ComposeConfigOrSecretEntry = Schema.StructWithRest(
+  Schema.Struct({
     source: Schema.optionalKey(Schema.String),
     target: Schema.optionalKey(Schema.String),
     uid: Schema.optionalKey(Schema.String),
     gid: Schema.optionalKey(Schema.String),
     mode: Schema.optionalKey(Schema.Union([Schema.Number, Schema.String])),
-  }), [ExtensionRecord]);
+  }),
+  [ExtensionRecord],
+);
 
 const composeConfigOrSecretInput = (description: string) =>
-  Schema.Array(Schema.Union([Schema.String, ComposeConfigOrSecretEntry])).annotate({ description }).pipe(Schema.decodeTo(Schema.Array(ComposeConfigOrSecretEntry), SchemaTransformation.transform<ReadonlyArray<typeof ComposeConfigOrSecretEntry.Encoded>, ReadonlyArray<string | typeof ComposeConfigOrSecretEntry.Type>>({ decode: (entries) => entries.map((entry) => (typeof entry === "string" ? { source: entry } : entry)), encode: (entries) => entries }))).annotate({ description });
+  Schema.Array(Schema.Union([Schema.String, ComposeConfigOrSecretEntry]))
+    .annotate({ description })
+    .pipe(
+      Schema.decodeTo(
+        Schema.Array(ComposeConfigOrSecretEntry),
+        SchemaTransformation.transform<
+          ReadonlyArray<typeof ComposeConfigOrSecretEntry.Encoded>,
+          ReadonlyArray<string | typeof ComposeConfigOrSecretEntry.Type>
+        >({
+          decode: (entries) =>
+            entries.map((entry) => (typeof entry === "string" ? { source: entry } : entry)),
+          encode: (entries) => entries,
+        }),
+      ),
+    )
+    .annotate({ description });
 
 const COMPOSE_CONFIGS_DESCRIPTION =
   "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose, capability-checked, and realized as read-only file mounts honoring source, target, and mode.";
@@ -291,14 +421,18 @@ const SERVICE_CERTS_DESCRIPTION =
   "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key. Separate from security.ca, which adds trusted certificate authorities.";
 
 /** Certs input — leaf TLS toggle, custom certificate path, or explicit certificate and key pair. */
-const CertsInput = Schema.Union([Schema.Boolean, Schema.String, Schema.Struct({
+const CertsInput = Schema.Union([
+  Schema.Boolean,
+  Schema.String,
+  Schema.Struct({
     cert: Schema.String.annotate({
       description: "Path to a custom leaf certificate for this service.",
     }),
     key: Schema.String.annotate({
       description: "Path to the private key matching the custom leaf certificate.",
     }),
-  })]).annotate({ description: SERVICE_CERTS_DESCRIPTION });
+  }),
+]).annotate({ description: SERVICE_CERTS_DESCRIPTION });
 
 const SERVICE_SECURITY_DESCRIPTION =
   "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.";
@@ -322,52 +456,65 @@ const ServiceSecurity = Schema.Struct({
 const ServiceSecurityCaAlias = Schema.Union([ServiceSecurityCaEntry, Schema.Array(ServiceSecurityCaEntry)]);
 const Forbidden = Schema.optionalKey(Schema.Never);
 
-const ServiceSecurityInput = Schema.Union([Schema.Struct({
+const ServiceSecurityInput = Schema.Union([
+  Schema.Struct({
     ca: Schema.optionalKey(Schema.Array(ServiceSecurityCaEntry)),
     cas: Forbidden,
     "certificate-authority": Forbidden,
     "certificate-authorities": Forbidden,
     inheritNetworkCa: Schema.optionalKey(Schema.Boolean),
     inheritNetworkProxy: Schema.optionalKey(Schema.Boolean),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     ca: Forbidden,
     cas: ServiceSecurityCaAlias,
     "certificate-authority": Forbidden,
     "certificate-authorities": Forbidden,
     inheritNetworkCa: Schema.optionalKey(Schema.Boolean),
     inheritNetworkProxy: Schema.optionalKey(Schema.Boolean),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     ca: Forbidden,
     cas: Forbidden,
     "certificate-authority": ServiceSecurityCaAlias,
     "certificate-authorities": Forbidden,
     inheritNetworkCa: Schema.optionalKey(Schema.Boolean),
     inheritNetworkProxy: Schema.optionalKey(Schema.Boolean),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     ca: Forbidden,
     cas: Forbidden,
     "certificate-authority": Forbidden,
     "certificate-authorities": ServiceSecurityCaAlias,
     inheritNetworkCa: Schema.optionalKey(Schema.Boolean),
     inheritNetworkProxy: Schema.optionalKey(Schema.Boolean),
-  })]).annotate({ description: SERVICE_SECURITY_DESCRIPTION });
+  }),
+]).annotate({ description: SERVICE_SECURITY_DESCRIPTION });
 
-const ServiceSecurityField = ServiceSecurityInput.pipe(Schema.decodeTo(ServiceSecurity, SchemaTransformation.transform<typeof ServiceSecurity.Encoded, typeof ServiceSecurityInput.Type>({ decode: (input) => {
-    const {
-      ca,
-      cas,
-      "certificate-authority": certificateAuthority,
-      "certificate-authorities": certificateAuthorities,
-      inheritNetworkCa,
-      inheritNetworkProxy,
-    } = input;
-    const authoredCa = ca ?? cas ?? certificateAuthority ?? certificateAuthorities;
-    return {
-      ...(authoredCa === undefined ? {} : { ca: Array.isArray(authoredCa) ? authoredCa : [authoredCa] }),
-      ...(inheritNetworkCa === undefined ? {} : { inheritNetworkCa }),
-      ...(inheritNetworkProxy === undefined ? {} : { inheritNetworkProxy }),
-    };
-  }, encode: (security) => security }))).annotate({ description: SERVICE_SECURITY_DESCRIPTION });
+const ServiceSecurityField = ServiceSecurityInput.pipe(
+  Schema.decodeTo(
+    ServiceSecurity,
+    SchemaTransformation.transform<typeof ServiceSecurity.Encoded, typeof ServiceSecurityInput.Type>({
+      decode: (input) => {
+        const {
+          ca,
+          cas,
+          "certificate-authority": certificateAuthority,
+          "certificate-authorities": certificateAuthorities,
+          inheritNetworkCa,
+          inheritNetworkProxy,
+        } = input;
+        const authoredCa = ca ?? cas ?? certificateAuthority ?? certificateAuthorities;
+        return {
+          ...(authoredCa === undefined ? {} : { ca: Array.isArray(authoredCa) ? authoredCa : [authoredCa] }),
+          ...(inheritNetworkCa === undefined ? {} : { inheritNetworkCa }),
+          ...(inheritNetworkProxy === undefined ? {} : { inheritNetworkProxy }),
+        };
+      },
+      encode: (security) => security,
+    }),
+  ),
+).annotate({ description: SERVICE_SECURITY_DESCRIPTION });
 
 /**
  * Login credentials a catalog service may author under `services.<name>.creds`.
@@ -433,7 +580,8 @@ export type PhpComposerConfig = typeof PhpComposerConfig.Type;
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
-const ServiceConfigWithExtensions = Schema.StructWithRest(Schema.Struct({
+const ServiceConfigWithExtensions = Schema.StructWithRest(
+  Schema.Struct({
     api: Schema.optionalKey(Schema.Literal(4)),
     type: Schema.optionalKey(Schema.String), // defaults to "lando"
     primary: Schema.optionalKey(Schema.Boolean),
@@ -496,7 +644,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(Schema.Struct({
     allowOverride: Schema.optionalKey(Schema.Boolean).annotate({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
     }),
-    composer: Schema.optionalKey(Schema.Union([Schema.Literal(false), Schema.String, PhpComposerConfig])).annotate({
+    composer: Schema.optionalKey(
+      Schema.Union([Schema.Literal(false), Schema.String, PhpComposerConfig]),
+    ).annotate({
       description:
         "PHP Composer selection: a major channel, an exact checksum-pinned version, false to skip install, or an object carrying a version and global packages.",
     }),
@@ -511,7 +661,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(Schema.Struct({
       description:
         'PHP Xdebug selection: true installs with mode "debug", a comma-separated Xdebug 3 mode string, or false to skip install.',
     }),
-    db_client: Schema.optionalKey(Schema.Union([Schema.Literal("auto"), Schema.Literal(false), Schema.String])).annotate({
+    db_client: Schema.optionalKey(
+      Schema.Union([Schema.Literal("auto"), Schema.Literal(false), Schema.String]),
+    ).annotate({
       description:
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
@@ -553,12 +705,17 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(Schema.Struct({
         "Compose profile names; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
     }),
 
-    appMount: Schema.optionalKey(Schema.Union([Schema.Literal(false), Schema.Struct({
+    appMount: Schema.optionalKey(
+      Schema.Union([
+        Schema.Literal(false),
+        Schema.Struct({
           target: Schema.String,
           readOnly: Schema.optionalKey(Schema.Boolean),
           excludes: Schema.optionalKey(Schema.Array(Schema.String)),
           includes: Schema.optionalKey(Schema.Array(Schema.String)),
-        })])).annotate({
+        }),
+      ]),
+    ).annotate({
       description: "Application source mount configuration, or false to disable the app mount.",
     }),
     mounts: Schema.optionalKey(Schema.Array(MountInput)).annotate({
@@ -567,9 +724,14 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(Schema.Struct({
     storage: Schema.optionalKey(Schema.Array(StorageInput)).annotate({
       description: "Persistent or cached storage attached to the service.",
     }),
-    home: Schema.optionalKey(Schema.Union([Schema.Literal(false), Schema.Struct({
+    home: Schema.optionalKey(
+      Schema.Union([
+        Schema.Literal(false),
+        Schema.Struct({
           path: Schema.optionalKey(AbsoluteContainerPath),
-        })])).annotate({
+        }),
+      ]),
+    ).annotate({
       description:
         "Persist the planned user's home directory, or false to disable it. Set path to choose the destination when the image's home is not known.",
     }),
@@ -599,7 +761,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(Schema.Struct({
     providers: Schema.optionalKey(ProviderExtensionConfig).annotate({
       description: "Provider-specific service configuration keyed by provider id.",
     }),
-  }), [ExtensionRecord]);
+  }),
+  [ExtensionRecord],
+);
 
 export const ServiceConfig = Object.assign(ServiceConfigWithExtensions, {
   fields: ServiceConfigWithExtensions.schema.fields,
@@ -612,23 +776,31 @@ export type ServiceConfig = typeof ServiceConfig.Type;
  * `depends_on`) and service security CA aliases. Used as the decode boundary
  * for `services.<name>:`.
  */
-export const ServiceConfigInput = Schema.StructWithRest(Schema.Struct(ServiceConfig.schema.fields).mapFields((fields) => ({ ...fields,
+export const ServiceConfigInput = Schema.StructWithRest(
+  Schema.Struct(ServiceConfig.schema.fields).mapFields((fields) => ({
+    ...fields,
     working_dir: Schema.optionalKey(PortablePath).annotate({
       description: "Compose alias for the canonical workingDirectory service field.",
     }),
     env_file: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])).annotate({
       description: "Compose alias for the canonical envFile service field; accepts one path or a path list.",
     }),
-    depends_on: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), ServiceDependencyInputRecord])).annotate({
+    depends_on: Schema.optionalKey(
+      Schema.Union([Schema.Array(Schema.String), ServiceDependencyInputRecord]),
+    ).annotate({
       description:
         "Compose alias for the canonical dependsOn service field; accepts a service-name list or condition map.",
     }),
-  })), [ExtensionRecord]).pipe(Schema.toEncoded).annotate({
-  identifier: "ServiceConfigInput",
-  title: "Service Config Input",
-  description:
-    "Accepted Landofile service authoring surface with canonical keys, Compose cross-key aliases, and service security CA aliases.",
-});
+  })),
+  [ExtensionRecord],
+)
+  .pipe(Schema.toEncoded)
+  .annotate({
+    identifier: "ServiceConfigInput",
+    title: "Service Config Input",
+    description:
+      "Accepted Landofile service authoring surface with canonical keys, Compose cross-key aliases, and service security CA aliases.",
+  });
 export type ServiceConfigInput = typeof ServiceConfigInput.Type;
 
 /**
@@ -638,16 +810,24 @@ export type ServiceConfigInput = typeof ServiceConfigInput.Type;
  * encoded {@link ServiceConfig} surface plus the Compose spellings, so the
  * per-field transforms run once, inside {@link ServiceConfig}.
  */
-const ServiceConfigDecode = ServiceConfigInput.pipe(Schema.decodeTo(ServiceConfig, SchemaTransformation.transformEffect({ decode: (input) => {
-    const { working_dir, env_file, depends_on, ...rest } = input as Record<string, unknown>;
-    const canonical: Record<string, unknown> = { ...rest };
-    if (canonical.workingDirectory === undefined && working_dir !== undefined) {
-      canonical.workingDirectory = working_dir;
-    }
-    if (canonical.envFile === undefined && env_file !== undefined) canonical.envFile = env_file;
-    if (canonical.dependsOn === undefined && depends_on !== undefined) canonical.dependsOn = depends_on;
-    return Effect.succeed(canonical);
-  }, encode: (encoded) => Effect.succeed(encoded) })));
+const ServiceConfigDecode = ServiceConfigInput.pipe(
+  Schema.decodeTo(
+    ServiceConfig,
+    SchemaTransformation.transformEffect({
+      decode: (input) => {
+        const { working_dir, env_file, depends_on, ...rest } = input as Record<string, unknown>;
+        const canonical: Record<string, unknown> = { ...rest };
+        if (canonical.workingDirectory === undefined && working_dir !== undefined) {
+          canonical.workingDirectory = working_dir;
+        }
+        if (canonical.envFile === undefined && env_file !== undefined) canonical.envFile = env_file;
+        if (canonical.dependsOn === undefined && depends_on !== undefined) canonical.dependsOn = depends_on;
+        return Effect.succeed(canonical);
+      },
+      encode: (encoded) => Effect.succeed(encoded),
+    }),
+  ),
+);
 
 /**
  * ToolingVarLiteral — a scalar literal value for a Landofile `tooling.<task>.vars.<name>`.
@@ -681,7 +861,12 @@ export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
  * are rejected before schema decode with a tagged
  * `NotImplementedError`.
  */
-export const ToolingVar = Schema.Union([ToolingVarLiteral, ToolingVarDefault, ToolingVarSh, ToolingVarPrompt]);
+export const ToolingVar = Schema.Union([
+  ToolingVarLiteral,
+  ToolingVarDefault,
+  ToolingVarSh,
+  ToolingVarPrompt,
+]);
 export type ToolingVar = typeof ToolingVar.Type;
 
 const ToolingEnvironment = Schema.Record(Schema.String, ToolingVarLiteral).annotate({
@@ -711,7 +896,9 @@ export const ToolingArgShape = Schema.Struct({
   choices: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
     description: "Allowed values for this argument.",
   }),
-  order: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0)))).annotate({
+  order: Schema.optionalKey(
+    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
+  ).annotate({
     description: "Positional order of this argument within the task.",
   }),
   description: Schema.optionalKey(Schema.String),
@@ -738,7 +925,20 @@ export const ToolingStepShape = Schema.Struct({
 });
 export type ToolingStepShape = typeof ToolingStepShape.Type;
 
-export const AppLifecycleEventName = Schema.Literals(["pre-init", "post-init", "pre-start", "post-start", "pre-stop", "post-stop", "pre-restart", "post-restart", "pre-rebuild", "post-rebuild", "pre-destroy", "post-destroy"]).annotate({ description: "App lifecycle point that runs an ordered Landofile event step list." });
+export const AppLifecycleEventName = Schema.Literals([
+  "pre-init",
+  "post-init",
+  "pre-start",
+  "post-start",
+  "pre-stop",
+  "post-stop",
+  "pre-restart",
+  "post-restart",
+  "pre-rebuild",
+  "post-rebuild",
+  "pre-destroy",
+  "post-destroy",
+]).annotate({ description: "App lifecycle point that runs an ordered Landofile event step list." });
 export type AppLifecycleEventName = typeof AppLifecycleEventName.Type;
 
 export const ToolingEventName = Schema.TemplateLiteral([Schema.Literals(["pre-", "post-"]), Schema.String]);
@@ -753,7 +953,12 @@ const EventStepCondition = Schema.Union([Schema.String, Schema.Boolean]);
  * Scalar literal or homogeneous scalar array for a canonical `command:` flag/arg.
  * Arrays support `multiple` inputs; mixed types and objects fail closed.
  */
-export const EventCommandInputValue = Schema.Union([ToolingVarLiteral, Schema.Array(Schema.String), Schema.Array(Schema.Number), Schema.Array(Schema.Boolean)]);
+export const EventCommandInputValue = Schema.Union([
+  ToolingVarLiteral,
+  Schema.Array(Schema.String),
+  Schema.Array(Schema.Number),
+  Schema.Array(Schema.Boolean),
+]);
 export type EventCommandInputValue = typeof EventCommandInputValue.Type;
 
 export const EventCommandStep = Schema.Struct({
@@ -837,7 +1042,13 @@ const EventForGeneratesSelector = Schema.Struct({
   generates: Schema.Literal(true),
 });
 
-export const EventForSelector = Schema.Union([Schema.Array(ToolingVarLiteral), EventForVarSelector, EventForMatrixSelector, EventForSourcesSelector, EventForGeneratesSelector]).annotate({
+export const EventForSelector = Schema.Union([
+  Schema.Array(ToolingVarLiteral),
+  EventForVarSelector,
+  EventForMatrixSelector,
+  EventForSourcesSelector,
+  EventForGeneratesSelector,
+]).annotate({
   identifier: "EventForSelector",
   description: "Literal or task-derived values selected for an event step loop.",
 });
@@ -899,7 +1110,12 @@ const EventDeferredCommandStep = Schema.Struct({
   silent: Schema.optionalKey(Schema.Boolean),
 });
 
-export const EventDeferStep = Schema.Union([EventDeferredCmdShorthand, EventDeferredCmdStep, EventDeferredTaskStep, EventDeferredCommandStep]).annotate({
+export const EventDeferStep = Schema.Union([
+  EventDeferredCmdShorthand,
+  EventDeferredCmdStep,
+  EventDeferredTaskStep,
+  EventDeferredCommandStep,
+]).annotate({
   identifier: "EventDeferStep",
   description: "An event action registered for LIFO finalization.",
 });
@@ -961,19 +1177,32 @@ const EventForDeferredCmdStep = Schema.Struct({
   silent: Schema.optionalKey(Schema.Boolean),
 });
 
-export const EventForStep = Schema.Union([EventForCmdStep, EventForTaskStep, EventForCommandStep, EventForDeferredCmdStep]).annotate({
+export const EventForStep = Schema.Union([
+  EventForCmdStep,
+  EventForTaskStep,
+  EventForCommandStep,
+  EventForDeferredCmdStep,
+]).annotate({
   identifier: "EventForStep",
   description: "An event action repeated for each selected value.",
 });
 export type EventForStep = typeof EventForStep.Type;
 
-export const EventStep = Schema.Union([Schema.String, EventCmdStep, EventTaskStep, EventCommandStep, EventDeferStep, EventForStep]).annotate({
+export const EventStep = Schema.Union([
+  Schema.String,
+  EventCmdStep,
+  EventTaskStep,
+  EventCommandStep,
+  EventDeferStep,
+  EventForStep,
+]).annotate({
   identifier: "EventStep",
   description: "One ordered events-as-tasks step.",
 });
 export type EventStep = typeof EventStep.Type;
 
-export const LandofileEvents = Schema.StructWithRest(Schema.Struct({
+export const LandofileEvents = Schema.StructWithRest(
+  Schema.Struct({
     "pre-init": Schema.optionalKey(Schema.Array(EventStep)),
     "post-init": Schema.optionalKey(Schema.Array(EventStep)),
     "pre-start": Schema.optionalKey(Schema.Array(EventStep)),
@@ -986,7 +1215,9 @@ export const LandofileEvents = Schema.StructWithRest(Schema.Struct({
     "post-rebuild": Schema.optionalKey(Schema.Array(EventStep)),
     "pre-destroy": Schema.optionalKey(Schema.Array(EventStep)),
     "post-destroy": Schema.optionalKey(Schema.Array(EventStep)),
-  }), [Schema.Record(Schema.String, Schema.Array(EventStep))]).annotate({
+  }),
+  [Schema.Record(Schema.String, Schema.Array(EventStep))],
+).annotate({
   identifier: "LandofileEvents",
   description: "Ordered tasks keyed by lifecycle or tooling event name, validated after tooling resolution.",
 });
@@ -1136,7 +1367,9 @@ export const ToolingIncludeShape = Schema.Struct({
 });
 export type ToolingIncludeShape = typeof ToolingIncludeShape.Type;
 
-export const IncludeEntry = Schema.Union([Schema.String, Schema.Struct({
+export const IncludeEntry = Schema.Union([
+  Schema.String,
+  Schema.Struct({
     source: Schema.String,
     kind: Schema.optionalKey(Schema.Literals(["landofile", "compose", "tooling"])).annotate({
       description:
@@ -1170,7 +1403,8 @@ export const IncludeEntry = Schema.Union([Schema.String, Schema.Struct({
       description:
         'kind: "tooling" only — literal vars applied to every included task unless the task defines its own value.',
     }),
-  })]);
+  }),
+]);
 export type IncludeEntry = typeof IncludeEntry.Type;
 
 export const ComposeSecretConfig = Schema.Struct({
@@ -1202,7 +1436,12 @@ const ComposeNamedResourceConfig = Schema.Struct({
   driver: Schema.optionalKey(Schema.String),
 });
 
-const ComposeNamedNetworkConfig = Schema.Union([ComposeNamedResourceConfig, Schema.Null]).pipe(Schema.decodeTo(ComposeNamedResourceConfig, SchemaTransformation.transform({ decode: (config) => config ?? {}, encode: (config) => config })));
+const ComposeNamedNetworkConfig = Schema.Union([ComposeNamedResourceConfig, Schema.Null]).pipe(
+  Schema.decodeTo(
+    ComposeNamedResourceConfig,
+    SchemaTransformation.transform({ decode: (config) => config ?? {}, encode: (config) => config }),
+  ),
+);
 
 const ComposeConfigConfig = Schema.Struct({
   file: Schema.optionalKey(Schema.String),
@@ -1228,23 +1467,34 @@ export type CommandAliasesShape = typeof CommandAliasesShape.Type;
  * Excludes fields not modeled here: keys:, plugins:, pluginDirs:.
  */
 const LandofileShapeBase = Schema.Struct({
-  name: Schema.optionalKey(Schema.String.annotate({
+  name: Schema.optionalKey(
+    Schema.String.annotate({
       description:
         "User-facing app name. Runtime identity is a lowercase ASCII slug: non-alphanumeric runs become one hyphen, edge hyphens are removed, and the result is capped at 57 characters so the lando-<slug> network label stays within DNS's 63-character limit. Names with no ASCII alphanumeric characters use a stable app-root hash.",
-    })),
+    }),
+  ),
   runtime: Schema.optionalKey(Schema.Literal(4)),
-  lando: Schema.optionalKey(Schema.String.pipe(
-      Schema.check(Schema.makeFilter((range) => range.trim().length > 0 && validRange(range, { loose: false }) !== null, {
-        message: 'lando must be a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".',
-      })),
-    )).annotate({
+  lando: Schema.optionalKey(
+    Schema.String.pipe(
+      Schema.check(
+        Schema.makeFilter(
+          (range) => range.trim().length > 0 && validRange(range, { loose: false }) !== null,
+          {
+            message: 'lando must be a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".',
+          },
+        ),
+      ),
+    ),
+  ).annotate({
     description:
       'Semver range the running Lando core version must satisfy before the app is planned or started (e.g. ">=4.1 <5"). Prereleases are included; unsatisfied constraints fail closed with remediation.',
   }),
-  recipe: Schema.optionalKey(LandofileRecipeField.annotate({
+  recipe: Schema.optionalKey(
+    LandofileRecipeField.annotate({
       description:
         "Recipe id, or inert object-form provenance recording the producing recipe and its merged options.",
-    })),
+    }),
+  ),
   provider: Schema.optionalKey(ProviderId),
   toolingEngine: Schema.optionalKey(Schema.String),
   commandAliases: Schema.optionalKey(CommandAliasesShape).annotate({
@@ -1284,9 +1534,9 @@ const LandofileShapeBase = Schema.Struct({
   }),
 });
 
-export const LandofileShape = LandofileShapeBase.pipe(
-    (self) => Schema.StructWithRest(self, [Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown)]),
-  );
+export const LandofileShape = LandofileShapeBase.pipe((self) =>
+  Schema.StructWithRest(self, [Schema.Record(Schema.TemplateLiteral(["x-", Schema.String]), Schema.Unknown)]),
+);
 export type LandofileShape = typeof LandofileShape.Type;
 
 export const defineLandofile = <T extends LandofileShape>(value: T): T => value;

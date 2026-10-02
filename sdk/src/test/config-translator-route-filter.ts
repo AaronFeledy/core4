@@ -119,11 +119,17 @@ export const runConfigTranslatorContractSuite = (
       `${label}: result is not an AppPlan`,
       result,
     );
-    yield* resolve(Effect.fromResult(Schema.encodeUnknownResult(ConfigTranslateResult)(result, { onExcessProperty: "error" })));
     yield* resolve(
-      Effect.fromResult(validateConfigTranslateResult(harness.translateInput, result).pipe(
-        Result.mapError((error) => new ConfigTranslateError({ ...error, translator: translator.id })),
-      )),
+      Effect.fromResult(
+        Schema.encodeUnknownResult(ConfigTranslateResult)(result, { onExcessProperty: "error" }),
+      ),
+    );
+    yield* resolve(
+      Effect.fromResult(
+        validateConfigTranslateResult(harness.translateInput, result).pipe(
+          Result.mapError((error) => new ConfigTranslateError({ ...error, translator: translator.id })),
+        ),
+      ),
     );
     const repeated = yield* resolve(translator.translate(harness.translateInput));
     yield* requireConfigTranslatorContract(

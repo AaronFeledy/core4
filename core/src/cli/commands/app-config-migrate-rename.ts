@@ -11,7 +11,9 @@ export const matchesGenerated = (current: unknown, generated: unknown): boolean 
     const actual = parseExpressionEither(current, { filePath: ".lando.yml" });
     const expected = parseExpressionEither(generated, { filePath: ".lando.yml" });
     return (
-      Result.isSuccess(actual) && Result.isSuccess(expected) && isDeepStrictEqual(actual.success, expected.success)
+      Result.isSuccess(actual) &&
+      Result.isSuccess(expected) &&
+      isDeepStrictEqual(actual.success, expected.success)
     );
   }
   return isDeepStrictEqual(current, generated);

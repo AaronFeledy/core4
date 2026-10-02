@@ -27,17 +27,20 @@ const ArtifactBuildSpecCommon = Schema.Struct({
   contentHash: Schema.optionalKey(Schema.String),
 });
 
-const ArtifactBuildSpecSource = Schema.Union([Schema.Struct({
+const ArtifactBuildSpecSource = Schema.Union([
+  Schema.Struct({
     /** Optional dockerfile/spec path relative to `context`. */
     spec: Schema.optionalKey(PortablePath),
     specInline: Schema.optionalKey(Schema.Never),
-  }), Schema.Struct({
+  }),
+  Schema.Struct({
     spec: Schema.optionalKey(Schema.Never),
     /** Inline build-spec contents used in place of a context-relative spec file. */
     specInline: Schema.String.annotate({
       description: "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
     }),
-  })]);
+  }),
+]);
 
 /**
  * Build spec — describes an artifact build from
@@ -53,14 +56,17 @@ export type ArtifactBuildSpec = typeof ArtifactBuildSpec.Type;
  * One `build.artifact:` / `build.app:` entry. A bare string runs as the
  * service's planned user; the object form names the user for that step alone.
  */
-export const BuildScriptStep = Schema.Union([Schema.String, Schema.Struct({
+export const BuildScriptStep = Schema.Union([
+  Schema.String,
+  Schema.Struct({
     run: Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate({
       description: "Shell command run for this build step.",
     }),
     user: Schema.optionalKey(ContainerUser).annotate({
       description: "Container identity this step runs as. Defaults to the service's planned user.",
     }),
-  })]);
+  }),
+]);
 export type BuildScriptStep = typeof BuildScriptStep.Type;
 
 /** Build script for `build.artifact:` and `build.app:` entries. */

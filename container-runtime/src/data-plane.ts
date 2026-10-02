@@ -687,8 +687,13 @@ const runByteStream = (
   spec: EphemeralRunSpec,
 ): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> => {
   const decode = makeAttachDecoder();
-  return Stream.scoped(Stream.fromEffect(Effect.acquireRelease(createEphemeralContainer(options, { ...spec, captureStdout: true }), (name) =>
-    removeEphemeralContainer(options, name, spec.remove !== false)))).pipe(
+  return Stream.scoped(
+    Stream.fromEffect(
+      Effect.acquireRelease(createEphemeralContainer(options, { ...spec, captureStdout: true }), (name) =>
+        removeEphemeralContainer(options, name, spec.remove !== false),
+      ),
+    ),
+  ).pipe(
     Stream.flatMap((name) =>
       Stream.unwrap(
         Effect.gen(function* () {
@@ -701,11 +706,14 @@ const runByteStream = (
           const output = stream(options, "run.logs", {
             method: "GET",
             path: `/containers/${encodeURIComponent(name)}/logs?follow=true&stdout=true&stderr=true`,
-          }).pipe(
-            (self) => Stream.flattenIterable(Stream.map(self, (chunk) =>
-              decode(chunk).map(
-                (frame): ExecChunk => ({ kind: frame.stream, chunk: new Uint8Array(frame.payload) }),
-              ))),
+          }).pipe((self) =>
+            Stream.flattenIterable(
+              Stream.map(self, (chunk) =>
+                decode(chunk).map(
+                  (frame): ExecChunk => ({ kind: frame.stream, chunk: new Uint8Array(frame.payload) }),
+                ),
+              ),
+            ),
           );
           const completed = Stream.fromEffect(
             Effect.gen(function* () {

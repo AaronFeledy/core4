@@ -290,10 +290,12 @@ describe("Effect service tags", () => {
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof RuntimeProviderRegistry>["select"]>>>
       >(true),
-      assertTaggedFailure<TaggedFailure<FailureOf<Context.Service.Shape<typeof ConfigService>["load"]>>>(true),
-      assertTaggedFailure<TaggedFailure<FailureOf<Context.Service.Shape<typeof LandofileService>["discover"]>>>(
+      assertTaggedFailure<TaggedFailure<FailureOf<Context.Service.Shape<typeof ConfigService>["load"]>>>(
         true,
       ),
+      assertTaggedFailure<
+        TaggedFailure<FailureOf<Context.Service.Shape<typeof LandofileService>["discover"]>>
+      >(true),
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof Downloader>["download"]>>>
       >(true),
@@ -306,7 +308,9 @@ describe("Effect service tags", () => {
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof BuildOrchestrator>["buildApp"]>>>
       >(true),
-      assertTaggedFailure<TaggedFailure<FailureOf<Context.Service.Shape<typeof PluginRegistry>["list"]>>>(true),
+      assertTaggedFailure<TaggedFailure<FailureOf<Context.Service.Shape<typeof PluginRegistry>["list"]>>>(
+        true,
+      ),
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof CacheService>["read"]>>>
       >(true),

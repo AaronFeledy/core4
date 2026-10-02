@@ -74,11 +74,7 @@ export type ShareStopCommandError =
   | Schema.SchemaError
   | StateStoreError;
 
-type ShareRuntimeError =
-  | TunnelError
-  | TunnelProviderUnavailableError
-  | Schema.SchemaError
-  | StateStoreError;
+type ShareRuntimeError = TunnelError | TunnelProviderUnavailableError | Schema.SchemaError | StateStoreError;
 type ShareListRuntimeError = TunnelError | TunnelProviderUnavailableError | StateStoreError;
 
 const unavailable = (requested?: string): TunnelProviderUnavailableError =>
@@ -157,9 +153,7 @@ const appShareWithPlan = <E, R>(
 
     const session = yield* start;
     yield* recordTunnelSession(session);
-    yield* Effect.addFinalizer(() =>
-      removeTunnelSession(session.id).pipe(Effect.catch(() => Effect.void)),
-    );
+    yield* Effect.addFinalizer(() => removeTunnelSession(session.id).pipe(Effect.catch(() => Effect.void)));
     return session;
   });
 

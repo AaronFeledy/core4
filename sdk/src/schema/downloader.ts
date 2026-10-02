@@ -8,7 +8,10 @@ export const ArtifactManifestEntry = Schema.Struct({
 });
 export type ArtifactManifestEntry = typeof ArtifactManifestEntry.Type;
 
-export const DownloadDestination = Schema.Union([Schema.Struct({ kind: Schema.Literal("file"), directory: Schema.String, filename: Schema.String }), Schema.Struct({ kind: Schema.Literal("memory") })]);
+export const DownloadDestination = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("file"), directory: Schema.String, filename: Schema.String }),
+  Schema.Struct({ kind: Schema.Literal("memory") }),
+]);
 export type DownloadDestination = typeof DownloadDestination.Type;
 
 export const DownloadRequest = Schema.Struct({

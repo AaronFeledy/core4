@@ -1,4 +1,4 @@
-import { Duration, Effect, Result, Ref } from "effect";
+import { Duration, Effect, Ref, Result } from "effect";
 
 import { runProbe } from "@lando/sdk/probe";
 import type { HostProxyService } from "@lando/sdk/services";

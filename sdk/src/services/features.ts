@@ -49,7 +49,10 @@ export type ServiceAppMountIntent = Omit<AppMountPlan, "realization">;
 export const ServiceCaFileDescriptor = Schema.Struct({
   path: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
   digest: Schema.String.pipe(Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
-  archiveName: Schema.String.pipe(Schema.check(Schema.isMaxLength(80)), Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u))),
+  archiveName: Schema.String.pipe(
+    Schema.check(Schema.isMaxLength(80)),
+    Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
+  ),
 });
 export type ServiceCaFileDescriptor = typeof ServiceCaFileDescriptor.Type;
 
@@ -71,7 +74,9 @@ export interface DataStoreOwnershipIntent {
 export const ServiceBuildDirectoryCommand = Schema.Struct({
   directories: Schema.NonEmptyArray(
     Schema.String.pipe(
-      Schema.check(Schema.isPattern(/^\/(?:[A-Za-z0-9_-][A-Za-z0-9._-]*)(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/u)),
+      Schema.check(
+        Schema.isPattern(/^\/(?:[A-Za-z0-9_-][A-Za-z0-9._-]*)(?:\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$/u),
+      ),
     ),
   ),
 });

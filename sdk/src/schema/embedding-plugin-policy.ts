@@ -15,14 +15,19 @@ export const EmbeddingPluginDiscoveryPolicy = Schema.Struct({
 export type EmbeddingPluginDiscoveryPolicy = typeof EmbeddingPluginDiscoveryPolicy.Type;
 
 const LandoPluginModuleEntry = Schema.Unknown.pipe(
-  Schema.check(Schema.makeFilter((input): input is LandoPluginModule =>
-      typeof input === "object" &&
-      input !== null &&
-      "name" in input &&
-      typeof input.name === "string" &&
-      "manifest" in input &&
-      Schema.is(PluginManifest)(input.manifest) &&
-      (!("certificateAuthorities" in input) || input.certificateAuthorities instanceof Map), { message: "Expected an already-loaded LandoPluginModule object.", jsonSchema: {} })),
+  Schema.check(
+    Schema.makeFilter(
+      (input): input is LandoPluginModule =>
+        typeof input === "object" &&
+        input !== null &&
+        "name" in input &&
+        typeof input.name === "string" &&
+        "manifest" in input &&
+        Schema.is(PluginManifest)(input.manifest) &&
+        (!("certificateAuthorities" in input) || input.certificateAuthorities instanceof Map),
+      { message: "Expected an already-loaded LandoPluginModule object.", jsonSchema: {} },
+    ),
+  ),
 );
 
 export const ResolvedPluginInput = Schema.Struct({
@@ -31,12 +36,15 @@ export const ResolvedPluginInput = Schema.Struct({
 });
 export type ResolvedPluginInput = typeof ResolvedPluginInput.Type;
 
-export const EmbeddingPluginPolicy = Schema.Union([EmbeddingPluginPolicyMode, Schema.Struct({
+export const EmbeddingPluginPolicy = Schema.Union([
+  EmbeddingPluginPolicyMode,
+  Schema.Struct({
     mode: Schema.optionalKey(EmbeddingPluginPolicyMode),
     layers: Schema.optionalKey(Schema.Array(Schema.Unknown)),
     manifests: Schema.optionalKey(Schema.Array(ResolvedPluginInput)),
     discovery: Schema.optionalKey(EmbeddingPluginDiscoveryPolicy),
     externalImports: Schema.optionalKey(Schema.Boolean),
     disable: Schema.optionalKey(Schema.Array(Schema.String)),
-  })]);
+  }),
+]);
 export type EmbeddingPluginPolicy = typeof EmbeddingPluginPolicy.Type;

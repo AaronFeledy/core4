@@ -35,8 +35,8 @@ export const validateLandofileRecipeProvenance = (
         path = "producer.manifestVersion";
       } else {
         reason = "malformed";
-        path = SchemaIssue.makeFormatterStandardSchemaV1()(error.issue).issues
-          ?.find((issue) => (issue.path?.length ?? 0) > 0)
+        path = SchemaIssue.makeFormatterStandardSchemaV1()(error.issue)
+          .issues?.find((issue) => (issue.path?.length ?? 0) > 0)
           ?.path?.map(String)
           .join(".");
       }

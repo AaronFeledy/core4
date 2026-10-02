@@ -1,4 +1,4 @@
-import { Result, Match, Schema } from "effect";
+import { Match, Result, Schema } from "effect";
 import { ConfigTranslateError } from "../errors/config.ts";
 import type {
   ConfigTranslateDiagnostic,

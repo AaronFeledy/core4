@@ -1,4 +1,4 @@
-import { Effect, Result, Predicate, Schema } from "effect";
+import { Effect, Predicate, Result, Schema } from "effect";
 
 import { type LandofileIncludeError, LandofileParseError } from "@lando/sdk/errors";
 import { ToolingIncludeShape } from "@lando/sdk/schema";
@@ -73,7 +73,9 @@ export const assertToolingFragment = (
         );
       }
       if (
-        Result.isFailure(Schema.decodeUnknownResult(ToolingIncludeShape)(entry, { onExcessProperty: "error" }))
+        Result.isFailure(
+          Schema.decodeUnknownResult(ToolingIncludeShape)(entry, { onExcessProperty: "error" }),
+        )
       ) {
         return Effect.fail(
           includeError({

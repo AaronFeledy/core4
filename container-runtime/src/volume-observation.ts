@@ -39,7 +39,9 @@ const resolveMountedVolume = (provider: VolumeObservationProvider, target: Mount
     });
     if (containerResponse.status !== 200)
       return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    const container = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Container))(containerResponse.body);
+    const container = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Container))(
+      containerResponse.body,
+    );
     const matches = container.Mounts.filter((mount) => mount.Destination === target.destination);
     const mount = matches[0];
     if (matches.length !== 1 || mount?.Type !== "volume" || !mount.Name) {
@@ -47,7 +49,9 @@ const resolveMountedVolume = (provider: VolumeObservationProvider, target: Mount
     }
     const response = yield* request({ method: "GET", path: `/volumes/${encodeURIComponent(mount.Name)}` });
     if (response.status !== 200) return yield* Effect.fail(volumeObservationFailure(provider.providerId));
-    const volume = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(NativeVolumeSchema))(response.body);
+    const volume = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(NativeVolumeSchema))(
+      response.body,
+    );
     if (volume.Name !== mount.Name) return yield* Effect.fail(volumeObservationFailure(provider.providerId));
     return volume;
   }).pipe(Effect.mapError(() => volumeObservationFailure(provider.providerId)));
@@ -65,11 +69,16 @@ export const locateVolume = (
     const key = JSON.stringify([`endpoint:${endpointNamespace}`, ref.store]);
     const response = yield* request({ method: "GET", path: `/volumes/${encodeURIComponent(ref.store)}` });
     if (response.status === 404) {
-      return yield* Schema.decodeUnknownEffect(VolumeLocator)({ coordinationKey: key, nativeName: ref.store });
+      return yield* Schema.decodeUnknownEffect(VolumeLocator)({
+        coordinationKey: key,
+        nativeName: ref.store,
+      });
     }
     if (response.status !== 200)
       return yield* Effect.fail(volumeObservationFailure(provider.providerId, "locateVolume"));
-    const volume = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(NativeVolumeSchema))(response.body);
+    const volume = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(NativeVolumeSchema))(
+      response.body,
+    );
     if (volume.Name !== ref.store)
       return yield* Effect.fail(volumeObservationFailure(provider.providerId, "locateVolume"));
     const resolution = yield* resolveNativeVolumeIdentity(provider, volume, { _tag: "named" });

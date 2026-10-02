@@ -106,7 +106,10 @@ export const runStdioReader = (options: StdioReaderOptions): Effect.Effect<void>
         const now = yield* Clock.currentTimeMillis;
         const remaining = Duration.toMillis(PARTIAL_FRAME_DEADLINE) - (now - frameStartedAt);
         if (remaining <= 0) return yield* Effect.fail(partialDeadlineFailure());
-        return yield* Effect.timeoutOrElse(read, { duration: Duration.millis(remaining), orElse: () => Effect.fail((partialDeadlineFailure)()) });
+        return yield* Effect.timeoutOrElse(read, {
+          duration: Duration.millis(remaining),
+          orElse: () => Effect.fail(partialDeadlineFailure()),
+        });
       });
 
     while (true) {

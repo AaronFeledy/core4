@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { Effect, Result, Predicate, Schema } from "effect";
+import { Effect, Predicate, Result, Schema } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";

@@ -54,7 +54,9 @@ export interface CertificateAuthorityShape {
   readonly issueCert: (spec: CertificateSpec) => Effect.Effect<CertificateResult, CaError>;
 }
 
-export class CertificateAuthority extends Context.Service<CertificateAuthority, CertificateAuthorityShape>()("@lando/core/CertificateAuthority") {}
+export class CertificateAuthority extends Context.Service<CertificateAuthority, CertificateAuthorityShape>()(
+  "@lando/core/CertificateAuthority",
+) {}
 
 export interface RouterServiceShape {
   readonly id: string;
@@ -86,7 +88,9 @@ export interface RouterServiceShape {
   readonly stop: Effect.Effect<void, ProxyError>;
 }
 
-export class RouterService extends Context.Service<RouterService, RouterServiceShape>()("@lando/core/RouterService") {}
+export class RouterService extends Context.Service<RouterService, RouterServiceShape>()(
+  "@lando/core/RouterService",
+) {}
 
 export interface SshSetupOptions {
   readonly force: boolean;
@@ -124,7 +128,9 @@ export interface HealthcheckRunnerShape {
   ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
 }
 
-export class HealthcheckRunner extends Context.Service<HealthcheckRunner, HealthcheckRunnerShape>()("@lando/core/HealthcheckRunner") {}
+export class HealthcheckRunner extends Context.Service<HealthcheckRunner, HealthcheckRunnerShape>()(
+  "@lando/core/HealthcheckRunner",
+) {}
 
 export interface ScanEndpoint {
   readonly service: ServiceName;
@@ -219,15 +225,23 @@ export interface HostProxyServiceShape {
   readonly teardown: () => Effect.Effect<void, HostProxyError>;
 }
 
-export class HostProxyService extends Context.Service<HostProxyService, HostProxyServiceShape>()("@lando/core/HostProxyService") {}
+export class HostProxyService extends Context.Service<HostProxyService, HostProxyServiceShape>()(
+  "@lando/core/HostProxyService",
+) {}
 
-export class PluginSource extends Context.Service<PluginSource, {
+export class PluginSource extends Context.Service<
+  PluginSource,
+  {
     readonly id: string;
-  }>()("@lando/core/PluginSource") {}
+  }
+>()("@lando/core/PluginSource") {}
 
-export class UpdateService extends Context.Service<UpdateService, {
+export class UpdateService extends Context.Service<
+  UpdateService,
+  {
     readonly id: string;
-  }>()("@lando/core/UpdateService") {}
+  }
+>()("@lando/core/UpdateService") {}
 
 /**
  * SecretStore resolves `${secret:...}` references in Landofiles.
@@ -248,4 +262,6 @@ export interface SecretStoreShape {
   readonly list: Effect.Effect<ReadonlyArray<string>>;
 }
 
-export class SecretStore extends Context.Service<SecretStore, SecretStoreShape>()("@lando/core/SecretStore") {}
+export class SecretStore extends Context.Service<SecretStore, SecretStoreShape>()(
+  "@lando/core/SecretStore",
+) {}

@@ -377,9 +377,7 @@ const destroyDesiredOrUnchanged = (
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
   resolveDesiredTarget.pipe(
     Effect.map((desired): ResolvedAppTarget | undefined => desired),
-    Effect.catch((error) =>
-      resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error),
-    ),
+    Effect.catch((error) => (resolution.landofilePresent ? Effect.succeed(undefined) : Effect.fail(error))),
     Effect.flatMap((desired) =>
       desired === undefined
         ? Effect.succeed(unchangedResult(basename(resolution.root)))

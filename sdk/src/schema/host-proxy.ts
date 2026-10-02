@@ -15,7 +15,15 @@ import { AbsolutePath, AppId } from "./primitives.ts";
  */
 
 /** Machine-readable host-proxy failure codes carried on an `error` response. */
-export const HostProxyErrorCode = Schema.Literals(["command-not-allowed", "allowlist-conflict", "scheme-not-allowed", "recursion-limit", "backpressure", "token-mismatch", "internal"]);
+export const HostProxyErrorCode = Schema.Literals([
+  "command-not-allowed",
+  "allowlist-conflict",
+  "scheme-not-allowed",
+  "recursion-limit",
+  "backpressure",
+  "token-mismatch",
+  "internal",
+]);
 export type HostProxyErrorCode = typeof HostProxyErrorCode.Type;
 
 /** Env forwarded from the container, already filtered to the shim allowlist. */
@@ -41,17 +49,22 @@ export type HostProxyRunLandoRequest = typeof HostProxyRunLandoRequest.Type;
  * Container-initiated `notify`/`clipboardCopy` are unsupported and deliberately
  * absent — there is no deprecation shim.
  */
-export const HostProxyRequest = Schema.Union([HostProxyRunLandoRequest, Schema.TaggedStruct("openUrl", {
+export const HostProxyRequest = Schema.Union([
+  HostProxyRunLandoRequest,
+  Schema.TaggedStruct("openUrl", {
     url: Schema.String,
     target: Schema.optionalKey(Schema.String),
-  }), Schema.TaggedStruct("openPath", {
+  }),
+  Schema.TaggedStruct("openPath", {
     path: AbsolutePath,
-  }), Schema.TaggedStruct("runBun", {
+  }),
+  Schema.TaggedStruct("runBun", {
     argv: Schema.Array(Schema.String),
     cwd: AbsolutePath,
     tty: Schema.Boolean,
     env: Schema.optionalKey(HostProxyEnv),
-  })]);
+  }),
+]);
 export type HostProxyRequest = typeof HostProxyRequest.Type;
 
 /** Closed set of HostProxyRequest `_tag` values (schema-surface test seam). */
@@ -59,11 +72,14 @@ export const HOST_PROXY_REQUEST_TAGS = ["runLando", "openUrl", "openPath", "runB
 export type HostProxyRequestTag = (typeof HOST_PROXY_REQUEST_TAGS)[number];
 
 /** Canonical host-proxy response union. */
-export const HostProxyResponse = Schema.Union([Schema.TaggedStruct("ok", { data: Schema.optionalKey(Schema.Unknown) }), Schema.TaggedStruct("error", {
+export const HostProxyResponse = Schema.Union([
+  Schema.TaggedStruct("ok", { data: Schema.optionalKey(Schema.Unknown) }),
+  Schema.TaggedStruct("error", {
     code: HostProxyErrorCode,
     message: Schema.String,
     remediation: Schema.optionalKey(Schema.String),
-  })]);
+  }),
+]);
 export type HostProxyResponse = typeof HostProxyResponse.Type;
 
 /** A host loopback worker that a provider can expose through a private guest socket. */

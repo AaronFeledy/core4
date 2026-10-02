@@ -18,8 +18,11 @@ const uidmapInstallNames = new Set(["bin/newuidmap", "bin/newgidmap"]);
 
 const Sha256 = Schema.String.pipe(
   Schema.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
-  Schema.check(Schema.makeFilter((value) =>
-    /^0+$/u.test(value) ? "placeholder (all-zero) sha256 is not allowed" : undefined)),
+  Schema.check(
+    Schema.makeFilter((value) =>
+      /^0+$/u.test(value) ? "placeholder (all-zero) sha256 is not allowed" : undefined,
+    ),
+  ),
 );
 
 const HttpsUrl = Schema.String.pipe(Schema.check(Schema.isPattern(/^https:\/\//u)));
@@ -53,7 +56,11 @@ const RuntimeBundleBinaryComponent = Schema.Struct({
 const RuntimeBundleSourceComponent = Schema.Struct({
   name: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
   version: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  sourceBuild: Schema.Literals([LinuxNetavarkSourceBuild, LinuxAardvarkDnsSourceBuild, LinuxPasstSourceBuild]),
+  sourceBuild: Schema.Literals([
+    LinuxNetavarkSourceBuild,
+    LinuxAardvarkDnsSourceBuild,
+    LinuxPasstSourceBuild,
+  ]),
   inputs: Schema.Array(RuntimeBundleSourceInput).pipe(Schema.check(Schema.isMinLength(1))),
   outputs: Schema.Array(RuntimeBundleSourceOutput).pipe(Schema.check(Schema.isMinLength(1))),
 });

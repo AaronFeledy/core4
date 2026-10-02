@@ -1,4 +1,3 @@
-import { Semaphore } from "effect";
 /**
  * Default `InteractionServiceLive` — the single prompting chokepoint.
  *
@@ -14,8 +13,9 @@ import { Semaphore } from "effect";
  */
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { Semaphore } from "effect";
 
-import { Cause, type Context, Effect, Layer, Option, Redacted, Runtime } from "effect";
+import { Cause, type Context, Effect, Layer, Option, Redacted } from "effect";
 
 import {
   ChoicesUnavailableError,

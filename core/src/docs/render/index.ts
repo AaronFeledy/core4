@@ -14,8 +14,7 @@ export {
 
 export const decodePublicTranscriptEither = (
   input: unknown,
-): Result.Result<PublicTranscript, Schema.SchemaError> =>
-  Schema.decodeUnknownResult(PublicTranscript)(input);
+): Result.Result<PublicTranscript, Schema.SchemaError> => Schema.decodeUnknownResult(PublicTranscript)(input);
 
 export interface SourceLinkOptions {
   readonly sourceLinkBase?: string;

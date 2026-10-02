@@ -146,7 +146,11 @@ export const parseToolingArgv = (
     args.set(arg.name, value);
     canonical.push(value);
   }
-  return Result.succeed({ flags: Object.fromEntries(flags), args: Object.fromEntries(args), argv: canonical });
+  return Result.succeed({
+    flags: Object.fromEntries(flags),
+    args: Object.fromEntries(args),
+    argv: canonical,
+  });
 };
 
 export const resolveServiceRef = (

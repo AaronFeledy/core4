@@ -38,9 +38,9 @@ describe("PreparedFileSyncTarget", () => {
       { ...valid.endpoint, _tag: "service" },
       { ...valid.endpoint, path: "relative" },
     ]) {
-      expect(Result.isFailure(Schema.decodeUnknownResult(PreparedFileSyncTarget)({ ...valid, endpoint }))).toBe(
-        true,
-      );
+      expect(
+        Result.isFailure(Schema.decodeUnknownResult(PreparedFileSyncTarget)({ ...valid, endpoint })),
+      ).toBe(true);
     }
   });
 });

@@ -12,17 +12,21 @@ const SEMVER_PATTERN =
 
 /** Recipe id — kebab-case identifier; matches directory basename. */
 export const RecipeId = Schema.String.pipe(
-  Schema.check(Schema.isPattern(KEBAB_CASE_PATTERN, {
-    message: "Recipe id must be lowercase kebab-case (a-z, 0-9, hyphen).",
-  })),
+  Schema.check(
+    Schema.isPattern(KEBAB_CASE_PATTERN, {
+      message: "Recipe id must be lowercase kebab-case (a-z, 0-9, hyphen).",
+    }),
+  ),
 );
 export type RecipeId = typeof RecipeId.Type;
 
 /** Recipe semver string. */
 export const RecipeVersion = Schema.String.pipe(
-  Schema.check(Schema.isPattern(SEMVER_PATTERN, {
-    message: "Recipe version must be a semver string (e.g. 1.0.0).",
-  })),
+  Schema.check(
+    Schema.isPattern(SEMVER_PATTERN, {
+      message: "Recipe version must be a semver string (e.g. 1.0.0).",
+    }),
+  ),
 );
 export type RecipeVersion = typeof RecipeVersion.Type;
 
@@ -30,11 +34,15 @@ export type RecipeVersion = typeof RecipeVersion.Type;
  * Where a recipe producer came from. Two producers that agree on package and
  * recipe name but disagree here are different families and never collide.
  */
-export const RecipeSourceKind = Schema.Literals(["bundled", "plugin", "local"]).annotate(metadata("RecipeSourceKind", "Origin class of the recipe producer."));
+export const RecipeSourceKind = Schema.Literals(["bundled", "plugin", "local"]).annotate(
+  metadata("RecipeSourceKind", "Origin class of the recipe producer."),
+);
 export type RecipeSourceKind = typeof RecipeSourceKind.Type;
 
 /** Package that publishes the recipe producer. */
-export const RecipePackageName = Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate(metadata("RecipePackageName", "Package name publishing the recipe producer."));
+export const RecipePackageName = Schema.String.pipe(Schema.check(Schema.isMinLength(1))).annotate(
+  metadata("RecipePackageName", "Package name publishing the recipe producer."),
+);
 export type RecipePackageName = typeof RecipePackageName.Type;
 
 /**
@@ -42,7 +50,11 @@ export type RecipePackageName = typeof RecipePackageName.Type;
  * itself and all migration history, so a producer can record its own digest
  * without creating a circular definition.
  */
-export const RecipeContentDigest = Schema.String.pipe(Schema.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/))).annotate(metadata("RecipeContentDigest", "SHA-256 over canonical recipe inputs, excluding the digest and history."));
+export const RecipeContentDigest = Schema.String.pipe(
+  Schema.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/)),
+).annotate(
+  metadata("RecipeContentDigest", "SHA-256 over canonical recipe inputs, excluding the digest and history."),
+);
 export type RecipeContentDigest = typeof RecipeContentDigest.Type;
 
 /**
@@ -65,25 +77,35 @@ export type RecipeProducer = typeof RecipeProducer.Type;
 const OptionScalar = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]);
 
 /** Persistable nonsecret recipe option value. Secret answers never appear here. */
-export const RecipeOptionValue = Schema.Union([OptionScalar, Schema.Array(OptionScalar)]).annotate(metadata("RecipeOptionValue", "Nonsecret scalar or scalar-array recipe option value."));
+export const RecipeOptionValue = Schema.Union([OptionScalar, Schema.Array(OptionScalar)]).annotate(
+  metadata("RecipeOptionValue", "Nonsecret scalar or scalar-array recipe option value."),
+);
 export type RecipeOptionValue = typeof RecipeOptionValue.Type;
 
 /**
  * Generated service name to current user-selected service name. The map must be
  * injective so a rename can never merge two generated services into one.
  */
-export const RecipeServiceMap = Schema.Record(Schema.String.pipe(Schema.check(Schema.isMinLength(1))), Schema.String.pipe(Schema.check(Schema.isMinLength(1))))
+export const RecipeServiceMap = Schema.Record(
+  Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+  Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
+)
   .pipe(
-    Schema.check(Schema.makeFilter((value) => {
-      const targets = new Set<string>();
-      for (const current of Object.values(value)) {
-        if (targets.has(current))
-          return `Service map is not injective: two generated names map to "${current}".`;
-        targets.add(current);
-      }
-      return true;
-    })),
-  ).annotate(metadata("RecipeServiceMap", "Injective map from generated service name to current service name."));
+    Schema.check(
+      Schema.makeFilter((value) => {
+        const targets = new Set<string>();
+        for (const current of Object.values(value)) {
+          if (targets.has(current))
+            return `Service map is not injective: two generated names map to "${current}".`;
+          targets.add(current);
+        }
+        return true;
+      }),
+    ),
+  )
+  .annotate(
+    metadata("RecipeServiceMap", "Injective map from generated service name to current service name."),
+  );
 export type RecipeServiceMap = typeof RecipeServiceMap.Type;
 
 /** Stable family key: producers sharing it are the same recipe lineage. */

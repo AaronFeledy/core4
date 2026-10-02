@@ -1,6 +1,6 @@
-import { TestClock } from "effect/testing";
 import { describe, expect, test } from "bun:test";
 import { Deferred, Duration, Effect, Fiber } from "effect";
+import { TestClock } from "effect/testing";
 
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { RetryPolicy } from "@lando/sdk/probe";

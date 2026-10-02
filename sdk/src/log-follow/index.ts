@@ -341,10 +341,7 @@ export const followLogSource = (
             return [lineEvents(tailed), Option.none<BodyState>()] as const;
           }
           const backfillEvents = lineEvents(applyTail([...backfill, ...framer.flush()], input.tail));
-          return [
-            backfillEvents,
-            Option.some<BodyState>({ kind: "poll", state }),
-          ] as const;
+          return [backfillEvents, Option.some<BodyState>({ kind: "poll", state })] as const;
         }
 
         const state = current.state;
@@ -498,7 +495,9 @@ export const logFollowLineChunks = <E, R>(
   events: Stream.Stream<LogFollowEvent, E, R>,
 ): Stream.Stream<LogChunk, E, R> =>
   events.pipe(
-    Stream.filterMap((event) => (event._tag === "line" ? Result.succeed(event.chunk) : Result.fail(undefined))),
+    Stream.filterMap((event) =>
+      event._tag === "line" ? Result.succeed(event.chunk) : Result.fail(undefined),
+    ),
   );
 
 export { makeMemoryLogFileAccess } from "./memory.ts";

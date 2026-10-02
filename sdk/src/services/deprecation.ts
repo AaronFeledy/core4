@@ -65,7 +65,9 @@ export interface DeprecationSummaryEntry extends DeprecationUse {
 
 export type DeprecationRegistrySource = "core" | "plugin" | "schema-walk";
 
-export class DeprecationService extends Context.Service<DeprecationService, {
+export class DeprecationService extends Context.Service<
+  DeprecationService,
+  {
     readonly use: (use: DeprecationUse) => Effect.Effect<void, DeprecatedSurfaceError>;
     readonly summary: () => Effect.Effect<ReadonlyArray<DeprecationSummaryEntry>>;
     readonly lookup: (
@@ -85,4 +87,5 @@ export class DeprecationService extends Context.Service<DeprecationService, {
       aliasId: string,
       aliasNotice?: DeprecationNotice,
     ) => Effect.Effect<void, DeprecationContradictionError>;
-  }>()("@lando/core/DeprecationService") {}
+  }
+>()("@lando/core/DeprecationService") {}

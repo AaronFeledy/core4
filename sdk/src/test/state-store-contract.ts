@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { Cause, Effect, Result, Option, Schema } from "effect";
+import { Cause, Effect, Option, Result, Schema } from "effect";
 
 import { StateStoreError } from "../errors/index.ts";
 
@@ -365,7 +365,9 @@ export const runStateStoreContract = (
     // 5. Path containment: reject escaping key and namespace during open.
     const keyEscape = yield* Effect.result(store.open(stateStoreDocSpec(harness, "../escape.json")));
     yield* requireStateStoreContract(
-      Result.isFailure(keyEscape) && keyEscape.failure.reason === "path" && keyEscape.failure.operation === "open",
+      Result.isFailure(keyEscape) &&
+        keyEscape.failure.reason === "path" &&
+        keyEscape.failure.operation === "open",
       "a key escaping the state root is rejected with reason path",
       keyEscape,
     );

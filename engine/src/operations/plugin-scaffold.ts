@@ -29,7 +29,16 @@ export interface PluginNewResult {
 export const PluginNewResultSchema = Schema.Struct({
   name: Schema.String,
   destination: Schema.String,
-  template: Schema.Literals(["service-type", "provider", "tooling-engine", "template-engine", "route-filter", "config-translator", "recipe", "bare"]),
+  template: Schema.Literals([
+    "service-type",
+    "provider",
+    "tooling-engine",
+    "template-engine",
+    "route-filter",
+    "config-translator",
+    "recipe",
+    "bare",
+  ]),
   cspace: Schema.String,
   files: Schema.Array(Schema.String),
 });

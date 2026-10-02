@@ -159,7 +159,9 @@ describe("Podman Compose knob bring-up realization", () => {
       bringUp({ ...plan, services: { [service.name]: service } }, { api: fake.api, ctx }),
     );
     // Then
-    const failures = Exit.isFailure(exit) ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)) : [];
+    const failures = Exit.isFailure(exit)
+      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
+      : [];
     expect(failures).toContainEqual(
       expect.objectContaining({
         _tag: "ServiceStartError",
@@ -237,7 +239,9 @@ describe("Podman Compose knob bring-up realization", () => {
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
-    const failures = Exit.isFailure(exit) ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)) : [];
+    const failures = Exit.isFailure(exit)
+      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
+      : [];
     expect(failures).toContainEqual(
       expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.knobs", service: "web" }),
     );
@@ -253,7 +257,9 @@ describe("Podman Compose knob bring-up realization", () => {
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
-    const failures = Exit.isFailure(exit) ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)) : [];
+    const failures = Exit.isFailure(exit)
+      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
+      : [];
     expect(failures).toContainEqual(
       expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.knobs", service: "web" }),
     );

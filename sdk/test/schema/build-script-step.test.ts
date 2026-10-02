@@ -1,5 +1,5 @@
-import { SchemaIssue } from "effect";
 import { describe, expect, test } from "bun:test";
+import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
 import { BuildBlock, ServiceConfig } from "../../src/schema/landofile.ts";
@@ -20,8 +20,8 @@ const expectRejected = (input: unknown): ReadonlyArray<string> => {
     expect(Result.isFailure(result)).toBe(true);
     if (!Result.isFailure(result)) continue;
     messages.push(
-      SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
-        .map(({ message }) => message)
+      SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+        .issues.map(({ message }) => message)
         .join("\n"),
     );
   }
@@ -102,8 +102,8 @@ describe("build step objects", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (!Result.isFailure(result)) return;
     expect(
-      SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues
-        .map(({ message }) => message)
+      SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue)
+        .issues.map(({ message }) => message)
         .join("\n"),
     ).toContain("cmd");
   });

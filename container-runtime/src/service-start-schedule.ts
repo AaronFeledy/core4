@@ -118,7 +118,15 @@ const probeHealthy = <E, R>(
       yield* Effect.sleep(Duration.seconds(healthcheck.startPeriodSeconds));
     }
 
-    const attempt = Effect.timeoutOrElse(Effect.map(Effect.result(handlers.execHealthcheck(service, command)), (result) => (result._tag === "Success" && result.success.exitCode === 0 ? "green" : "red")), { duration: Duration.seconds(healthcheck.timeoutSeconds), orElse: () => Effect.succeed((() => "red" as const)()) });
+    const attempt = Effect.timeoutOrElse(
+      Effect.map(Effect.result(handlers.execHealthcheck(service, command)), (result) =>
+        result._tag === "Success" && result.success.exitCode === 0 ? "green" : "red",
+      ),
+      {
+        duration: Duration.seconds(healthcheck.timeoutSeconds),
+        orElse: () => Effect.succeed((() => "red" as const)()),
+      },
+    );
 
     return yield* runProbe(
       {

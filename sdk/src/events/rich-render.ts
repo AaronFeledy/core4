@@ -17,10 +17,14 @@ export const CodeSnippetEvent = Schema.TaggedStruct("code.snippet", {
   path: Schema.optional(Schema.String).annotate({
     description: "Optional display-only origin path (already redacted by the publisher).",
   }),
-  startLine: Schema.optional(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))).annotate({
+  startLine: Schema.optional(
+    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  ).annotate({
     description: "Optional 1-based first line number for gutter numbering.",
   }),
-  highlightLines: Schema.optional(Schema.Array(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))))).annotate({
+  highlightLines: Schema.optional(
+    Schema.Array(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))),
+  ).annotate({
     description: "Optional 1-based line numbers to highlight.",
   }),
 });
@@ -54,5 +58,10 @@ export type MarkdownBlockEvent = typeof MarkdownBlockEvent.Type;
  * LandoPluginContext.events.publishRender. Includes rich content events and
  * notify.desktop.
  */
-export const RenderEvent = Schema.Union([CodeSnippetEvent, DiffRenderEvent, MarkdownBlockEvent, NotifyDesktopEvent]);
+export const RenderEvent = Schema.Union([
+  CodeSnippetEvent,
+  DiffRenderEvent,
+  MarkdownBlockEvent,
+  NotifyDesktopEvent,
+]);
 export type RenderEvent = typeof RenderEvent.Type;

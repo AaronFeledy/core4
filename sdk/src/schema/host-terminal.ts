@@ -12,10 +12,14 @@ export const HostTerminal = Schema.Struct({
   colorterm: Schema.optionalKey(Schema.NonEmptyString).annotate({
     description: "Attached terminal's COLORTERM value, copied verbatim when present.",
   }),
-  columns: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))).annotate({
+  columns: Schema.optionalKey(
+    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  ).annotate({
     description: "Attached terminal width in columns.",
   }),
-  rows: Schema.optionalKey(Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0)))).annotate({
+  rows: Schema.optionalKey(
+    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
+  ).annotate({
     description: "Attached terminal height in rows.",
   }),
 }).annotate({

@@ -55,7 +55,9 @@ export const checkAuthoringLaws = (
     let cumulative: unknown = {};
     for (const { fragment } of fragments) {
       cumulative = merge(cumulative, fragment);
-      yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(cumulative, { onExcessProperty: "error" });
+      yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(cumulative, {
+        onExcessProperty: "error",
+      });
     }
     yield* Schema.decodeUnknownEffect(LandofileAuthoringShape)(cumulative, { onExcessProperty: "error" });
     const encode = harness.translator.encode;

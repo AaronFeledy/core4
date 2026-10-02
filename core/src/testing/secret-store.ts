@@ -3,7 +3,7 @@
 // `Map` of secret ids to values so `runSecretStoreContractSuite` can run without
 // reading `process.env` or any external backend.
 
-import { Effect, Result, Layer } from "effect";
+import { Effect, Layer, Result } from "effect";
 
 import {
   SecretNotFoundError,

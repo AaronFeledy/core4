@@ -1,4 +1,4 @@
-import { Result, Predicate, Schema } from "effect";
+import { Predicate, Result, Schema } from "effect";
 
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYamlEither } from "@lando/sdk/landofile";

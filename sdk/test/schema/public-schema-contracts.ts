@@ -853,7 +853,9 @@ export const assertPublicSchemaContractCoverage = (
       const encoded = Schema.encodeResult(schema)(happy.success);
       if (Result.isFailure(encoded)) failingSchemas.push(`${schemaName} encode: ${String(encoded.failure)}`);
       if (Result.isSuccess(encoded)) {
-        const decodedAgain = Schema.decodeUnknownResult(schema)(encoded.success, { onExcessProperty: "error" });
+        const decodedAgain = Schema.decodeUnknownResult(schema)(encoded.success, {
+          onExcessProperty: "error",
+        });
         if (Result.isFailure(decodedAgain))
           failingSchemas.push(`${schemaName} decode encoded: ${String(decodedAgain.failure)}`);
       }

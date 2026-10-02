@@ -1,7 +1,7 @@
 import { findMissingAppRoots } from "@lando/engine/operations/missing-app-roots";
 import { shellArg } from "@lando/engine/services/shell-quote";
 import { FileSystem, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect, Result, Option } from "effect";
+import { Effect, Option, Result } from "effect";
 import type { DoctorSubsystemCheck } from "./doctor-subsystem-checks";
 
 export const missingAppRootsDoctor = (redact: (text: string) => string) =>

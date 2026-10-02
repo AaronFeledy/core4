@@ -7,7 +7,15 @@ import { parseComposeDuration } from "./compose-duration.ts";
 
 const StringList = Schema.Array(Schema.String);
 
-export const ComposeStringListField = Schema.Union([Schema.String, StringList]).pipe(Schema.decodeTo(StringList, SchemaTransformation.transformEffect({ decode: (input) => Effect.succeed(typeof input === "string" ? [input] : input), encode: (input) => Effect.succeed(input) })));
+export const ComposeStringListField = Schema.Union([Schema.String, StringList]).pipe(
+  Schema.decodeTo(
+    StringList,
+    SchemaTransformation.transformEffect({
+      decode: (input) => Effect.succeed(typeof input === "string" ? [input] : input),
+      encode: (input) => Effect.succeed(input),
+    }),
+  ),
+);
 
 export const ComposeCapAddField = ComposeStringListField.annotate({
   description:
@@ -39,21 +47,40 @@ export type ComposeStringList = typeof ComposeStringListField.Type;
 const Group = Schema.Union([Schema.String, Schema.Number]);
 const GroupList = Schema.Array(Group);
 
-export const ComposeGroupAddField = Schema.Union([Group, GroupList]).pipe(Schema.decodeTo(GroupList, SchemaTransformation.transformEffect({ decode: (input) => Effect.succeed(typeof input === "string" || typeof input === "number" ? [input] : input), encode: (input) => Effect.succeed(input) }))).annotate({
-  description:
-    "Supplementary groups as one string or number, or as a list of either; canonicalized to a group list while preserving each value.",
-});
+export const ComposeGroupAddField = Schema.Union([Group, GroupList])
+  .pipe(
+    Schema.decodeTo(
+      GroupList,
+      SchemaTransformation.transformEffect({
+        decode: (input) =>
+          Effect.succeed(typeof input === "string" || typeof input === "number" ? [input] : input),
+        encode: (input) => Effect.succeed(input),
+      }),
+    ),
+  )
+  .annotate({
+    description:
+      "Supplementary groups as one string or number, or as a list of either; canonicalized to a group list while preserving each value.",
+  });
 export type ComposeGroupAdd = typeof ComposeGroupAddField.Type;
 
-export const ComposeByteSizeField = Schema.Union([Schema.String, Schema.Int]).pipe(Schema.decodeTo(Schema.Int, SchemaTransformation.transformEffect({ decode: (input) => {
-      if (typeof input === "number") return Effect.succeed(input);
-      try {
-        return Effect.succeed(parseComposeByteSize(input));
-      } catch (error) {
-        if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
-        throw error;
-      }
-    }, encode: (input) => Effect.succeed(input) })));
+export const ComposeByteSizeField = Schema.Union([Schema.String, Schema.Int]).pipe(
+  Schema.decodeTo(
+    Schema.Int,
+    SchemaTransformation.transformEffect({
+      decode: (input) => {
+        if (typeof input === "number") return Effect.succeed(input);
+        try {
+          return Effect.succeed(parseComposeByteSize(input));
+        } catch (error) {
+          if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
+          throw error;
+        }
+      },
+      encode: (input) => Effect.succeed(input),
+    }),
+  ),
+);
 export type ComposeByteSize = typeof ComposeByteSizeField.Type;
 
 export const ComposeShmSizeField = ComposeByteSizeField.annotate({
@@ -61,15 +88,23 @@ export const ComposeShmSizeField = ComposeByteSizeField.annotate({
     "Shared-memory size as integer bytes or a Compose byte-size string; canonicalized to integer bytes.",
 });
 
-export const ComposeDurationSecondsField = Schema.Union([Schema.String, Schema.Number]).pipe(Schema.decodeTo(Schema.Number, SchemaTransformation.transformEffect({ decode: (input) => {
-      if (typeof input === "number") return Effect.succeed(input);
-      try {
-        return Effect.succeed(parseComposeDuration(input));
-      } catch (error) {
-        if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
-        throw error;
-      }
-    }, encode: (input) => Effect.succeed(input) })));
+export const ComposeDurationSecondsField = Schema.Union([Schema.String, Schema.Number]).pipe(
+  Schema.decodeTo(
+    Schema.Number,
+    SchemaTransformation.transformEffect({
+      decode: (input) => {
+        if (typeof input === "number") return Effect.succeed(input);
+        try {
+          return Effect.succeed(parseComposeDuration(input));
+        } catch (error) {
+          if (error instanceof SchemaIssue.InvalidValue) return Effect.fail(error);
+          throw error;
+        }
+      },
+      encode: (input) => Effect.succeed(input),
+    }),
+  ),
+);
 export type ComposeDurationSeconds = typeof ComposeDurationSecondsField.Type;
 
 export const ComposeStopGracePeriodField = ComposeDurationSecondsField.annotate({
@@ -81,6 +116,9 @@ export const ComposeRestartField = Schema.Literals(["no", "always", "on-failure"
 
 const TimedPullPolicy = Schema.String.pipe(Schema.check(Schema.isPattern(/^every_(?:[0-9]+[wdhms])+$/)));
 
-export const ComposePullPolicyField = Schema.Union([Schema.Literals(["always", "never", "build", "if_not_present", "missing", "refresh", "daily", "weekly"]), TimedPullPolicy]);
+export const ComposePullPolicyField = Schema.Union([
+  Schema.Literals(["always", "never", "build", "if_not_present", "missing", "refresh", "daily", "weekly"]),
+  TimedPullPolicy,
+]);
 
 export const ComposeBooleanOrStringField = Schema.Union([Schema.Boolean, Schema.String]);

@@ -123,9 +123,7 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
         Effect.catchIf(
           (error) => blocking.has(error.reason),
           (error) =>
-            store.block.pipe(
-              Effect.andThen(Effect.fail(transactionError("blocked", "recover", error.path))),
-            ),
+            store.block.pipe(Effect.andThen(Effect.fail(transactionError("blocked", "recover", error.path)))),
         ),
       );
       yield* cleanupStages(journal);

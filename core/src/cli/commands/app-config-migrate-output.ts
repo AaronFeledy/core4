@@ -7,7 +7,14 @@ import { Schema } from "effect";
  * These are opaque or unreadable inputs: the chain never starts, so nothing is
  * committed. Distinct from a hunk that blocks mid-chain after a satisfied prefix.
  */
-export const MigrateBlockedReason = Schema.Literals(["programmatic-landofile", "includes-present", "bare-provenance", "invalid-provenance", "unknown-recipe", "invalid-service-map"]);
+export const MigrateBlockedReason = Schema.Literals([
+  "programmatic-landofile",
+  "includes-present",
+  "bare-provenance",
+  "invalid-provenance",
+  "unknown-recipe",
+  "invalid-service-map",
+]);
 export type MigrateBlockedReason = typeof MigrateBlockedReason.Type;
 
 /**
@@ -16,7 +23,16 @@ export type MigrateBlockedReason = typeof MigrateBlockedReason.Type;
  * Carried only when classification is `blocking` so machine consumers can branch
  * without scraping remediation prose.
  */
-export const MigrateHunkBlockReason = Schema.Literals(["site-taken-over", "value-conflict", "layer-not-owned", "render-failed", "hunk-snapshot-mismatch", "rename-target-collision", "rename-source-missing", "declined"]);
+export const MigrateHunkBlockReason = Schema.Literals([
+  "site-taken-over",
+  "value-conflict",
+  "layer-not-owned",
+  "render-failed",
+  "hunk-snapshot-mismatch",
+  "rename-target-collision",
+  "rename-source-missing",
+  "declined",
+]);
 export type MigrateHunkBlockReason = typeof MigrateHunkBlockReason.Type;
 
 /** One classified hunk inside a migration edge, ready for machine output. */
@@ -54,11 +70,13 @@ export const AppConfigMigrateResultSchema = Schema.Struct({
   recorded: Schema.optionalKey(RecipeProducer),
   committed: Schema.optionalKey(RecipeProducer),
   noMutation: Schema.optionalKey(Schema.Literals(["missing-old-snapshot", "already-current"])),
-  blocked: Schema.optionalKey(Schema.Struct({
+  blocked: Schema.optionalKey(
+    Schema.Struct({
       reason: MigrateBlockedReason,
       detail: Schema.String,
       remediation: Schema.String,
-    })),
+    }),
+  ),
   edges: Schema.Array(MigrateEdgeResult),
   next: Schema.String,
 });

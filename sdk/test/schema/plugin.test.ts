@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { Result, Layer, Schema } from "effect";
+import { Layer, Result, Schema } from "effect";
 
 import { definePlugin } from "@lando/sdk/plugins";
 import { EmbeddingPluginPolicy, PluginManifest, getJsonSchema } from "@lando/sdk/schema";

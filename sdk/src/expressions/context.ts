@@ -34,14 +34,18 @@ export const ExpressionContext: Schema.Codec<ExpressionContext> = Schema.Struct(
   proxy: Schema.optionalKey(UnknownRecord),
   global: Schema.optionalKey(UnknownRecord),
   vars: Schema.optionalKey(UnknownRecord),
-  options: Schema.optionalKey(UnknownRecord.annotate({
+  options: Schema.optionalKey(
+    UnknownRecord.annotate({
       description:
         "Already-resolved recipe option values supplied by the caller; performs no lookup and runs no recipe code.",
-    })),
-  recipe: Schema.optionalKey(UnknownRecord.annotate({
+    }),
+  ),
+  recipe: Schema.optionalKey(
+    UnknownRecord.annotate({
       description:
         "Recipe option values read from a Landofile's own recipe.options; performs no lookup and runs no recipe code.",
-    })),
+    }),
+  ),
   service: Schema.optionalKey(UnknownRecord),
   services: Schema.optionalKey(UnknownRecord),
   plugin: Schema.optionalKey(UnknownRecord),

@@ -21,8 +21,8 @@ export const RemoteCapabilities = Schema.Struct({
 export type RemoteCapabilities = typeof RemoteCapabilities.Type;
 
 export const RemoteConfig = Schema.Struct({
-    source: Schema.String,
-  }).pipe((self) => Schema.StructWithRest(self, [Schema.Record(Schema.String, Schema.Unknown)]));
+  source: Schema.String,
+}).pipe((self) => Schema.StructWithRest(self, [Schema.Record(Schema.String, Schema.Unknown)]));
 export type RemoteConfig = typeof RemoteConfig.Type;
 
 export const DatasetBinding = Schema.Struct({

@@ -63,9 +63,7 @@ export const readWorkerRecord = (app: Pick<AppRef, "id" | "root">, paths?: RootO
   );
 
 export const readWorkerRecordAt = (path: string): Effect.Effect<HostProxyWorkerRecord | undefined, never> =>
-  readDetachedWorkerRecord(path, HostProxyWorkerRecord).pipe(
-    Effect.catch(() => Effect.succeed(undefined)),
-  );
+  readDetachedWorkerRecord(path, HostProxyWorkerRecord).pipe(Effect.catch(() => Effect.succeed(undefined)));
 
 export const readLegacyWorkerRecordAt = (
   path: string,

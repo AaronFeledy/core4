@@ -200,7 +200,13 @@ export const runInteractionContract = (
     const failFastExit = yield* runInteractionScoped(
       failFastService.promptAll([interactionTextPrompt("app")], { mode: "non-interactive" }),
     ).pipe(
-      Effect.timeoutOrElse({ duration: Duration.seconds(5), orElse: () => Effect.fail((() => interactionContractFailure("non-interactive resolution never blocks on stdin"))()) }),
+      Effect.timeoutOrElse({
+        duration: Duration.seconds(5),
+        orElse: () =>
+          Effect.fail(
+            (() => interactionContractFailure("non-interactive resolution never blocks on stdin"))(),
+          ),
+      }),
     );
     yield* requireInteractionContract(
       interactionFailureTag(failFastExit) === "InteractionRequiredError",

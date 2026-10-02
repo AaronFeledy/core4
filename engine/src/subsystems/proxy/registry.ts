@@ -1,4 +1,4 @@
-import { Context, Effect, Result, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
 
 import { ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
@@ -50,7 +50,10 @@ interface RouterServiceRegistryShape {
   ) => Effect.Effect<RouterServiceRegistration, ProxyError>;
 }
 
-export class RouterServiceRegistry extends Context.Service<RouterServiceRegistry, RouterServiceRegistryShape>()("@lando/core/RouterServiceRegistry") {}
+export class RouterServiceRegistry extends Context.Service<
+  RouterServiceRegistry,
+  RouterServiceRegistryShape
+>()("@lando/core/RouterServiceRegistry") {}
 
 interface MakeRouterServiceRegistryOptions {
   readonly registrations: ReadonlyArray<RouterServiceRegistration>;
