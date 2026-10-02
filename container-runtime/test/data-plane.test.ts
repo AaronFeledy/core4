@@ -1189,6 +1189,60 @@ describe("provider data plane", () => {
     );
   });
 
+  test.each([
+    {
+      status: 409,
+      body: JSON.stringify({ message: "volume data is being used by container lando-orphan-db" }),
+      reason: "lando-orphan-db",
+    },
+    {
+      status: 500,
+      body: JSON.stringify({ message: "volume data is in use by container orphan-db" }),
+      reason: "orphan-db",
+    },
+    { status: 500, body: "volume data is in use by container plain-db", reason: "plain-db" },
+    { status: 500, body: JSON.stringify({ message: "internal daemon error" }), reason: undefined },
+  ])("explains volume users only for remove conflicts: $status $body", async ({ status, body, reason }) => {
+    const api: DataPlaneApiClient = {
+      request: (input) =>
+        Effect.succeed(
+          input.method === "GET"
+            ? {
+                status: 200,
+                body: JSON.stringify({
+                  Name: "data",
+                  Labels: { "dev.lando.volume-instance": volumeGeneration },
+                }),
+              }
+            : { status, body },
+        ),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      snapshotMode: "copy",
+      redactDetails: (value) => value,
+    });
+    const result = await Effect.runPromise(
+      provider.removeVolume({ app: appId, store: "data" }, volumeGeneration).pipe(Effect.either),
+    );
+    expect(result._tag).toBe("Left");
+    if (result._tag !== "Left") return;
+    expect(result.left).toBeInstanceOf(VolumeOperationError);
+    expect(result.left.operation).toBe("removeVolume");
+    if (reason === undefined) {
+      expect(result.left.message).toBe("Provider volume remove failed.");
+      expect(result.left.remediation).toBe(
+        "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+      );
+    } else {
+      expect(result.left.message).toContain(reason);
+      expect(result.left.remediation).toContain("Remove that container first");
+      expect(result.left.remediation).toContain("lando destroy");
+      expect(result.left.remediation).toContain("lando doctor");
+    }
+  });
+
   test("allows restore only while the elected witness generation still matches", async () => {
     // Given: an adopted target volume and a verified copy snapshot.
     const { api, requests } = makeWitnessVolumeApi();

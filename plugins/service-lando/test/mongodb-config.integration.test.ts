@@ -43,13 +43,17 @@ describe("mongodb service type — live integration: file-backed server config",
             // getParameter reads the value the running server holds, so it
             // proves mongod parsed the mounted file's setParameter block.
             // mongosh prints 64-bit ints as `Long('...')`, so the probe casts.
+            // The image sets HOME=/data/db, so a root probe during first boot
+            // can create a root-owned /data/db/.mongodb. The entrypoint's own
+            // mongosh then cannot write there, prints a warning into its parsed
+            // config, and exits. HOME=/tmp keeps the probe out of the data dir.
             const result = yield* execUntil({
               app,
               service: "db",
               command: [
                 "sh",
                 "-c",
-                'mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "print(Number(db.adminCommand({getParameter: 1, cursorTimeoutMillis: 1}).cursorTimeoutMillis))"',
+                'HOME=/tmp mongosh --quiet -u "$MONGO_INITDB_ROOT_USERNAME" -p "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "print(Number(db.adminCommand({getParameter: 1, cursorTimeoutMillis: 1}).cursorTimeoutMillis))"',
               ],
               accept: (candidate) => candidate.exitCode === 0 && candidate.stdout.trim().length > 0,
               timeoutMs: 150_000,

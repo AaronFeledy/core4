@@ -7,7 +7,9 @@ import { type AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import type {
   AppliedOrphanGroup,
   AppliedTeardownEvidence,
+  ListFilter,
   ProviderError,
+  ProviderRuntimeSnapshot,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 
@@ -16,12 +18,16 @@ export type AppliedStateProvider = Pick<
   "id" | "appliedPlans" | "isAvailable" | "list" | "listVolumes"
 >;
 
-const runtimeEvidence = (provider: AppliedStateProvider) =>
+const runtimeEvidence = (provider: AppliedStateProvider, filter: ListFilter) =>
   provider.isAvailable.pipe(
     Effect.flatMap((available) =>
       available
-        ? Effect.all({ services: provider.list({}), volumes: provider.listVolumes({}) })
-        : Effect.succeed({ services: [], volumes: [] }),
+        ? Effect.all({
+            runtimeObserved: Effect.succeed(true),
+            services: provider.list(filter),
+            volumes: provider.listVolumes({}),
+          })
+        : Effect.succeed({ runtimeObserved: false, services: [], volumes: [] }),
     ),
   );
 
@@ -79,6 +85,35 @@ const groupOrphans = (
 
 type RuntimeEvidence = Effect.Effect.Success<ReturnType<typeof runtimeEvidence>>;
 
+const gatherAppliedPlans = (provider: AppliedStateProvider) =>
+  (provider.appliedPlans ?? Effect.succeed([])).pipe(
+    Effect.flatMap((appliedPlans) =>
+      Effect.forEach(appliedPlans, (plan) =>
+        String(plan.provider) === provider.id
+          ? Effect.succeed(plan)
+          : Effect.fail(
+              new AppResolveError({
+                message: `Provider ${provider.id} supplied applied state attributed to ${plan.provider}.`,
+                reason: "mismatch",
+                detail: "applied-state-provider",
+                remediation: "Remove the mismatched applied state before retrying teardown.",
+              }),
+            ),
+      ),
+    ),
+  );
+
+export const observeProviderRuntime = (
+  providers: ReadonlyArray<AppliedStateProvider>,
+): Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>, AppResolveError | ProviderError> =>
+  Effect.forEach(providers, (provider) =>
+    Effect.gen(function* () {
+      const appliedPlans = yield* gatherAppliedPlans(provider);
+      const runtime = yield* runtimeEvidence(provider, { includeUnplanned: true });
+      return { providerId: ProviderId.make(provider.id), appliedPlans, ...runtime };
+    }),
+  );
+
 /**
  * Resolves what the providers actually hold for `root`: the applied plan that owns it, the orphaned
  * resources recorded against it, or nothing at all.
@@ -99,24 +134,7 @@ const collectEvidence = (
         }),
       );
     }
-    const plans = (yield* Effect.forEach(providers, (provider) =>
-      (provider.appliedPlans ?? Effect.succeed([])).pipe(
-        Effect.flatMap((appliedPlans) =>
-          Effect.forEach(appliedPlans, (plan) =>
-            String(plan.provider) === provider.id
-              ? Effect.succeed(plan)
-              : Effect.fail(
-                  new AppResolveError({
-                    message: `Provider ${provider.id} supplied applied state attributed to ${plan.provider}.`,
-                    reason: "mismatch",
-                    detail: "applied-state-provider",
-                    remediation: "Remove the mismatched applied state before retrying teardown.",
-                  }),
-                ),
-          ),
-        ),
-      ),
-    )).flat();
+    const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
     const matches = plans
       .filter((plan) => {
         const appRoot = plan.identity?.appRoot;
@@ -128,7 +146,9 @@ const collectEvidence = (
       .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
     const selected = matches[0];
     if (selected === undefined) {
-      const evidence = yield* Effect.forEach(providers, runtimeEvidence);
+      const evidence = yield* Effect.forEach(providers, (provider) =>
+        runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
+      );
       const groups = groupOrphans(root, providers, evidence);
       return groups.length > 0 ? { kind: "orphans" as const, groups } : { kind: "absent" as const };
     }

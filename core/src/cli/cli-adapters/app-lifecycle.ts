@@ -99,6 +99,7 @@ import {
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
 
 type DestroyCommandServices =
+  | import("@lando/sdk/services").FileSystem
   | import("@lando/sdk/services").AppPlanner
   | import("@lando/sdk/services").LandofileService
   | import("@lando/sdk/services").PathsService
