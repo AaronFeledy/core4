@@ -8,22 +8,15 @@ import {
   renderGlobalStatusResult,
 } from "../../../commands/meta/global-status";
 import type { LandoCommandSpec } from "../../../spec/command-base";
+import { formatFlag, specFlagsOf, stringArrayFlag } from "../../../spec/input-coercion";
 
-const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
-  if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === "string");
-  return typeof value === "string" ? [value] : [];
-};
-
-export const globalStatusFormatFromInput = (input: unknown): "json" | "table" => {
-  if (typeof input !== "object" || input === null) return "table";
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
-  return flags.format === "json" ? "json" : "table";
-};
+export const globalStatusFormatFromInput = (input: unknown): "json" | "table" =>
+  formatFlag(specFlagsOf(input), ["json", "table"], "table");
 
 export const globalStatusOptionsFromInput = (input: unknown): GlobalStatusOptions => {
   if (typeof input !== "object" || input === null) return {};
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
-  const services = stringArrayFlag(flags.service).filter((service) => service.length > 0);
+  const flags = specFlagsOf(input);
+  const services = stringArrayFlag(flags, "service").filter((service) => service.length > 0);
   return {
     ...(services.length === 0 ? {} : { services }),
     format: globalStatusFormatFromInput(input),

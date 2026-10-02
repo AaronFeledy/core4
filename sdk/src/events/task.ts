@@ -56,6 +56,12 @@ export type TaskDetailCollapseEvent = typeof TaskDetailCollapseEvent.Type;
 export const TaskCompleteEvent = Schema.TaggedStruct("task.complete", {
   taskId: Schema.String,
   summary: Schema.optional(Schema.String),
+  outcome: Schema.optional(
+    Schema.Literal("ok", "warn").annotations({
+      description:
+        "Whether the task finished cleanly or with warnings the reader should look at; absent means ok.",
+    }),
+  ),
   durationMs: Schema.optional(Schema.Number),
   timestamp: Timestamp,
 });

@@ -2,10 +2,7 @@ import {
   type OccupancyHolderIdentity,
   type OccupancyHolderKind,
   classifyOccupancyHolder,
-  solutionsForOccupancyHolder,
 } from "./preferred-host-ports-holders.ts";
-
-const RESTORE = "then run `lando global:restart`.";
 
 const SKIP_SYSTEMD_UNITS = new Set([
   "containerd",
@@ -82,22 +79,8 @@ const occupantPhrase = (input: OccupiedPortWarningInput): string => {
   return "";
 };
 
-const stopClause = (input: OccupiedPortWarningInput): string => {
-  if (input.kind !== "unknown") {
-    const command = solutionsForOccupancyHolder(input.kind, input.identity).find(
-      (solution) => solution.command !== undefined,
-    )?.command;
-    return command === undefined ? `Stop it, ${RESTORE}` : `Stop it with \`${command}\`, ${RESTORE}`;
-  }
-  if (input.systemdUnit !== undefined) {
-    return `Stop it with \`sudo systemctl stop ${input.systemdUnit}\`, ${RESTORE}`;
-  }
-  if (processLabel(input.identity) !== undefined) return `Close that process, ${RESTORE}`;
-  return `Stop whatever is using that port, ${RESTORE}`;
-};
-
 export const formatOccupiedPortWarning = (input: OccupiedPortWarningInput): string =>
-  `Port ${String(input.preferred)} is in use${occupantPhrase(input)}; using ${String(input.chosen)}. ${stopClause(input)}`;
+  `Port ${String(input.preferred)} is in use${occupantPhrase(input)}; using ${String(input.chosen)}. The alternate URL is available; run lando info to see it.`;
 
 export type OccupiedPortProbe = {
   readonly holder?: string;

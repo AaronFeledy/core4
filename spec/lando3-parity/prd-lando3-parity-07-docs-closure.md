@@ -29,7 +29,7 @@ The parity audit's documentation backlog is nearly complete; three residual item
 
 **Acceptance Criteria:**
 
-- [ ] `.local/LANDO3-PARITY.md` refreshed: every previously-❌ row now ✅ or carries a recorded decision citation (hosters → 4.1 RemoteSource; SSH mounts → rejected; staged recipes → §8.8.10 staged list); stale rows from the 2026-08-09 snapshot corrected.
+- [ ] `.local/LANDO3-PARITY.md` refreshed: every previously-❌ row now ✅ or carries a recorded decision citation (hosters → 4.1 RemoteSource; host SSH-agent forwarding → supported opt-in via `sshAgent.sidecar: false`, owned by the host-agent-forwarding wave; staged recipes → §8.8.10 staged list); stale rows from the 2026-08-09 snapshot corrected.
 - [ ] Deferred-command map (`core/src/cli/deferred-commands.ts`) reviewed: entries this wave implemented are removed; remaining entries carry accurate phase notes.
 - [ ] Full gate sweep on the closure tree: `bun test` (positive counts), `bun run typecheck`, `bun run lint`, `bun run codegen:check`, `bun run check:boundaries`, `bun run check:guide-coverage`, `check:guide-drift`, `check:public-transcripts`, `lint:guides`.
 - [ ] §8.8.10 table verified against `recipes/` contents; §6.12.1 rows verified against the runtime registry (every row registered, every registration in a row).

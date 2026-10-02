@@ -1,5 +1,6 @@
 import { Duration, Effect, Either, Schema } from "effect";
 
+import { HOST_PROXY_CONTAINER_SOCKET } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { runProbe } from "@lando/sdk/probe";
 import { AppId, CommandResultEnvelope, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
@@ -12,7 +13,9 @@ export type HostProxyContainerProbeResult = "reachable" | "failed" | "inconclusi
 interface HostProxyContainerProbeOptions {
   readonly providerExec: RuntimeProviderShape["exec"];
   readonly appId: string;
-  readonly containerUrl: string;
+  readonly target:
+    | { readonly kind: "tcp-host-gateway"; readonly containerUrl: string }
+    | { readonly kind: "unix-socket" };
   readonly probeServices: ReadonlyArray<string>;
   readonly maxProbeServices: number;
 }
@@ -65,7 +68,10 @@ export const probeHostProxyContainer = (
           { app: AppId.make(options.appId), service: ServiceName.make(service) },
           {
             command: ["/usr/local/bin/lando", "open", "--print"],
-            env: { LANDO_HOST_PROXY_URL: options.containerUrl },
+            env:
+              options.target.kind === "unix-socket"
+                ? { LANDO_HOST_PROXY_SOCKET: HOST_PROXY_CONTAINER_SOCKET }
+                : { LANDO_HOST_PROXY_URL: options.target.containerUrl },
             stdin: "ignore",
             tty: false,
           },

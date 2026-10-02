@@ -215,7 +215,7 @@ export const finalizeServices = (input: {
                   id: String(source.id),
                   path: String(source.path),
                   reason:
-                    "Provider does not advertise serviceLogSources; use strategy: redirect or choose a provider with serviceLogSources.",
+                    "This provider cannot follow log files. Set `strategy: redirect` on this source to view it with `lando logs`.",
                 })),
               },
             };

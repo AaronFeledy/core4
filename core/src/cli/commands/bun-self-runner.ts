@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
-import { EventService } from "@lando/sdk/services";
+import { publishOptionalEvent } from "./optional-event-publish";
 
 import { RedactionService } from "@lando/redaction/service";
 
@@ -80,15 +80,8 @@ export const childEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> =
   return env;
 };
 
-const publishBunSelfEvent = (event: Readonly<Record<string, unknown>>) =>
-  Effect.serviceOption(EventService).pipe(
-    Effect.flatMap((events) =>
-      events._tag === "Some" ? events.value.publish(event as never).pipe(Effect.ignore) : Effect.void,
-    ),
-  );
-
 const redactBunSelfEvent = (
-  event: Readonly<Record<string, unknown>>,
+  event: Parameters<typeof publishOptionalEvent>[0],
   env: Readonly<Record<string, string>> | undefined,
 ) =>
   Effect.gen(function* () {
@@ -144,7 +137,7 @@ export const bunSelfRun = (
         timestamp: new Date().toISOString(),
       },
       options.env,
-    ).pipe(Effect.flatMap(publishBunSelfEvent));
+    ).pipe(Effect.flatMap(publishOptionalEvent));
     const { exitCode } = yield* Effect.promise(() =>
       spawner.spawn({
         cmd: [execPath, ...options.argv],
@@ -164,7 +157,7 @@ export const bunSelfRun = (
         timestamp: new Date().toISOString(),
       },
       options.env,
-    ).pipe(Effect.flatMap(publishBunSelfEvent));
+    ).pipe(Effect.flatMap(publishOptionalEvent));
     return { exitCode };
   });
 

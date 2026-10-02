@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { formatSummary } from "@lando/renderer/summary";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -9,6 +9,7 @@ import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-tru
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
 
 const redactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret", "proxypass"] })),
 });
 
@@ -122,6 +123,7 @@ describe("runWithRendererHandling redaction", () => {
     // Probe the old post-paint path: a redactor that would turn ESC[32m into
     // ESC[[redacted]m if decorated TTY still called redactString after paint.
     const csiParamProbeLayer = Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
       forProfile: () =>
         Effect.succeed({
           redactString: (text: string) => text.split("32").join("[redacted]"),

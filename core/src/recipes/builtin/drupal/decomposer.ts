@@ -3,6 +3,7 @@ import { optionValueMatchesDescriptor } from "@lando/sdk/recipes";
 import type { LandofileRecipeProvenance } from "@lando/sdk/schema";
 import type { RecipeDecomposerFactory } from "@lando/sdk/services";
 import { Effect } from "effect";
+import { DRUSH_TOOLING_COMMAND } from "../drush-command";
 import { recipeOptionRemediation } from "../option-remediation.ts";
 import {
   DRUPAL_RECIPE_VERSION,
@@ -57,6 +58,7 @@ export const drupalDecomposer = ((ports) => ({
             ? {
                 appserver: {
                   type: "php:{{ recipe.php }}",
+                  primary: true,
                   framework: "drupal",
                   via: "fpm",
                   webroot: "{{ recipe.webroot }}",
@@ -74,6 +76,7 @@ export const drupalDecomposer = ((ports) => ({
             : {
                 appserver: {
                   type: "php:{{ recipe.php }}",
+                  primary: true,
                   framework: "drupal",
                   webroot: "{{ recipe.webroot }}",
                   composer: "{{ recipe.composer }}",
@@ -88,7 +91,7 @@ export const drupalDecomposer = ((ports) => ({
             drush: {
               service: "appserver",
               description: "Run Drush inside the appserver service.",
-              cmds: ["vendor/bin/drush"],
+              cmds: [DRUSH_TOOLING_COMMAND],
             },
             composer: {
               service: "appserver",

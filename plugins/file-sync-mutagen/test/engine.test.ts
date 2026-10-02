@@ -91,6 +91,40 @@ describe("@lando/file-sync-mutagen engine identity", () => {
     }
   });
 
+  test("exposes the durable app lifecycle only when the client implements every phase", async () => {
+    expect(fakeEngine().engine.appLifecycle).toBeUndefined();
+    const calls: string[] = [];
+    const client = {
+      ...makeFakeMutagenClient(),
+      persistsAcrossProcesses: true,
+      invalidateAppDrain: () =>
+        Effect.sync(() => {
+          calls.push("invalidate");
+        }),
+      drainApp: () =>
+        Effect.sync(() => {
+          calls.push("drain");
+        }),
+      disposeApp: () =>
+        Effect.sync(() => {
+          calls.push("dispose");
+        }),
+      completeAppDisposal: () =>
+        Effect.sync(() => {
+          calls.push("complete");
+        }),
+    };
+    const lifecycle = makeFileSyncEngine({ client }).appLifecycle;
+    expect(lifecycle).toBeDefined();
+    if (lifecycle === undefined) return;
+    const app = buildSpec().app;
+    await Effect.runPromise(lifecycle.invalidateDrain(app));
+    await Effect.runPromise(lifecycle.drain(app));
+    await Effect.runPromise(lifecycle.dispose(app));
+    await Effect.runPromise(lifecycle.completeDisposal(app));
+    expect(calls).toEqual(["invalidate", "drain", "dispose", "complete"]);
+  });
+
   test("setup is a Scope-typed no-op", async () => {
     const { engine } = fakeEngine();
     await runScoped(engine.setup({ force: false }));
@@ -129,6 +163,58 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
 
     expect(client.state.sessions.has(expectedName)).toBe(false);
     expect(client.state.calls.some((c) => c.op === "terminate" && c.name === expectedName)).toBe(true);
+  });
+
+  test("scope close reports both tagged termination failures", async () => {
+    const terminated: string[] = [];
+    const client = makeFakeMutagenClient();
+    const engine = makeFileSyncEngine({
+      client: {
+        ...client,
+        terminate: (name) =>
+          Effect.sync(() => {
+            terminated.push(name);
+          }).pipe(
+            Effect.zipRight(
+              Effect.fail(
+                new FileSyncStopError({
+                  engineId: ENGINE_ID,
+                  sessionRef: name,
+                  message: `Could not terminate ${name}`,
+                }),
+              ),
+            ),
+          ),
+      },
+    });
+    const first = buildSpec({ mountKey: "scope-failure-a" });
+    const second = buildSpec({ mountKey: "scope-failure-b" });
+    const exit = await runScopedExit(
+      Effect.gen(function* () {
+        yield* engine.createSession(first);
+        yield* engine.createSession(second);
+      }),
+    );
+    expect(terminated.sort()).toEqual([mutagenSessionName(first), mutagenSessionName(second)].sort());
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const defects = Array.from(Cause.defects(exit.cause));
+      expect(defects).toHaveLength(2);
+      expect(defects.every((error) => error instanceof FileSyncStopError)).toBe(true);
+    }
+  });
+
+  test("closing a command scope leaves a persistent session for explicit app cleanup", async () => {
+    const client = makeFakeMutagenClient();
+    const engine = makeFileSyncEngine({ client: { ...client, persistsAcrossProcesses: true } });
+    const spec = buildSpec({ mountKey: "durable-scope" });
+    const expectedName = mutagenSessionName(spec);
+
+    await runScoped(engine.createSession(spec));
+    expect(client.state.sessions.has(expectedName)).toBe(true);
+    expect(client.state.calls.some((call) => call.op === "terminate")).toBe(false);
+    await Effect.runPromise(engine.terminateSession(FileSyncSessionRef.make(expectedName)));
+    expect(client.state.sessions.has(expectedName)).toBe(false);
   });
 
   test("createSession rejects sources outside the app root with FileSyncStartError", async () => {

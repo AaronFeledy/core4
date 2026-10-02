@@ -1,23 +1,15 @@
 import { basename } from "node:path";
 
-import { DateTime, Effect, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
-import {
-  PostAppStopEvent,
-  PostServiceStopEvent,
-  PostStopEvent,
-  PreAppStopEvent,
-  PreServiceStopEvent,
-  PreStopEvent,
-} from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
-  EventService,
+  type EventService,
   LandofileService,
-  PathsService,
+  type PathsService,
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
@@ -29,17 +21,15 @@ import {
   withPlanVolumeCoordination,
 } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
-
-import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import {
   type TeardownResolution,
   resolveTeardownResolution,
   validateResolvedAppTarget,
 } from "./applied-state-target.ts";
-import { runAppEvent, runAppInitEvents } from "./events.ts";
-import { terminateFileSyncSessions } from "./file-sync.ts";
+import { runAppInitEvents } from "./events.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
+import { preflightStopApp, stopAppWithPlanUnlocked } from "./stop-internal.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
@@ -60,8 +50,6 @@ type StopAppServices =
   | StateStore;
 type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 
-const now = () => DateTime.unsafeMake(new Date().toISOString());
-
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
 const resolveDesiredTarget = Effect.gen(function* () {
@@ -80,90 +68,12 @@ const unchangedResult = (app: string): StopAppResult => ({
   servicesStopped: [],
 });
 
-const stopAppWithResolvedPlanUncoordinated = (
-  _options: StopAppOptions | undefined,
-  target: ResolvedAppTarget,
-): Effect.Effect<
-  { readonly result: StopAppResult; readonly plan: AppPlan },
-  SdkStopAppError,
-  BoundStopAppServices
-> =>
-  Effect.gen(function* () {
-    const registry = yield* RuntimeProviderRegistry;
-    const events = yield* EventService;
-    const paths = yield* PathsService;
-
-    const plan = target.plan;
-    const provider = yield* registry.select(plan);
-    const ref = target.app;
-
-    yield* events.publish(
-      PreAppStopEvent.make({
-        eventName: "pre-app-stop",
-        appRef: ref,
-        providerId: plan.provider,
-        timestamp: now(),
-      }),
-    );
-    const preStop = PreStopEvent.make({ _tag: "pre-stop", scope: "app", app: ref, timestamp: now() });
-    yield* events.publish(preStop);
-    yield* runAppEvent(plan, "pre-stop", preStop);
-
-    const services = Object.values(plan.services).reverse();
-    for (const service of services) {
-      yield* events.publish(
-        PreServiceStopEvent.make({
-          eventName: "pre-service-stop",
-          appRef: ref,
-          serviceName: service.name,
-          providerId: plan.provider,
-          timestamp: now(),
-        }),
-      );
-    }
-
-    yield* terminateFileSyncSessions(ref);
-
-    yield* verifyActiveVolumeCoordination(provider).pipe(
-      Effect.zipRight(provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false })),
-      Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
-    );
-
-    for (const service of services) {
-      yield* events.publish(
-        PostServiceStopEvent.make({
-          eventName: "post-service-stop",
-          appRef: ref,
-          serviceName: service.name,
-          providerId: plan.provider,
-          timestamp: now(),
-        }),
-      );
-    }
-
-    yield* events.publish(
-      PostAppStopEvent.make({
-        eventName: "post-app-stop",
-        appRef: ref,
-        providerId: plan.provider,
-        timestamp: now(),
-      }),
-    );
-    const postStop = PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() });
-    yield* events.publish(postStop);
-    yield* runAppEvent(plan, "post-stop", postStop);
-
-    return {
-      result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },
-      plan,
-    };
-  });
-
 const stopAppWithResolvedPlan = (
   options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
   revalidate: boolean,
   requireAppliedEvidence: boolean,
+  runInitEvents = true,
 ): Effect.Effect<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   SdkStopAppError,
@@ -192,7 +102,13 @@ const stopAppWithResolvedPlan = (
         provider,
         stateStore,
         body: () =>
-          stopAppWithResolvedPlanUncoordinated(options, resolvedTarget).pipe(Effect.provide(context)),
+          Effect.gen(function* () {
+            yield* verifyActiveVolumeCoordination(provider);
+            const preflight = yield* preflightStopApp(resolvedTarget);
+            if (runInitEvents && validatedTarget.landofile !== undefined)
+              yield* runAppInitEvents(resolvedTarget.plan);
+            return yield* stopAppWithPlanUnlocked(options ?? {}, resolvedTarget, false, preflight);
+          }).pipe(Effect.provide(context)),
       });
     }),
   );
@@ -200,6 +116,7 @@ const stopAppWithResolvedPlan = (
 export const stopAppWithPlan = (
   options: StopAppOptions = {},
   target?: ResolvedAppTarget,
+  execution: { readonly skipInitEvents?: boolean } = {},
 ): Effect.Effect<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   StopAppError,
@@ -207,16 +124,25 @@ export const stopAppWithPlan = (
 > =>
   target === undefined
     ? resolveDesiredTarget.pipe(
-        Effect.tap((resolved) => runAppInitEvents(resolved.plan)),
-        Effect.flatMap((resolved) => stopAppWithResolvedPlan(options, resolved, false, true)),
+        Effect.flatMap((resolved) =>
+          stopAppWithResolvedPlan(options, resolved, false, true, execution.skipInitEvents !== true),
+        ),
       )
-    : stopAppWithResolvedPlan(options, target, true, target.landofile !== undefined);
+    : stopAppWithResolvedPlan(
+        options,
+        target,
+        true,
+        target.landofile !== undefined,
+        execution.skipInitEvents !== true,
+      );
 
 export const stopAppForTarget = (
   options: StopAppOptions | undefined,
   target: ResolvedAppTarget,
+  afterSuccess?: Effect.Effect<void>,
 ): Effect.Effect<StopAppResult, SdkStopAppError, BoundStopAppServices> =>
   stopAppWithResolvedPlan(options, target, true, target.landofile !== undefined).pipe(
+    Effect.tap(() => afterSuccess ?? Effect.void),
     Effect.map(({ result }) => result),
   );
 
@@ -248,10 +174,7 @@ const stopDesiredOrUnchanged = (
     Effect.flatMap((desired) =>
       desired === undefined
         ? Effect.succeed(unchangedResult(basename(resolution.root)))
-        : runAppInitEvents(desired.plan).pipe(
-            Effect.zipRight(stopAppWithResolvedPlan(options, desired, false, true)),
-            Effect.map(({ result }) => result),
-          ),
+        : stopAppWithResolvedPlan(options, desired, false, true).pipe(Effect.map(({ result }) => result)),
     ),
   );
 

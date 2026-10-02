@@ -1,0 +1,6 @@
+name: old-versions
+services:
+  appserver:
+    type: php:7.4
+  database:
+    type: mariadb:10.6

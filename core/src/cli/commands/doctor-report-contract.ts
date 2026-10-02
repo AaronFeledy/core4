@@ -12,6 +12,7 @@ import type { GlobalAppDoctorResult } from "./doctor-global-app";
 import type { McpDoctorResult } from "./doctor-mcp";
 import type { DoctorSelfReport } from "./doctor-self";
 import { DoctorSelfReportSchema } from "./doctor-self";
+import { SshAgentPostureDetails } from "./doctor-subsystem-checks";
 import type { SubsystemDoctorResult } from "./doctor-subsystems";
 import type { AppVersionConstraintDoctorResult } from "./doctor-version-constraint";
 import { AppVersionConstraintDoctorResultSchema } from "./doctor-version-constraint";
@@ -99,6 +100,7 @@ const DoctorSubsystemCheckSchema = Schema.Struct({
   recovery: Schema.Literal("automatic", "manual"),
   context: Schema.Record({ key: Schema.String, value: Schema.String }),
   solutions: Schema.Array(DoctorSolutionSchema),
+  details: Schema.optional(SshAgentPostureDetails),
 });
 const SubsystemDoctorResultSchema = Schema.Struct({
   checks: Schema.Array(DoctorSubsystemCheckSchema),

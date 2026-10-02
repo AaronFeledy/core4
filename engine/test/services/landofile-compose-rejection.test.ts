@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
-import { composeServiceDispositions, composeTagDispositions } from "@lando/landofile/compose/dispositions";
 import { ComposeKeyRejectedError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
+import { composeServiceDispositions, composeTagDispositions } from "@lando/sdk/landofile";
 import { loadLandofileFile, loadLandofileLayers } from "../../src/services/landofile-live";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 

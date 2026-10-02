@@ -47,10 +47,11 @@ describe("native argv parser seam", () => {
     expect(input.parsedArgv).toEqual(["echo", "-n", "hello"]);
   });
 
-  test("strict:false exec keeps a positional service and strips the later terminator", () => {
-    const input = compiledInput("app:exec", ["app", "--", "echo", "hello", "world"]);
+  test("strict:false exec parses user after a positional service and strips the later terminator", () => {
+    const input = compiledInput("app:exec", ["app", "--user", "www-data", "--", "id"]);
 
-    expect(input.parsedArgv).toEqual(["app", "echo", "hello", "world"]);
+    expect(input.flags.user).toBe("www-data");
+    expect(input.parsedArgv).toEqual(["app", "id"]);
   });
 
   test("strict:false inputs preserve an unknown leading option as passthrough argv", () => {

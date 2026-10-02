@@ -202,6 +202,7 @@ test("interrupts the nested runner when post-init is cancelled", async () => {
           () => Effect.sync(() => released.resolve()),
         ),
       stream: () => Stream.empty,
+      streamWithExit: () => Stream.empty,
     }),
   );
   const result = Effect.runPromiseExit(program, { signal: controller.signal });

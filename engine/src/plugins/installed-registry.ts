@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import { Either, Schema } from "effect";
 
@@ -117,10 +118,7 @@ const writeInstalledPluginRegistry = async (
   registry: RawInstalledPluginRegistry,
 ): Promise<void> => {
   const path = installedPluginRegistryPath(pluginsRoot);
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp`;
-  await writeFile(tmpPath, `${JSON.stringify(registry, null, 2)}\n`);
-  await rename(tmpPath, path);
+  await writeFileAtomic(path, `${JSON.stringify(registry, null, 2)}\n`);
 };
 
 export const readInstalledPluginRegistryFileSnapshot = async (
@@ -140,10 +138,7 @@ export const restoreInstalledPluginRegistryFileSnapshot = async (
     await rm(path, { force: true });
     return;
   }
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp`;
-  await writeFile(tmpPath, snapshot);
-  await rename(tmpPath, path);
+  await writeFileAtomic(path, snapshot);
 };
 
 export const replaceInstalledPluginRegistry = async (

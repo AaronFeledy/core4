@@ -20,6 +20,10 @@ export const uninstallRuntimeDirRemediation = (
   managedPodman: string,
   platform: NodeJS.Platform = process.platform,
 ): string => {
+  if (platform === "win32") {
+    const literalPath = path.replaceAll("'", "''");
+    return `Close any Lando-managed process using this path, then run \`Remove-Item -LiteralPath '${literalPath}' -Recurse -Force\` in PowerShell and rerun \`lando uninstall --purge --yes\`.`;
+  }
   // Managed unshare is only used on Linux; other platforms never invoke it.
   if (platform !== "linux" || !managedPodmanExists) {
     return `Run \`sudo rm -rf ${path}\` then rerun \`lando uninstall --purge --yes\`.`;

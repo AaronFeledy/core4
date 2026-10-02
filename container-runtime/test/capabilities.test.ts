@@ -3,12 +3,13 @@ import { Schema } from "effect";
 
 import {
   type ProviderCapabilityConstants,
+  agentSocketCapabilities,
   buildProviderCapabilities,
   engineInfoArchitecture,
   hostProxyCapabilities,
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
-import { ProviderCapabilities } from "@lando/sdk/schema";
+import { type AgentSocketDelivery, ProviderCapabilities } from "@lando/sdk/schema";
 
 const baseConstants: Omit<ProviderCapabilityConstants, "composeSpec"> = {
   bindMounts: true,
@@ -19,6 +20,36 @@ const baseConstants: Omit<ProviderCapabilityConstants, "composeSpec"> = {
 };
 
 describe("container runtime capability helpers", () => {
+  test("buildProviderCapabilities carries agentSocket when declared", () => {
+    // Given: a provider declaring guest bridge delivery.
+    const constants = {
+      ...baseConstants,
+      composeSpec: "portable",
+      agentSocket: { delivery: "guest-bridge" },
+    } satisfies ProviderCapabilityConstants;
+    // When: the provider capability schema is constructed.
+    const capabilities = buildProviderCapabilities(constants);
+    // Then: the declaration survives schema decoding.
+    expect(capabilities.agentSocket).toEqual({ delivery: "guest-bridge" });
+  });
+
+  test("agentSocketCapabilities omits unavailable delivery", () => {
+    // Given / When: no delivery is available.
+    const capabilities = agentSocketCapabilities(undefined);
+    // Then: no capability is advertised.
+    expect(capabilities).toBeUndefined();
+  });
+
+  test.each(["bind-directory", "guest-bridge", "volume-relay"] satisfies AgentSocketDelivery[])(
+    "agentSocketCapabilities declares %s",
+    (delivery) => {
+      // Given / When: a supported delivery is declared.
+      const capabilities = agentSocketCapabilities(delivery);
+      // Then: its delivery is preserved.
+      expect(capabilities).toEqual({ delivery });
+    },
+  );
+
   test("builds common provider capability shapes from explicit constants", () => {
     const capabilities = buildProviderCapabilities({ ...baseConstants, composeSpec: "portable" });
 

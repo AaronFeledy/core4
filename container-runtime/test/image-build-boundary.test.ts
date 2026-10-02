@@ -89,7 +89,7 @@ test.each([
     ),
   );
 
-  expect(failure._tag).toBe("ProviderUnavailableError");
+  expect(failure._tag).toBe("ArtifactBuildError");
   expect(failure.operation).toBe("buildArtifact");
   expect(JSON.stringify(failure)).toContain(message);
 });

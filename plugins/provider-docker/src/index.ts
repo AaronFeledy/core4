@@ -1,6 +1,13 @@
-import { createConnection, isIP } from "node:net";
-import { connect as createTlsConnection } from "node:tls";
+import {
+  type DockerApiClient,
+  type DockerHttpRequest,
+  type DockerHttpResponse,
+  makeDockerApiClient as makeRuntimeDockerApiClient,
+} from "@lando/container-runtime/docker/api-client";
+import { APP_LABEL, APP_ROOT_LABEL, SCRATCH_LABEL, SERVICE_LABEL } from "@lando/container-runtime/labels";
+import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 
+import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import {
   type HostProxyContainerTarget,
   buildProviderCapabilities,
@@ -18,13 +25,7 @@ import {
   dockerPullDialect,
   dockerWaitDialect,
 } from "@lando/container-runtime/dialect";
-import type {
-  EngineApiClient,
-  EngineHttpRequest,
-  EngineHttpResponse,
-  ProviderErrorContext,
-} from "@lando/container-runtime/engine-api";
-import { engineApiFailure } from "@lando/container-runtime/engine-errors";
+import type { ProviderErrorContext } from "@lando/container-runtime/engine-api";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
@@ -32,6 +33,7 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { serviceContainerName } from "@lando/container-runtime/plan";
 import { bringDown } from "@lando/container-runtime/podman/bring-down";
 import {
   type BringUpOptions,
@@ -60,12 +62,7 @@ import {
   removeObservedContainer,
 } from "@lando/container-runtime/service-lifecycle";
 import { makeLogDecoder as makeRuntimeLogDecoder } from "@lando/container-runtime/streams";
-import {
-  type SocketHttpConnection,
-  connectSocket,
-  makeSocketHttpClient,
-  normalizeNamedPipePath,
-} from "@lando/container-runtime/transport";
+import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import { Effect, Layer, Schema, Stream } from "effect";
 
@@ -99,6 +96,7 @@ import {
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 
+import { AGENT_RELAY_IMAGE, makeDockerDesktopAgentSocketBridge } from "./agent-socket-relay.ts";
 import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { makeIptablesForwardCheck } from "./iptables-forward-check.ts";
 
@@ -110,9 +108,11 @@ export {
   persistAppliedPlan,
   removeAppliedPlan,
 } from "./applied-state.ts";
-export type DockerApiClient = EngineApiClient;
-export type DockerHttpRequest = EngineHttpRequest;
-export type DockerHttpResponse = EngineHttpResponse;
+export type {
+  DockerApiClient,
+  DockerHttpRequest,
+  DockerHttpResponse,
+} from "@lando/container-runtime/docker/api-client";
 export { scratchLabelsForPlan } from "@lando/container-runtime/podman/bring-up";
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
@@ -151,8 +151,7 @@ export interface ResolveDockerHostOptions {
 export type EmitComposeOptions = Omit<RuntimeEmitComposeOptions, "ctx">;
 export type { EmitComposeResult };
 
-const containerName = (plan: AppPlan, service: ServicePlan) =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
 const unavailable = (
   operation: string,
@@ -191,54 +190,6 @@ const parseJson = (
     catch: (cause) => internal(operation, "Docker API returned malformed JSON.", response, cause),
   });
 
-const parseInfoJson = (response: DockerHttpResponse) =>
-  Effect.try({
-    try: () => (response.body.length === 0 ? {} : (JSON.parse(response.body) as unknown)),
-    catch: (cause) =>
-      new ProviderCapabilityError({
-        providerId: PROVIDER_ID,
-        operation: "capabilities",
-        message: "Docker API returned malformed info JSON.",
-        capability: "docker-info",
-        requiredValue: "valid JSON Docker info response",
-        actualValue: response.body,
-        cause,
-      }),
-  });
-
-const collectRequestStdin = async (
-  stdin: AsyncIterable<Uint8Array> | undefined,
-): Promise<Uint8Array | undefined> => {
-  if (stdin === undefined) return undefined;
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for await (const chunk of stdin) {
-    chunks.push(chunk);
-    size += chunk.byteLength;
-  }
-  const payload = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    payload.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return payload;
-};
-
-interface WritableStdinSink {
-  write(payload: Uint8Array): unknown;
-  end(): unknown;
-}
-
-const writeStdinPayload = (
-  stdin: WritableStdinSink | null | undefined,
-  payload: Uint8Array | undefined,
-): void => {
-  if (stdin === undefined || stdin === null || payload === undefined) return;
-  stdin.write(payload);
-  stdin.end();
-};
-
 const request = (
   api: DockerApiClient,
   operation: string,
@@ -252,101 +203,6 @@ const stream = (
   input: DockerHttpRequest,
 ): Stream.Stream<Uint8Array, ProviderUnavailableError | ProviderInternalError> =>
   api.stream === undefined ? Stream.fail(missingApi(operation)) : api.stream(input);
-
-const dockerApiFailure = (
-  request: DockerHttpRequest,
-  cause: unknown,
-): ProviderUnavailableError | ProviderInternalError =>
-  engineApiFailure(DOCKER_CTX, "docker-api", request, cause);
-
-const makeNamedPipeTransportClient = (pipePath: string) =>
-  makeSocketHttpClient({
-    apiPrefix: "/v1.43",
-    operation: "docker-api",
-    connect: async () => {
-      const socket = createConnection({ path: pipePath });
-      await connectSocket(socket);
-      return socket as unknown as SocketHttpConnection;
-    },
-  });
-
-const makeTcpTransportClient = (baseUrl: string) => {
-  const parsed = new URL(baseUrl);
-  const secure = parsed.protocol === "https:";
-  return makeSocketHttpClient({
-    apiPrefix: parsed.pathname.replace(/\/+$/u, "") || "/v1.43",
-    operation: "docker-api",
-    hostHeader: parsed.host,
-    connect: async () => {
-      const port = parsed.port === "" ? (secure ? 443 : 80) : Number(parsed.port);
-      const socket = secure
-        ? createTlsConnection({
-            host: parsed.hostname,
-            port,
-            ...(isIP(parsed.hostname) === 0 ? { servername: parsed.hostname } : {}),
-            rejectUnauthorized: process.env.DOCKER_TLS_VERIFY !== "0",
-          })
-        : createConnection({ host: parsed.hostname, port });
-      await connectSocket(socket);
-      return socket as unknown as SocketHttpConnection;
-    },
-  });
-};
-
-async function* streamUnixSocketRequest(
-  socketPath: string,
-  request: DockerHttpRequest,
-): AsyncGenerator<Uint8Array> {
-  const client = makeSocketHttpClient({
-    apiPrefix: "/v1.43",
-    operation: "docker-api",
-    connect: async () => {
-      const socket = createConnection({ path: socketPath });
-      await connectSocket(socket);
-      return socket as unknown as SocketHttpConnection;
-    },
-  });
-  yield* client.stream(request);
-}
-
-async function* streamHttpRequest(baseUrl: string, request: DockerHttpRequest): AsyncGenerator<Uint8Array> {
-  const parsed = new URL(baseUrl);
-  if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-    const client = makeTcpTransportClient(baseUrl);
-    yield* client.stream(request);
-    return;
-  }
-  if (request.stdin !== undefined) {
-    throw unavailable(
-      "docker-api",
-      "Docker stream transport does not support interactive stdin for this Docker host URL.",
-      {
-        method: request.method,
-        path: request.path,
-        protocol: parsed.protocol,
-      },
-    );
-  }
-
-  throw unavailable("docker-api", "Docker stream transport does not support this Docker host URL.", {
-    method: request.method,
-    path: request.path,
-    protocol: parsed.protocol,
-  });
-}
-
-const dockerHttpBase = (dockerHost: string): string => {
-  if (dockerHost.startsWith("tcp://")) {
-    return `http://${dockerHost.slice("tcp://".length)}/v1.43`;
-  }
-  if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
-    return `${dockerHost.replace(/\/+$/u, "")}/v1.43`;
-  }
-  return dockerHost;
-};
-
-const isUnixDockerHost = (dockerHost: string) =>
-  dockerHost.startsWith("unix://") || dockerHost.startsWith("/");
 
 const unixSocketPath = (dockerHost: string) =>
   dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
@@ -391,6 +247,9 @@ export const dockerCapabilitiesForHost = (
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets, "host.docker.internal"),
+    agentSocket: {
+      delivery: isVmMediatedDockerHost(platform, dockerHost) ? "volume-relay" : "bind-directory",
+    },
   });
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
@@ -441,136 +300,9 @@ export const introspectProviderCapabilities = (
     }),
   );
 
-const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
-  stream: (input) =>
-    Stream.fromAsyncIterable(streamUnixSocketRequest(socketPath, input), (cause) =>
-      dockerApiFailure(input, cause),
-    ),
-  request: (input) =>
-    Effect.gen(function* () {
-      const args = [
-        "--silent",
-        "--show-error",
-        "--unix-socket",
-        socketPath,
-        "--request",
-        input.method,
-        "--write-out",
-        "\n%{http_code}",
-      ];
-      if (input.body !== undefined) {
-        args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(input.body));
-      }
-      for (const [key, value] of Object.entries(input.headers ?? {})) {
-        args.push("--header", `${key}: ${value}`);
-      }
-      if (input.stdin !== undefined) {
-        args.push("--data-binary", "@-");
-      }
-      args.push(`http://localhost/v1.43${input.path}`);
-
-      const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
-        try: async () => {
-          const payload = await collectRequestStdin(input.stdin);
-          const proc = Bun.spawn(["curl", ...args], {
-            stderr: "pipe",
-            stdin: payload === undefined ? "ignore" : "pipe",
-            stdout: "pipe",
-          });
-          writeStdinPayload(proc.stdin as WritableStdinSink | null | undefined, payload);
-          const [stdout, stderr, exitCode] = await Promise.all([
-            new Response(proc.stdout).text(),
-            new Response(proc.stderr).text(),
-            proc.exited,
-          ]);
-          return { stdout, stderr, exitCode };
-        },
-        catch: (cause) => dockerApiFailure(input, cause),
-      });
-      if (exitCode !== 0) {
-        yield* Effect.fail(
-          unavailable("docker-api", `Docker API request failed with exit code ${exitCode}.`, {
-            method: input.method,
-            path: input.path,
-            stderr,
-          }),
-        );
-      }
-
-      const marker = stdout.lastIndexOf("\n");
-      const statusText = marker === -1 ? stdout : stdout.slice(marker + 1);
-      const status = Number.parseInt(statusText, 10);
-      if (!Number.isInteger(status)) {
-        yield* Effect.fail(
-          internal("docker-api", "Docker API response did not include an HTTP status code.", stdout),
-        );
-      }
-      return { status, body: marker === -1 ? "" : stdout.slice(0, marker) };
-    }),
-  info: Effect.gen(function* () {
-    const response = yield* makeUnixDockerApiClient(socketPath).request?.({ method: "GET", path: "/info" }) ??
-      Effect.fail(unavailable("capabilities", "Docker API request client is missing."));
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        unavailable("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
-      );
-    }
-    return yield* parseInfoJson(response);
-  }),
-});
-
-const makeNamedPipeDockerApiClient = (pipePath: string): DockerApiClient => {
-  const client = makeNamedPipeTransportClient(pipePath);
-  return {
-    stream: (input) =>
-      Stream.fromAsyncIterable(client.stream(input), (cause) => dockerApiFailure(input, cause)),
-    request: (input) =>
-      Effect.tryPromise({
-        try: () => client.request(input),
-        catch: (cause) => dockerApiFailure(input, cause),
-      }),
-    info: Effect.gen(function* () {
-      const response = yield* Effect.tryPromise({
-        try: () => client.request({ method: "GET", path: "/info" }),
-        catch: (cause) => dockerApiFailure({ method: "GET", path: "/info" }, cause),
-      });
-      if (response.status < 200 || response.status >= 300) {
-        yield* Effect.fail(
-          unavailable("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
-        );
-      }
-      return yield* parseInfoJson(response);
-    }),
-  };
-};
-
-const makeHttpDockerApiClient = (baseUrl: string): DockerApiClient => ({
-  stream: (input) =>
-    Stream.fromAsyncIterable(streamHttpRequest(baseUrl, input), (cause) => dockerApiFailure(input, cause)),
-  request: (input) =>
-    Effect.tryPromise({
-      try: () => makeTcpTransportClient(baseUrl).request(input),
-      catch: (cause) => dockerApiFailure(input, cause),
-    }),
-  info: Effect.gen(function* () {
-    const response = yield* makeHttpDockerApiClient(baseUrl).request?.({ method: "GET", path: "/info" }) ??
-      Effect.fail(unavailable("capabilities", "Docker API request client is missing."));
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        unavailable("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
-      );
-    }
-    return yield* parseInfoJson(response);
-  }),
-});
-
 export const makeDockerApiClient = (
   dockerHost = process.env.DOCKER_HOST ?? "/var/run/docker.sock",
-): DockerApiClient => {
-  if (isNpipeDockerHost(dockerHost)) return makeNamedPipeDockerApiClient(npipeSocketPath(dockerHost));
-  if (isUnixDockerHost(dockerHost)) return makeUnixDockerApiClient(unixSocketPath(dockerHost));
-  return makeHttpDockerApiClient(dockerHttpBase(dockerHost));
-};
+): DockerApiClient => makeRuntimeDockerApiClient(dockerHost, DOCKER_CTX);
 
 export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): string => {
   const env = options.env ?? process.env;
@@ -771,7 +503,6 @@ const makeUnavailable = (operation: string) =>
   unavailable(operation, `provider-docker does not implement ${operation} yet.`);
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
-  const plans = new Map<string, AppPlan>();
   if (options.platform === undefined) {
     return Effect.fail(
       unavailable("select", "provider-docker construction requires the resolved host platform."),
@@ -825,39 +556,24 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     volumeCreationLabels,
   });
 
-  const sanitizeAppliedPlan = options.sanitizeAppliedPlan ?? ((plan: AppPlan) => plan);
-
-  const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): Effect.Effect<
-    AppPlan | undefined,
-    never
-  > => {
-    if (target.plan !== undefined) return Effect.succeed(target.plan);
-    const cached = plans.get(target.app);
-    if (cached !== undefined) return Effect.succeed(cached);
-    if (options.appliedPlanState === undefined) return Effect.succeed(undefined);
-    return loadAppliedPlan(options.appliedPlanState, target.app).pipe(
-      Effect.tap((loaded) =>
-        Effect.sync(() => {
-          if (loaded !== undefined) plans.set(target.app, loaded);
-        }),
-      ),
-    );
-  };
-
-  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
-    const persistedPlan = sanitizeAppliedPlan(plan);
-    plans.set(plan.id, persistedPlan);
-    return options.appliedPlanState === undefined
-      ? Effect.void
-      : persistAppliedPlan(options.appliedPlanState, persistedPlan).pipe(Effect.asVoid);
-  };
-
-  const forgetPlan = (appId: AppId): Effect.Effect<void, ProviderUnavailableError> => {
-    plans.delete(appId);
-    return options.appliedPlanState === undefined
-      ? Effect.void
-      : removeAppliedPlan(options.appliedPlanState, appId);
-  };
+  const appliedPlans = makeAppliedPlanCache({
+    providerId: ProviderId.make(PROVIDER_ID),
+    providerName: "Docker",
+    ...(options.appliedPlanState === undefined ? {} : { appliedPlanState: options.appliedPlanState }),
+    ...(options.sanitizeAppliedPlan === undefined
+      ? {}
+      : { sanitizeAppliedPlan: options.sanitizeAppliedPlan }),
+    load: loadAppliedPlan,
+    persist: persistAppliedPlan,
+    remove: removeAppliedPlan,
+  });
+  const resolvePlan = (target: {
+    readonly app: AppId;
+    readonly plan?: AppPlan;
+  }): Effect.Effect<AppPlan | undefined, never> =>
+    target.plan === undefined ? appliedPlans.resolvePlan(target.app) : Effect.succeed(target.plan);
+  const rememberPlan = appliedPlans.rememberPlan;
+  const forgetPlan = appliedPlans.forgetPlan;
 
   const resolvedOps = makeResolvedProviderOps({
     ctx: DOCKER_CTX,
@@ -889,10 +605,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     Effect.map(
       ({ capabilities: resolvedCapabilities, logFileHelperPayload }): RuntimeProviderShape => ({
         id: PROVIDER_ID,
+        inspectResourceNames: (query) => inspectEngineResourceNames(dockerApi, query, DOCKER_CTX),
         displayName: "Docker Runtime Provider",
         version: "0.0.0",
         platform,
         capabilities: resolvedCapabilities,
+        ...(isVmMediatedDockerHost(platform, resolvedDockerHost)
+          ? {
+              openAgentSocketBridge: makeDockerDesktopAgentSocketBridge({
+                api: dockerApi,
+                hostGateway: "host.docker.internal",
+                relayImage: AGENT_RELAY_IMAGE,
+              }),
+            }
+          : {}),
         isAvailable: dockerApi.info.pipe(
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
@@ -929,7 +655,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { serviceEnvironment: applyOptions.serviceEnvironment }),
             reconcile: applyOptions.reconcile,
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan))),
+          }).pipe(Effect.tap(() => rememberPlan(applyOptions.recordedPlan ?? plan, applyOptions.reconcile))),
         ...resolvedOps,
         destroy: (target, destroyOptions) =>
           resolvePlan(target).pipe(
@@ -980,12 +706,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 }
 
                 return Stream.fromEffect(
-                  discoverContainers(dockerApi, "dev.lando.app").pipe(
+                  discoverContainers(dockerApi, APP_LABEL).pipe(
                     Effect.flatMap((containers) => {
                       const container = containers.find(
                         (c) =>
-                          c.labels["dev.lando.app"] === target.app &&
-                          c.labels["dev.lando.service"] === target.service,
+                          c.labels[APP_LABEL] === target.app && c.labels[SERVICE_LABEL] === target.service,
                       );
                       if (container === undefined) {
                         return Effect.fail(
@@ -1007,17 +732,17 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ),
           ),
         list: (filter) =>
-          discoverContainers(dockerApi, "dev.lando.app").pipe(
+          discoverContainers(dockerApi, APP_LABEL).pipe(
             Effect.flatMap((containers) =>
               Effect.forEach(
                 containers.filter((container) => {
-                  const appId = container.labels["dev.lando.app"];
+                  const appId = container.labels[APP_LABEL];
                   if (appId === undefined) return false;
                   if (filter.app !== undefined && appId !== filter.app) return false;
                   if (
                     filter.includeScratch !== true &&
                     filter.app === undefined &&
-                    container.labels["dev.lando.scratch"] === "TRUE"
+                    container.labels[SCRATCH_LABEL] === "TRUE"
                   ) {
                     return false;
                   }
@@ -1025,8 +750,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                 }),
                 (container) =>
                   Effect.gen(function* () {
-                    const appId = container.labels["dev.lando.app"] ?? "";
-                    const serviceName = container.labels["dev.lando.service"] ?? "";
+                    const appId = container.labels[APP_LABEL] ?? "";
+                    const serviceName = container.labels[SERVICE_LABEL] ?? "";
                     const isRunning = container.state === "running";
                     const status = isRunning ? "running" : "stopped";
 
@@ -1042,9 +767,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
                     return {
                       app: AppId.make(appId),
-                      ...(container.labels["dev.lando.app-root"] === undefined
+                      ...(container.labels[APP_ROOT_LABEL] === undefined
                         ? {}
-                        : { appRoot: AbsolutePath.make(container.labels["dev.lando.app-root"]) }),
+                        : { appRoot: AbsolutePath.make(container.labels[APP_ROOT_LABEL]) }),
                       service: ServiceName.make(serviceName),
                       providerId: ProviderId.make(PROVIDER_ID),
                       status,

@@ -14,6 +14,8 @@ import {
 } from "@lando/sdk/errors";
 import type {
   ComposeKeyRejectedError,
+  Lando3LandofileDetected,
+  LandofileDialectMixError,
   LandofileIncludeError,
   LandofileLockMismatchError,
   ManagedFileTransactionError,
@@ -61,6 +63,8 @@ export interface AppIncludesUpdateOptions {
 }
 
 export type AppIncludesUpdateError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
   | ManagedFileTransactionError
   | LandofileNotFoundError
   | LandofileParseError

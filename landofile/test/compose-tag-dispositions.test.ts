@@ -4,7 +4,7 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "../src/compose/dispositions.ts";
+} from "@lando/sdk/landofile";
 
 describe("compose tag dispositions", () => {
   test("rejects Compose layer override tags with merge remediation", () => {

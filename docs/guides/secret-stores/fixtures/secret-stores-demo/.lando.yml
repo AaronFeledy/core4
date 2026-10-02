@@ -1,0 +1,8 @@
+name: secret-stores-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      DB_PASSWORD: '${secret:DB_PASSWORD}'
+      STRIPE_KEY: '${secret:op://Dev Vault/Stripe/credential}'

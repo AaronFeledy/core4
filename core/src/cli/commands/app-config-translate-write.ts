@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { makeManagedFileTransactions } from "@lando/managed-file/transaction";
+import { landofileLayerPaths } from "@lando/landofile/layers";
+import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
 import { resolveLandoRoots } from "@lando/paths";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import type { ConfigTranslateDocument } from "@lando/sdk/schema";
@@ -15,6 +16,7 @@ interface WriteTranslateTargetsRequest {
   readonly shape: DocumentSetShape;
   readonly documents: ReadonlyArray<ConfigTranslateDocument>;
   readonly privateFileAccess: PrivateFileAccess;
+  readonly transactionCheckpoint?: TransactionOptions["checkpoint"];
 }
 
 export const writeTranslateTargets = ({
@@ -23,6 +25,7 @@ export const writeTranslateTargets = ({
   shape,
   documents,
   privateFileAccess,
+  transactionCheckpoint,
 }: WriteTranslateTargetsRequest) =>
   Effect.gen(function* () {
     if (preview.target !== "lando4")
@@ -42,6 +45,25 @@ export const writeTranslateTargets = ({
           remediation: "Resolve the reported diagnostics before using --write.",
         }),
       );
+    const writable = landofileLayerPaths(appRoot).filter((layer) =>
+      shape.writableLayerIds.includes(layer.layer),
+    );
+    if (
+      preview.targets.some(
+        (target) => !writable.some((layer) => layer.layer === target.layer && layer.yamlPath === target.path),
+      ) ||
+      preview.deletions.some(
+        (deletion) => !documents.some((document) => document.sourceId === deletion.sourceId),
+      )
+    ) {
+      return yield* Effect.fail(
+        new ConfigTranslateError({
+          message: "Translation targets exceed the writable document set.",
+          remediation:
+            "Return only declared writable Landofile layers and delete only input documents; run a full conversion without --file if other layers are needed.",
+        }),
+      );
+    }
     if (shape.mode === "single-layer") {
       const unselected = [
         ...preview.targets
@@ -69,6 +91,7 @@ export const writeTranslateTargets = ({
     const transactions = makeManagedFileTransactions({
       journalRoot: () => resolveLandoRoots().userDataRoot,
       privateFileAccess,
+      ...(transactionCheckpoint === undefined ? {} : { checkpoint: transactionCheckpoint }),
     });
     const receipt = yield* transactions
       .run({

@@ -187,8 +187,8 @@ describe("exec command spec", () => {
 
   test.each([
     { name: "one-shot default", interactive: false, expectedStdin: undefined },
-    { name: "explicit interactive input", interactive: true, expectedStdin: "inherit" },
-  ] as const)("routes $name to provider exec", async ({ interactive, expectedStdin }) => {
+    { name: "explicit interactive event input", interactive: true, expectedStdin: undefined },
+  ] as const)("routes $name to provider exec without host stdin", async ({ interactive, expectedStdin }) => {
     // Given
     const stdinModes: Array<"inherit" | "ignore" | undefined> = [];
     const provider: RuntimeProviderShape = {

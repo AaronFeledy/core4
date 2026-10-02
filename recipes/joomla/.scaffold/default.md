@@ -22,6 +22,8 @@ lando init --recipe joomla --name=my-joomla-mysql --yes \
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 
+For day-to-day tooling and database hosts, see [Run the Joomla recipe](/guides/recipes/joomla-workflow/).
+
 ## 1. scaffold
 
 ```bash

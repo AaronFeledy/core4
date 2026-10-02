@@ -334,6 +334,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/srv/drupal-cms",
           services: ["appserver", "database"],
+          status: "unknown",
           stale: true,
         },
       ]);
@@ -359,6 +360,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/srv/drupal-cms",
           services: ["appserver", "database"],
+          status: "unknown",
           stale: true,
         },
       ]);
@@ -412,6 +414,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "docker",
           appRoot: "/srv/blog",
           services: ["nginx"],
+          status: "unknown",
           stale: true,
         },
       ]);
@@ -440,6 +443,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "podman",
           appRoot: "/srv/blog",
           services: ["nginx"],
+          status: "unknown",
           stale: true,
         },
       ]);
@@ -649,6 +653,7 @@ describe("apps:list host-wide discovery", () => {
           providerId: "lando",
           appRoot: "/workspace/drupal-cms",
           services: ["appserver", "database"],
+          status: "active",
           stale: true,
         },
       ]);

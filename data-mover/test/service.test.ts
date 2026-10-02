@@ -15,7 +15,7 @@ import {
 import { makeTestDataMover } from "@lando/data-mover/testing";
 import { ProcessRunnerLive } from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   DataChecksumMismatchError,
@@ -190,6 +190,7 @@ const captureEvents = () => {
 };
 
 const redactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: () =>
     Effect.succeed({
       redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),

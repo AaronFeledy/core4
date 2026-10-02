@@ -163,6 +163,38 @@ describe("renderer: image pull progress", () => {
   });
 });
 
+describe("lando renderer: routine image pull frames", () => {
+  test("suppresses cached blob chatter but keeps a pull failure visible", async () => {
+    const io = createBufferedRendererIO();
+    const routine = Schema.decodeUnknownSync(ImagePullProgressEvent)({
+      _tag: "image-pull-progress",
+      eventName: "image-pull-progress",
+      reference: "traefik:v3.3",
+      stream: "Copying blob sha256:abc123",
+      timestamp: fixedTimestamp,
+    });
+    const failure = Schema.decodeUnknownSync(ImagePullProgressEvent)({
+      _tag: "image-pull-progress",
+      eventName: "image-pull-progress",
+      reference: "traefik:v3.3",
+      stream: "Copying blob sha256:abc123 failed: disk full",
+      timestamp: fixedTimestamp,
+    });
+    const program = Effect.gen(function* () {
+      const events = yield* EventService;
+      yield* events.publish(routine);
+      yield* events.publish(failure);
+      yield* Effect.sleep("20 millis");
+    });
+    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
+    await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
+
+    expect(io.stdoutLines()).toEqual([
+      "↓ Pulling traefik:v3.3: Copying blob sha256:abc123 failed: disk full",
+    ]);
+  });
+});
+
 describe("lando renderer: message events (currently plain-aliased)", () => {
   test("lando renderer renders message events to stdout via the plain formatter", async () => {
     const io = createBufferedRendererIO();

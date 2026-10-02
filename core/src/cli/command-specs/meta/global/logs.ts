@@ -9,6 +9,12 @@ import {
   renderGlobalLogsResult,
 } from "../../../commands/meta/global-logs";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-base";
+import {
+  logFollowFromInput,
+  logLinesToStreamFrames,
+  logOptionsFromInput,
+  logSignalFromInput,
+} from "../../logs-input";
 
 export interface GlobalLogsFlags {
   readonly service?: string;
@@ -17,26 +23,10 @@ export interface GlobalLogsFlags {
   readonly since?: string;
 }
 
-const flagsFromInput = (input: unknown): GlobalLogsFlags =>
-  typeof input === "object" && input !== null
-    ? ((input as { readonly flags?: GlobalLogsFlags }).flags ?? {})
-    : {};
+export const globalLogsOptionsFromInput = (input: unknown): Parameters<typeof globalLogs>[0] =>
+  logOptionsFromInput(input);
 
-export const globalLogsOptionsFromInput = (input: unknown): Parameters<typeof globalLogs>[0] => {
-  const flags = flagsFromInput(input);
-  return {
-    ...(flags.service === undefined ? {} : { service: flags.service }),
-    ...(flags.tail === undefined ? {} : { tail: flags.tail }),
-    ...(flags.since === undefined ? {} : { since: flags.since }),
-  };
-};
-
-export const globalLogsFollowFromInput = (input: unknown): boolean => flagsFromInput(input).follow === true;
-
-const signalFromInput = (input: unknown): AbortSignal | undefined =>
-  typeof input === "object" && input !== null
-    ? (input as { readonly signal?: AbortSignal }).signal
-    : undefined;
+export const globalLogsFollowFromInput = (input: unknown): boolean => logFollowFromInput(input);
 
 export const globalLogsSpec: LandoCommandSpec<GlobalLogsResult> = {
   resultSchema: EmptyResultSchema,
@@ -59,16 +49,12 @@ export const globalLogsSpec: LandoCommandSpec<GlobalLogsResult> = {
   run: (input) => {
     const options = globalLogsOptionsFromInput(input);
     if (!globalLogsFollowFromInput(input)) return globalLogs(options);
-    const signal = signalFromInput(input);
+    const signal = logSignalFromInput(input);
     return followGlobalLogs({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
   },
   streamFrames: (value) => {
     const result = value as GlobalLogsResult;
-    return result.lines.map((line) => ({
-      _tag: line.stream,
-      service: line.service,
-      chunk: `${line.line}\n`,
-    }));
+    return logLinesToStreamFrames(result);
   },
   render: (result) => renderGlobalLogsResult(result as GlobalLogsResult),
 };

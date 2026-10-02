@@ -8,9 +8,12 @@
  */
 import { Effect, Either, Schema } from "effect";
 
-import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
+import type {
+  LandoPluginModule,
+  PluginDoctorCheckContribution,
+  PluginDoctorCheckInput,
+} from "@lando/sdk/plugins";
 import {
-  type HostPlatform,
   PluginDoctorReport,
   type ProviderCapabilities as ProviderCapabilitiesShape,
 } from "@lando/sdk/schema";
@@ -28,14 +31,7 @@ import {
   redactDoctorMessage,
 } from "./doctor-self";
 
-export interface PluginDoctorInput {
-  readonly providerId: string;
-  readonly platform: HostPlatform;
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly userDataRoot: string | undefined;
-  readonly binDir: string | undefined;
-  readonly stateDir: string | undefined;
-}
+export type PluginDoctorInput = PluginDoctorCheckInput;
 
 export interface PluginDoctorProvider {
   readonly id: string;

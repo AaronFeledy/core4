@@ -22,6 +22,7 @@ const decomposer = lampDecomposer({
 const expectedServices = {
   appserver: {
     type: "php:{{ recipe.php }}",
+    primary: true,
     framework: "none",
     webroot: "{{ recipe.webroot }}",
     composer: "{{ recipe.composer }}",

@@ -23,6 +23,7 @@ const expected = {
   services: {
     appserver: {
       type: "php:{{ recipe.php }}",
+      primary: true,
       framework: "symfony",
       webroot: "{{ recipe.webroot }}",
       composer: "{{ recipe.composer }}",

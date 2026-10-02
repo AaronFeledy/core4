@@ -79,6 +79,16 @@ const isOurPreferredHolder = (probe: {
 const helperOwnsPreferred = (probed: ProbedAcquisition): boolean =>
   isOurPreferredHolder(probed.http) && isOurPreferredHolder(probed.https);
 
+const compatibleOwnedPair = (
+  previous: AcquisitionState,
+  current: ReturnType<typeof resolveTryLists>,
+): boolean =>
+  previous.fingerprint.bindAddress === current.fingerprint.bindAddress &&
+  previous.fingerprint.http[0] === current.fingerprint.http[0] &&
+  previous.fingerprint.https[0] === current.fingerprint.https[0] &&
+  current.httpTryList.includes(previous.httpPort) &&
+  current.httpsTryList.includes(previous.httpsPort);
+
 export const persistPortAcquisition = (
   dependencies: TraefikProxyDependencies,
 ): Effect.Effect<AcquisitionDecision, unknown> =>
@@ -165,7 +175,7 @@ export const persistPortAcquisition = (
     if (
       previous !== undefined &&
       previousPair !== undefined &&
-      fingerprintsEqual(previous.fingerprint, lists.fingerprint) &&
+      compatibleOwnedPair(previous, lists) &&
       (yield* stillOwnPersisted(dependencies, previousPair, probed, lists.bindAddress))
     ) {
       const notices =
@@ -179,12 +189,19 @@ export const persistPortAcquisition = (
               https: probed.https,
             })
           : [];
+      if (!fingerprintsEqual(previous.fingerprint, lists.fingerprint)) {
+        yield* writeAcquisitionState(dependencies.fileSystem, dependencies.paths, {
+          ...previous,
+          fingerprint: lists.fingerprint,
+          notices: [...notices],
+        });
+      }
       return {
         mode: previous.mode,
         httpPort: previous.httpPort,
         httpsPort: previous.httpsPort,
         notices,
-        fingerprint: previous.fingerprint,
+        fingerprint: lists.fingerprint,
       };
     }
     const decision = yield* classifyOrFail({

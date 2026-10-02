@@ -76,3 +76,83 @@ export const PluginDoctorReport = Schema.Struct({
   }),
 });
 export type PluginDoctorReport = typeof PluginDoctorReport.Type;
+
+// ====
+// Bounded doctor-check context ports: app identity, resource names, executable location.
+
+const DoctorBoundedText = Schema.String.pipe(Schema.minLength(1), Schema.maxLength(4_096));
+
+/**
+ * Identity of the app the doctor run was started in. Only the app name and its
+ * canonical root are exposed; checks never receive the Landofile itself.
+ */
+export const DoctorAppIdentity = Schema.Struct({
+  name: Schema.String.pipe(Schema.minLength(1), Schema.maxLength(256)).annotations({
+    description: "App name as authored in the Landofile.",
+  }),
+  root: DoctorBoundedText.annotations({ description: "Absolute canonical app root." }),
+});
+export type DoctorAppIdentity = typeof DoctorAppIdentity.Type;
+
+/** Most names one resource query may return. */
+export const DOCTOR_RESOURCE_QUERY_MAX_LIMIT = 64;
+
+/**
+ * One bounded name/label query against the selected provider. A query matches
+ * by name prefix, by one exact label, or both; resources Lando 4 owns are never
+ * returned.
+ */
+export const DoctorResourceNameQuery = Schema.Struct({
+  kind: Schema.Literal("volume", "container").annotations({
+    description: "Resource kind to inspect.",
+  }),
+  namePrefix: Schema.optional(Schema.String.pipe(Schema.minLength(1), Schema.maxLength(256))).annotations({
+    description: "Case-sensitive resource name prefix.",
+  }),
+  label: Schema.optional(
+    Schema.Struct({
+      key: Schema.String.pipe(Schema.minLength(1), Schema.maxLength(256)),
+      value: Schema.String.pipe(Schema.maxLength(4_096)),
+    }),
+  ).annotations({ description: "Exact label key/value match." }),
+  limit: Schema.Int.pipe(Schema.between(1, DOCTOR_RESOURCE_QUERY_MAX_LIMIT)).annotations({
+    description: "Maximum number of names returned.",
+  }),
+});
+export type DoctorResourceNameQuery = typeof DoctorResourceNameQuery.Type;
+
+/**
+ * Outcome of one resource query. `unsupported` means the selected provider has
+ * no bounded inspector; `unavailable` means the query could not complete.
+ */
+export const DoctorResourceInspection = Schema.Union(
+  Schema.Struct({
+    status: Schema.Literal("ok"),
+    names: Schema.Array(Schema.String.pipe(Schema.maxLength(256))).pipe(
+      Schema.maxItems(DOCTOR_RESOURCE_QUERY_MAX_LIMIT),
+    ),
+    truncated: Schema.Boolean.annotations({
+      description: "True when the result reached the query limit, so more names may exist.",
+    }),
+  }),
+  Schema.Struct({ status: Schema.Literal("unsupported"), reason: PluginDoctorMessage }),
+  Schema.Struct({ status: Schema.Literal("unavailable"), reason: PluginDoctorMessage }),
+);
+export type DoctorResourceInspection = typeof DoctorResourceInspection.Type;
+
+/**
+ * Filesystem/PATH-only location of the running executable and a named PATH
+ * candidate. Nothing here comes from executing or reading a candidate.
+ * `runningBasename` is `lando4` for both `lando4` and case-insensitive Windows
+ * `lando4.exe`; any other name is reported as-is.
+ */
+export const DoctorExecutableLocation = Schema.Struct({
+  runningBasename: Schema.String.pipe(Schema.maxLength(256)),
+  runningPath: Schema.optional(DoctorBoundedText),
+  candidate: Schema.Union(
+    Schema.Struct({ kind: Schema.Literal("found"), path: DoctorBoundedText }),
+    Schema.Struct({ kind: Schema.Literal("missing") }),
+    Schema.Struct({ kind: Schema.Literal("ambiguous"), reason: PluginDoctorMessage }),
+  ),
+});
+export type DoctorExecutableLocation = typeof DoctorExecutableLocation.Type;

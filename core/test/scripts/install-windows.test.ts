@@ -17,8 +17,6 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { renderPowerShellShellenv } from "../../src/cli/commands/shellenv.ts";
-
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const installerPath = resolve(repoRoot, "scripts/install.ps1");
 const powershellTestTimeoutMs = 60_000;
@@ -49,13 +47,14 @@ const sha256 = (bytes: Uint8Array): string => {
 const createReleaseFixture = async (
   root: string,
   channel = "stable",
-  options: { readonly binaryScript?: string; readonly checksum?: string } = {},
+  options: { readonly binaryScript?: string | Uint8Array; readonly checksum?: string } = {},
 ) => {
   const releaseRoot = join(root, "release");
   await mkdir(releaseRoot, { recursive: true });
 
   const binaryPath = join(releaseRoot, "lando-windows-x64.exe");
-  const binary = new TextEncoder().encode(options.binaryScript ?? "lando windows fixture\n");
+  const binaryContent = options.binaryScript ?? "lando windows fixture\n";
+  const binary = typeof binaryContent === "string" ? new TextEncoder().encode(binaryContent) : binaryContent;
   await writeFile(binaryPath, binary);
   await chmod(binaryPath, 0o755);
 
@@ -83,6 +82,29 @@ const createReleaseFixture = async (
   await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
 
   return { binaryPath, channelRoot, crtPath, manifestPath, sigPath, sumsPath };
+};
+
+const createSetupBinary = async (root: string): Promise<string | Uint8Array> => {
+  if (process.platform !== "win32") {
+    return '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LANDO_SETUP_LOG"\nexit 0\n';
+  }
+
+  const sourcePath = join(root, "setup-fixture.ts");
+  const executablePath = join(root, "setup-fixture.exe");
+  await writeFile(
+    sourcePath,
+    'import { appendFileSync } from "node:fs";\n' +
+      'const setupArgIndex = process.argv.indexOf("setup");\n' +
+      "if (setupArgIndex < 0) process.exit(1);\n" +
+      'appendFileSync(process.env.LANDO_SETUP_LOG!, process.argv.slice(setupArgIndex).join(" ") + "\\n");\n',
+  );
+  const proc = Bun.spawn([process.execPath, "build", "--compile", sourcePath, "--outfile", executablePath], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stderr, exitCode] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+  if (exitCode !== 0) throw new Error(`Failed to compile Windows setup fixture: ${stderr}`);
+  return readFile(executablePath);
 };
 
 const createFakeCosign = async (root: string, exitCode = 0) => {
@@ -408,18 +430,29 @@ describe("scripts/install.ps1", () => {
 
     expect(result.stderr).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Run this command to add Lando to PATH:");
+    expect(result.stdout).toContain("Run this command to add Lando to PATH in this PowerShell session:");
     expect(result.stdout).toContain(
-      `& '${join(userDataRoot, "bin", "lando4.exe")}' shellenv --shell=powershell`,
+      `& '${join(userDataRoot, "bin", "lando4.exe")}' shellenv --shell=powershell | Out-String | Invoke-Expression`,
     );
-    expect(result.stdout).toContain(renderPowerShellShellenv(userDataRoot));
+    expect(result.stdout).toContain(
+      "To keep Lando on PATH in new PowerShell sessions, append its shellenv to $PROFILE:",
+    );
+    expect(result.stdout).toContain(
+      "New-Item -ItemType Directory -Force -Path (Split-Path -Parent $PROFILE) | Out-Null",
+    );
+    expect(result.stdout).toContain(
+      "if (-not (Test-Path -LiteralPath $PROFILE)) { New-Item -ItemType File -Path $PROFILE | Out-Null }",
+    );
+    expect(result.stdout).toContain(
+      `& '${join(userDataRoot, "bin", "lando4.exe")}' shellenv --shell=powershell | Add-Content -LiteralPath $PROFILE`,
+    );
   });
 
   powershellTest("runs post-install setup when explicitly opted in", async () => {
     const root = await makeTempRoot();
     const setupLog = join(root, "setup.log");
     const fixture = await createReleaseFixture(root, "stable", {
-      binaryScript: '#!/bin/sh\nprintf "%s\\n" "$*" >> "$LANDO_SETUP_LOG"\nexit 0\n',
+      binaryScript: await createSetupBinary(root),
     });
     const { cosignPath, logPath } = await createFakeCosign(root);
     const installDir = join(root, "install");

@@ -9,7 +9,7 @@ export const RUNTIME_BUNDLE_ACTION_PINS = {
   cache: "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830",
 } as const;
 
-export const RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260902T000000Z";
+export const RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260922T000000Z";
 
 export const RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT = [
   "set -euo pipefail",

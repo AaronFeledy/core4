@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 
-import { type Context, Effect, Layer } from "effect";
+import { type Context, Effect, Layer, Predicate } from "effect";
 
 import { GlobalAppError, GlobalDistConflictError, GlobalLandofilePathConflictError } from "@lando/sdk/errors";
 import { AbsolutePath, type MountInput, type ServiceConfig } from "@lando/sdk/schema";
@@ -29,9 +29,6 @@ const sha256 = (content: string): string => createHash("sha256").update(content)
 
 const sortedEntries = <T>(record: Readonly<Record<string, T>>): ReadonlyArray<readonly [string, T]> =>
   Object.entries(record).sort(([left], [right]) => left.localeCompare(right));
-
-const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const escapeDoubleQuotedScalar = (value: string): string =>
   value
@@ -67,7 +64,7 @@ const emitArray = (items: ReadonlyArray<unknown>, indent: number): ReadonlyArray
   if (items.length === 0) return [`${prefix}[]`];
 
   return items.flatMap((item) => {
-    if (isPlainRecord(item)) {
+    if (Predicate.isRecord(item)) {
       const entries = sortedEntries(item);
       if (entries.length === 0) return [`${prefix}- {}`];
       const firstEntry = entries[0];
@@ -89,7 +86,7 @@ const emitValue = (key: string, value: unknown, indent: number, marker = ""): Re
     if (value.length === 0) return [`${prefix} []`];
     return [prefix, ...emitArray(value, indent + marker.length + 2)];
   }
-  if (isPlainRecord(value)) {
+  if (Predicate.isRecord(value)) {
     const entries = sortedEntries(value);
     if (entries.length === 0) return [prefix];
     return [

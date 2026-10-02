@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
 import { ScannerConfig } from "./networking.ts";
@@ -191,6 +192,15 @@ export type AgentEnvConfig = typeof AgentEnvConfig.Type;
  * unknown tokens fail later at resolve, not at config load.
  */
 export const GlobalConfig = Schema.Struct({
+  sshAgent: Schema.optional(SshAgentConfig).annotations({
+    description: "Global SSH-agent forwarding defaults, overridden by each app per field.",
+  }),
+  gpgAgent: Schema.optional(GpgAgentConfig).annotations({
+    description: "Global GPG-agent forwarding defaults, overridden by each app per field.",
+  }),
+  defaultSecretStore: Schema.optional(Schema.String).annotations({
+    description: "SecretStore contribution id for bare secret references; defaults to env when omitted.",
+  }),
   userDataRoot: Schema.optional(AbsolutePath).annotations({ description: "Root for durable user data." }),
   userConfRoot: Schema.optional(AbsolutePath).annotations({
     description: "Root containing user config files.",

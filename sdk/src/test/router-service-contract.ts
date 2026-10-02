@@ -43,9 +43,19 @@ export const runRouterServiceContractSuite = (
   Effect.gen(function* () {
     const proxy = harness.service;
     yield* requireContract(typeof proxy.id === "string" && proxy.id.length > 0, "id is non-empty", proxy.id);
+    if (proxy.prepare !== undefined) {
+      yield* proxy
+        .prepare({ defaultDomain: "lndo.site" })
+        .pipe(Effect.mapError((cause) => failure("prepare resolves before setup", cause)));
+    }
     yield* Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })).pipe(
       Effect.mapError((cause) => failure("setup resolves", cause)),
     );
+    if (proxy.prepare !== undefined) {
+      yield* proxy
+        .prepare({ defaultDomain: "lndo.site" })
+        .pipe(Effect.mapError((cause) => failure("prepare resolves before setup", cause)));
+    }
     yield* Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })).pipe(
       Effect.mapError((cause) => failure("setup is idempotent", cause)),
     );
@@ -119,6 +129,7 @@ export const makeTestRouterService = (): RouterServiceShape & {
   return {
     id: "test",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+    prepare: () => Effect.void,
     setup: () =>
       Effect.sync(() => {
         running = true;

@@ -60,7 +60,9 @@ const prepareDynamicToolingInvocation = (name: string, argv: ReadonlyArray<strin
 export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv[0];
   if (name === undefined) throw new Error("Missing tooling command name");
-  const commandArgv = argv.slice(1);
+  const taskArgv = argv.slice(1);
+  // The first separator belongs to Lando; subsequent separators belong to the task.
+  const commandArgv = taskArgv[0] === "--" ? taskArgv.slice(1) : taskArgv;
   prepareDynamicToolingInvocation(name, commandArgv);
   if (emitJsonListModeIfRequested(ToolingResultSchema)) return Promise.resolve();
   const hostTerminal =

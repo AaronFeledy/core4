@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 import type { CommandWarning, DeprecationUse } from "@lando/sdk/schema";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
+import { SqlConfirmRequiredError } from "../errors/sql.ts";
 
 import { emitYamlDocument } from "../yaml/document.ts";
 import { applyProjectResultKeys } from "./project-result.ts";
@@ -53,17 +54,48 @@ const taggedErrorJson = (
   readonly _tag: string;
   readonly message: string;
   readonly remediation?: string;
+  readonly service?: string;
+  readonly steps?: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly target: string;
+    readonly destructive: boolean;
+  }>;
+  readonly reason?: string;
 } => {
   const record = asRecord(error);
   const tag = nonEmptyString(record?._tag) ?? nonEmptyString(record?.name) ?? "UnknownError";
   const message = nonEmptyString(record?.message) ?? String(error);
   const remediation = nonEmptyString(record?.remediation);
-  return remediation === undefined ? { _tag: tag, message } : { _tag: tag, message, remediation };
+  const reason = typeof record?.reason === "string" ? record.reason : undefined;
+  const base = {
+    _tag: tag,
+    message,
+    ...(remediation === undefined ? {} : { remediation }),
+    ...(reason === undefined ? {} : { reason }),
+  };
+  if (error instanceof SqlConfirmRequiredError) {
+    return { ...base, service: error.service, steps: error.steps };
+  }
+  return base;
 };
 
 const encodeResult = (schema: Schema.Schema.AnyNoContext, value: unknown) =>
   Effect.try({
-    try: () => Schema.encodeSync(schema)(value as never),
+    try: () => {
+      const encoded = Schema.encodeSync(schema)(value as never);
+      // Command implementations may carry this private field so the output
+      // boundary can redact their data. It is never part of a public result.
+      if (
+        encoded === null ||
+        typeof encoded !== "object" ||
+        Array.isArray(encoded) ||
+        !Object.hasOwn(encoded, "redactionTokens")
+      )
+        return encoded;
+      const { redactionTokens: _redactionTokens, ...result } = encoded as Record<string, unknown>;
+      return result;
+    },
     catch: (error) => error,
   });
 

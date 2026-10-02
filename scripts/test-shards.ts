@@ -74,7 +74,8 @@ export const NIGHTLY_TIER_TESTS: ReadonlyArray<string> = [
  * `apps:list --path` on the compiled binary. Serial shard 1 passed
  * (2828 pass / 0 fail).
  */
-const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = [];
+// CI matrix runners can spend more than Bun's default 5s in a subprocess-based test.
+const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
 
 export const isShardedUnitTest = (path: string): boolean =>
   !path.endsWith(INTEGRATION_SUFFIX) &&

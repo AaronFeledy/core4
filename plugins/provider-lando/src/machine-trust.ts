@@ -1,8 +1,10 @@
+import type { HostPlatform } from "@lando/sdk/schema";
 import type { PodmanMachineStatus } from "./setup.ts";
 
 /**
  * Managed-machine CA trust helpers: pure argv builders and ownership-gated
- * import decisions for Podman machines Lando owns.
+ * import decisions for Podman machines Lando owns. Running machines stay up;
+ * native CA changes are imported on their next start.
  *
  * `--import-native-ca` is a boolean Podman flag (default `false`) that syncs
  * the host's native CA trust store into the machine on startup. The flag takes
@@ -15,20 +17,24 @@ export const IMPORT_NATIVE_CA_FLAG = "--import-native-ca" as const;
 
 /**
  * Build the `podman machine init` argv for a Lando-owned machine, importing the
- * host's native CA trust on creation. The boolean flag precedes the machine
- * name positional, matching Podman's documented invocation.
+ * host's native CA trust on creation. Fresh Windows machines use Podman's
+ * rootful guest socket, which remains available when another WSL distro owns
+ * the same UID 1000 systemd cgroup. Existing machines are never converted.
  */
-export const buildManagedMachineInitArgs = (machineName: string): ReadonlyArray<string> => [
+export const buildManagedMachineInitArgs = (
+  machineName: string,
+  platform: HostPlatform,
+): ReadonlyArray<string> => [
   "machine",
   "init",
   IMPORT_NATIVE_CA_FLAG,
+  ...(platform === "win32" ? ["--rootful"] : []),
   machineName,
 ];
 
 /**
- * Build the `podman machine set` argv that (re)enables native CA import on an
- * existing Lando-owned machine. Used when managing a machine Lando already
- * created, rather than re-initializing it.
+ * Build the `podman machine set` argv that (re)enables native CA import on a
+ * stopped Lando-owned machine. Podman rejects this setting change while running.
  */
 export const buildManagedMachineTrustSyncArgs = (machineName: string): ReadonlyArray<string> => [
   "machine",

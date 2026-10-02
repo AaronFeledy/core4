@@ -1,0 +1,4 @@
+recipe: lamp
+config:
+  php: "8.2"
+  webroot: /app/web

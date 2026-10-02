@@ -1,10 +1,9 @@
+import { SCRATCH_ID_LABEL, SCRATCH_LABEL } from "@lando/container-runtime/labels";
 import { Context, Effect, Layer, Option } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 
-const SCRATCH_LABEL = "dev.lando.scratch";
-const SCRATCH_ID_LABEL = "dev.lando.scratch-id";
 const CANONICAL_SCRATCH_ID = /^scratch-[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{6}$/u;
 
 export const isCanonicalScratchId = (id: string): boolean => CANONICAL_SCRATCH_ID.test(id);

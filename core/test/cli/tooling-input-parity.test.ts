@@ -3,7 +3,7 @@ import { compileToolingCommands } from "@lando/engine/cache/command-compiler";
 import { runTooling } from "@lando/engine/operations/tooling";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import { dispatchTool } from "@lando/mcp/dispatch";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, LandofileShape, ProviderId } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -81,7 +81,10 @@ const harnessLayer = (input: {
           };
         }),
     }),
-    Layer.succeed(RedactionService, { forProfile: () => Effect.succeed(createRedactor("secrets")) }),
+    Layer.succeed(RedactionService, {
+      registerValues: registerRedactionValues,
+      forProfile: () => Effect.succeed(createRedactor("secrets")),
+    }),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     emptyConfigServiceLayer,
   );

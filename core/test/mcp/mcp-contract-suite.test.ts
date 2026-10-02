@@ -36,7 +36,7 @@ import {
 } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { McpTransport, makeInMemoryTransport } from "@lando/mcp/transport";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
@@ -107,6 +107,7 @@ const allCommandEntries = (): ReadonlyArray<McpCommandEntry> =>
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
   Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
     forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
   });
 

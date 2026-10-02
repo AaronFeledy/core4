@@ -35,6 +35,7 @@ const sandboxUninstallIo = (root: string) => ({
     join(root, "lando-proxy-https.service"),
   ],
   socketProxyPolkitPath: join(root, "10-lando-proxy.rules"),
+  listDiscoveredApps: async () => [],
 });
 
 describe("runtime-service uninstall execution", () => {
@@ -56,7 +57,7 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
@@ -86,7 +87,7 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
@@ -113,7 +114,7 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
@@ -146,7 +147,7 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),
@@ -179,7 +180,7 @@ describe("runtime-service uninstall execution", () => {
       const result = await Effect.runPromise(
         uninstall({
           yes: true,
-          keepData: true,
+          purge: true,
           userDataRoot,
           userCacheRoot,
           ...sandboxUninstallIo(root),

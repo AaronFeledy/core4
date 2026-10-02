@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import { ShellExecError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, ShellRunner } from "@lando/sdk/services";
@@ -12,6 +12,7 @@ import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk
 import { makeShellRunnerLive, withShellRedactionTokens } from "../../src/services/shell-runner";
 
 const redactionLayer = Layer.succeed(RedactionService, {
+  registerValues: registerRedactionValues,
   forProfile: (profile, options) =>
     Effect.succeed(createRedactor(profile, { values: ["topsecret", ...(options?.redactionTokens ?? [])] })),
 });

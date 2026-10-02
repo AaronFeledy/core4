@@ -1,6 +1,6 @@
 import { Either } from "effect";
 
-import { quoteYamlScalar, yamlScalarText } from "../yaml/index.ts";
+import { quoteYamlScalar, yamlMappingKeyText, yamlScalarText } from "../yaml/index.ts";
 import { LandofileEmitError } from "./errors.ts";
 
 const INDENT = "  ";
@@ -39,10 +39,10 @@ interface EmitState {
   readonly seen: WeakSet<object>;
 }
 
-// Keys are emitted verbatim, so they must round-trip through the block-style
-// parser's key matcher (`^([A-Za-z0-9_.-]+):`). A key outside this shape would
-// emit unparseable YAML, so it is rejected rather than silently corrupted.
-const KEY_SHAPE = /^[A-Za-z0-9_.-]+$/u;
+// Keys are canonicalized by the shared YAML key policy: a key stays plain only
+// when no YAML parser can re-resolve it into a different node, and is
+// double-quoted otherwise. Package maps make that mandatory, since a Composer
+// name always carries `/` and a scoped npm name leads with a reserved `@`.
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -89,9 +89,9 @@ const entriesOf = (
   }
   const entries = Object.entries(object);
   for (const [key] of entries) {
-    if (!KEY_SHAPE.test(key)) {
+    if (/\s/u.test(key)) {
       throw new LandofileEmitError({
-        message: `Cannot emit map key ${quoteYamlScalar(key)} at ${path === "" ? "<root>" : path} in a Landofile; keys must match ${KEY_SHAPE.source}.`,
+        message: `Cannot emit map key ${quoteYamlScalar(key)} at ${path === "" ? "<root>" : path} in a Landofile; keys must not contain whitespace.`,
       });
     }
   }
@@ -125,26 +125,27 @@ const emitMapEntries = (
   const pad = INDENT.repeat(indent);
   for (const [key, value] of entriesOf(object, path, state)) {
     const keyPath = childPath(path, key);
+    const keyText = yamlMappingKeyText(key);
     if (Array.isArray(value)) {
       if (value.length === 0) {
-        lines.push(`${pad}${key}: []`);
+        lines.push(`${pad}${keyText}: []`);
         continue;
       }
-      lines.push(`${pad}${key}:`);
+      lines.push(`${pad}${keyText}:`);
       emitArrayItems(value, indent + 1, lines, keyPath, state);
       continue;
     }
     if (isPlainObject(value)) {
       if (Object.keys(value).length === 0) {
         assertEmptyMapIsEmittable(value, keyPath, state);
-        lines.push(`${pad}${key}: {}`);
+        lines.push(`${pad}${keyText}: {}`);
         continue;
       }
-      lines.push(`${pad}${key}:`);
+      lines.push(`${pad}${keyText}:`);
       emitMapEntries(value, indent + 1, lines, keyPath, state);
       continue;
     }
-    lines.push(`${pad}${key}: ${emitScalar(value, keyPath)}`);
+    lines.push(`${pad}${keyText}: ${emitScalar(value, keyPath)}`);
   }
   state.seen.delete(object);
 };
@@ -161,24 +162,25 @@ const emitListItemMap = (
   const entries = entriesOf(item, path, state);
   const [firstKey, firstValue] = entries[0] as [string, unknown];
   const firstPath = childPath(path, firstKey);
+  const firstKeyText = yamlMappingKeyText(firstKey);
 
   if (Array.isArray(firstValue)) {
     if (firstValue.length === 0) {
-      lines.push(`${pad}- ${firstKey}: []`);
+      lines.push(`${pad}- ${firstKeyText}: []`);
     } else {
-      lines.push(`${pad}- ${firstKey}:`);
+      lines.push(`${pad}- ${firstKeyText}:`);
       emitArrayItems(firstValue, itemIndent + 2, lines, firstPath, state);
     }
   } else if (isPlainObject(firstValue)) {
     if (Object.keys(firstValue).length === 0) {
       assertEmptyMapIsEmittable(firstValue, firstPath, state);
-      lines.push(`${pad}- ${firstKey}: {}`);
+      lines.push(`${pad}- ${firstKeyText}: {}`);
     } else {
-      lines.push(`${pad}- ${firstKey}:`);
+      lines.push(`${pad}- ${firstKeyText}:`);
       emitMapEntries(firstValue, itemIndent + 2, lines, firstPath, state);
     }
   } else {
-    lines.push(`${pad}- ${firstKey}: ${emitScalar(firstValue, firstPath)}`);
+    lines.push(`${pad}- ${firstKeyText}: ${emitScalar(firstValue, firstPath)}`);
   }
 
   for (const [key, value] of entries.slice(1)) {
@@ -226,8 +228,8 @@ const emitArrayItems = (
  * the shared `@lando/sdk/yaml` scalar policy so the emitted text re-parses to
  * the exact same value.
  *
- * Throws {@link LandofileEmitError} on a non-emittable input: a map key outside
- * `^[A-Za-z0-9_.-]+$`, a non-finite number, an unsupported value type
+ * Throws {@link LandofileEmitError} on a non-emittable input: a map key containing
+ * whitespace, a non-finite number, an unsupported value type
  * (`undefined`, `bigint`, symbol, function, `Date`, `RegExp`, `Map`, a class
  * instance, or any other non-plain object), a symbol key, a cyclic structure, or
  * a nested array list item.

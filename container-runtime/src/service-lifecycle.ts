@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { serviceContainerName } from "./plan.ts";
 
 import { ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -25,7 +26,7 @@ export interface ServiceLifecycleOptions {
 export type ExactServiceLifecycleAction = "start" | "stop";
 
 const containerName = (plan: AppPlan, service: ServicePlan): string =>
-  `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+  serviceContainerName(plan, service.name);
 
 export const postServiceLifecycle = (
   plan: AppPlan,

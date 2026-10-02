@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 
+import { registerRedactionValues } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
@@ -16,6 +17,7 @@ describe("plugin render publication", () => {
           const context = yield* Layer.build(EventRuntimeLive);
           const events = Context.get(context, EventService);
           const publish = makePublishRender(events, {
+            registerValues: registerRedactionValues,
             forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
           });
 

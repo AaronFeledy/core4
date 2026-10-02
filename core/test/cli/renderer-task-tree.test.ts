@@ -74,10 +74,10 @@ const decodeFixtureEvents = (): ReadonlyArray<LandoEvent> => {
 };
 
 describe("plain renderer (non-TTY)", () => {
-  test("renders task.tree.start with services count", () => {
+  test("renders task.tree.start with step count", () => {
     const event = fixtureEvents[0];
     if (event === undefined) throw new Error("missing fixture event");
-    expect(renderPlainLine(event)).toBe("▼ Building app dependencies (3 services)");
+    expect(renderPlainLine(event)).toBe("▼ Building app dependencies (3 steps)");
   });
 
   test("renders task.start with [stepId] prefix", () => {

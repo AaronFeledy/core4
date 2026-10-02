@@ -14,21 +14,39 @@ const parseV4 = (content: string) =>
 
 describe("legacy mode leaves the v4 parser restrictions alone", () => {
   test("v4 still rejects the Lando 3 corpus that legacy mode accepts", async () => {
-    for (const fixture of ["kitchen-sink.lando.yml", "kitchen-sink.config.yml"]) {
-      const content = await Bun.file(`${FIXTURES}/${fixture}`).text();
+    const content = await Bun.file(`${FIXTURES}/kitchen-sink.lando.yml`).text();
 
-      expect(Exit.isFailure(parseV4(content))).toBe(true);
-      expect(Exit.isSuccess(parseLegacy(content))).toBe(true);
+    expect(Exit.isFailure(parseV4(content))).toBe(true);
+    expect(Exit.isSuccess(parseLegacy(content))).toBe(true);
+  });
+
+  test("the Lando 3 global config carries no Lando 3 syntax beyond quoted keys", async () => {
+    // Quoted mapping keys are ordinary YAML that both dialects read the same
+    // way, so this fixture no longer separates them. What still separates them
+    // is Lando 3 tag data, which only the legacy parser produces.
+    const content = await Bun.file(`${FIXTURES}/kitchen-sink.config.yml`).text();
+    const legacy = parseLegacy(content);
+    const v4 = parseV4(content);
+
+    expect(Exit.isSuccess(legacy)).toBe(true);
+    expect(Exit.isSuccess(v4)).toBe(true);
+    if (Exit.isSuccess(legacy)) expect(legacy.value.tags).toEqual([]);
+    if (Exit.isSuccess(v4)) {
+      const plugins = (v4.value as { readonly plugins?: Record<string, unknown> }).plugins;
+      expect(plugins?.["@lando/php"]).toBe("/home/me/dev/php");
     }
   });
 
-  test("v4 still rejects populated flow maps, block scalars, and unquoted expressions", () => {
-    const rejected = ["a:\n  b: {c: d}\n", "a: |\n  line\n", "a: ${SOME_VAR}\n"];
+  test("v4 accepts block scalars while still rejecting flow maps and unquoted expressions", () => {
+    const rejected = ["a:\n  b: {c: d}\n", "a: ${SOME_VAR}\n"];
 
     for (const content of rejected) {
       expect(Exit.isFailure(parseV4(content))).toBe(true);
       expect(Exit.isSuccess(parseLegacy(content))).toBe(true);
     }
+    const blockScalar = "a: |\n  line\n";
+    expect(Exit.isSuccess(parseV4(blockScalar))).toBe(true);
+    expect(Exit.isSuccess(parseLegacy(blockScalar))).toBe(true);
   });
 
   test("legacy mode keeps a tag pointing at a missing file as data instead of reading it", () => {

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { Either } from "effect";
 import { compare } from "semver";
+import { canonicalJson } from "../digest/index.ts";
 import { RecipeMigrationChainError } from "../errors/recipe.ts";
 import {
   type RecipeProducer,
@@ -18,21 +19,7 @@ import {
   hasCallableApply,
 } from "../schema/recipe-snapshot.ts";
 
-/**
- * Serialize acyclic JSON data with lexically sorted object keys and ordered arrays.
- * Undefined object properties are omitted, while absent array/root values become
- * null, matching JSON's array convention. Non-JSON inputs may throw TypeError.
- */
-export const canonicalJson = (value: unknown): string => {
-  if (Array.isArray(value)) return `[${value.map((item: unknown) => canonicalJson(item)).join(",")}]`;
-  if (value !== null && typeof value === "object")
-    return `{${Object.entries(value)
-      .filter(([, item]) => item !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
-      .join(",")}}`;
-  return JSON.stringify(value) ?? "null";
-};
+export { canonicalJson } from "../digest/index.ts";
 
 /** Derive a stable, layer-sensitive hunk id from exact edge coordinates and path. */
 export const deriveHunkId = (input: {

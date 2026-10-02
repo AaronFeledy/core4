@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 
 import type { InstalledPluginRegistryEntry } from "./installed-registry.ts";
 
@@ -30,8 +31,5 @@ export const readLinkedState = async (pluginsRoot: string): Promise<LinkedPlugin
 
 export const writeLinkedState = async (pluginsRoot: string, state: LinkedPluginState): Promise<void> => {
   const path = linkedStatePath(pluginsRoot);
-  await mkdir(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp`;
-  await writeFile(tmpPath, `${JSON.stringify(state, null, 2)}\n`);
-  await rename(tmpPath, path);
+  await writeFileAtomic(path, `${JSON.stringify(state, null, 2)}\n`);
 };

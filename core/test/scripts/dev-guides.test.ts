@@ -1,7 +1,9 @@
-import { mkdir, rm } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
+import { delimiter, dirname, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+
+import { resolveGeneratedGuideTestRoot } from "../../../scripts/build-guide-scenarios.ts";
 
 import {
   computeAffectedGuides,
@@ -47,22 +49,35 @@ interface SpawnResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
+  readonly generatedGuideIds: readonly string[];
 }
 
 const runDevGuides = async (args: ReadonlyArray<string>): Promise<SpawnResult> => {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "scripts/dev-guides.ts", ...args],
-    cwd: repoRoot,
-    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}` },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { exitCode, stdout, stderr };
+  const isolatedParent = resolve(repoRoot, "node_modules/.cache");
+  await mkdir(isolatedParent, { recursive: true });
+  const isolatedGeneratedRoot = await mkdtemp(resolve(isolatedParent, "lando-dev-guides-generated-"));
+  try {
+    const proc = Bun.spawn({
+      cmd: [process.execPath, "run", "scripts/dev-guides.ts", ...args],
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        LANDO_DEV_GUIDES_GENERATED_ROOT: isolatedGeneratedRoot,
+        PATH: [dirname(process.execPath), process.env.PATH ?? ""].join(delimiter),
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    const generatedGuideIds = await readdir(isolatedGeneratedRoot).catch(() => []);
+    return { exitCode, stdout, stderr, generatedGuideIds };
+  } finally {
+    await rm(isolatedGeneratedRoot, { force: true, recursive: true });
+  }
 };
 
 describe("dev:guides argument parsing", () => {
@@ -90,6 +105,37 @@ describe("dev:guides argument parsing", () => {
 
   test("rejects unknown flags", () => {
     expect(() => parseDevGuidesArgs(["--nope"])).toThrow();
+  });
+});
+
+describe("resolveGeneratedGuideTestRoot", () => {
+  test("allows only canonical direct test-owned cache children", async () => {
+    const cacheRoot = resolve(repoRoot, "node_modules/.cache");
+    await mkdir(cacheRoot, { recursive: true });
+    const valid = await mkdtemp(resolve(cacheRoot, "lando-dev-guides-generated-"));
+    const outside = await mkdtemp(resolve(repoRoot, "lando-dev-guides-outside-"));
+    const siblingCache = resolve(repoRoot, "node_modules/.cache-sibling");
+    await mkdir(siblingCache, { recursive: true });
+    const sibling = await mkdtemp(resolve(siblingCache, "lando-dev-guides-generated-"));
+    const nestedParent = await mkdtemp(resolve(cacheRoot, "lando-dev-guides-generated-parent-"));
+    const nested = resolve(nestedParent, "child");
+    await mkdir(nested);
+    const link = resolve(cacheRoot, "lando-dev-guides-generated-link");
+    try {
+      await symlink(outside, link, "dir");
+      expect(resolveGeneratedGuideTestRoot(valid, repoRoot)).toBe(valid);
+      for (const rejected of [".", repoRoot, outside, sibling, nested, link]) {
+        expect(() => resolveGeneratedGuideTestRoot(rejected, repoRoot)).toThrow(
+          "must name a direct lando-dev-guides-generated-* child",
+        );
+      }
+    } finally {
+      await rm(valid, { force: true, recursive: true });
+      await rm(outside, { force: true, recursive: true });
+      await rm(siblingCache, { force: true, recursive: true });
+      await rm(nestedParent, { force: true, recursive: true });
+      await rm(link, { force: true });
+    }
   });
 });
 
@@ -158,9 +204,9 @@ describe.serial("dev:guides one-shot pipeline", () => {
       const path = await writeGuide(guideId, guideContent(guideId));
       const result = await runDevGuides(["--once", path]);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode, [result.stdout, result.stderr].join(String.fromCharCode(10))).toBe(0);
       expect(`${result.stdout}${result.stderr}`).toContain("1 pass");
-      expect(await Bun.file(resolve(generatedRoot, guideId, "runs.test.ts")).exists()).toBe(true);
+      expect(result.generatedGuideIds).toContain(guideId);
     } finally {
       await removeGuide(guideId);
     }
@@ -196,7 +242,7 @@ describe.serial("dev:guides one-shot pipeline", () => {
 
       expect(result.exitCode).not.toBe(0);
       expect(combined).toContain("no generated scenario output");
-      expect(await Bun.file(resolve(generatedRoot, guideId, "runs.test.ts")).exists()).toBe(false);
+      expect(result.generatedGuideIds).not.toContain(guideId);
     } finally {
       await removeGuide(guideId);
     }
@@ -213,9 +259,9 @@ describe.serial("dev:guides one-shot pipeline", () => {
       const result = await runDevGuides(["--once", targetPath]);
 
       expect(result.exitCode).toBe(0);
-      expect(await Bun.file(resolve(generatedRoot, targetId, "runs.test.ts")).exists()).toBe(true);
+      expect(result.generatedGuideIds).toContain(targetId);
       // The non-target guide must not be generated or executed by single-guide mode.
-      expect(await Bun.file(resolve(generatedRoot, otherId, "runs.test.ts")).exists()).toBe(false);
+      expect(result.generatedGuideIds).not.toContain(otherId);
       expect(`${result.stdout}${result.stderr}`).toContain("1 pass");
     } finally {
       await removeGuide(targetId);

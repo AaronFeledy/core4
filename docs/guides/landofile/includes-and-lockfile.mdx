@@ -65,9 +65,12 @@ lando app:config --format=json
 
 The structured result includes a `sources` inventory of logical source IDs and
 SHA-256 hashes, not profile contents or host paths. Exact service-environment
-secret references remain references in config and plans. The SecretStore supplies
-their values only for the provider action; don't interpolate secrets into build
-arguments or scripts.
+secret references remain references in config and plans. A bare id such as
+`CORP_API_TOKEN` resolves from `LANDO_SECRET_CORP_API_TOKEN` through the default
+`env` store; an `op://Vault/Item/field` reference resolves through the bundled
+1Password store. The routed SecretStore supplies values only for the provider
+action; don't interpolate secrets into build arguments or scripts. See
+[secret stores](../config/secret-stores.mdx).
 
 No profile is loaded automatically. Opting in trusts its build and tooling
 commands, not just its environment values. Profiles must use `.yml` or `.yaml`;

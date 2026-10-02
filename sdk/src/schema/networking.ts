@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { AgentSocketProviderCapabilities } from "./agent-forwarding.ts";
 
 import { ComposeKnobCapabilities } from "./compose-knob-capabilities.ts";
 import { ComposePreservedPathCapabilities } from "./compose-preserved-path-capabilities.ts";
@@ -303,6 +304,10 @@ export const HostProxyProviderCapabilities = Schema.Struct({
 export type HostProxyProviderCapabilities = typeof HostProxyProviderCapabilities.Type;
 
 export const ProviderCapabilities = Schema.Struct({
+  agentSocket: Schema.optional(AgentSocketProviderCapabilities).annotations({
+    description:
+      "Agent socket delivery supported by this provider; omission means forwarding is unsupported.",
+  }),
   artifactBuild: Schema.Boolean,
   artifactPull: Schema.Boolean,
   buildSecrets: Schema.Boolean,

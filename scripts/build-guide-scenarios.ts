@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { realpathSync } from "node:fs";
 import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
@@ -55,7 +56,29 @@ import {
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GUIDE_ROOT = "docs/guides";
-const GENERATED_GUIDE_TEST_ROOT = "test/scenarios/generated/guides";
+const DEFAULT_GENERATED_GUIDE_TEST_ROOT = "test/scenarios/generated/guides";
+export const resolveGeneratedGuideTestRoot = (
+  configured = process.env.LANDO_DEV_GUIDES_GENERATED_ROOT,
+  root = REPO_ROOT,
+): string => {
+  if (configured === undefined) return DEFAULT_GENERATED_GUIDE_TEST_ROOT;
+  const cacheRoot = realpathSync(resolve(root, "node_modules/.cache"));
+  const target = realpathSync(resolve(configured));
+  const relativeTarget = relative(cacheRoot, target);
+  if (
+    relativeTarget === "" ||
+    relativeTarget.startsWith("..") ||
+    isAbsolute(relativeTarget) ||
+    dirname(relativeTarget) !== "." ||
+    !relativeTarget.startsWith("lando-dev-guides-generated-")
+  ) {
+    throw new Error(
+      "LANDO_DEV_GUIDES_GENERATED_ROOT must name a direct lando-dev-guides-generated-* child of node_modules/.cache.",
+    );
+  }
+  return target;
+};
+const GENERATED_GUIDE_TEST_ROOT = resolveGeneratedGuideTestRoot();
 const PUBLIC_TRANSCRIPT_ROOT = "dist/transcripts/public/guides";
 const PUBLIC_TRANSCRIPT_REDACTION_ENV: RedactionEnvironment = {
   home: "",

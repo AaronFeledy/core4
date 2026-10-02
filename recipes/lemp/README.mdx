@@ -7,10 +7,11 @@ tags: [recipe, lemp, php]
 
 # LEMP
 
-`lando init --recipe lemp` scaffolds Nginx, PHP, and MariaDB.
+`lando init --recipe lemp` scaffolds nginx, PHP-FPM, and MariaDB.
 
 ```sh
 lando init --recipe lemp --name=my-lemp-app --yes
+cd my-lemp-app
 lando start
 lando info
 ```
@@ -18,6 +19,11 @@ lando info
 `--yes` uses PHP 8.4. Pass `--answer` to change that. PHP 8.6 is a valid `--answer=php=8.6`.
 
 `lando start` prints the app URL. `lando info` repeats it.
+
+The `web` service serves `/app` through nginx and sends PHP requests to
+`appserver` on its internal PHP-FPM port. Both services use `/app` as the webroot.
+Put your `index.php` in the project root. `appserver` remains the primary service
+for PHP and Composer tooling; it does not expose a separate HTTP route.
 
 `lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
 

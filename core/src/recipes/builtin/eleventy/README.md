@@ -7,7 +7,7 @@ static frontend.
 
 - `builder` — `node:lts` running `npx @11ty/eleventy --serve` on port 8080
   for iterative development.
-- `web` — `static:nginx`, mounts the app root for serving the built site.
+- `web` — `static:nginx`, serves the build output directory `/app/_site` as its document root.
 
 ## Generated tooling
 
@@ -18,6 +18,7 @@ static frontend.
 
 - The recipe assumes site sources live at the app root. Custom input/output
   directory configuration runs through `.eleventy.js` (authored by the user).
+  If you change the output directory, point `webroot` on `web` at it.
 - The static frontend serves files only; rewrites and asset hashing are
   deferred.
 

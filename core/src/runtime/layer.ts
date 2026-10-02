@@ -71,6 +71,7 @@ import {
   resolveRuntimeLogging,
   rootOverridesFromConfig,
 } from "@lando/engine/runtime/runtime-options";
+import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
 import type { RedactionService } from "@lando/redaction/service";
@@ -145,6 +146,7 @@ type ScratchRuntimeServices =
   | AppPlanner
   | BuildOrchestrator
   | RouterService
+  | ScratchResourceScanner
   | ScratchAppService;
 export type AppRuntimeServices =
   | ProviderRuntimeServices

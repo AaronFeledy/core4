@@ -10,15 +10,11 @@ import {
 } from "../../../commands/app-includes-update";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { extractSpecParsedArgv } from "../../../spec/command-boundary";
+import { booleanFlag, specFlagsOf } from "../../../spec/input-coercion";
 
-const inputFlags = (input: unknown): Record<string, unknown> =>
-  typeof input === "object" && input !== null && "flags" in input
-    ? ((input as { flags?: Record<string, unknown> }).flags ?? {})
-    : {};
+const checkFromInput = (input: unknown): boolean => booleanFlag(specFlagsOf(input), "check");
 
-const checkFromInput = (input: unknown): boolean => inputFlags(input).check === true;
-
-const noNetworkFromInput = (input: unknown): boolean => inputFlags(input)["no-network"] === true;
+const noNetworkFromInput = (input: unknown): boolean => booleanFlag(specFlagsOf(input), "no-network");
 
 const sourcesFromInput = (input: unknown): ReadonlyArray<string> => {
   return extractSpecParsedArgv(input).filter((value) => !value.startsWith("-"));

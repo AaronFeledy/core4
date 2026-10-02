@@ -1,7 +1,7 @@
 // Keep codecs pure and dependency-light; filesystem access and atomic writes
 // belong to callers.
 
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
 import { ManagedFileError } from "@lando/sdk/errors";
 import { LandofileEmitError, emitLandofileYaml, parseLandofile } from "@lando/sdk/landofile";
@@ -44,9 +44,6 @@ const fail = (
     }),
   );
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const ENV_NEEDS_QUOTING = /[\s"#=\\]/u;
 
 // Shared by encode + decode so the env round-trip stays consistent: POSIX
@@ -60,7 +57,7 @@ const encodeEnv = (
   value: unknown,
   operation: ManagedFileOperation,
 ): Effect.Effect<string, ManagedFileError> => {
-  if (!isPlainObject(value)) {
+  if (!Predicate.isRecord(value)) {
     return fail("format", operation, { remediation: "`env` content must be a key/value object." });
   }
   const lines: Array<string> = [];
@@ -132,7 +129,7 @@ export const encode = (
       return encodeEnv(value, operation);
     case "yaml":
     case "landofile":
-      if (!isPlainObject(value)) {
+      if (!Predicate.isRecord(value)) {
         return fail("format", operation, {
           remediation: `\`${format}\` content must be an object.`,
         });

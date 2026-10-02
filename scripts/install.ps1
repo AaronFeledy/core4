@@ -80,17 +80,15 @@ function Quote-PowerShellString([string] $Value) {
   return "'$($Value.Replace("'", "''"))'"
 }
 
-# Reproduces the shellenv renderer byte for byte; install-windows.test.ts pins the agreement.
-function Write-PathGuidance([string] $InstallDir) {
-  $userDataRoot = Default-UserDataRoot
-  $installedPath = Join-Path $InstallDir "lando4.exe"
-  $binDir = Quote-PowerShellString (Split-Path -Parent $installedPath)
+# Print commands that apply the installed, record-verified shellenv for this session and future sessions.
+function Write-PathGuidance([string] $InstalledPath) {
   Write-Output ""
-  Write-Output "Run this command to add Lando to PATH:"
-  Write-Output "& $(Quote-PowerShellString $installedPath) shellenv --shell=powershell"
-  Write-Output "The command prints:"
-  Write-Output "`$Env:LANDO_USER_DATA_ROOT = $(Quote-PowerShellString $userDataRoot)"
-  Write-Output ('if (-not (($Env:PATH -split [IO.Path]::PathSeparator) -contains ' + $binDir + ')) { $Env:PATH = ' + $binDir + ' + [IO.Path]::PathSeparator + $Env:PATH }')
+  Write-Output "Run this command to add Lando to PATH in this PowerShell session:"
+  Write-Output "& $(Quote-PowerShellString $installedPath) shellenv --shell=powershell | Out-String | Invoke-Expression"
+  Write-Output "To keep Lando on PATH in new PowerShell sessions, append its shellenv to `$PROFILE:"
+  Write-Output 'New-Item -ItemType Directory -Force -Path (Split-Path -Parent $PROFILE) | Out-Null'
+  Write-Output 'if (-not (Test-Path -LiteralPath $PROFILE)) { New-Item -ItemType File -Path $PROFILE | Out-Null }'
+  Write-Output "& $(Quote-PowerShellString $installedPath) shellenv --shell=powershell | Add-Content -LiteralPath `$PROFILE"
 }
 
 function Invoke-PostInstallSetup([string] $InstalledPath) {
@@ -295,7 +293,7 @@ try {
   Write-Output "channel: $channel"
   Write-Output "platform: $platform"
   Write-Output "installed: $installedPath"
-  Write-PathGuidance $installDir
+  Write-PathGuidance $installedPath
   Invoke-PostInstallSetup $installedPath
 }
 finally {

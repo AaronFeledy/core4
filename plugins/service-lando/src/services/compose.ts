@@ -1,9 +1,9 @@
 import { basename } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, type MountInput, PortablePath, parseShortVolume } from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_port-helpers.ts";
@@ -11,7 +11,7 @@ import {
   type ClassifiedComposeVolume,
   classifyComposeVolume,
   occupiedTargets,
-  resolveBindSource,
+  parseServiceMount,
 } from "./_volume-helpers.ts";
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
@@ -19,48 +19,10 @@ const APP_MOUNT_TARGET = PortablePath.make("/app");
 export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
 export const COMPOSE_FEATURE_PRIORITY = 600;
 
-type VolumeMount = {
-  readonly type: "bind" | "volume" | "tmpfs";
-  readonly source?: string;
-  readonly target: string;
-  readonly readOnly: boolean;
-};
-
-const parseMount = (entry: MountInput, appRoot: string): VolumeMount => {
-  if (typeof entry === "string") {
-    const parsed = parseShortVolume(entry);
-    const source =
-      parsed.type === "bind" && parsed.source !== undefined
-        ? resolveBindSource(parsed.source, appRoot)
-        : parsed.source;
-    return {
-      type: parsed.type,
-      ...(source === undefined ? {} : { source }),
-      target: parsed.target,
-      readOnly: parsed.readOnly,
-    };
-  }
-  const type = entry.type ?? "bind";
-  if (type === "bind" && entry.source === undefined) {
-    throw new Error(`Compose bind mount at "${entry.target}" requires a source.`);
-  }
-  const source =
-    type === "bind" && entry.source !== undefined ? resolveBindSource(entry.source, appRoot) : entry.source;
-  return {
-    type,
-    ...(source === undefined ? {} : { source }),
-    target: entry.target,
-    readOnly: entry.readOnly ?? false,
-  };
-};
-
 const appNameFor = (ctx: ServiceFeatureContext): string => {
   if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
   return basename(ctx.appRoot) || "app";
 };
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const applyCompose = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -77,7 +39,9 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   }
 
   const appName = appNameFor(ctx);
-  const optedOutOfAppMount = service.appMount === false;
+  const authoredMounts = (service.mounts ?? []).map((entry) => parseServiceMount(entry, ctx.appRoot));
+  const optedOutOfAppMount =
+    service.appMount === false || authoredMounts.some((mount) => mount.target === APP_MOUNT_TARGET);
   if (!optedOutOfAppMount) {
     ctx.setAppMount({
       source: AbsolutePath.make(ctx.appRoot),
@@ -94,7 +58,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     });
   }
 
-  for (const mount of (service.mounts ?? []).map((entry) => parseMount(entry, ctx.appRoot))) {
+  for (const mount of authoredMounts) {
     ctx.addMount({
       type: mount.type,
       ...(mount.source === undefined ? {} : { source: mount.source }),
@@ -132,24 +96,22 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  if (service.endpoints !== undefined) {
-    for (const endpoint of service.endpoints) {
-      if (endpoint.protocol === "unix") {
+  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
+    ctx.addEndpoint(endpoint);
+  }
+  for (const endpoint of internalEndpointsFromExpose(service.expose ?? [], "tcp")) {
+    switch (endpoint.protocol) {
+      case "unix":
         ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
-      } else {
+        break;
+      case "http":
+      case "https":
+      case "tcp":
+      case "udp":
         ctx.addEndpoint(endpoint);
-      }
-    }
-  } else {
-    for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
-      ctx.addEndpoint(endpoint);
-    }
-    for (const endpoint of internalEndpointsFromExpose(service.expose ?? [], "tcp")) {
-      if (endpoint.protocol === "unix") {
-        ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
-      } else {
-        ctx.addEndpoint(endpoint);
-      }
+        break;
+      default:
+        endpoint satisfies never;
     }
   }
 
@@ -161,7 +123,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   if (tmpfsEntries.length > 0) {
     const existing = service.providers?.compose;
     ctx.addExtension("compose", {
-      ...(isRecord(existing) ? existing : {}),
+      ...(Predicate.isRecord(existing) ? existing : {}),
       tmpfs: tmpfsEntries,
     });
   }

@@ -1,16 +1,16 @@
 /**
  * `MutagenClient` is the narrow transport surface consumed by the
  * file-sync-mutagen `FileSyncEngine`. The concrete implementation will
- * spawn the Mutagen host CLI and talk the Synchronization gRPC API; this
- * module currently provides the seam, an in-memory fake for unit tests,
- * and an `unavailable` default that fails closed with the standard
- * "run `lando setup`" remediation so the bundled engine remains importable.
+ * spawn the installed Mutagen host CLI. The bundled engine still defaults
+ * to the unavailable client until the provider can guarantee a populated
+ * target volume before starting application containers.
  */
 
 import { DateTime, Effect, Stream } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import type {
+  AppRef,
   FileSyncEventChunk,
   FileSyncSessionInfo,
   FileSyncSessionSpec,
@@ -18,8 +18,8 @@ import type {
 } from "@lando/sdk/schema";
 
 const ENGINE_ID = "mutagen" as const;
-const RUN_SETUP_REMEDIATION =
-  "Run `lando setup` to download the Mutagen host CLI and per-platform agent binaries (see docs/guides/setup/file-sync-mutagen.mdx).";
+const UNAVAILABLE_CLIENT_REMEDIATION =
+  "Continue with ordinary mounts; this build does not include a live Mutagen session client.";
 
 /**
  * Snapshot of a Mutagen session as reported by the daemon. The fields
@@ -58,8 +58,16 @@ export interface MutagenCreateArgs {
  * them without re-tagging.
  */
 export interface MutagenClient {
+  /** Durable sessions survive the command scope and require explicit app lifecycle cleanup. */
+  readonly persistsAcrossProcesses?: boolean;
+  readonly invalidateAppDrain?: (app: AppRef) => Effect.Effect<void, FileSyncStartError>;
+  readonly drainApp?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+  readonly disposeApp?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
+  readonly completeAppDisposal?: (app: AppRef) => Effect.Effect<void, FileSyncStopError>;
   readonly version: Effect.Effect<string, FileSyncStartError>;
   readonly create: (args: MutagenCreateArgs) => Effect.Effect<void, FileSyncStartError>;
+  /** Block until an inspected, conflict-free synchronization cycle completes. */
+  readonly flush: (name: string) => Effect.Effect<void, FileSyncStartError>;
   readonly pause: (name: string) => Effect.Effect<void, FileSyncStopError>;
   readonly resume: (name: string) => Effect.Effect<void, FileSyncStartError>;
   readonly terminate: (name: string) => Effect.Effect<void, FileSyncStopError>;
@@ -74,7 +82,7 @@ const unavailableStart = (message: string, spec?: FileSyncSessionSpec): FileSync
     engineId: ENGINE_ID,
     message,
     ...(spec === undefined ? {} : { sessionSpec: spec }),
-    remediation: RUN_SETUP_REMEDIATION,
+    remediation: UNAVAILABLE_CLIENT_REMEDIATION,
   });
 
 const unavailableStop = (message: string, sessionRef: string): FileSyncStopError =>
@@ -82,21 +90,19 @@ const unavailableStop = (message: string, sessionRef: string): FileSyncStopError
     engineId: ENGINE_ID,
     sessionRef,
     message,
-    remediation: RUN_SETUP_REMEDIATION,
+    remediation: UNAVAILABLE_CLIENT_REMEDIATION,
   });
 
 /**
- * Default client used by the bundled Live Layer when the Mutagen host CLI
- * is not yet available. Every method fails closed with the standard
- * "run `lando setup`" remediation so a user who tries to start an app
- * with a slow-bind-mount provider before running setup gets an
- * actionable error, not a missing-binary stack trace.
+ * Default client used by the bundled Live Layer until a live Mutagen
+ * session adapter ships. Provisioned binaries alone do not make it available.
  */
 export const makeUnavailableMutagenClient = (
-  reason = "Mutagen host CLI is not installed under the user data root.",
+  reason = "This build has no live Mutagen session client.",
 ): MutagenClient => ({
   version: Effect.fail(unavailableStart(reason)),
   create: (args) => Effect.fail(unavailableStart(reason, args.spec)),
+  flush: () => Effect.fail(unavailableStart(reason)),
   pause: (name) => Effect.fail(unavailableStop(reason, name)),
   resume: () => Effect.fail(unavailableStart(reason)),
   terminate: (name) => Effect.fail(unavailableStop(reason, name)),
@@ -127,6 +133,7 @@ export interface FakeMutagenClientState {
   readonly calls: ReadonlyArray<
     | { readonly op: "version" }
     | { readonly op: "create"; readonly name: string; readonly spec: FileSyncSessionSpec }
+    | { readonly op: "flush"; readonly name: string }
     | { readonly op: "pause"; readonly name: string }
     | { readonly op: "resume"; readonly name: string }
     | { readonly op: "terminate"; readonly name: string }
@@ -204,6 +211,10 @@ export const makeFakeMutagenClient = (
         });
         return Effect.void;
       }),
+    flush: (name) =>
+      Effect.sync(() => {
+        recordCall({ op: "flush", name });
+      }),
     pause: (name) =>
       Effect.sync(() => {
         recordCall({ op: "pause", name });
@@ -268,6 +279,7 @@ export const toFileSyncSessionInfo = (record: MutagenSessionRecord): FileSyncSes
   app: record.spec.app,
   service: record.spec.service,
   mountKey: record.spec.mountKey,
+  spec: record.spec,
   status: record.status,
   lastUpdatedAt: record.lastUpdatedAt,
   ...(record.detail === undefined ? {} : { detail: record.detail }),

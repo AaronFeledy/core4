@@ -172,6 +172,8 @@ export const mariadbServiceType: ServiceType = {
       features: [{ id: MARIADB_FEATURE_ID }],
       tooling: {
         mariadb: {
+          description: "Open the MariaDB client for this service.",
+          dir: PortablePath.make("/"),
           service: input.name,
           cmd: ["mariadb", "-h", "127.0.0.1", "-u", creds.user, creds.database],
           env: { MYSQL_PWD: creds.password },

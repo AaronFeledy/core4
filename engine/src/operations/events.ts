@@ -1,9 +1,9 @@
 import { DateTime, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
-import { PostInitEvent, PreInitEvent } from "@lando/sdk/events";
+import { MessageWarnEvent, PostInitEvent, PreInitEvent } from "@lando/sdk/events";
 import type { ExpressionContext } from "@lando/sdk/expressions";
-import type { AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
+import type { AppLifecycleEventName, AppPlan, EventStep, LandofileEventName } from "@lando/sdk/schema";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
@@ -183,14 +183,34 @@ export const runAppEvent = (
   );
 };
 
+export const runPostAppEvent = (
+  plan: AppPlan,
+  event: AppLifecycleEventName,
+  payload?: ExpressionContext["event"],
+) =>
+  runAppEvent(plan, event, payload).pipe(
+    Effect.catchAll((error) =>
+      EventService.pipe(
+        Effect.flatMap((events) =>
+          events.publish(
+            MessageWarnEvent.make({
+              body: [error.message, error.remediation].join(" "),
+              timestamp: DateTime.unsafeNow(),
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
+
 export const runAppInitEvents = (plan: AppPlan) =>
   Effect.gen(function* () {
     const events = yield* EventService;
     const app = { kind: "user" as const, id: plan.id, root: plan.root };
-    const pre = PreInitEvent.make({ app, timestamp: DateTime.unsafeMake(new Date().toISOString()) });
+    const pre = PreInitEvent.make({ app, timestamp: DateTime.unsafeNow() });
     yield* events.publish(pre);
     yield* runAppEvent(plan, "pre-init", pre);
-    const post = PostInitEvent.make({ app, timestamp: DateTime.unsafeMake(new Date().toISOString()) });
+    const post = PostInitEvent.make({ app, timestamp: DateTime.unsafeNow() });
     yield* events.publish(post);
     yield* runAppEvent(plan, "post-init", post);
   });

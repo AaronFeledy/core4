@@ -47,7 +47,7 @@ describe("createInlineLiveRegionPainter", () => {
 
     // then
     const written = writtenText(writes);
-    expect(written).toBe("a\nb\n");
+    expect(written).toBe("a\r\nb\r\n");
     expect(written).not.toMatch(CSI_AJ);
   });
 
@@ -61,7 +61,7 @@ describe("createInlineLiveRegionPainter", () => {
     painter.paint(["a", "b", "c"]);
 
     // then
-    expect(writtenText(writes)).toBe(`${ESC}[2A${ESC}[Ja\nb\nc\n`);
+    expect(writtenText(writes)).toBe(`\r${ESC}[2A${ESC}[Ja\r\nb\r\nc\r\n`);
   });
 
   test("rewinds the previous painted row count when the region shrinks", () => {
@@ -75,7 +75,7 @@ describe("createInlineLiveRegionPainter", () => {
     painter.paint(["a"]);
 
     // then
-    expect(writtenText(writes)).toBe(`${ESC}[3A${ESC}[Ja\n`);
+    expect(writtenText(writes)).toBe(`\r${ESC}[3A${ESC}[Ja\r\n`);
   });
 
   test("does not append a newline to carriage-return progress", () => {
@@ -118,6 +118,24 @@ describe("createInlineLiveRegionPainter", () => {
     expect(writtenText(writes).endsWith("\n")).toBe(false);
   });
 
+  test("terminates in-place progress before painting the next footer", () => {
+    const { painter, writes } = capturePainter();
+
+    painter.commitAbove("  53/108 [====] 49%");
+    painter.commitAbove("\n");
+    painter.paint(["Installing local certificate trust"]);
+
+    expect(writtenText(writes)).toBe("  53/108 [====] 49%\r\nInstalling local certificate trust\r\n");
+  });
+
+  test("normalizes existing CRLF scrollback without doubling carriage returns", () => {
+    const { painter, writes } = capturePainter();
+
+    painter.commitAbove("first\r\nsecond\r\n");
+
+    expect(writtenText(writes)).toBe("first\r\nsecond\r\n");
+  });
+
   test("commits above by clearing the region and treats the next paint as first", () => {
     // given
     const { painter, writes } = capturePainter();
@@ -128,12 +146,12 @@ describe("createInlineLiveRegionPainter", () => {
     painter.commitAbove("log");
 
     // then
-    expect(writtenText(writes)).toBe(`${ESC}[2A${ESC}[Jlog`);
+    expect(writtenText(writes)).toBe(`\r${ESC}[2A${ESC}[Jlog`);
 
     writes.length = 0;
     painter.paint(["x"]);
     const written = writtenText(writes);
-    expect(written).toBe("x\n");
+    expect(written).toBe("x\r\n");
     expect(written).not.toMatch(CSI_AJ);
   });
 
@@ -147,7 +165,7 @@ describe("createInlineLiveRegionPainter", () => {
     painter.paint([]);
 
     // then
-    expect(writtenText(writes)).toBe(`${ESC}[1A${ESC}[J`);
+    expect(writtenText(writes)).toBe(`\r${ESC}[1A${ESC}[J`);
   });
 
   test("release writes nothing and treats the next paint as first", () => {
@@ -164,7 +182,7 @@ describe("createInlineLiveRegionPainter", () => {
 
     painter.paint(["z"]);
     const written = writtenText(writes);
-    expect(written).toBe("z\n");
+    expect(written).toBe("z\r\n");
     expect(written).not.toMatch(CSI_AJ);
   });
 

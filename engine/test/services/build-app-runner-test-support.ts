@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -81,6 +81,7 @@ export const makeLayer = (provider: RuntimeProviderShape) => {
     select: () => Effect.succeed(provider),
   });
   const redaction = Layer.succeed(RedactionService, {
+    registerValues: registerRedactionValues,
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
   });
   const dependencies = Layer.mergeAll(EventServiceLive, paths, registry, StateStoreLive, redaction);

@@ -6,10 +6,14 @@ import type { AppId, AppPlan } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
 import { Effect, Exit } from "effect";
 
+import { serviceContainerName } from "@lando/container-runtime/plan";
+
 import {
   type LiveAppLifecycle,
+  type LiveProviderApi,
   acquireLiveApp,
   acquireTempAppRoot,
+  defaultLiveAppLifecycle,
   execUntil,
   writeFixture,
 } from "./live-app-scope.ts";
@@ -37,6 +41,7 @@ interface LifecycleCalls {
 const fakeLifecycle = (
   calls: LifecycleCalls,
   overrides: {
+    readonly clear?: Effect.Effect<void, string>;
     readonly up?: Effect.Effect<void, string>;
     readonly down?: Effect.Effect<void, string>;
     readonly results?: ReadonlyArray<ExecResult>;
@@ -44,6 +49,10 @@ const fakeLifecycle = (
 ): LiveAppLifecycle => {
   let execIndex = 0;
   return {
+    clearPreviousRun: () =>
+      Effect.sync(() => {
+        calls.order.push("clear");
+      }).pipe(Effect.flatMap(() => overrides.clear ?? Effect.void)),
     bringUp: () =>
       Effect.sync(() => {
         calls.order.push("up");
@@ -105,18 +114,32 @@ describe("live-app-scope: temp app root", () => {
 });
 
 describe("live-app-scope: app lifecycle", () => {
+  test("does not start an app when clearing the previous run fails", async () => {
+    const calls = noCalls();
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        acquireLiveApp({
+          plan,
+          socketPath: "/tmp/fake.sock",
+          lifecycle: fakeLifecycle(calls, { clear: Effect.fail("volume busy") }),
+        }),
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(calls.order).toEqual(["clear"]);
+  });
   test("brings the app down with its volumes when the scope closes", async () => {
     const calls = noCalls();
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
           yield* acquireLiveApp({ plan, socketPath: "/tmp/fake.sock", lifecycle: fakeLifecycle(calls) });
-          expect(calls.order).toEqual(["up"]);
+          expect(calls.order).toEqual(["clear", "up"]);
         }),
       ),
     );
 
-    expect(calls.order).toEqual(["up", "down"]);
+    expect(calls.order).toEqual(["clear", "up", "down"]);
     expect(calls.downOptions).toEqual([{ volumes: true }]);
   });
 
@@ -132,7 +155,7 @@ describe("live-app-scope: app lifecycle", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(calls.order).toEqual(["up", "down"]);
+    expect(calls.order).toEqual(["clear", "up", "down"]);
   });
 
   test("never brings down an app that failed to come up", async () => {
@@ -148,7 +171,7 @@ describe("live-app-scope: app lifecycle", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(calls.order).toEqual(["up"]);
+    expect(calls.order).toEqual(["clear", "up"]);
   });
 
   test("surfaces a teardown failure instead of swallowing it", async () => {
@@ -164,7 +187,34 @@ describe("live-app-scope: app lifecycle", () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(calls.order).toEqual(["up", "down"]);
+    expect(calls.order).toEqual(["clear", "up", "down"]);
+  });
+});
+
+describe("live-app-scope: clearing a previous run", () => {
+  test("force-removes the previous run's containers, then its volumes, tolerating ones already gone", async () => {
+    // Given a plan with one service and one store, and a daemon that no longer has the volume.
+    const withResources = {
+      ...plan,
+      services: { web: { name: "web" } },
+      stores: [{ name: "scopetest-data", scope: "app", kind: "data" }],
+    } as unknown as AppPlan;
+    const requests: string[] = [];
+    const api = {
+      request: (input: { readonly method: string; readonly path: string }) => {
+        requests.push(`${input.method} ${input.path}`);
+        return Effect.succeed({ status: input.path.startsWith("/volumes/") ? 404 : 204, body: "" });
+      },
+    } as unknown as LiveProviderApi;
+
+    // When the default lifecycle clears the previous run.
+    await Effect.runPromise(defaultLiveAppLifecycle.clearPreviousRun(withResources, api));
+
+    // Then a running container is removed with force before its volume is deleted.
+    expect(requests).toEqual([
+      `DELETE /containers/${serviceContainerName(withResources, "web")}?force=true`,
+      "DELETE /volumes/scopetest-data",
+    ]);
   });
 });
 

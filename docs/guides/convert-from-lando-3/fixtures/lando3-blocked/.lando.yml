@@ -1,0 +1,10 @@
+name: blocked-demo
+recipe: lamp
+config:
+  php: "8.2"
+  webroot: /app/web
+  xdebug: true
+tooling:
+  pull:
+    service: appserver
+    cmd: lando pull

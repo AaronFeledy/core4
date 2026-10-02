@@ -1,3 +1,4 @@
+import { booleanFlag, formatFlag, specArgsOf, specFlagsOf, stringFlag } from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";
 
 import { ServiceName } from "@lando/sdk/schema";
@@ -29,15 +30,7 @@ export const shareStopFlags = {
   format: shareFormatFlag,
 } as const;
 
-const recordOf = (value: unknown): Record<string, unknown> =>
-  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-
-const stringValue = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
-const booleanValue = (value: unknown): boolean => value === true;
-const formatValue = (value: unknown): "text" | "json" => (value === "json" ? "json" : "text");
-
-const targetValue = (value: unknown): ShareOptions["target"] => {
-  const raw = stringValue(value);
+const targetValue = (raw: string | undefined): ShareOptions["target"] => {
   if (raw === undefined || raw.length === 0) return undefined;
   if (raw.startsWith("http://") || raw.startsWith("https://")) return { _tag: "loopback", url: raw };
   const [service, port] = raw.split(":");
@@ -48,23 +41,24 @@ const targetValue = (value: unknown): ShareOptions["target"] => {
 };
 
 export const shareFormatFromInput = (input: unknown): "text" | "json" =>
-  formatValue(recordOf(recordOf(input).flags).format);
+  formatFlag(specFlagsOf(input), ["text", "json"], "text");
 
 export const shareOptionsFromInput = (input: unknown): ShareOptions => {
-  const flags = recordOf(recordOf(input).flags);
-  const options: Record<string, unknown> = { format: shareFormatFromInput(input) };
-  const target = targetValue(flags.target);
-  const provider = stringValue(flags.provider);
-  if (target !== undefined) options.target = target;
-  if (provider !== undefined) options.provider = provider;
-  if (booleanValue(flags.detach)) options.detach = true;
-  if (booleanValue(flags.yes)) options.yes = true;
-  return options as unknown as ShareOptions;
+  const flags = specFlagsOf(input);
+  const target = targetValue(stringFlag(flags, "target"));
+  const provider = stringFlag(flags, "provider");
+  return {
+    format: shareFormatFromInput(input),
+    ...(target === undefined ? {} : { target }),
+    ...(provider === undefined ? {} : { provider }),
+    ...(booleanFlag(flags, "detach") ? { detach: true } : {}),
+    ...(booleanFlag(flags, "yes") ? { yes: true } : {}),
+  };
 };
 
 export const shareListOptionsFromInput = (input: unknown): ShareListOptions => {
-  const flags = recordOf(recordOf(input).flags);
-  const provider = stringValue(flags.provider);
+  const flags = specFlagsOf(input);
+  const provider = stringFlag(flags, "provider");
   return {
     ...(provider === undefined ? {} : { provider }),
     format: shareFormatFromInput(input),
@@ -72,15 +66,15 @@ export const shareListOptionsFromInput = (input: unknown): ShareListOptions => {
 };
 
 export const shareStopOptionsFromInput = (input: unknown): ShareStopOptions => {
-  const flags = recordOf(recordOf(input).flags);
-  const args = recordOf(recordOf(input).args);
+  const flags = specFlagsOf(input);
+  const args = specArgsOf(input);
   // Prefer --session when both are set; positional covers space-separated forms.
-  const sessionId = stringValue(flags.session) ?? stringValue(args.session);
-  const provider = stringValue(flags.provider);
+  const sessionId = stringFlag(flags, "session") ?? stringFlag(args, "session");
+  const provider = stringFlag(flags, "provider");
   const options: Record<string, unknown> = {
     ...(sessionId === undefined ? {} : { sessionId }),
     ...(provider === undefined ? {} : { provider }),
-    ...(booleanValue(flags.force) ? { force: true } : {}),
+    ...(booleanFlag(flags, "force") ? { force: true } : {}),
     format: shareFormatFromInput(input),
   };
   return options as unknown as ShareStopOptions;
