@@ -76,3 +76,22 @@ Verified on 2026-10-01 against the installed `effect@3.21.2` and the published
   - The codemod lives outside the repo at `.local/us662/codemod/` (`run.ts`, `transform.ts`, `maps.ts`) and is idempotent. Rerun it after porting the skipped files, then check with `check-packages.ts`.
   - Tests load gitignored generated sources (`core/src/plugins/generated`, `core/src/runtime/generated`, and others). Run `bun run codegen` once the generators compile on Effect 4.
 ---
+## 2026-10-02 02:33 - Build
+- [looper] Build handed the story back at building: Effect 4 switch partially ported: characterization tests and catalog pin committed, but packages do not compile yet (sdk 34 errors; schema AST/JSON Schema walkers unported; downstream packages blocked). Characterization tests still need Effect 4 ports; gates, codegen, compat artifacts, docs, and post-switch measurements remain.
+---
+## 2026-10-02 02:33 - Review
+- [looper] gate skipped Review: gate: phase building is before implemented (expected phase at or past implemented)
+---
+## 2026-10-02 02:45 CDT - US-662 Drift Audit
+- Trigger: 2 cycles, 13511 insertions, 23 commits
+- Scope absorption: none. Later stories are not started, and the PRD index was not changed after the plan commit.
+- Weakened proofs: characterization tests hit production symbols. One scratch helper cast `Effect.result` back to Either `Left`/`Right`; restored to `Result`. Existing assertion diffs are renames, not looser matchers. Layer-count tests still pin Effect 3 rebuilds; the Effect 4 memo-map difference stays recorded, not blessed as a pass.
+- Dual path: tooling plan resolution and generated guide runs checked Either after switching to `Effect.result`. Both now use `Result`. Remaining `Effect.either` sites and Left/Right expectations are unported and still fail typecheck; they are not a second compatibility path. `Predicate.isObject` matches the Effect 4 plain-object check; not a defect.
+- Ceremony: the schema-compatibility normalizer is the classifier helper this story requires, and the no-null artifact test is already present and passing.
+- Collateral: canonical spec edits match the US-662 amendments only.
+- Contract drift: fresh typecheck is 237 errors and `sdk` is still clean. The handback line's "sdk 34 errors" does not match. `docs` imported `effect` with no catalog declaration; it now uses `catalog:`.
+- Deferred work left with the next Build pass, not laundered: the remaining compile errors, characterization ports onto Effect 4, gates, compatibility notes, and post-switch measurements.
+- Fixed: Result/Either half-ports on tooling and guide runs; the scratch failure helper no longer lies about `Result`; docs declares `effect` through the catalog.
+- Split/excise: none.
+- Verification: typecheck fails (237 errors; the tooling dual-shape errors are gone). Effect pin and schema-artifact tests pass (9). The scratch namespace suite does not load (`Logger.replace` is still unported). Lint fails (414 diagnostics, formatter debt from the port, not these fixes).
+---

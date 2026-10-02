@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import {
@@ -140,15 +140,15 @@ export const runTooling = (
     const planResult =
       target === undefined
         ? yield* Effect.result(resolveToolingPlan({ landofile, appRoot }))
-        : ({ _tag: "Right", right: target.plan } as const);
-    if (planResult._tag === "Left") {
+        : Result.succeed(target.plan);
+    if (Result.isFailure(planResult)) {
       if (appRoot !== undefined) {
         const scriptResult = yield* runBunShellTooling(options, appRoot);
         if (scriptResult !== undefined) return scriptResult;
       }
-      return yield* Effect.fail(planResult.left);
+      return yield* Effect.fail(planResult.failure);
     }
-    const plan = planResult.right;
+    const plan = planResult.success;
     const tooling = { ...effectiveToolingForPlan(plan), ...authoredTooling };
     const task = tooling[toolingLookupKey];
     const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);

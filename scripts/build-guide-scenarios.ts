@@ -434,11 +434,11 @@ const renderRun = (
       `    const runAttempt = yield* Effect.result(context.runCli(${quote(interpolate(component.props.command, variables))}, {`,
       `      answers: ${JSON.stringify(answers)},`,
       "    }));",
-      "    if (Either.isLeft(runAttempt)) {",
-      "      lastFailure = runAttempt.left;",
+      "    if (Result.isFailure(runAttempt)) {",
+      "      lastFailure = runAttempt.failure;",
       "    } else {",
-      "      lastRun = runAttempt.right;",
-      `      expect(runAttempt.right.exitCode, \`stdout:\\n\${runAttempt.right.stdout}\\nstderr:\\n\${runAttempt.right.stderr}\`).toBe(${component.props.expectExit ?? 0});`,
+      "      lastRun = runAttempt.success;",
+      `      expect(runAttempt.success.exitCode, \`stdout:\\n\${runAttempt.success.stdout}\\nstderr:\\n\${runAttempt.success.stderr}\`).toBe(${component.props.expectExit ?? 0});`,
       "    }",
     ].join("\n");
   }
@@ -652,15 +652,19 @@ import { join } from "node:path";
 
 import { expect, test } from "bun:test";
 import { Effect, Result } from "effect";
-${usesLibraryRuntime
+${
+  usesLibraryRuntime
     ? 'import * as LandoCore from "@lando/core";\nimport * as LandoTesting from "@lando/core/testing";'
     : usesE2eRuntime
       ? 'import { ScenarioContextFactory, hasLiveProviderSocket } from "@lando/core/testing";'
-      : 'import { withScenarioContext } from "@lando/core/testing";'}
+      : 'import { withScenarioContext } from "@lando/core/testing";'
+}
 
-${usesE2eRuntime
+${
+  usesE2eRuntime
     ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && hasLiveProviderSocket();'
-    : ""}
+    : ""
+}
 
 const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   if (expected === undefined) return actual !== undefined;
