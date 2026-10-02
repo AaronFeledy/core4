@@ -1,6 +1,7 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { gzipSync } from "node:zlib";
 
 import { DateTime, Effect } from "effect";
 
@@ -95,9 +96,9 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     services,
   };
 
-  for (const name of ["dump.sql.gz", "dump.sql", "dump.bak"] as const) {
-    writeFileSync(join(plan.root, name), name.endsWith(".gz") ? Buffer.from([0x1f, 0x8b, 0x08, 0x00]) : "x");
-  }
+  writeFileSync(join(plan.root, "dump.sql.gz"), gzipSync(Buffer.from("x")));
+  writeFileSync(join(plan.root, "dump.sql"), "x");
+  writeFileSync(join(plan.root, "dump.bak"), "x");
 
   const deps: SqlCommandDeps = {
     landofile,
@@ -105,6 +106,10 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
     transfer: (spec) =>
       Effect.sync((): DataTransferResult => {
         transfers.push(spec);
+        if (spec.to._tag === "hostPath") {
+          mkdirSync(dirname(spec.to.path), { recursive: true });
+          writeFileSync(spec.to.path, "dump");
+        }
         return { accelerated: true, sizeBytes: 12 };
       }),
     snapshot: (store, opts) =>
