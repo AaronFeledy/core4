@@ -13,7 +13,7 @@ import type { ServiceCaFileDescriptor } from "@lando/sdk/services";
 const providerId = ProviderId.make("docker");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-09-23T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-09-23T00:00:00Z"),
   source: "image-build-directories.test.ts",
   runtime: 4 as const,
 };
@@ -103,7 +103,7 @@ test.each(["relative", "/", "/etc/../tmp", "/etc/lando\nRUN evil"])(
     let requests = 0;
     // When
     const result = await Effect.runPromise(
-      Effect.either(
+      Effect.result(
         buildContainerArtifact(
           { app: plan.id, service: serviceName, plan, buildKey: "unsafe" },
           {

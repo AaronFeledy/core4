@@ -19,7 +19,7 @@ const providerId = ProviderId.make("docker");
 const appId = AppId.make("build-boundary-app");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-21T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-21T00:00:00Z"),
   source: "container-runtime/image-build-boundary.test.ts",
   runtime: 4 as const,
 };

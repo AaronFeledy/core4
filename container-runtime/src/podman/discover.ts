@@ -10,8 +10,8 @@ import { redactDetails, withApiReason } from "../redact.ts";
 const Containers = Schema.Array(
   Schema.Struct({
     Id: Schema.String,
-    State: Schema.optional(Schema.String),
-    Labels: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+    State: Schema.optionalKey(Schema.String),
+    Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   }),
 );
 
@@ -46,7 +46,7 @@ export const discoverLabeledContainers = (
       );
     }
     const decoded = yield* parseEngineJson(response, ctx, "list");
-    const containers = yield* Schema.decodeUnknown(Containers)(decoded).pipe(
+    const containers = yield* Schema.decodeUnknownEffect(Containers)(decoded).pipe(
       Effect.mapError(
         (cause) =>
           new ProviderInternalError({

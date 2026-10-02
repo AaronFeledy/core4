@@ -87,7 +87,7 @@ test("fails closed when a destination is a bind mount", async () => {
   };
   // When observing it as a physical named volume.
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       observeMountedVolume(
         { providerId: "podman", api },
         {
@@ -160,7 +160,7 @@ test.each([
     },
   };
   const result = await Effect.runPromise(
-    Effect.either(
+    Effect.result(
       observeMountedVolume(
         { providerId: "lando", api },
         {

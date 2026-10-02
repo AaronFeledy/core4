@@ -18,7 +18,7 @@ const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." 
 const appId = AppId.make("compose-knob-bringup");
 const serviceName = ServiceName.make("web");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-27T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),
   source: "container-runtime/compose-knobs-bringup.test.ts",
   runtime: 4 as const,
 };
@@ -159,7 +159,7 @@ describe("Podman Compose knob bring-up realization", () => {
       bringUp({ ...plan, services: { [service.name]: service } }, { api: fake.api, ctx }),
     );
     // Then
-    const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
+    const failures = Exit.isFailure(exit) ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)) : [];
     expect(failures).toContainEqual(
       expect.objectContaining({
         _tag: "ServiceStartError",
@@ -237,7 +237,7 @@ describe("Podman Compose knob bring-up realization", () => {
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
-    const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
+    const failures = Exit.isFailure(exit) ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)) : [];
     expect(failures).toContainEqual(
       expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.knobs", service: "web" }),
     );
@@ -253,7 +253,7 @@ describe("Podman Compose knob bring-up realization", () => {
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
 
     // Then
-    const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
+    const failures = Exit.isFailure(exit) ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)) : [];
     expect(failures).toContainEqual(
       expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.knobs", service: "web" }),
     );

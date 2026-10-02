@@ -21,7 +21,7 @@ import {
 
 const provider = ProviderId.make("test");
 const metadata = {
-  resolvedAt: DateTime.unsafeMake("2026-07-17T00:00:00Z"),
+  resolvedAt: DateTime.makeUnsafe("2026-07-17T00:00:00Z"),
   source: "service-start-schedule.test",
   runtime: 4 as const,
 };

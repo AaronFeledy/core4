@@ -1224,22 +1224,22 @@ describe("provider data plane", () => {
       redactDetails: (value) => value,
     });
     const result = await Effect.runPromise(
-      provider.removeVolume({ app: appId, store: "data" }, volumeGeneration).pipe(Effect.either),
+      provider.removeVolume({ app: appId, store: "data" }, volumeGeneration).pipe(Effect.result),
     );
     expect(result._tag).toBe("Left");
-    if (result._tag !== "Left") return;
-    expect(result.left).toBeInstanceOf(VolumeOperationError);
-    expect(result.left.operation).toBe("removeVolume");
+    if (result._tag !== "Failure") return;
+    expect(result.failure).toBeInstanceOf(VolumeOperationError);
+    expect(result.failure.operation).toBe("removeVolume");
     if (reason === undefined) {
-      expect(result.left.message).toBe("Provider volume remove failed.");
-      expect(result.left.remediation).toBe(
+      expect(result.failure.message).toBe("Provider volume remove failed.");
+      expect(result.failure.remediation).toBe(
         "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
       );
     } else {
-      expect(result.left.message).toContain(reason);
-      expect(result.left.remediation).toContain("Remove that container first");
-      expect(result.left.remediation).toContain("lando destroy");
-      expect(result.left.remediation).toContain("lando doctor");
+      expect(result.failure.message).toContain(reason);
+      expect(result.failure.remediation).toContain("Remove that container first");
+      expect(result.failure.remediation).toContain("lando destroy");
+      expect(result.failure.remediation).toContain("lando doctor");
     }
   });
 

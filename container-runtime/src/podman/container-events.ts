@@ -87,7 +87,7 @@ const enrichOomKilled = (
       const state = asRecord(inspect?.State);
       return state?.OOMKilled === true ? { ...event, OOMKilled: true } : payload;
     }),
-    Effect.catchAll(() => Effect.succeed(payload)),
+    Effect.catch(() => Effect.succeed(payload)),
   );
 };
 

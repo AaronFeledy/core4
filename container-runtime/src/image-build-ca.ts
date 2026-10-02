@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { Effect, Either, Predicate, Schema } from "effect";
+import { Effect, Result, Predicate, Schema } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
@@ -34,11 +34,11 @@ const parseCaFiles = (
   value: unknown,
   providerId: string,
 ): Effect.Effect<ReadonlyArray<ServiceCaFileDescriptor>, ProviderInternalError> => {
-  const decoded = Schema.decodeUnknownEither(Schema.Array(ServiceCaFileDescriptor))(value);
-  return Either.isRight(decoded)
-    ? Effect.succeed(decoded.right)
+  const decoded = Schema.decodeUnknownResult(Schema.Array(ServiceCaFileDescriptor))(value);
+  return Result.isSuccess(decoded)
+    ? Effect.succeed(decoded.success)
     : Effect.fail(
-        internalError(providerId, "Invalid CA file descriptor in service build steps.", decoded.left),
+        internalError(providerId, "Invalid CA file descriptor in service build steps.", decoded.failure),
       );
 };
 
@@ -46,7 +46,7 @@ const parseStep = (
   value: unknown,
   providerId: string,
 ): Effect.Effect<PreparedBuildStep | undefined, ProviderInternalError> => {
-  if (!Predicate.isRecord(value)) return Effect.succeed(undefined);
+  if (!Predicate.isObject(value)) return Effect.succeed(undefined);
   if (value.phase !== "build") return Effect.succeed(undefined);
   const caFiles = "caFiles" in value ? parseCaFiles(value.caFiles, providerId) : Effect.succeed([]);
   return Effect.gen(function* () {
@@ -59,14 +59,14 @@ const parseStep = (
     } else if (Array.isArray(value.command)) {
       command = value.command.filter((part): part is string => typeof part === "string");
       if (command.length !== value.command.length) return undefined;
-    } else if (Predicate.isRecord(value.command) && "directories" in value.command) {
-      const decoded = Schema.decodeUnknownEither(ServiceBuildDirectoryCommand)(value.command);
-      if (Either.isLeft(decoded)) {
+    } else if (Predicate.isObject(value.command) && "directories" in value.command) {
+      const decoded = Schema.decodeUnknownResult(ServiceBuildDirectoryCommand)(value.command);
+      if (Result.isFailure(decoded)) {
         return yield* Effect.fail(
-          internalError(providerId, "Invalid image directory build command.", decoded.left),
+          internalError(providerId, "Invalid image directory build command.", decoded.failure),
         );
       }
-      command = decoded.right;
+      command = decoded.success;
     } else {
       return undefined;
     }
@@ -123,7 +123,7 @@ export const prepareDerivedBuild = (
 ): Effect.Effect<PreparedDerivedBuild, ProviderInternalError> => {
   const extension = service.extensions["@lando/core/service-features"];
   const rawSteps =
-    Predicate.isRecord(extension) && Array.isArray(extension.buildSteps) ? extension.buildSteps : [];
+    Predicate.isObject(extension) && Array.isArray(extension.buildSteps) ? extension.buildSteps : [];
   return Effect.gen(function* () {
     const parsed = yield* Effect.forEach(rawSteps, (step) => parseStep(step, providerId));
     const steps = parsed.filter((step) => step !== undefined);

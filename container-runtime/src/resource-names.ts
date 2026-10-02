@@ -8,7 +8,7 @@ import {
   isSuccessStatus,
 } from "./engine-api.ts";
 
-const Labels = Schema.optional(Schema.NullOr(Schema.Record({ key: Schema.String, value: Schema.String })));
+const Labels = Schema.optionalKey(Schema.NullOr(Schema.Record(Schema.String, Schema.String)));
 const Volumes = Schema.Struct({
   Volumes: Schema.NullOr(Schema.Array(Schema.Struct({ Name: Schema.String, Labels }))),
 });
@@ -21,7 +21,7 @@ export const inspectEngineResourceNames = (
 ) =>
   Effect.gen(function* () {
     const errorFields = { ...ctx, operation: "inspectResourceNames" };
-    const checked = yield* Schema.decodeUnknown(DoctorResourceNameQuery)(query).pipe(
+    const checked = yield* Schema.decodeUnknownEffect(DoctorResourceNameQuery)(query).pipe(
       Effect.mapError(
         () => new ProviderInternalError({ ...errorFields, message: "Invalid resource name query." }),
       ),
@@ -58,12 +58,12 @@ export const inspectEngineResourceNames = (
       });
     const resources = yield* (
       checked.kind === "volume"
-        ? Schema.decodeUnknown(Schema.parseJson(Volumes))(response.body).pipe(
+        ? Schema.decodeUnknownEffect(Schema.fromJsonString(Volumes))(response.body).pipe(
             Effect.map((body) =>
               (body.Volumes ?? []).map((volume) => ({ names: [volume.Name], labels: volume.Labels ?? {} })),
             ),
           )
-        : Schema.decodeUnknown(Schema.parseJson(Containers))(response.body).pipe(
+        : Schema.decodeUnknownEffect(Schema.fromJsonString(Containers))(response.body).pipe(
             Effect.map((body) =>
               body.map((container) => ({
                 names: container.Names.map((name) => name.replace(/^\//u, "")),

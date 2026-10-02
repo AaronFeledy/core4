@@ -26,7 +26,7 @@ const plannedPlan: AppPlan = {
   networks: [],
   stores: [dataStore, cacheStore],
   fileSync: [],
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 };
 

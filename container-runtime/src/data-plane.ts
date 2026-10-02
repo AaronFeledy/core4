@@ -575,7 +575,7 @@ const removeEphemeralContainer = (options: ProviderDataPlaneOptions, name: strin
         method: "DELETE",
         path: `/containers/${encodeURIComponent(name)}?force=true`,
       }).pipe(
-        Effect.catchAll(() => Effect.void),
+        Effect.catch(() => Effect.void),
         Effect.asVoid,
       )
     : Effect.void;
@@ -666,7 +666,7 @@ const runBytes = (
           chunks: logs.chunks,
         };
       }).pipe(
-        Effect.catchAll((cause) =>
+        Effect.catch((cause) =>
           Effect.fail(
             volumeError(
               options,
@@ -687,9 +687,8 @@ const runByteStream = (
   spec: EphemeralRunSpec,
 ): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> => {
   const decode = makeAttachDecoder();
-  return Stream.acquireRelease(createEphemeralContainer(options, { ...spec, captureStdout: true }), (name) =>
-    removeEphemeralContainer(options, name, spec.remove !== false),
-  ).pipe(
+  return Stream.scoped(Stream.fromEffect(Effect.acquireRelease(createEphemeralContainer(options, { ...spec, captureStdout: true }), (name) =>
+    removeEphemeralContainer(options, name, spec.remove !== false)))).pipe(
     Stream.flatMap((name) =>
       Stream.unwrap(
         Effect.gen(function* () {
@@ -703,11 +702,10 @@ const runByteStream = (
             method: "GET",
             path: `/containers/${encodeURIComponent(name)}/logs?follow=true&stdout=true&stderr=true`,
           }).pipe(
-            Stream.mapConcat((chunk) =>
+            (self) => Stream.flattenIterable(Stream.map(self, (chunk) =>
               decode(chunk).map(
                 (frame): ExecChunk => ({ kind: frame.stream, chunk: new Uint8Array(frame.payload) }),
-              ),
-            ),
+              ))),
           );
           const completed = Stream.fromEffect(
             Effect.gen(function* () {
@@ -828,7 +826,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           ? options.prepareWitnessImage
           : ensure2xx(options, "witness.image", image),
       ),
-      Effect.zipRight(Effect.scoped(runBytes(options, spec, witnessSource))),
+      Effect.andThen(Effect.scoped(runBytes(options, spec, witnessSource))),
       Effect.map((result) => ({
         exitCode: result.exitCode,
         stdout: textDecoder.decode(result.stdout),
@@ -913,7 +911,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
     adoptVolume: (target: VolumeAdoptionTarget) => adoptMountedVolume(observation, target),
     run: (spec: EphemeralRunSpec): Effect.Effect<ExecResult, ProviderError, Scope.Scope> =>
       ensureEphemeralVolumes(options, spec).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           Effect.suspend(() => runBytes(options, { ...spec, captureStdout: spec.captureStdout ?? false })),
         ),
         Effect.map(({ exitCode, stdout, stderr }) => ({
@@ -1064,14 +1062,14 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
           ),
         );
         return verifySource.pipe(
-          Effect.zipRight(
+          Effect.andThen(
             verifyExpectedIdentity({
               ref: spec.target,
               expectedGeneration: spec.expectedTargetGeneration,
               operation: "restoreVolume",
             }),
           ),
-          Effect.zipRight(
+          Effect.andThen(
             runBytes(options, {
               image: nativeSnapshotImage(spec.snapshot.id),
               command: ["sh", "-c", command],
@@ -1110,7 +1108,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         expectedGeneration: spec.expectedTargetGeneration,
         operation: "restoreVolume",
       }).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           runBytes(options, {
             image: copyModeHelperImage,
             command: [
@@ -1190,7 +1188,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
       )) satisfies RuntimeProviderShape["listVolumes"],
     removeVolume: ((ref, expectedGeneration) =>
       verifyExpectedIdentity({ ref, expectedGeneration, operation: "removeVolume" }).pipe(
-        Effect.zipRight(
+        Effect.andThen(
           request(options, "removeVolume", {
             method: "DELETE",
             path: `/volumes/${encodeURIComponent(volumeName(ref.store))}`,
@@ -1324,7 +1322,7 @@ export const makeProviderDataPlane = (options: ProviderDataPlaneOptions) => {
         Effect.asVoid,
       )) satisfies RuntimeProviderShape["copyToService"],
     copyFromService: ((target, spec) =>
-      Stream.unwrapScoped(
+      Stream.unwrap(
         requireServiceContainerName(options, "copyFromService", target).pipe(
           Effect.flatMap((containerName) =>
             Stream.toAsyncIterableEffect(

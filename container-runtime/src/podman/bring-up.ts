@@ -54,7 +54,7 @@ export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
     : {};
 };
 
-type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
+type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
 type BringUpError = ServiceStartError | ProviderUnavailableError | ProviderInternalError;
 
 /**
@@ -180,7 +180,7 @@ const appRef = (plan: AppPlan): AppRef => ({
 
 const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 const containerRunning = (body: object): boolean => {
   const state = Reflect.get(body, "State");
@@ -585,12 +585,12 @@ const startContainer = (
 
 const stopContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<void> =>
   request(deps, { method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` }).pipe(
-    Effect.catchAll(() => Effect.void),
+    Effect.catch(() => Effect.void),
   );
 
 const removeContainerSilent = (deps: BringUpDeps, name: string): Effect.Effect<void> =>
   request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.catchAll(() => Effect.void),
+    Effect.catch(() => Effect.void),
   );
 
 const removeContainer = (
@@ -617,7 +617,7 @@ const removeNetworkSilent = (deps: BringUpDeps, plan: AppPlan): Effect.Effect<vo
   request(deps, {
     method: "DELETE",
     path: `/networks/${encodeURIComponent(appNetworkName(plan))}`,
-  }).pipe(Effect.catchAll(() => Effect.void));
+  }).pipe(Effect.catch(() => Effect.void));
 
 const removeCreatedNetworksSilent = (
   deps: BringUpDeps,
@@ -629,7 +629,7 @@ const removeCreatedNetworksSilent = (
       request(deps, {
         method: "DELETE",
         path: `/networks/${encodeURIComponent(name)}`,
-      }).pipe(Effect.catchAll(() => Effect.void)),
+      }).pipe(Effect.catch(() => Effect.void)),
     { discard: true },
   );
 
@@ -819,7 +819,7 @@ export const bringUp = (plan: AppPlan, options: BringUpOptions): Effect.Effect<A
           const started = yield* startService(deps, plan, service, (container) => {
             touched.push(container);
           }).pipe(
-            Effect.catchAll((error) =>
+            Effect.catch((error) =>
               options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error),
             ),
           );

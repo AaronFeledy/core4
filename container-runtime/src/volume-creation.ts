@@ -36,12 +36,10 @@ export const volumeCreationLabels = (
   ...(store.kind === "cache" ? { [STORAGE_KIND_LABEL]: "cache" } : {}),
 });
 
-const CreatedVolume = Schema.parseJson(
-  Schema.Struct({
+const CreatedVolume = Schema.fromJsonString(Schema.Struct({
     Name: Schema.String,
-    Labels: Schema.Record({ key: Schema.String, value: Schema.String }),
-  }),
-);
+    Labels: Schema.Record(Schema.String, Schema.String),
+  }));
 
 /** A fresh random request token echoed by the daemon proves this create won, unlike HTTP 201. */
 export const volumeCreationFact = (input: {

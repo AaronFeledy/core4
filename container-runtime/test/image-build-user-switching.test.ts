@@ -144,7 +144,7 @@ describe("artifact build step user switching", () => {
       const capture = recordingRequest("app:staff");
       // When
       const result = await Effect.runPromise(
-        Effect.either(
+        Effect.result(
           runBuild({
             artifact,
             steps: [{ phase: "build", command: "install", user }],
@@ -154,10 +154,10 @@ describe("artifact build step user switching", () => {
       );
       // Then
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left._tag).toBe("ProviderInternalError");
-        expect(result.left.operation).toBe("buildArtifact");
-        expect(result.left.remediation).toBeDefined();
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("ProviderInternalError");
+        expect(result.failure.operation).toBe("buildArtifact");
+        expect(result.failure.remediation).toBeDefined();
       }
       expect(capture.requests).toHaveLength(0);
     },
@@ -170,14 +170,14 @@ describe("artifact build step user switching", () => {
       const capture = recordingRequest("app:staff");
       // When
       const result = await Effect.runPromise(
-        Effect.either(runBuild({ artifact, user, steps: [scaffold], request: capture.request })),
+        Effect.result(runBuild({ artifact, user, steps: [scaffold], request: capture.request })),
       );
       // Then
       expect(result._tag).toBe("Left");
-      if (result._tag === "Left") {
-        expect(result.left._tag).toBe("ProviderInternalError");
-        expect(result.left.operation).toBe("buildArtifact");
-        expect(result.left.remediation).toBeDefined();
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("ProviderInternalError");
+        expect(result.failure.operation).toBe("buildArtifact");
+        expect(result.failure.remediation).toBeDefined();
       }
       expect(capture.requests).toHaveLength(0);
     },

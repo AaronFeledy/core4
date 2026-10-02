@@ -16,12 +16,12 @@ const plan: AppPlan = {
   networks: [],
   stores: [{ name: "data", scope: "app", kind: "data" }],
   fileSync: [],
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 };
 const Request = Schema.Struct({
   Name: Schema.String,
-  Labels: Schema.Record({ key: Schema.String, value: Schema.String }),
+  Labels: Schema.Record(Schema.String, Schema.String),
 });
 
 test.each([false, true])(
@@ -33,7 +33,7 @@ test.each([false, true])(
         api: {
           request: (request) => {
             if (request.path !== "/volumes/create") return Effect.succeed({ status: 200, body: "{}" });
-            return Schema.decodeUnknown(Request)(request.body).pipe(
+            return Schema.decodeUnknownEffect(Request)(request.body).pipe(
               Effect.orDie,
               Effect.map((body) => ({
                 status: 201,

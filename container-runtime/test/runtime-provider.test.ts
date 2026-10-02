@@ -22,7 +22,7 @@ const plan = {
   networks: [],
   stores: [],
   fileSync: [],
-  metadata: { resolvedAt: DateTime.unsafeMake("2026-09-06T00:00:00Z"), source: "test", runtime: 4 },
+  metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-06T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 } satisfies AppPlan;
 const ctx = { providerId: "test", remediation: "Run doctor." } as const;
@@ -146,7 +146,7 @@ describe("resolved provider operations", () => {
     const ops = makeResolvedProviderOps(makeInput(calls));
     if (!ops.adoptVolume) throw new Error("Expected volume adoption adapter");
     const result = await Effect.runPromise(
-      Effect.either(ops.adoptVolume(target, PortablePath.make("/data"))),
+      Effect.result(ops.adoptVolume(target, PortablePath.make("/data"))),
     );
     expect(result._tag).toBe("Left");
     expect(calls.some((call) => call.name === "adoptVolume")).toBe(false);
@@ -212,7 +212,7 @@ describe("resolved provider operations", () => {
     const ops = makeResolvedProviderOps(makeInput(calls));
     if (!ops.observeVolume) throw new Error("Expected volume observation adapter");
     const result = await Effect.runPromise(
-      Effect.either(ops.observeVolume(target, PortablePath.make("/data"))),
+      Effect.result(ops.observeVolume(target, PortablePath.make("/data"))),
     );
     expect(result._tag).toBe("Left");
     expect(calls.some((call) => call.name === "observeVolume")).toBe(false);

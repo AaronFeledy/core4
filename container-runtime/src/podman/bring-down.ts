@@ -24,7 +24,7 @@ import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts
 import { planVolumeFilters } from "../volume-ownership.ts";
 import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
 
-type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
+type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
 type BringDownError = ProviderUnavailableError | ProviderInternalError;
 
 const DESTROY_REMEDIATION =
@@ -62,7 +62,7 @@ const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerN
 
 const networkName = (plan: AppPlan) => landoAppNetworkName(plan);
 
-const now = () => DateTime.unsafeNow();
+const now = () => DateTime.nowUnsafe();
 
 const missingApi = (ctx: ProviderErrorContext) =>
   new ProviderUnavailableError({
